@@ -120,7 +120,77 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
   const resolvedVersion =
     deploymentType === 'production' ? version || (await getNextVersion(appId)) : version || null
 
-  // Create deployment
+  // Dev deployments: delete old deployments + insert + update installation atomically
+  if (deploymentType === 'development' && targetOrganizationId) {
+    const result = await database.transaction(async (tx) => {
+      // 1. Clean up old dev deployments from the same developer
+      await tx
+        .delete(schema.AppDeployment)
+        .where(
+          and(
+            eq(schema.AppDeployment.appId, appId),
+            eq(schema.AppDeployment.deploymentType, 'development'),
+            eq(schema.AppDeployment.targetOrganizationId, targetOrganizationId),
+            eq(schema.AppDeployment.createdById, userId)
+          )
+        )
+
+      // 2. Insert new deployment
+      const [deployment] = await tx
+        .insert(schema.AppDeployment)
+        .values({
+          appId,
+          deploymentType,
+          clientBundleId: clientBundle.id,
+          serverBundleId: serverBundle.id,
+          settingsSchema: settingsSchema || null,
+          targetOrganizationId: targetOrganizationId || null,
+          environmentVariables: environmentVariables || null,
+          version: resolvedVersion,
+          status: 'active',
+          metadata: metadata || null,
+          createdById: userId,
+        })
+        .returning()
+
+      if (!deployment) {
+        throw new Error('Failed to create deployment')
+      }
+
+      // 3. Update or create installation
+      const existing = await tx.query.AppInstallation.findFirst({
+        where: and(
+          eq(schema.AppInstallation.appId, appId),
+          eq(schema.AppInstallation.organizationId, targetOrganizationId),
+          eq(schema.AppInstallation.installationType, 'development')
+        ),
+      })
+
+      if (existing && !existing.uninstalledAt) {
+        await tx
+          .update(schema.AppInstallation)
+          .set({ currentDeploymentId: deployment.id, updatedAt: new Date() })
+          .where(eq(schema.AppInstallation.id, existing.id))
+      } else {
+        if (existing?.uninstalledAt) {
+          await tx.delete(schema.AppInstallation).where(eq(schema.AppInstallation.id, existing.id))
+        }
+        await tx.insert(schema.AppInstallation).values({
+          appId,
+          organizationId: targetOrganizationId,
+          installationType: 'development',
+          currentDeploymentId: deployment.id,
+          installedAt: new Date(),
+        })
+      }
+
+      return deployment
+    })
+
+    return c.json({ deploymentId: result.id, version: result.version })
+  }
+
+  // Non-dev deployments: existing flow
   const [deployment] = await database
     .insert(schema.AppDeployment)
     .values({
@@ -140,40 +210,6 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
 
   if (!deployment) {
     return c.json(errorResponse('INTERNAL_ERROR', 'Failed to create deployment'), 500)
-  }
-
-  // For dev deployments: auto-update or auto-create installation
-  if (deploymentType === 'development' && targetOrganizationId) {
-    const existing = await database.query.AppInstallation.findFirst({
-      where: and(
-        eq(schema.AppInstallation.appId, appId),
-        eq(schema.AppInstallation.organizationId, targetOrganizationId),
-        eq(schema.AppInstallation.installationType, 'development')
-      ),
-    })
-
-    if (existing && !existing.uninstalledAt) {
-      // Update existing active installation
-      await database
-        .update(schema.AppInstallation)
-        .set({ currentDeploymentId: deployment.id, updatedAt: new Date() })
-        .where(eq(schema.AppInstallation.id, existing.id))
-    } else {
-      // Delete old uninstalled record if present (unique index constraint)
-      if (existing?.uninstalledAt) {
-        await database
-          .delete(schema.AppInstallation)
-          .where(eq(schema.AppInstallation.id, existing.id))
-      }
-      // Auto-create dev installation
-      await database.insert(schema.AppInstallation).values({
-        appId,
-        organizationId: targetOrganizationId,
-        installationType: 'development',
-        currentDeploymentId: deployment.id,
-        installedAt: new Date(),
-      })
-    }
   }
 
   return c.json({ deploymentId: deployment.id, version: deployment.version })

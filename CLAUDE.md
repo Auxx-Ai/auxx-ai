@@ -308,7 +308,6 @@ pnpm db:migrate
 ### Rules
 
 - **Do NOT run `tsc` type checking.** Too many errors — it will run out of memory.
-- **Do NOT build the program to check for errors.**
 - **Do NOT stop the dev server.**
 
 ---

@@ -12,6 +12,7 @@ import {
   integrationTokenRefreshScannerJob,
   type JobHandler,
   oauth2TokenRefreshScannerJob,
+  orphanedAppBundleCleanupJob,
   quotaResetJob,
   sendGettingStartedEmailsJob,
   sendMidTrialEmailsJob,
@@ -65,6 +66,9 @@ const jobMappings = {
   // Integration OAuth2 token refresh (for Integration table)
   integrationTokenRefreshScannerJob,
   integrationTokenRefreshJob,
+
+  // App bundle cleanup
+  orphanedAppBundleCleanupJob,
 
   // Quota management jobs
   quotaResetJob,

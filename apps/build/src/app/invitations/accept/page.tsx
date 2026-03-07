@@ -6,11 +6,25 @@ import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { Loader2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSession } from '~/hooks/use-session'
 import { api } from '~/trpc/react'
 
 export default function AcceptInvitationPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className='flex min-h-screen flex-col items-center justify-center gap-4'>
+          <Loader2 className='h-8 w-8 animate-spin text-primary' />
+          <p className='text-muted-foreground'>Loading...</p>
+        </div>
+      }>
+      <AcceptInvitationContent />
+    </Suspense>
+  )
+}
+
+function AcceptInvitationContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = searchParams.get('token')

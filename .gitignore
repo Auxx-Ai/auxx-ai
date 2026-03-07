@@ -14,6 +14,7 @@ repomix-output.txt
 repomix.config.json
 .repomix
 .claude
+.playwright-mcp
 
 # database
 /prisma/db.sqlite
