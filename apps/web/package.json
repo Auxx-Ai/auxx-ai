@@ -50,6 +50,7 @@
     "@dnd-kit/utilities": "catalog:",
     "@formkit/auto-animate": "^0.8.2",
     "@hookform/resolvers": "^4.1.0",
+    "@marsidev/react-turnstile": "^1.4.2",
     "@monaco-editor/react": "^4.7.0",
     "@noble/hashes": "^2.0.1",
     "@number-flow/react": "^0.5.10",

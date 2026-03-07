@@ -21,12 +21,15 @@ import {
 import { Input } from '@auxx/ui/components/input'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast' // Use your toast system
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Turnstile } from '@marsidev/react-turnstile'
 import Link from 'next/link'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { client } from '~/auth/auth-client'
 import { useAnalytics } from '~/hooks/use-analytics'
+import { useTurnstile } from '~/hooks/use-turnstile'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 
 // Schema for validation
 const formSchema = z.object({
@@ -37,6 +40,15 @@ type ForgotPasswordFormValues = z.infer<typeof formSchema>
 
 export function ForgotPasswordForm() {
   const posthog = useAnalytics()
+  const { turnstileSiteKey } = useEnv()
+  const {
+    token: turnstileToken,
+    onSuccess: onTurnstileSuccess,
+    onExpire: onTurnstileExpire,
+    onError: onTurnstileError,
+    reset: resetTurnstile,
+    widgetRef: turnstileRef,
+  } = useTurnstile()
   const [isLoading, setIsLoading] = useState(false)
   const form = useForm<ForgotPasswordFormValues>({
     resolver: standardSchemaResolver(formSchema),
@@ -44,12 +56,24 @@ export function ForgotPasswordForm() {
   })
 
   async function onSubmit(values: ForgotPasswordFormValues) {
+    if (turnstileSiteKey && !turnstileToken) {
+      toastError({
+        title: 'Security Check',
+        description: 'Please wait for the security check to complete.',
+      })
+      return
+    }
+
     setIsLoading(true)
-    const { data, error } = await client.forgetPassword({
+    const { data, error } = await client.requestPasswordReset({
       email: values.email,
       redirectTo: '/reset-password',
+      fetchOptions: {
+        headers: turnstileToken ? { 'x-captcha-response': turnstileToken } : {},
+      },
     })
     if (error) {
+      resetTurnstile()
       toastError({ title: 'Request Failed', description: error.message })
     }
     if (data) {
@@ -64,46 +88,65 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <Card className='w-full max-w-md shadow-md shadow-black/20 border-transparent'>
-      <CardHeader className='text-center'>
-        <CardTitle>Forgot Your Password?</CardTitle>
-        <CardDescription>
-          Enter your email address below, and we&apos;ll send you a link to reset your password if
-          an account exists.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
-            <FormField
-              control={form.control}
-              name='email'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input
-                      type='email'
-                      placeholder='your@email.com'
-                      {...field}
-                      disabled={isLoading} // Disable input while loading
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type='submit' className='w-full' loading={isLoading} loadingText='Sending...'>
-              Send Reset Link
-            </Button>
-          </form>
-        </Form>
-      </CardContent>
-      <CardFooter className='flex justify-center'>
-        <Button variant='link' asChild className='text-sm'>
-          <Link href='/login'>Back to Login</Link>
-        </Button>
-      </CardFooter>
-    </Card>
+    <>
+      <Card className='w-full max-w-md shadow-md shadow-black/20 border-transparent'>
+        <CardHeader className='text-center'>
+          <CardTitle>Forgot Your Password?</CardTitle>
+          <CardDescription>
+            Enter your email address below, and we&apos;ll send you a link to reset your password if
+            an account exists.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
+              <FormField
+                control={form.control}
+                name='email'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='email'
+                        placeholder='your@email.com'
+                        {...field}
+                        disabled={isLoading} // Disable input while loading
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button
+                type='submit'
+                className='w-full'
+                loading={isLoading}
+                disabled={!!turnstileSiteKey && !turnstileToken}
+                loadingText='Sending...'>
+                Send Reset Link
+              </Button>
+            </form>
+          </Form>
+        </CardContent>
+        <CardFooter className='flex justify-center'>
+          <Button variant='link' asChild className='text-sm'>
+            <Link href='/login'>Back to Login</Link>
+          </Button>
+        </CardFooter>
+      </Card>
+      {turnstileSiteKey && (
+        <div className='min-h-[75px]'>
+          <Turnstile
+            ref={turnstileRef}
+            siteKey={turnstileSiteKey}
+            onSuccess={onTurnstileSuccess}
+            onExpire={onTurnstileExpire}
+            onError={onTurnstileError}
+            options={{ size: 'invisible' }}
+          />
+        </div>
+      )}
+    </>
   )
 }

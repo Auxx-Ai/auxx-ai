@@ -16,6 +16,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from '@auxx/ui/components/input
 import PhoneInputWithFlag from '@auxx/ui/components/phone-input'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import { Turnstile } from '@marsidev/react-turnstile'
 import { Mail, Smartphone } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
@@ -27,6 +28,8 @@ import { client } from '~/auth/auth-client'
 import { PasswordField } from '~/components/credentials/password-fields'
 import { GithubIcon, GoogleIcon } from '~/constants/icons'
 import { useAnalytics } from '~/hooks/use-analytics'
+import { useTurnstile } from '~/hooks/use-turnstile'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import { GeneralSubmitButton } from './submit-button'
 
 // Schema for email-based signup validation
@@ -58,6 +61,15 @@ type PhoneSignUpFormValues = z.infer<typeof phoneFormSchema>
 export function SignUpForm() {
   const router = useRouter()
   const posthog = useAnalytics()
+  const { turnstileSiteKey } = useEnv()
+  const {
+    token: turnstileToken,
+    onSuccess: onTurnstileSuccess,
+    onExpire: onTurnstileExpire,
+    onError: onTurnstileError,
+    reset: resetTurnstile,
+    widgetRef: turnstileRef,
+  } = useTurnstile()
   const emailForm = useForm<EmailSignUpFormValues>({
     resolver: standardSchemaResolver(emailFormSchema),
     defaultValues: { email: '', password: '' },
@@ -160,6 +172,11 @@ export function SignUpForm() {
 
   // Handle email registration
   const handleEmailSignup = async (values: EmailSignUpFormValues) => {
+    if (turnstileSiteKey && !turnstileToken) {
+      setError('Please wait for the security check to complete.')
+      return
+    }
+
     setIsLoading(true)
     setError('')
 
@@ -172,10 +189,14 @@ export function SignUpForm() {
         password: values.password,
         name: '',
         callbackURL: callbackUrl || '/app',
+        fetchOptions: {
+          headers: turnstileToken ? { 'x-captcha-response': turnstileToken } : {},
+        },
       })
 
       if (error) {
         setError(error.message!)
+        resetTurnstile()
         toastError({
           title: 'Registration Failed',
           description: error.message || 'An unexpected error occurred during registration.',
@@ -197,6 +218,7 @@ export function SignUpForm() {
       }
     } catch (error: any) {
       setError(error.message || 'Registration failed.')
+      resetTurnstile()
       toastError({
         title: 'Registration Failed',
         description: error.message || 'An unexpected error occurred during registration.',
@@ -207,305 +229,320 @@ export function SignUpForm() {
   }
 
   return (
-    <div className='flex w-full flex-col gap-6'>
-      <Card className='shadow-md shadow-black/20 border-transparent'>
-        <CardContent className='flex flex-col gap-4 overflow-hidden pt-6'>
-          {error && <div className='text-sm font-medium text-destructive'>{error}</div>}
+    <>
+      <div className='flex w-full flex-col gap-6'>
+        <Card className='shadow-md shadow-black/20 border-transparent'>
+          <CardContent className='flex flex-col gap-4 overflow-hidden pt-6'>
+            {error && <div className='text-sm font-medium text-destructive'>{error}</div>}
 
-          <AnimatePresence mode='wait'>
-            {/* Initial step with multiple sign-up options */}
-            {step === 'initial' && (
-              <motion.div
-                key='initial'
-                initial='enter'
-                animate='center'
-                exit='exit'
-                variants={variants}
-                transition={{ duration: 0.3 }}>
-                <div className='font-semibold leading-none tracking-tight py-6 text-xl text-center'>
-                  Get started with Auxx.Ai
-                </div>
-                <div className='space-y-4'>
-                  <Button variant='outline' className='w-full' onClick={() => setStep('email')}>
-                    <Mail />
-                    Sign up with Email
-                  </Button>
-                  <Button variant='outline' className='w-full' onClick={() => setStep('phone')}>
-                    <Smartphone />
-                    Sign up with Phone
-                  </Button>
-                </div>
-                <div className='relative my-4'>
-                  <div className='absolute inset-0 flex items-center'>
-                    <span className='w-full border-t' />
+            <AnimatePresence mode='wait'>
+              {/* Initial step with multiple sign-up options */}
+              {step === 'initial' && (
+                <motion.div
+                  key='initial'
+                  initial='enter'
+                  animate='center'
+                  exit='exit'
+                  variants={variants}
+                  transition={{ duration: 0.3 }}>
+                  <div className='font-semibold leading-none tracking-tight py-6 text-xl text-center'>
+                    Get started with Auxx.Ai
                   </div>
-                  <div className='relative flex justify-center text-xs uppercase'>
-                    <span className='bg-background px-2 text-muted-foreground'>Or</span>
+                  <div className='space-y-4'>
+                    <Button variant='outline' className='w-full' onClick={() => setStep('email')}>
+                      <Mail />
+                      Sign up with Email
+                    </Button>
+                    <Button variant='outline' className='w-full' onClick={() => setStep('phone')}>
+                      <Smartphone />
+                      Sign up with Phone
+                    </Button>
                   </div>
-                </div>
-                <div className='space-y-4'>
-                  <GeneralSubmitButton
-                    icon={<GoogleIcon className='mr-2 size-4' />}
-                    width='w-full'
-                    variant='outline'
-                    text='Login with Google'
-                    onClick={() => {
-                      posthog?.capture('user_signed_up', { method: 'google' })
-                      client.signIn.social({ provider: 'google' })
-                    }}
-                  />
-                  <GeneralSubmitButton
-                    icon={<GithubIcon className='mr-2 size-4 text-foreground' />}
-                    width='w-full'
-                    variant='outline'
-                    text='Login with Github'
-                    onClick={() => {
-                      posthog?.capture('user_signed_up', { method: 'github' })
-                      client.signIn.social({ provider: 'github' })
-                    }}
-                  />
-                </div>
-              </motion.div>
-            )}
-
-            {/* Email sign-up step */}
-            {step === 'email' && (
-              <motion.div
-                key='email'
-                initial='enter'
-                animate='center'
-                exit='exit'
-                variants={variants}
-                transition={{ duration: 0.3 }}>
-                <div className='pb-4'>
-                  <div className='font-semibold leading-none tracking-tight pb-6 text-xl text-center'>
-                    Create your account
+                  <div className='relative my-4'>
+                    <div className='absolute inset-0 flex items-center'>
+                      <span className='w-full border-t' />
+                    </div>
+                    <div className='relative flex justify-center text-xs uppercase'>
+                      <span className='bg-background px-2 text-muted-foreground'>Or</span>
+                    </div>
                   </div>
-
-                  <Form {...emailForm}>
-                    <form
-                      onSubmit={emailForm.handleSubmit(handleEmailSignup)}
-                      className='w-full space-y-4'>
-                      <FormField
-                        control={emailForm.control}
-                        name='email'
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormControl>
-                              <Input
-                                type='email'
-                                placeholder='your@email.com'
-                                {...field}
-                                disabled={isLoading}
-                                onChange={(e) => {
-                                  field.onChange(e)
-                                  setContact(e.target.value)
-                                }}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={emailForm.control}
-                        name='password'
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormControl>
-                              <PasswordField
-                                password={password}
-                                setPassword={(val) => {
-                                  setPassword(val)
-                                  field.onChange(val)
-                                }}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <Button
-                        type='submit'
-                        className='w-full'
-                        loading={isLoading}
-                        loadingText='Creating Account...'>
-                        Create Account
-                      </Button>
-                    </form>
-                  </Form>
-                </div>
-                <div className='text-right flex items-center mt-4'>
-                  <Button
-                    variant='link'
-                    className='h-auto p-0 font-normal'
-                    onClick={() => setStep('initial')}>
-                    Back
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Phone sign-up step */}
-            {step === 'phone' && (
-              <motion.div
-                key='phone'
-                initial='enter'
-                animate='center'
-                exit='exit'
-                variants={variants}
-                transition={{ duration: 0.3 }}>
-                <div className='space-y-4'>
-                  <div className='font-semibold leading-none tracking-tight text-xl text-center'>
-                    Enter your details
+                  <div className='space-y-4'>
+                    <GeneralSubmitButton
+                      icon={<GoogleIcon className='mr-2 size-4' />}
+                      width='w-full'
+                      variant='outline'
+                      text='Login with Google'
+                      onClick={() => {
+                        posthog?.capture('user_signed_up', { method: 'google' })
+                        client.signIn.social({ provider: 'google' })
+                      }}
+                    />
+                    <GeneralSubmitButton
+                      icon={<GithubIcon className='mr-2 size-4 text-foreground' />}
+                      width='w-full'
+                      variant='outline'
+                      text='Login with Github'
+                      onClick={() => {
+                        posthog?.capture('user_signed_up', { method: 'github' })
+                        client.signIn.social({ provider: 'github' })
+                      }}
+                    />
                   </div>
+                </motion.div>
+              )}
 
-                  <p className='text-sm text-muted-foreground'>
-                    We will send a verification code to your phone number.
-                  </p>
-
-                  <Form {...phoneForm}>
-                    <form
-                      onSubmit={phoneForm.handleSubmit(handleSendOtp)}
-                      className='w-full space-y-4'>
-                      <FormField
-                        control={phoneForm.control}
-                        name='phone'
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Phone Number</FormLabel>
-                            <FormControl>
-                              <PhoneInputWithFlag
-                                value={field.value}
-                                onChange={field.onChange}
-                                onBlur={field.onBlur}
-                                name={field.name}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <Button
-                        type='submit'
-                        className='w-full'
-                        loading={isLoading}
-                        loadingText='Sending code...'>
-                        Send Code
-                      </Button>
-                    </form>
-                  </Form>
-                </div>
-
-                <div className='text-right flex items-center mt-4'>
-                  <Button
-                    variant='link'
-                    className='h-auto p-0 font-normal'
-                    onClick={() => setStep('initial')}>
-                    Back
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* OTP verification step */}
-            {step === 'otp' && (
-              <motion.div
-                key='otp'
-                initial='enter'
-                animate='center'
-                exit='exit'
-                variants={variants}
-                transition={{ duration: 0.3 }}>
-                <div className='space-y-4'>
-                  <div className='font-semibold leading-none tracking-tight pt-6 text-xl text-center'>
-                    Check your text messages
-                  </div>
-
-                  <p className='text-sm text-muted-foreground'>
-                    We sent a verification code to {contact}. Please enter it below.
-                  </p>
-
-                  <form onSubmit={handleVerifyOtp}>
-                    <div className='flex items-center justify-center'>
-                      <InputOTP maxLength={6} value={otp} onChange={(value) => setOtp(value)}>
-                        <InputOTPGroup>
-                          <InputOTPSlot index={0} />
-                          <InputOTPSlot index={1} />
-                          <InputOTPSlot index={2} />
-                          <InputOTPSlot index={3} />
-                          <InputOTPSlot index={4} />
-                          <InputOTPSlot index={5} />
-                        </InputOTPGroup>
-                      </InputOTP>
+              {/* Email sign-up step */}
+              {step === 'email' && (
+                <motion.div
+                  key='email'
+                  initial='enter'
+                  animate='center'
+                  exit='exit'
+                  variants={variants}
+                  transition={{ duration: 0.3 }}>
+                  <div className='pb-4'>
+                    <div className='font-semibold leading-none tracking-tight pb-6 text-xl text-center'>
+                      Create your account
                     </div>
 
-                    <Button
-                      type='submit'
-                      className='w-full mt-4'
-                      disabled={isLoading || otp.length < 6}
-                      loading={isLoading}
-                      loadingText='Verifying...'>
-                      Verify Code
-                    </Button>
-                  </form>
+                    <Form {...emailForm}>
+                      <form
+                        onSubmit={emailForm.handleSubmit(handleEmailSignup)}
+                        className='w-full space-y-4'>
+                        <FormField
+                          control={emailForm.control}
+                          name='email'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <Input
+                                  type='email'
+                                  placeholder='your@email.com'
+                                  {...field}
+                                  disabled={isLoading}
+                                  onChange={(e) => {
+                                    field.onChange(e)
+                                    setContact(e.target.value)
+                                  }}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
-                  <div className=''>
-                    <p className='text-sm text-muted-foreground'>
-                      Didn&apos;t receive the code?{' '}
-                      <Button
-                        variant='link'
-                        className='h-auto p-0 font-normal'
-                        disabled={resendTimeout > 0 || isLoading}
-                        onClick={async () => {
-                          setIsLoading(true)
-                          try {
-                            const { error } = await client.phoneNumber.sendOtp({
-                              phoneNumber: contact,
-                            })
+                        <FormField
+                          control={emailForm.control}
+                          name='password'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <PasswordField
+                                  password={password}
+                                  setPassword={(val) => {
+                                    setPassword(val)
+                                    field.onChange(val)
+                                  }}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
-                            if (error) {
-                              setError(error.message!)
-                            } else {
-                              startResendTimeout()
-                              toastSuccess({
-                                title: 'Code Resent',
-                                description: 'A new verification code has been sent.',
-                              })
-                            }
-                          } catch (err: any) {
-                            setError(err.message || 'Failed to resend code.')
-                          } finally {
-                            setIsLoading(false)
-                          }
-                        }}>
-                        Resend
-                      </Button>
-                    </p>
-                    {resendTimeout > 0 && (
-                      <p className='text-sm text-muted-foreground'>
-                        New code will be available in {resendTimeout} seconds.
-                      </p>
-                    )}
+                        <Button
+                          type='submit'
+                          className='w-full'
+                          loading={isLoading}
+                          disabled={!!turnstileSiteKey && !turnstileToken}
+                          loadingText='Creating Account...'>
+                          Create Account
+                        </Button>
+                      </form>
+                    </Form>
                   </div>
-                </div>
+                  <div className='text-right flex items-center mt-4'>
+                    <Button
+                      variant='link'
+                      className='h-auto p-0 font-normal'
+                      onClick={() => setStep('initial')}>
+                      Back
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
 
-                <div className='text-right flex items-center mt-4'>
-                  <Button
-                    variant='link'
-                    className='h-auto p-0 font-normal'
-                    onClick={() => setStep('phone')}>
-                    Back
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </CardContent>
-      </Card>
-    </div>
+              {/* Phone sign-up step */}
+              {step === 'phone' && (
+                <motion.div
+                  key='phone'
+                  initial='enter'
+                  animate='center'
+                  exit='exit'
+                  variants={variants}
+                  transition={{ duration: 0.3 }}>
+                  <div className='space-y-4'>
+                    <div className='font-semibold leading-none tracking-tight text-xl text-center'>
+                      Enter your details
+                    </div>
+
+                    <p className='text-sm text-muted-foreground'>
+                      We will send a verification code to your phone number.
+                    </p>
+
+                    <Form {...phoneForm}>
+                      <form
+                        onSubmit={phoneForm.handleSubmit(handleSendOtp)}
+                        className='w-full space-y-4'>
+                        <FormField
+                          control={phoneForm.control}
+                          name='phone'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Phone Number</FormLabel>
+                              <FormControl>
+                                <PhoneInputWithFlag
+                                  value={field.value}
+                                  onChange={field.onChange}
+                                  onBlur={field.onBlur}
+                                  name={field.name}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <Button
+                          type='submit'
+                          className='w-full'
+                          loading={isLoading}
+                          loadingText='Sending code...'>
+                          Send Code
+                        </Button>
+                      </form>
+                    </Form>
+                  </div>
+
+                  <div className='text-right flex items-center mt-4'>
+                    <Button
+                      variant='link'
+                      className='h-auto p-0 font-normal'
+                      onClick={() => setStep('initial')}>
+                      Back
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* OTP verification step */}
+              {step === 'otp' && (
+                <motion.div
+                  key='otp'
+                  initial='enter'
+                  animate='center'
+                  exit='exit'
+                  variants={variants}
+                  transition={{ duration: 0.3 }}>
+                  <div className='space-y-4'>
+                    <div className='font-semibold leading-none tracking-tight pt-6 text-xl text-center'>
+                      Check your text messages
+                    </div>
+
+                    <p className='text-sm text-muted-foreground'>
+                      We sent a verification code to {contact}. Please enter it below.
+                    </p>
+
+                    <form onSubmit={handleVerifyOtp}>
+                      <div className='flex items-center justify-center'>
+                        <InputOTP maxLength={6} value={otp} onChange={(value) => setOtp(value)}>
+                          <InputOTPGroup>
+                            <InputOTPSlot index={0} />
+                            <InputOTPSlot index={1} />
+                            <InputOTPSlot index={2} />
+                            <InputOTPSlot index={3} />
+                            <InputOTPSlot index={4} />
+                            <InputOTPSlot index={5} />
+                          </InputOTPGroup>
+                        </InputOTP>
+                      </div>
+
+                      <Button
+                        type='submit'
+                        className='w-full mt-4'
+                        disabled={isLoading || otp.length < 6}
+                        loading={isLoading}
+                        loadingText='Verifying...'>
+                        Verify Code
+                      </Button>
+                    </form>
+
+                    <div className=''>
+                      <p className='text-sm text-muted-foreground'>
+                        Didn&apos;t receive the code?{' '}
+                        <Button
+                          variant='link'
+                          className='h-auto p-0 font-normal'
+                          disabled={resendTimeout > 0 || isLoading}
+                          onClick={async () => {
+                            setIsLoading(true)
+                            try {
+                              const { error } = await client.phoneNumber.sendOtp({
+                                phoneNumber: contact,
+                              })
+
+                              if (error) {
+                                setError(error.message!)
+                              } else {
+                                startResendTimeout()
+                                toastSuccess({
+                                  title: 'Code Resent',
+                                  description: 'A new verification code has been sent.',
+                                })
+                              }
+                            } catch (err: any) {
+                              setError(err.message || 'Failed to resend code.')
+                            } finally {
+                              setIsLoading(false)
+                            }
+                          }}>
+                          Resend
+                        </Button>
+                      </p>
+                      {resendTimeout > 0 && (
+                        <p className='text-sm text-muted-foreground'>
+                          New code will be available in {resendTimeout} seconds.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className='text-right flex items-center mt-4'>
+                    <Button
+                      variant='link'
+                      className='h-auto p-0 font-normal'
+                      onClick={() => setStep('phone')}>
+                      Back
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </CardContent>
+        </Card>
+      </div>
+      {turnstileSiteKey && (
+        <div className='min-h-[75px]'>
+          <Turnstile
+            ref={turnstileRef}
+            siteKey={turnstileSiteKey}
+            onSuccess={onTurnstileSuccess}
+            onExpire={onTurnstileExpire}
+            onError={onTurnstileError}
+            options={{ size: 'invisible' }}
+          />
+        </div>
+      )}
+    </>
   )
 }

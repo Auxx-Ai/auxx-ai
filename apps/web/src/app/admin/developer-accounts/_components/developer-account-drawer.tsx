@@ -90,6 +90,12 @@ export function DeveloperAccountDrawer({
     { enabled: !!account?.id && open }
   )
 
+  const { data: members, isLoading: membersLoading } =
+    api.admin.getDeveloperAccountMembers.useQuery(
+      { developerAccountId: account?.id! },
+      { enabled: !!account?.id && open }
+    )
+
   const { refetch: fetchExport, isFetching: isExporting } =
     api.admin.apps.exportByDeveloperAccount.useQuery(
       { developerAccountId: account?.id ?? '' },
@@ -305,6 +311,51 @@ export function DeveloperAccountDrawer({
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </Section>
+
+            <Section title='Members' description='Users with access to this developer account'>
+              {membersLoading ? (
+                <div className='space-y-2'>
+                  {[...Array(2)].map((_, i) => (
+                    <Skeleton key={i} className='h-10 w-full' />
+                  ))}
+                </div>
+              ) : !members || members.length === 0 ? (
+                <div className='text-sm text-muted-foreground py-4 text-center'>
+                  No members found
+                </div>
+              ) : (
+                <div className='rounded-md border'>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>User ID</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {members.map((member) => (
+                        <TableRow key={member.id}>
+                          <TableCell className='text-sm'>{member.emailAddress}</TableCell>
+                          <TableCell>
+                            <Badge variant={member.accessLevel === 'admin' ? 'default' : 'outline'}>
+                              {member.accessLevel}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Link
+                              href={`/admin/users/${member.userId}`}
+                              className='text-sm font-mono text-muted-foreground hover:underline'>
+                              {member.userId.slice(0, 8)}...
+                            </Link>
                           </TableCell>
                         </TableRow>
                       ))}

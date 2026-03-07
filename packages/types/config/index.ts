@@ -50,6 +50,7 @@ export const ConfigVariableGroupValues = [
   'CACHE',
   'WORKER',
   'FRONTEND',
+  'CAPTCHA',
 ] as const
 export type ConfigVariableGroup = (typeof ConfigVariableGroupValues)[number]
 
@@ -72,6 +73,7 @@ export const ConfigVariableGroup = {
   CACHE: 'CACHE',
   WORKER: 'WORKER',
   FRONTEND: 'FRONTEND',
+  CAPTCHA: 'CAPTCHA',
 } as const
 
 /** Where the active value came from */
