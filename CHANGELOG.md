@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.58](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.57...auxx-v0.1.58) (2026-03-07)
+
+
+### Features
+
+* add dynamic export to auth and public workflow layouts ([#190](https://github.com/Auxx-Ai/auxx-ai/issues/190)) ([b40dd8d](https://github.com/Auxx-Ai/auxx-ai/commit/b40dd8dbb6600bf582a662301c2d16497cc223a9))
+
 ## [0.1.57](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.56...auxx-v0.1.57) (2026-03-07)
 
 
