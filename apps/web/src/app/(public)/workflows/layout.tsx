@@ -6,6 +6,8 @@ import type { ReactNode } from 'react'
 import { DehydratedStateProvider } from '~/providers/dehydrated-state-provider'
 import { PublicWorkflowClientLayout } from './layout-client'
 
+export const dynamic = 'force-dynamic'
+
 /**
  * Layout for public workflow pages.
  * Server component that injects dehydrated environment state

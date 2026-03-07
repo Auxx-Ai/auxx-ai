@@ -9,6 +9,8 @@ import { DehydratedStateProvider } from '~/providers/dehydrated-state-provider'
 import { PostHogProvider } from '~/providers/posthog-provider'
 import ThemePicker from './_components/theme-picker'
 
+export const dynamic = 'force-dynamic'
+
 type Props = { children: React.ReactNode }
 
 /**
