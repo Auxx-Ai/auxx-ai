@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.57](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.56...auxx-v0.1.57) (2026-03-07)
+
+
+### Features
+
+* implement orphaned app bundle cleanup job and related scheduling ([#188](https://github.com/Auxx-Ai/auxx-ai/issues/188)) ([d9f16a6](https://github.com/Auxx-Ai/auxx-ai/commit/d9f16a6fb12d3c5e7f78edfbc1dba3717617fc69))
+
 ## [0.1.56](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.55...auxx-v0.1.56) (2026-03-07)
 
 
