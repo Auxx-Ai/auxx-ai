@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.59](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.58...auxx-v0.1.59) (2026-03-07)
+
+
+### Features
+
+* enhance S3 client configuration with environment variable suppo… ([#192](https://github.com/Auxx-Ai/auxx-ai/issues/192)) ([d32cfeb](https://github.com/Auxx-Ai/auxx-ai/commit/d32cfeb01f416521d20b279817c2571651522835))
+
 ## [0.1.58](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.57...auxx-v0.1.58) (2026-03-07)
 
 
