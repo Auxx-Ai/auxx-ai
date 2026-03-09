@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { RecordId } from '@auxx/types/resource'
+import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, asc, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
 import {
   type CustomResource,
@@ -611,18 +611,44 @@ export class RecordPickerService {
       if (!grouped.has(entityDefinitionId)) grouped.set(entityDefinitionId, [])
       grouped.get(entityDefinitionId)!.push(entityInstanceId)
     }
+
+    // Resolve entity definition type strings (e.g. 'ticket', 'contact') to UUIDs
+    const resolvedGrouped = new Map<string, { ids: string[]; originalKey: string }>()
+    for (const [entityDefinitionId, ids] of grouped) {
+      if (isEntityDefinitionType(entityDefinitionId)) {
+        // Resolve type name to actual EntityDefinition UUID
+        const entityDef = await this.db.query.EntityDefinition.findFirst({
+          where: (defs, { eq, and }) =>
+            and(
+              eq(defs.entityType, entityDefinitionId),
+              eq(defs.organizationId, this.organizationId)
+            ),
+        })
+        if (entityDef) {
+          resolvedGrouped.set(entityDef.id, { ids, originalKey: entityDefinitionId })
+        }
+      } else {
+        resolvedGrouped.set(entityDefinitionId, { ids, originalKey: entityDefinitionId })
+      }
+    }
+
     // Fetch each group in parallel
     await Promise.all(
-      Array.from(grouped.entries()).map(async ([entityDefinitionId, ids]) => {
-        if (this.registryService.isCustomResource(entityDefinitionId)) {
+      Array.from(resolvedGrouped.entries()).map(async ([resolvedId, { ids, originalKey }]) => {
+        if (this.registryService.isCustomResource(resolvedId)) {
           // Custom entity - fetch EntityInstances by IDs
-          const resource = await this.registryService.getById(entityDefinitionId)
-          const fetched = await this.fetchEntityInstancesByIds(resource!, ids)
-          for (const item of fetched) result[item.recordId] = item
-        } else if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
+          const resource = await this.registryService.getById(resolvedId)
+          if (!resource) return
+          const fetched = await this.fetchEntityInstancesByIds(resource, ids)
+          for (const item of fetched) {
+            // Re-key with original entityDefinitionId to match the caller's RecordId format
+            const key = toRecordId(originalKey, item.id) as RecordId
+            result[key] = { ...item, recordId: key }
+          }
+        } else if (RESOURCE_TABLE_MAP[resolvedId as TableId]) {
           // System resource - use existing fetchResourcesFromDb with ID filter
           const { items: fetched } = await this.fetchResourcesFromDb(
-            entityDefinitionId as TableId,
+            resolvedId as TableId,
             ids.length,
             null,
             undefined,

@@ -1,0 +1,14 @@
+{
+  "title": "Workspace",
+  "pages": [
+    "overview",
+    "sidebar",
+    "organizations",
+    "members-roles",
+    "groups",
+    "tags",
+    "custom-fields",
+    "notifications",
+    "appearance"
+  ]
+}

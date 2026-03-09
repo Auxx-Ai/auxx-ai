@@ -1,3 +1,14 @@
 {
-  "pages": ["auxx-101", "framework", "messaging", "account-settings"]
+  "pages": [
+    "---Reference Documents---",
+    "getting-started",
+    "workspace",
+    "ai",
+    "messaging",
+    "account-settings",
+    "---Guides---",
+    "guides",
+    "---Developer & API---",
+    "developer"
+  ]
 }

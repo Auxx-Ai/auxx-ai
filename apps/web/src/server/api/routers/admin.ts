@@ -4,7 +4,7 @@ import { AdminBillingService, PlanAdminService, PlanService } from '@auxx/billin
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
-import { eq, ilike, or, sql } from 'drizzle-orm'
+import { and, eq, ilike, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import { adminAppsRouter } from './admin-apps'
@@ -675,6 +675,69 @@ export const adminRouter = createTRPCRouter({
         .orderBy(schema.DeveloperAccountMember.createdAt)
 
       return members
+    }),
+
+  /**
+   * Add a member to a developer account by email
+   */
+  addDeveloperAccountMember: superAdminProcedure
+    .input(
+      z.object({
+        developerAccountId: z.string(),
+        emailAddress: z.string().email(),
+        accessLevel: z.enum(['admin', 'member']).default('member'),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await ctx.db
+        .select({ id: schema.User.id, email: schema.User.email })
+        .from(schema.User)
+        .where(eq(schema.User.email, input.emailAddress))
+        .limit(1)
+        .then((rows) => rows[0])
+
+      if (!user) {
+        throw new Error('No user found with that email address')
+      }
+
+      const existing = await ctx.db
+        .select({ id: schema.DeveloperAccountMember.id })
+        .from(schema.DeveloperAccountMember)
+        .where(
+          and(
+            eq(schema.DeveloperAccountMember.developerAccountId, input.developerAccountId),
+            eq(schema.DeveloperAccountMember.userId, user.id)
+          )
+        )
+        .limit(1)
+        .then((rows) => rows[0])
+
+      if (existing) {
+        throw new Error('User is already a member of this developer account')
+      }
+
+      const [member] = await ctx.db
+        .insert(schema.DeveloperAccountMember)
+        .values({
+          developerAccountId: input.developerAccountId,
+          userId: user.id,
+          emailAddress: input.emailAddress,
+          accessLevel: input.accessLevel,
+        })
+        .returning()
+
+      return member
+    }),
+
+  /**
+   * Remove a member from a developer account
+   */
+  removeDeveloperAccountMember: superAdminProcedure
+    .input(z.object({ memberId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db
+        .delete(schema.DeveloperAccountMember)
+        .where(eq(schema.DeveloperAccountMember.id, input.memberId))
     }),
 
   /**

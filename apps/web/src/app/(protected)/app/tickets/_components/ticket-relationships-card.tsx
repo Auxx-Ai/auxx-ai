@@ -64,11 +64,11 @@ export function TicketRelationshipsCard({ ticketId, className }: TicketRelations
 
   if (!ticket) return null
 
-  const relatedTicketIds = ticket.relatedTickets.map((r) => r.relatedTicketId)
+  const relatedTicketIds = (ticket.relatedTickets ?? []).map((r) => r.relatedTicketId)
 
   return (
     <div className={className}>
-      {ticket.relatedTickets.length === 0 ? (
+      {!ticket.relatedTickets?.length ? (
         <div className='bg-primary-100/50 rounded-2xl border py-3 px-3'>
           <div className='flex items-center justify-between'>
             <div className='flex items-center gap-2 text-sm text-muted-foreground'>

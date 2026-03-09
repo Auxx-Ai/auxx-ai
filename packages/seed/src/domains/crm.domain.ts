@@ -88,8 +88,7 @@ export class CrmDomain {
 
       contactValues.push({
         primary_email: this.generateEmail(firstName, lastName, i),
-        first_name: firstName,
-        last_name: lastName,
+        full_name: { firstName, lastName },
         phone: this.generatePhone(i),
         contact_status: 'ACTIVE',
       })
@@ -152,11 +151,15 @@ export class CrmDomain {
       if (row.valueText) emailMap.set(row.entityId, row.valueText)
     })
 
+    // Deduplicate by email to avoid "ON CONFLICT DO UPDATE cannot affect row a second time"
+    // (re-seeding can produce multiple contacts with the same email)
+    const seenEmails = new Set<string>()
     const participants: any[] = []
 
     contactInstances.forEach((contact: any, index: number) => {
       const email = emailMap.get(contact.id)
-      if (!email) return
+      if (!email || seenEmails.has(email)) return
+      seenEmails.add(email)
 
       participants.push({
         id: createId(),

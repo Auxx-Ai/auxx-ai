@@ -35,6 +35,11 @@ export class CommunicationDomain {
   private threadLastMessageAt?: Date[]
   /** threadMetadataCache caches metadata payloads. */
   private threadMetadataCache?: Record<string, unknown>[]
+  /** threadParticipantAssignments maps threadId to customer/support participant IDs. */
+  private threadParticipantAssignments = new Map<
+    string,
+    { customerId: string; supportId: string }
+  >()
 
   /** services caches organization-level references for building relationships. */
   private readonly services: {
@@ -137,10 +142,7 @@ export class CommunicationDomain {
     const subjects = this.generateThreadSubjects()
     const organizationIds = this.generateThreadOrganizationIds()
     const integrationIds = this.generateThreadIntegrationIds()
-    const messageTypes = this.generateMessageTypes()
-    const integrationTypes = this.generateIntegrationTypes()
     const assigneeIds = this.generateThreadAssigneeIds()
-    const types = this.generateThreadTypes()
     const statuses = this.generateThreadStatuses()
     const messageCounts = this.generateMessageCounts()
     const createdAt = this.generateThreadCreatedAt()
@@ -149,6 +151,9 @@ export class CommunicationDomain {
     const inboxIds = this.generateThreadInboxIds()
     const metadata = this.generateThreadMetadata()
 
+    // Store participant assignments for later use in message generation
+    this.threadParticipantAssignments.clear()
+
     // Insert threads with REAL participant IDs
     const threadRows = []
     for (let i = 0; i < this.scenario.scales.threads; i++) {
@@ -156,19 +161,21 @@ export class CommunicationDomain {
       const customerParticipant = customerParticipants[i % customerParticipants.length]
       const supportParticipant = supportParticipants[i % supportParticipants.length]
 
+      const threadId = ids[i]!
+
+      if (customerParticipant && supportParticipant) {
+        this.threadParticipantAssignments.set(threadId, {
+          customerId: customerParticipant.id,
+          supportId: supportParticipant.id,
+        })
+      }
+
       threadRows.push({
-        id: ids[i],
+        id: threadId,
         subject: subjects[i],
-        participantIds:
-          customerParticipant && supportParticipant
-            ? [customerParticipant.id, supportParticipant.id]
-            : [],
         organizationId: organizationIds[i],
         integrationId: integrationIds[i],
-        messageType: messageTypes[i],
-        integrationType: integrationTypes[i],
         assigneeId: assigneeIds[i],
-        type: types[i],
         status: statuses[i],
         messageCount: messageCounts[i],
         participantCount: 2, // Always 2: customer + support
@@ -181,12 +188,7 @@ export class CommunicationDomain {
     }
 
     if (threadRows.length > 0) {
-      console.log('📝 Thread rows to insert:')
-      threadRows.forEach((row, i) => {
-        console.log(
-          `  [${i}] id=${row.id}, subject="${row.subject?.substring(0, 50)}...", status=${row.status}`
-        )
-      })
+      console.log(`📝 Inserting ${threadRows.length} threads...`)
 
       await db
         .insert(schema.Thread)
@@ -197,12 +199,13 @@ export class CommunicationDomain {
             subject: sql`excluded.subject`,
             status: sql`excluded.status`,
             messageCount: sql`excluded."messageCount"`,
-            participantIds: sql`excluded."participantIds"`,
-            updatedAt: sql`excluded."updatedAt"`,
           },
         })
       console.log(`✅ Upserted ${threadRows.length} threads`)
     }
+
+    // Insert ThreadParticipant records
+    await this.seedThreadParticipants(db, schema, participantMap)
 
     // Generate and insert Messages (now with proper participant relationships)
     await this.seedMessages(db, schema, organizationId)
@@ -234,9 +237,12 @@ export class CommunicationDomain {
         sql`${dbSchema.User.id} = ANY(${sql.raw(`ARRAY[${this.users.map((id) => `'${id}'`).join(',')}]`)})`
       )
 
-    const supportParticipants = []
+    const supportParticipants: any[] = []
+    const seenEmails = new Set<string>()
 
     users.forEach((user: any) => {
+      if (seenEmails.has(user.email)) return
+      seenEmails.add(user.email)
       supportParticipants.push({
         id: createId(),
         identifier: user.email,
@@ -266,6 +272,63 @@ export class CommunicationDomain {
         })
 
       console.log(`✅ Upserted ${supportParticipants.length} support participants`)
+    }
+  }
+
+  /**
+   * seedThreadParticipants inserts ThreadParticipant records linking participants to threads.
+   * @param db - Drizzle database instance
+   * @param schema - Database schema
+   * @param participantMap - Map of participant ID to participant record
+   */
+  private async seedThreadParticipants(
+    db: any,
+    schema: any,
+    participantMap: Map<string, any>
+  ): Promise<void> {
+    console.log('🔗 Generating thread participants...')
+
+    const threadParticipantRows: any[] = []
+    const now = new Date()
+
+    for (const [threadId, assignment] of this.threadParticipantAssignments) {
+      const customer = participantMap.get(assignment.customerId)
+      const support = participantMap.get(assignment.supportId)
+
+      if (customer) {
+        threadParticipantRows.push({
+          id: createId(),
+          threadId,
+          email: customer.identifier,
+          name: customer.name,
+          isInternal: false,
+          messageCount: 1,
+          firstMessageAt: now,
+          lastMessageAt: now,
+        })
+      }
+
+      if (support) {
+        threadParticipantRows.push({
+          id: createId(),
+          threadId,
+          email: support.identifier,
+          name: support.name,
+          isInternal: true,
+          messageCount: 1,
+          firstMessageAt: now,
+          lastMessageAt: now,
+        })
+      }
+    }
+
+    if (threadParticipantRows.length > 0) {
+      const BATCH_SIZE = 2000
+      for (let i = 0; i < threadParticipantRows.length; i += BATCH_SIZE) {
+        const batch = threadParticipantRows.slice(i, i + BATCH_SIZE)
+        await db.insert(schema.ThreadParticipant).values(batch).onConflictDoNothing()
+      }
+      console.log(`✅ Upserted ${threadParticipantRows.length} thread participants`)
     }
   }
 
@@ -365,9 +428,14 @@ export class CommunicationDomain {
 
     const { schema: dbSchema } = await import('@auxx/database')
 
-    // Get existing threads with participantIds
+    // Get existing threads
     const threads = await db
-      .select()
+      .select({
+        id: schema.Thread.id,
+        subject: schema.Thread.subject,
+        integrationId: schema.Thread.integrationId,
+        organizationId: schema.Thread.organizationId,
+      })
       .from(schema.Thread)
       .where(sql`${schema.Thread.organizationId} = ${organizationId}`)
 
@@ -413,15 +481,15 @@ export class CommunicationDomain {
       // Vary message count per thread (1-5 messages) but respect the average
       const messageCount = Math.min(5, messagesPerThread + (threadIndex % 2 === 0 ? 0 : -1))
 
-      // Get thread participants (customer + support)
-      const threadParticipantIds = thread.participantIds || []
-      if (threadParticipantIds.length < 2) {
-        console.log(`⚠️  Thread ${thread.id} has insufficient participants, skipping`)
+      // Get participant assignments from the stored map
+      const assignment = this.threadParticipantAssignments.get(thread.id)
+      if (!assignment) {
+        console.log(`⚠️  Thread ${thread.id} has no participant assignments, skipping`)
         return
       }
 
-      const customerParticipant = participantMap.get(threadParticipantIds[0])
-      const supportParticipant = participantMap.get(threadParticipantIds[1])
+      const customerParticipant = participantMap.get(assignment.customerId)
+      const supportParticipant = participantMap.get(assignment.supportId)
 
       if (!customerParticipant || !supportParticipant) {
         console.log(`⚠️  Could not find participants for thread ${thread.id}, skipping`)
@@ -444,8 +512,6 @@ export class CommunicationDomain {
             id: messageId,
             threadId: thread.id,
             integrationId: thread.integrationId,
-            integrationType: thread.integrationType,
-            messageType: 'EMAIL',
             isInbound: true,
             isFirstInThread: i === 0,
             subject: thread.subject,
@@ -456,8 +522,8 @@ export class CommunicationDomain {
             fromId: customerParticipant.id, // FROM customer
             createdById: null, // Inbound messages have no creator
             isReply: i > 0,
-            createdTime: sentTime,
-            lastModifiedTime: sentTime,
+            createdAt: sentTime,
+            updatedAt: sentTime,
             sentAt: sentTime,
             receivedAt: sentTime,
           })
@@ -484,8 +550,6 @@ export class CommunicationDomain {
             id: messageId,
             threadId: thread.id,
             integrationId: thread.integrationId,
-            integrationType: thread.integrationType,
-            messageType: 'EMAIL',
             isInbound: false,
             isFirstInThread: false,
             subject: `Re: ${thread.subject}`,
@@ -496,8 +560,8 @@ export class CommunicationDomain {
             fromId: supportParticipant.id, // FROM support
             createdById: supportUser?.id || null, // Support user who created it
             isReply: true,
-            createdTime: sentTime,
-            lastModifiedTime: sentTime,
+            createdAt: sentTime,
+            updatedAt: sentTime,
             sentAt: sentTime,
           })
 
@@ -535,7 +599,7 @@ export class CommunicationDomain {
             set: {
               subject: sql`excluded.subject`,
               textPlain: sql`excluded."textPlain"`,
-              lastModifiedTime: sql`excluded."lastModifiedTime"`,
+              updatedAt: sql`excluded."updatedAt"`,
             },
           })
         console.log(
@@ -597,13 +661,9 @@ export class CommunicationDomain {
     return (helpers: any) => {
       const ids = this.generateThreadIds()
       const subjects = this.generateThreadSubjects()
-      const participantSets = this.generateThreadParticipantSets()
       const organizationIds = this.generateThreadOrganizationIds()
       const integrationIds = this.generateThreadIntegrationIds()
-      const messageTypes = this.generateMessageTypes()
-      const integrationTypes = this.generateIntegrationTypes()
       const assigneeIds = this.generateThreadAssigneeIds()
-      const types = this.generateThreadTypes()
       const statuses = this.generateThreadStatuses()
       const messageCounts = this.generateMessageCounts()
       const participantCounts = this.generateParticipantCounts()
@@ -613,43 +673,15 @@ export class CommunicationDomain {
       const inboxIds = this.generateThreadInboxIds()
       const metadata = this.generateThreadMetadata()
 
-      const debugMap = {
-        id: ids,
-        subject: subjects,
-        participantIds: participantSets,
-        organizationId: organizationIds,
-        integrationId: integrationIds,
-        messageType: messageTypes,
-        integrationType: integrationTypes,
-        assigneeId: assigneeIds,
-        type: types,
-        status: statuses,
-        messageCount: messageCounts,
-        participantCount: participantCounts,
-        createdAt,
-        firstMessageAt,
-        lastMessageAt,
-        inboxId: inboxIds,
-        metadata,
-      }
-
-      Object.entries(debugMap).forEach(([key, value]) => {
-        console.log(`   ↳ Thread.${key}: ${value.length}`)
-      })
-
       const result = {
         Thread: {
           count: this.scenario.scales.threads,
           columns: {
             id: helpers.valuesFromArray({ values: ids }),
             subject: helpers.valuesFromArray({ values: subjects }),
-            participantIds: helpers.valuesFromArray({ values: participantSets }),
             organizationId: helpers.valuesFromArray({ values: organizationIds }),
             integrationId: helpers.valuesFromArray({ values: integrationIds }),
-            messageType: helpers.valuesFromArray({ values: messageTypes }),
-            integrationType: helpers.valuesFromArray({ values: integrationTypes }),
             assigneeId: helpers.valuesFromArray({ values: assigneeIds }),
-            type: helpers.valuesFromArray({ values: types }),
             status: helpers.valuesFromArray({ values: statuses }),
             messageCount: helpers.valuesFromArray({ values: messageCounts }),
             participantCount: helpers.valuesFromArray({ values: participantCounts }),

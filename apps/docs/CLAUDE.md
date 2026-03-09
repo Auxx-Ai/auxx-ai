@@ -24,8 +24,13 @@ apps/docs/
 │   ├── app/           # Next.js app directory
 │   └── lib/           # Utility functions and source configuration
 ├── source.config.ts   # Fumadocs MDX configuration
+├── BLOCKS.md          # Available MDX blocks/components reference
 └── CLAUDE.md          # This file
 ```
+
+## Available Blocks & Components
+
+See `BLOCKS.md` for a complete reference of all MDX components available for use in documentation files, including usage examples and registration status.
 
 ## Creating Documentation
 
@@ -140,7 +145,8 @@ const sendReply = api.ticket.reply.useMutation()
 - **H4 (####)**: Details (use sparingly)
 
 ### Links and References
-- Use relative paths for internal links: `[Getting Started](/docs/getting-started)`
+- **URL pattern**: Pages are served at `/{category}/{slug}`, NOT `/docs/{category}/{slug}`. For example, `content/docs/getting-started/create-account.mdx` is served at `/getting-started/create-account`.
+- Use these paths for internal links: `[Getting Started](/getting-started/create-account)`
 - Use descriptive link text, avoid "click here"
 - Link to relevant sections for deeper exploration
 
@@ -273,3 +279,80 @@ Additional details as needed.
 ```
 
 This guide ensures consistent, high-quality documentation that serves Auxx.ai users effectively.
+
+## Taking Screenshots with Chrome DevTools MCP
+
+Use the **Chrome DevTools MCP** (not Playwright) to capture 2x Retina screenshots of the Auxx.ai web app for documentation. Chrome DevTools MCP supports `deviceScaleFactor` for high-DPI output.
+
+### Login Credentials
+
+Use the e2e test credentials from `packages/e2e/.env`:
+- **URL**: `http://localhost:3000`
+- **Email**: (see `DEFAULT_LOGIN` in `packages/e2e/.env`)
+- **Password**: (see `DEFAULT_PASSWORD` in `packages/e2e/.env`)
+
+### Screenshot Workflow
+
+1. **Set viewport with 2x DPR** for Retina-quality screenshots:
+   ```
+   mcp__chrome-devtools__emulate({
+     viewport: { width: 1440, height: 900, deviceScaleFactor: 2 }
+   })
+   ```
+
+2. **Navigate** to the target page:
+   ```
+   mcp__chrome-devtools__navigate_page({ url: 'http://localhost:3000/app/...' })
+   ```
+
+3. **Hide the Next.js dev overlay** before every screenshot. Run this after each `navigate` call since it resets on page load:
+   ```
+   mcp__chrome-devtools__evaluate_script({
+     function: `() => {
+       const s = document.createElement('style');
+       s.textContent = 'nextjs-portal, [data-nextjs-dialog-overlay], [data-nextjs-toast], #__next-build-indicator, button[aria-label="Open issues overlay"], button[aria-label="Collapse issues badge"], button[aria-label="Open Next.js Dev Tools"] { display: none !important; } :has(> button[aria-label="Open issues overlay"]) { display: none !important; }';
+       document.head.appendChild(s);
+       document.querySelectorAll('nextjs-portal').forEach(el => el.remove());
+       document.querySelectorAll('*').forEach(el => { if (el.textContent === 'vdev' && el.children.length === 0) el.style.display = 'none'; });
+     }`
+   })
+   ```
+
+4. **Take the screenshot** and save to `apps/docs/public/images/`:
+   ```
+   mcp__chrome-devtools__take_screenshot({
+     format: 'png',
+     filePath: '/Users/mklooth/Sites/auxxai/apps/docs/public/images/<name>.png'
+   })
+   ```
+
+5. **Reference in MDX** using the standard image syntax:
+   ```mdx
+   ![Alt text describing the screenshot](/images/<name>.png)
+   ```
+
+### Interacting with Pages
+
+To click elements (e.g., buttons, links), first take a snapshot to get element UIDs:
+```
+mcp__chrome-devtools__take_snapshot()
+mcp__chrome-devtools__click({ uid: '<element-uid>' })
+```
+
+### Image Naming Convention
+
+Use kebab-case descriptive names:
+- `inbox-empty-state.png` — Inbox with no messages
+- `integrations-page.png` — Add new integration page
+- `settings-general.png` — General settings page
+- `workflows-page.png` — Workflows overview
+- `login-page.png` — Sign-in page
+
+### Important Notes
+
+- **Use Chrome DevTools MCP** — it supports `deviceScaleFactor: 2` for 2x Retina images (2880x1800 from a 1440x900 viewport). Playwright MCP's headless Chrome ignores DPR.
+- **Always hide the dev overlay** after every `navigate` — it resets on each page load
+- **Save all images** to `apps/docs/public/images/`
+- **Use ImageZoom** — all `![](...)` images auto-zoom on click (configured in `mdx-components.tsx`)
+- **Alt text is required** for accessibility
+- The login flow requires two steps: enter email, then enter password on the next screen
