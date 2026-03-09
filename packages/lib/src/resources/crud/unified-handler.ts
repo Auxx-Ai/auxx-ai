@@ -492,10 +492,14 @@ export class UnifiedCrudHandler {
           })
         }
 
-        // Otherwise treat as custom entity (UUID)
+        // Resolve entity definition type (e.g. 'ticket', 'contact') to actual UUID
+        const resolvedId = isEntityDefinitionType(entityDefinitionId)
+          ? (await this.resolveEntityDefinition(entityDefinitionId)).id
+          : entityDefinitionId
+
         return queryEntityInstanceIds({
           db: this.db,
-          entityDefinitionId,
+          entityDefinitionId: resolvedId,
           organizationId: this.organizationId,
           filters: filters as ConditionGroup[],
           sorting,

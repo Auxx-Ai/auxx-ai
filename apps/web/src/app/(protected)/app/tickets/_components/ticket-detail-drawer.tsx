@@ -92,6 +92,7 @@ interface CustomerCardProps {
 }
 
 function CustomerCard({ contact, onViewProfile, className }: CustomerCardProps) {
+  if (!contact) return null
   // Convert contact to match ContactName type (handle null values)
   const contactName = {
     id: contact.id,
@@ -533,7 +534,7 @@ export function TicketDetailDrawer({ ticketId, open, onOpenChange }: TicketDetai
                 <div className='flex items-start gap-2'>
                   <Users className='h-4 w-4 text-muted-foreground mt-0.5' />
                   <div className='flex-1'>
-                    {ticket.assignments.length > 0 ? (
+                    {ticket.assignments?.length > 0 ? (
                       <div className='space-y-1'>
                         {ticket.assignments.map((assignment) => (
                           <div key={assignment.id} className='text-sm'>

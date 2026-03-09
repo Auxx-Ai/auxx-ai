@@ -1,0 +1,10 @@
+{
+  "title": "AI & Automation",
+  "pages": [
+    "overview",
+    "models-providers",
+    "workflows-overview",
+    "creating-workflows",
+    "workflow-approvals"
+  ]
+}

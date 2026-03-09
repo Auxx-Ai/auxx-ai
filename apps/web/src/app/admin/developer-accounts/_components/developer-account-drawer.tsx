@@ -25,7 +25,7 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
-import { Ban, Code, Download, MoreHorizontal, Trash2, Upload } from 'lucide-react'
+import { Ban, Code, Copy, Download, MoreHorizontal, Trash2, Upload, UserPlus } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
@@ -34,6 +34,7 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
+import { AddMemberDialog } from './add-member-dialog'
 import { ImportAppsDialog } from './import-apps-dialog'
 
 interface DeveloperAccount {
@@ -79,6 +80,7 @@ export function DeveloperAccountDrawer({
   onOpenChange,
 }: DeveloperAccountDrawerProps) {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [addMemberOpen, setAddMemberOpen] = useState(false)
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
@@ -109,6 +111,16 @@ export function DeveloperAccountDrawer({
     },
     onError: (error) => {
       toastError({ title: 'Failed to delete app', description: error.message })
+    },
+  })
+
+  const removeMember = api.admin.removeDeveloperAccountMember.useMutation({
+    onSuccess: () => {
+      utils.admin.getDeveloperAccountMembers.invalidate()
+      utils.admin.getDeveloperAccounts.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to remove member', description: error.message })
     },
   })
 
@@ -148,6 +160,19 @@ export function DeveloperAccountDrawer({
     })
     if (confirmed) {
       await unpublishApp.mutateAsync({ appId })
+    }
+  }
+
+  const handleRemoveMember = async (memberId: string, email: string) => {
+    const confirmed = await confirm({
+      title: `Remove ${email}?`,
+      description: 'This will revoke their access to this developer account.',
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) {
+      await removeMember.mutateAsync({ memberId })
     }
   }
 
@@ -320,7 +345,15 @@ export function DeveloperAccountDrawer({
               )}
             </Section>
 
-            <Section title='Members' description='Users with access to this developer account'>
+            <Section
+              title='Members'
+              description='Users with access to this developer account'
+              actions={
+                <Button variant='outline' size='sm' onClick={() => setAddMemberOpen(true)}>
+                  <UserPlus />
+                  Add Member
+                </Button>
+              }>
               {membersLoading ? (
                 <div className='space-y-2'>
                   {[...Array(2)].map((_, i) => (
@@ -339,6 +372,7 @@ export function DeveloperAccountDrawer({
                         <TableHead>Email</TableHead>
                         <TableHead>Role</TableHead>
                         <TableHead>User ID</TableHead>
+                        <TableHead className='w-10' />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -357,6 +391,30 @@ export function DeveloperAccountDrawer({
                               {member.userId.slice(0, 8)}...
                             </Link>
                           </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant='ghost' size='icon-sm'>
+                                  <MoreHorizontal />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align='end'>
+                                <DropdownMenuItem
+                                  onClick={() => navigator.clipboard.writeText(member.userId)}>
+                                  <Copy />
+                                  Copy User ID
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant='destructive'
+                                  onClick={() =>
+                                    handleRemoveMember(member.id, member.emailAddress)
+                                  }>
+                                  <Trash2 />
+                                  Remove Member
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -367,6 +425,15 @@ export function DeveloperAccountDrawer({
           </div>
         </ScrollArea>
       </DockableDrawer>
+      <AddMemberDialog
+        open={addMemberOpen}
+        onOpenChange={setAddMemberOpen}
+        developerAccountId={account?.id ?? ''}
+        onMemberAdded={() => {
+          utils.admin.getDeveloperAccountMembers.invalidate()
+          utils.admin.getDeveloperAccounts.invalidate()
+        }}
+      />
       <ImportAppsDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}

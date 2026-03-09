@@ -21,6 +21,7 @@ interface TicketStatusBadgeProps {
 }
 
 export function TicketStatusBadge({ status, closed }: TicketStatusBadgeProps) {
+  if (!status) return null
   const displayStatus = status.replace(/_/g, ' ')
   const variant = statusVariantMap[status] || 'gray'
 
@@ -47,6 +48,7 @@ interface TicketPriorityBadgeProps {
 }
 
 export function TicketPriorityBadge({ priority, closed }: TicketPriorityBadgeProps) {
+  if (!priority) return null
   const variant = priorityVariantMap[priority] || 'blue'
 
   return (
@@ -79,6 +81,7 @@ interface TicketTypeBadgeProps {
 }
 
 export function TicketTypeBadge({ type, closed }: TicketTypeBadgeProps) {
+  if (!type) return null
   const displayType = type.replace(/_/g, ' ')
   const variant = typeVariantMap[type] || 'gray'
 

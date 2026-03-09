@@ -114,9 +114,12 @@ export class TicketDomain {
 
     const handler = new UnifiedCrudHandler(organizationId, userId, db)
 
-    // Get existing contact EntityInstances for linking
+    // Get existing contact EntityInstances for linking (need both definitionId and instanceId for RecordId format)
     const contacts = await db
-      .select({ id: schema.EntityInstance.id })
+      .select({
+        id: schema.EntityInstance.id,
+        entityDefinitionId: schema.EntityInstance.entityDefinitionId,
+      })
       .from(schema.EntityInstance)
       .innerJoin(
         schema.EntityDefinition,
@@ -152,7 +155,7 @@ export class TicketDomain {
         ticket_type: type,
         ticket_status: status,
         ticket_priority: priority,
-        ticket_contact: contact.id,
+        ticket_contact: `${contact.entityDefinitionId}:${contact.id}`,
         ...(assigneeId ? { assigned_to_id: assigneeId } : {}),
         due_date: this.generateTicketDueDate(status, priority, createdAt),
       })

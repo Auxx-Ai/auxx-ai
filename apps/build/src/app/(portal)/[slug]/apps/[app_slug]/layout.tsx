@@ -1,6 +1,7 @@
 // apps/build/src/app/(portal)/[slug]/apps/[:app_slug]/layout.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -11,9 +12,11 @@ import {
 import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
 import { tabsTriggerVariants } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
-import { Cable, GitBranch, Info, Lock, Logs, Target } from 'lucide-react'
+import { Building, Cable, GitBranch, Info, Lock, Logs, Target } from 'lucide-react'
 import Link from 'next/link'
 import { redirect, useParams, usePathname } from 'next/navigation'
+import { useState } from 'react'
+import { AddToOrgDialog } from '~/components/apps/add-to-org-dialog'
 import { AppPublishButton } from '~/components/apps/app-publish-button'
 import { BuildAppSidebar } from '~/components/build-app-sidebar'
 import {
@@ -36,6 +39,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const user = useAuthenticatedUser()
   const account = useDeveloperAccount(slug)
   const app = useApp(slug, appSlug)
+
+  const [addToOrgOpen, setAddToOrgOpen] = useState(false)
 
   // Verify access (data is already fetched server-side)
   if (!account || !app) {
@@ -88,11 +93,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className='h-screen flex flex-1 flex-col w-full h-full'>
+      <AddToOrgDialog open={addToOrgOpen} onOpenChange={setAddToOrgOpen} appId={app.id} />
       <SidebarProvider>
         <BuildAppSidebar user={user} accountSlug={slug} />
         <SidebarInset>
           <MainPage>
-            <MainPageHeader action={<AppPublishButton app={app} size='sm' />}>
+            <MainPageHeader
+              action={
+                <div className='flex items-center gap-2'>
+                  <Button variant='outline' size='sm' onClick={() => setAddToOrgOpen(true)}>
+                    <Building />
+                    Add to Organization
+                  </Button>
+                  <AppPublishButton app={app} size='sm' />
+                </div>
+              }>
               <MainPageBreadcrumb>
                 <MainPageBreadcrumbItem
                   title={app.title}

@@ -150,56 +150,46 @@ export class OrganizationDomain {
 
     const snippetTemplates = [
       {
-        shortcut: 'greeting',
         title: 'Greeting',
         content: 'Hello! Thank you for reaching out to us. How can I help you today?',
       },
       {
-        shortcut: 'thanks',
         title: 'Thank You',
         content: 'Thank you for contacting us. We appreciate your business!',
       },
       {
-        shortcut: 'closing',
         title: 'Closing',
         content:
           "If you have any other questions, please don't hesitate to reach out. Have a great day!",
       },
       {
-        shortcut: 'order-status',
         title: 'Order Status',
         content:
           'Let me check on your order status for you. Could you please provide your order number?',
       },
       {
-        shortcut: 'refund',
         title: 'Refund Process',
         content:
           "I understand you'd like to process a refund. Let me help you with that right away.",
       },
       {
-        shortcut: 'shipping',
         title: 'Shipping Info',
         content: 'Your order has been shipped and should arrive within 3-5 business days.',
       },
       {
-        shortcut: 'apology',
         title: 'Apology',
         content:
           'We sincerely apologize for any inconvenience this may have caused. Let me make this right.',
       },
       {
-        shortcut: 'escalate',
         title: 'Escalation',
         content: "I'm going to escalate this to our management team for immediate attention.",
       },
       {
-        shortcut: 'followup',
         title: 'Follow Up',
         content: 'Just following up on our previous conversation. Have you had a chance to review?',
       },
       {
-        shortcut: 'welcome',
         title: 'Welcome',
         content: "Welcome to our community! We're excited to have you here.",
       },
@@ -212,7 +202,6 @@ export class OrganizationDomain {
 
       snippets.push({
         id: createId(),
-        shortcut: template.shortcut,
         title: template.title,
         content: template.content,
         organizationId: organizationId,
@@ -229,7 +218,6 @@ export class OrganizationDomain {
         .onConflictDoUpdate({
           target: schema.Snippet.id,
           set: {
-            shortcut: sql`excluded.shortcut`,
             title: sql`excluded.title`,
             content: sql`excluded.content`,
             updatedAt: sql`excluded."updatedAt"`,

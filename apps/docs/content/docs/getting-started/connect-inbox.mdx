@@ -1,0 +1,156 @@
+---
+title: Connect your first inbox
+description: Connect your Gmail or Outlook inbox to start receiving and responding to customer emails in Auxx.ai.
+---
+
+# Connect your first inbox
+
+Auxx.ai works by syncing your email into a shared inbox. To get started, connect a Gmail or Outlook account. Once connected, incoming messages appear in your Auxx.ai inbox and you can reply directly from the platform.
+
+<Callout type="info" title="Admin required">
+  Only organization admins and owners can connect email accounts. If you're a member, ask your admin to set up the connection.
+</Callout>
+
+## Where to connect
+
+You can connect an inbox in two places:
+
+- **During onboarding** — Step 3 of the setup flow prompts you to connect Google or Outlook. You can skip this and come back later.
+- **From settings** — Go to **Settings > Integrations** and click **New Integration**, then choose Gmail or Outlook.
+
+![Add New Integration page showing available providers](/images/settings-integrations-new.png)
+
+## Connect Gmail
+
+<Tabs items={['During onboarding', 'From settings']}>
+  <Tab value="During onboarding">
+    1. On the **Connect an inbox** onboarding step, click **Connect Google**.
+    2. Sign in to your Google account if prompted.
+    3. Review the permissions Auxx.ai is requesting and click **Allow**.
+    4. You'll be redirected back to the onboarding flow. A checkmark confirms the connection.
+  </Tab>
+  <Tab value="From settings">
+    1. Go to **Settings > Integrations**.
+    2. Click **Add Integration**.
+    3. Select **Gmail**.
+    4. Sign in to your Google account if prompted.
+    5. Review the permissions and click **Allow**.
+    6. You'll be redirected to a confirmation page showing the connected email address.
+  </Tab>
+</Tabs>
+
+### Gmail permissions
+
+Auxx.ai requests the following access to your Google account:
+
+| Permission | Why it's needed |
+|-----------|----------------|
+| Read emails | Sync incoming messages into your Auxx.ai inbox |
+| Send emails | Send replies from Auxx.ai on your behalf |
+| Manage labels | Organize synced messages with labels |
+| Modify emails | Mark messages as read, archive, etc. |
+
+Auxx.ai uses offline access so it can continue syncing messages in the background, even when you're not actively using the app.
+
+## Connect Outlook
+
+<Tabs items={['During onboarding', 'From settings']}>
+  <Tab value="During onboarding">
+    1. On the **Connect an inbox** onboarding step, click **Connect Outlook**.
+    2. Sign in to your Microsoft account if prompted.
+    3. Review the permissions Auxx.ai is requesting and click **Accept**.
+    4. You'll be redirected back to the onboarding flow. A checkmark confirms the connection.
+  </Tab>
+  <Tab value="From settings">
+    1. Go to **Settings > Integrations**.
+    2. Click **Add Integration**.
+    3. Select **Outlook**.
+    4. Sign in to your Microsoft account if prompted.
+    5. Review the permissions and click **Accept**.
+    6. You'll be redirected to a confirmation page showing the connected email address.
+  </Tab>
+</Tabs>
+
+### Outlook permissions
+
+| Permission | Why it's needed |
+|-----------|----------------|
+| Read and write emails | Sync messages and update their status |
+| Send emails | Send replies from Auxx.ai on your behalf |
+| Read your profile | Identify your email address and any aliases |
+
+If your Microsoft account has email aliases configured, Auxx.ai automatically discovers them during setup.
+
+## After connecting
+
+Once your email account is connected:
+
+1. **Messages start syncing** — Auxx.ai pulls in your recent messages. New messages sync automatically going forward.
+2. **The integration appears in Settings > Integrations** — You can view, configure, or disconnect it here.
+3. **You can link it to a shared inbox** — Go to **Settings > Inbox**, create or select an inbox, and add the integration as a source.
+
+### Integration settings
+
+After connecting, click on the integration in **Settings > Integrations** to configure:
+
+| Setting | Description |
+|---------|-------------|
+| **Display name** | The name that appears when you send emails |
+| **Email signature** | Signature appended to outgoing messages |
+| **Auto BCC** | Automatically BCC an address on all outgoing emails |
+| **Undo send time** | Grace period (0–30 seconds) to cancel a sent message |
+
+### Manual sync
+
+If you need to pull in older messages, you can trigger a manual sync from the integration settings page. Options include:
+
+- Last 7 days
+- Last 30 days
+- Last 90 days
+
+## Linking to a shared inbox
+
+Connected email accounts can feed into one or more shared inboxes. Shared inboxes let your team collaborate on incoming messages.
+
+1. Go to **Settings > Inbox**.
+2. Click **Create Inbox** (or select an existing one).
+3. Give the inbox a name, optional description, and color.
+4. Choose visibility — **Anyone in organization** or **Restricted** to specific members/groups.
+5. On the inbox detail page, go to the **Integrations** tab and add your connected email account.
+
+Messages from that email account will now appear in the shared inbox.
+
+## Re-authentication
+
+If your email provider revokes access or your token expires, Auxx.ai will show a banner prompting you to re-authenticate. Click the banner and sign in again — your existing settings and inbox links are preserved.
+
+## Troubleshooting
+
+<Accordions type="single">
+  <Accordion title="I don't see the Connect button">
+    Only admins and owners can connect integrations. Check your role in **Settings > Members**. If you're a member, ask an admin to connect the inbox.
+  </Accordion>
+  <Accordion title="Google says 'This app isn't verified'">
+    During development or for self-hosted instances, you may see an unverified app warning. Click **Advanced** > **Go to Auxx.ai (unsafe)** to proceed. The hosted version at auxx.ai is verified.
+  </Accordion>
+  <Accordion title="My messages aren't syncing">
+    Go to **Settings > Integrations**, click on the integration, and check the last sync timestamp. If it shows an error, try disconnecting and reconnecting the account. You can also trigger a manual sync for recent messages.
+  </Accordion>
+  <Accordion title="I connected the wrong account">
+    Go to **Settings > Integrations**, find the integration, and disconnect it. Then connect the correct account.
+  </Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+  <Card title="Connect your Shopify store" href="/getting-started/connect-shopify">
+    Pull in customer, order, and product data.
+  </Card>
+  <Card title="Navigate the dashboard" href="/getting-started/navigate-dashboard">
+    Learn your way around the Auxx.ai interface.
+  </Card>
+  <Card title="Invite your team" href="/getting-started/invite-team">
+    Add team members and assign roles.
+  </Card>
+</Cards>

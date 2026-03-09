@@ -1,0 +1,93 @@
+---
+title: Members & roles
+description: Manage team members, assign roles, and control permissions in your Auxx.ai organization.
+---
+
+# Members & roles
+
+Every person in your Auxx.ai organization has a role that determines what they can access and configure. Manage members from **Settings > Members**.
+
+![Members page showing team members and their roles](/images/settings-members.png)
+
+## Roles
+
+| Role | Access level |
+|------|-------------|
+| **Owner** | Full access to everything. Can manage all members (including Admins), delete the organization, and configure all settings. Every organization has at least one owner. |
+| **Admin** | Can manage settings, integrations, inboxes, and invite members. Can change User roles but cannot manage other Admins or delete the organization. |
+| **User** | Standard access. Can use the inbox, reply to messages, view contacts and tickets, and use workflows — but cannot change organization settings or manage members. |
+
+### What each role can do
+
+| Action | Owner | Admin | User |
+|--------|-------|-------|------|
+| Read and reply to messages | Yes | Yes | Yes |
+| View contacts, tickets, records | Yes | Yes | Yes |
+| Use workflows | Yes | Yes | Yes |
+| Connect integrations | Yes | Yes | No |
+| Manage shared inboxes | Yes | Yes | No |
+| Invite members | Yes | Yes | No |
+| Change User roles | Yes | Yes | No |
+| Change Admin roles | Yes | No | No |
+| Manage organization settings | Yes | Yes | No |
+| Delete the organization | Yes | No | No |
+
+## Invite members
+
+1. Go to **Settings > Members**.
+2. Click **Invite Member**.
+3. Enter the person's email and select a role (Admin or User).
+4. Click **Send Invitation**.
+
+![Invite member popover with email and role fields](/images/settings-members-invite.png)
+
+For more details on the invitation flow, see [Invite your team](/getting-started/invite-team).
+
+## Change a member's role
+
+1. Go to **Settings > Members**.
+2. Click the three-dot menu next to the member.
+3. Select **Change role**.
+4. Choose the new role and confirm.
+
+<Callout type="info" title="Role restrictions">
+  Admins can only change Users' roles. Only Owners can promote or demote Admins.
+</Callout>
+
+## Remove a member
+
+1. Go to **Settings > Members**.
+2. Click the three-dot menu next to the member.
+3. Select **Remove Member**.
+4. Confirm the removal.
+
+The member is removed from the organization immediately and loses access to all workspace data.
+
+## Pending invitations
+
+Invitations that haven't been accepted appear in a separate section on the members page. Each pending invitation shows:
+
+- The invitee's email address
+- The assigned role
+- When the invitation was sent
+- When it expires (7 days after sending)
+
+Use the three-dot menu on a pending invitation to:
+
+- **Resend Invitation** — Send a new email and reset the 7-day expiry
+- **Copy Invite Link** — Copy a shareable join link
+- **Cancel Invitation** — Revoke the invitation
+
+## Next steps
+
+<Cards>
+  <Card title="Groups" href="/workspace/groups">
+    Organize members into groups for routing and visibility.
+  </Card>
+  <Card title="Organizations" href="/workspace/organizations">
+    Create and manage multiple organizations.
+  </Card>
+  <Card title="Invite your team" href="/getting-started/invite-team">
+    Step-by-step invitation walkthrough.
+  </Card>
+</Cards>

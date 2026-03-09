@@ -1,5 +1,4 @@
 {
-  "root": true,
   "title": "Messages",
   "pages": ["sync-messages", "send-messages"]
 }

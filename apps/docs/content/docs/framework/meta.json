@@ -1,4 +1,0 @@
-{
-  "root": true,
-  "pages": ["index", "---My Separator---", "!otherFolder", "[Triangle][Vercel](https://vercel.com)"]
-}
