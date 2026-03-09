@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.61](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.60...auxx-v0.1.61) (2026-03-09)
+
+
+### Features
+
+* implement config context and refactor components to use it ([#196](https://github.com/Auxx-Ai/auxx-ai/issues/196)) ([6a6685e](https://github.com/Auxx-Ai/auxx-ai/commit/6a6685e8f597bd45a63ce1aa37ae839f0ddd9e96))
+
 ## [0.1.60](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.59...auxx-v0.1.60) (2026-03-09)
 
 
