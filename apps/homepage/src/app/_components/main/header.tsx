@@ -34,7 +34,7 @@ import {
   navigationMenuTriggerStyle,
 } from '~/components/ui/navigation-menu'
 import { useMedia } from '~/hooks/use-media'
-import { config } from '~/lib/config'
+import { useConfig } from '~/lib/config-context'
 import { cn } from '~/lib/utils'
 
 interface FeatureLink {
@@ -150,29 +150,8 @@ const moreFeatures: FeatureLink[] = [
   },
 ]
 
-const { urls } = config
-
-const mobileLinks: MobileLink[] = [
-  {
-    groupName: 'Platform',
-    links: [...features, ...moreFeatures],
-  },
-  {
-    groupName: 'Solutions',
-    links: useCases,
-  },
-  {
-    groupName: 'Resources',
-    links: contentLinks,
-  },
-  { name: 'Platform', href: '/platform/messaging' },
-  { name: 'Solutions', href: '/solutions' },
-  { name: 'Pricing', href: '/pricing' },
-  { name: 'Company', href: '/company' },
-  { name: 'Get Started', href: urls.signup },
-]
-
 export default function Header() {
+  const { urls } = useConfig()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
   const [isScrolled, setIsScrolled] = React.useState(false)
   const isLarge = useMedia('(min-width: 64rem)')
@@ -247,7 +226,7 @@ export default function Header() {
               </div>
             )}
             {!isLarge && isMobileMenuOpen && (
-              <MobileMenu closeMenu={() => setIsMobileMenuOpen(false)} />
+              <MobileMenu closeMenu={() => setIsMobileMenuOpen(false)} signupUrl={urls.signup} />
             )}
 
             <div className='max-lg:in-data-[state=active]:mt-6 in-data-[state=active]:flex mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:shadow-none dark:lg:bg-transparent'>
@@ -271,7 +250,27 @@ export default function Header() {
   )
 }
 
-const MobileMenu = ({ closeMenu }: { closeMenu: () => void }) => {
+const MobileMenu = ({ closeMenu, signupUrl }: { closeMenu: () => void; signupUrl: string }) => {
+  const mobileLinks: MobileLink[] = [
+    {
+      groupName: 'Platform',
+      links: [...features, ...moreFeatures],
+    },
+    {
+      groupName: 'Solutions',
+      links: useCases,
+    },
+    {
+      groupName: 'Resources',
+      links: contentLinks,
+    },
+    { name: 'Platform', href: '/platform/messaging' },
+    { name: 'Solutions', href: '/solutions' },
+    { name: 'Pricing', href: '/pricing' },
+    { name: 'Company', href: '/company' },
+    { name: 'Get Started', href: signupUrl },
+  ]
+
   return (
     <nav role='navigation' className='w-full'>
       <Accordion

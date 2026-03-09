@@ -3,7 +3,7 @@
 import { motion } from 'motion/react'
 import Link from 'next/link'
 import { Button } from '~/components/ui/button'
-import { config } from '~/lib/config'
+import { useConfig } from '~/lib/config-context'
 import { ImageIllustration } from './workflow-image-illustration'
 
 const AnimatedGroup = ({ children, variants }: { children: React.ReactNode; variants: any }) => {
@@ -15,6 +15,8 @@ const AnimatedGroup = ({ children, variants }: { children: React.ReactNode; vari
 }
 
 export default function WorkflowHero() {
+  const config = useConfig()
+
   return (
     <main role='main' className='overflow-hidden'>
       <section className='bg-muted relative [--color-foreground:var(--color-indigo-950)]'>

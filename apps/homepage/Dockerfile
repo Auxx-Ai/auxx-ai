@@ -50,6 +50,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install \
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   NEXT_TELEMETRY_DISABLED=1 \
   DOMAIN=${DOMAIN} \
+  APP_VERSION=${APP_VERSION} \
+  GIT_SHA=${GIT_SHA} \
+  BUILD_TIME=${BUILD_TIME} \
   pnpm turbo build --filter="${PROJECT}..."
 
 # Prune dev dependencies

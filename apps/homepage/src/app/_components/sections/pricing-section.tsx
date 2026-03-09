@@ -6,13 +6,12 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { CardDescription, CardTitle } from '~/components/ui/card'
-import { config } from '~/lib/config'
+import { useConfig } from '~/lib/config-context'
 import { cn } from '~/lib/utils'
-
-const { urls } = config
 
 // PricingSection renders the pricing plans selector and cards.
 export default function PricingSection() {
+  const { urls, emails } = useConfig()
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annually'>('annually')
   const annualReduction = 0.75
 
@@ -98,7 +97,7 @@ export default function PricingSection() {
                             <div className='text-muted-foreground text-sm'>Per month</div>
                           </div>
                           <Button asChild variant='outline' className='w-full'>
-                            <Link href={config.urls.signup}>Get Started</Link>
+                            <Link href={urls.signup}>Get Started</Link>
                           </Button>
 
                           <ul role='list' className='space-y-3 text-sm'>
@@ -229,7 +228,7 @@ export default function PricingSection() {
                             </div>
                           </div>
                           <Button asChild variant='outline' className='@max-4xl:w-full'>
-                            <Link href={`mailto:${config.emails.sales}`}>Contact Sales</Link>
+                            <Link href={`mailto:${emails.sales}`}>Contact Sales</Link>
                           </Button>
                         </div>
                         <div className='col-span-2'>

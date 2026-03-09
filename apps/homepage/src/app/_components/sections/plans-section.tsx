@@ -4,7 +4,7 @@ import { type ReactNode, useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { useMedia } from '~/hooks/use-media'
-import { config } from '~/lib/config'
+import { useConfig } from '~/lib/config-context'
 import { cn } from '~/lib/utils'
 
 const plans = ['free', 'pro', 'team'] as const
@@ -26,6 +26,7 @@ type Category = {
 }
 
 export default function PlansSection() {
+  const config = useConfig()
   const [activePlan, setActivePlan] = useState<Plan>('pro')
   const isMedium = useMedia('(min-width: 768px)')
 
