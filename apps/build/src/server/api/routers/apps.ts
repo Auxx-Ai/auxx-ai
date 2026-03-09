@@ -689,11 +689,17 @@ export const appsRouter = createTRPCRouter({
         })
       }
 
-      // Find latest deployment (dev or prod) to link
-      const latestDeployment = await ctx.db.query.AppDeployment.findFirst({
-        where: (d, { eq: e }) => e(d.appId, input.appId),
-        orderBy: (d, { desc }) => desc(d.createdAt),
-      })
+      // Find latest deployment to link — prefer dev deployment, then fall back to any
+      const latestDeployment =
+        (await ctx.db.query.AppDeployment.findFirst({
+          where: (d, { eq: e, and: a }) =>
+            a(e(d.appId, input.appId), e(d.deploymentType, 'development')),
+          orderBy: (d, { desc }) => desc(d.createdAt),
+        })) ??
+        (await ctx.db.query.AppDeployment.findFirst({
+          where: (d, { eq: e }) => e(d.appId, input.appId),
+          orderBy: (d, { desc }) => desc(d.createdAt),
+        }))
 
       // Reactivate soft-deleted installation if one exists (preserves stable installationId)
       const softDeleted = await ctx.db.query.AppInstallation.findFirst({
