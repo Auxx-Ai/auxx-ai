@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.60](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.59...auxx-v0.1.60) (2026-03-09)
+
+
+### Features
+
+* homepage dark mode, svg components ([#194](https://github.com/Auxx-Ai/auxx-ai/issues/194)) ([dd8bf5f](https://github.com/Auxx-Ai/auxx-ai/commit/dd8bf5ff7cc3b5660124d7fd0e0b91f8a9afdf18))
+
 ## [0.1.59](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.58...auxx-v0.1.59) (2026-03-07)
 
 
