@@ -23,12 +23,12 @@ export function AutomationImpact() {
               viewport={{ once: true }}>
               <div className='bg-background/70 backdrop-blur-sm rounded-2xl relative p-8 shadow-md shadow-black/10 ring-1 ring-border-illustration'>
                 <div className='absolute bottom-0 h-1/2 left-0 right-0 -5'>
-                  <div className='bg-linear-to-b from-transparent via-indigo-50 to-rose-50 inset-0 absolute z'></div>
+                  <div className='bg-linear-to-b from-transparent via-indigo-50 to-rose-50 dark:via-indigo-500/10 dark:to-rose-500/10 inset-0 absolute z'></div>
                 </div>
                 <div className='grid grid-cols-1 md:grid-cols-2 gap-8 items-center z-10 relative'>
                   <div>
                     <div className='flex flex-col gap-2 mb-4'>
-                      <Bot className='w-6 h-6 fill-indigo-200' />
+                      <Bot className='w-6 h-6 fill-indigo-200 dark:fill-indigo-500/30' />
                       <h3 className='text-2xl font-semibold text-foreground'>Automation Impact</h3>
                     </div>
                     <p className='text-muted-foreground mb-6'>

@@ -114,8 +114,8 @@ export default function ResultsSection() {
                       whileInView={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.6, delay: index * 0.1 }}
                       viewport={{ once: true }}
-                      className='bg-zinc-50 relative backdrop-blur-sm rounded-3xl ring-foreground/10 ring-1 shadow-black/5  p-6 shadow-md text-center'>
-                      <Icon className='w-8 h-8 fill-indigo-200 mx-auto mb-4' />
+                      className='bg-zinc-50 dark:bg-zinc-900 relative backdrop-blur-sm rounded-3xl ring-foreground/10 ring-1 shadow-black/5  p-6 shadow-md text-center'>
+                      <Icon className='w-8 h-8 fill-indigo-200 dark:fill-indigo-500/30 mx-auto mb-4' />
                       <div className='text-3xl font-bold text-foreground mb-2'>{metric.value}</div>
                       <div className='text-sm font-semibold text-foreground mb-2'>
                         {metric.label}

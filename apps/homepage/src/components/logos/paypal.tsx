@@ -5,8 +5,6 @@ export const PayPal = (props: SVGProps<SVGSVGElement>) => (
     data-name='Layer 1'
     xmlns='http://www.w3.org/2000/svg'
     viewBox='0 0 404.65 98.18'
-    width='1em'
-    height='1em'
     {...props}>
     <g>
       <path

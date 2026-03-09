@@ -13,7 +13,7 @@ export const PerformanceAnalyticsCard = () => (
         <span className='text-foreground font-medium'>automatically reply to your customers</span>.
       </p>
     </div>
-    <div className='bg-linear-to-b -m-8 flex flex-col items-end justify-center from-transparent via-purple-50 to-emerald-50 p-8'>
+    <div className='bg-linear-to-b -m-8 flex flex-col items-end justify-center from-transparent via-purple-50 to-emerald-50 dark:via-purple-500/10 dark:to-emerald-500/10 p-8'>
       <div className='mt-6 w-full'>
         <UptimeIllustration />
       </div>

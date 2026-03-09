@@ -1,3 +1,4 @@
+// apps/homepage/src/app/_components/theme-toggle.tsx
 'use client'
 
 import { Moon, Sun } from 'lucide-react'
@@ -6,15 +7,16 @@ import { useTheme } from 'next-themes'
 import { Button } from '~/components/ui/button'
 
 export function ThemeToggle() {
-  const { setTheme, theme } = useTheme()
+  const { setTheme, resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
 
   return (
     <Button
       variant='ghost'
       size='icon'
-      onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
-      <Sun className='h-6 w-[1.3rem] dark:hidden' />
-      <Moon className='hidden h-5 w-5 dark:block' />
+      className='size-7'
+      onClick={() => setTheme(isDark ? 'quartz' : 'dark')}>
+      {isDark ? <Sun className='h-4 w-4' /> : <Moon className='h-4 w-4' />}
       <span className='sr-only'>Toggle theme</span>
     </Button>
   )

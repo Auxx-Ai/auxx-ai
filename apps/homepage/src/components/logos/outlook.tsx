@@ -71,12 +71,7 @@ const Outlook = ({ dark, ...props }: IconProps) => (
 )
 
 export const OutlookFull = (props: SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns='http://www.w3.org/2000/svg'
-    width='2500'
-    height='361'
-    viewBox='0 0 722.381 104.313'
-    {...props}>
+  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 722.381 104.313' {...props}>
     <path
       d='M64.567 22.116V42.52l7.13 4.49c.188.055.596.059.784 0l30.688-20.69c0-2.449-2.284-4.204-3.573-4.204H64.567z'
       fill='#0072c6'

@@ -45,14 +45,14 @@ export const TableIllustration = ({ className }: { className?: string }) => {
         <div className='max-w-full pl-0'>
           <div className='min-w-full'>
             {/* Table Header using dynamic table styling */}
-            <div className='sticky top-0 z-10 min-w-full from-white to-white/50 bg-gradient-to-b dark:from-primary-100 dark:to-primary-100/50 backdrop-blur border-b border-primary-200/50'>
+            <div className='sticky top-0 z-10 min-w-full from-white to-white/50 bg-gradient-to-b dark:from-zinc-900 dark:to-zinc-900/50 backdrop-blur border-b border-primary-200/50 dark:border-white/10'>
               <div className='flex min-w-full items-stretch'>
                 {/* Header Cells */}
                 <div
                   className='group min-w-min py-2 h-full font-inter font-medium'
                   style={{ width: '40px' }}>
                   <div className='pr-3 h-full relative py-1' style={{ width: '40px' }}>
-                    <div className='font-medium text-xs pl-3 flex text-zinc-600 select-none z-10'>
+                    <div className='font-medium text-xs pl-3 flex text-muted-foreground select-none z-10'>
                       <div className='header-title w-full truncate flex items-center'>
                         <span className='font-medium text-xs'>#</span>
                       </div>
@@ -66,7 +66,7 @@ export const TableIllustration = ({ className }: { className?: string }) => {
                   <div
                     className='border-l border-foreground-200/80 pr-3 h-full relative py-1'
                     style={{ width: '120px' }}>
-                    <div className='font-medium text-xs pl-3 flex text-zinc-600 select-none z-10'>
+                    <div className='font-medium text-xs pl-3 flex text-muted-foreground select-none z-10'>
                       <div className='header-title w-full truncate flex items-center'>
                         <span className='font-medium text-xs'>Date</span>
                       </div>
@@ -80,7 +80,7 @@ export const TableIllustration = ({ className }: { className?: string }) => {
                   <div
                     className='border-l border-foreground-200/80 pr-3 h-full relative py-1'
                     style={{ width: '100px' }}>
-                    <div className='font-medium text-xs pl-3 flex text-zinc-600 select-none z-10'>
+                    <div className='font-medium text-xs pl-3 flex text-muted-foreground select-none z-10'>
                       <div className='header-title w-full truncate flex items-center'>
                         <span className='font-medium text-xs'>Status</span>
                       </div>
@@ -95,7 +95,7 @@ export const TableIllustration = ({ className }: { className?: string }) => {
               {customers.map((customer, index) => (
                 <div
                   key={customer.id}
-                  className='flex group/tablerow w-full will-change-transform border-y border-background rounded-md bg-primary-50'
+                  className='flex group/tablerow w-full will-change-transform border-y border-background rounded-md bg-primary-50 dark:bg-zinc-900'
                   style={{
                     width: '100%',
                     contain: 'paint',
@@ -145,11 +145,11 @@ export const TableIllustration = ({ className }: { className?: string }) => {
                                 className={cn(
                                   'rounded-full px-2 py-1 text-xs',
                                   customer.statusVariant === 'success' &&
-                                    'bg-lime-500/15 text-lime-800',
+                                    'bg-lime-500/15 text-lime-800 dark:text-lime-400',
                                   customer.statusVariant === 'danger' &&
-                                    'bg-red-500/15 text-red-800',
+                                    'bg-red-500/15 text-red-800 dark:text-red-400',
                                   customer.statusVariant === 'warning' &&
-                                    'bg-yellow-500/15 text-yellow-800'
+                                    'bg-yellow-500/15 text-yellow-800 dark:text-yellow-400'
                                 )}>
                                 {customer.status}
                               </span>

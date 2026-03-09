@@ -21,31 +21,36 @@ import { PayPal } from '~/components/logos/paypal'
 import { Polars } from '~/components/logos/polars'
 import { Stripe } from '~/components/logos/stripe'
 
+const logoClass = 'h-7 w-auto'
+
 const aiLogos: React.ReactNode[] = [
-  <OpenAIFull height={24} />,
-  <AnthropicFull height={22} />,
-  <GeminiFull height={32} />,
-  <DeepseekFull height={26} />,
-  <GroqFull height={26} />,
+  <OpenAIFull className={logoClass} />,
+  <AnthropicFull className={logoClass} />,
+  <GeminiFull className={logoClass} />,
+  <DeepseekFull className={logoClass} />,
+  <GroqFull className={logoClass} />,
 ]
 
 const messagesLogos: React.ReactNode[] = [
-  <Gmail height={24} />,
-  <OutlookFull height={24} />,
-  <InstagramFull height={20} />,
-  <FacebookFull height={20} />,
-  <QuoFull height={20} />,
+  <Gmail className={logoClass} />,
+  <OutlookFull className={logoClass} />,
+  <InstagramFull className={logoClass} />,
+  <FacebookFull className={logoClass} />,
+  <QuoFull className={logoClass} />,
 ]
 
 const paymentsLogos: React.ReactNode[] = [
-  <Stripe height={24} />,
-  <PayPal height={24} />,
-  <LeapWallet height={24} />,
-  <Beacon height={20} />,
-  <Polars height={24} />,
+  <Stripe className={logoClass} />,
+  <PayPal className={logoClass} />,
+  <LeapWallet className={logoClass} />,
+  <Beacon className={logoClass} />,
+  <Polars className={logoClass} />,
 ]
 
-const streamingLogos: React.ReactNode[] = [<Cisco height={32} />, <Beacon height={20} />]
+const streamingLogos: React.ReactNode[] = [
+  <Cisco className={logoClass} />,
+  <Beacon className={logoClass} />,
+]
 
 const logos: Record<'ai' | 'messages' | 'streaming' | 'payments', React.ReactNode[]> = {
   ai: aiLogos,

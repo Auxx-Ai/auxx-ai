@@ -13,7 +13,7 @@ export const TriggersCard = () => (
         any external input.
       </p>
     </div>
-    <div className='bg-linear-to-b relative -m-8 flex flex-col items-end justify-center from-transparent via-rose-50 to-amber-50 p-10 pb-4'>
+    <div className='bg-linear-to-b relative -m-8 flex flex-col items-end justify-center from-transparent via-rose-50 to-amber-50 dark:via-rose-500/10 dark:to-amber-500/10 p-10 pb-4'>
       <TriggersIllustration />
     </div>
   </div>

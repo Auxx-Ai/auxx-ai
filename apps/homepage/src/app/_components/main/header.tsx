@@ -205,15 +205,10 @@ export default function Header() {
       className='[--color-popover:color-mix(in_oklch,var(--color-muted)_25%,var(--color-background))]'>
       <div className='h-18 fixed inset-x-[10px] z-50 '>
         <div
-          data-theme='quartz'
           aria-hidden='true'
           className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
-        <div
-          data-theme='quartz'
-          className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
-        <div
-          data-theme='quartz'
-          className='bg-background/75 mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
+        <div className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
+        <div className='bg-background/75 mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
       </div>
       <div
         className={cn(
@@ -373,7 +368,7 @@ const NavMenu = () => {
                 </ul>
               </div>
               <div className='row-span-2 grid grid-rows-subgrid'>
-                <div className='bg-linear-to-b inset-ring-foreground/10 inset-ring-1 relative row-span-2 grid overflow-hidden rounded-xl bg-emerald-100 from-white via-white/50 to-sky-100 p-1 transition-colors duration-200 hover:bg-emerald-50'>
+                <div className='bg-linear-to-b inset-ring-foreground/10 inset-ring-1 relative row-span-2 grid overflow-hidden rounded-xl bg-emerald-100 dark:bg-emerald-500/10 from-white dark:from-background via-white/50 dark:via-background/50 to-sky-100 dark:to-sky-500/10 p-1 transition-colors duration-200 hover:bg-emerald-50 dark:hover:bg-emerald-500/15'>
                   <div className='aspect-3/2 absolute inset-0 px-6 pt-2'>
                     <div className='mask-b-from-35% before:bg-background before:ring-foreground/10 after:ring-foreground/5 after:bg-background/75 before:z-1 group relative -mx-4 h-4/5 px-4 pt-6 before:absolute before:inset-x-6 before:bottom-0 before:top-4 before:rounded-t-xl before:border before:border-transparent before:ring-1 after:absolute after:inset-x-9 after:bottom-0 after:top-2 after:rounded-t-xl after:border after:border-transparent after:ring-1'>
                       <div className='bg-card ring-foreground/10 relative z-10 h-full overflow-hidden rounded-t-xl border border-transparent p-8 text-sm shadow-xl shadow-black/25 ring-1'></div>

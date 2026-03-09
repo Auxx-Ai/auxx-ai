@@ -79,20 +79,86 @@ export const ImageIllustration = () => {
         />
         <div
           key={4}
-          className='bg-background/5 absolute inset-0 flex aspect-video z-120 flex-col justify-between rounded-2xl px-6 py-6 text-left ring-1 ring-white/5'>
-          <div className='flex justify-between'>
-            <WorkflowIcon />
-            <AutomationBadge />
+          className='bg-background/5 absolute inset-0 flex aspect-video z-120 flex-col rounded-2xl p-5 text-left ring-1 ring-white/5'>
+          {/* Left handle + noodle */}
+          <svg
+            className='absolute -left-10 top-1/2 -translate-y-1/2 z-200'
+            width='40'
+            height='40'
+            viewBox='0 0 40 40'>
+            <path
+              d='M0 20 C20 20, 20 20, 40 20'
+              stroke='currentColor'
+              strokeWidth='1.5'
+              fill='none'
+              className='text-foreground/20'
+            />
+            <circle cx='40' cy='20' r='6' className='fill-indigo-500' />
+          </svg>
+
+          {/* Right handles + noodles */}
+          <svg
+            className='absolute -right-12 top-8 bottom-0 z-200'
+            width='48'
+            height='100%'
+            viewBox='0 0 48 180'
+            preserveAspectRatio='none'>
+            {/* Top noodle — Create */}
+            <path
+              d='M0 55 C24 55, 24 45, 48 30'
+              stroke='currentColor'
+              strokeWidth='1.5'
+              fill='none'
+              className='text-green-500/40'
+            />
+            <circle cx='0' cy='55' r='6' className='fill-green-500' />
+            {/* Middle noodle — Update */}
+            <path
+              d='M0 90 C24 90, 24 90, 48 90'
+              stroke='currentColor'
+              strokeWidth='1.5'
+              fill='none'
+              className='text-blue-500/40'
+            />
+            <circle cx='0' cy='90' r='6' className='fill-blue-500' />
+            {/* Bottom noodle — Fail */}
+            <path
+              d='M0 125 C24 125, 24 135, 48 150'
+              stroke='currentColor'
+              strokeWidth='1.5'
+              fill='none'
+              className='text-red-500/40'
+            />
+            <circle cx='0' cy='125' r='6' className='fill-red-500' />
+          </svg>
+
+          {/* Node Header */}
+          <div className='flex items-center gap-3 pb-4'>
+            <div className='flex size-10 shrink-0 items-center justify-center rounded-lg border bg-indigo-500/10'>
+              <WorkflowIcon />
+            </div>
+            <span className='font-mono text-lg font-semibold truncate'>Auto Reply</span>
           </div>
 
-          <div className='flex justify-between'>
-            <div className='space-y-0.5 *:block'>
-              <span className='text-muted-foreground text-xs'>Workflow Status</span>
-              <span className='font-mono text-sm font-medium'>Running</span>
+          {/* Node Body */}
+          <div className='space-y-1'>
+            <div className='flex items-center rounded-lg bg-foreground/5 p-1.5'>
+              <div className='flex h-6 shrink-0 items-center rounded-md bg-green-500/15 px-2 text-xs font-semibold uppercase text-green-700 dark:text-green-400'>
+                Create
+              </div>
+              <span className='pl-2 text-sm'>Draft Response</span>
             </div>
-            <div className='space-y-0.5 *:block'>
-              <span className='text-muted-foreground text-xs'>Tasks</span>
-              <span className='font-mono text-sm font-medium'>24/30</span>
+            <div className='flex items-center rounded-lg bg-foreground/5 p-1.5'>
+              <div className='flex h-6 shrink-0 items-center rounded-md bg-blue-500/15 px-2 text-xs font-semibold uppercase text-blue-700 dark:text-blue-400'>
+                Update
+              </div>
+              <span className='pl-2 text-sm'>Ticket Status</span>
+            </div>
+            <div className='flex items-center rounded-lg bg-foreground/5 p-1.5'>
+              <div className='flex h-6 shrink-0 items-center rounded-md bg-red-500/15 px-2 text-xs font-semibold uppercase text-red-700 dark:text-red-400'>
+                On Failure
+              </div>
+              <span className='pl-2 text-sm text-muted-foreground'>Fail Branch</span>
             </div>
           </div>
         </div>
@@ -103,7 +169,13 @@ export const ImageIllustration = () => {
 
 const WorkflowIcon = () => {
   return (
-    <svg width='26' height='22' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'>
+    <svg
+      width='20'
+      height='20'
+      viewBox='0 0 24 24'
+      fill='none'
+      xmlns='http://www.w3.org/2000/svg'
+      className='text-indigo-500'>
       <path
         d='M12 2L2 7L12 12L22 7L12 2Z'
         stroke='currentColor'
@@ -128,9 +200,3 @@ const WorkflowIcon = () => {
     </svg>
   )
 }
-
-const AutomationBadge = () => (
-  <div className='bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full px-2 py-1 text-xs font-medium'>
-    Auto
-  </div>
-)

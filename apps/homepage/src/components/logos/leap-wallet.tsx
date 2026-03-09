@@ -1,12 +1,6 @@
 import type { SVGProps } from 'react'
 export const LeapWallet = (props: SVGProps<SVGSVGElement>) => (
-  <svg
-    width='1em'
-    height='1em'
-    viewBox='0 0 165 49'
-    fill='none'
-    xmlns='http://www.w3.org/2000/svg'
-    {...props}>
+  <svg viewBox='0 0 165 49' fill='none' xmlns='http://www.w3.org/2000/svg' {...props}>
     <path
       d='M53.1078 26.433C53.1078 34.868 42.8135 38.2956 30.0317 38.2956C17.25 38.2956 6.80579 34.868 6.80579 26.433C6.80579 17.9981 17.175 11.1726 29.9568 11.1726C42.7386 11.1726 53.1078 18.013 53.1078 26.433Z'
       fill='#24A95A'

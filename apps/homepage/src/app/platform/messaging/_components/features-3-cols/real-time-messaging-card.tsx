@@ -13,7 +13,7 @@ export const RealTimeMessagingCard = () => (
         <span className='text-foreground font-medium'>end-to-end encryption</span>.
       </p>
     </div>
-    <div className='bg-linear-to-b relative -m-8 flex flex-col items-end justify-center from-transparent via-rose-50 to-amber-50 p-8'>
+    <div className='bg-linear-to-b relative -m-8 flex flex-col items-end justify-center from-transparent via-rose-50 to-amber-50 dark:via-rose-500/10 dark:to-amber-500/10 p-8'>
       <MessageIllustration />
     </div>
   </div>

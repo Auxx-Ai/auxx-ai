@@ -29,22 +29,22 @@ export function FinalCtaSection() {
               <div className='absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_var(--color-primary)/30,_transparent_60%)]' />
 
               <div className='my-7'>
-                <div className='relative mx-auto w-fit bg-gray-950/5 p-2'>
+                <div className='relative mx-auto w-fit bg-gray-950/5 dark:bg-white/5 p-2'>
                   <div
                     aria-hidden='true'
-                    className='absolute left-1 top-1 size-[3px] rounded-full bg-gray-950/20'></div>
+                    className='absolute left-1 top-1 size-[3px] rounded-full bg-gray-950/20 dark:bg-white/20'></div>
                   <div
                     aria-hidden='true'
-                    className='absolute right-1 top-1 size-[3px] rounded-full bg-gray-950/20'></div>
+                    className='absolute right-1 top-1 size-[3px] rounded-full bg-gray-950/20 dark:bg-white/20'></div>
                   <div
                     aria-hidden='true'
-                    className='absolute bottom-1 left-1 size-[3px] rounded-full bg-gray-950/20'></div>
+                    className='absolute bottom-1 left-1 size-[3px] rounded-full bg-gray-950/20 dark:bg-white/20'></div>
                   <div
                     aria-hidden='true'
-                    className='absolute bottom-1 right-1 size-[3px] rounded-full bg-gray-950/20'></div>
-                  <div className='relative flex h-fit items-center gap-2 rounded-full bg-white px-3 py-1 shadow'>
+                    className='absolute bottom-1 right-1 size-[3px] rounded-full bg-gray-950/20 dark:bg-white/20'></div>
+                  <div className='relative flex h-fit items-center gap-2 rounded-full bg-white dark:bg-zinc-900 px-3 py-1 shadow'>
                     <span className='text-title text-sm'>{randomTrustBadge}</span>
-                    <span className='block h-3 w-px bg-gray-200'></span>
+                    <span className='block h-3 w-px bg-gray-200 dark:bg-zinc-700'></span>
                     <Link href={config.urls.signup} className='text-info text-sm'>
                       Get Started
                     </Link>

@@ -1,6 +1,8 @@
 // apps/homepage/src/app/_components/main/footer-section.tsx
+'use client'
 
 import Link from 'next/link'
+import { ThemeToggle } from '@/app/_components/theme-toggle'
 import { Badge } from '@/components/ui/badge'
 import { Logo } from '~/components/logo'
 import { config } from '~/lib/config'
@@ -92,7 +94,8 @@ export default function FooterSection() {
 
             <div className='space-y-4'>
               <span className='block font-medium'>Community</span>
-              <div className='flex flex-wrap gap-3 text-sm'>
+              <div className='flex flex-wrap items-center gap-3 text-sm'>
+                <ThemeToggle />
                 <Link
                   href='https://x.com/auxxaiapp'
                   target='_blank'
@@ -136,9 +139,15 @@ export default function FooterSection() {
           className='h-px bg-[length:6px_1px] bg-repeat-x opacity-25 [background-image:linear-gradient(90deg,var(--color-foreground)_1px,transparent_1px)]'
         />
         <div className='flex flex-wrap justify-between gap-4'>
-          <span className='text-muted-foreground text-sm'>
-            © {new Date().getFullYear()} Auxx.Ai, All rights reserved{' '}
-          </span>
+          <div className='flex flex-wrap items-center gap-4 text-muted-foreground text-sm'>
+            <span>© {new Date().getFullYear()} Auxx.Ai, All rights reserved</span>
+            <Link href='/privacy-policy' className='underline hover:text-foreground'>
+              Privacy Policy
+            </Link>
+            <Link href='/terms-of-service' className='underline hover:text-foreground'>
+              Terms of Service
+            </Link>
+          </div>
 
           <div className='ring-foreground/5 bg-card flex items-center gap-2 rounded-full border border-transparent py-1 pl-2 pr-4 shadow ring-1'>
             <div className='relative flex size-3'>

@@ -23,7 +23,7 @@ export default function BentoOne() {
                       Automate report delivery to stakeholders with customizable scheduling options.
                     </p>
                   </div>
-                  <div className='bg-linear-to-b relative -m-8 flex items-end from-transparent via-rose-50 to-amber-50 p-8'>
+                  <div className='bg-linear-to-b relative -m-8 flex items-end from-transparent via-rose-50 to-amber-50 dark:via-rose-500/10 dark:to-amber-500/10 p-8'>
                     <Stripes />
                     <NotificationIllustration variant='mixed' />
                   </div>
@@ -36,7 +36,7 @@ export default function BentoOne() {
                       maximum.
                     </p>
                   </div>
-                  <div className='bg-linear-to-b relative -m-8 flex items-end from-transparent via-rose-50 to-amber-50 p-8'>
+                  <div className='bg-linear-to-b relative -m-8 flex items-end from-transparent via-rose-50 to-amber-50 dark:via-rose-500/10 dark:to-amber-500/10 p-8'>
                     <Stripes />
                     <CurrencyIllustration />
                   </div>
@@ -49,7 +49,7 @@ export default function BentoOne() {
                       maximum.
                     </p>
                   </div>
-                  <div className='bg-linear-to-b relative -m-8 flex items-end from-transparent via-rose-50 to-amber-50 p-8'>
+                  <div className='bg-linear-to-b relative -m-8 flex items-end from-transparent via-rose-50 to-amber-50 dark:via-rose-500/10 dark:to-amber-500/10 p-8'>
                     <Stripes />
                     <ReplyIllustration className='relative mt-0 w-full' />
                   </div>
@@ -63,7 +63,7 @@ export default function BentoOne() {
                     </p>
                   </div>
 
-                  <div className='bg-linear-to-b relative -m-8 flex items-end from-transparent via-rose-50 to-amber-50 p-8'>
+                  <div className='bg-linear-to-b relative -m-8 flex items-end from-transparent via-rose-50 to-amber-50 dark:via-rose-500/10 dark:to-amber-500/10 p-8'>
                     <Stripes />
                     <PollIllustration />
                   </div>

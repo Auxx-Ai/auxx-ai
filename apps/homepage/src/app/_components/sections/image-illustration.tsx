@@ -22,7 +22,7 @@ export const ImageIllustration = () => {
             }
           }
         `}</style>
-        <div className='relative [--color-border-illustration:--alpha(var(--color-zinc-950)/12.5%)] [--color-border:--alpha(var(--color-zinc-950)/10%)]'>
+        <div className='relative [--color-border-illustration:--alpha(var(--color-zinc-950)/12.5%)] [--color-border:--alpha(var(--color-zinc-950)/10%)] dark:[--color-border-illustration:--alpha(var(--color-white)/12.5%)] dark:[--color-border:--alpha(var(--color-white)/10%)]'>
           <div className='mask-t-from-65% mask-t-to-85% absolute inset-0'>
             <img
               src='https://res.cloudinary.com/dohqjvu9k/image/upload/v1757918054/16-bg_kkevzx.webp'
@@ -182,7 +182,7 @@ export const ImageIllustration = () => {
                         <div className='w-2 bg-[repeating-linear-gradient(var(--color-border-illustration),var(--color-border-illustration)_2px,transparent_2px,transparent_6px)]'></div>
                         <div className='p-2'>
                           <div className='bg-muted size-16 rounded-2xl border p-1'>
-                            <div className='ring-foreground/10 inset-shadow-sm inset-shadow-white bg-linear-to-b flex size-full rounded-[12px] from-emerald-50 to-indigo-200 shadow-xl shadow-indigo-600/35 ring-1'>
+                            <div className='ring-foreground/10 inset-shadow-sm inset-shadow-white dark:inset-shadow-white/5 bg-linear-to-b flex size-full rounded-[12px] from-emerald-50 to-indigo-200 dark:from-emerald-500/15 dark:to-indigo-500/25 shadow-xl shadow-indigo-600/35 ring-1'>
                               <LogoIcon
                                 className='m-auto size-5 opacity-75 drop-shadow-md'
                                 uniColor
@@ -244,21 +244,21 @@ export const ImageIllustration = () => {
                     className='absolute inset-0 mx-auto w-fit'>
                     <path
                       d='M12 0L12 61.395C12 62.4251 11.6026 63.4155 10.8906 64.1599L2.10943 73.3401C1.3974 74.0845 0.999999 75.0749 0.999999 76.105L0.999998 84'
-                      stroke='var(--color-white)'
+                      stroke='var(--color-foreground)'
                       className='drop-shadow-emerald-100 drop-shadow-xs [animation:beam-move_4.4s_linear_infinite]'
                       strokeLinecap='round'
                       strokeDasharray='42 278'
                     />
                     <path
                       d='M24 0L24 63L24 74.5L24 84'
-                      stroke='var(--color-white)'
+                      stroke='var(--color-foreground)'
                       className='drop-shadow-blue-100 drop-shadow-xs delay-[1s] [animation:beam-move_5.4s_linear_infinite]'
                       strokeLinecap='round'
                       strokeDasharray='42 278'
                     />
                     <path
                       d='M47.0078 84L47.0078 52.3045C47.0078 51.2414 46.5846 50.222 45.8316 49.4714L37.1771 40.8452C36.4241 40.0947 36.0009 39.0753 36.0009 38.0121L36.0009 2.07412e-06'
-                      stroke='var(--color-white)'
+                      stroke='var(--color-foreground)'
                       className='drop-shadow-purple-300 drop-shadow-xs delay-[2s] [animation:beam-move_5.4s_linear_infinite]'
                       strokeLinecap='round'
                       strokeDasharray='42 278'
@@ -295,21 +295,21 @@ export const ImageIllustration = () => {
                     className='absolute inset-0 mx-auto w-fit'>
                     <path
                       d='M12 84L12 22.605C12 21.5749 11.6026 20.5845 10.8906 19.8401L2.10943 10.6599C1.3974 9.91547 0.999999 8.92507 0.999999 7.89497L0.999998 4.80825e-07'
-                      stroke='var(--color-white)'
+                      stroke='var(--color-foreground)'
                       strokeLinecap='round'
                       strokeDasharray='42 278'
                       className='drop-shadow-emerald-100 drop-shadow-sm delay-[1s] [animation:beam-move-down_4.4s_linear_infinite]'
                     />
                     <path
                       d='M24 84L24 21L24 9.5L24 0'
-                      stroke='var(--color-white)'
+                      stroke='var(--color-foreground)'
                       strokeLinecap='round'
                       strokeDasharray='42 278'
                       className='drop-shadow-blue-100 drop-shadow-sm delay-[0.5s] [animation:beam-move-down_5.4s_linear_infinite]'
                     />
                     <path
                       d='M47.0078 0L47.0078 31.6955C47.0078 32.7586 46.5846 33.778 45.8316 34.5286L37.1771 43.1548C36.4241 43.9053 36.0009 44.9247 36.0009 45.9879L36.0009 84'
-                      stroke='var(--color-white)'
+                      stroke='var(--color-foreground)'
                       strokeLinecap='round'
                       strokeDasharray='42 278'
                       className='drop-shadow-purple-300 drop-shadow-sm delay-[2s] [animation:beam-move-down_5.4s_linear_infinite]'
@@ -346,7 +346,7 @@ export const ImageIllustration = () => {
                       </div>
                       <div className='flex items-center justify-center px-2'>
                         <span className='flex items-center gap-2 font-mono text-xs'>
-                          <CheckCircle2 className='size-3 stroke-emerald-800 *:first:fill-emerald-500/35' />
+                          <CheckCircle2 className='size-3 stroke-emerald-800 dark:stroke-emerald-400 *:first:fill-emerald-500/35' />
                           <span>APP Connected</span>
                         </span>
                       </div>
@@ -384,7 +384,7 @@ export const ImageIllustration = () => {
                       className='absolute inset-0 mt-4'>
                       <path
                         d='M0 1L45.9706 1C47.0458 1 48.0757 1.43285 48.8281 2.20094L62.1482 15.7991C62.9005 16.5671 63.9305 17 65.0057 17L120 17'
-                        stroke='var(--color-white)'
+                        stroke='var(--color-foreground)'
                         strokeLinecap='round'
                         strokeDasharray='42 278'
                         className='drop-shadow-green-300 drop-shadow-sm delay-[2s] [animation:beam-move_5.4s_linear_infinite]'

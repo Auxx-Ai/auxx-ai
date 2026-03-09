@@ -88,7 +88,7 @@ export default function AutomationSection() {
                       viewport={{ once: true }}
                       className=' backdrop-blur-sm rounded-2xl ring-foreground/10 ring-1 p-6 shadow-md shadow-black/10'>
                       <div className='flex items-center gap-3 mb-6'>
-                        <Icon className='size-6 fill-indigo-50' />
+                        <Icon className='size-6 fill-indigo-50 dark:fill-indigo-500/15' />
                         <h3 className='text-xl font-semibold text-foreground'>{workflow.title}</h3>
                       </div>
 
@@ -120,7 +120,7 @@ export default function AutomationSection() {
                           <div className='absolute inset-0 scale-100 opacity-100 blur-lg transition-all duration-300'>
                             <div className='bg-linear-to-r/increasing animate-hue-rotate absolute inset-x-6 bottom-0 top-12 -translate-y-3 from-pink-400 to-purple-400'></div>
                           </div>
-                          <div className='bg-zinc-50 ring-1 shadow-md shadow-black/10 ring-foreground/10  rounded-lg p-4 relative overflow-hidden'>
+                          <div className='bg-zinc-50 dark:bg-zinc-900 ring-1 shadow-md shadow-black/10 ring-foreground/10  rounded-lg p-4 relative overflow-hidden'>
                             <p className='text-sm font-medium text-foreground mb-2'>
                               {workflow.automation}
                             </p>

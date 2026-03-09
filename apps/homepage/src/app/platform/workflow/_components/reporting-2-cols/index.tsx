@@ -25,7 +25,7 @@ export default function Reporting2Cols() {
             </div>
 
             <div className='mx-auto max-w-5xl px-6'>
-              <div className='ring-foreground/10 @4xl:grid-cols-2 @max-4xl:divide-y @4xl:divide-x relative grid overflow-hidden rounded-2xl border border-transparent bg-zinc-50 shadow-md shadow-black/5 ring-1'>
+              <div className='ring-foreground/10 @4xl:grid-cols-2 @max-4xl:divide-y @4xl:divide-x relative grid overflow-hidden rounded-2xl border border-transparent bg-zinc-50 dark:bg-zinc-900 shadow-md shadow-black/5 ring-1'>
                 <div className='row-span-2 grid grid-rows-subgrid gap-8'>
                   <div className='px-8 pt-8'>
                     <h3 className='text-balance font-semibold'>Analytics for Workflows</h3>
