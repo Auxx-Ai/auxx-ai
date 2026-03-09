@@ -19,8 +19,6 @@ export const GroqFull = (props: SVGProps<SVGSVGElement>) => (
     xmlns='http://www.w3.org/2000/svg'
     x='0px'
     y='0px'
-    width='152px'
-    height='55.5px'
     viewBox='0 32.25 152 55.5'
     {...props}>
     <g id='Layer_2'>

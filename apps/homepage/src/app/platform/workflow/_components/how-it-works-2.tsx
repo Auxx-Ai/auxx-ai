@@ -219,7 +219,7 @@ const Line = ({ isLast, nodePosition = 'top', nodeSide = 'left' }: ProgressLineP
       <div
         className={cn(
           'bg-border border-background absolute inset-x-0 bottom-0 mx-auto w-0.5 border-r',
-          isLast && 'mask-b-from-35%',
+          isLast && 'mask-b-from-35% dark:mask-b-from-55%',
           {
             'top-[15.5rem]': nodePosition === 'top',
             'top-[calc(50%+5.5rem)]': nodePosition === 'center',

@@ -13,7 +13,7 @@ export const InteractivePollingCard = () => (
         review responses prior to sending.
       </p>
     </div>
-    <div className='bg-linear-to-b -m-8 flex flex-col items-end justify-center from-transparent via-indigo-50 to-rose-50 p-8'>
+    <div className='bg-linear-to-b -m-8 flex flex-col items-end justify-center from-transparent via-indigo-50 to-rose-50 dark:via-indigo-500/10 dark:to-rose-500/10 p-8'>
       <div className='w-full px-2'>
         <PollIllustration />
       </div>

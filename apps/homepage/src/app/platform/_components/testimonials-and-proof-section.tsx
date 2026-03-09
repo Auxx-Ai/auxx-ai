@@ -13,7 +13,7 @@ const testimonials = [
     name: 'Maya Chen',
     role: 'Director of CX, Lunar Labs',
     color: 'text-indigo-500',
-    bgColor: 'bg-linear-to-b from-indigo-50',
+    bgColor: 'bg-linear-to-b from-indigo-50 dark:from-indigo-500/10',
   },
   {
     quote:
@@ -21,15 +21,15 @@ const testimonials = [
     name: 'Diego Ramirez',
     color: 'text-cyan-500',
     role: 'Head of Support, Mercado Moda',
-    bgColor: 'bg-linear-to-b from-cyan-50',
+    bgColor: 'bg-linear-to-b from-cyan-50 dark:from-cyan-500/10',
   },
   {
     quote:
-      'Security reviews passed on the first attempt thanks to Auxx.ai’s detailed documentation and compliance posture.',
+      "Security reviews passed on the first attempt thanks to Auxx.ai's detailed documentation and compliance posture.",
     name: 'Elena Patel',
     color: 'text-amber-500',
     role: 'VP of Operations, Northwind Traders',
-    bgColor: 'bg-linear-to-b from-amber-50',
+    bgColor: 'bg-linear-to-b from-amber-50 dark:from-amber-500/10',
   },
 ]
 

@@ -59,6 +59,18 @@ export default function HeroSection() {
                 Works with Gmail & Outlook
               </span>
             </div>
+
+            <p className='mt-4 text-xs text-muted-foreground'>
+              By signing up, you agree to our{' '}
+              <Link href='/terms-of-service' className='underline hover:text-foreground'>
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link href='/privacy-policy' className='underline hover:text-foreground'>
+                Privacy Policy
+              </Link>
+              .
+            </p>
           </div>
 
           {/* Social Proof Banner */}

@@ -11,7 +11,7 @@ export default function TestimonialsSection() {
           <div className=' @container py-16 lg:py-24'>
             <div className='mx-auto max-w-5xl px-6'>
               <div className='*:ring-foreground/10 @4xl:grid-cols-2 grid gap-6 *:shadow-lg'>
-                <Card className='bg-linear-to-b row-span-5 grid grid-rows-subgrid gap-8 from-purple-50 p-8'>
+                <Card className='bg-linear-to-b row-span-5 grid grid-rows-subgrid gap-8 from-purple-50 dark:from-purple-500/10 p-8'>
                   <p className='text-muted-foreground text-balance text-xl font-medium'>
                     Legacy CivilWorks leveraged Auxx.ai to transform their customer support
                     operations,{' '}
@@ -43,7 +43,7 @@ export default function TestimonialsSection() {
                     </div>
                   </div>
                 </Card>
-                <Card className='bg-linear-to-b row-span-5 grid grid-rows-subgrid gap-8 from-blue-50 p-8'>
+                <Card className='bg-linear-to-b row-span-5 grid grid-rows-subgrid gap-8 from-blue-50 dark:from-blue-500/10 p-8'>
                   <p className='text-muted-foreground self-end text-balance text-xl font-medium'>
                     RMD Kwikform utilized Auxx.ai's Shopify integration to{' '}
                     <strong className='text-foreground'>

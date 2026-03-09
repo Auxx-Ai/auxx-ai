@@ -3,14 +3,12 @@ import type { SVGProps } from 'react'
 export default function Gemini(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
-      height='1em'
       style={{
         flex: 'none',
         lineHeight: 1,
       }}
       viewBox='0 0 24 24'
       xmlns='http://www.w3.org/2000/svg'
-      width='1em'
       {...props}>
       <title>{'Gemini'}</title>
       <defs>

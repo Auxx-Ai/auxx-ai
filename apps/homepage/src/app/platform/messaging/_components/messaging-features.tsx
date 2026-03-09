@@ -62,7 +62,7 @@ const MessagingFeatures = () => {
             </div>
           </div>
 
-          <div className='@container  relative z-10 border-b pt-12 [mask-image:radial-gradient(ellipse_80%_95%_at_50%_0%,#000_80%,transparent_100%)]'>
+          <div className='@container  relative z-10 border-b pt-12 [mask-image:radial-gradient(ellipse_80%_95%_at_50%_0%,#000_80%,transparent_100%)] dark:mask-b-from-65% dark:mask-b-to-85% dark:mask-radial-from-45% dark:mask-radial-at-top dark:mask-radial-[125%_80%]'>
             <div className='mx-auto max-w-6xl'>
               <div className='border-border-illustration grid grid-cols-[1fr_auto_1fr] border-y pb-2'>
                 <div className='h-[calc(100%+0.5rem)] bg-[repeating-linear-gradient(45deg,var(--color-border-illustration),var(--color-border-illustration)_1px,transparent_1px,transparent_6px)]' />
@@ -91,7 +91,7 @@ const MessagingFeatures = () => {
               </div>
             </div>
             <div className='relative mx-auto -mt-2 max-w-6xl max-md:mx-1 lg:px-10'>
-              <div className='bg-background/60 ring-foreground/10 sm:aspect-3/2 aspect-square rounded-2xl p-1 shadow-2xl shadow-black/25 ring-1'>
+              <div className='bg-background/60 dark:bg-white/10 ring-foreground/10 sm:aspect-3/2 aspect-square rounded-2xl p-1 shadow-2xl shadow-black/25 dark:shadow-black/50 ring-1'>
                 <AnimatePresence mode='wait'>
                   <motion.div
                     key={active}
@@ -99,7 +99,7 @@ const MessagingFeatures = () => {
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.995 }}
                     transition={{ duration: 0.2 }}
-                    className='bg-background ring-border-illustration sm:aspect-3/2 relative aspect-square origin-top overflow-hidden rounded-xl border-4 border-l-8 border-transparent shadow ring-1'>
+                    className='bg-background ring-border-illustration sm:aspect-3/2 relative aspect-square origin-top overflow-hidden rounded-xl border-4 border-l-8 border-transparent dark:border-zinc-900 shadow ring-1'>
                     <Image
                       className='object-top-left size-full object-cover'
                       src={currentPreview.image}

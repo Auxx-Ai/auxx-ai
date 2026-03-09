@@ -6,7 +6,7 @@ export const LayoutIllustration = () => (
       <Table2 className='max-w-full' />
     </div>
 
-    <div className='mask-b-from-50% rounded-2xl border'>
+    <div className='mask-b-from-50% dark:mask-b-from-70% rounded-2xl border'>
       <div className='absolute inset-y-0 left-0 w-[12rem] border-r'>
         <div className='flex gap-1.5 px-4 pt-4'>
           <div className='bg-foreground/5 border-foreground/5 size-2 rounded-full border'></div>

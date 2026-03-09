@@ -52,7 +52,7 @@ export default function WorkflowHero() {
               }}>
               <h1
                 key={1}
-                className='text-foreground mx-auto mt-16 text-balance text-5xl font-semibold'>
+                className='text-foreground dark:text-indigo-300 mx-auto mt-16 text-balance text-5xl font-semibold'>
                 The{' '}
                 <span className='bg-linear-to-b from-purple-400 to-indigo-500 bg-clip-text text-transparent'>
                   Workflow Engine

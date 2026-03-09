@@ -4,13 +4,7 @@ import type { SVGProps } from 'react'
 type IconProps = { dark?: boolean } & SVGProps<SVGSVGElement>
 
 export const Facebook = ({ dark, ...props }: IconProps) => (
-  <svg
-    xmlns='http://www.w3.org/2000/svg'
-    viewBox='0 0 36 36'
-    fill='url(#facebook__a)'
-    height='40'
-    width='40'
-    {...props}>
+  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36' fill='url(#facebook__a)' {...props}>
     <defs>
       <linearGradient x1='50%' x2='50%' y1='97.078%' y2='0%' id='facebook__a'>
         <stop offset='0%' stopColor='#0062E0' />
@@ -26,12 +20,7 @@ export const Facebook = ({ dark, ...props }: IconProps) => (
 )
 
 export const FacebookFull = (props: SVGProps<SVGSVGElement>) => (
-  <svg
-    viewBox='0 0 62.488 12.094'
-    width='62.488'
-    height='12.094'
-    xmlns='http://www.w3.org/2000/svg'
-    {...props}>
+  <svg viewBox='0 0 62.488 12.094' xmlns='http://www.w3.org/2000/svg' {...props}>
     <g transform='matrix(0.076238, 0, 0, 0.076238, -9.869545, -16.954924)'>
       <path
         className='cls-1'
