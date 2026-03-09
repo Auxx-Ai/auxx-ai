@@ -12,11 +12,9 @@ import {
 } from 'lucide-react'
 import { motion } from 'motion/react'
 import Link from 'next/link'
-import { config } from '@/lib/config'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
-
-const { urls } = config
+import { useConfig } from '~/lib/config-context'
 
 const integrationFeatures = [
   {
@@ -72,6 +70,8 @@ const benefits = [
 ]
 
 export default function IntegrationSection() {
+  const { urls } = useConfig()
+
   return (
     <section className='relative border-foreground/10 border-b '>
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>

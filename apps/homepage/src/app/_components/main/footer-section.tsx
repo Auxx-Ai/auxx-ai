@@ -1,6 +1,4 @@
 // apps/homepage/src/app/_components/main/footer-section.tsx
-'use client'
-
 import Link from 'next/link'
 import { ThemeToggle } from '@/app/_components/theme-toggle'
 import { Badge } from '@/components/ui/badge'

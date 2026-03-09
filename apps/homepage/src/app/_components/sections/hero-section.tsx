@@ -6,11 +6,10 @@ import Link from 'next/link'
 import React from 'react'
 import MessagingFeatures from '@/app/platform/messaging/_components/messaging-features'
 import { Button } from '~/components/ui/button'
-import { config } from '~/lib/config'
-
-const { urls } = config
+import { useConfig } from '~/lib/config-context'
 
 export default function HeroSection() {
+  const { urls } = useConfig()
   const [showVideo, setShowVideo] = React.useState(false)
 
   return (
