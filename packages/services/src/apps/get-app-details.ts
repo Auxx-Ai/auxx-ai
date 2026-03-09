@@ -118,22 +118,7 @@ export async function getAppWithInstallationStatus(input: GetAppWithStatusInput)
     })
   }
 
-  // Check if org has access to this app
-  const hasDevDeployments = app.deployments.some(
-    (d) => d.deploymentType === 'development' && d.targetOrganizationId === organizationId
-  )
-  const isPublished = app.publicationStatus === 'published'
-
-  if (!isPublished && !hasDevDeployments) {
-    return err({
-      code: 'APP_ACCESS_DENIED' as const,
-      message: `You do not have access to app "${appSlug}"`,
-      appSlug,
-      organizationId,
-    })
-  }
-
-  // Query installation status
+  // Query installation status FIRST (needed for access check)
   const installationResult = await fromDatabase(
     database.query.AppInstallation.findFirst({
       where: (installations, { and, eq, isNull }) =>
@@ -151,6 +136,22 @@ export async function getAppWithInstallationStatus(input: GetAppWithStatusInput)
   }
 
   const installation = installationResult.value
+
+  // Check if org has access to this app
+  const hasDevDeployments = app.deployments.some(
+    (d) => d.deploymentType === 'development' && d.targetOrganizationId === organizationId
+  )
+  const isPublished = app.publicationStatus === 'published'
+  const hasActiveInstallation = !!installation
+
+  if (!isPublished && !hasDevDeployments && !hasActiveInstallation) {
+    return err({
+      code: 'APP_ACCESS_DENIED' as const,
+      message: `You do not have access to app "${appSlug}"`,
+      appSlug,
+      organizationId,
+    })
+  }
 
   // Format response
   return ok({

@@ -148,11 +148,22 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
   // Filter dev apps that have at least one deployment for this org
   const devApps = devAppsResult.value.filter((app) => app.deployments.length > 0)
 
-  // Query installations for this organization
+  // Query installations for this organization (with app data for installed-but-undiscovered apps)
   const installationsResult = await fromDatabase(
     database.query.AppInstallation.findMany({
       where: (installations, { eq, and, isNull }) =>
         and(eq(installations.organizationId, organizationId), isNull(installations.uninstalledAt)),
+      with: {
+        app: {
+          with: {
+            developerAccount: true,
+            deployments: {
+              orderBy: (d, { desc }) => [desc(d.createdAt)],
+              limit: 1,
+            },
+          },
+        },
+      },
     }),
     'get-installations'
   )
@@ -188,6 +199,19 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
     appsMap.set(app.id, app)
   }
 
+  // Add installed apps not already discovered (e.g. installed via build portal without a dev deployment)
+  for (const inst of installationsResult.value) {
+    if (appsMap.has(inst.appId)) continue
+    const app = inst.app
+    if (filters?.category && app.category !== filters.category) continue
+    if (filters?.searchQuery) {
+      const q = filters.searchQuery.toLowerCase()
+      if (!app.title.toLowerCase().includes(q) && !app.description?.toLowerCase().includes(q))
+        continue
+    }
+    appsMap.set(app.id, app)
+  }
+
   const allApps = Array.from(appsMap.values())
 
   // Format apps with installation status
@@ -195,8 +219,8 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
     const latestDeployment = app.deployments[0]
 
     const isDev = app.deployments.some((d) => d.deploymentType === 'development')
-    const installationType = isDev ? 'development' : 'production'
-    const installation = installationMap.get(`${app.id}:${installationType}`)
+    const installation =
+      installationMap.get(`${app.id}:development`) ?? installationMap.get(`${app.id}:production`)
 
     return {
       id: app.id,
