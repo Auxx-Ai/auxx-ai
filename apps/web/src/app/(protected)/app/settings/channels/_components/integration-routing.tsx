@@ -31,7 +31,7 @@ import {
   MailPlus,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-// ~/app/(protected)/app/settings/integrations/_components/integration-routing.tsx
+// ~/app/(protected)/app/settings/channels/_components/integration-routing.tsx
 import { useMemo, useState } from 'react'
 import MessageSyncStatus from '~/components/mail/message-sync-status'
 import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
@@ -144,7 +144,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
       const result = await removeIntegration.mutateAsync({ integrationId: integration.id })
       if (result) {
         // Optionally, redirect or refresh the page
-        router.push('/app/settings/integrations')
+        router.push('/app/settings/channels')
       }
     }
   }

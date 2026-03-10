@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const errorDescription = searchParams.get('error_description') // Capture error description
 
   // Default redirect path
-  let redirectPath = '/app/settings/integrations/new/outlook/result' // Updated default path?
+  let redirectPath = '/app/settings/channels/new/outlook/result' // Updated default path?
 
   try {
     if (state) {

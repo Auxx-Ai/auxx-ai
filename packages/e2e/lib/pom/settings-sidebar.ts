@@ -12,8 +12,8 @@ export const SETTINGS_PAGES = {
   Snippets: 'snippets',
   Signatures: 'signatures',
   'API Keys': 'apiKeys',
-  // Integrations section (admin)
-  Integrations: 'integrations',
+  // Channels section (admin)
+  Channels: 'channels',
   Apps: 'apps',
   Webhooks: 'webhooks',
   Shopify: 'shopify',

@@ -128,14 +128,14 @@ export const useKbarAdminSettings = () => {
   // Admin-only settings actions
   const adminSettingsActions: Action[] = [
     {
-      id: 'goToIntegrationsSettings',
-      name: 'Integrations',
+      id: 'goToChannelsSettings',
+      name: 'Channels',
       shortcut: ['s', 'i'],
-      keywords: 'integrations',
+      keywords: 'channels',
       section: 'Settings',
       parent: 'goToSettings',
 
-      perform: () => goToSetting('/integrations'),
+      perform: () => goToSetting('/channels'),
     },
     {
       id: 'goToWebhooksSettings',

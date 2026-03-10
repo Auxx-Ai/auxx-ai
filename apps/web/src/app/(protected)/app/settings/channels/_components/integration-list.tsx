@@ -26,14 +26,14 @@ export default function IntegrationList() {
 
   // Handle click on New Integration button
   const handleNewIntegration = () => {
-    router.push('/app/settings/integrations/new')
+    router.push('/app/settings/channels/new')
   }
 
   return (
     <SettingsPage
-      title='Integrations'
-      description='Manage your external service integrations for email, messaging, and telephony'
-      breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Integrations' }]}
+      title='Channels'
+      description='Manage your external service channels for email, messaging, and telephony'
+      breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Channels' }]}
       button={
         <Button
           variant='outline'
@@ -41,14 +41,14 @@ export default function IntegrationList() {
           onClick={handleNewIntegration}
           disabled={isFeatureLoading || !canUseChannels}>
           <Plus />
-          New Integration
+          New Channel
         </Button>
       }>
       {isLoading ? (
         <EmptyState
           icon={Waypoints}
           iconClassName='animate-spin'
-          title='Loading Integrations...'
+          title='Loading Channels...'
           description='&nbsp;'
           button={<div className='h-12'></div>}
         />
@@ -57,17 +57,17 @@ export default function IntegrationList() {
       ) : (
         <EmptyState
           icon={Waypoints}
-          title='No Integrations Found'
+          title='No Channels Found'
           description={
             <>
-              Connect your first integration to start <br />
+              Connect your first channel to start <br />
               receiving and managing messages.
             </>
           }
           button={
             <Button onClick={handleNewIntegration} size='sm' variant='outline'>
               <Plus />
-              Connect your first integration
+              Connect your first channel
             </Button>
           }
         />

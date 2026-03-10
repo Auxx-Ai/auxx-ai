@@ -1,4 +1,4 @@
-// ~/app/(protected)/app/settings/integrations/new/chat_widget/page.tsx
+// ~/app/(protected)/app/settings/channels/new/chat_widget/page.tsx
 'use client'
 import { useRouter } from 'next/navigation'
 import ChatWidgetIntegrationForm from '../../_components/chat-widget-integration-form'
@@ -8,7 +8,7 @@ import ChatWidgetIntegrationForm from '../../_components/chat-widget-integration
  */
 export default function NewChatWidgetPage() {
   const router = useRouter()
-  const handleBack = () => router.push('/app/settings/integrations/new') // Go back to chooser
+  const handleBack = () => router.push('/app/settings/channels/new') // Go back to chooser
 
   return <ChatWidgetIntegrationForm />
 }

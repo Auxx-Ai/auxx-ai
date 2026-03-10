@@ -4,7 +4,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { ArrowLeft } from 'lucide-react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-// ~/app/(protected)/app/settings/integrations/_components/integration-tabs.tsx
+// ~/app/(protected)/app/settings/channels/_components/integration-tabs.tsx
 import { useState } from 'react'
 import {
   getIntegrationStatus,
@@ -34,12 +34,12 @@ export default function IntegrationTabs() {
   // Handle tab change
   const handleTabChange = (value: string) => {
     setActiveTab(value)
-    router.push(`/app/settings/integrations/${integrationId}?tab=${value}`, { scroll: false })
+    router.push(`/app/settings/channels/${integrationId}?tab=${value}`, { scroll: false })
   }
 
   // Handle back button click
   const handleBack = () => {
-    router.push('/app/settings/integrations')
+    router.push('/app/settings/channels')
   }
 
   // Loading state
@@ -50,7 +50,7 @@ export default function IntegrationTabs() {
         description={'Manage your integration settings'}
         breadcrumbs={[
           { title: 'Settings', href: '/app/settings' },
-          { title: 'Integrations', href: '/app/settings/integrations' },
+          { title: 'Channels', href: '/app/settings/channels' },
           { title: 'Loading...' },
         ]}>
         <div className='space-y-6 p-6'>
@@ -66,7 +66,7 @@ export default function IntegrationTabs() {
       <div className='space-y-6'>
         <Button variant='outline' size='sm' onClick={handleBack}>
           <ArrowLeft className='mr-2 h-4 w-4' />
-          Back to Integrations
+          Back to Channels
         </Button>
         <div className='rounded-md border p-8 text-center'>
           <h2 className='text-xl font-bold'>Integration not found</h2>
@@ -74,7 +74,7 @@ export default function IntegrationTabs() {
             The requested integration could not be found. It may have been removed.
           </p>
           <Button className='mt-4' onClick={handleBack}>
-            Return to Integrations List
+            Return to Channels
           </Button>
         </div>
       </div>
@@ -99,7 +99,7 @@ export default function IntegrationTabs() {
         description={integration.identifier || 'Manage your integration settings'}
         breadcrumbs={[
           { title: 'Settings', href: '/app/settings' },
-          { title: 'Integrations', href: '/app/settings/integrations' },
+          { title: 'Channels', href: '/app/settings/channels' },
           { title },
         ]}
         button={

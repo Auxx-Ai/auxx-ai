@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const errorReason = searchParams.get('error_reason')
   const errorDescription = searchParams.get('error_description')
 
-  let redirectPath = '/app/settings/integrations' // Default redirect
+  let redirectPath = '/app/settings/channels' // Default redirect
   let parsedState: any = null
 
   // --- State Parameter Handling & CSRF Check ---
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
   } else {
     logger.error('Missing state parameter in Instagram callback')
     return Response.redirect(
-      `${WEBAPP_URL}/app/settings/integrations?error=missing_state&error_description=${encodeURIComponent('State parameter missing.')}`
+      `${WEBAPP_URL}/app/settings/channels?error=missing_state&error_description=${encodeURIComponent('State parameter missing.')}`
     )
   }
 

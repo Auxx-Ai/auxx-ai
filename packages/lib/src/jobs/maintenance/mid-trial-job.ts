@@ -119,7 +119,7 @@ export const sendMidTrialEmailsJob = async (job: Job) => {
             organizationName: org.organizationName,
             daysRemaining,
             dashboardUrl: `${WEBAPP_URL}/dashboard`,
-            integrationsUrl: `${WEBAPP_URL}/settings/integrations`,
+            integrationsUrl: `${WEBAPP_URL}/settings/channels`,
             upgradeUrl: `${WEBAPP_URL}/settings/billing`,
             supportUrl: `${WEBAPP_URL}/support`,
             source: 'mid-trial-job',

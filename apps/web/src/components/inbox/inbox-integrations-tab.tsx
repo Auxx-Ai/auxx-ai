@@ -51,7 +51,7 @@ export function InboxIntegrationsTab({ inboxId, integrations }: InboxIntegration
   /** Handle removing an integration with confirmation */
   const handleRemoveIntegration = async (integrationId: string) => {
     const confirmed = await confirm({
-      title: 'Remove integration?',
+      title: 'Remove channel?',
       description:
         'This will remove this integration from the inbox. Any emails from this integration will no longer be routed to this inbox.',
       confirmText: 'Remove',
@@ -75,7 +75,7 @@ export function InboxIntegrationsTab({ inboxId, integrations }: InboxIntegration
 
   /** Navigate to integration details page */
   const handleGoToIntegration = (integrationId: string) => {
-    router.push(`/app/settings/integrations/${integrationId}`)
+    router.push(`/app/settings/channels/${integrationId}`)
   }
 
   return (
@@ -127,7 +127,7 @@ export function InboxIntegrationsTab({ inboxId, integrations }: InboxIntegration
             ) : (
               <TableRow>
                 <TableCell colSpan={3} className='py-4 text-center text-muted-foreground'>
-                  No integrations connected. Add an integration to start receiving emails.
+                  No channels connected. Add a channel to start receiving emails.
                 </TableCell>
               </TableRow>
             )}

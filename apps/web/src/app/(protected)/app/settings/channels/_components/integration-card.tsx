@@ -55,7 +55,7 @@ export default function IntegrationCard({
 
   const handleConnect = () => {
     if (disabled || comingSoon) return
-    router.push(`/app/settings/integrations/new/${type.toLowerCase()}`)
+    router.push(`/app/settings/channels/new/${type.toLowerCase()}`)
   }
 
   return (
