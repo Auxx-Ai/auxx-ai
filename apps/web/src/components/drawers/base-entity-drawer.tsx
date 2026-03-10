@@ -1,6 +1,7 @@
 // apps/web/src/components/drawers/base-entity-drawer.tsx
 'use client'
 
+import type { DrawerTabCardDefinition } from '@auxx/lib/resources/client'
 import { getEntityDrawerConfig, parseRecordId } from '@auxx/lib/resources/client'
 import type { RecordId } from '@auxx/types/resource'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -27,7 +28,7 @@ import DrawerComments from '~/components/global/comments/drawer-comments'
 import { useRecord, useResource } from '~/components/resources'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { TimelineTab } from '~/components/timeline'
-import { getTabComponent } from './drawer-tab-registry'
+import { getTabCardComponent, getTabComponent } from './drawer-tab-registry'
 
 interface BaseEntityDrawerProps {
   /** RecordId in format "entityDefinitionId:entityInstanceId" */
@@ -180,6 +181,15 @@ export function BaseEntityDrawer({
                 {/* Base tabs - static */}
                 <TabsContent value='overview' className='w-full'>
                   <ScrollArea className='flex-1'>
+                    <TabCards
+                      tab='overview'
+                      position='before'
+                      entityType={entityType}
+                      drawerConfig={drawerConfig}
+                      entityInstanceId={entityInstanceId!}
+                      recordId={recordId}
+                      record={record}
+                    />
                     <Section
                       title='Details'
                       initialOpen
@@ -187,6 +197,15 @@ export function BaseEntityDrawer({
                       icon={<HouseIcon className='size-4' />}>
                       <EntityFields recordId={recordId} />
                     </Section>
+                    <TabCards
+                      tab='overview'
+                      position='after'
+                      entityType={entityType}
+                      drawerConfig={drawerConfig}
+                      entityInstanceId={entityInstanceId!}
+                      recordId={recordId}
+                      record={record}
+                    />
                   </ScrollArea>
                 </TabsContent>
 
@@ -264,6 +283,80 @@ function LazyTabComponent({
 
   if (!Component) {
     return <div className='p-4'>Loading...</div>
+  }
+
+  return <Component entityInstanceId={entityInstanceId} recordId={recordId} record={record} />
+}
+
+/**
+ * Renders tab cards for a given base tab at the specified position (before/after default content)
+ */
+function TabCards({
+  tab,
+  position,
+  entityType,
+  drawerConfig,
+  entityInstanceId,
+  recordId,
+  record,
+}: {
+  tab: string
+  position: 'before' | 'after'
+  entityType: string
+  drawerConfig: { tabCards?: Record<string, DrawerTabCardDefinition[]> }
+  entityInstanceId: string
+  recordId: RecordId
+  record?: Record<string, unknown>
+}) {
+  const cards = drawerConfig.tabCards?.[tab]?.filter((c) => (c.position ?? 'after') === position)
+  if (!cards?.length) return null
+
+  return (
+    <>
+      {cards.map((card) => (
+        <div key={card.value} className='space-y-1 p-4'>
+          <h4 className='text-sm'>{card.label}</h4>
+          <LazyTabCard
+            entityType={entityType}
+            cardValue={card.value}
+            entityInstanceId={entityInstanceId}
+            recordId={recordId}
+            record={record}
+          />
+        </div>
+      ))}
+    </>
+  )
+}
+
+/**
+ * Lazy load and render a tab card component
+ */
+function LazyTabCard({
+  entityType,
+  cardValue,
+  entityInstanceId,
+  recordId,
+  record,
+}: {
+  entityType: string
+  cardValue: string
+  entityInstanceId: string
+  recordId: RecordId
+  record?: Record<string, unknown>
+}) {
+  const componentLoader = getTabCardComponent(entityType, cardValue)
+
+  if (!componentLoader) return null
+
+  const [Component, setComponent] = React.useState<React.ComponentType<any> | null>(null)
+
+  React.useEffect(() => {
+    componentLoader().then((mod) => setComponent(() => mod.default))
+  }, [componentLoader])
+
+  if (!Component) {
+    return <div className='p-2'>Loading...</div>
   }
 
   return <Component entityInstanceId={entityInstanceId} recordId={recordId} record={record} />

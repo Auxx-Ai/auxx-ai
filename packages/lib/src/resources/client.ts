@@ -58,8 +58,15 @@ export type {
   DrawerActions,
   DrawerConfig,
   DrawerConfigRegistry,
+  DrawerTabCardDefinition,
   DrawerTabDefinition,
 } from './registry/drawer-config-types'
+// Enum values (for badge labels, select options, etc.)
+export {
+  TicketPriority,
+  TicketStatus,
+  TicketType,
+} from './registry/enum-values'
 export type { TableId } from './registry/field-registry'
 // Registry constants (these are static, safe for client)
 export {

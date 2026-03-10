@@ -1,16 +1,17 @@
 // apps/web/src/components/drawers/drawer-tab-registry.tsx
 'use client'
 
+import type { RecordId } from '@auxx/types/resource'
 import type { ComponentType } from 'react'
 
 /**
- * Props passed to all drawer tab components
+ * Props passed to all drawer tab components and tab card components
  */
 export interface DrawerTabProps {
   /** Entity instance ID */
   entityInstanceId: string
-  /** Full resourceId (entityDefinitionId:entityInstanceId) */
-  resourceId: string
+  /** Full recordId (entityDefinitionId:entityInstanceId) */
+  recordId: RecordId
   /** Record data (from useRecord) */
   record?: Record<string, unknown>
 }
@@ -42,6 +43,14 @@ export const DRAWER_TAB_COMPONENTS: Record<
     import('./tabs/contact-parts-tab').then((m) => ({ default: m.ContactPartsTab })),
 
   // ─────────────────────────────────────────────────────────────────
+  // TICKET TABS
+  // ─────────────────────────────────────────────────────────────────
+  'ticket:conversations': () =>
+    import('./tabs/ticket-conversations-tab').then((m) => ({
+      default: m.TicketConversationsTab,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
   // PART TABS
   // ─────────────────────────────────────────────────────────────────
   'part:inventory': () =>
@@ -50,12 +59,28 @@ export const DRAWER_TAB_COMPONENTS: Record<
     import('./tabs/part-subparts-tab').then((m) => ({ default: m.PartSubpartsTab })),
   'part:vendors': () =>
     import('./tabs/part-vendors-tab').then((m) => ({ default: m.PartVendorsTab })),
+}
 
+/**
+ * Registry of per-tab card components
+ * Maps "entityType:cardValue" → React component loader
+ * Used by BaseEntityDrawer to inject cards into base tabs (overview, timeline, etc.)
+ */
+export const DRAWER_TAB_CARD_COMPONENTS: Record<
+  string,
+  () => Promise<{ default: ComponentType<DrawerTabProps> }>
+> = {
   // ─────────────────────────────────────────────────────────────────
-  // CUSTOM ENTITY TABS (future - when needed)
+  // TICKET OVERVIEW CARDS
   // ─────────────────────────────────────────────────────────────────
-  // 'custom:tasks': () =>
-  //   import('./tabs/entity-tasks-tab').then((m) => ({ default: m.EntityTasksTab })),
+  'ticket:metrics': () =>
+    import('./cards/ticket-metrics-card').then((m) => ({ default: m.TicketMetricsCard })),
+  'ticket:customer': () =>
+    import('./cards/ticket-customer-card').then((m) => ({ default: m.TicketCustomerCard })),
+  'ticket:relationships': () =>
+    import('./cards/ticket-relationships-card').then((m) => ({
+      default: m.TicketRelationshipsCard,
+    })),
 }
 
 /**
@@ -68,6 +93,18 @@ export function getTabComponent(
 ): (() => Promise<{ default: ComponentType<DrawerTabProps> }>) | undefined {
   const key = `${entityType}:${tabValue}`
   return DRAWER_TAB_COMPONENTS[key]
+}
+
+/**
+ * Get tab card component loader for entityType and card value
+ * @returns Component loader or undefined if not found
+ */
+export function getTabCardComponent(
+  entityType: string,
+  cardValue: string
+): (() => Promise<{ default: ComponentType<DrawerTabProps> }>) | undefined {
+  const key = `${entityType}:${cardValue}`
+  return DRAWER_TAB_CARD_COMPONENTS[key]
 }
 
 /**

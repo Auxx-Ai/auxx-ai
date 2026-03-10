@@ -9,21 +9,6 @@ const ENTITY_ORDER_SETTING_KEY = 'sidebar.entities.order'
 const ENTITY_VISIBILITY_SETTING_KEY = 'sidebar.entities.visibility'
 const ENTITY_GROUP_VISIBILITY_SETTING_KEY = 'sidebar.entities.groupVisible'
 
-/** Static entity definition for Support Tickets */
-const STATIC_TICKETS_ENTITY: ProcessedEntity = {
-  id: 'tickets',
-  apiSlug: 'tickets',
-  label: 'Support Tickets',
-  plural: 'Support Tickets',
-  icon: 'tags',
-  color: 'gray',
-  entityType: null,
-  isStatic: true,
-  isLocked: true,
-  isVisible: true,
-  href: '/app/tickets',
-}
-
 /** Processed entity with visibility and ordering metadata */
 export interface ProcessedEntity {
   id: string
@@ -33,7 +18,6 @@ export interface ProcessedEntity {
   icon: string
   color: string
   entityType: string | null
-  isStatic: boolean
   isLocked: boolean
   isVisible: boolean
   href: string
@@ -62,7 +46,7 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
       (getSetting(ENTITY_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {}
 
     // Convert custom resources to processed entities, filtering out hidden entities
-    const dynamicEntities: ProcessedEntity[] = (customResources || [])
+    const allEntities: ProcessedEntity[] = (customResources || [])
       .filter((resource) => resource.isVisible !== false)
       .map((resource) => ({
         id: resource.id,
@@ -72,14 +56,10 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
         icon: resource.icon,
         color: resource.color,
         entityType: resource.entityType,
-        isStatic: false,
         isLocked: false,
         isVisible: visibilitySettings[resource.id] !== false,
         href: resource.entityType ? `/app/${resource.apiSlug}` : `/app/custom/${resource.apiSlug}`,
       }))
-
-    // Combine static + dynamic entities
-    const allEntities = [STATIC_TICKETS_ENTITY, ...dynamicEntities]
 
     // Create a map for quick lookup
     const entityMap = new Map(allEntities.map((entity) => [entity.id, entity]))

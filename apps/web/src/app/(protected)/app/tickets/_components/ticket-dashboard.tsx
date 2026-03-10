@@ -101,10 +101,12 @@ export function TicketDashboardContent() {
 
   // Transform ticket types data for bar chart
   const ticketTypesData =
-    summaryData?.topTicketTypes.map((item) => ({
-      name: item.type.replace(/_/g, ' '),
-      count: item.count,
-    })) || []
+    summaryData?.topTicketTypes
+      .filter((item) => item.type != null)
+      .map((item) => ({
+        name: item.type!.replace(/_/g, ' '),
+        count: item.count,
+      })) || []
 
   // Stats cards data
   const statsCards: StatCardData[] = [

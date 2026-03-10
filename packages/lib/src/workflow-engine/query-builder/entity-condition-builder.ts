@@ -99,23 +99,29 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     direction: 'asc' | 'desc',
     context: EntityQueryContext
   ): SQL<unknown>[] | undefined {
-    // field parameter is the human-readable field name (field.key)
-    const fieldDef = context.fields.find((f) => f.key === field)
+    const fieldDef = this.resolveFieldRef(field, context)
     if (!fieldDef?.capabilities.sortable) {
       return undefined
     }
 
-    // Resolve to database field ID for SQL queries
+    // Fields with actual columns on EntityInstance (createdAt, updatedAt, displayName, etc.)
+    if (fieldDef.isSystem && fieldDef.dbColumn) {
+      const column = context.outerTable[fieldDef.dbColumn as keyof typeof context.outerTable]
+      if (column) {
+        const orderSql =
+          direction === 'asc' ? sql`${column} ASC NULLS LAST` : sql`${column} DESC NULLS LAST`
+        return [orderSql]
+      }
+      // dbColumn metadata exists but is not a real EntityInstance column
+      // (for example ticket_number) — fall through to FieldValue path
+    }
+
+    // Custom fields + system fields stored in FieldValue
     const fieldIdForSql = fieldDef.id || field
-
-    // Keep outer table as Drizzle column reference for correct alias resolution
-    const outerTableId = context.outerTable.id
-
-    // Determine which typed column to use based on field type
     const dbFieldType = fieldDef.dbFieldType || 'TEXT'
     const valueColumn = this.getTypedColumnName(dbFieldType)
+    const outerTableId = context.outerTable.id
 
-    // Build subquery using FieldValue typed column
     const valueSubquery = sql`(
       SELECT "FieldValue".${sql.raw(`"${valueColumn}"`)}
       FROM "FieldValue"
@@ -134,7 +140,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
   }
 
   protected getFieldType(fieldId: string, context: EntityQueryContext): string | undefined {
-    const field = context.fields.find((f) => f.key === fieldId)
+    const field = this.resolveFieldRef(fieldId, context)
     if (!field) return undefined
     return this.baseTypeToQueryType(field.type)
   }
@@ -143,8 +149,39 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     fieldId: string,
     context: EntityQueryContext
   ): FieldOptionItem[] | undefined {
-    const field = context.fields.find((f) => f.key === fieldId)
+    const field = this.resolveFieldRef(fieldId, context)
     return getFieldOptions(field)
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // FIELD RESOLUTION
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Resolve a field reference to a ResourceField.
+   * Handles: resourceFieldId ("entityDefId:fieldId"), field id, or plain key.
+   */
+  private resolveFieldRef(
+    fieldRef: string,
+    context: EntityQueryContext
+  ): ResourceField | undefined {
+    // 1. Try resourceFieldId match (e.g., "mr5uh5...:xfwv3p...")
+    if (fieldRef.includes(':')) {
+      const byResourceFieldId = context.fields.find((f) => f.resourceFieldId === fieldRef)
+      if (byResourceFieldId) return byResourceFieldId
+
+      // Parse and try matching the fieldId portion
+      const { fieldId } = parseResourceFieldId(fieldRef as ResourceFieldId)
+      const byId = context.fields.find((f) => f.id === fieldId)
+      if (byId) return byId
+    }
+
+    // 2. Try by key (e.g., "number", "ticket_number")
+    const byKey = context.fields.find((f) => f.key === fieldRef)
+    if (byKey) return byKey
+
+    // 3. Try by id directly (e.g., plain CUID)
+    return context.fields.find((f) => f.id === fieldRef)
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -159,8 +196,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     condition: GenericCondition,
     context: EntityQueryContext
   ): SQL<unknown> | undefined {
-    // Find field by key
-    const field = context.fields.find((f) => f.key === fieldKey)
+    const field = this.resolveFieldRef(fieldKey, context)
     if (!field) {
       logger.warn(`Field '${fieldKey}' not found in entity fields`)
       logger.debug(`Available fields: ${context.fields.map((f) => f.key).join(', ')}`)
@@ -178,19 +214,24 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       rawValue = this.labelToStoredValue(fieldOpts, rawValue)
     }
 
-    // Handle system fields (columns on EntityInstance table) differently
+    // Only use direct column filtering if the column actually exists on EntityInstance
     if (field.isSystem && field.dbColumn) {
-      logger.debug(`Building system field condition for column: ${field.dbColumn}`)
-      return this.buildSystemFieldCondition(
-        field.dbColumn,
-        condition.operator,
-        rawValue,
-        field.type,
-        context
-      )
+      const column = context.outerTable[field.dbColumn as keyof typeof context.outerTable]
+      if (column) {
+        logger.debug(`Building system field condition for column: ${field.dbColumn}`)
+        return this.buildSystemFieldCondition(
+          field.dbColumn,
+          condition.operator,
+          rawValue,
+          field.type,
+          context
+        )
+      }
+      // dbColumn metadata exists but is not a real EntityInstance column
+      // (for example ticket_number) — fall through to FieldValue path
     }
 
-    // Custom fields stored in FieldValue table
+    // Custom fields + system fields stored in FieldValue table
     const fieldIdForSql = field.id || fieldKey
     const fieldType = this.baseTypeToQueryType(field.type)
     const dbFieldType = field.dbFieldType || 'TEXT'

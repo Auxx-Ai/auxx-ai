@@ -2,19 +2,42 @@
 'use client'
 
 import { formatToDisplayValue, parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
+import { getEntityDrawerConfig } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { formatDistanceToNow } from 'date-fns'
-import { Expand, MessagesSquare, Trash } from 'lucide-react'
+import {
+  Archive,
+  Edit,
+  Expand,
+  Link as LinkIcon,
+  Merge,
+  MessageSquare,
+  MessagesSquare,
+  MoreHorizontal,
+  TextCursorInput,
+  Trash,
+  Trash2,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
+import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
+import { MergeDialog } from '~/components/merge'
 import { useRecord, useResource } from '~/components/resources'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 
@@ -56,6 +79,13 @@ export const RecordDrawer = React.memo(function RecordDrawer({
 
   // Get resource with fields
   const { resource } = useResource(entityDefinitionId ?? null)
+
+  // Get drawer config for entity-type-aware actions
+  const drawerConfig = React.useMemo(() => {
+    const entityType =
+      resource?.entityType ?? (resource?.type === 'system' ? resource?.id : 'custom')
+    return entityType ? getEntityDrawerConfig(entityType, entityDefinitionId || undefined) : null
+  }, [resource, entityDefinitionId])
 
   // Fetch entity record from cache (populated by batch fetcher when list loads)
   const { record: cachedRecord, isLoading: isRecordLoading } = useRecord({
@@ -129,6 +159,17 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   // Counter for focusing comments composer
   const [focusComposerTrigger, setFocusComposerTrigger] = React.useState(0)
 
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false)
+
+  // Merge dialog state
+  const [mergeDialogOpen, setMergeDialogOpen] = React.useState(false)
+
+  // Confirm dialog for delete
+  const [confirm, ConfirmDialog] = useConfirm()
+
+  const actions = drawerConfig?.actions
+
   /** Handle close */
   const handleClose = React.useCallback(() => {
     onOpenChange?.(false)
@@ -139,6 +180,43 @@ export const RecordDrawer = React.memo(function RecordDrawer({
     setFocusComposerTrigger((prev) => prev + 1)
   }, [])
 
+  /** Handle reply - navigate to detail page */
+  const handleReply = React.useCallback(() => {
+    if (resource?.apiSlug && entityInstanceId) {
+      router.push(`/app/tickets/${entityInstanceId}#reply`)
+      onOpenChange?.(false)
+    }
+  }, [resource?.apiSlug, entityInstanceId, router, onOpenChange])
+
+  /** Handle delete with confirmation */
+  const handleDelete = React.useCallback(async () => {
+    if (!onDeleteInstance || !entityInstanceId) return
+    const confirmed = await confirm({
+      title: `Delete ${resource?.label?.toLowerCase() || 'record'}`,
+      description: 'Are you sure? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) {
+      await onDeleteInstance(entityInstanceId)
+    }
+  }, [confirm, onDeleteInstance, entityInstanceId, resource?.label])
+
+  /** Handle expand to full page */
+  const handleExpand = React.useCallback(() => {
+    if (!resource?.apiSlug || !entityInstanceId) return
+    // System entities use their slug path, custom entities use /app/custom/
+    const entityType = resource.entityType
+    if (entityType === 'ticket') {
+      router.push(`/app/tickets/${entityInstanceId}`)
+    } else if (entityType === 'contact') {
+      router.push(`/app/contacts/${entityInstanceId}`)
+    } else {
+      router.push(`/app/custom/${resource.apiSlug}/${entityInstanceId}`)
+    }
+  }, [resource?.apiSlug, resource?.entityType, entityInstanceId, router])
+
   // Memoize the createdAt text to avoid recalculating on every render
   const createdAtText = React.useMemo(
     () =>
@@ -148,96 +226,218 @@ export const RecordDrawer = React.memo(function RecordDrawer({
     [cachedRecord?.createdAt]
   )
 
+  // Check if we need a "more actions" dropdown (for edit, rename, archive, link, merge)
+  const hasMoreActions =
+    actions?.enableEdit ||
+    actions?.enableRename ||
+    actions?.enableArchive ||
+    actions?.enableLink ||
+    actions?.enableMerge
+
   if (!open || !recordId) return null
 
   return (
-    <BaseEntityDrawer
-      recordId={recordId}
-      open={open}
-      onOpenChange={onOpenChange ?? (() => {})}
-      isDocked={isDocked}
-      dockedWidth={dockedWidth}
-      onWidthChange={setDockedWidth}
-      minWidth={400}
-      maxWidth={800}
-      focusComposerTrigger={focusComposerTrigger}
-      onClose={handleClose}
-      headerIcon={
-        <EntityIcon
-          iconId={resource?.icon || 'circle'}
-          color={resource?.color || 'gray'}
-          className='size-6'
-        />
-      }
-      headerTitle={resource?.label || 'Record'}
-      headerActions={
-        <>
-          <Tooltip content='Create note'>
-            <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
-              <MessagesSquare />
-            </Button>
-          </Tooltip>
-          <ManualTriggerButton
-            recordId={recordId}
-            buttonVariant='ghost'
-            buttonSize='icon-xs'
-            buttonClassName='rounded-full'
-            tooltipContent='Run workflow'
-          />
-          <Tooltip content={`Delete ${resource?.label?.toLowerCase() || 'record'}`}>
-            <Button
-              variant='outline'
-              size='icon-xs'
-              onClick={() => {
-                if (onDeleteInstance && entityInstanceId) {
-                  void onDeleteInstance(entityInstanceId)
-                }
-              }}>
-              <Trash className='text-bad-500' />
-            </Button>
-          </Tooltip>
-          <Tooltip content='Open full page'>
-            <Button
-              variant='ghost'
-              size='icon-xs'
-              onClick={() => {
-                if (resource?.apiSlug && entityInstanceId) {
-                  router.push(`/app/custom/${resource.apiSlug}/${entityInstanceId}`)
-                }
-              }}>
-              <Expand />
-            </Button>
-          </Tooltip>
-          <DockToggleButton />
-        </>
-      }
-      cardContent={
-        <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
+    <>
+      <BaseEntityDrawer
+        recordId={recordId}
+        open={open}
+        onOpenChange={onOpenChange ?? (() => {})}
+        isDocked={isDocked}
+        dockedWidth={dockedWidth}
+        onWidthChange={setDockedWidth}
+        minWidth={400}
+        maxWidth={800}
+        focusComposerTrigger={focusComposerTrigger}
+        onClose={handleClose}
+        headerIcon={
           <EntityIcon
             iconId={resource?.icon || 'circle'}
             color={resource?.color || 'gray'}
-            className='size-10'
+            className='size-6'
           />
-          <div className='flex flex-col align-start w-full'>
-            <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
-              {isRecordLoading ? (
-                <div className='mb-1'>
-                  <Skeleton className='h-6 w-80' />
-                </div>
-              ) : (
-                displayName || 'Untitled'
-              )}
-            </div>
-            <div className='text-xs text-neutral-500 truncate'>
-              {isRecordLoading ? (
-                <Skeleton className='h-4 w-40' />
-              ) : (
-                secondaryDisplay || createdAtText
-              )}
+        }
+        headerTitle={resource?.label || 'Record'}
+        headerActions={
+          <>
+            {/* Reply button (ticket-specific) */}
+            {actions?.enableEmailCompose && (
+              <Tooltip content='Reply'>
+                <Button variant='ghost' size='icon-xs' onClick={handleReply}>
+                  <MessageSquare />
+                </Button>
+              </Tooltip>
+            )}
+
+            {/* Create note */}
+            <Tooltip content='Create note'>
+              <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
+                <MessagesSquare />
+              </Button>
+            </Tooltip>
+
+            {/* Run workflow */}
+            <ManualTriggerButton
+              recordId={recordId}
+              buttonVariant='ghost'
+              buttonSize='icon-xs'
+              buttonClassName='rounded-full'
+              tooltipContent='Run workflow'
+            />
+
+            {/* More actions dropdown */}
+            {hasMoreActions && (
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant='ghost' size='icon-xs' className='rounded-full'>
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end' className='w-48'>
+                  {actions?.enableEdit && (
+                    <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
+                      <Edit />
+                      Edit {resource?.label?.toLowerCase() || 'record'}
+                    </DropdownMenuItem>
+                  )}
+
+                  {actions?.enableRename && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        // Focus the title input if it exists
+                        const input = document.getElementById(
+                          'drawer-title-input'
+                        ) as HTMLInputElement
+                        if (input) {
+                          input.focus()
+                          input.select()
+                        }
+                      }}>
+                      <TextCursorInput />
+                      Rename
+                    </DropdownMenuItem>
+                  )}
+
+                  {actions?.enableArchive && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        // Archive handled by parent via onDeleteInstance pattern
+                      }}>
+                      <Archive />
+                      Archive
+                    </DropdownMenuItem>
+                  )}
+
+                  {(actions?.enableEdit || actions?.enableRename || actions?.enableArchive) &&
+                    (actions?.enableMerge || actions?.enableLink || actions?.enableDelete) && (
+                      <DropdownMenuSeparator />
+                    )}
+
+                  {actions?.enableMerge && recordId && (
+                    <DropdownMenuItem onClick={() => setMergeDialogOpen(true)}>
+                      <Merge />
+                      Merge
+                    </DropdownMenuItem>
+                  )}
+
+                  {actions?.enableLink && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        // Link dialog is rendered via tab card (relationships card has its own link button)
+                      }}>
+                      <LinkIcon />
+                      Link {resource?.label?.toLowerCase() || 'record'}
+                    </DropdownMenuItem>
+                  )}
+
+                  {actions?.enableDelete && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant='destructive' onClick={handleDelete}>
+                        <Trash2 />
+                        Delete
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {/* Delete (if no more actions dropdown, show standalone delete button) */}
+            {!hasMoreActions && actions?.enableDelete !== false && (
+              <Tooltip content={`Delete ${resource?.label?.toLowerCase() || 'record'}`}>
+                <Button variant='outline' size='icon-xs' onClick={handleDelete}>
+                  <Trash className='text-bad-500' />
+                </Button>
+              </Tooltip>
+            )}
+
+            {/* Expand to full page */}
+            <Tooltip content='Open full page'>
+              <Button variant='ghost' size='icon-xs' onClick={handleExpand}>
+                <Expand />
+              </Button>
+            </Tooltip>
+
+            <DockToggleButton />
+          </>
+        }
+        cardContent={
+          <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
+            <EntityIcon
+              iconId={resource?.icon || 'circle'}
+              color={resource?.color || 'gray'}
+              className='size-10'
+            />
+            <div className='flex flex-col align-start w-full'>
+              <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
+                {isRecordLoading ? (
+                  <div className='mb-1'>
+                    <Skeleton className='h-6 w-80' />
+                  </div>
+                ) : (
+                  displayName || 'Untitled'
+                )}
+              </div>
+              <div className='text-xs text-neutral-500 truncate'>
+                {isRecordLoading ? (
+                  <Skeleton className='h-4 w-40' />
+                ) : (
+                  secondaryDisplay || createdAtText
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      }
-    />
+        }
+      />
+
+      {/* Edit Dialog */}
+      {editDialogOpen && entityDefinitionId && (
+        <EntityInstanceDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          entityDefinitionId={entityDefinitionId}
+          recordId={recordId}
+          onSaved={() => {
+            setEditDialogOpen(false)
+            onMutationSuccess?.()
+          }}
+        />
+      )}
+
+      {/* Merge Dialog */}
+      {mergeDialogOpen && recordId && (
+        <MergeDialog
+          open={mergeDialogOpen}
+          onOpenChange={setMergeDialogOpen}
+          baseRecordIds={[recordId]}
+          onMergeComplete={() => {
+            setMergeDialogOpen(false)
+            onMutationSuccess?.()
+          }}
+        />
+      )}
+
+      <ConfirmDialog />
+    </>
   )
 })

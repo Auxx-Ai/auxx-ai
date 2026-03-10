@@ -156,14 +156,9 @@ export function EntitySidebarNav() {
     }
   }
 
-  /** Check if tickets route is active */
-  function isTicketsActive() {
-    return pathname === '/app/tickets' || pathname.startsWith('/app/tickets/')
-  }
-
-  /** Check if a custom entity route is active */
-  function isActive(slug: string) {
-    const url = `/app/custom/${slug}`
+  /** Check if an entity route is active */
+  function isActive(entity: ProcessedEntity) {
+    const url = entity.href
     return pathname === url || pathname.startsWith(`${url}/`)
   }
 
@@ -187,15 +182,6 @@ export function EntitySidebarNav() {
 
   /** Get edit items for an entity */
   function getEditItems(entity: ProcessedEntity) {
-    // Static entities don't have edit/archive options
-    if (entity.isStatic) {
-      return (
-        <DropdownMenuItem onClick={() => router.push('/app/tickets?create=true')}>
-          <Plus /> Create Ticket
-        </DropdownMenuItem>
-      )
-    }
-
     // Find the corresponding custom resource for edit/archive actions
     const resource = customResources?.find((r) => r.id === entity.id)
     if (!resource) return null
@@ -244,7 +230,7 @@ export function EntitySidebarNav() {
             <SidebarMenuItem key={entity.id} className='p-0'>
               <EditableSidebarItem
                 id={entity.id}
-                name={entity.isStatic ? entity.plural : entity.plural}
+                name={entity.plural}
                 icon={renderIcon(entity.icon, entity.color)}
                 isVisible={entity.isVisible}
                 isLocked={entity.isLocked}
@@ -270,7 +256,7 @@ export function EntitySidebarNav() {
     }
 
     return visibleEntities.map((entity) => {
-      const entityActive = entity.isStatic ? isTicketsActive() : isActive(entity.apiSlug)
+      const entityActive = isActive(entity)
 
       return (
         <SidebarMenuItem key={entity.id}>

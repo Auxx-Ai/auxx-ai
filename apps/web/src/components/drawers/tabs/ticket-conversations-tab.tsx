@@ -1,25 +1,21 @@
-// apps/web/src/app/(protected)/app/tickets/_components/ticket-conversations.tsx
-
+// apps/web/src/components/drawers/tabs/ticket-conversations-tab.tsx
 'use client'
 
 import { MessagesSquare } from 'lucide-react'
+import TicketReplyBoxWithProvider from '~/app/(protected)/app/tickets/_components/ticket-reply-box'
+import { TicketReplyItem } from '~/app/(protected)/app/tickets/_components/ticket-reply-item'
 import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
-import TicketReplyBoxWithProvider from './ticket-reply-box'
-import { TicketReplyItem } from './ticket-reply-item'
-import type { Ticket } from './ticket-types'
+import type { DrawerTabProps } from '../drawer-tab-registry'
 
-/** Props for TicketConversations component */
-interface TicketConversationsProps {
-  ticketId: string
-  ticket: Ticket
-}
-
-/** Main container component for the Conversations tab */
-export function TicketConversations({ ticketId, ticket }: TicketConversationsProps) {
+/**
+ * TicketConversationsTab - conversations tab for ticket drawer
+ * Extracted from ticket-detail-drawer.tsx
+ */
+export function TicketConversationsTab({ entityInstanceId, record }: DrawerTabProps) {
   const { data: repliesData, isLoading } = api.ticket.getReplies.useQuery(
-    { ticketId },
-    { enabled: !!ticketId }
+    { ticketId: entityInstanceId },
+    { enabled: !!entityInstanceId }
   )
 
   if (isLoading) {
@@ -63,7 +59,7 @@ export function TicketConversations({ ticketId, ticket }: TicketConversationsPro
       )}
 
       <div className='px-4 pt-2 shrink-0'>
-        <TicketReplyBoxWithProvider ticket={ticket as any} onSuccess={() => {}} />
+        <TicketReplyBoxWithProvider ticket={record as any} onSuccess={() => {}} />
       </div>
     </div>
   )

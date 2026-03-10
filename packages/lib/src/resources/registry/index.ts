@@ -213,6 +213,7 @@ export type {
   DrawerActions,
   DrawerConfig,
   DrawerConfigRegistry,
+  DrawerTabCardDefinition,
   DrawerTabDefinition,
 } from './drawer-config-types'
 // Re-export entity definition resolver (server-side only)
