@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.63](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.62...auxx-v0.1.63) (2026-03-10)
+
+
+### Features
+
+* add troubleshooting and workspace documentation ([#207](https://github.com/Auxx-Ai/auxx-ai/issues/207)) ([6494633](https://github.com/Auxx-Ai/auxx-ai/commit/64946331999576fd088161860e68948df0cceefd))
+* documentation for dialog API, storage, and various UI components ([#208](https://github.com/Auxx-Ai/auxx-ai/issues/208)) ([e78508d](https://github.com/Auxx-Ai/auxx-ai/commit/e78508ddb49d32ec71653cabd60b5643c361b4f5))
+* enhance ticket dashboard and badge components ([#205](https://github.com/Auxx-Ai/auxx-ai/issues/205)) ([16f7dfc](https://github.com/Auxx-Ai/auxx-ai/commit/16f7dfc7687b79f38b461c24b69dc41df0877190))
+
 ## [0.1.62](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.61...auxx-v0.1.62) (2026-03-10)
 
 
