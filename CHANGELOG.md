@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.62](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.61...auxx-v0.1.62) (2026-03-10)
+
+
+### Features
+
+* docs added dataset, files, tasks ([#202](https://github.com/Auxx-Ai/auxx-ai/issues/202)) ([b1ec3ca](https://github.com/Auxx-Ai/auxx-ai/commit/b1ec3cabd098ebe03c1e6cc30db283949045f86c))
+* enhance app access checks and installation queries for improved… ([#201](https://github.com/Auxx-Ai/auxx-ai/issues/201)) ([2e59042](https://github.com/Auxx-Ai/auxx-ai/commit/2e59042b3f0fb8316a851575e64da5bffb2a91d1))
+* replace CustomFieldValue with FieldValue across the codebase ([#203](https://github.com/Auxx-Ai/auxx-ai/issues/203)) ([35a010c](https://github.com/Auxx-Ai/auxx-ai/commit/35a010c6977a33ba2c1f42c539f66cfa1cbae477))
+* update documentation structure and add troubleshooting guides ([#204](https://github.com/Auxx-Ai/auxx-ai/issues/204)) ([3499fc8](https://github.com/Auxx-Ai/auxx-ai/commit/3499fc8c91cb1f830dd526e5ebf2b510cfd892ad))
+* update layout and metadata for Auxx.ai documentation ([#199](https://github.com/Auxx-Ai/auxx-ai/issues/199)) ([1a8720f](https://github.com/Auxx-Ai/auxx-ai/commit/1a8720fd0674dc058f58ceac8a368fa4b90c1d72))
+
 ## [0.1.61](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.60...auxx-v0.1.61) (2026-03-09)
 
 
