@@ -1,0 +1,94 @@
+---
+title: Shopify sync problems
+description: Troubleshoot Shopify integration issues in Auxx.ai including connection failures, sync errors, and missing product or order data.
+---
+
+If your Shopify store isn't syncing correctly with Auxx.ai, use the steps below to diagnose and fix the issue.
+
+## Connection issues
+
+<Accordions type="single">
+  <Accordion title="I can't connect my Shopify store">
+    - Make sure you're entering the correct `.myshopify.com` domain
+    - Verify you're logged into Shopify as the store owner or a staff member with app installation permissions — collaborator accounts may not have sufficient access
+    - Check that your Shopify plan supports third-party app installations
+    - If you previously connected and removed the store, try the connection again from **Settings > Shopify**
+  </Accordion>
+  <Accordion title="My Shopify connection shows as inactive">
+    Go to **Settings > Shopify** and check the store status. If it shows as **Inactive**:
+
+    - Click the toggle to re-enable the integration
+    - If re-enabling fails, disconnect and reconnect the store
+    - Your Shopify store may have revoked the app's access — check your Shopify admin under **Settings > Apps and sales channels**
+  </Accordion>
+  <Accordion title="OAuth authorization failed">
+    - Clear your browser cookies and try again
+    - Make sure pop-ups aren't blocked — the OAuth flow opens a Shopify authorization page
+    - If you're using a VPN or firewall, it may be blocking the redirect. Try disabling temporarily.
+  </Accordion>
+</Accordions>
+
+## Sync errors
+
+<Accordions type="single">
+  <Accordion title="Manual sync isn't working">
+    From **Settings > Shopify**, try clicking the individual sync buttons (Products, Orders, Customers). If a sync job fails:
+
+    - Check the sync job history for error details
+    - Make sure the Shopify integration is set to **Active**
+    - Verify your Shopify store is accessible (not paused or on a frozen plan)
+    - Disconnect and reconnect the store to refresh the access token
+  </Accordion>
+  <Accordion title="Sync is running but data isn't appearing">
+    Sync jobs run as background processes. Large catalogs may take several minutes to complete.
+
+    - Check the sync job status — it may still be in progress
+    - Refresh the page after the sync completes
+    - Navigate to the Shopify section in the sidebar to browse synced data
+  </Accordion>
+  <Accordion title="Only some products/orders are syncing">
+    - Shopify API pagination means large datasets are synced in batches — wait for the sync to fully complete
+    - Draft or archived products in Shopify may not sync depending on their visibility settings
+    - Check if there are Shopify API rate limits affecting the sync (visible in error logs)
+  </Accordion>
+</Accordions>
+
+## Missing or outdated data
+
+<Accordions type="single">
+  <Accordion title="Changes in Shopify aren't reflected in Auxx.ai">
+    Real-time updates rely on Shopify webhooks. If changes aren't appearing:
+
+    - Webhooks may have been deregistered — disconnect and reconnect the store to re-register them
+    - Try a manual sync to pull the latest data
+    - Check that the integration is **Active** (inactive integrations pause webhook processing)
+  </Accordion>
+  <Accordion title="Customer emails don't match contacts in Auxx.ai">
+    Auxx.ai matches Shopify customers to contacts by email address. If a customer's email in Shopify differs from their contact email in Auxx.ai, they won't be automatically linked.
+  </Accordion>
+  <Accordion title="Deleted products still appear in Auxx.ai">
+    When products are deleted in Shopify, a webhook notifies Auxx.ai. If the webhook was missed (e.g., during downtime), run a manual product sync to reconcile the data.
+  </Accordion>
+</Accordions>
+
+## Multiple stores
+
+<Accordions type="single">
+  <Accordion title="I connected the wrong store">
+    Go to **Settings > Shopify**, click **Remove** next to the incorrect store, then connect the correct one.
+  </Accordion>
+  <Accordion title="Data from different stores is mixing together">
+    Each Shopify store connection is separate — products, orders, and customers are tagged with their source store. If data appears mixed, check that you're viewing the correct store's section.
+  </Accordion>
+</Accordions>
+
+## Still stuck?
+
+<Cards>
+  <Card title="Shopify integration" href="/help/apps/shopify">
+    Full Shopify integration setup and configuration guide.
+  </Card>
+  <Card title="Contact support" href="/help/troubleshooting/contact-support">
+    Get help from the Auxx.ai team.
+  </Card>
+</Cards>

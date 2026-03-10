@@ -1,0 +1,68 @@
+---
+title: Assignment & routing
+description: Assign tickets to team members in Auxx.ai — manual assignment, bulk assignment, and workflow-based routing.
+---
+
+Every ticket can be assigned to a team member who is responsible for resolving it. Unassigned tickets show up in the dashboard's "Unassigned" count so nothing falls through the cracks.
+
+## How assignment works
+
+Each ticket has a single assignee — one team member responsible for it. The assignee is tracked as an Actor field, meaning it references a user in your organization.
+
+When the assignee changes, Auxx.ai:
+- Records the change in the ticket's activity timeline
+- Publishes assignment events (useful for workflows and integrations)
+- Updates the dashboard metrics
+
+## Assign a ticket
+
+### From the ticket detail view
+
+1. Open a ticket
+2. Click the **Assignee** field in the sidebar
+3. Select a team member from the dropdown
+
+The dropdown shows all members of your organization.
+
+### From the ticket list
+
+1. Select one or more tickets using the checkboxes
+2. Click the **Assign** bulk action
+3. Choose a team member
+
+This is the fastest way to assign or reassign multiple tickets. See [bulk actions](/help/tickets/bulk-actions) for more.
+
+## Remove an assignment
+
+Click the assignee field and clear the selection, or set it to empty. The ticket returns to the unassigned pool.
+
+## Automate assignment with workflows
+
+For automatic routing, use [workflows](/help/ai/creating-workflows). You can create rules that automatically assign tickets based on conditions like:
+
+- **Ticket type** — route refund tickets to your billing team
+- **Priority** — assign urgent tickets to senior agents
+- **Contact** — route VIP customers to a specific team member
+- **Keywords** — assign tickets mentioning "shipping" to your logistics team
+
+Workflows give you full control over routing logic without writing code.
+
+## Tracking assignment changes
+
+Every assignment change is logged in the ticket's activity feed with:
+- Who made the change
+- Who was assigned or unassigned
+- When the change happened
+
+This gives you a complete audit trail of ticket ownership over time.
+
+## Next steps
+
+<Cards>
+  <Card title="Filtering & views" href="/help/tickets/filtering-views">
+    Filter tickets by assignee and other fields.
+  </Card>
+  <Card title="Bulk actions" href="/help/tickets/bulk-actions">
+    Assign multiple tickets at once.
+  </Card>
+</Cards>

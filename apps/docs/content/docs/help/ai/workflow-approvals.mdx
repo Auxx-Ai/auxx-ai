@@ -1,0 +1,108 @@
+---
+title: Workflow approvals
+description: Add human review steps to your Auxx.ai workflows with approval requests.
+---
+
+Approval nodes let you pause a workflow and wait for a team member to review and approve before continuing. This is essential for AI-powered automations where you want a human in the loop.
+
+## How approvals work
+
+<Steps>
+<Step>
+
+### Workflow hits approval node
+
+When a running workflow reaches a **Human Confirmation** node, execution pauses. The workflow status changes to **Waiting**.
+
+</Step>
+<Step>
+
+### Team member is notified
+
+The assigned reviewer receives an in-app notification (and optionally an email) with the approval request. The notification includes the context — what the workflow has done so far and what it wants to do next.
+
+</Step>
+<Step>
+
+### Reviewer approves or denies
+
+The reviewer opens the approval request, reviews the context (e.g., an AI-drafted reply), and clicks **Approve** or **Deny**. They can optionally add a comment explaining their decision.
+
+</Step>
+<Step>
+
+### Workflow continues
+
+- **If approved** — The workflow resumes and executes the next steps (e.g., sends the reply).
+- **If denied** — The workflow stops, or follows an alternative path if configured (e.g., routes to a human agent).
+
+</Step>
+</Steps>
+
+## Configure an approval node
+
+Add a **Human Confirmation** node in the workflow editor and configure:
+
+| Setting | Description |
+|---------|-------------|
+| **Message** | What to ask the reviewer. Can include variables from previous nodes. |
+| **Assignees** | Who can approve — specific users or groups. |
+| **Notification method** | In-app, email, or both. |
+| **Timeout** | How long to wait before the request expires (minutes, hours, or days). |
+| **Include context** | Whether to show the full workflow execution details in the request. |
+
+## Reviewing approval requests
+
+When you receive an approval request:
+
+1. Click the notification to open the approval detail.
+2. Review the context — this typically includes the conversation, any AI-generated content, and what will happen next.
+3. Optionally add a comment.
+4. Click **Approve** to continue the workflow, or **Deny** to stop it.
+
+## Timeout behavior
+
+If no one responds before the timeout expires, you can configure what happens:
+
+- **Auto-deny** — Treat the request as denied and stop the workflow
+- **Auto-approve** — Proceed automatically (use with caution)
+- **Escalate** — Notify a different user or group
+
+## Example: AI reply with approval
+
+A common pattern for customer support automation:
+
+```
+Message received
+    ↓
+AI generates draft reply
+    ↓
+Human Confirmation: "Review this AI reply before sending"
+    ↓
+├── Approved → Send the reply
+└── Denied → Assign to human agent
+```
+
+This gives your team the speed of AI with the confidence that every response has been reviewed.
+
+## Approval audit trail
+
+Every approval decision is logged with:
+
+- Who approved or denied
+- When they responded
+- Their comment (if any)
+- Response method (in-app or email)
+
+This audit trail is visible in the workflow execution history.
+
+## Next steps
+
+<Cards>
+  <Card title="Creating workflows" href="/help/ai/creating-workflows">
+    Build workflows with the visual editor.
+  </Card>
+  <Card title="Workflows overview" href="/help/ai/workflows-overview">
+    View and manage all your workflows.
+  </Card>
+</Cards>

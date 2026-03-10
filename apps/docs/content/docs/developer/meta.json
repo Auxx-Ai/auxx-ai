@@ -1,3 +1,7 @@
 {
-  "pages": ["guides", "api-reference", "changelog"]
+  "title": "Developers",
+  "icon": "Code",
+  "description": "Build apps for the Auxx.ai platform",
+  "root": true,
+  "pages": ["index", "---Guides---", "creating-an-app"]
 }

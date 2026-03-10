@@ -1,0 +1,183 @@
+---
+title: Creating an App
+description: Learn how to build your first app with the Auxx SDK.
+---
+
+Build your first Auxx app — from scaffolding to seeing it run inside the platform.
+
+<Steps>
+<Step>
+
+### Create a developer account
+
+Head over to the Developer Dashboard and sign in with your Auxx account.
+
+Create a developer account. Set the name to your company or organization name.
+
+</Step>
+<Step>
+
+### Create a new app
+
+From the dashboard, create a new app. Fill in the app name and ensure it has a unique slug.
+
+The slug is used as your project identifier and cannot be changed later.
+
+</Step>
+<Step>
+
+### Initialize your app
+
+Open your terminal and run:
+
+```bash
+auxx init my-first-app
+```
+
+This scaffolds a new project from the Auxx app template with everything you need to get started.
+
+<Callout>
+  Your app slug can be found on the app details page in the Developer Dashboard.
+</Callout>
+
+</Step>
+<Step>
+
+### Install dependencies
+
+Navigate into the project folder and install dependencies:
+
+```bash
+cd my-first-app
+npm install
+```
+
+</Step>
+<Step>
+
+### Log in to the CLI
+
+Authenticate the CLI with your developer account:
+
+```bash
+auxx login
+```
+
+Verify you're logged in:
+
+```bash
+auxx whoami
+```
+
+</Step>
+<Step>
+
+### Start the development server
+
+Start your app in development mode:
+
+```bash
+auxx dev
+```
+
+The CLI will ask you to choose a workspace. Once selected, you'll be redirected to install the app.
+
+<Callout>
+  We recommend creating a separate workspace for development rather than using your production workspace.
+</Callout>
+
+</Step>
+<Step>
+
+### Install your app
+
+Follow the CLI prompt to install your app in the chosen workspace. This makes your app's actions, widgets, and workflow blocks available inside Auxx.
+
+</Step>
+<Step>
+
+### Try out your app
+
+Head to any ticket record in Auxx. Click the actions menu — you should see your app's "Hello World" action listed.
+
+Click it to open a dialog rendered by your app.
+
+Congratulations — your app is running inside Auxx!
+
+</Step>
+<Step>
+
+### Make changes
+
+Open `src/hello-world-dialog.tsx` in your editor. Try changing the text or adding a new component:
+
+```tsx title="src/hello-world-dialog.tsx"
+import { TextBlock, Button, Badge, Separator } from '@auxx/sdk/client'
+
+export function HelloWorldDialog({ recordId, hideDialog }) {
+  return (
+    <>
+      <TextBlock align="left">Record: {recordId}</TextBlock>
+      <Badge>Live</Badge>
+      <Separator />
+      <Button label="Close" onClick={hideDialog} />
+    </>
+  )
+}
+```
+
+Save the file, then close and re-open the dialog in Auxx. Your changes appear immediately.
+
+</Step>
+<Step>
+
+### Explore the project structure
+
+Here's what the template includes:
+
+<Files>
+  <Folder name="src" defaultOpen>
+    <File name="app.tsx" />
+    <File name="app.settings.ts" />
+    <File name="hello-world-action.tsx" />
+    <File name="hello-world-dialog.tsx" />
+    <File name="contact-form-action.tsx" />
+    <File name="send-email.workflow.tsx" />
+    <File name="send-email.server.ts" />
+    <Folder name="events">
+      <File name="connection-added.event.ts" />
+    </Folder>
+    <Folder name="webhooks">
+      <File name="example.webhook.ts" />
+    </Folder>
+  </Folder>
+  <File name="package.json" />
+  <File name="tsconfig.json" />
+</Files>
+
+Key files:
+- **`app.tsx`** — Main entry point. Exports the `app` config object and `App` component.
+- **`app.settings.ts`** — Settings schema (auto-generates UI in the platform).
+- **`*.server.ts`** — Server-only code (runs in Lambda, not the browser).
+- **`*.workflow.tsx`** — Custom workflow blocks.
+- **`events/*.event.ts`** — Connection lifecycle handlers.
+- **`webhooks/*.webhook.ts`** — Incoming webhook handlers.
+
+</Step>
+</Steps>
+
+## Next steps
+
+Now that your app is running, explore the rest of the developer docs:
+
+<Cards>
+  <Card title="app.ts" href="/developer/app-ts">
+    Understand the full App interface and all available surfaces.
+  </Card>
+  <Card title="showDialog" href="/developer/show-dialog">
+    Learn how to create rich dialog UIs with SDK components.
+  </Card>
+  <Card title="Querying Data" href="/developer/querying-data">
+    Fetch and filter records from inside your app.
+  </Card>
+</Cards>

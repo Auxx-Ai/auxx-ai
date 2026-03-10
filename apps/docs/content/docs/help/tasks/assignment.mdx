@@ -1,0 +1,78 @@
+---
+title: Task assignment
+description: Assign tasks to team members, set deadlines and priorities, and link tasks to contacts, tickets, and other records.
+---
+
+Tasks can be assigned to one or more team members and linked to any record in your workspace.
+
+## Assign team members
+
+There are two ways to assign a task:
+
+### @mention in the title
+
+Type **@** followed by a team member's name in the task title. They are automatically added as an assignee. You can mention multiple members.
+
+### Assignee button
+
+Click the **Assignee** button in the create/edit dialog to open the member picker. Select one or more team members from the list.
+
+Assigned members appear as avatars on the task row in the task list.
+
+## Set a deadline
+
+### Smart date detection
+
+The fastest way to set a deadline is to write it naturally in the task title:
+
+- "Call client **tomorrow** about the proposal" → deadline set to tomorrow
+- "Send report by **next Friday**" → deadline set to next Friday
+- "Review PR **in 3 days**" → deadline set to 3 days from now
+- "Plan sprint **end of month**" → deadline set to the last day of the month
+
+The parser recognizes dozens of patterns including written numbers ("in **two** weeks"), weekday names ("this **Wednesday**"), and informal expressions ("**asap**", "**soon**", "**later**").
+
+### Date picker
+
+Click the **Due date** button in the task dialog to open the date picker. Select a specific date and optionally a time.
+
+Once you manually pick a date, the auto-detection from the title is disabled for that task. Click the **X** on the date chip to clear the deadline entirely.
+
+## Set a priority
+
+Tasks support three priority levels:
+
+| Priority | Use for |
+|----------|---------|
+| **High** | Urgent items that need immediate attention |
+| **Medium** | Important but not time-critical |
+| **Low** | Nice-to-have, can wait |
+
+Priority is optional. Tasks without a priority are treated as unranked.
+
+## Link to records
+
+Click **Link record** in the task dialog to connect the task to one or more records. You can link to:
+
+- **Contacts** — Customer records
+- **Tickets** — Support tickets
+- **Custom entities** — Any custom record type in your workspace
+
+Linked records appear as badges on the task row in the global task list. When viewing a record's **Tasks** tab, only tasks linked to that specific record are shown.
+
+### Create tasks from a record
+
+Open any record's detail view and go to the **Tasks** tab. Click **Create** to create a new task that is automatically linked to that record.
+
+This is useful for tracking follow-ups — for example, creating a task "Send invoice" directly from a contact's profile.
+
+## Next steps
+
+<Cards>
+  <Card title="Filtering tasks" href="/help/tasks/filtering">
+    Filter, sort, and group your task list.
+  </Card>
+  <Card title="Tasks overview" href="/help/tasks/overview">
+    Learn the basics of task management.
+  </Card>
+</Cards>

@@ -1,0 +1,24 @@
+{
+  "title": "Help Center",
+  "icon": "BookOpen",
+  "description": "Guides and reference for using Auxx.ai",
+  "root": true,
+  "pages": [
+    "index",
+    "---Reference Documents---",
+    "getting-started",
+    "workspace",
+    "tickets",
+    "apps",
+    "ai",
+    "datasets",
+    "files",
+    "tasks",
+    "custom-entities",
+    "billing",
+    "account",
+    "troubleshooting",
+    "---Guides---",
+    "guides"
+  ]
+}

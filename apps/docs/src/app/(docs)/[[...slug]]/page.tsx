@@ -11,11 +11,12 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
 
   const MDXContent = page.data.body
   const isIndex = !params.slug
+  const isRootIndex = params.slug?.length === 1
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
-      {!isIndex && <DocsTitle>{page.data.title}</DocsTitle>}
-      {!isIndex && <DocsDescription>{page.data.description}</DocsDescription>}
+    <DocsPage toc={page.data.toc} full={page.data.full} tableOfContent={{ enabled: !isRootIndex }}>
+      {!isIndex && !isRootIndex && <DocsTitle>{page.data.title}</DocsTitle>}
+      {!isIndex && !isRootIndex && <DocsDescription>{page.data.description}</DocsDescription>}
       <DocsBody>
         <MDXContent
           components={getMDXComponents({

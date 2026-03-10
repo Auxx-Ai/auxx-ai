@@ -1,0 +1,13 @@
+{
+  "title": "Tickets",
+  "pages": [
+    "overview",
+    "statuses",
+    "assignment",
+    "filtering-views",
+    "bulk-actions",
+    "details",
+    "settings",
+    "importing"
+  ]
+}

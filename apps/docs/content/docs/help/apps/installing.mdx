@@ -1,0 +1,58 @@
+---
+title: Installing an app
+description: Install apps from the Auxx.ai marketplace to add integrations and extend your workspace with new features.
+---
+
+Install apps from the marketplace to connect third-party services and add new features to your workspace.
+
+<Callout type="info" title="Admin required">
+  Only organization admins and owners can install apps.
+</Callout>
+
+## Install an app
+
+1. Go to **Settings > Apps**
+2. Browse or search for the app you want
+3. Click the app to view its details, including a description, required permissions, and developer information
+4. Click **Install**
+5. If the app has multiple versions, select the version from the dropdown
+6. The app is installed and appears in your **Installed Apps** list
+
+After installation, you may need to set up a connection (API key or OAuth) before the app is fully functional. See [Managing installed apps](/help/apps/managing) for details.
+
+## Permissions
+
+When you install an app, it declares the permissions (scopes) it needs to function. Review these before installing — they describe what data the app can access and what actions it can perform within your workspace.
+
+## OAuth apps
+
+Some apps require OAuth authorization to connect to an external service. After installing:
+
+1. Go to **Settings > Apps > Installed** and click the app
+2. Open the **Connections** tab
+3. Click **Add Connection**
+4. You'll be redirected to the external service to authorize access
+5. After authorizing, you're redirected back to Auxx.ai with the connection active
+
+The OAuth token is stored securely and used when the app makes API calls on your behalf.
+
+## Secret-based apps
+
+Other apps require an API key or secret instead of OAuth:
+
+1. Go to **Settings > Apps > Installed** and click the app
+2. Open the **Connections** tab
+3. Click **Add Connection**
+4. Enter your API key or credentials
+5. Click **Save**
+
+## Next steps
+
+<Cards>
+  <Card title="Managing installed apps" href="/help/apps/managing">
+    Configure connections, update settings, and uninstall apps.
+  </Card>
+  <Card title="Apps overview" href="/help/apps/overview">
+    Browse the marketplace and learn about app categories.
+  </Card>
+</Cards>

@@ -1,0 +1,105 @@
+---
+title: Importing tickets
+description: Bulk import tickets into Auxx.ai from a CSV file — map columns, resolve values, preview the plan, and execute.
+---
+
+Import tickets in bulk from a CSV file using the import wizard. The wizard guides you through uploading your file, mapping columns to ticket fields, resolving values, and executing the import.
+
+## Import workflow
+
+<Steps>
+<Step>
+
+### Upload your CSV file
+
+Select a CSV file to import. The file is uploaded in chunks for reliability — large files are handled automatically. The import wizard reads the headers and row count from your file.
+
+</Step>
+<Step>
+
+### Map columns to fields
+
+Match each CSV column to a ticket field. For each column, choose one of:
+
+- **Map to field** — maps the column to a ticket field (title, status, priority, type, etc.)
+- **Map to relationship** — maps to a relationship field (e.g., contact)
+- **Skip** — ignores the column
+
+The wizard auto-maps columns when the column name matches a field name.
+
+</Step>
+<Step>
+
+### Resolve values
+
+For fields with fixed options (like status, priority, and type), the wizard shows you each unique value from your CSV and lets you map it to the correct option in Auxx.ai.
+
+For example, if your CSV has a status column with "New", "In Process", and "Done", you'd map those to Open, In Progress, and Resolved respectively.
+
+For relationship fields, the wizard attempts to match values by display name. If a match isn't found, you can create a new record or skip the value.
+
+</Step>
+<Step>
+
+### Review the import plan
+
+Before executing, the wizard generates a plan showing:
+
+- **Create** — new tickets that will be created
+- **Update** — existing tickets that will be updated (matched by a unique field)
+- **Skip** — rows that will be skipped (duplicates or invalid data)
+
+Review the estimated counts to confirm the import looks correct.
+
+</Step>
+<Step>
+
+### Execute the import
+
+Click **Execute** to start the import. The job runs in the background — you can navigate away and check progress later.
+
+</Step>
+</Steps>
+
+## Import job statuses
+
+| Status | Description |
+|--------|-------------|
+| **Uploading** | File chunks are being uploaded |
+| **Ingesting** | Processing and hashing the data |
+| **Waiting** | Ready for column mapping |
+| **Planning** | Generating the import plan |
+| **Ready** | Plan complete, ready to execute |
+| **Executing** | Import in progress |
+| **Completed** | Import finished successfully |
+| **Failed** | An error occurred during import |
+| **Canceled** | Import was cancelled by the user |
+
+## After the import
+
+Once complete, you'll see a summary with:
+
+- Number of tickets created
+- Number of tickets updated
+- Number of rows skipped
+- Number of rows that failed (with per-row error details)
+
+View your import history from **Settings > Import History** to review past imports and their results.
+
+## Tips
+
+- **Column names matter** — name your CSV columns to match ticket field names for automatic mapping
+- **Required fields** — title and contact are required for every ticket
+- **Status values** — use exact status names (Open, In Progress, Resolved, etc.) for automatic matching
+- **Large files** — the chunked upload handles files of any size reliably
+
+## Next steps
+
+<Cards>
+  <Card title="Tickets overview" href="/help/tickets/overview">
+    Learn the basics of ticket management.
+  </Card>
+  <Card title="Import history" href="/help/account/import-history">
+    View all past imports and their results.
+  </Card>
+</Cards>

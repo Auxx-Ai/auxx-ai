@@ -1,0 +1,89 @@
+---
+title: Datasets overview
+description: Datasets store and index documents for AI-powered semantic search and knowledge retrieval in Auxx.ai.
+---
+
+Datasets are collections of documents that Auxx.ai processes and indexes for AI-powered search. They power the Retrieval-Augmented Generation (RAG) pipeline — when your AI workflows need context, they query datasets to find relevant information from your uploaded documents.
+
+Access datasets from **Resources > Datasets** in the sidebar.
+
+![Datasets overview page showing stats cards, status filter, and dataset grid](/images/datasets-page.png)
+
+## How datasets work
+
+1. You create a dataset and upload documents (PDFs, text files, markdown, etc.)
+2. Auxx.ai extracts the text content from each document
+3. The text is split into smaller segments (chunks) for better search accuracy
+4. Each segment is converted into a vector embedding using an AI model
+5. When a workflow or search query runs, Auxx.ai finds the most relevant segments and returns them as context
+
+## Overview page
+
+The datasets overview page shows all your datasets with summary statistics at the top:
+
+| Stat | Description |
+|------|-------------|
+| **Total Datasets** | Number of datasets, with active/processing breakdown |
+| **Total Documents** | Combined document count across all datasets |
+| **Storage Used** | Total storage consumed by all documents |
+| **Processing Issues** | Number of documents with processing errors |
+
+Each dataset card displays:
+
+- Dataset name and status badge (active, inactive, processing, error)
+- Document count
+- Last updated time
+- Total size
+- Creator name
+
+Use the **Status** dropdown to filter by dataset status and the **Search** bar to find datasets by name.
+
+## Dataset statuses
+
+| Status | Description |
+|--------|-------------|
+| **Active** | Dataset is available for queries and searches |
+| **Inactive** | Dataset exists but is excluded from searches |
+| **Processing** | Documents are being indexed |
+| **Error** | One or more documents failed to process |
+
+## Dataset detail page
+
+Click a dataset to open its detail page. The header shows key metrics — status, document count, storage used, creation date, and the configured embedding model.
+
+![Dataset detail page showing Documents tab with status, segments, and document list](/images/datasets-detail.png)
+
+The detail page has three tabs:
+
+| Tab | Purpose |
+|-----|---------|
+| **Documents** | Upload, view, and manage documents in the dataset |
+| **Search** | Test search queries against the dataset |
+| **Settings** | Configure chunking, embedding, and search options |
+
+## Supported document types
+
+| Type | Extensions |
+|------|-----------|
+| **PDF** | `.pdf` |
+| **Word** | `.docx` |
+| **Plain text** | `.txt` |
+| **HTML** | `.html` |
+| **Markdown** | `.md` |
+| **CSV** | `.csv` |
+| **JSON** | `.json` |
+| **XML** | `.xml` |
+
+## Next steps
+
+<Cards>
+  <Card title="Creating a dataset" href="/help/datasets/creating">
+    Create a dataset and upload documents.
+  </Card>
+  <Card title="Dataset settings" href="/help/datasets/settings">
+    Configure chunking, embedding, and search options.
+  </Card>
+  <Card title="Searching a dataset" href="/help/datasets/searching">
+    Test queries with vector, text, and hybrid search.
+  </Card>
+</Cards>
