@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.64](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.63...auxx-v0.1.64) (2026-03-10)
+
+
+### Features
+
+* enhance developer documentation and add redirect for missing slugs ([#209](https://github.com/Auxx-Ai/auxx-ai/issues/209)) ([67368dc](https://github.com/Auxx-Ai/auxx-ai/commit/67368dc9b18d726540de7d35d38fdd4f8b9b4d59))
+
 ## [0.1.63](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.62...auxx-v0.1.63) (2026-03-10)
 
 
