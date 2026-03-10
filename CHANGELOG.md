@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.66](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.65...auxx-v0.1.66) (2026-03-10)
+
+
+### Features
+
+* rename  integration to channels ([#214](https://github.com/Auxx-Ai/auxx-ai/issues/214)) ([975db36](https://github.com/Auxx-Ai/auxx-ai/commit/975db362c2ee222e8a0f3807aa6b729a68207993))
+
 ## [0.1.65](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.64...auxx-v0.1.65) (2026-03-10)
 
 
