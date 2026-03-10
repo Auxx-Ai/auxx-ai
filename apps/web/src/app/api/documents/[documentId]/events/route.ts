@@ -126,21 +126,9 @@ export async function GET(
 
         logger.info('Subscribed to document events', { documentId, handlerId })
 
-        // Now send initial connected event with current document status
-        send({
-          event: DocumentEventType.CONNECTED,
-          documentId,
-          datasetId: document.datasetId,
-          timestamp: new Date().toISOString(),
-          data: {
-            status: document.status,
-            title: document.title,
-          },
-        })
-
-        // If document is already in terminal state, send special event and close after delay
-        // Using 'already_indexed' event (not PROCESSING_COMPLETED) to prevent reconnection loops
-        // Delay allows client to receive the event before stream closes
+        // If document is already in terminal state, send the terminal event directly and close.
+        // Don't send a connected event with terminal status first — that would cause
+        // the client to fire failure/completion callbacks twice (once for connected, once for the event).
         if (document.status === 'INDEXED') {
           send({
             event: 'already_indexed',
@@ -167,6 +155,18 @@ export async function GET(
           setTimeout(() => cleanup(), 1000)
           return
         }
+
+        // Send initial connected event with current document status (non-terminal only)
+        send({
+          event: DocumentEventType.CONNECTED,
+          documentId,
+          datasetId: document.datasetId,
+          timestamp: new Date().toISOString(),
+          data: {
+            status: document.status,
+            title: document.title,
+          },
+        })
 
         // Heartbeat to keep connection alive (every 15 seconds)
         heartbeatInterval = setInterval(() => {
