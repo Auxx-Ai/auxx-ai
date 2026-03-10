@@ -355,8 +355,11 @@ export class UnifiedCrudHandler {
    * @param recordIds - Array of RecordIds to delete
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async bulkDelete(recordIds: RecordId[], options: CrudOptions = {}): Promise<{ count: number }> {
-    if (recordIds.length === 0) return { count: 0 }
+  async bulkDelete(
+    recordIds: RecordId[],
+    options: CrudOptions = {}
+  ): Promise<{ count: number; errors: Array<{ recordId: RecordId; message: string }> }> {
+    if (recordIds.length === 0) return { count: 0, errors: [] }
     const { entityDefinitionId } = parseRecordId(recordIds[0]!)
     await this.warmCache(entityDefinitionId)
     return bulkDeleteEntities(this.getMutationContext(), recordIds, options)

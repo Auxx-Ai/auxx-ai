@@ -21,7 +21,6 @@ import {
   CommentMention,
   CommentReaction,
   CustomField,
-  CustomFieldValue,
   Dataset,
   DatasetSearchQuery,
   Document,
@@ -586,27 +585,11 @@ export const customFieldRelations = relations(CustomField, ({ one, many }) => ({
     fields: [CustomField.entityDefinitionId],
     references: [EntityDefinition.id],
   }),
-  fieldValues: many(CustomFieldValue),
-  // New typed field values (FieldValue table)
-  typedFieldValues: many(FieldValue),
-}))
-
-export const customFieldValueRelations = relations(CustomFieldValue, ({ one }) => ({
-  field: one(CustomField, {
-    fields: [CustomFieldValue.fieldId],
-    references: [CustomField.id],
-  }),
-  // Relation to EntityInstance for custom entity values
-  // entityId is polymorphic but this enables the EntityInstance.values relation
-  entityInstance: one(EntityInstance, {
-    fields: [CustomFieldValue.entityId],
-    references: [EntityInstance.id],
-  }),
+  fieldValues: many(FieldValue),
 }))
 
 /**
  * FieldValue relations - typed field value storage
- * This is the new storage format replacing CustomFieldValue JSONB
  */
 export const fieldValueRelations = relations(FieldValue, ({ one }) => ({
   field: one(CustomField, {
@@ -663,10 +646,8 @@ export const entityInstanceRelations = relations(EntityInstance, ({ one, many })
     fields: [EntityInstance.createdById],
     references: [User.id],
   }),
-  // Custom field values for this instance (legacy JSONB)
-  values: many(CustomFieldValue),
-  // New typed field values
-  typedValues: many(FieldValue),
+  // Field values for this instance
+  values: many(FieldValue),
   // Group members (when this instance IS a group with resourceType: 'entity_group')
   groupMembers: many(EntityGroupMember),
 }))

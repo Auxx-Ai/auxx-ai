@@ -19,6 +19,25 @@ import { BaseType } from './types'
 const logger = createScopedLogger('resource-fetcher')
 
 /**
+ * Extract the actual value from a FieldValue row's typed columns.
+ * FieldValue stores data in typed columns (valueText, valueNumber, etc.)
+ * rather than a single JSONB column.
+ */
+function extractTypedFieldValue(fv: Record<string, any>): any {
+  return (
+    fv.valueText ??
+    fv.valueNumber ??
+    fv.valueBoolean ??
+    fv.valueDate ??
+    fv.valueJson ??
+    fv.optionId ??
+    fv.relatedEntityId ??
+    fv.actorId ??
+    null
+  )
+}
+
+/**
  * Enrich a single resource with virtual fields
  * Centralized version of find.ts's addContactVirtualFields()
  *
@@ -201,12 +220,11 @@ export async function fetchResourceById(
       const fieldValues: Record<string, any> = {}
 
       // Extract field values from the values relation
-      // The 'values' array contains CustomFieldValue entries with a 'field' relation
+      // The 'values' array contains FieldValue entries with a 'field' relation
       if (instance.values && Array.isArray(instance.values)) {
         for (const value of instance.values as any[]) {
-          // Use field.name as the key (apiName doesn't exist in CustomField schema)
           if (value.field?.name) {
-            fieldValues[value.field.name] = value.value
+            fieldValues[value.field.name] = extractTypedFieldValue(value)
           }
         }
       }
@@ -532,7 +550,7 @@ async function fetchHasManyRelationship(
     )
   }
 
-  // For custom entities, query via CustomFieldValue with cached field definitions
+  // For custom entities, query via FieldValue with cached field definitions
   return fetchHasManyCustomEntity(
     parentRecordId,
     reciprocalField,
@@ -564,9 +582,9 @@ async function fetchHasManySystemResource(
  * Fetch has_many for custom entities
  *
  * SIMPLIFIED: Uses cached field definitions instead of joining to field table.
- * Query CustomFieldValue where:
+ * Query FieldValue where:
  * - fieldId = reciprocal relationship field
- * - value->>'data' = parent entity ID (values are wrapped in { data: ... })
+ * - relatedEntityId = parent entity ID
  */
 async function fetchHasManyCustomEntity(
   parentRecordId: string,
@@ -580,17 +598,14 @@ async function fetchHasManyCustomEntity(
     return []
   }
 
-  // Query entity instances that have this parent as their relationship value
-  // Note: The relation is named 'entityInstance' in the schema (see customFieldValueRelations)
-  // Note: CustomFieldValue.value is JSONB stored as { data: actualValue }
-  // Use ->>'data' to extract the actual value for comparison
-  const results = await db.query.CustomFieldValue.findMany({
-    where: (cfv, { and }) =>
-      and(eq(cfv.fieldId, reciprocalField.id!), sql`${cfv.value}->>'data' = ${parentRecordId}`),
+  // Query FieldValue rows where the relationship field points to the parent
+  const results = await db.query.FieldValue.findMany({
+    where: (fv, { and }) =>
+      and(eq(fv.fieldId, reciprocalField.id!), eq(fv.relatedEntityId, parentRecordId)),
     with: {
       entityInstance: {
         with: {
-          values: true, // Just values, no nested field join - we use cached definitions
+          values: true, // FieldValue rows for this instance
         },
       },
     },
@@ -610,9 +625,7 @@ async function fetchHasManyCustomEntity(
       for (const value of instance.values ?? []) {
         const fieldName = fieldIdToName.get(value.fieldId)
         if (fieldName) {
-          // Extract actual value from { data: ... } wrapper
-          const rawValue = value.value as any
-          fieldValues[fieldName] = rawValue?.data ?? rawValue
+          fieldValues[fieldName] = extractTypedFieldValue(value)
         }
       }
 

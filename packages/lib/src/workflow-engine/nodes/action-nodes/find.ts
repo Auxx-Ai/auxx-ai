@@ -688,7 +688,7 @@ export class FindProcessor extends BaseNodeProcessor {
 
   /**
    * Execute custom entity query against EntityInstance table
-   * Field values are stored in CustomFieldValue table (not on EntityInstance)
+   * Field values are stored in FieldValue table (not on EntityInstance)
    */
   private async executeCustomEntityQuery(
     resourceType: string,

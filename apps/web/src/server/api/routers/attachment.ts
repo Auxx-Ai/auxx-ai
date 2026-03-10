@@ -74,14 +74,14 @@ export const attachmentRouter = createTRPCRouter({
     }),
 
   /**
-   * Create attachment for custom field value
+   * Create attachment for field value
    * Supports either fileId (for FolderFile) or assetId (for MediaAsset)
    */
   createForCustomField: protectedProcedure
     .input(
       z
         .object({
-          customFieldValueId: z.string(),
+          fieldValueId: z.string(),
           fileId: z.string().optional(),
           assetId: z.string().optional(),
           role: z.string().default('ATTACHMENT'),
@@ -98,8 +98,8 @@ export const attachmentRouter = createTRPCRouter({
       )
 
       return await attachmentService.create({
-        entityType: 'CUSTOM_FIELD_VALUE',
-        entityId: input.customFieldValueId,
+        entityType: 'FIELD_VALUE',
+        entityId: input.fieldValueId,
         role: input.role as any,
         fileId: input.fileId,
         assetId: input.assetId,

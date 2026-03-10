@@ -54,7 +54,7 @@ export function FileInputField() {
   const entityId = useMemo(() => `temp-custom-field-${crypto.randomUUID()}`, [])
 
   /**
-   * Ensure CustomFieldValue exists and return its ID.
+   * Ensure FieldValue exists and return its ID.
    * Creates one with empty value if it doesn't exist yet.
    */
   const ensureValueId = useCallback(async (): Promise<string> => {
@@ -63,7 +63,7 @@ export function FileInputField() {
     const result = await commitValueAsync({})
 
     if (!result?.id) {
-      throw new Error('Failed to create CustomFieldValue - no ID returned')
+      throw new Error('Failed to create FieldValue - no ID returned')
     }
 
     return result.id
@@ -87,7 +87,7 @@ export function FileInputField() {
       const results = await Promise.all(
         deduped.map((item) =>
           createAttachment.mutateAsync({
-            customFieldValueId: valueId,
+            fieldValueId: valueId,
             fileId: item.type === 'file' ? item.id : undefined,
             assetId: item.type === 'asset' ? item.id : undefined,
             role: 'ATTACHMENT',
@@ -101,7 +101,7 @@ export function FileInputField() {
   )
 
   /**
-   * Save attachment IDs to CustomFieldValue
+   * Save attachment IDs to FieldValue
    */
   const saveAttachments = useCallback(
     async (newIds: string[]) => {

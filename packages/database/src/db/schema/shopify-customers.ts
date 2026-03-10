@@ -58,6 +58,7 @@ export const shopify_customers = pgTable(
       }),
     entityInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
       onUpdate: 'cascade',
+      onDelete: 'set null',
     }),
   },
   (table) => [

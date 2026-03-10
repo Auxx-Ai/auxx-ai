@@ -1,39 +1,39 @@
 // packages/lib/src/custom-fields/__tests__/normalize-examples.test.ts
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import { normalizeCustomFieldValue } from '../custom-field-service'
+import { normalizeFieldValue } from '../custom-field-service'
 
 /**
- * Test examples for normalizeCustomFieldValue function
+ * Test examples for normalizeFieldValue function
  * These tests demonstrate the normalization behavior for different field types
  */
 
-describe('normalizeCustomFieldValue', () => {
+describe('normalizeFieldValue', () => {
   describe('CHECKBOX type', () => {
     const field = { type: FieldTypeEnum.CHECKBOX, name: 'testCheckbox' }
 
     it('should parse string "true" to boolean true', () => {
-      const result = normalizeCustomFieldValue('true', field)
+      const result = normalizeFieldValue('true', field)
       expect(result).toEqual({ data: true })
     })
 
     it('should parse string "false" to boolean false', () => {
-      const result = normalizeCustomFieldValue('false', field)
+      const result = normalizeFieldValue('false', field)
       expect(result).toEqual({ data: false })
     })
 
     it('should parse number 1 to boolean true', () => {
-      const result = normalizeCustomFieldValue(1, field)
+      const result = normalizeFieldValue(1, field)
       expect(result).toEqual({ data: true })
     })
 
     it('should parse number 0 to boolean false', () => {
-      const result = normalizeCustomFieldValue(0, field)
+      const result = normalizeFieldValue(0, field)
       expect(result).toEqual({ data: false })
     })
 
     it('should unwrap legacy {"data": true} format', () => {
-      const result = normalizeCustomFieldValue({ data: true }, field)
+      const result = normalizeFieldValue({ data: true }, field)
       expect(result).toEqual({ data: true })
     })
   })
@@ -51,23 +51,23 @@ describe('normalizeCustomFieldValue', () => {
     }
 
     it('should accept valid option value', () => {
-      const result = normalizeCustomFieldValue('opt1', field)
+      const result = normalizeFieldValue('opt1', field)
       expect(result).toEqual({ data: 'opt1' })
     })
 
     it('should accept valid option by label', () => {
-      const result = normalizeCustomFieldValue('Option 1', field)
+      const result = normalizeFieldValue('Option 1', field)
       expect(result).toEqual({ data: 'opt1' })
     })
 
     it('should throw error for invalid option', () => {
-      expect(() => normalizeCustomFieldValue('invalid', field)).toThrow(
+      expect(() => normalizeFieldValue('invalid', field)).toThrow(
         'Invalid value for field "testSelect"'
       )
     })
 
     it('should unwrap legacy {"data": "opt1"} format', () => {
-      const result = normalizeCustomFieldValue({ data: 'opt1' }, field)
+      const result = normalizeFieldValue({ data: 'opt1' }, field)
       expect(result).toEqual({ data: 'opt1' })
     })
   })
@@ -86,23 +86,23 @@ describe('normalizeCustomFieldValue', () => {
     }
 
     it('should accept array of valid values', () => {
-      const result = normalizeCustomFieldValue(['tag1', 'tag2'], field)
+      const result = normalizeFieldValue(['tag1', 'tag2'], field)
       expect(result).toEqual({ data: ['tag1', 'tag2'] })
     })
 
     it('should parse comma-separated string to array', () => {
-      const result = normalizeCustomFieldValue('tag1, tag2', field)
+      const result = normalizeFieldValue('tag1, tag2', field)
       expect(result).toEqual({ data: ['tag1', 'tag2'] })
     })
 
     it('should throw error for invalid values', () => {
-      expect(() => normalizeCustomFieldValue(['tag1', 'invalid'], field)).toThrow(
+      expect(() => normalizeFieldValue(['tag1', 'invalid'], field)).toThrow(
         'Invalid values for field "testMultiSelect"'
       )
     })
 
     it('should unwrap legacy {"data": ["tag1"]} format', () => {
-      const result = normalizeCustomFieldValue({ data: ['tag1'] }, field)
+      const result = normalizeFieldValue({ data: ['tag1'] }, field)
       expect(result).toEqual({ data: ['tag1'] })
     })
   })
@@ -111,23 +111,23 @@ describe('normalizeCustomFieldValue', () => {
     const field = { type: FieldTypeEnum.NUMBER, name: 'testNumber' }
 
     it('should accept number values', () => {
-      const result = normalizeCustomFieldValue(123, field)
+      const result = normalizeFieldValue(123, field)
       expect(result).toEqual({ data: 123 })
     })
 
     it('should parse string numbers', () => {
-      const result = normalizeCustomFieldValue('123.45', field)
+      const result = normalizeFieldValue('123.45', field)
       expect(result).toEqual({ data: 123.45 })
     })
 
     it('should throw error for invalid numbers', () => {
-      expect(() => normalizeCustomFieldValue('abc', field)).toThrow(
+      expect(() => normalizeFieldValue('abc', field)).toThrow(
         'Invalid NUMBER value for field "testNumber"'
       )
     })
 
     it('should unwrap legacy {"data": 123} format', () => {
-      const result = normalizeCustomFieldValue({ data: 123 }, field)
+      const result = normalizeFieldValue({ data: 123 }, field)
       expect(result).toEqual({ data: 123 })
     })
   })
@@ -137,17 +137,17 @@ describe('normalizeCustomFieldValue', () => {
 
     it('should accept Date objects', () => {
       const date = new Date('2024-01-15')
-      const result = normalizeCustomFieldValue(date, field)
+      const result = normalizeFieldValue(date, field)
       expect(result.data).toBe(date.toISOString())
     })
 
     it('should parse valid date strings', () => {
-      const result = normalizeCustomFieldValue('2024-01-15', field)
+      const result = normalizeFieldValue('2024-01-15', field)
       expect(result.data).toBe(new Date('2024-01-15').toISOString())
     })
 
     it('should throw error for invalid dates', () => {
-      expect(() => normalizeCustomFieldValue('invalid-date', field)).toThrow(
+      expect(() => normalizeFieldValue('invalid-date', field)).toThrow(
         'Invalid DATE value for field "testDate"'
       )
     })
@@ -157,17 +157,17 @@ describe('normalizeCustomFieldValue', () => {
     const field = { type: FieldTypeEnum.TAGS, name: 'testTags' }
 
     it('should accept array of tags', () => {
-      const result = normalizeCustomFieldValue(['tag1', 'tag2'], field)
+      const result = normalizeFieldValue(['tag1', 'tag2'], field)
       expect(result).toEqual({ data: ['tag1', 'tag2'] })
     })
 
     it('should parse comma-separated string', () => {
-      const result = normalizeCustomFieldValue('tag1, tag2, tag3', field)
+      const result = normalizeFieldValue('tag1, tag2, tag3', field)
       expect(result).toEqual({ data: ['tag1', 'tag2', 'tag3'] })
     })
 
     it('should trim whitespace from tags', () => {
-      const result = normalizeCustomFieldValue(['  tag1  ', '  tag2  '], field)
+      const result = normalizeFieldValue(['  tag1  ', '  tag2  '], field)
       expect(result).toEqual({ data: ['tag1', 'tag2'] })
     })
   })
@@ -183,13 +183,13 @@ describe('normalizeCustomFieldValue', () => {
         postalCode: '10001',
         country: 'USA',
       }
-      const result = normalizeCustomFieldValue(address, field)
+      const result = normalizeFieldValue(address, field)
       expect(result).toEqual({ data: address })
     })
 
     it('should fill missing fields with empty strings', () => {
       const address = { city: 'New York' }
-      const result = normalizeCustomFieldValue(address, field)
+      const result = normalizeFieldValue(address, field)
       expect(result.data).toEqual({
         street: '',
         city: 'New York',
@@ -200,7 +200,7 @@ describe('normalizeCustomFieldValue', () => {
     })
 
     it('should throw error for non-object values', () => {
-      expect(() => normalizeCustomFieldValue('not an object', field)).toThrow(
+      expect(() => normalizeFieldValue('not an object', field)).toThrow(
         'ADDRESS_STRUCT field "testAddress" requires an object'
       )
     })
@@ -210,17 +210,17 @@ describe('normalizeCustomFieldValue', () => {
     const field = { type: FieldTypeEnum.TEXT, name: 'testText' }
 
     it('should convert to string and trim', () => {
-      const result = normalizeCustomFieldValue('  hello world  ', field)
+      const result = normalizeFieldValue('  hello world  ', field)
       expect(result).toEqual({ data: 'hello world' })
     })
 
     it('should convert numbers to strings', () => {
-      const result = normalizeCustomFieldValue(123, field)
+      const result = normalizeFieldValue(123, field)
       expect(result).toEqual({ data: '123' })
     })
 
     it('should unwrap legacy {"data": "text"} format', () => {
-      const result = normalizeCustomFieldValue({ data: 'hello' }, field)
+      const result = normalizeFieldValue({ data: 'hello' }, field)
       expect(result).toEqual({ data: 'hello' })
     })
   })
@@ -229,17 +229,17 @@ describe('normalizeCustomFieldValue', () => {
     const field = { type: FieldTypeEnum.TEXT, name: 'testField' }
 
     it('should handle null values', () => {
-      const result = normalizeCustomFieldValue(null, field)
+      const result = normalizeFieldValue(null, field)
       expect(result).toEqual({ data: null })
     })
 
     it('should handle undefined values', () => {
-      const result = normalizeCustomFieldValue(undefined, field)
+      const result = normalizeFieldValue(undefined, field)
       expect(result).toEqual({ data: null })
     })
 
     it('should handle empty strings as null', () => {
-      const result = normalizeCustomFieldValue('   ', field)
+      const result = normalizeFieldValue('   ', field)
       expect(result).toEqual({ data: null })
     })
   })
@@ -248,21 +248,21 @@ describe('normalizeCustomFieldValue', () => {
     it('should unwrap and re-validate CHECKBOX', () => {
       const field = { type: FieldTypeEnum.CHECKBOX, name: 'test' }
       // Legacy stored "true" as string in {data: "true"}
-      const result = normalizeCustomFieldValue({ data: 'true' }, field)
+      const result = normalizeFieldValue({ data: 'true' }, field)
       expect(result).toEqual({ data: true })
     })
 
     it('should unwrap and re-validate NUMBER', () => {
       const field = { type: FieldTypeEnum.NUMBER, name: 'test' }
       // Legacy stored number as string in {data: "123"}
-      const result = normalizeCustomFieldValue({ data: '123' }, field)
+      const result = normalizeFieldValue({ data: '123' }, field)
       expect(result).toEqual({ data: 123 })
     })
 
     it('should be idempotent for properly formatted values', () => {
       const field = { type: FieldTypeEnum.TEXT, name: 'test' }
-      const firstPass = normalizeCustomFieldValue('hello', field)
-      const secondPass = normalizeCustomFieldValue(firstPass, field)
+      const firstPass = normalizeFieldValue('hello', field)
+      const secondPass = normalizeFieldValue(firstPass, field)
       expect(firstPass).toEqual(secondPass)
     })
   })

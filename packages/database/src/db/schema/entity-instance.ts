@@ -11,8 +11,8 @@ import { User } from './user'
  * EntityInstance table for storing actual records of custom entities
  * Example: An instance of a "Product" entity definition
  *
- * The actual field values are stored in CustomFieldValue table,
- * linked via customFieldValue.entityId = entityInstance.id
+ * The actual field values are stored in the FieldValue table,
+ * linked via fieldValue.entityId = entityInstance.id
  */
 export const EntityInstance = pgTable(
   'EntityInstance',

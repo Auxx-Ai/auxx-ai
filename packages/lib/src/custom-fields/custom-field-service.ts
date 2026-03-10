@@ -177,4 +177,4 @@ export class CustomFieldService {
 }
 
 // Re-export for convenience
-export { normalizeCustomFieldValue } from '@auxx/services/custom-fields'
+export { normalizeFieldValue } from '@auxx/services/custom-fields'
