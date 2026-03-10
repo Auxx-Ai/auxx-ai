@@ -1,5 +1,7 @@
 // packages/lib/src/resources/registry/detail-view-config-types.ts
 
+import type { DrawerTabCardDefinition } from './drawer-config-types'
+
 /**
  * Tab definition for main content area
  * Describes tabs shown in the primary content area of the detail view
@@ -57,6 +59,8 @@ export interface DetailViewConfig {
   defaultTab?: string
   /** Default sidebar tab to select */
   defaultSidebarTab?: string
+  /** Cards rendered in the sidebar (reuses DrawerTabCardDefinition for shared card component registry) */
+  sidebarCards?: DrawerTabCardDefinition[]
 }
 
 /** Entity types that have specific detail view configurations */

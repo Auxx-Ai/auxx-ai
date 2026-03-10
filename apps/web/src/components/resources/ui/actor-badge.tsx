@@ -16,7 +16,7 @@ import { useActor } from '~/components/resources/hooks/use-actor'
  * Variants for the ActorBadge component
  */
 export const actorBadgeVariants = cva(
-  'flex text-sm items-center h-5 gap-1.5 rounded-[5px] ring-1 ps-0.5 pe-1.5 py-0',
+  'flex text-sm items-center h-5 gap-1.5 rounded-[5px] ring-1 ps-0.5 pe-1.5 py-0 truncate',
   {
     variants: {
       variant: {

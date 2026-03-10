@@ -30,7 +30,7 @@ import {
   SquarePen,
   Trash2,
 } from 'lucide-react'
-import { parseAsString, useQueryState } from 'nuqs'
+import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
@@ -109,13 +109,15 @@ interface RecordsViewProps {
   slug: string
   /** Base URL path for breadcrumbs and import links. Defaults to /app/custom/${slug} */
   basePath?: string
+  /** When true, RecordsView renders without its own MainPage wrapper (parent provides it) */
+  embedded?: boolean
 }
 
 /**
  * RecordsView component
  * Displays the table of entity instances using data from context
  */
-export function RecordsView({ slug, basePath }: RecordsViewProps) {
+export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
   const resolvedBasePath = basePath ?? `/app/custom/${slug}`
 
   // Dock state
@@ -136,8 +138,19 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
 
   const entityDefinitionId = resource?.id
 
+  // Create dialog state — synced with ?create URL param for external triggers (e.g. layout header button)
+  const [createParam, setCreateParam] = useQueryState('create', parseAsBoolean.withDefault(false))
+  const [isCreateDialogOpenInternal, setIsCreateDialogOpenInternal] = useState(false)
+  const isCreateDialogOpen = isCreateDialogOpenInternal || createParam
+  const setIsCreateDialogOpen = useCallback(
+    (open: boolean) => {
+      setIsCreateDialogOpenInternal(open)
+      if (!open && createParam) setCreateParam(null)
+    },
+    [createParam, setCreateParam]
+  )
+
   // State
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingInstance, setEditingInstance] = useState<EntityRow | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
 
@@ -550,6 +563,14 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
 
   // Loading state
   if (isLoading) {
+    const loadingContent = (
+      <MainPageContent>
+        <div className='flex h-full items-center justify-center'>
+          <div className='h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent' />
+        </div>
+      </MainPageContent>
+    )
+    if (embedded) return loadingContent
     return (
       <MainPage>
         <MainPageHeader>
@@ -557,17 +578,25 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
             <MainPageBreadcrumbItem title='Loading...' href={resolvedBasePath} last />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='flex h-full items-center justify-center'>
-            <div className='h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent' />
-          </div>
-        </MainPageContent>
+        {loadingContent}
       </MainPage>
     )
   }
 
   // Error state
   if (!resource) {
+    const errorContent = (
+      <MainPageContent>
+        <div className='flex h-full items-center justify-center'>
+          <EmptyState
+            icon={FileText}
+            title='Entity not found'
+            description={`The entity "${slug}" could not be found or you don't have access to it.`}
+          />
+        </div>
+      </MainPageContent>
+    )
+    if (embedded) return errorContent
     return (
       <MainPage>
         <MainPageHeader>
@@ -575,15 +604,7 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
             <MainPageBreadcrumbItem title='Not Found' href={resolvedBasePath} last />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent>
-          <div className='flex h-full items-center justify-center'>
-            <EmptyState
-              icon={FileText}
-              title='Entity not found'
-              description={`The entity "${slug}" could not be found or you don't have access to it.`}
-            />
-          </div>
-        </MainPageContent>
+        {errorContent}
       </MainPage>
     )
   }
@@ -600,77 +621,84 @@ export function RecordsView({ slug, basePath }: RecordsViewProps) {
       />
     ) : undefined
 
+  // Main content (table + footer)
+  const mainContent = (
+    <MainPageContent
+      dockedPanel={dockedPanel}
+      dockedPanelWidth={dockedWidth}
+      onDockedPanelWidthChange={setDockedWidth}
+      dockedPanelMinWidth={minWidth}
+      dockedPanelMaxWidth={maxWidth}>
+      <div className='flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10 flex-col flex'>
+        <DynamicView
+          data={records}
+          className='h-full flex-1'
+          tableId={`entity-${entityDefinitionId}`}
+          bulkActions={bulkActions}
+          enableSearch
+          columns={columns}
+          enableSorting
+          enableFiltering
+          isLoading={instancesLoading || isLoadingRecords}
+          onRowSelectionChange={handleRowSelectionChange}
+          showRowNumbers={false}
+          importHref={`${resolvedBasePath}/import`}
+          onScrollToBottom={handleScrollToBottom}
+          emptyState={<EmptyStateComponent />}
+          headerActions={<HeaderActionsDropdown onNewField={() => setIsFieldDialogOpen(true)} />}
+          cellSelection={cellSelectionConfig}
+          entityLabel={resource?.label}
+          onAddNew={() => setIsCreateDialogOpen(true)}
+          onCardClick={handleOpenDrawer}
+          onAddCard={() => setIsCreateDialogOpen(true)}
+          entityDefinitionId={entityDefinitionId}
+          selectedKanbanCardIds={selectedKanbanCardIds}
+          onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}>
+          <DynamicTableFooter>
+            <div className='flex items-center justify-between px-4 py-2 text-sm'>
+              <div>
+                {records.length}{' '}
+                {records.length === 1
+                  ? resource.label.toLowerCase()
+                  : resource.plural.toLowerCase()}
+                {hasNextPage && <span className='ml-2'>(more available)</span>}
+              </div>
+              {isFetchingNextPage && (
+                <div className='flex items-center gap-2'>
+                  <div className='h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent' />
+                  <span>Loading more...</span>
+                </div>
+              )}
+            </div>
+          </DynamicTableFooter>
+        </DynamicView>
+      </div>
+    </MainPageContent>
+  )
+
   return (
     <>
-      <MainPage>
-        <MainPageHeader
-          action={
-            <Button
-              size='sm'
-              className='h-7 rounded-lg'
-              onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className='size-4' />
-              Create {resource.label}
-            </Button>
-          }>
-          <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title={resource.plural} href={resolvedBasePath} last />
-          </MainPageBreadcrumb>
-        </MainPageHeader>
-        <MainPageContent
-          dockedPanel={dockedPanel}
-          dockedPanelWidth={dockedWidth}
-          onDockedPanelWidthChange={setDockedWidth}
-          dockedPanelMinWidth={minWidth}
-          dockedPanelMaxWidth={maxWidth}>
-          <div className='flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10 flex-col flex'>
-            <DynamicView
-              data={records}
-              className='h-full flex-1'
-              tableId={`entity-${entityDefinitionId}`}
-              bulkActions={bulkActions}
-              enableSearch
-              columns={columns}
-              enableSorting
-              enableFiltering
-              isLoading={instancesLoading || isLoadingRecords}
-              onRowSelectionChange={handleRowSelectionChange}
-              showRowNumbers={false}
-              importHref={`${resolvedBasePath}/import`}
-              onScrollToBottom={handleScrollToBottom}
-              emptyState={<EmptyStateComponent />}
-              headerActions={
-                <HeaderActionsDropdown onNewField={() => setIsFieldDialogOpen(true)} />
-              }
-              cellSelection={cellSelectionConfig}
-              entityLabel={resource?.label}
-              onAddNew={() => setIsCreateDialogOpen(true)}
-              onCardClick={handleOpenDrawer}
-              onAddCard={() => setIsCreateDialogOpen(true)}
-              entityDefinitionId={entityDefinitionId}
-              selectedKanbanCardIds={selectedKanbanCardIds}
-              onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}>
-              <DynamicTableFooter>
-                <div className='flex items-center justify-between px-4 py-2 text-sm'>
-                  <div>
-                    {records.length}{' '}
-                    {records.length === 1
-                      ? resource.label.toLowerCase()
-                      : resource.plural.toLowerCase()}
-                    {hasNextPage && <span className='ml-2'>(more available)</span>}
-                  </div>
-                  {isFetchingNextPage && (
-                    <div className='flex items-center gap-2'>
-                      <div className='h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent' />
-                      <span>Loading more...</span>
-                    </div>
-                  )}
-                </div>
-              </DynamicTableFooter>
-            </DynamicView>
-          </div>
-        </MainPageContent>
-      </MainPage>
+      {embedded ? (
+        mainContent
+      ) : (
+        <MainPage>
+          <MainPageHeader
+            action={
+              <Button
+                size='sm'
+                className='h-7 rounded-lg'
+                onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className='size-4' />
+                Create {resource.label}
+              </Button>
+            }>
+            <MainPageBreadcrumb>
+              <MainPageBreadcrumbItem title={resource.plural} href={resolvedBasePath} last />
+            </MainPageBreadcrumb>
+          </MainPageHeader>
+          {mainContent}
+        </MainPage>
+      )}
 
       {/* Create/Edit Dialog */}
       {entityDefinitionId && isCreateDialogOpen && (

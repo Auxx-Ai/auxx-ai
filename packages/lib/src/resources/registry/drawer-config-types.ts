@@ -23,6 +23,21 @@ export interface DrawerActions {
   enableAssign?: boolean
   enableArchive?: boolean
   enableDelete?: boolean
+  enableLink?: boolean
+  enableRename?: boolean
+  enableEdit?: boolean
+}
+
+/**
+ * Card definition injected into base drawer tabs (overview, timeline, comments, tasks)
+ */
+export interface DrawerTabCardDefinition {
+  /** Unique identifier (e.g., 'customer', 'relationships', 'metrics') */
+  value: string
+  /** Display label shown as section header */
+  label: string
+  /** Position relative to default tab content */
+  position?: 'before' | 'after'
 }
 
 /**
@@ -38,6 +53,8 @@ export interface DrawerConfig {
   additionalTabs: DrawerTabDefinition[]
   /** Action capabilities */
   actions: DrawerActions
+  /** Cards injected into base tabs (overview, timeline, comments, tasks). Key is tab value. */
+  tabCards?: Record<string, DrawerTabCardDefinition[]>
 }
 
 export type DrawerConfigRegistry = Record<string, DrawerConfig>
