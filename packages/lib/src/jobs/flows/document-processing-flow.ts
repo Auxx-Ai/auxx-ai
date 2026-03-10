@@ -140,7 +140,7 @@ export async function createDocumentProcessingFlow(params: {
       opts: {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
-        removeOnComplete: true,
+        removeOnComplete: { age: 300 },
         removeOnFail: false,
       },
     })

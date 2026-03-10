@@ -61,6 +61,30 @@ export class DatasetEmbeddingValidator {
   }
 
   /**
+   * Check if organization has an enabled system provider for the given provider name.
+   * System providers (platform-managed credentials) don't require explicit ModelConfiguration rows.
+   */
+  private static async hasEnabledSystemProvider(
+    organizationId: string,
+    provider: string
+  ): Promise<boolean> {
+    const [systemProvider] = await db
+      .select({ id: schema.ProviderConfiguration.id })
+      .from(schema.ProviderConfiguration)
+      .where(
+        and(
+          eq(schema.ProviderConfiguration.organizationId, organizationId),
+          eq(schema.ProviderConfiguration.provider, provider),
+          eq(schema.ProviderConfiguration.providerType, 'SYSTEM'),
+          eq(schema.ProviderConfiguration.isEnabled, true)
+        )
+      )
+      .limit(1)
+
+    return !!systemProvider
+  }
+
+  /**
    * Validate that dataset embedding configuration is available in organization
    * @param modelId - Model ID in "provider:model" format
    */
@@ -81,7 +105,7 @@ export class DatasetEmbeddingValidator {
         return { isValid: false, errors, warnings }
       }
 
-      // Check if organization has this provider configured
+      // Check if organization has this provider configured (any type: SYSTEM or CUSTOM)
       const [providerConfig] = await db
         .select()
         .from(schema.ProviderConfiguration)
@@ -132,7 +156,16 @@ export class DatasetEmbeddingValidator {
             `Model '${model}' not found. Consider using '${anyEmbeddingModel.model}' instead`
           )
         } else {
-          errors.push(`No embedding models configured for this organization`)
+          // No explicit ModelConfiguration rows — check if org has a system provider
+          // that can serve embedding requests (system credit orgs don't need model config)
+          const hasSystemProvider = await DatasetEmbeddingValidator.hasEnabledSystemProvider(
+            organizationId,
+            provider
+          )
+
+          if (!hasSystemProvider) {
+            errors.push(`No embedding models configured for this organization`)
+          }
         }
       }
 
@@ -211,8 +244,22 @@ export class DatasetEmbeddingValidator {
         }
       }
 
-      // No providers configured - return defaults (will fail validation but provides guidance)
-      logger.warn('No embedding models configured for organization, returning defaults', {
+      // No ModelConfiguration rows — check if org has a system provider that can serve embeddings.
+      // System credit orgs get ProviderConfiguration (SYSTEM) but no ModelConfiguration rows.
+      const hasOpenAiSystem = await DatasetEmbeddingValidator.hasEnabledSystemProvider(
+        organizationId,
+        'openai'
+      )
+
+      if (hasOpenAiSystem) {
+        logger.info('Using system provider default embedding config for organization', {
+          organizationId,
+        })
+        return DatasetEmbeddingValidator.getDefaultEmbeddingConfig()
+      }
+
+      // No system providers either - return defaults (will fail validation but provides guidance)
+      logger.warn('No embedding models or system providers configured for organization', {
         organizationId,
       })
       return DatasetEmbeddingValidator.getDefaultEmbeddingConfig()
@@ -250,12 +297,26 @@ export class DatasetEmbeddingValidator {
         )
         .orderBy(asc(schema.ModelConfiguration.model))
 
-      return modelConfigs
-        .filter((config) => config.provider) // Only include configs with valid providers
+      const configs = modelConfigs
+        .filter((config) => config.provider)
         .map((config) => ({
           modelId: `${config.provider}:${config.model}`,
           dimensions: DatasetEmbeddingValidator.getModelDimensions(config.model),
         }))
+
+      // If no explicit model configs, include system provider defaults
+      if (configs.length === 0) {
+        const hasOpenAiSystem = await DatasetEmbeddingValidator.hasEnabledSystemProvider(
+          organizationId,
+          'openai'
+        )
+
+        if (hasOpenAiSystem) {
+          configs.push(DatasetEmbeddingValidator.getDefaultEmbeddingConfig())
+        }
+      }
+
+      return configs
     } catch (error) {
       logger.error('Failed to get available embedding configurations', {
         error: error instanceof Error ? error.message : error,
