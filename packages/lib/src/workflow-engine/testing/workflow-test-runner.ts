@@ -335,7 +335,6 @@ export class WorkflowTestRunner {
       externalThreadId: 'test-thread-id',
       threadId: 'test-thread',
       integrationId: 'test-integration',
-      integrationType: 'TEST',
       messageType: 'EMAIL',
       isInbound: true,
       isAutoReply: false,

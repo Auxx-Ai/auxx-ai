@@ -645,6 +645,20 @@
       "when": 1773169991751,
       "tag": "0091_add-imap-provider-type",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1773175753124,
+      "tag": "0092_drop-integration-type-enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1773176396045,
+      "tag": "0093_drop-label-name-unique-index",
+      "breakpoints": true
     }
   ]
 }

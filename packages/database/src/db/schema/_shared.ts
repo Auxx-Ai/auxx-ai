@@ -204,14 +204,6 @@ export const integrationProviderType = pgEnum('IntegrationProviderType', [
   'shopify',
   'imap',
 ])
-export const integrationType = pgEnum('IntegrationType', [
-  'GOOGLE',
-  'OUTLOOK',
-  'OPENPHONE',
-  'FACEBOOK',
-  'INSTAGRAM',
-  'CHAT',
-])
 export const invitationStatus = pgEnum('InvitationStatus', [
   'PENDING',
   'ACCEPTED',

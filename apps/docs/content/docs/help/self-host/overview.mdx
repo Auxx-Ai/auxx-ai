@@ -1,0 +1,43 @@
+---
+title: Overview
+description: Self-host Auxx.ai on your own infrastructure with full control over your data and deployment.
+---
+
+Auxx.ai can be self-hosted on your own infrastructure, giving you full control over your data and deployment.
+
+## Why self-host?
+
+- **Full data ownership** — your data stays on your servers
+- **Compliance** — meet regulatory requirements (GDPR, SOC2, etc.)
+- **Customization** — configure infrastructure to your needs
+
+## Architecture overview
+
+A self-hosted Auxx.ai deployment includes the following services:
+
+| Service | Technology | Purpose |
+|---------|-----------|---------|
+| **Database** | PostgreSQL 17 (with pgvector) | Primary data store |
+| **Cache** | Redis 7 | Caching and job queues |
+| **File storage** | MinIO | S3-compatible file storage |
+| **Web** | Next.js | Main application |
+| **API** | Express | REST API |
+| **Worker** | BullMQ | Background job processing |
+| **Lambda** | Node.js | Serverless function handlers |
+
+## System requirements
+
+- Docker and Docker Compose v2+
+- Minimum 4 GB RAM recommended
+- `curl` and `openssl` (for the install script)
+
+## Getting started
+
+<Cards>
+  <Card title="Docker Compose (1-click)" href="/help/self-host/docker-compose">
+    Get up and running with a single command using the automated install script.
+  </Card>
+  <Card title="Manual setup" href="/help/self-host/setup">
+    Configure your deployment step by step with full control over every setting.
+  </Card>
+</Cards>

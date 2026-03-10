@@ -54,7 +54,7 @@ export const Label = pgTable(
       table.organizationId.asc().nullsLast(),
       table.integrationId.asc().nullsLast()
     ),
-    uniqueIndex('Label_name_organizationId_integrationId_key').using(
+    index('Label_name_organizationId_integrationId_idx').using(
       'btree',
       table.name.asc().nullsLast(),
       table.organizationId.asc().nullsLast(),

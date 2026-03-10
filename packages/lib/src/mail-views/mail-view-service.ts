@@ -28,7 +28,6 @@ type ThreadWithRelations = {
   createdAt: string
   organizationId: string
   integrationId: string
-  integrationType: string
   assigneeId: string | null
   messageType: string
   type: string

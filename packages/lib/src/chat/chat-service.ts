@@ -1,6 +1,6 @@
 // @auxx/lib/chat/chat-service.ts
 import { type Database, schema } from '@auxx/database'
-import { IntegrationType, MessageType, ThreadStatus } from '@auxx/database/enums'
+import { MessageType, ThreadStatus } from '@auxx/database/enums'
 import type { UserEntity as User } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -242,7 +242,6 @@ export class ChatService {
           participantIds: [],
           organizationId: integration.organizationId,
           integrationId: integration.id,
-          integrationType: IntegrationType.CHAT,
           messageType: MessageType.CHAT,
           status: ThreadStatus.OPEN,
           firstMessageAt: now,

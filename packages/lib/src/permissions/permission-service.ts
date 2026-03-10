@@ -42,7 +42,6 @@ const createPreparedStatements = (db: Database) => ({
     where: eq(schema.Thread.id, placeholder('threadId')),
     columns: {
       integrationId: true,
-      integrationType: true,
     },
   }).prepare('getThreadStatement'),
 

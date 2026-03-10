@@ -1,0 +1,2 @@
+DROP INDEX "Label_name_organizationId_integrationId_key";--> statement-breakpoint
+CREATE INDEX "Label_name_organizationId_integrationId_idx" ON "Label" USING btree ("name","organizationId","integrationId");

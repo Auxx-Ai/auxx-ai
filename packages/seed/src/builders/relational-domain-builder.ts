@@ -265,7 +265,6 @@ export class RelationalDomainBuilder {
             }),
             assigneeId: helpers.valuesFromArray({ values: assignees }),
             messageType: helpers.valuesFromArray({ values: this.generateMessageTypes() }),
-            integrationType: helpers.valuesFromArray({ values: this.generateIntegrationTypes() }),
             status: helpers.valuesFromArray({ values: this.generateThreadStatuses() }),
             messageCount: helpers.valuesFromArray({ values: this.generateMessageCounts() }),
             participantCount: helpers.valuesFromArray({

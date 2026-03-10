@@ -1,0 +1,134 @@
+---
+title: Setup & configuration
+description: Configure your self-hosted Auxx.ai deployment with a custom domain, email, Shopify integration, AI providers, and more.
+---
+
+After the initial install, configure your deployment for production use.
+
+## Domain & SSL
+
+Set your public URL in `.env`:
+
+```bash
+NEXT_PUBLIC_APP_URL=https://yourdomain.com
+```
+
+Then set up a reverse proxy to handle SSL termination and forward traffic to the web service.
+
+### Caddy (simplest — auto-HTTPS)
+
+```text
+yourdomain.com {
+  reverse_proxy localhost:3000
+}
+```
+
+### nginx
+
+```nginx
+server {
+  server_name yourdomain.com;
+  location / {
+    proxy_pass http://localhost:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+<Callout type="info" title="SSL with nginx">
+  Use [Certbot](https://certbot.eff.org/) or a similar tool to add Let's Encrypt SSL certificates to your nginx configuration.
+</Callout>
+
+## Email sending
+
+Configure outbound email by setting one of the following provider configurations in `.env`:
+
+<Tabs items={['Mailgun', 'Amazon SES', 'SMTP']}>
+  <Tab value="Mailgun">
+    ```bash
+    MAILGUN_API_KEY=your-api-key
+    MAILGUN_DOMAIN=mail.yourdomain.com
+    ```
+  </Tab>
+  <Tab value="Amazon SES">
+    ```bash
+    SES_REGION=us-east-1
+    SES_ACCESS_KEY_ID=your-access-key
+    SES_SECRET_ACCESS_KEY=your-secret-key
+    ```
+  </Tab>
+  <Tab value="SMTP">
+    ```bash
+    SMTP_HOST=smtp.yourdomain.com
+    SMTP_PORT=587
+    SMTP_USER=your-username
+    SMTP_PASS=your-password
+    ```
+  </Tab>
+</Tabs>
+
+## Email receiving (IMAP)
+
+Connect inboxes through the Auxx.ai UI at **Settings > Integrations**. See [Connect your inbox](/help/getting-started/connect-inbox) for step-by-step instructions.
+
+## Shopify integration
+
+Connect your Shopify store through **Settings > Integrations** in the Auxx.ai UI. See [Connect Shopify](/help/getting-started/connect-shopify) for details.
+
+## AI providers
+
+Configure one or more AI provider API keys in `.env`:
+
+```bash
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+You can configure which models to use in the Auxx.ai UI at **Settings > AI**.
+
+## File storage
+
+MinIO is included by default in the Docker Compose stack. To use an external S3-compatible service instead, update these variables in `.env`:
+
+```bash
+S3_ENDPOINT=https://s3.amazonaws.com
+S3_ACCESS_KEY_ID=your-access-key
+S3_SECRET_ACCESS_KEY=your-secret-key
+```
+
+## Updating
+
+1. Check the [latest release](https://github.com/Auxx-Ai/auxx-ai/releases) on GitHub
+2. Update `VERSION` in your `.env` file
+3. Pull new images:
+   ```bash
+   docker compose pull
+   ```
+4. Restart:
+   ```bash
+   docker compose up -d
+   ```
+
+## Backups
+
+### Database backup
+
+```bash
+docker compose exec postgres pg_dump -U postgres auxx-ai > backup.sql
+```
+
+### Database restore
+
+```bash
+docker compose exec -T postgres psql -U postgres auxx-ai < backup.sql
+```
+
+<Callout type="warn" title="Automate backups">
+  Set up a cron job to run database backups regularly. For example, to back up daily at 2 AM:
+
+  ```bash
+  0 2 * * * cd /path/to/auxx && docker compose exec -T postgres pg_dump -U postgres auxx-ai > backups/auxx-$(date +\%Y\%m\%d).sql
+  ```
+</Callout>
