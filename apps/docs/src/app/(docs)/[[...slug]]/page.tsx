@@ -10,11 +10,12 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
   if (!page) notFound()
 
   const MDXContent = page.data.body
+  const isIndex = !params.slug
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
+      {!isIndex && <DocsTitle>{page.data.title}</DocsTitle>}
+      {!isIndex && <DocsDescription>{page.data.description}</DocsDescription>}
       <DocsBody>
         <MDXContent
           components={getMDXComponents({

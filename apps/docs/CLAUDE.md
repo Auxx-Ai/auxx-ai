@@ -49,10 +49,10 @@ title: Page Title            # Required: Display title
 description: Brief summary   # Required: SEO description (150-160 chars)
 ---
 
-# Main Content Heading
-
 Your documentation content here...
 ```
+
+**Important**: Do NOT add an `# H1` heading at the top of the content. The `title` from frontmatter is automatically rendered as the page heading by Fumadocs. Start content directly after the frontmatter.
 
 ### Content Organization Patterns
 
@@ -139,7 +139,7 @@ const sendReply = api.ticket.reply.useMutation()
 ```
 
 ### Heading Hierarchy
-- **H1 (#)**: Page title (one per page)
+- **H1 (#)**: Do NOT use — the page title is rendered automatically from frontmatter `title`
 - **H2 (##)**: Main sections
 - **H3 (###)**: Subsections
 - **H4 (####)**: Details (use sparingly)
@@ -252,8 +252,6 @@ Edit the `meta.json` files to reorder or reorganize pages. The order in the `pag
 title: [Clear, Descriptive Title]
 description: [150-160 character description for SEO]
 ---
-
-# [Title]
 
 Brief introduction paragraph explaining what this document covers.
 

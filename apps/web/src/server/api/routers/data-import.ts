@@ -151,7 +151,8 @@ export const dataImportRouter = createTRPCRouter({
       // Run initial auto-mapping (fallback only, no AI cost)
       try {
         const registry = new ResourceRegistryService(organizationId, ctx.db)
-        const resource = await registry.getById(job.importMapping.entityDefinitionId)
+        const resolvedId = await registry.resolveEntityDefId(job.importMapping.entityDefinitionId)
+        const resource = await registry.getById(resolvedId)
 
         if (resource) {
           const result = await runAutoMap(ctx.db, resource, {
@@ -188,7 +189,9 @@ export const dataImportRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const registry = new ResourceRegistryService(organizationId, ctx.db)
 
-      const resource = await registry.getById(input.entityDefinitionId)
+      // Resolve entity type strings (e.g., "contact") to actual EntityDefinition IDs
+      const resolvedId = await registry.resolveEntityDefId(input.entityDefinitionId)
+      const resource = await registry.getById(resolvedId)
       if (!resource) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Resource not found' })
       }
@@ -292,7 +295,8 @@ export const dataImportRouter = createTRPCRouter({
 
       // Get resource for target entity
       const registry = new ResourceRegistryService(organizationId, ctx.db)
-      const resource = await registry.getById(job.importMapping.entityDefinitionId)
+      const resolvedId = await registry.resolveEntityDefId(job.importMapping.entityDefinitionId)
+      const resource = await registry.getById(resolvedId)
 
       if (!resource) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Resource not found' })
