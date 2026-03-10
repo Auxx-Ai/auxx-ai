@@ -111,10 +111,10 @@ export function Mailbox({
     return (
       <EmptyState
         icon={Waypoints}
-        title='No integrations found'
+        title='No channels found'
         description={<>Link your email account to get started.</>}
         button={
-          <Link href='/app/settings/integrations/new'>
+          <Link href='/app/settings/channels/new'>
             <Button type='button' size='sm' variant='outline'>
               <Plus />
               Get started

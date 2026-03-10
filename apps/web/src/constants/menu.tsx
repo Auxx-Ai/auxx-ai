@@ -156,17 +156,17 @@ export const SETTINGS_MENU: SidebarProps[] = [
       { id: 'settings-apiKeys', label: 'API Keys', slug: 'apiKeys', icon: <ComponentIcon /> },
     ],
   },
-  // Integrations
+  // Channels
   {
-    id: 'integrations',
-    label: 'Integrations',
+    id: 'channels',
+    label: 'Channels',
     type: 'header',
     access: 'ADMIN',
     items: [
       {
-        id: 'settings-integrations',
-        label: 'Integrations',
-        slug: 'integrations',
+        id: 'settings-channels',
+        label: 'Channels',
+        slug: 'channels',
         icon: <Waypoints />,
         access: 'ADMIN',
       },

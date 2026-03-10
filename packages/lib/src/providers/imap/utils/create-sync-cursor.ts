@@ -6,8 +6,8 @@ export function createSyncCursor(mailboxState: {
   modSeq?: bigint
 }): string {
   return JSON.stringify({
-    uidValidity: mailboxState.uidValidity,
-    highestUid: mailboxState.highestUid,
-    modSeq: mailboxState.modSeq ? mailboxState.modSeq.toString() : undefined,
+    uidValidity: Number(mailboxState.uidValidity),
+    highestUid: Number(mailboxState.highestUid),
+    modSeq: mailboxState.modSeq != null ? String(mailboxState.modSeq) : undefined,
   })
 }

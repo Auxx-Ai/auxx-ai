@@ -1,4 +1,4 @@
-// ~/app/(protected)/app/settings/integrations/_components/chat-widget-integration-form.tsx
+// ~/app/(protected)/app/settings/channels/_components/chat-widget-integration-form.tsx
 'use client'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types' // Use the schema from types
 import { Button } from '@auxx/ui/components/button'
@@ -80,7 +80,7 @@ export default function ChatWidgetIntegrationForm() {
   const addChatWidget = api.integration.addChatWidgetIntegration.useMutation()
 
   const handleBack = () => {
-    router.push('/app/settings/integrations/new')
+    router.push('/app/settings/channels/new')
   }
 
   const form = useForm<ChatWidgetFormValues>({
@@ -113,7 +113,7 @@ export default function ChatWidgetIntegrationForm() {
           description: `Integration "${values.name}" added successfully.`,
         })
         // Redirect to the new integration's settings page
-        router.push(`/app/settings/integrations/${data.integrationId}`)
+        router.push(`/app/settings/channels/${data.integrationId}`)
       },
       onError: (error) => {
         toastError({ title: 'Failed to Create Widget', description: error.message })
@@ -146,8 +146,8 @@ export default function ChatWidgetIntegrationForm() {
       description='Setup your new integration'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
-        { title: 'Integrations', href: '/app/settings/integrations' },
-        { title: 'Add New Integration', href: '/app/settings/integrations/new' },
+        { title: 'Channels', href: '/app/settings/channels' },
+        { title: 'Add New Channel', href: '/app/settings/channels/new' },
         { title: 'Chat Integration' },
       ]}
       button={

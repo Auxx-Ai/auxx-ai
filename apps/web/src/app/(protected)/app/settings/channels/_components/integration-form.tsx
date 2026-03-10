@@ -32,7 +32,7 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
     getAuthUrl.mutate(
       {
         provider: type as any, // Cast to expected enum type
-        redirectPath: '/app/settings/integrations',
+        redirectPath: '/app/settings/channels',
       },
       {
         onSuccess: (data) => {
@@ -46,7 +46,7 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
 
   // Handle going back
   const handleBack = () => {
-    router.push('/app/settings/integrations/new')
+    router.push('/app/settings/channels/new')
   }
 
   // Render the form based on integration type
@@ -126,8 +126,8 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
       description='Setup your new integration'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
-        { title: 'Integrations', href: '/app/settings/integrations' },
-        { title: 'Add New Integration', href: '/app/settings/integrations/new' },
+        { title: 'Channels', href: '/app/settings/channels' },
+        { title: 'Add New Channel', href: '/app/settings/channels/new' },
         { title: type },
       ]}
       button={

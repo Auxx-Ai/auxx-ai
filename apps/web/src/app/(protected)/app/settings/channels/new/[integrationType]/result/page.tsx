@@ -52,7 +52,7 @@ export default function NewIntegrationSuccess() {
 
   // Navigate back to integrations page
   const handleReturn = () => {
-    router.push('/app/settings/integrations')
+    router.push('/app/settings/channels')
   }
 
   return (
@@ -61,8 +61,8 @@ export default function NewIntegrationSuccess() {
       description='Setup your new integration'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
-        { title: 'Integrations', href: '/app/settings/integrations' },
-        { title: 'Add New Integration', href: '/app/settings/integrations/new' },
+        { title: 'Channels', href: '/app/settings/channels' },
+        { title: 'Add New Channel', href: '/app/settings/channels/new' },
         { title: integrationType },
       ]}>
       <div className='p-6'>
@@ -72,12 +72,12 @@ export default function NewIntegrationSuccess() {
               {success ? (
                 <>
                   <CheckCircle className='text-green-500' />
-                  Integration Successful
+                  Channel Connected
                 </>
               ) : (
                 <>
                   <XCircle className='text-red-500' />
-                  Integration Failed
+                  Channel Connection Failed
                 </>
               )}
             </CardTitle>
@@ -91,7 +91,7 @@ export default function NewIntegrationSuccess() {
                 ? `Your ${integrationType} integration has been successfully set up.`
                 : `There was an error setting up your ${integrationType} integration: ${errorDescription || 'Unknown error'}`}
             </p>
-            <Button onClick={handleReturn}>Return to Integrations</Button>
+            <Button onClick={handleReturn}>Return to Channels</Button>
           </CardContent>
         </Card>
       </div>

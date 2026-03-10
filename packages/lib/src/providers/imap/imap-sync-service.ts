@@ -49,6 +49,8 @@ export class ImapSyncService {
     mailboxState: ImapSyncResult['mailboxState']
   ): Promise<ImapSyncResult> {
     const searchResult = await client.search({ all: true }, { uid: true })
+    if (!searchResult) return { newUids: [], deletedUids: [], mailboxState }
+
     const uids: number[] = []
     for (const uid of searchResult) {
       uids.push(uid)
@@ -71,6 +73,8 @@ export class ImapSyncService {
 
     try {
       const searchResult = await client.search(searchCriteria, { uid: true })
+      if (!searchResult) return { newUids: [], deletedUids: [], mailboxState }
+
       for (const uid of searchResult) {
         if (uid > previousCursor.highestUid) {
           newUids.push(uid)
@@ -92,6 +96,7 @@ export class ImapSyncService {
     const uidRange = `${previousCursor.highestUid + 1}:*`
 
     const searchResult = await client.search({ uid: uidRange } as SearchObject, { uid: true })
+    if (!searchResult) return { newUids: [], deletedUids: [], mailboxState }
 
     const newUids: number[] = []
     for (const uid of searchResult) {

@@ -1,4 +1,4 @@
-// ~/app/(protected)/app/settings/integrations/_components/chat-widget-settings.tsx
+// ~/app/(protected)/app/settings/channels/_components/chat-widget-settings.tsx
 'use client'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
@@ -226,7 +226,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
             toastSuccess({ description: 'Integration Deleted' })
             utils.integration.getIntegrations.invalidate()
             utils.user.me.invalidate()
-            router.push('/app/settings/integrations')
+            router.push('/app/settings/channels')
           },
           onError: (error) => {
             toastError({ title: 'Deletion Failed', description: error.message })
@@ -255,7 +255,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
       { shouldDirty: true }
     )
   }
-  const handleBack = () => router.push('/app/settings/integrations')
+  const handleBack = () => router.push('/app/settings/channels')
 
   // --- Loading/Error States ---
   if (isLoadingData || isLoadingInboxes) {
@@ -330,7 +330,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
       description='Modify the appearance, behavior, and settings.'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
-        { title: 'Integrations', href: '/app/settings/integrations' },
+        { title: 'Channels', href: '/app/settings/channels' },
         { title: 'Chat Widget' },
       ]}
       button={

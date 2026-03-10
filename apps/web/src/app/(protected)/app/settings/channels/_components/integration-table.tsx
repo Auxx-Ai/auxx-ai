@@ -145,7 +145,7 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
   // Handle edit integration
   const handleEdit = (event: React.MouseEvent, id: string) => {
     if (!isClickOnInteractiveElement(event)) {
-      router.push(`/app/settings/integrations/${id}`)
+      router.push(`/app/settings/channels/${id}`)
     }
   }
   // Handle disconnect integration

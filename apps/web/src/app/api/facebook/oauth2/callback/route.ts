@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   // const defaultRedirectPath =  // Updated default path?
 
   // Default redirect path if state parsing fails or doesn't contain one
-  let redirectPath = '/app/settings/integrations/new/facebook/result' // Sensible default
+  let redirectPath = '/app/settings/channels/new/facebook/result' // Sensible default
   let parsedState: any = null
 
   // --- State Parameter Handling ---

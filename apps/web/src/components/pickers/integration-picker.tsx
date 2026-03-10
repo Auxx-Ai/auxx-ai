@@ -130,12 +130,12 @@ export function IntegrationPicker({
       <PopoverContent className={cn('w-[300px] p-0', className)} {...props}>
         <Command>
           <CommandInput
-            placeholder='Search integrations...'
+            placeholder='Search channels...'
             value={searchValue}
             onValueChange={setSearchValue}
           />
           <CommandList>
-            <CommandEmpty>No integrations found.</CommandEmpty>
+            <CommandEmpty>No channels found.</CommandEmpty>
             {/* Select All option - only show when allowMultiple and selectAll are true */}
             {allowMultiple && selectAll && (
               <CommandGroup>
@@ -151,7 +151,7 @@ export function IntegrationPicker({
                 </CommandItem>
               </CommandGroup>
             )}
-            <CommandGroup heading='All Integrations'>
+            <CommandGroup heading='All Channels'>
               {filteredIntegrations.map((integration) => {
                 const Icon = getIntegrationIconClass(integration.provider)
                 const color = getIntegrationColor(integration.provider)
@@ -196,7 +196,7 @@ export function IntegrationPicker({
           <div className='flex flex-wrap gap-1 border-t p-2'>
             {isSelectAllChecked ? (
               <Badge variant='secondary' className='flex items-center'>
-                All Integrations Selected
+                All Channels Selected
               </Badge>
             ) : (
               localSelected.map((selectedId) => {

@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/integrations/_components/imap-connect-form.tsx
+// apps/web/src/app/(protected)/app/settings/channels/_components/imap-connect-form.tsx
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
@@ -137,7 +137,7 @@ export default function ImapConnectForm({ onBack }: ImapConnectFormProps) {
 
   const connectImap = api.integration.connectImap.useMutation({
     onSuccess: () => {
-      router.push('/app/settings/integrations')
+      router.push('/app/settings/channels')
     },
     onError: (error) => {
       toastError({ title: 'Connection failed', description: error.message })

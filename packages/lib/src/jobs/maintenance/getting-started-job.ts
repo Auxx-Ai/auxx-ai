@@ -107,9 +107,9 @@ export const sendGettingStartedEmailsJob = async (job: Job) => {
             recipient: { email: org.ownerEmail, name: org.ownerName || 'there' },
             organizationName: org.organizationName!,
             dashboardUrl: `${WEBAPP_URL}/dashboard`,
-            integrationsUrl: `${WEBAPP_URL}/settings/integrations`,
+            integrationsUrl: `${WEBAPP_URL}/settings/channels`,
             knowledgeBaseUrl: `${WEBAPP_URL}/knowledge`,
-            shopifyUrl: `${WEBAPP_URL}/settings/integrations/shopify`,
+            shopifyUrl: `${WEBAPP_URL}/settings/channels/shopify`,
             source: 'getting-started-job',
             organizationId: org.organizationId,
           })

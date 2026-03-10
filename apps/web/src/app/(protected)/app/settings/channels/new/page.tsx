@@ -13,27 +13,27 @@ export default function IntegrationChooserPage() {
   const router = useRouter()
 
   const handleBack = () => {
-    router.push('/app/settings/integrations')
+    router.push('/app/settings/channels')
   }
 
   return (
     <SettingsPage
-      title='Add a New Integration'
+      title='Add a New Channel'
       description='Select a service to connect to your workspace'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
-        { title: 'Integrations', href: '/app/settings/integrations' },
-        { title: 'Add New Integration' },
+        { title: 'Channels', href: '/app/settings/channels' },
+        { title: 'Add New Channel' },
       ]}
       button={
         <Button variant='outline' size='sm' onClick={handleBack}>
           <ArrowLeft className='mr-2 h-4 w-4' />
-          Back to Integrations
+          Back to Channels
         </Button>
       }>
       <div className='space-y-6 p-6'>
         <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {/* Email Integrations */}
+          {/* Email Channels */}
           <IntegrationCard
             type='google'
             title='Gmail'
@@ -53,7 +53,7 @@ export default function IntegrationChooserPage() {
             icon={<Mail className='h-8 w-8 text-blue-500' />}
           />
 
-          {/* Social Media Integrations */}
+          {/* Social Media Channels */}
           <IntegrationCard
             type='facebook'
             title='Facebook'
@@ -67,7 +67,7 @@ export default function IntegrationChooserPage() {
             comingSoon={false}
           />
 
-          {/* Phone Integrations */}
+          {/* Phone Channels */}
           <IntegrationCard
             type='openphone'
             title='OpenPhone'
@@ -80,7 +80,7 @@ export default function IntegrationChooserPage() {
             icon={<MessageSquare className='h-8 w-8 text-indigo-500' />} // Custom icon
           />
 
-          {/* Additional Integration Types (Coming Soon) */}
+          {/* Additional Channel Types (Coming Soon) */}
           <IntegrationCard
             type='whatsapp'
             title='WhatsApp'

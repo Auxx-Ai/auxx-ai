@@ -29,7 +29,7 @@ function IntegrationsPage({}: Props) {
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Integrations' }]}>
       <div className='flex flex-col gap-y-5 pt-5'>
         {INTEGRATION_PROVIDERS.map((integration) => (
-          <Link href={`/app/settings/integrations/${integration.slug}`} key={integration.title}>
+          <Link href={`/app/settings/channels/${integration.slug}`} key={integration.title}>
             <Card>
               <CardHeader>
                 <div className='flex justify-between'>

@@ -11,7 +11,7 @@ import { auth } from '~/auth/server'
 const logger = createScopedLogger('google-oauth-callback')
 
 export async function GET(request: NextRequest) {
-  const defaultRedirectPath = '/app/settings/integrations/new/google/result' // Updated default path?
+  const defaultRedirectPath = '/app/settings/channels/new/google/result' // Updated default path?
 
   try {
     // const session = await auth()
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Redirect to the specified path or default
-    const redirectPath = state.redirectPath || '/app/settings/integrations/new/google/result'
+    const redirectPath = state.redirectPath || '/app/settings/channels/new/google/result'
     return NextResponse.redirect(new URL(`${redirectPath}?success=true`, request.url))
   } catch (error: any) {
     logger.error('OAuth callback error:', { error })

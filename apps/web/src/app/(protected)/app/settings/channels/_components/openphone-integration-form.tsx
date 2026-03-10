@@ -35,7 +35,7 @@ function OpenPhoneIntegrationForm({}: Props) {
   const router = useRouter()
 
   const handleBack = () => {
-    router.push('/app/settings/integrations/new')
+    router.push('/app/settings/channels/new')
   }
 
   // For OpenPhone connection form
@@ -48,7 +48,7 @@ function OpenPhoneIntegrationForm({}: Props) {
   const onOpenPhoneSubmit = (values: OpenPhoneFormValues) => {
     addOpenPhoneIntegration.mutate(values, {
       onSuccess: () => {
-        router.push('/app/settings/integrations')
+        router.push('/app/settings/channels')
       },
     })
   }
@@ -59,8 +59,8 @@ function OpenPhoneIntegrationForm({}: Props) {
       description='Setup your OpenPhone integration'
       breadcrumbs={[
         { title: 'Settings', href: '/app/settings' },
-        { title: 'Integrations', href: '/app/settings/integrations' },
-        { title: 'Add New Integration', href: '/app/settings/integrations/new' },
+        { title: 'Channels', href: '/app/settings/channels' },
+        { title: 'Add New Channel', href: '/app/settings/channels/new' },
         { title: 'OpenPhone' },
       ]}
       button={

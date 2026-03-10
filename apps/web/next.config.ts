@@ -18,6 +18,7 @@ const nextConfig = {
   // Without this, Next.js issues 308 redirects that break event capture.
   skipTrailingSlashRedirect: true,
   output: 'standalone',
+  serverExternalPackages: ['imapflow', 'pino', 'thread-stream'],
   transpilePackages: [
     '@auxx/billing',
     '@auxx/config',
@@ -60,6 +61,15 @@ const nextConfig = {
   },
   turbopack: {
     root: path.join(dirName, '../..'),
+  },
+  async redirects() {
+    return [
+      {
+        source: '/app/settings/integrations/:path*',
+        destination: '/app/settings/channels/:path*',
+        permanent: true,
+      },
+    ]
   },
 }
 

@@ -8,7 +8,7 @@ export function extractMailboxState(mailbox: MailboxObject): {
   modSeq?: bigint
 } {
   return {
-    uidValidity: mailbox.uidValidity ?? 0,
+    uidValidity: Number(mailbox.uidValidity ?? 0),
     highestUid: (mailbox.uidNext ?? 1) - 1,
     modSeq: mailbox.highestModseq ?? undefined,
   }
