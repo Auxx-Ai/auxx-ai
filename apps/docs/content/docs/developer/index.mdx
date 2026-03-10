@@ -3,7 +3,70 @@ title: Developers
 description: Build apps for the Auxx.ai platform using the Auxx SDK.
 ---
 
-Build custom apps that extend Auxx with actions, dialogs, widgets, and workflow blocks.
+The Auxx SDK lets you build apps that extend the platform with custom actions, dialogs, widgets, and workflow blocks. Apps run inside Auxx — client code renders in the browser, server code runs in Lambda.
+
+## What you can build
+
+- **Record actions** — Add buttons to the actions menu on ticket, contact, and custom entity records. Open dialogs with custom UI when clicked.
+- **Bulk actions** — Run actions on multiple selected records at once.
+- **Widgets** — Embed custom UI panels inside record detail pages.
+- **Workflow blocks** — Create custom steps for the visual workflow builder with typed inputs, outputs, and server-side execution.
+- **Workflow triggers** — Define custom events that start workflows, with polling or webhook support.
+
+## How it works
+
+Every app has an `app.tsx` entry point that exports a config object declaring its surfaces:
+
+```tsx title="src/app.tsx"
+import type { App } from '@auxx/sdk'
+
+export const app: App = {
+  record: {
+    actions: [myAction],
+    widgets: [statusWidget],
+  },
+  workflow: {
+    blocks: [sendEmailBlock],
+  },
+  settings: {
+    organization: settingsSchema,
+  },
+}
+```
+
+Client components use SDK-provided React components (`Button`, `TextBlock`, `Card`, etc.) and hooks (`useRecord`, `useSettings`). Server code in `.server.ts` files has access to connections, storage, HTTP fetch, and more.
+
+## Project structure
+
+<Files>
+  <Folder name="src" defaultOpen>
+    <File name="app.tsx" />
+    <File name="app.settings.ts" />
+    <File name="my-action.tsx" />
+    <File name="my-dialog.tsx" />
+    <File name="sync.server.ts" />
+    <File name="order-notify.workflow.tsx" />
+    <File name="order-notify.server.ts" />
+    <Folder name="events">
+      <File name="connection-added.event.ts" />
+    </Folder>
+    <Folder name="webhooks">
+      <File name="stripe.webhook.ts" />
+    </Folder>
+  </Folder>
+  <File name="package.json" />
+  <File name="tsconfig.json" />
+</Files>
+
+| Pattern | Purpose | Runs in |
+|---------|---------|---------|
+| `*.tsx` | Client components and actions | Browser |
+| `*.server.ts` | Server-only logic | Lambda |
+| `*.workflow.tsx` | Workflow block definitions | Browser + Lambda |
+| `events/*.event.ts` | Connection lifecycle handlers | Lambda |
+| `webhooks/*.webhook.ts` | Incoming webhook handlers | Lambda |
+
+## Get started
 
 <Cards>
   <Card title="Creating an App" href="/developer/creating-an-app">
