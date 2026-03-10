@@ -1,0 +1,63 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for self-hosted Auxx.ai deployments including Docker, database, and networking problems.
+---
+
+Solutions for common self-hosting issues. For general app issues, see [Common issues](/help/troubleshooting/common-issues).
+
+## Docker Compose issues
+
+| Problem | Solution |
+|---------|----------|
+| **Containers won't start** | Check `docker compose logs <service>`. Verify `.env` has all required secrets set. |
+| **Database connection refused** | Ensure `DATABASE_URL` uses `postgres` (Docker service name) as host, not `localhost`. |
+| **Redis connection refused** | Ensure `REDIS_HOST=redis` (Docker service name). |
+| **Port already in use** | Change the conflicting port in `.env` (e.g., `APP_PORT=3001`). The `docker-compose.yml` uses `${VAR:-default}` interpolation. |
+| **Web service unhealthy** | Check `docker compose logs web`. Common causes: missing env vars, database not ready (migration service may still be running). |
+| **MinIO/file upload errors** | Verify `S3_ENDPOINT=http://minio:9000` and that the `minio-init` service ran successfully. |
+| **Migration failures** | Check `docker compose logs migrate`. Ensure database is accessible and `DATABASE_URL` is correct. |
+
+## General issues
+
+<Accordions type="single">
+  <Accordion title="Forgot admin password">
+    Re-register with a new account, or reset the password directly in the database:
+
+    ```bash
+    docker compose exec postgres psql -U postgres auxx-ai
+    ```
+  </Accordion>
+  <Accordion title="High memory usage">
+    - Ensure at least 4 GB RAM is available
+    - Check the worker queue backlog — a large number of pending jobs can increase memory consumption
+    - Monitor with `docker stats`
+  </Accordion>
+  <Accordion title="Slow startup">
+    The first boot runs database migrations and initializes MinIO buckets. Subsequent starts are much faster. You can monitor progress with:
+
+    ```bash
+    docker compose logs -f migrate
+    docker compose logs -f minio-init
+    ```
+  </Accordion>
+  <Accordion title="Environment variables not taking effect">
+    After changing `.env`, restart the affected services:
+
+    ```bash
+    docker compose up -d
+    ```
+
+    Docker Compose re-reads `.env` on each `up` command.
+  </Accordion>
+</Accordions>
+
+## Getting help
+
+<Cards>
+  <Card title="GitHub Issues" href="https://github.com/Auxx-Ai/auxx-ai/issues">
+    Report bugs or request features on GitHub.
+  </Card>
+  <Card title="Contact support" href="/help/troubleshooting/contact-support">
+    Get help from the Auxx.ai team.
+  </Card>
+</Cards>

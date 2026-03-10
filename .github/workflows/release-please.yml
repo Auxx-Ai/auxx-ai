@@ -103,6 +103,29 @@ jobs:
 
   sst-deploy:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    # Disabled: SST deploy paused while deploying via Railway instead.
+    # Re-enable by removing the `if: false` line below.
+    if: false
+    # if: ${{ needs.release-please.outputs.release_created == 'true' }}
     uses: ./.github/workflows/sst-deploy.yml
     secrets: inherit
+
+  railway-deploy:
+    name: Deploy to Railway
+    needs: [release-please, docker-publish]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch to auxx-infra
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.AUXX_INFRA_TOKEN }}
+          repository: Auxx-Ai/auxx-infra
+          event-type: deploy-railway
+          client-payload: >-
+            {
+              "version": "${{ needs.release-please.outputs.version }}",
+              "tag_name": "${{ needs.release-please.outputs.tag_name }}",
+              "sha": "${{ github.sha }}",
+              "triggered_by": "${{ github.actor }}"
+            }

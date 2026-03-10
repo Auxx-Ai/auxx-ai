@@ -43,39 +43,6 @@ export function getMessageTypeFromProvider(provider: IntegrationProviderType): M
 }
 
 /**
- * Legacy conversion: Convert old IntegrationType (uppercase) to provider (lowercase).
- * Used during migration period to support old code.
- *
- * @deprecated This is for backward compatibility only. New code should use IntegrationProviderType directly.
- *
- * @param integrationType - The old uppercase integration type (e.g., 'GOOGLE', 'OUTLOOK')
- * @returns The new lowercase provider type
- *
- * @example
- * ```ts
- * const provider = integrationTypeToProvider('GOOGLE') // Returns 'google'
- * const provider = integrationTypeToProvider('OUTLOOK') // Returns 'outlook'
- * ```
- */
-export function integrationTypeToProvider(integrationType: string): IntegrationProviderType {
-  const mapping: Record<string, IntegrationProviderType> = {
-    GOOGLE: 'google',
-    OUTLOOK: 'outlook',
-    OPENPHONE: 'openphone',
-    FACEBOOK: 'facebook',
-    INSTAGRAM: 'instagram',
-    CHAT: 'chat',
-    EMAIL: 'email',
-    MAILGUN: 'mailgun',
-    SMS: 'sms',
-    WHATSAPP: 'whatsapp',
-    SHOPIFY: 'shopify',
-  }
-
-  return mapping[integrationType.toUpperCase()] || 'google'
-}
-
-/**
  * Get the provider type for a specific message by querying the database.
  * This performs a JOIN with the Integration table.
  *

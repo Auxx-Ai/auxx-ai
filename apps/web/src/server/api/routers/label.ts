@@ -1,10 +1,18 @@
 // server/api/routers/labels.ts
 
-import { getUserOrganizationId, LabelService, ReauthenticationRequiredError } from '@auxx/lib/email'
+import { database as db, schema } from '@auxx/database'
+import {
+  FolderDiscoveryService,
+  getUserOrganizationId,
+  LabelService,
+  ReauthenticationRequiredError,
+} from '@auxx/lib/email'
+import { ProviderRegistryService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('labels-router')
 
@@ -297,6 +305,95 @@ export const labelRouter = createTRPCRouter({
           message: 'Failed to get thread labels',
         })
       }
+    }),
+
+  // Get labels for an integration (reads DB directly, bypasses LabelProviderFactory)
+  getIntegrationLabels: adminProcedure
+    .input(z.object({ integrationId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      const labels = await db
+        .select()
+        .from(schema.Label)
+        .where(
+          and(
+            eq(schema.Label.integrationId, input.integrationId),
+            eq(schema.Label.organizationId, organizationId)
+          )
+        )
+        .orderBy(schema.Label.name)
+      return { labels }
+    }),
+
+  // Toggle Label.enabled (admin-only — changes sync scope)
+  toggleLabelEnabled: adminProcedure
+    .input(z.object({ labelId: z.string(), enabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      const [updated] = await db
+        .update(schema.Label)
+        .set({ enabled: input.enabled, updatedAt: new Date() })
+        .where(
+          and(eq(schema.Label.id, input.labelId), eq(schema.Label.organizationId, organizationId))
+        )
+        .returning()
+      return updated
+    }),
+
+  // Discover folders from provider and upsert into Label table (admin-only)
+  discoverFolders: adminProcedure
+    .input(z.object({ integrationId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+
+      // Get integration to find provider type
+      const [integration] = await db
+        .select()
+        .from(schema.Integration)
+        .where(
+          and(
+            eq(schema.Integration.id, input.integrationId),
+            eq(schema.Integration.organizationId, organizationId)
+          )
+        )
+        .limit(1)
+
+      if (!integration) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Integration not found' })
+      }
+
+      // Initialize provider and discover labels
+      const registry = new ProviderRegistryService(organizationId)
+      const providerInstance = await registry.getProvider(input.integrationId)
+
+      if (!providerInstance.discoverLabels) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'This provider does not support folder discovery',
+        })
+      }
+
+      const discoveredFolders = await providerInstance.discoverLabels()
+      const folderDiscovery = new FolderDiscoveryService()
+      await folderDiscovery.discoverAndUpsert({
+        integrationId: input.integrationId,
+        organizationId,
+        provider: integration.provider,
+        discoveredFolders,
+      })
+
+      // Return updated label list
+      const labels = await db
+        .select()
+        .from(schema.Label)
+        .where(
+          and(
+            eq(schema.Label.integrationId, input.integrationId),
+            eq(schema.Label.organizationId, organizationId)
+          )
+        )
+        .orderBy(schema.Label.name)
+      return { labels }
     }),
 
   toggleLabelVisibility: protectedProcedure

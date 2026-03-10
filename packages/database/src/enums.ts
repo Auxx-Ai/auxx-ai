@@ -337,15 +337,6 @@ export const IntegrationProviderTypeValues = [
   'shopify',
 ] as const
 
-export const IntegrationTypeValues = [
-  'GOOGLE',
-  'OUTLOOK',
-  'OPENPHONE',
-  'FACEBOOK',
-  'INSTAGRAM',
-  'CHAT',
-] as const
-
 export const InvitationStatusValues = ['PENDING', 'ACCEPTED', 'EXPIRED', 'CANCELLED'] as const
 
 export const InvoiceStatusValues = ['PENDING', 'PAID', 'VOID', 'UNCOLLECTIBLE', 'DRAFT'] as const
@@ -964,15 +955,6 @@ export const IntegrationProviderType = {
   email: 'email',
   shopify: 'shopify',
   imap: 'imap',
-} as const
-
-export const IntegrationType = {
-  GOOGLE: 'GOOGLE',
-  OUTLOOK: 'OUTLOOK',
-  OPENPHONE: 'OPENPHONE',
-  FACEBOOK: 'FACEBOOK',
-  INSTAGRAM: 'INSTAGRAM',
-  CHAT: 'CHAT',
 } as const
 
 export const InvitationStatus = {

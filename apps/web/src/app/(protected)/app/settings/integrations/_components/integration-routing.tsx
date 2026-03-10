@@ -37,6 +37,7 @@ import MessageSyncStatus from '~/components/mail/message-sync-status'
 import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import IntegrationLabels from './integration-labels'
 
 /** Props for the IntegrationRouting component */
 interface IntegrationRoutingProps {
@@ -185,6 +186,10 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
           </Alert>
         )}
       </div>
+      {['outlook', 'imap'].includes(integration.provider) && (
+        <IntegrationLabels integration={integration} />
+      )}
+
       <div className='space-y-4'>
         <div className='space-y-1'>
           <div className='flex items-center gap-2  tracking-tight font-semibold text-foreground text-base'>

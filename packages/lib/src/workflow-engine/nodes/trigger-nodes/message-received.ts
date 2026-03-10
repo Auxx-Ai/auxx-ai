@@ -167,16 +167,6 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
       case 'integrationId':
         return message.integrationId === filterValue
 
-      case 'integrationType':
-        // Note: integrationType field removed from Message schema
-        // This filter is deprecated - use integrationId filter instead
-        contextManager.log(
-          'WARN',
-          undefined,
-          'integrationType filter is deprecated, use integrationId instead'
-        )
-        return true // Pass through for backward compatibility
-
       default:
         contextManager.log('WARN', undefined, `Unknown filter type: ${filterType}`)
         return true // Unknown filters pass by default
@@ -202,9 +192,6 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
         return message.hasAttachments
       case 'integrationId':
         return message.integrationId
-      case 'integrationType':
-        // Note: field removed, use integrationId instead
-        return undefined
       default:
         return undefined
     }
@@ -282,7 +269,6 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
       'isInbound',
       'hasAttachments',
       'integrationId',
-      'integrationType',
     ]
 
     return validFilters.includes(key) && value !== undefined && value !== null

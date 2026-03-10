@@ -3,8 +3,9 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { MessageStorageService } from '../../email/email-storage'
+import { FolderDiscoveryService } from '../../email/labels/folder-discovery-service'
 import { addToImportCache } from '../../email/polling-import-cache'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
 
@@ -53,71 +54,13 @@ export const messageListFetchJob = async (job: Job<MessageListFetchJobData>) => 
       // --- Label sync ---
       if (providerInstance.discoverLabels) {
         const discoveredLabels = await providerInstance.discoverLabels()
-
-        if (discoveredLabels.length > 0) {
-          // Upsert labels
-          for (const label of discoveredLabels) {
-            const existing = await db
-              .select()
-              .from(schema.Label)
-              .where(
-                and(
-                  eq(schema.Label.labelId, label.externalId),
-                  eq(schema.Label.integrationId, integrationId),
-                  eq(schema.Label.organizationId, organizationId)
-                )
-              )
-              .limit(1)
-
-            if (existing.length > 0) {
-              // Update existing label
-              await db
-                .update(schema.Label)
-                .set({
-                  name: label.name,
-                  isSentBox: label.isSentBox,
-                  parentLabelId: null, // Will be resolved after all labels are upserted
-                  pendingAction: null, // Clear any pending removal
-                  updatedAt: now,
-                })
-                .where(eq(schema.Label.id, existing[0].id))
-            } else {
-              await db.insert(schema.Label).values({
-                labelId: label.externalId,
-                name: label.name,
-                integrationId,
-                integrationType: provider.toUpperCase(),
-                organizationId,
-                type: 'system',
-                enabled: true,
-                isVisible: true,
-                isSentBox: label.isSentBox,
-                updatedAt: now,
-              })
-            }
-          }
-
-          // Mark labels not in discovered set as PENDING_REMOVAL
-          const discoveredExternalIds = discoveredLabels.map((l) => l.externalId)
-          const allLabels = await db
-            .select()
-            .from(schema.Label)
-            .where(
-              and(
-                eq(schema.Label.integrationId, integrationId),
-                eq(schema.Label.organizationId, organizationId)
-              )
-            )
-
-          for (const label of allLabels) {
-            if (!discoveredExternalIds.includes(label.labelId)) {
-              await db
-                .update(schema.Label)
-                .set({ pendingAction: 'PENDING_REMOVAL', updatedAt: now })
-                .where(eq(schema.Label.id, label.id))
-            }
-          }
-        }
+        const folderDiscovery = new FolderDiscoveryService()
+        await folderDiscovery.discoverAndUpsert({
+          integrationId,
+          organizationId,
+          provider,
+          discoveredFolders: discoveredLabels,
+        })
       }
 
       // --- Fetch message IDs ---

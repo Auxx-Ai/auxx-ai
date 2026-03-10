@@ -1,0 +1,125 @@
+---
+title: 1-Click Docker Compose
+description: Install Auxx.ai with a single command using Docker Compose and the automated install script.
+---
+
+The fastest way to get Auxx.ai running on your own infrastructure.
+
+## Option 1: One-line install
+
+Run this single command to install and start Auxx.ai:
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/Auxx-Ai/auxx-ai/main/docker/scripts/install.sh)
+```
+
+The install script will:
+
+1. Check dependencies (Docker, Docker Compose v2, curl, openssl)
+2. Fetch the latest release version from GitHub
+3. Download `docker-compose.yml` and `.env.example`
+4. Auto-generate all secrets (database password, Redis password, auth secret, API key salt, Ed25519 keypair for login tokens, etc.)
+5. Configure Docker networking (database URL, Redis host, MinIO/S3 endpoints)
+6. Detect port conflicts and prompt for alternatives
+7. Start all containers and wait for health checks
+8. Open the app in your browser
+
+### Pin a specific version
+
+```bash
+VERSION=0.1.64 bash <(curl -sL https://raw.githubusercontent.com/Auxx-Ai/auxx-ai/main/docker/scripts/install.sh)
+```
+
+### Use a specific branch
+
+```bash
+BRANCH=feature-branch bash <(curl -sL https://raw.githubusercontent.com/Auxx-Ai/auxx-ai/main/docker/scripts/install.sh)
+```
+
+## Option 2: Manual download
+
+For users who want to inspect the script before running it.
+
+### Download the install script
+
+```bash
+curl -sLo install.sh https://raw.githubusercontent.com/Auxx-Ai/auxx-ai/main/docker/scripts/install.sh
+```
+
+### Review the script
+
+```bash
+less install.sh
+```
+
+The script will:
+
+- Check dependencies (Docker, Docker Compose v2, curl, openssl)
+- Prompt for a project directory name
+- Download `docker-compose.yml` and `.env.example`
+- Auto-generate all secrets (database password, Redis password, auth secret, API key salt, Ed25519 login token keypair, etc.)
+- Configure Docker networking (database URL, Redis host, MinIO/S3 endpoints)
+- Detect port conflicts and prompt for alternatives
+- Optionally start the containers and wait for health checks
+
+### Run the script
+
+```bash
+# Latest stable version
+bash install.sh
+
+# Pin a specific version
+VERSION=0.1.64 bash install.sh
+
+# Use a specific branch
+BRANCH=feature-branch bash install.sh
+```
+
+The script is interactive — it will prompt you for a directory name, handle port conflicts, and ask whether to start the containers.
+
+## Managing your instance
+
+### Stop
+
+```bash
+docker compose down
+```
+
+### Update
+
+Change `VERSION` in your `.env` file, then pull and restart:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+### View logs
+
+```bash
+docker compose logs -f <service>
+```
+
+Replace `<service>` with `web`, `api`, `worker`, `lambda`, `postgres`, `redis`, or `minio`.
+
+### Backup database
+
+```bash
+docker compose exec postgres pg_dump -U postgres auxx-ai > backup.sql
+```
+
+### Restore database
+
+```bash
+docker compose exec -T postgres psql -U postgres auxx-ai < backup.sql
+```
+
+## Next steps
+
+<Cards>
+  <Card title="Setup & configuration" href="/help/self-host/setup">
+    Configure your domain, email, Shopify, AI providers, and more.
+  </Card>
+  <Card title="Troubleshooting" href="/help/self-host/troubleshooting">
+    Common issues and solutions for self-hosted deployments.
+  </Card>
+</Cards>

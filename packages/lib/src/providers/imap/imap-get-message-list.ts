@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { MessageListResult } from '../integration-provider.interface'
 import { ImapClientProvider } from './imap-client-provider'
 import { ImapSyncService } from './imap-sync-service'
@@ -34,7 +34,9 @@ export class ImapGetMessageListService {
       .where(
         and(
           eq(schema.Label.integrationId, integrationId),
-          eq(schema.Label.organizationId, organizationId)
+          eq(schema.Label.organizationId, organizationId),
+          eq(schema.Label.enabled, true),
+          isNull(schema.Label.pendingAction)
         )
       )
 
@@ -47,9 +49,9 @@ export class ImapGetMessageListService {
 
     try {
       for (const label of labels) {
-        if (!label.externalId) continue
+        if (!label.labelId) continue
 
-        const folderPath = label.externalId
+        const folderPath = label.labelId
         let lock
 
         try {

@@ -37,6 +37,5 @@ export {
   getProviderForThread,
   getProvidersForMessages,
   getProvidersForThreads,
-  integrationTypeToProvider,
 } from './type-utils'
 export { WebhookManagerService } from './webhook-manager-service'
