@@ -1,0 +1,21 @@
+---
+title: <TextBlock />
+description: Display text content in your Auxx app dialogs.
+---
+
+A typography component for displaying text with alignment control.
+
+```tsx
+import { TextBlock } from '@auxx/sdk/client'
+
+<TextBlock>Centered text (default)</TextBlock>
+<TextBlock align="left">Left-aligned text</TextBlock>
+<TextBlock align="right">Right-aligned text</TextBlock>
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | — | Text content |
+| `align` | `'left' \| 'center' \| 'right'` | `'center'` | Text alignment |

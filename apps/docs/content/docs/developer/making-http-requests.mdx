@@ -1,0 +1,109 @@
+---
+title: Making HTTP Requests
+description: Call external APIs from your Auxx app's server-side code.
+---
+
+Your app's server code (`.server.ts` files) can make HTTP requests to external APIs using the SDK's `fetch` function.
+
+## Basic request
+
+```typescript title="src/api.server.ts"
+import { fetch } from '@auxx/sdk/server'
+
+export async function getWeather(city: string) {
+  const response = await fetch({
+    method: 'GET',
+    url: `https://api.weather.com/v1/forecast?city=${city}`,
+    headers: {
+      'X-Api-Key': 'your-api-key',
+    },
+  })
+
+  return response.data
+}
+```
+
+## POST with a body
+
+The `body` is automatically serialized to JSON:
+
+```typescript title="src/create-ticket.server.ts"
+import { fetch } from '@auxx/sdk/server'
+
+export async function createExternalTicket(data: {
+  subject: string
+  description: string
+}) {
+  const response = await fetch({
+    method: 'POST',
+    url: 'https://api.helpdesk.com/v1/tickets',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer token_123',
+    },
+    body: data,
+  })
+
+  return response.data
+}
+```
+
+## With connection tokens
+
+Combine with the [connections API](/developer/connections) to use stored OAuth tokens:
+
+```typescript title="src/hubspot.server.ts"
+import { fetch } from '@auxx/sdk/server'
+import { getOrganizationConnection } from '@auxx/sdk/server'
+
+export async function getHubSpotContacts() {
+  const connection = getOrganizationConnection()
+
+  const response = await fetch({
+    method: 'GET',
+    url: 'https://api.hubspot.com/crm/v3/contacts',
+    headers: {
+      Authorization: `Bearer ${connection.value}`,
+    },
+  })
+
+  return response.data.results
+}
+```
+
+## Error handling
+
+Check the response status to handle errors:
+
+```typescript
+const response = await fetch({
+  method: 'GET',
+  url: 'https://api.example.com/resource',
+})
+
+if (response.status !== 200) {
+  throw new Error(`API error: ${response.status}`)
+}
+```
+
+## Timeouts
+
+Set a timeout in milliseconds:
+
+```typescript
+const response = await fetch({
+  method: 'GET',
+  url: 'https://slow-api.example.com/data',
+  timeout: 10000, // 10 seconds
+})
+```
+
+## Response shape
+
+```typescript
+interface FetchResponse<T = any> {
+  status: number                    // HTTP status code
+  headers: Record<string, string>   // Response headers
+  data: T                           // Parsed response body
+}
+```

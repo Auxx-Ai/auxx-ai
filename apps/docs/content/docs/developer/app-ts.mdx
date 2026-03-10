@@ -1,0 +1,131 @@
+---
+title: app.ts
+description: The App interface — define actions, widgets, workflow blocks, and settings for your Auxx app.
+---
+
+Every Auxx app has an `app.tsx` (or `app.ts`) file that exports two things:
+
+1. **`app`** — A config object describing your app's surfaces (actions, widgets, workflows, settings)
+2. **`App`** — A React component rendered when your app is opened (optional)
+
+```tsx title="src/app.tsx"
+import type { App } from '@auxx/sdk'
+import { helloWorldAction } from './hello-world-action'
+import { sendEmailBlock } from './send-email.workflow'
+
+export const app: App = {
+  record: {
+    actions: [helloWorldAction],
+    bulkActions: [],
+    widgets: [],
+  },
+  workflow: {
+    blocks: [sendEmailBlock],
+    triggers: [],
+  },
+  settings: {
+    organization: settingsSchema,
+  },
+}
+```
+
+## App interface
+
+```typescript
+interface App {
+  record?: {
+    actions?: RecordAction[]
+    bulkActions?: BulkRecordAction[]
+    widgets?: RecordWidget[]
+  }
+  workflow?: {
+    blocks?: WorkflowBlock[]
+    triggers?: WorkflowTrigger[]
+  }
+  settings?: {
+    organization?: ScopedSettingsSchema
+  }
+  callRecording?: {
+    insight?: { textActions: string[] }
+    summary?: { textActions?: string[] }
+    transcript?: { textActions: string[] }
+  }
+}
+```
+
+## Record actions
+
+Actions appear in the actions menu on record pages. When triggered, they typically open a dialog.
+
+```tsx title="src/my-action.tsx"
+import type { RecordAction } from '@auxx/sdk'
+import { showDialog } from '@auxx/sdk/client'
+import { MyDialog } from './my-dialog'
+
+export const myAction: RecordAction = {
+  id: 'my-action',
+  label: 'My Action',
+  icon: 'Sparkles',
+  description: 'Does something useful',
+  onTrigger: async ({ recordId }) => {
+    await showDialog({
+      title: 'My Action',
+      Dialog: ({ hideDialog }) => <MyDialog recordId={recordId} hideDialog={hideDialog} />,
+      size: 'medium',
+    })
+  },
+  shouldShow: ({ recordType }) => recordType === 'ticket',
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | `string` | Unique identifier |
+| `label` | `string` | Display name in the actions menu |
+| `icon` | `string?` | Icon name |
+| `description` | `string?` | Tooltip text |
+| `onTrigger` | `(ctx: RecordActionContext) => void \| Promise<void>` | Called when the action is clicked |
+| `shouldShow` | `(ctx: RecordActionContext) => boolean \| Promise<boolean>` | Conditionally show/hide the action |
+
+The `RecordActionContext` provides `recordId`, `recordType`, and optional `metadata`.
+
+## Bulk actions
+
+Bulk actions appear when multiple records are selected.
+
+```tsx
+import type { BulkRecordAction } from '@auxx/sdk'
+
+export const bulkTag: BulkRecordAction = {
+  id: 'bulk-tag',
+  label: 'Tag Selected',
+  icon: 'Tag',
+  onTrigger: async ({ recordId }) => {
+    // recordId contains the selected record IDs
+  },
+}
+```
+
+## Widgets
+
+Widgets render inside record detail pages.
+
+```tsx
+import type { RecordWidget } from '@auxx/sdk'
+
+export const statusWidget: RecordWidget = {
+  id: 'status-widget',
+  label: 'Order Status',
+  color: '#4F46E5',
+}
+```
+
+## File naming conventions
+
+| Pattern | Purpose | Runs in |
+|---------|---------|---------|
+| `*.tsx` | Client components and actions | Browser |
+| `*.server.ts` | Server-only logic | Lambda |
+| `*.workflow.tsx` | Workflow block definitions | Browser + Lambda |
+| `events/*.event.ts` | Connection lifecycle handlers | Lambda |
+| `webhooks/*.webhook.ts` | Incoming webhook handlers | Lambda |

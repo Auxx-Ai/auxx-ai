@@ -1,0 +1,46 @@
+---
+title: useCurrentUser
+description: Access the current user inside your Auxx app.
+---
+
+`useCurrentUser` returns the currently logged-in user. It's a React hook injected at runtime by the Auxx platform.
+
+```tsx
+import { useCurrentUser } from '@auxx/sdk/client'
+import { TextBlock, Avatar } from '@auxx/sdk/client'
+
+function UserGreeting() {
+  const user = useCurrentUser()
+
+  return (
+    <>
+      <Avatar src={user.avatar} alt={user.name} />
+      <TextBlock align="left">Hello, {user.name}</TextBlock>
+    </>
+  )
+}
+```
+
+## Signature
+
+```typescript
+function useCurrentUser(): User
+```
+
+## Return type
+
+```typescript
+interface User {
+  id: string
+  email: string
+  name: string
+  avatar?: string
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | User identifier |
+| `email` | `string` | User's email address |
+| `name` | `string` | User's display name |
+| `avatar` | `string?` | URL to the user's avatar image |

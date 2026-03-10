@@ -1,0 +1,111 @@
+---
+title: Workflow Triggers
+description: Create custom workflow triggers with polling and cron support.
+---
+
+Workflow triggers define how a workflow starts. They can use polling (periodic checks) or webhooks to detect events.
+
+```tsx title="src/new-order.workflow.tsx"
+import type { WorkflowTrigger } from '@auxx/sdk'
+import { Workflow } from '@auxx/sdk'
+
+export const newOrderTrigger: WorkflowTrigger = {
+  id: 'new-order',
+  label: 'New Shopify Order',
+  description: 'Triggers when a new order is placed',
+  category: 'trigger',
+  icon: 'ShoppingBag',
+  schema: {
+    inputs: {
+      storeUrl: Workflow.url({ label: 'Store URL' }),
+    },
+    outputs: {
+      orderId: Workflow.string({ label: 'Order ID' }),
+      customerEmail: Workflow.email({ label: 'Customer Email' }),
+      total: Workflow.currency({ label: 'Order Total' }),
+    },
+  },
+  execute: executeNewOrderPoll,
+  config: {
+    polling: {
+      intervalMinutes: 5,
+      minIntervalMinutes: 1,
+    },
+    requiresConnection: true,
+  },
+}
+```
+
+## WorkflowTrigger interface
+
+The trigger interface is identical to `WorkflowBlock` — same properties, same schema system. The difference is in the execute function, which can use polling.
+
+## Polling triggers
+
+Polling triggers run on a schedule and return new events. The platform tracks state between polls.
+
+```typescript title="src/new-order.server.ts"
+import type { PollingExecuteFunction, PollingState } from '@auxx/sdk'
+
+export const executeNewOrderPoll: PollingExecuteFunction = async (input, polling) => {
+  const { storeUrl } = input
+  const lastCursor = (polling.state.cursor as string) || ''
+
+  // Fetch new orders since last poll
+  const response = await fetch({
+    method: 'GET',
+    url: `${storeUrl}/api/orders?since=${lastCursor}`,
+    headers: {
+      Authorization: `Bearer ${polling.connection?.value}`,
+    },
+  })
+
+  const orders = response.data
+
+  return {
+    events: orders.map((order: any) => ({
+      orderId: order.id,
+      customerEmail: order.email,
+      total: order.total,
+    })),
+    state: {
+      cursor: orders.at(-1)?.id || lastCursor,
+    },
+  }
+}
+```
+
+### PollingState
+
+```typescript
+interface PollingState {
+  state: Record<string, unknown>     // Persisted between polls
+  connection: {
+    value: string
+    metadata?: Record<string, unknown>
+  } | null
+}
+```
+
+### PollingExecuteResult
+
+```typescript
+interface PollingExecuteResult {
+  events: Record<string, unknown>[]  // Each event triggers a workflow run
+  state: Record<string, unknown>     // Updated state for next poll
+}
+```
+
+## Polling config
+
+```typescript
+config: {
+  polling: {
+    intervalMinutes: 5,         // Poll every 5 minutes
+    cron: '0 */2 * * *',       // Or use a cron expression (every 2 hours)
+    minIntervalMinutes: 1,     // Minimum allowed interval (default: 1)
+  }
+}
+```
+
+Use `intervalMinutes` for simple intervals or `cron` for complex schedules. If both are set, `cron` takes priority.

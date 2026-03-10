@@ -1,0 +1,99 @@
+---
+title: Debugging
+description: Debug your Auxx app during development with logging, error handling, and dev tools.
+---
+
+Tips for debugging your Auxx app during development.
+
+## Development server
+
+Start the dev server with `auxx dev`. It watches for file changes and hot-reloads your app.
+
+```bash
+auxx dev
+```
+
+The CLI streams logs from both client and server code to your terminal.
+
+## Logging
+
+### Client-side
+
+Use `console.log` in client components. Output appears in the browser dev tools:
+
+```tsx
+function MyDialog({ recordId }: { recordId: string }) {
+  const record = useRecord(recordId)
+  console.log('Record data:', record.data)
+  // ...
+}
+```
+
+### Server-side
+
+Use `console.log` in `.server.ts` files. Output appears in the CLI terminal:
+
+```typescript title="src/my-action.server.ts"
+export async function handleAction(data: any) {
+  console.log('Received data:', data)
+  // ...
+}
+```
+
+### Workflow blocks
+
+Use the SDK's `log` function for structured logging:
+
+```typescript
+const sdk = global.AUXX_SERVER_SDK
+sdk.log('info', 'Processing order', { orderId: '123' })
+sdk.log('warn', 'Rate limit at 80%')
+sdk.log('error', 'Failed to send', { error: err.message })
+```
+
+## Error handling
+
+### Server errors
+
+Errors thrown in server code are caught by the platform and displayed to the user. Provide descriptive messages:
+
+```typescript
+export async function handleAction() {
+  const connection = getUserConnection()
+  if (!connection) {
+    throw new Error('Please connect your account in app settings.')
+  }
+}
+```
+
+### Client errors
+
+Use the `alert` function to show errors in dialogs:
+
+```tsx
+import { alert } from '@auxx/sdk/client'
+
+try {
+  await submitForm(data)
+} catch (error) {
+  await alert({
+    title: 'Error',
+    message: error.message,
+    variant: 'error',
+  })
+}
+```
+
+## Common pitfalls
+
+### Importing server code in client files
+
+Server code (`.server.ts`) must not be imported in client files (`.tsx`). The bundler will throw an error. Keep server and client code in separate files.
+
+### Missing connections
+
+If your app requires an external connection, always handle the `ConnectionNotFoundError` case gracefully instead of letting it crash.
+
+### Stale hook data
+
+Hooks like `useRecord` and `useRecords` fetch data when the component mounts. If you need fresh data after a mutation, close and re-open the dialog.

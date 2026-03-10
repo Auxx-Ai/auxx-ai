@@ -1,0 +1,43 @@
+---
+title: <Card />
+description: Card container component with header, content, and footer sections.
+---
+
+A structured container for grouping related content. Composed of multiple sub-components.
+
+```tsx
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from '@auxx/sdk/client'
+
+<Card>
+  <CardHeader>
+    <CardTitle>Order #1234</CardTitle>
+    <CardDescription>Placed on March 1, 2026</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <TextBlock align="left">2 items — $49.99</TextBlock>
+  </CardContent>
+  <CardFooter>
+    <Button label="View Details" variant="outline" />
+  </CardFooter>
+</Card>
+```
+
+## Sub-components
+
+| Component | Description |
+|-----------|-------------|
+| `Card` | Outer container |
+| `CardHeader` | Top section (typically title + description) |
+| `CardTitle` | Card heading text |
+| `CardDescription` | Card subtitle / description text |
+| `CardContent` | Main body content |
+| `CardFooter` | Bottom section (typically actions) |
+
+All sub-components accept `children` and an optional `className`.

@@ -1,0 +1,20 @@
+---
+title: <Label />
+description: Form label component for Auxx app dialogs.
+---
+
+A label for associating text with form inputs.
+
+```tsx
+import { Label, Input } from '@auxx/sdk/client'
+
+<Label htmlFor="email">Email Address</Label>
+<Input id="email" type="email" placeholder="email@example.com" />
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | — | Label text |
+| `htmlFor` | `string?` | — | ID of the associated input element |

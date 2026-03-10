@@ -1,0 +1,26 @@
+---
+title: <Button />
+description: Interactive button component for Auxx app dialogs.
+---
+
+A clickable button with multiple variants and sizes.
+
+```tsx
+import { Button } from '@auxx/sdk/client'
+
+<Button label="Save" onClick={() => console.log('saved')} />
+<Button label="Delete" variant="destructive" />
+<Button label="Cancel" variant="outline" />
+<Button label="Submit" type="submit" />
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `label` | `string` | — | Button text |
+| `variant` | `'default' \| 'primary' \| 'secondary' \| 'outline' \| 'ghost' \| 'destructive'` | `'default'` | Visual style |
+| `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | Button size |
+| `disabled` | `boolean?` | `false` | Disable the button |
+| `onClick` | `(event: MouseEvent) => void` | — | Click handler |
+| `type` | `'button' \| 'submit' \| 'reset'` | `'button'` | HTML button type |

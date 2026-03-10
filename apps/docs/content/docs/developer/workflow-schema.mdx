@@ -1,0 +1,184 @@
+---
+title: Workflow Schema
+description: Define typed inputs and outputs for your workflow blocks using the schema builder.
+---
+
+The `Workflow` schema builder defines the inputs and outputs for workflow blocks and triggers. Values are type-safe and automatically generate the settings panel UI.
+
+```typescript
+import { Workflow } from '@auxx/sdk'
+
+const schema = {
+  inputs: {
+    apiKey: Workflow.secret({ label: 'API Key' }),
+    endpoint: Workflow.url({ label: 'Endpoint', acceptsVariables: true }),
+    retries: Workflow.number({ label: 'Retries', default: 3, min: 0, max: 10 }),
+    method: Workflow.select({
+      label: 'Method',
+      options: [
+        { value: 'GET', label: 'GET' },
+        { value: 'POST', label: 'POST' },
+      ],
+    }),
+  },
+  outputs: {
+    status: Workflow.number({ label: 'Status Code' }),
+    body: Workflow.string({ label: 'Response Body' }),
+  },
+}
+```
+
+## Field types
+
+### Primitives
+
+| Builder | Type | Description |
+|---------|------|-------------|
+| `Workflow.string(options?)` | `string` | Text input |
+| `Workflow.number(options?)` | `number` | Number input |
+| `Workflow.boolean(options?)` | `boolean` | Toggle/checkbox |
+
+### Specialized strings
+
+| Builder | Format | Description |
+|---------|--------|-------------|
+| `Workflow.date()` | `date` | Date picker |
+| `Workflow.datetime()` | `datetime` | Date + time picker |
+| `Workflow.time()` | `time` | Time picker |
+| `Workflow.email()` | `email` | Email input |
+| `Workflow.url()` | `url` | URL input |
+| `Workflow.phone()` | `phone` | Phone number input |
+
+### Complex types
+
+| Builder | Type | Description |
+|---------|------|-------------|
+| `Workflow.select(options)` | enum | Dropdown select |
+| `Workflow.array(options)` | array | List of items |
+| `Workflow.struct(fields, options?)` | object | Nested object |
+| `Workflow.object(options?)` | object | Freeform JSON object |
+| `Workflow.currency(options?)` | number | Currency input |
+| `Workflow.secret(options?)` | string | Masked secret input |
+| `Workflow.file(options?)` | file | File upload |
+
+## Common options
+
+All field types accept these base options:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `label` | `string?` | Display label |
+| `description` | `string?` | Help text |
+| `required` | `boolean?` | Whether the field is required |
+| `default` | `any?` | Default value |
+| `acceptsVariables` | `boolean?` | Allow variable interpolation from upstream blocks |
+
+## String options
+
+```typescript
+Workflow.string({
+  label: 'Message',
+  placeholder: 'Enter text...',
+  minLength: 1,
+  maxLength: 500,
+  pattern: '^[a-z]+$',
+  acceptsVariables: true,
+})
+```
+
+## Number options
+
+```typescript
+Workflow.number({
+  label: 'Amount',
+  placeholder: '0',
+  min: 0,
+  max: 1000,
+  integer: true,
+  precision: 2,
+})
+```
+
+## Select options
+
+```typescript
+Workflow.select({
+  label: 'Status',
+  options: [
+    { value: 'active', label: 'Active' },
+    { value: 'paused', label: 'Paused' },
+  ],
+  multi: true,  // allow multiple selections
+})
+```
+
+## Array options
+
+```typescript
+Workflow.array({
+  label: 'Tags',
+  items: Workflow.string({ label: 'Tag' }),
+  minItems: 1,
+  maxItems: 10,
+})
+```
+
+## Struct options
+
+```typescript
+Workflow.struct(
+  {
+    name: Workflow.string({ label: 'Name' }),
+    email: Workflow.email({ label: 'Email' }),
+    role: Workflow.select({
+      label: 'Role',
+      options: [
+        { value: 'admin', label: 'Admin' },
+        { value: 'member', label: 'Member' },
+      ],
+    }),
+  },
+  { label: 'Contact Info' }
+)
+```
+
+## Layout sections
+
+Organize the settings panel with sections:
+
+```typescript
+const schema = {
+  inputs: {
+    to: Workflow.string({ label: 'To' }),
+    subject: Workflow.string({ label: 'Subject' }),
+    body: Workflow.string({ label: 'Body' }),
+    retries: Workflow.number({ label: 'Retries' }),
+    timeout: Workflow.number({ label: 'Timeout (ms)' }),
+  },
+  outputs: { ... },
+  layout: [
+    {
+      type: 'section',
+      title: 'Message',
+      fields: ['to', 'subject', 'body'],
+    },
+    {
+      type: 'section',
+      title: 'Advanced',
+      fields: ['retries', 'timeout'],
+      collapsible: true,
+      initialOpen: false,
+    },
+  ],
+}
+```
+
+## Type inference
+
+Input and output types are automatically inferred from the schema:
+
+```typescript
+// If schema.inputs = { to: Workflow.string(), count: Workflow.number() }
+// Then execute receives: { to: string, count: number }
+// And must return the shape defined by schema.outputs
+```

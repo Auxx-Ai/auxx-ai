@@ -1,0 +1,116 @@
+---
+title: Workflow Blocks
+description: Create custom workflow blocks that extend the Auxx workflow engine.
+---
+
+Workflow blocks are custom steps that users can add to their workflows. Each block has a schema (inputs/outputs), optional UI components (node and panel), and an execute function.
+
+```tsx title="src/send-email.workflow.tsx"
+import type { WorkflowBlock } from '@auxx/sdk'
+import { Workflow } from '@auxx/sdk'
+import { SendEmailNode } from './send-email-node'
+import { SendEmailPanel } from './send-email-panel'
+import { executeSendEmail } from './send-email.server'
+
+export const sendEmailBlock: WorkflowBlock = {
+  id: 'send-email',
+  label: 'Send Email',
+  description: 'Send an email via SMTP',
+  category: 'action',
+  icon: 'Mail',
+  schema: {
+    inputs: {
+      to: Workflow.string({ label: 'To', acceptsVariables: true }),
+      subject: Workflow.string({ label: 'Subject', acceptsVariables: true }),
+      body: Workflow.string({ label: 'Body', acceptsVariables: true }),
+    },
+    outputs: {
+      messageId: Workflow.string({ label: 'Message ID' }),
+      success: Workflow.boolean({ label: 'Success' }),
+    },
+  },
+  node: SendEmailNode,
+  panel: SendEmailPanel,
+  execute: executeSendEmail,
+  config: {
+    timeout: 30000,
+    retries: 2,
+  },
+}
+```
+
+## WorkflowBlock interface
+
+```typescript
+interface WorkflowBlock<TSchema extends WorkflowSchema = WorkflowSchema> {
+  id: string
+  label: string
+  description?: string
+  category?: WorkflowCategory
+  icon?: string | ComponentType
+  color?: string
+  schema: TSchema
+  node?: ComponentType<WorkflowNodeProps<TSchema>>
+  panel?: ComponentType<WorkflowPanelProps<TSchema>>
+  execute: WorkflowExecuteFunction<TSchema>
+  config?: WorkflowBlockConfig
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | `string` | Unique block identifier |
+| `label` | `string` | Display name in the workflow editor |
+| `description` | `string?` | Tooltip description |
+| `category` | `WorkflowCategory?` | Grouping in the block palette |
+| `icon` | `string \| ComponentType?` | Block icon |
+| `color` | `string?` | Block accent color |
+| `schema` | `WorkflowSchema` | Input/output definitions |
+| `node` | `ComponentType?` | Custom node component for the canvas |
+| `panel` | `ComponentType?` | Custom settings panel component |
+| `execute` | `WorkflowExecuteFunction` | Server-side execution logic |
+| `config` | `WorkflowBlockConfig?` | Execution configuration |
+
+## Categories
+
+```typescript
+type WorkflowCategory =
+  | 'trigger' | 'action' | 'logic' | 'transform'
+  | 'integration' | 'ai' | 'data' | 'utility' | 'social'
+```
+
+## Config
+
+```typescript
+interface WorkflowBlockConfig {
+  timeout?: number         // default: 30000ms
+  retries?: number         // default: 0
+  requiresConnection?: boolean
+  canRunSingle?: boolean   // default: true
+  polling?: {
+    intervalMinutes?: number
+    cron?: string
+    minIntervalMinutes?: number  // default: 1
+  }
+}
+```
+
+## Execute function
+
+The execute function runs on the server (Lambda). It receives the validated inputs and returns outputs:
+
+```typescript title="src/send-email.server.ts"
+import type { WorkflowExecuteFunction } from '@auxx/sdk'
+
+export const executeSendEmail: WorkflowExecuteFunction = async (input) => {
+  // input contains the validated schema inputs
+  const { to, subject, body } = input
+
+  // ... send email logic
+
+  return {
+    messageId: 'msg_123',
+    success: true,
+  }
+}
+```

@@ -1,0 +1,29 @@
+---
+title: <Input />
+description: Text input field component for Auxx app dialogs.
+---
+
+A single-line text input for collecting user input.
+
+```tsx
+import { Input } from '@auxx/sdk/client'
+
+<Input placeholder="Enter your name" />
+<Input type="email" placeholder="email@example.com" />
+<Input type="number" value={count} onChange={(e) => setCount(e.target.value)} />
+```
+
+<Callout>
+  For form-based inputs with validation, use [FormField](/developer/form-component) instead.
+</Callout>
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | `string?` | — | Controlled value |
+| `placeholder` | `string?` | — | Placeholder text |
+| `type` | `'text' \| 'email' \| 'password' \| 'number' \| 'tel' \| 'url'` | `'text'` | Input type |
+| `disabled` | `boolean?` | `false` | Disable the input |
+| `name` | `string?` | — | Form field name |
+| `onChange` | `(event: ChangeEvent) => void` | — | Change handler |

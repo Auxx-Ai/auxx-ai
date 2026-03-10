@@ -1,0 +1,111 @@
+---
+title: Form Component
+description: Render type-safe forms with automatic validation in your Auxx app dialogs.
+---
+
+The `Form`, `FormField`, and `FormSubmit` components render a form from a schema with automatic validation and type-safe submission. Import from `@auxx/sdk/client`.
+
+```tsx title="src/contact-form.tsx"
+import { Forms, Form, FormField, FormSubmit } from '@auxx/sdk/client'
+
+const schema = {
+  name: Forms.string().placeholder('Full name').minLength(2),
+  email: Forms.string().email().placeholder('email@example.com'),
+}
+
+export function ContactForm({ hideDialog }: { hideDialog: () => void }) {
+  return (
+    <Form
+      schema={schema}
+      onSubmit={async (values) => {
+        // values is typed as { name: string, email: string }
+        console.log(values.name, values.email)
+        hideDialog()
+      }}
+      onError={(error) => console.error(error)}
+    >
+      <FormField name="name" label="Name" />
+      <FormField name="email" label="Email" />
+      <FormSubmit>Save Contact</FormSubmit>
+    </Form>
+  )
+}
+```
+
+## Form
+
+The form wrapper. Manages state, validation, and submission.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `schema` | `FormSchema` | The form schema object |
+| `onSubmit` | `(values: InferFormValues<S>) => void \| Promise<void>` | Called with validated values on submit |
+| `onChange` | `(values: Partial<InferFormValues<S>>) => void` | Called on any field change |
+| `onError` | `(error: Error) => void` | Called on submission error |
+| `onValidationError` | `(errors: Record<string, string>) => void` | Called when validation fails |
+| `defaultValues` | `Partial<InferFormValues<S>>?` | Initial field values |
+| `mode` | `'onChange' \| 'onBlur' \| 'onSubmit' \| 'onTouched' \| 'all'` | When to validate (default: `'onSubmit'`) |
+| `formId` | `string?` | Form identifier |
+
+## FormField
+
+Renders a single form field. The field type (text input, select, checkbox, etc.) is automatically determined from the schema.
+
+```tsx
+<FormField name="email" label="Email Address" description="We'll never share your email." />
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `name` | `string` | Key matching the schema field name |
+| `label` | `string` | Field label text |
+| `placeholder` | `string?` | Override the schema placeholder |
+| `description` | `string?` | Help text below the field |
+| `disabled` | `boolean?` | Disable the field |
+
+## FormSubmit
+
+The submit button. Automatically shows a loading state during async submission.
+
+```tsx
+<FormSubmit loadingText="Saving..." variant="default">
+  Save
+</FormSubmit>
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `children` | `string` | Button label |
+| `variant` | `'default' \| 'outline' \| 'destructive' \| 'secondary' \| 'ghost'` | Button style |
+| `loadingText` | `string?` | Text shown during submission |
+| `disabled` | `boolean?` | Disable the button |
+
+## Form ref
+
+Access the form imperatively via a ref:
+
+```tsx
+import { useRef } from 'react'
+
+function MyForm() {
+  const formRef = useRef(null)
+
+  return (
+    <>
+      <Form ref={formRef} schema={schema} onSubmit={handleSubmit}>
+        <FormField name="name" label="Name" />
+      </Form>
+      <Button label="Reset" onClick={() => formRef.current?.reset()} />
+      <Button label="Submit" onClick={() => formRef.current?.submit()} />
+    </>
+  )
+}
+```
+
+| Method | Description |
+|--------|-------------|
+| `reset()` | Reset all fields to defaults |
+| `setValue(name, value)` | Set a field value programmatically |
+| `validate()` | Run validation, returns `Promise<boolean>` |
+| `getValues()` | Get current form values |
+| `submit()` | Trigger form submission |

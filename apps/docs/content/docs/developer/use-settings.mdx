@@ -1,0 +1,62 @@
+---
+title: useSettings
+description: Access your app's settings values inside a client component.
+---
+
+`useSettings` returns the current app settings for the organization. It's a React hook injected at runtime by the Auxx platform.
+
+Settings are defined in `app.settings.ts` using the `Settings` schema builder and configured by workspace admins in the platform UI.
+
+```tsx
+import { useSettings } from '@auxx/sdk/client'
+import { TextBlock } from '@auxx/sdk/client'
+
+function AppConfig() {
+  const settings = useSettings()
+
+  return (
+    <TextBlock align="left">
+      API endpoint: {settings.apiEndpoint}
+    </TextBlock>
+  )
+}
+```
+
+## Signature
+
+```typescript
+function useSettings(): AppSettings
+```
+
+The return type matches the shape defined by your `app.settings.ts` schema. For example:
+
+```typescript title="src/app.settings.ts"
+import { Settings } from '@auxx/sdk'
+
+export const settingsSchema = {
+  apiEndpoint: Settings.string({
+    label: 'API Endpoint',
+    description: 'Your external service URL',
+    placeholder: 'https://api.example.com',
+  }),
+  enableNotifications: Settings.boolean({
+    label: 'Enable Notifications',
+    default: true,
+  }),
+  theme: Settings.select({
+    label: 'Theme',
+    options: ['light', 'dark', 'auto'] as const,
+    default: 'auto',
+  }),
+}
+```
+
+Then `useSettings()` returns:
+
+```typescript
+{
+  apiEndpoint: string
+  enableNotifications: boolean
+  theme: 'light' | 'dark' | 'auto'
+}
+```

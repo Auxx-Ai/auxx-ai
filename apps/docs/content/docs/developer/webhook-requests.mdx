@@ -1,0 +1,106 @@
+---
+title: Webhook Requests
+description: Receive and handle incoming webhooks from external services.
+---
+
+Webhooks let external services send real-time notifications to your app. Define handlers in `.webhook.ts` files and manage them with the server SDK.
+
+## Creating a webhook handler
+
+Create a file in `src/webhooks/` with the `.webhook.ts` extension:
+
+```typescript title="src/webhooks/stripe.webhook.ts"
+export default async function handler(request: {
+  method: string
+  headers: Record<string, string>
+  body: any
+}) {
+  const event = request.body
+
+  switch (event.type) {
+    case 'payment_intent.succeeded':
+      // Handle successful payment
+      break
+    case 'customer.subscription.deleted':
+      // Handle cancellation
+      break
+  }
+
+  return { status: 200 }
+}
+```
+
+The Auxx platform automatically discovers `.webhook.ts` files and creates endpoints for them.
+
+## Registering webhooks with external services
+
+After creating the handler file, use `createWebhookHandler` to get a URL you can register with the external service:
+
+```typescript title="src/setup.server.ts"
+import { createWebhookHandler } from '@auxx/sdk/server'
+import { fetch } from '@auxx/sdk/server'
+import { getOrganizationConnection } from '@auxx/sdk/server'
+
+export async function setupStripeWebhook() {
+  // 1. Create a webhook handler in Auxx
+  const handler = await createWebhookHandler({
+    fileName: 'stripe.webhook.ts',
+    metadata: { provider: 'stripe' },
+  })
+
+  // 2. Register the URL with Stripe
+  const connection = getOrganizationConnection()
+  const response = await fetch({
+    method: 'POST',
+    url: 'https://api.stripe.com/v1/webhook_endpoints',
+    headers: {
+      Authorization: `Bearer ${connection.value}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: {
+      url: handler.url,
+      enabled_events: ['payment_intent.succeeded'],
+    },
+  })
+
+  // 3. Store the external webhook ID for later cleanup
+  await updateWebhookHandler(handler.id, {
+    externalWebhookId: response.data.id,
+  })
+}
+```
+
+## Managing webhooks
+
+```typescript
+import {
+  createWebhookHandler,
+  updateWebhookHandler,
+  deleteWebhookHandler,
+  listWebhookHandlers,
+} from '@auxx/sdk/server'
+
+// List all handlers
+const handlers = await listWebhookHandlers()
+
+// Update metadata
+await updateWebhookHandler('handler_123', {
+  metadata: { verified: true },
+})
+
+// Delete a handler
+await deleteWebhookHandler('handler_123')
+```
+
+## Using webhooks with workflow triggers
+
+Connect a webhook handler to a workflow trigger for event-driven workflows:
+
+```typescript
+const handler = await createWebhookHandler({
+  fileName: 'shopify-order.webhook.ts',
+  triggerId: 'new-order-trigger',
+})
+```
+
+When the webhook fires, the associated workflow trigger activates automatically.

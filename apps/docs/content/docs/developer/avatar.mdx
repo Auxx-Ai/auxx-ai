@@ -1,0 +1,23 @@
+---
+title: <Avatar />
+description: Display user or entity avatars in your Auxx app.
+---
+
+An avatar component for displaying user profile images with fallback initials.
+
+```tsx
+import { Avatar } from '@auxx/sdk/client'
+
+<Avatar src="https://example.com/photo.jpg" alt="Jane Doe" />
+<Avatar fallback="JD" size="large" />
+<Avatar src={user.avatar} alt={user.name} size="small" />
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `src` | `string?` | — | Image URL |
+| `alt` | `string?` | — | Alt text for the image |
+| `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | Avatar size |
+| `fallback` | `string?` | — | Initials shown when no image is available |

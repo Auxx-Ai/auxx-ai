@@ -1,0 +1,81 @@
+---
+title: Connections
+description: Access OAuth and secret-based connections from your app's server code.
+---
+
+Connections let your app access external services (e.g. Slack, HubSpot) using credentials stored by the Auxx platform. Import from `@auxx/sdk/server`.
+
+## getUserConnection
+
+Returns the current user's connection for your app. Use this when credentials are per-user (e.g. personal OAuth tokens).
+
+```typescript title="src/my-action.server.ts"
+import { getUserConnection } from '@auxx/sdk/server'
+
+export async function fetchUserData() {
+  const connection = getUserConnection()
+
+  const res = await fetch('https://api.example.com/me', {
+    headers: { Authorization: `Bearer ${connection.value}` },
+  })
+}
+```
+
+## getOrganizationConnection
+
+Returns the organization-level connection. Use this when credentials are shared across the workspace.
+
+```typescript title="src/my-action.server.ts"
+import { getOrganizationConnection } from '@auxx/sdk/server'
+
+export async function fetchOrgData() {
+  const connection = getOrganizationConnection()
+
+  const res = await fetch('https://api.example.com/org', {
+    headers: { Authorization: `Bearer ${connection.value}` },
+  })
+}
+```
+
+## Connection type
+
+```typescript
+interface Connection {
+  id: string
+  type: 'oauth2-code' | 'secret'
+  value: string
+  metadata?: {
+    scope?: string
+    externalUserId?: string
+    tokenType?: string
+    [key: string]: any
+  }
+  expiresAt?: Date
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Connection identifier |
+| `type` | `'oauth2-code' \| 'secret'` | Authentication method |
+| `value` | `string` | The token or secret value |
+| `metadata` | `object?` | Additional connection info (scopes, external IDs) |
+| `expiresAt` | `Date?` | Token expiration (OAuth only) |
+
+## ConnectionNotFoundError
+
+Thrown when no connection exists for the requested scope. Handle this to prompt the user to connect.
+
+```typescript
+import { getUserConnection, ConnectionNotFoundError } from '@auxx/sdk/server'
+
+try {
+  const connection = getUserConnection()
+} catch (error) {
+  if (error instanceof ConnectionNotFoundError) {
+    // error.scope is 'user' or 'organization'
+    throw new Error('Please connect your account first.')
+  }
+  throw error
+}
+```

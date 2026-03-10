@@ -1,0 +1,105 @@
+---
+title: Authenticate External Services
+description: Use OAuth connections and secrets to authenticate with external APIs.
+---
+
+When your app needs to call external APIs (Slack, HubSpot, Stripe, etc.), use the connections API to access stored credentials. Connections are managed by the Auxx platform — users authorize once, and your app gets access tokens automatically.
+
+## User connections
+
+Per-user credentials. Each user authorizes individually.
+
+```typescript title="src/slack.server.ts"
+import { getUserConnection } from '@auxx/sdk/server'
+import { fetch } from '@auxx/sdk/server'
+
+export async function sendSlackMessage(channel: string, message: string) {
+  const connection = getUserConnection()
+
+  await fetch({
+    method: 'POST',
+    url: 'https://slack.com/api/chat.postMessage',
+    headers: {
+      Authorization: `Bearer ${connection.value}`,
+      'Content-Type': 'application/json',
+    },
+    body: { channel, text: message },
+  })
+}
+```
+
+## Organization connections
+
+Shared credentials for the entire workspace. One team member authorizes, and everyone can use it.
+
+```typescript title="src/hubspot.server.ts"
+import { getOrganizationConnection } from '@auxx/sdk/server'
+import { fetch } from '@auxx/sdk/server'
+
+export async function getContacts() {
+  const connection = getOrganizationConnection()
+
+  const response = await fetch({
+    method: 'GET',
+    url: 'https://api.hubspot.com/crm/v3/contacts',
+    headers: {
+      Authorization: `Bearer ${connection.value}`,
+    },
+  })
+
+  return response.data.results
+}
+```
+
+## Connection type
+
+```typescript
+interface Connection {
+  id: string
+  type: 'oauth2-code' | 'secret'
+  value: string                    // Token or secret
+  metadata?: {
+    scope?: string
+    externalUserId?: string
+    tokenType?: string
+  }
+  expiresAt?: Date
+}
+```
+
+## Handling missing connections
+
+When a connection hasn't been set up yet, the SDK throws `ConnectionNotFoundError`:
+
+```typescript
+import { getUserConnection, ConnectionNotFoundError } from '@auxx/sdk/server'
+import { alert } from '@auxx/sdk/client'
+
+try {
+  const connection = getUserConnection()
+  // Use the connection...
+} catch (error) {
+  if (error instanceof ConnectionNotFoundError) {
+    await alert({
+      title: 'Connection Required',
+      message: 'Please connect your Slack account in the app settings.',
+      variant: 'warning',
+    })
+    return
+  }
+  throw error
+}
+```
+
+## Connection lifecycle events
+
+Handle connection add/remove events with `.event.ts` files:
+
+```typescript title="src/events/connection-added.event.ts"
+export default async function onConnectionAdded(connection: Connection) {
+  // Set up webhooks, sync initial data, etc.
+  console.log(`Connection added: ${connection.id}`)
+}
+```
+
+Place event files in the `events/` folder with the `.event.ts` extension. The platform discovers them automatically.

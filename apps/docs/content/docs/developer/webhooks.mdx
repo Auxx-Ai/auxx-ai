@@ -1,0 +1,102 @@
+---
+title: Webhooks
+description: Handle incoming webhooks from external services in your Auxx app.
+---
+
+Webhooks let your app receive HTTP callbacks from external services. Webhook handlers are defined in `.webhook.ts` files and managed through the server SDK.
+
+## Creating a webhook handler
+
+Create a file in `webhooks/` with the `.webhook.ts` extension:
+
+```typescript title="src/webhooks/stripe.webhook.ts"
+export default async function handler(request: {
+  method: string
+  headers: Record<string, string>
+  body: any
+}) {
+  const event = request.body
+
+  if (event.type === 'payment_intent.succeeded') {
+    // Handle successful payment
+  }
+
+  return { status: 200 }
+}
+```
+
+The Auxx platform automatically discovers `.webhook.ts` files and creates webhook endpoints for them.
+
+## Managing webhook handlers
+
+Use the server SDK to programmatically create, update, and delete webhook registrations. Import from `@auxx/sdk/server`.
+
+### createWebhookHandler
+
+Register a new webhook handler with the platform.
+
+```typescript title="src/setup.server.ts"
+import { createWebhookHandler } from '@auxx/sdk/server'
+
+const handler = await createWebhookHandler({
+  fileName: 'stripe.webhook.ts',
+  connectionId: 'conn_abc123',
+  metadata: { source: 'stripe' },
+})
+
+// handler.url contains the webhook URL to register with the external service
+console.log(handler.url)
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `fileName` | `string` | The `.webhook.ts` file to handle requests |
+| `triggerId` | `string?` | Associated workflow trigger ID |
+| `connectionId` | `string?` | Associated connection ID |
+| `metadata` | `Record<string, unknown>?` | Custom metadata |
+
+### updateWebhookHandler
+
+Update an existing webhook handler's metadata.
+
+```typescript
+import { updateWebhookHandler } from '@auxx/sdk/server'
+
+await updateWebhookHandler('handler_abc123', {
+  externalWebhookId: 'we_xyz789',
+  metadata: { verified: true },
+})
+```
+
+### deleteWebhookHandler
+
+Remove a webhook handler.
+
+```typescript
+import { deleteWebhookHandler } from '@auxx/sdk/server'
+
+await deleteWebhookHandler('handler_abc123')
+```
+
+### listWebhookHandlers
+
+List all webhook handlers for your app.
+
+```typescript
+import { listWebhookHandlers } from '@auxx/sdk/server'
+
+const handlers = await listWebhookHandlers()
+```
+
+## WebhookHandler type
+
+```typescript
+interface WebhookHandler {
+  id: string
+  url: string
+  fileName: string
+  externalWebhookId?: string
+  connectionId?: string
+  metadata?: Record<string, unknown>
+}
+```

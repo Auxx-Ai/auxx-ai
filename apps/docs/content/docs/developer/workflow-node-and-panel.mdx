@@ -1,0 +1,104 @@
+---
+title: Workflow Node & Panel
+description: Custom UI components for workflow blocks in the visual editor.
+---
+
+Workflow blocks can have custom **node** and **panel** components that render in the visual workflow editor. Nodes appear on the canvas, panels appear in the settings sidebar.
+
+## WorkflowNode
+
+The node component renders a compact summary of the block on the workflow canvas.
+
+```tsx title="src/send-email-node.tsx"
+import { WorkflowNode, WorkflowNodeRow } from '@auxx/sdk/client'
+
+export function SendEmailNode({ data, status }: WorkflowNodeProps) {
+  return (
+    <WorkflowNode>
+      <WorkflowNodeRow label="To" value={data?.to || 'Not set'} />
+      <WorkflowNodeRow label="Subject" value={data?.subject || 'Not set'} />
+    </WorkflowNode>
+  )
+}
+```
+
+### WorkflowNodeProps
+
+```typescript
+interface WorkflowNodeProps<TSchema extends WorkflowSchema = WorkflowSchema> {
+  data?: InferWorkflowInput<TSchema>
+  nodeId?: string
+  status?: 'idle' | 'running' | 'success' | 'error'
+  lastRun?: {
+    startedAt: string
+    completedAt: string
+    duration: number
+    output: InferWorkflowOutput<TSchema>
+    error?: { code: string; message: string }
+  }
+}
+```
+
+### WorkflowNodeRow
+
+A helper component for displaying key-value rows inside nodes.
+
+```tsx
+<WorkflowNodeRow label="Status" value="Active" />
+```
+
+## WorkflowPanel
+
+The panel component renders the full settings form in the sidebar when the block is selected.
+
+```tsx title="src/send-email-panel.tsx"
+import { WorkflowPanel } from '@auxx/sdk/client'
+import { useWorkflow, useWorkflowNode } from '@auxx/sdk/client'
+
+export function SendEmailPanel({ data, nodeId, onDataChange }: WorkflowPanelProps) {
+  return (
+    <WorkflowPanel>
+      {/* Panel content renders the schema-generated form by default */}
+      {/* Add custom UI elements here if needed */}
+    </WorkflowPanel>
+  )
+}
+```
+
+### WorkflowPanelProps
+
+```typescript
+interface WorkflowPanelProps<TSchema extends WorkflowSchema = WorkflowSchema> {
+  data?: InferWorkflowInput<TSchema>
+  nodeId?: string
+  onDataChange?: (data: InferWorkflowInput<TSchema>) => void
+}
+```
+
+## Workflow hooks
+
+### useWorkflow
+
+Access workflow-level state and actions.
+
+```tsx
+import { useWorkflow } from '@auxx/sdk/client'
+
+function MyPanel() {
+  const workflow = useWorkflow()
+  // Access workflow-level data
+}
+```
+
+### useWorkflowNode
+
+Access the current node's state and data.
+
+```tsx
+import { useWorkflowNode } from '@auxx/sdk/client'
+
+function MyPanel() {
+  const node = useWorkflowNode()
+  // Access current node data
+}
+```

@@ -1,0 +1,22 @@
+---
+title: <Badge />
+description: Display labels, tags, and status indicators in your Auxx app.
+---
+
+A small label component for displaying tags, statuses, or categories.
+
+```tsx
+import { Badge } from '@auxx/sdk/client'
+
+<Badge>Active</Badge>
+<Badge variant="secondary">Draft</Badge>
+<Badge variant="destructive">Overdue</Badge>
+<Badge variant="outline">v2.1</Badge>
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | — | Badge content |
+| `variant` | `'default' \| 'secondary' \| 'destructive' \| 'outline'` | `'default'` | Visual style |
