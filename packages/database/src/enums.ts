@@ -963,6 +963,7 @@ export const IntegrationProviderType = {
   chat: 'chat',
   email: 'email',
   shopify: 'shopify',
+  imap: 'imap',
 } as const
 
 export const IntegrationType = {

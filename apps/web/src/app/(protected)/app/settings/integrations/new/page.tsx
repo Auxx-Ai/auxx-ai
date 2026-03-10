@@ -1,6 +1,6 @@
 'use client'
 import { Button } from '@auxx/ui/components/button'
-import { ArrowLeft, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Mail, MessageSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import SettingsPage from '~/components/global/settings-page'
 import IntegrationCard from '../_components/integration-card'
@@ -44,6 +44,13 @@ export default function IntegrationChooserPage() {
             type='outlook'
             title='Outlook'
             description='Connect your Microsoft Outlook account to send and receive emails'
+          />
+
+          <IntegrationCard
+            type='imap'
+            title='IMAP Email'
+            description='Connect any IMAP/SMTP email server (self-hosted, enterprise)'
+            icon={<Mail className='h-8 w-8 text-blue-500' />}
           />
 
           {/* Social Media Integrations */}

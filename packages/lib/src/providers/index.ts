@@ -2,6 +2,9 @@ export type { FacebookIntegrationMetadata } from './facebook/facebook-oauth'
 export { FacebookOAuthService } from './facebook/facebook-oauth'
 
 export { GoogleOAuthService } from './google/google-oauth'
+export type { ImapCredentialData, LdapUserInfo } from './imap'
+// IMAP/SMTP/LDAP provider
+export { ImapClientProvider, ImapProvider, ImapSmtpSendService, LdapAuthService } from './imap'
 export type { InstagramIntegrationMetadata } from './instagram/instagram-oauth'
 export { InstagramOAuthService } from './instagram/instagram-oauth'
 // Integration cache - cached provider lookup for batch operations

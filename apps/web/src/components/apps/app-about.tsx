@@ -145,6 +145,12 @@ function AppAbout({ app }: Props) {
                 <div className='text-sm prose prose-sm max-w-none'>{app.app.contentHowItWorks}</div>
               </section>
             )}
+            {app.app.contentConfigure && (
+              <section className='space-y-2'>
+                <h1 className='text-xl'>Configuration</h1>
+                <div className='text-sm prose prose-sm max-w-none'>{app.app.contentConfigure}</div>
+              </section>
+            )}
           </div>
         </div>
         {/* <div className="flex flex-col gap-1 items-start max-w-[200px]">

@@ -69,6 +69,7 @@ export enum IntegrationProviderType {
   chat = 'chat', // Internal chat system
   email = 'email', // Generic email provider
   shopify = 'shopify', // Shopify integration (not a messaging provider)
+  imap = 'imap', // Generic IMAP/SMTP email (self-hosted, enterprise)
 }
 
 /**
@@ -101,6 +102,7 @@ export const PROVIDER_MESSAGE_TYPE_MAP: Record<IntegrationProviderType, MessageT
   [IntegrationProviderType.chat]: [MessageType.CHAT],
   [IntegrationProviderType.email]: [MessageType.EMAIL],
   [IntegrationProviderType.shopify]: [], // Shopify is a data provider, not messaging
+  [IntegrationProviderType.imap]: [MessageType.EMAIL],
 }
 
 /**
@@ -118,6 +120,7 @@ export const MESSAGING_PROVIDERS = [
   IntegrationProviderType.sms,
   IntegrationProviderType.chat,
   IntegrationProviderType.email,
+  IntegrationProviderType.imap,
 ] as const
 
 /**
@@ -185,3 +188,4 @@ export type IntegrationProviderTypeString =
   | 'chat'
   | 'email'
   | 'shopify'
+  | 'imap'

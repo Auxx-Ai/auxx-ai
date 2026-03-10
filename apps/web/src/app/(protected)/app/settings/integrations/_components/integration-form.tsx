@@ -12,6 +12,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import SettingsPage from '~/components/global/settings-page'
 import { useIntegration } from '~/hooks/use-integration'
+import ImapConnectForm from './imap-connect-form'
 import { getIntegrationProviderIcon } from './integration-table'
 
 interface IntegrationFormProps {
@@ -89,6 +90,9 @@ export default function IntegrationForm({ type }: IntegrationFormProps) {
             </div>
           </div>
         )
+
+      case 'imap':
+        return <ImapConnectForm onBack={handleBack} />
 
       // Default case
       default:

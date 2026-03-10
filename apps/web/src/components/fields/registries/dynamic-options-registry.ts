@@ -55,7 +55,7 @@ export const DYNAMIC_OPTIONS_REGISTRY: Record<string, DynamicOptionsEntry> = {
       })
 
       return {
-        data: data?.map((i) => ({ value: i.id, label: i.name ?? i.email })),
+        data: data?.integrations?.map((i) => ({ value: i.id, label: i.name ?? i.email })),
         isLoading,
       }
     },

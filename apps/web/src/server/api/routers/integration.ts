@@ -1,11 +1,18 @@
 // src/server/api/routers/integration.ts
 
+import { CredentialService } from '@auxx/credentials'
 import { schema } from '@auxx/database'
 import { ChatWidgetService } from '@auxx/lib/chat'
 import { DehydrationService } from '@auxx/lib/dehydration'
 import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
 import { SyncMessages } from '@auxx/lib/messages'
-import { IntegrationService } from '@auxx/lib/providers'
+import type { ImapCredentialData } from '@auxx/lib/providers'
+import {
+  ImapClientProvider,
+  ImapSmtpSendService,
+  IntegrationService,
+  LdapAuthService,
+} from '@auxx/lib/providers'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
@@ -376,5 +383,261 @@ export const integrationRouter = createTRPCRouter({
 
       const syncer = new SyncMessages(ctx.db, organizationId, userId)
       return await syncer.cancel(input.syncJobId)
+    }),
+
+  /**
+   * Connect an IMAP/SMTP email server.
+   * Tests connections, encrypts credentials, creates integration.
+   */
+  connectImap: protectedProcedure
+    .input(
+      z
+        .object({
+          email: z.string().email(),
+          authMode: z.enum(['direct', 'ldap']),
+          imapHost: z.string().min(1),
+          imapPort: z.coerce.number().int().min(1).max(65535).default(993),
+          imapSecure: z.boolean().default(true),
+          imapUsername: z.string().min(1),
+          imapPassword: z.string().min(1),
+          imapAllowUnauthorizedCerts: z.boolean().default(false),
+          smtpHost: z.string().min(1),
+          smtpPort: z.coerce.number().int().min(1).max(65535).default(587),
+          smtpSecure: z.boolean().default(false),
+          smtpSameCredentials: z.boolean().default(true),
+          smtpUsername: z.string().optional(),
+          smtpPassword: z.string().optional(),
+          smtpAllowUnauthorizedCerts: z.boolean().default(false),
+          ldapUrl: z.string().optional(),
+          ldapBindDN: z.string().optional(),
+          ldapBindPassword: z.string().optional(),
+          ldapSearchBase: z.string().optional(),
+          ldapSearchFilter: z.string().optional().default('(mail={{email}})'),
+          ldapUsernameAttribute: z.string().optional().default('uid'),
+          ldapEmailAttribute: z.string().optional().default('mail'),
+          ldapAllowUnauthorizedCerts: z.boolean().default(false),
+        })
+        .refine(
+          (data) => {
+            if (!data.smtpSameCredentials) {
+              return !!data.smtpUsername && !!data.smtpPassword
+            }
+            return true
+          },
+          {
+            message: 'SMTP username and password are required when not using IMAP credentials',
+            path: ['smtpUsername'],
+          }
+        )
+        .refine(
+          (data) => {
+            if (data.authMode === 'ldap') {
+              return (
+                !!data.ldapUrl &&
+                !!data.ldapBindDN &&
+                !!data.ldapBindPassword &&
+                !!data.ldapSearchBase
+              )
+            }
+            return true
+          },
+          {
+            message: 'LDAP fields are required when using LDAP authentication',
+            path: ['ldapUrl'],
+          }
+        )
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      await requireAdminAccess(userId, organizationId)
+
+      const credentialData: ImapCredentialData = {
+        authMode: input.authMode,
+        imap: {
+          host: input.imapHost,
+          port: input.imapPort,
+          secure: input.imapSecure,
+          username: input.imapUsername,
+          password: input.imapPassword,
+          allowUnauthorizedCerts: input.imapAllowUnauthorizedCerts,
+        },
+        smtp: {
+          host: input.smtpHost,
+          port: input.smtpPort,
+          secure: input.smtpSecure,
+          username: input.smtpSameCredentials ? input.imapUsername : input.smtpUsername!,
+          password: input.smtpSameCredentials ? input.imapPassword : input.smtpPassword!,
+          allowUnauthorizedCerts: input.smtpAllowUnauthorizedCerts,
+        },
+        ldap:
+          input.authMode === 'ldap'
+            ? {
+                url: input.ldapUrl!,
+                bindDN: input.ldapBindDN!,
+                bindPassword: input.ldapBindPassword!,
+                searchBase: input.ldapSearchBase!,
+                searchFilter: input.ldapSearchFilter || '(mail={{email}})',
+                usernameAttribute: input.ldapUsernameAttribute || 'uid',
+                emailAttribute: input.ldapEmailAttribute || 'mail',
+                allowUnauthorizedCerts: input.ldapAllowUnauthorizedCerts,
+              }
+            : undefined,
+      }
+
+      // Test IMAP connection
+      const clientProvider = new ImapClientProvider()
+      const client = await clientProvider.getClient(credentialData)
+      await clientProvider.closeClient(client)
+
+      // Test SMTP connection
+      const smtpService = new ImapSmtpSendService()
+      await smtpService.initialize(credentialData)
+      const smtpOk = await smtpService.verify()
+      await smtpService.close()
+      if (!smtpOk) throw new Error('SMTP connection failed')
+
+      // Test LDAP if applicable
+      if (credentialData.authMode === 'ldap' && credentialData.ldap) {
+        const ldapService = new LdapAuthService()
+        const ldapResult = await ldapService.testConnection(credentialData.ldap)
+        if (!ldapResult.success) throw new Error(`LDAP: ${ldapResult.message}`)
+      }
+
+      // Encrypt and store credentials
+      const credentialId = await CredentialService.saveCredential(
+        organizationId,
+        userId,
+        'imap',
+        `IMAP - ${input.email}`,
+        credentialData as any
+      )
+
+      // Create integration record
+      const [integration] = await ctx.db
+        .insert(schema.Integration)
+        .values({
+          organizationId,
+          provider: 'imap',
+          email: input.email,
+          name: input.email,
+          credentialId,
+          authStatus: 'AUTHENTICATED',
+          syncMode: 'auto',
+          syncStage: 'IDLE',
+          syncStatus: 'NOT_SYNCED',
+          updatedAt: new Date(),
+        })
+        .returning()
+
+      return { integrationId: integration.id }
+    }),
+
+  /**
+   * Test IMAP/SMTP/LDAP connection without saving.
+   */
+  testImapConnection: protectedProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        authMode: z.enum(['direct', 'ldap']),
+        imapHost: z.string().min(1),
+        imapPort: z.coerce.number().int().min(1).max(65535).default(993),
+        imapSecure: z.boolean().default(true),
+        imapUsername: z.string().min(1),
+        imapPassword: z.string().min(1),
+        imapAllowUnauthorizedCerts: z.boolean().default(false),
+        smtpHost: z.string().min(1),
+        smtpPort: z.coerce.number().int().min(1).max(65535).default(587),
+        smtpSecure: z.boolean().default(false),
+        smtpSameCredentials: z.boolean().default(true),
+        smtpUsername: z.string().optional(),
+        smtpPassword: z.string().optional(),
+        smtpAllowUnauthorizedCerts: z.boolean().default(false),
+        ldapUrl: z.string().optional(),
+        ldapBindDN: z.string().optional(),
+        ldapBindPassword: z.string().optional(),
+        ldapSearchBase: z.string().optional(),
+        ldapSearchFilter: z.string().optional(),
+        ldapUsernameAttribute: z.string().optional(),
+        ldapEmailAttribute: z.string().optional(),
+        ldapAllowUnauthorizedCerts: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      await requireAdminAccess(userId, organizationId)
+
+      const results = { imap: false, smtp: false, ldap: true }
+
+      const credentialData: ImapCredentialData = {
+        authMode: input.authMode,
+        imap: {
+          host: input.imapHost,
+          port: input.imapPort,
+          secure: input.imapSecure,
+          username: input.imapUsername,
+          password: input.imapPassword,
+          allowUnauthorizedCerts: input.imapAllowUnauthorizedCerts,
+        },
+        smtp: {
+          host: input.smtpHost,
+          port: input.smtpPort,
+          secure: input.smtpSecure,
+          username: input.smtpSameCredentials ? input.imapUsername : (input.smtpUsername ?? ''),
+          password: input.smtpSameCredentials ? input.imapPassword : (input.smtpPassword ?? ''),
+          allowUnauthorizedCerts: input.smtpAllowUnauthorizedCerts,
+        },
+        ldap:
+          input.authMode === 'ldap' && input.ldapUrl
+            ? {
+                url: input.ldapUrl,
+                bindDN: input.ldapBindDN ?? '',
+                bindPassword: input.ldapBindPassword ?? '',
+                searchBase: input.ldapSearchBase ?? '',
+                searchFilter: input.ldapSearchFilter || '(mail={{email}})',
+                usernameAttribute: input.ldapUsernameAttribute || 'uid',
+                emailAttribute: input.ldapEmailAttribute || 'mail',
+                allowUnauthorizedCerts: input.ldapAllowUnauthorizedCerts,
+              }
+            : undefined,
+      }
+
+      // Test IMAP
+      try {
+        const clientProvider = new ImapClientProvider()
+        const imapClient = await clientProvider.getClient(credentialData)
+        await clientProvider.closeClient(imapClient)
+        results.imap = true
+      } catch {
+        /* results.imap stays false */
+      }
+
+      // Test SMTP
+      try {
+        const smtpService = new ImapSmtpSendService()
+        await smtpService.initialize(credentialData)
+        results.smtp = await smtpService.verify()
+        await smtpService.close()
+      } catch {
+        /* results.smtp stays false */
+      }
+
+      // Test LDAP (if applicable)
+      if (input.authMode === 'ldap') {
+        results.ldap = false
+        try {
+          if (credentialData.ldap) {
+            const ldapService = new LdapAuthService()
+            const result = await ldapService.testConnection(credentialData.ldap)
+            results.ldap = result.success
+          }
+        } catch {
+          /* results.ldap stays false */
+        }
+      }
+
+      return results
     }),
 })
