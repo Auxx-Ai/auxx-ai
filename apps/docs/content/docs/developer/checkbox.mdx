@@ -1,0 +1,21 @@
+---
+title: <Checkbox />
+description: Boolean checkbox component for Auxx app dialogs.
+---
+
+A checkbox for toggling boolean values.
+
+```tsx
+import { Checkbox, Label } from '@auxx/sdk/client'
+
+<Checkbox checked={agreed} onChange={(checked) => setAgreed(checked)} />
+<Label>I agree to the terms</Label>
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `checked` | `boolean?` | `false` | Whether the checkbox is checked |
+| `disabled` | `boolean?` | `false` | Disable the checkbox |
+| `onChange` | `(checked: boolean) => void` | — | Called with the new checked state |

@@ -1,0 +1,28 @@
+---
+title: <Textarea />
+description: Multi-line text input component for Auxx app dialogs.
+---
+
+A multi-line text input for longer content.
+
+```tsx
+import { Textarea } from '@auxx/sdk/client'
+
+<Textarea placeholder="Write your message..." rows={4} />
+<Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+```
+
+<Callout>
+  For form-based textareas with validation, use [FormField](/developer/form-component) with `Forms.string().multiline()`.
+</Callout>
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | `string?` | — | Controlled value |
+| `placeholder` | `string?` | — | Placeholder text |
+| `disabled` | `boolean?` | `false` | Disable the textarea |
+| `name` | `string?` | — | Form field name |
+| `rows` | `number?` | — | Number of visible text lines |
+| `onChange` | `(event: ChangeEvent) => void` | — | Change handler |

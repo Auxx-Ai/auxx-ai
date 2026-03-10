@@ -1,0 +1,165 @@
+---
+title: Form Schema
+description: Define type-safe form schemas with validation for your Auxx app dialogs.
+---
+
+The `Forms` builder creates type-safe schemas that automatically generate form UI and handle validation. Import from `@auxx/sdk/client`.
+
+```typescript title="src/contact-form.tsx"
+import { Forms } from '@auxx/sdk/client'
+
+const schema = {
+  name: Forms.string()
+    .placeholder('Full name')
+    .minLength(2, 'Name is too short'),
+  email: Forms.string()
+    .email('Enter a valid email')
+    .placeholder('email@example.com'),
+  priority: Forms.select([
+    { value: 'low', label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
+  ]).default('medium'),
+  subscribed: Forms.boolean().default(false),
+}
+```
+
+## Field types
+
+### Forms.string()
+
+A text input field. Supports validation chains.
+
+```typescript
+Forms.string()
+  .placeholder('Enter text...')
+  .minLength(1, 'Required')
+  .maxLength(100, 'Too long')
+  .default('hello')
+  .optional()
+```
+
+| Method | Description |
+|--------|-------------|
+| `.placeholder(text)` | Placeholder text |
+| `.minLength(n, message?)` | Minimum length validation |
+| `.maxLength(n, message?)` | Maximum length validation |
+| `.email(message?)` | Email format validation |
+| `.url(message?)` | URL format validation |
+| `.multiline()` | Renders as a textarea |
+| `.default(value)` | Default value |
+| `.optional()` | Makes the field optional |
+
+### Forms.number()
+
+A number input field.
+
+```typescript
+Forms.number()
+  .placeholder('0')
+  .min(0, 'Must be positive')
+  .max(100, 'Max is 100')
+  .integer('Must be a whole number')
+  .default(0)
+```
+
+| Method | Description |
+|--------|-------------|
+| `.placeholder(text)` | Placeholder text |
+| `.min(n, message?)` | Minimum value |
+| `.max(n, message?)` | Maximum value |
+| `.integer(message?)` | Must be a whole number |
+| `.positive(message?)` | Must be greater than zero |
+| `.default(value)` | Default value |
+| `.optional()` | Makes the field optional |
+
+### Forms.boolean()
+
+A checkbox/toggle field.
+
+```typescript
+Forms.boolean().default(true)
+```
+
+| Method | Description |
+|--------|-------------|
+| `.default(value)` | Default value |
+
+### Forms.select()
+
+A dropdown select field.
+
+```typescript
+Forms.select([
+  { value: 'draft', label: 'Draft' },
+  { value: 'published', label: 'Published' },
+  { value: 'archived', label: 'Archived', disabled: true },
+])
+  .placeholder('Choose status...')
+  .default('draft')
+  .optional()
+```
+
+| Method | Description |
+|--------|-------------|
+| `.placeholder(text)` | Placeholder text |
+| `.default(value)` | Default selected value |
+| `.optional()` | Makes the field optional |
+
+Each option has:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `value` | `string` | Option value |
+| `label` | `string` | Display text |
+| `disabled` | `boolean?` | Disable the option |
+
+## Type inference
+
+Form values are automatically inferred from the schema:
+
+```typescript
+const schema = {
+  name: Forms.string(),
+  age: Forms.number().optional(),
+  active: Forms.boolean().default(true),
+  role: Forms.select([
+    { value: 'admin', label: 'Admin' },
+    { value: 'user', label: 'User' },
+  ]),
+}
+
+// Inferred type:
+// {
+//   name: string
+//   age: number | undefined
+//   active: boolean
+//   role: 'admin' | 'user'
+// }
+```
+
+## Settings alias
+
+The `Settings` builder uses the same API as `Forms` but is used for app settings schemas in `app.settings.ts`:
+
+```typescript title="src/app.settings.ts"
+import { Settings } from '@auxx/sdk'
+
+export const settingsSchema = {
+  apiKey: Settings.string({
+    label: 'API Key',
+    description: 'Your external service API key',
+  }),
+  maxRetries: Settings.number({
+    label: 'Max Retries',
+    default: 3,
+    min: 0,
+    max: 10,
+  }),
+  environment: Settings.select({
+    label: 'Environment',
+    options: ['production', 'staging', 'development'] as const,
+    default: 'production',
+  }),
+}
+```

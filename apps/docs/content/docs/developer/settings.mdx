@@ -1,0 +1,65 @@
+---
+title: Settings (Server)
+description: Read and write app settings from your app's server code.
+---
+
+Server-side settings functions let you read and write organization-level app settings. Import from `@auxx/sdk/server`.
+
+These settings are defined by your `app.settings.ts` schema and configured by workspace admins.
+
+## getOrganizationSetting
+
+Read a single setting value by key.
+
+```typescript title="src/my-action.server.ts"
+import { getOrganizationSetting } from '@auxx/sdk/server'
+
+const apiEndpoint = await getOrganizationSetting<string>('apiEndpoint')
+```
+
+## getOrganizationSettings
+
+Read all settings as an object.
+
+```typescript title="src/my-action.server.ts"
+import { getOrganizationSettings } from '@auxx/sdk/server'
+
+const settings = await getOrganizationSettings<{
+  apiEndpoint: string
+  enableNotifications: boolean
+}>()
+
+console.log(settings.apiEndpoint)
+```
+
+## setOrganizationSetting
+
+Write a single setting value.
+
+```typescript title="src/my-action.server.ts"
+import { setOrganizationSetting } from '@auxx/sdk/server'
+
+await setOrganizationSetting('lastSyncAt', new Date().toISOString())
+```
+
+## setOrganizationSettings
+
+Write multiple settings at once.
+
+```typescript title="src/my-action.server.ts"
+import { setOrganizationSettings } from '@auxx/sdk/server'
+
+await setOrganizationSettings({
+  lastSyncAt: new Date().toISOString(),
+  syncCount: 42,
+})
+```
+
+## Summary
+
+| Function | Signature |
+|----------|-----------|
+| `getOrganizationSetting` | `<T>(key: string) => Promise<T \| undefined>` |
+| `getOrganizationSettings` | `<T>() => Promise<T>` |
+| `setOrganizationSetting` | `<T>(key: string, value: T) => Promise<void>` |
+| `setOrganizationSettings` | `(settings: Record<string, any>) => Promise<void>` |

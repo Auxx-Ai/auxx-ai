@@ -1,0 +1,130 @@
+---
+title: Workflow Execution Context
+description: Access the SDK, user info, variables, and logging inside workflow execute functions.
+---
+
+When a workflow block's `execute` function runs, it has access to the execution context via `global.AUXX_SERVER_SDK`. This provides the current user, organization, connections, and utility functions.
+
+## WorkflowExecutionContext
+
+```typescript
+interface WorkflowExecutionContext {
+  workflowId: string
+  executionId: string
+  nodeId: string
+  variables: Record<string, any>
+  user: WorkflowUser
+  organization: WorkflowOrganization
+  sdk: WorkflowSDK
+}
+```
+
+## User & organization
+
+```typescript
+interface WorkflowUser {
+  id: string
+  email: string
+  name: string
+}
+
+interface WorkflowOrganization {
+  id: string
+  handle: string
+  name: string
+}
+```
+
+## WorkflowSDK
+
+The `sdk` object provides all server-side capabilities:
+
+### Authentication
+
+```typescript
+sdk.getCurrentUser()              // Returns WorkflowUser
+```
+
+### Connections
+
+```typescript
+sdk.getUserConnection()           // Returns Connection | undefined
+sdk.getOrganizationConnection()  // Returns Connection | undefined
+```
+
+### HTTP requests
+
+```typescript
+const response = await sdk.fetch({
+  url: 'https://api.example.com/data',
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: { key: 'value' },
+  timeout: 10000,
+})
+
+// response: { status: number, data: any, headers: Record<string, string> }
+```
+
+### Variables
+
+Variables are shared across blocks in the same workflow execution:
+
+```typescript
+sdk.setVariable('orderId', 'ord_123')
+const orderId = sdk.getVariable<string>('orderId')
+```
+
+### Logging
+
+```typescript
+sdk.log('info', 'Processing order', { orderId: '123' })
+sdk.log('warn', 'Rate limit approaching')
+sdk.log('error', 'Failed to send email', { error: err.message })
+```
+
+### Settings
+
+```typescript
+const apiKey = await sdk.getOrganizationSetting<string>('apiKey')
+const userPref = await sdk.getUserSetting<string>('preference')
+```
+
+## Example: complete execute function
+
+```typescript title="src/send-email.server.ts"
+import type { WorkflowExecuteFunction } from '@auxx/sdk'
+
+export const executeSendEmail: WorkflowExecuteFunction = async (input) => {
+  const sdk = global.AUXX_SERVER_SDK
+  const user = sdk.getCurrentUser()
+  const connection = sdk.getOrganizationConnection()
+
+  sdk.log('info', `Sending email on behalf of ${user.name}`)
+
+  if (!connection) {
+    sdk.log('error', 'No email connection configured')
+    return { success: false, messageId: '' }
+  }
+
+  const response = await sdk.fetch({
+    url: 'https://api.mailgun.net/v3/send',
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${connection.value}`,
+    },
+    body: {
+      to: input.to,
+      subject: input.subject,
+      body: input.body,
+    },
+  })
+
+  sdk.setVariable('lastEmailSent', new Date().toISOString())
+
+  return {
+    success: response.status === 200,
+    messageId: response.data.id,
+  }
+}
+```

@@ -1,0 +1,68 @@
+---
+title: Storage
+description: Key-value storage for persisting data in your Auxx app.
+---
+
+The storage API provides a simple key-value store scoped to your app. Import from `@auxx/sdk/server`.
+
+## get
+
+Read a value by key. Returns `null` if the key doesn't exist.
+
+```typescript title="src/my-action.server.ts"
+import { get } from '@auxx/sdk/server'
+
+const lastSync = await get('lastSyncTimestamp')
+```
+
+## set
+
+Write a value. Overwrites any existing value for that key.
+
+```typescript title="src/my-action.server.ts"
+import { set } from '@auxx/sdk/server'
+
+await set('lastSyncTimestamp', new Date().toISOString())
+```
+
+## remove
+
+Delete a key-value pair.
+
+```typescript title="src/my-action.server.ts"
+import { remove } from '@auxx/sdk/server'
+
+await remove('lastSyncTimestamp')
+```
+
+## Summary
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `get` | `(key: string) => Promise<string \| null>` | Read a value |
+| `set` | `(key: string, value: string) => Promise<void>` | Write a value |
+| `remove` | `(key: string) => Promise<void>` | Delete a value |
+
+<Callout>
+  Values are stored as strings. Serialize objects with `JSON.stringify()` and parse them with `JSON.parse()`.
+</Callout>
+
+## Example: storing JSON
+
+```typescript title="src/sync.server.ts"
+import { get, set } from '@auxx/sdk/server'
+
+interface SyncState {
+  cursor: string
+  lastSyncAt: string
+}
+
+async function getSyncState(): Promise<SyncState | null> {
+  const raw = await get('syncState')
+  return raw ? JSON.parse(raw) : null
+}
+
+async function saveSyncState(state: SyncState): Promise<void> {
+  await set('syncState', JSON.stringify(state))
+}
+```

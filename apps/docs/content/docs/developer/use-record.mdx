@@ -1,0 +1,66 @@
+---
+title: useRecord
+description: Fetch a single record by ID inside your Auxx app.
+---
+
+`useRecord` returns a single record by its ID. It's a React hook injected at runtime by the Auxx platform.
+
+```tsx
+import { useRecord } from '@auxx/sdk/client'
+
+function RecordInfo({ recordId }: { recordId: string }) {
+  const record = useRecord(recordId)
+
+  return (
+    <TextBlock align="left">
+      {record.type}: {record.data.name}
+    </TextBlock>
+  )
+}
+```
+
+## Signature
+
+```typescript
+function useRecord(recordId: string): AuxxRecord
+```
+
+## Return type
+
+```typescript
+interface AuxxRecord {
+  id: string
+  type: string
+  data: Record<string, any>
+  createdAt: Date
+  updatedAt: Date
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Record identifier |
+| `type` | `string` | Record type (e.g. `'ticket'`, `'contact'`) |
+| `data` | `Record<string, any>` | Field values |
+| `createdAt` | `Date` | Creation timestamp |
+| `updatedAt` | `Date` | Last update timestamp |
+
+## Usage in dialogs
+
+The most common pattern is receiving a `recordId` from a record action and fetching the record inside the dialog:
+
+```tsx title="src/my-dialog.tsx"
+import { useRecord } from '@auxx/sdk/client'
+import { TextBlock, Badge } from '@auxx/sdk/client'
+
+export function MyDialog({ recordId }: { recordId: string }) {
+  const record = useRecord(recordId)
+
+  return (
+    <>
+      <TextBlock align="left">{record.data.subject}</TextBlock>
+      <Badge>{record.data.status}</Badge>
+    </>
+  )
+}
+```

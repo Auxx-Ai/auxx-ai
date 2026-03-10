@@ -1,0 +1,47 @@
+---
+title: Authentication
+description: Access the current user and API tokens from your app's server code.
+---
+
+Server-side authentication functions run in Lambda, not the browser. Import them from `@auxx/sdk/server`.
+
+## getCurrentUser
+
+Returns the authenticated user executing the current request.
+
+```typescript title="src/my-action.server.ts"
+import { getCurrentUser } from '@auxx/sdk/server'
+
+export async function handleAction() {
+  const user = await getCurrentUser()
+  console.log(`Action triggered by ${user.name} (${user.email})`)
+}
+```
+
+### Return type
+
+```typescript
+interface User {
+  id: string
+  email: string
+  name: string
+  avatar?: string
+  role?: string
+}
+```
+
+## getApiToken
+
+Returns the API token for the current app context. Use this to make authenticated requests to the Auxx API.
+
+```typescript title="src/my-action.server.ts"
+import { getApiToken } from '@auxx/sdk/server'
+
+export async function callAuxxApi() {
+  const token = await getApiToken()
+
+  const res = await fetch('https://api.auxx.ai/v1/tickets', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+```

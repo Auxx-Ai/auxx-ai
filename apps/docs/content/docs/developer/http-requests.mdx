@@ -1,0 +1,94 @@
+---
+title: HTTP Requests
+description: Make HTTP requests to external services from your Auxx app's server code.
+---
+
+The server SDK provides a `fetch` function for making HTTP requests from your app's server code. Import from `@auxx/sdk/server`.
+
+```typescript title="src/my-action.server.ts"
+import { fetch } from '@auxx/sdk/server'
+
+const response = await fetch({
+  method: 'GET',
+  url: 'https://api.example.com/users',
+  headers: {
+    Authorization: 'Bearer my-token',
+  },
+})
+
+console.log(response.status) // 200
+console.log(response.data)   // parsed response body
+```
+
+## Options
+
+```typescript
+interface FetchOptions {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  url: string
+  headers?: Record<string, string>
+  body?: any
+  timeout?: number
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `method` | `string` | HTTP method |
+| `url` | `string` | Full URL to request |
+| `headers` | `Record<string, string>?` | Request headers |
+| `body` | `any?` | Request body (auto-serialized to JSON) |
+| `timeout` | `number?` | Request timeout in ms |
+
+## Response
+
+```typescript
+interface FetchResponse<T = any> {
+  status: number
+  headers: Record<string, string>
+  data: T
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `number` | HTTP status code |
+| `headers` | `Record<string, string>` | Response headers |
+| `data` | `T` | Parsed response body |
+
+## POST with body
+
+```typescript title="src/create-contact.server.ts"
+import { fetch } from '@auxx/sdk/server'
+
+const response = await fetch({
+  method: 'POST',
+  url: 'https://api.example.com/contacts',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: {
+    name: 'Jane Doe',
+    email: 'jane@example.com',
+  },
+})
+```
+
+## With connection token
+
+Combine with the [connections API](/developer/connections) to use stored OAuth tokens:
+
+```typescript title="src/sync.server.ts"
+import { fetch } from '@auxx/sdk/server'
+import { getOrganizationConnection } from '@auxx/sdk/server'
+
+const connection = getOrganizationConnection()
+
+const response = await fetch({
+  method: 'GET',
+  url: 'https://api.hubspot.com/crm/v3/contacts',
+  headers: {
+    Authorization: `Bearer ${connection.value}`,
+  },
+})
+```

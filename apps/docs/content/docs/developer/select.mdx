@@ -1,0 +1,66 @@
+---
+title: <Select />
+description: Dropdown select component for Auxx app dialogs.
+---
+
+A dropdown for selecting from a list of options. Composed of multiple sub-components.
+
+```tsx
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@auxx/sdk/client'
+
+<Select value={status} onValueChange={(val) => setStatus(val)}>
+  <SelectTrigger>
+    <SelectValue placeholder="Choose status..." />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="open">Open</SelectItem>
+    <SelectItem value="pending">Pending</SelectItem>
+    <SelectItem value="closed">Closed</SelectItem>
+  </SelectContent>
+</Select>
+```
+
+<Callout>
+  For form-based selects with validation, use [FormField](/developer/form-component) with `Forms.select()`.
+</Callout>
+
+## Select
+
+The root wrapper that manages state.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | `string?` | — | Controlled selected value |
+| `onValueChange` | `(value: string) => void` | — | Called when selection changes |
+| `disabled` | `boolean?` | `false` | Disable the entire select |
+
+## SelectTrigger
+
+The clickable trigger button that opens the dropdown.
+
+## SelectValue
+
+Displays the selected value or a placeholder.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `placeholder` | `string?` | — | Text shown when nothing is selected |
+
+## SelectContent
+
+The dropdown panel containing the options.
+
+## SelectItem
+
+An individual option in the dropdown.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | `string` | — | Option value (required) |
+| `children` | `ReactNode` | — | Display text |

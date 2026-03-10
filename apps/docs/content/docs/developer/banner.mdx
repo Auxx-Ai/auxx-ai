@@ -1,0 +1,22 @@
+---
+title: <Banner />
+description: Display alert banners with different severity levels in your Auxx app.
+---
+
+An alert banner for displaying messages with visual severity indicators.
+
+```tsx
+import { Banner } from '@auxx/sdk/client'
+
+<Banner variant="info">Your changes have been saved.</Banner>
+<Banner variant="warning">This action will affect all users.</Banner>
+<Banner variant="error">Failed to connect to the service.</Banner>
+<Banner variant="success">Connection established.</Banner>
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | — | Banner message |
+| `variant` | `'info' \| 'warning' \| 'error' \| 'success'` | `'info'` | Severity level |

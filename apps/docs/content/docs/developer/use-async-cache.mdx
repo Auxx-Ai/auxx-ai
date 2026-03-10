@@ -1,0 +1,76 @@
+---
+title: useAsyncCache
+description: Cached async data fetching hook for Auxx apps.
+---
+
+`useAsyncCache` loads async data with automatic caching and invalidation. It's a React hook injected at runtime by the Auxx platform.
+
+```tsx
+import { useAsyncCache } from '@auxx/sdk/client'
+import { TextBlock } from '@auxx/sdk/client'
+
+async function loadWidgets() {
+  const res = await fetch('/api/widgets')
+  return res.json()
+}
+
+async function loadUser(userId: string) {
+  const res = await fetch(`/api/users/${userId}`)
+  return res.json()
+}
+
+function Dashboard({ userId }: { userId: string }) {
+  const { values, invalidate } = useAsyncCache({
+    widgets: loadWidgets,
+    user: [loadUser, userId],
+  })
+
+  return (
+    <>
+      <TextBlock align="left">User: {values.user.name}</TextBlock>
+      <TextBlock align="left">Widgets: {values.widgets.length}</TextBlock>
+      <Button label="Refresh user" onClick={() => invalidate('user')} />
+    </>
+  )
+}
+```
+
+## Signature
+
+```typescript
+function useAsyncCache<Config extends AsyncCacheConfig>(
+  config: Config
+): {
+  values: InferValues<Config>
+  invalidate: (name: keyof Config) => void
+}
+```
+
+## Config format
+
+Each key in the config is either:
+- A **function** — called with no arguments
+- A **tuple** — `[function, ...args]` where the function is called with the provided arguments
+
+```typescript
+const { values, invalidate } = useAsyncCache({
+  // No-arg async function
+  widgets: loadWidgets,
+
+  // Function with arguments
+  user: [loadUser, userId],
+
+  // Function with multiple arguments
+  posts: [loadPosts, userId, { limit: 10 }],
+})
+```
+
+## Invalidation
+
+Call `invalidate` with a key name to clear the cache and refetch that entry:
+
+```tsx
+<Button label="Refresh" onClick={() => invalidate('user')} />
+```
+
+The data for that key is re-fetched and the component re-renders with the new value.

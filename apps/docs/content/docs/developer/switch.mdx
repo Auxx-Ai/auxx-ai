@@ -1,0 +1,21 @@
+---
+title: <Switch />
+description: Toggle switch component for Auxx app dialogs.
+---
+
+A toggle switch for on/off states.
+
+```tsx
+import { Switch, Label } from '@auxx/sdk/client'
+
+<Switch checked={enabled} onChange={(checked) => setEnabled(checked)} />
+<Label>Enable notifications</Label>
+```
+
+## Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `checked` | `boolean?` | `false` | Whether the switch is on |
+| `disabled` | `boolean?` | `false` | Disable the switch |
+| `onChange` | `(checked: boolean) => void` | — | Called with the new state |

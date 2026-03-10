@@ -1,0 +1,68 @@
+---
+title: useRecords
+description: Query multiple records with filters inside your Auxx app.
+---
+
+`useRecords` queries multiple records by type with optional filters. It's a React hook injected at runtime by the Auxx platform.
+
+```tsx
+import { useRecords } from '@auxx/sdk/client'
+
+function OpenTickets() {
+  const tickets = useRecords({
+    type: 'ticket',
+    filters: { status: 'open' },
+    limit: 10,
+  })
+
+  return (
+    <>
+      {tickets.map((ticket) => (
+        <TextBlock key={ticket.id} align="left">
+          {ticket.data.subject}
+        </TextBlock>
+      ))}
+    </>
+  )
+}
+```
+
+## Signature
+
+```typescript
+function useRecords(query: Query): AuxxRecord[]
+```
+
+## Query interface
+
+```typescript
+interface Query {
+  type: string
+  filters?: Record<string, any>
+  limit?: number
+  offset?: number
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `type` | `string` | Record type to query (e.g. `'ticket'`, `'contact'`) |
+| `filters` | `Record<string, any>?` | Key-value filter criteria |
+| `limit` | `number?` | Maximum number of results |
+| `offset` | `number?` | Number of results to skip (for pagination) |
+
+## Filtering
+
+Pass field names and values to the `filters` object:
+
+```tsx
+const recentContacts = useRecords({
+  type: 'contact',
+  filters: {
+    source: 'shopify',
+    active: true,
+  },
+  limit: 25,
+  offset: 0,
+})
+```

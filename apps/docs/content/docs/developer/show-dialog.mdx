@@ -1,0 +1,131 @@
+---
+title: showDialog
+description: Open dialogs, alerts, confirmations, and toasts from your Auxx app.
+---
+
+The dialog API lets your app display UI overlays inside the Auxx platform. All functions are imported from `@auxx/sdk/client`.
+
+## showDialog
+
+Opens a dialog with a custom component.
+
+```tsx
+import { showDialog } from '@auxx/sdk/client'
+
+await showDialog({
+  title: 'Edit Contact',
+  Dialog: ({ hideDialog }) => <EditContactForm onDone={hideDialog} />,
+  size: 'medium',
+})
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `title` | `string` | Dialog title bar text |
+| `Dialog` | `(props: { hideDialog: () => void }) => DialogElement` | Component to render inside the dialog |
+| `size` | `'small' \| 'medium' \| 'large' \| 'fullscreen'` | Dialog width (default: `'medium'`) |
+
+<Callout type="warn">
+  Dialogs can only render approved SDK components (`TextBlock`, `Button`, `Badge`, etc.). Raw HTML elements are blocked at compile time.
+</Callout>
+
+## closeDialog
+
+Programmatically close the current dialog.
+
+```tsx
+import { closeDialog } from '@auxx/sdk/client'
+
+await closeDialog()
+```
+
+## alert
+
+Show a simple alert message.
+
+```tsx
+import { alert } from '@auxx/sdk/client'
+
+await alert({
+  title: 'Success',
+  message: 'The email was sent.',
+  variant: 'success',
+})
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `title` | `string` | Alert heading |
+| `message` | `string` | Alert body text |
+| `variant` | `'info' \| 'warning' \| 'error' \| 'success'` | Visual style (default: `'info'`) |
+
+## confirm
+
+Show a confirmation dialog and wait for the user's response.
+
+```tsx
+import { confirm } from '@auxx/sdk/client'
+
+const confirmed = await confirm({
+  title: 'Delete record?',
+  message: 'This action cannot be undone.',
+  confirmText: 'Delete',
+  cancelText: 'Cancel',
+  destructive: true,
+})
+
+if (confirmed) {
+  // proceed with deletion
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `title` | `string` | Confirmation heading |
+| `message` | `string` | Confirmation body text |
+| `confirmText` | `string?` | Confirm button label (default: `'OK'`) |
+| `cancelText` | `string?` | Cancel button label (default: `'Cancel'`) |
+| `destructive` | `boolean?` | Red styling for destructive actions |
+
+## showToast
+
+Display a brief notification toast.
+
+```tsx
+import { showToast } from '@auxx/sdk/client'
+
+showToast({
+  message: 'Contact saved',
+  variant: 'success',
+  duration: 3000,
+})
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `message` | `string` | Toast text |
+| `variant` | `'info' \| 'warning' \| 'error' \| 'success'` | Visual style (default: `'info'`) |
+| `duration` | `number?` | Auto-dismiss time in ms |
+
+## Navigation
+
+Navigate the user to different locations within Auxx.
+
+```tsx
+import { navigateTo, openRecord, openUrl } from '@auxx/sdk/client'
+
+// Navigate to an internal Auxx page
+navigateTo('/app/tickets')
+
+// Open a specific record
+openRecord('rec_abc123')
+
+// Open an external URL
+openUrl('https://example.com', true) // true = new tab
+```
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `navigateTo` | `(path: string) => void` | Navigate to an internal Auxx route |
+| `openRecord` | `(recordId: string) => void` | Open a record's detail page |
+| `openUrl` | `(url: string, newTab?: boolean) => void` | Open a URL (optionally in a new tab) |

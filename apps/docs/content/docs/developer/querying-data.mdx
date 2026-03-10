@@ -1,0 +1,126 @@
+---
+title: Querying Data
+description: Fetch and filter records from inside your Auxx app using hooks.
+---
+
+Use the `useRecord` and `useRecords` hooks to access platform data from your app's client-side components.
+
+## Fetching a single record
+
+When your action receives a `recordId`, use `useRecord` to fetch the full record:
+
+```tsx title="src/ticket-info.tsx"
+import { useRecord } from '@auxx/sdk/client'
+import { TextBlock, Badge } from '@auxx/sdk/client'
+
+export function TicketInfo({ recordId }: { recordId: string }) {
+  const record = useRecord(recordId)
+
+  return (
+    <>
+      <TextBlock align="left">{record.data.subject}</TextBlock>
+      <Badge>{record.data.status}</Badge>
+      <TextBlock align="left">
+        Created: {record.createdAt.toLocaleDateString()}
+      </TextBlock>
+    </>
+  )
+}
+```
+
+The returned `AuxxRecord` has:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Record identifier |
+| `type` | `string` | Record type (e.g. `'ticket'`, `'contact'`) |
+| `data` | `Record<string, any>` | All field values |
+| `createdAt` | `Date` | Creation timestamp |
+| `updatedAt` | `Date` | Last update timestamp |
+
+## Querying multiple records
+
+Use `useRecords` to query records by type with optional filters:
+
+```tsx title="src/recent-tickets.tsx"
+import { useRecords } from '@auxx/sdk/client'
+import { TextBlock, Card, CardContent } from '@auxx/sdk/client'
+
+export function RecentTickets() {
+  const tickets = useRecords({
+    type: 'ticket',
+    filters: { status: 'open' },
+    limit: 5,
+  })
+
+  return (
+    <>
+      {tickets.map((ticket) => (
+        <Card key={ticket.id}>
+          <CardContent>
+            <TextBlock align="left">{ticket.data.subject}</TextBlock>
+          </CardContent>
+        </Card>
+      ))}
+    </>
+  )
+}
+```
+
+## Filtering
+
+Pass field names and values to the `filters` object:
+
+```tsx
+// Filter by multiple fields
+const highPriorityOpen = useRecords({
+  type: 'ticket',
+  filters: {
+    status: 'open',
+    priority: 'high',
+  },
+  limit: 20,
+})
+```
+
+## Pagination
+
+Use `limit` and `offset` for pagination:
+
+```tsx
+// Page 1
+const page1 = useRecords({ type: 'contact', limit: 25, offset: 0 })
+
+// Page 2
+const page2 = useRecords({ type: 'contact', limit: 25, offset: 25 })
+```
+
+## Combining with actions
+
+A common pattern is fetching data inside a dialog opened by a record action:
+
+```tsx title="src/order-lookup.tsx"
+import { useRecord, useRecords } from '@auxx/sdk/client'
+import { TextBlock, Separator } from '@auxx/sdk/client'
+
+export function OrderLookup({ recordId }: { recordId: string }) {
+  const contact = useRecord(recordId)
+  const orders = useRecords({
+    type: 'order',
+    filters: { customerEmail: contact.data.email },
+    limit: 10,
+  })
+
+  return (
+    <>
+      <TextBlock align="left">Orders for {contact.data.name}</TextBlock>
+      <Separator />
+      {orders.map((order) => (
+        <TextBlock key={order.id} align="left">
+          #{order.data.orderNumber} — ${order.data.total}
+        </TextBlock>
+      ))}
+    </>
+  )
+}
+```
