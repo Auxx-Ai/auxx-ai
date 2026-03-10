@@ -42,6 +42,10 @@ export function resolveEffectiveSyncMode(integration: {
     return 'polling'
   }
 
+  if (integration.provider === 'imap') {
+    return 'polling'
+  }
+
   if (integration.provider === 'outlook') {
     // Outlook webhooks need no extra env vars beyond app registration
     return 'webhook'

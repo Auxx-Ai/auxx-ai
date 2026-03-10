@@ -1,0 +1,1 @@
+ALTER TYPE "public"."IntegrationProviderType" ADD VALUE 'imap';

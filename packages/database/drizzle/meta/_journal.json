@@ -638,6 +638,13 @@
       "when": 1773102141766,
       "tag": "0090_entity_instance_fk_set_null_and_drop_custom_field_value",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1773169991751,
+      "tag": "0091_add-imap-provider-type",
+      "breakpoints": true
     }
   ]
 }

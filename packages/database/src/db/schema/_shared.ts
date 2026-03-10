@@ -202,6 +202,7 @@ export const integrationProviderType = pgEnum('IntegrationProviderType', [
   'chat',
   'email',
   'shopify',
+  'imap',
 ])
 export const integrationType = pgEnum('IntegrationType', [
   'GOOGLE',

@@ -293,6 +293,32 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
       providesCustomerData: true,
     },
   },
+  [IntegrationProviderType.imap]: {
+    // IMAP/SMTP capabilities (self-hosted, enterprise)
+    canSend: true,
+    canReply: true,
+    canForward: true,
+    canDraft: false,
+    canDelete: true,
+    canArchive: false,
+    canMarkSpam: false,
+    canMarkTrash: true,
+    canSearch: false,
+    canApplyLabel: false,
+    canRemoveLabel: false,
+    canCreateLabel: false,
+    labelScope: 'none',
+    canManageThreads: true,
+    canAssignThreads: true,
+    canBulkOperations: false,
+    canAttachFiles: true,
+    maxAttachmentSize: 25 * 1024 * 1024, // 25MB (server-dependent)
+    canScheduleSend: false,
+    canTrackOpens: false,
+    canUseTemplates: true,
+    canReact: false,
+    canShare: false,
+  },
   [IntegrationProviderType.outlook]: {
     // Outlook/Office 365 capabilities
     canSend: true,

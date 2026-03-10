@@ -298,10 +298,13 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
   /**
    * Handle opening edit dialog from primary display cell
    */
-  const handleOpenEditDialog = useCallback((row: EntityRow) => {
-    setEditingInstance(row)
-    setIsCreateDialogOpen(true)
-  }, [])
+  const handleOpenEditDialog = useCallback(
+    (row: EntityRow) => {
+      setEditingInstance(row)
+      setIsCreateDialogOpen(true)
+    },
+    [setIsCreateDialogOpen]
+  )
 
   /**
    * Handle drawer close
@@ -331,12 +334,15 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
   /**
    * Handle dialog open change
    */
-  const handleDialogOpenChange = useCallback((open: boolean) => {
-    setIsCreateDialogOpen(open)
-    if (!open) {
-      setEditingInstance(null)
-    }
-  }, [])
+  const handleDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setIsCreateDialogOpen(open)
+      if (!open) {
+        setEditingInstance(null)
+      }
+    },
+    [setIsCreateDialogOpen]
+  )
 
   /**
    * Create column for entity instance field

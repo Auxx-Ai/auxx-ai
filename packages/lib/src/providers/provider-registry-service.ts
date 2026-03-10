@@ -13,6 +13,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
 import { FacebookProvider } from './facebook/facebook-provider'
 import { GoogleProvider } from './google/google-provider'
+import { ImapProvider } from './imap/imap-provider'
 import { InstagramProvider } from './instagram/instagram-provider'
 import type { IntegrationProvider } from './integration-provider.interface'
 import { OpenPhoneProvider } from './openphone/openphone-provider'
@@ -57,6 +58,7 @@ export class ProviderRegistryService {
       instagram: IntegrationProviderEnum.instagram,
       openphone: IntegrationProviderEnum.openphone,
       mailgun: IntegrationProviderEnum.mailgun,
+      imap: IntegrationProviderEnum.imap,
     }
   }
   /**
@@ -192,6 +194,9 @@ export class ProviderRegistryService {
           break
         case IntegrationProviderEnum.openphone:
           provider = new OpenPhoneProvider(this.organizationId)
+          break
+        case IntegrationProviderEnum.imap:
+          provider = new ImapProvider(this.organizationId)
           break
         default:
           logger.error('Attempted to initialize unsupported provider type', { type, integrationId })
