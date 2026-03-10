@@ -6,10 +6,10 @@ import { SearchIcon } from 'lucide-react'
 import Link from 'next/link'
 
 const popularTopics = [
-  { label: 'Getting started', href: '/getting-started/what-is-auxx' },
-  { label: 'Connect inbox', href: '/getting-started/connect-inbox' },
-  { label: 'AI workflows', href: '/ai/workflows-overview' },
-  { label: 'Billing', href: '/billing/overview' },
+  { label: 'Getting started', href: '/help/getting-started/what-is-auxx' },
+  { label: 'Connect inbox', href: '/help/getting-started/connect-inbox' },
+  { label: 'AI workflows', href: '/help/ai/workflows-overview' },
+  { label: 'Billing', href: '/help/billing/overview' },
 ]
 
 export function SearchHero() {

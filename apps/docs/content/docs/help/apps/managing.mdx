@@ -1,0 +1,73 @@
+---
+title: Managing installed apps
+description: Configure app connections, update settings, and uninstall apps from your Auxx.ai workspace.
+---
+
+After installing an app, you can manage its connections, configure settings, and remove it from your workspace.
+
+## View installed apps
+
+Go to **Settings > Apps > Installed** to see all apps currently installed in your organization. Click any app to open its detail page with three tabs: **Connections**, **Settings**, and **About**.
+
+![Installed apps page showing all apps with search](/images/settings-apps-installed.png)
+
+## Connections
+
+Connections are the credentials (OAuth tokens or API keys) that allow an app to communicate with external services.
+
+![App detail page showing Connections tab with Uninstall button](/images/settings-apps-detail.png)
+
+### View connections
+
+The **Connections** tab lists all active connections for the app, showing the connection label and status.
+
+### Add a connection
+
+Click **Add Connection** to set up a new credential:
+
+- **OAuth apps** — You'll be redirected to the external service to authorize access. After granting permission, you're returned to Auxx.ai with the connection active.
+- **Secret-based apps** — Enter your API key or credentials directly, then click **Save**.
+
+### Rename a connection
+
+Click on a connection's label to rename it. This is useful when you have multiple connections to distinguish between them (e.g., "Production API" vs "Staging API").
+
+### Delete a connection
+
+Click the delete button on a connection to remove it. The app will no longer be able to use that credential for API calls.
+
+## Settings
+
+The **Settings** tab shows app-specific configuration options. These settings are defined by the app developer and vary per app. Changes apply at the organization level — all members share the same app settings.
+
+Update any fields and click **Save** to apply changes.
+
+## About
+
+The **About** tab displays the app's description, documentation links, developer information, and the permissions the app was granted during installation.
+
+## Uninstall an app
+
+<Callout type="info" title="Admin required">
+  Only organization admins and owners can uninstall apps.
+</Callout>
+
+To uninstall an app:
+
+1. Go to **Settings > Apps > Installed**
+2. Click the app you want to remove
+3. Click **Uninstall**
+4. Confirm the removal
+
+Uninstalling removes the app installation, all its connections, and any app-specific settings from your organization.
+
+## Next steps
+
+<Cards>
+  <Card title="Installing an app" href="/help/apps/installing">
+    Add new apps from the marketplace.
+  </Card>
+  <Card title="Shopify integration" href="/help/apps/shopify">
+    Connect your Shopify store for customer and order data.
+  </Card>
+</Cards>

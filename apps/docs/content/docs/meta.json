@@ -1,20 +1,3 @@
 {
-  "pages": [
-    "---Reference Documents---",
-    "getting-started",
-    "workspace",
-    "apps",
-    "ai",
-    "datasets",
-    "files",
-    "tasks",
-    "custom-entities",
-    "billing",
-    "account",
-    "troubleshooting",
-    "---Guides---",
-    "guides",
-    "---Developer & API---",
-    "developer"
-  ]
+  "pages": ["help", "developer"]
 }

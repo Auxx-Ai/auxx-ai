@@ -1,0 +1,87 @@
+---
+title: Bulk actions
+description: Perform operations on multiple tickets at once in Auxx.ai — update status, priority, assignment, merge, or delete in bulk.
+---
+
+When you need to act on many tickets at once, bulk actions let you select multiple tickets and apply changes in a single operation.
+
+![Bulk action toolbar showing Run workflow, Merge, Edit, Archive, and Delete options with 3 tickets selected](/images/tickets-bulk-actions.png)
+
+## Select tickets
+
+Use the checkboxes on the left side of the ticket list to select individual tickets. Once you have tickets selected, the bulk action toolbar appears.
+
+## Available bulk actions
+
+### Update status
+
+Change the status of all selected tickets at once.
+
+1. Select tickets
+2. Click **Status** in the bulk action bar
+3. Choose the new status
+4. All selected tickets are updated
+
+### Update priority
+
+Change the priority of all selected tickets.
+
+1. Select tickets
+2. Click **Priority** in the bulk action bar
+3. Choose the new priority level (Low, Medium, High, Urgent)
+
+### Assign
+
+Assign all selected tickets to a team member.
+
+1. Select tickets
+2. Click **Assign** in the bulk action bar
+3. Choose a team member from the dropdown
+
+### Delete
+
+Delete multiple tickets at once.
+
+1. Select tickets
+2. Click **Delete** in the bulk action bar
+3. Confirm the deletion in the dialog
+
+Deleted tickets are permanently removed. A confirmation dialog prevents accidental deletions.
+
+### Merge tickets
+
+Combine multiple tickets into a single ticket.
+
+1. Select two or more tickets
+2. Click **Merge** in the bulk action bar
+3. Choose which ticket to keep as the primary ticket
+4. Confirm the merge
+
+After merging:
+- The primary ticket remains with its original number and data
+- Merged tickets have their status set to **Merged**
+- Conversation history from merged tickets is preserved on the primary ticket
+
+Merging is useful when a customer submits duplicate requests or when related issues should be tracked as one ticket.
+
+### Trigger workflow
+
+Run a workflow on selected tickets.
+
+1. Select tickets
+2. Click the workflow trigger action
+3. Choose a workflow to execute
+4. The workflow runs on each selected ticket
+
+This is useful for applying automation retroactively — for example, running a tagging or routing workflow on tickets that were created before the workflow existed.
+
+## Next steps
+
+<Cards>
+  <Card title="Ticket details" href="/help/tickets/details">
+    View and manage individual ticket information.
+  </Card>
+  <Card title="Ticket statuses" href="/help/tickets/statuses">
+    Understand the ticket status lifecycle.
+  </Card>
+</Cards>
