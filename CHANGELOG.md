@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.65](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.64...auxx-v0.1.65) (2026-03-10)
+
+
+### Features
+
+* add idap email integration ([#211](https://github.com/Auxx-Ai/auxx-ai/issues/211)) ([ed83ef6](https://github.com/Auxx-Ai/auxx-ai/commit/ed83ef6336b9cb3af80d99a3abe7b5eb994d490e))
+
 ## [0.1.64](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.63...auxx-v0.1.64) (2026-03-10)
 
 
