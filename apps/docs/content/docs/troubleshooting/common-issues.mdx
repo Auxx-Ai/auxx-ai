@@ -1,0 +1,105 @@
+---
+title: Common issues
+description: Solutions for common Auxx.ai problems including login issues, permission errors, plan limits, and file upload failures.
+---
+
+Quick fixes for the most common issues you may encounter in Auxx.ai.
+
+## Login & authentication
+
+<Accordions type="single">
+  <Accordion title="I can't sign in with my email and password">
+    - Double-check your email address for typos
+    - Use **Forgot password?** on the login page to reset your password
+    - If you signed up with Google or GitHub, you may not have a password set — try signing in with the social provider instead
+  </Accordion>
+  <Accordion title="I'm not receiving the email verification link">
+    - Check your spam/junk folder
+    - Make sure you entered the correct email address
+    - Wait a few minutes — email delivery can sometimes be delayed
+    - Try requesting a new verification email
+  </Accordion>
+  <Accordion title="My two-factor authentication code isn't working">
+    - Make sure your device clock is accurate — TOTP codes are time-sensitive
+    - Use the most recent code from your authenticator app (codes refresh every 30 seconds)
+    - If you've lost access to your authenticator app, contact support for account recovery
+  </Accordion>
+  <Accordion title="I'm stuck on a blank page after signing in">
+    - Clear your browser cache and cookies for auxx.ai
+    - Try a different browser or incognito/private window
+    - Disable browser extensions that may interfere (ad blockers, privacy tools)
+  </Accordion>
+</Accordions>
+
+## Permissions & access
+
+<Accordions type="single">
+  <Accordion title="I can't access a settings page">
+    Some settings are restricted to admins and owners. Check your role in **Settings > Members**. If you need elevated access, ask an admin or owner in your organization to update your role.
+  </Accordion>
+  <Accordion title="I can't see certain entities or records">
+    - Entities can be hidden from the sidebar — an admin may need to enable visibility in **Settings > Custom Entities & Fields**
+    - Make sure you're in the correct organization — click your avatar in the sidebar to switch organizations
+  </Accordion>
+  <Accordion title="I can't install apps or connect integrations">
+    Only organization admins and owners can install apps, connect email integrations, or link Shopify stores. Ask an admin to perform the action or to upgrade your role.
+  </Accordion>
+</Accordions>
+
+## Plan limits
+
+<Accordions type="single">
+  <Accordion title="I've reached my plan's inbox limit">
+    Each plan has a maximum number of inboxes. To add more, upgrade your plan in **Settings > Plans & Billing**. See [Upgrading & downgrading](/billing/upgrading-downgrading) for details.
+  </Accordion>
+  <Accordion title="I've reached my plan's member limit">
+    Your plan limits the number of team members. Remove inactive members or upgrade to a plan with more seats in **Settings > Plans & Billing**.
+  </Accordion>
+  <Accordion title="AI features aren't available">
+    AI features may be limited or unavailable on certain plans. Check your current plan's feature set in **Settings > Plans & Billing** and consider upgrading if needed.
+  </Accordion>
+</Accordions>
+
+## File uploads
+
+<Accordions type="single">
+  <Accordion title="My file upload is failing">
+    - Check that the file is under the size limit (5 MB for profile photos, larger for general files)
+    - Make sure the file type is supported — see [Uploading files](/files/uploading) for the full list
+    - Try a different browser if uploads consistently fail
+    - Check your internet connection — uploads can fail on unstable connections
+  </Accordion>
+  <Accordion title="Images aren't displaying after upload">
+    - Wait a moment — images go through a processing step after upload
+    - Refresh the page
+    - If the issue persists, try re-uploading the file
+  </Accordion>
+</Accordions>
+
+## Data & records
+
+<Accordions type="single">
+  <Accordion title="My CSV import failed">
+    - Check the import status in **Settings > Import History** for error details
+    - Verify your CSV is UTF-8 encoded and properly formatted
+    - Ensure required fields are present in the CSV
+    - See [Importing records](/custom-entities/importing) for format requirements
+  </Accordion>
+  <Accordion title="I accidentally deleted records">
+    Deleted records cannot be recovered. For custom entities, consider archiving instead of deleting when possible. Archived entities preserve their data and can be restored.
+  </Accordion>
+</Accordions>
+
+## Still stuck?
+
+<Cards>
+  <Card title="Email sync problems" href="/troubleshooting/email-sync">
+    Troubleshoot Gmail and Outlook sync issues.
+  </Card>
+  <Card title="Shopify sync problems" href="/troubleshooting/shopify-sync">
+    Troubleshoot product, order, and customer sync.
+  </Card>
+  <Card title="Contact support" href="/troubleshooting/contact-support">
+    Get help from the Auxx.ai team.
+  </Card>
+</Cards>

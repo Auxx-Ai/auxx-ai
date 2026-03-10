@@ -17,21 +17,26 @@ export interface UpdateViewInput {
   name?: string
   config?: Record<string, unknown>
   isShared?: boolean
+  /** Admins/owners can update shared views they don't own */
+  isAdmin?: boolean
 }
 
 /**
- * Update an existing view (owner only)
+ * Update an existing view.
+ * - Regular users can only update their own views.
+ * - Admins/owners can also update shared views within the org.
  */
 export async function updateView(input: UpdateViewInput) {
-  const { id, userId, organizationId, name, config, isShared } = input
+  const { id, userId, organizationId, name, config, isShared, isAdmin = false } = input
 
-  // Verify ownership using getView
+  // Admins can edit any org view; regular users can only edit their own
   const viewResult = await getView({
     id,
     userId,
     organizationId,
     options: {
-      ownerOnly: true,
+      ownerOnly: !isAdmin,
+      orgWide: isAdmin,
       notFoundMessage: "View not found or you don't have permission to update it",
     },
   })

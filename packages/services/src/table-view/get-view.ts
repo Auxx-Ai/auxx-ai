@@ -13,6 +13,8 @@ import type { ViewNotFoundError } from './errors'
 export interface GetViewOptions {
   /** Only return views owned by this user (stricter than access check) */
   ownerOnly?: boolean
+  /** Allow access to any view in the org (for admins/owners) */
+  orgWide?: boolean
   /** Custom error message */
   notFoundMessage?: string
 }
@@ -31,24 +33,36 @@ export interface GetViewInput {
  * Get a single view by ID
  * - Default: user can access own views OR shared org views
  * - ownerOnly: user must own the view
+ * - orgWide: access any view in the org (for admins/owners)
  */
 export async function getView(input: GetViewInput) {
   const { id, userId, organizationId, options = {} } = input
-  const { ownerOnly = false, notFoundMessage = 'View not found' } = options
+  const { ownerOnly = false, orgWide = false, notFoundMessage = 'View not found' } = options
 
   // Build where clause based on access level
-  const whereClause = ownerOnly
-    ? and(eq(schema.TableView.id, id), eq(schema.TableView.userId, userId))
-    : and(
-        eq(schema.TableView.id, id),
-        or(
-          eq(schema.TableView.userId, userId),
-          and(
-            eq(schema.TableView.organizationId, organizationId),
-            eq(schema.TableView.isShared, true)
-          )
+  let whereClause
+  if (orgWide) {
+    // Admin/owner: any view in the org
+    whereClause = and(
+      eq(schema.TableView.id, id),
+      eq(schema.TableView.organizationId, organizationId)
+    )
+  } else if (ownerOnly) {
+    // Strict: must own the view
+    whereClause = and(eq(schema.TableView.id, id), eq(schema.TableView.userId, userId))
+  } else {
+    // Default: own views + shared org views
+    whereClause = and(
+      eq(schema.TableView.id, id),
+      or(
+        eq(schema.TableView.userId, userId),
+        and(
+          eq(schema.TableView.organizationId, organizationId),
+          eq(schema.TableView.isShared, true)
         )
       )
+    )
+  }
 
   const dbResult = await fromDatabase(
     database.select().from(schema.TableView).where(whereClause).limit(1),

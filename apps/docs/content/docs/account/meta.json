@@ -1,0 +1,4 @@
+{
+  "title": "Account & Security",
+  "pages": ["settings", "signing-in", "2fa", "api-keys", "webhooks", "import-history"]
+}

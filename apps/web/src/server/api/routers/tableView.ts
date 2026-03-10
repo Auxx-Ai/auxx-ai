@@ -9,6 +9,7 @@ import {
   viewContextTypes,
 } from '@auxx/lib/conditions'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
+import { isAdminOrOwner } from '@auxx/lib/members'
 import {
   createView,
   deleteView,
@@ -171,6 +172,8 @@ export const tableViewRouter = createTRPCRouter({
         .passthrough()
     )
     .mutation(async ({ ctx, input }) => {
+      const isAdmin = await isAdminOrOwner(ctx.session.organizationId, ctx.session.userId)
+
       const result = await updateView({
         id: input.id,
         userId: ctx.session.userId,
@@ -178,6 +181,7 @@ export const tableViewRouter = createTRPCRouter({
         name: input.name,
         config: input.config,
         isShared: input.isShared,
+        isAdmin,
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)

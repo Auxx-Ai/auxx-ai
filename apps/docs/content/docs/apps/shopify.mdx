@@ -1,0 +1,122 @@
+---
+title: Shopify integration
+description: Connect your Shopify store to Auxx.ai to sync customers, orders, and products for richer support context.
+---
+
+The Shopify integration connects your store to Auxx.ai, giving your team instant access to customer profiles, order history, and product details when handling support tickets. Data syncs in real time via webhooks so your workspace always has the latest information.
+
+<Callout type="info" title="Admin required">
+  Only organization admins and owners can connect a Shopify store.
+</Callout>
+
+## What gets synced
+
+| Data | What's included |
+|------|----------------|
+| **Customers** | Name, email, phone, order history, amount spent, tags |
+| **Orders** | Order details, pricing, fulfillment status, shipping and billing addresses |
+| **Products** | Title, description, vendor, status, tags, variants, inventory levels, media |
+
+## Connect your store
+
+![Shopify integration settings page with Connect Store button](/images/settings-shopify.png)
+
+1. Go to **Settings > Shopify**
+2. Click **Connect Shopify Store**
+3. Enter your Shopify store domain (e.g., `your-store.myshopify.com`)
+
+<Callout type="info" title="Domain format">
+  Enter your full `.myshopify.com` domain. If you just type the store name (e.g., `your-store`), Auxx.ai adds the `.myshopify.com` suffix automatically.
+</Callout>
+
+4. Click **Connect Shopify Store**
+5. You'll be redirected to Shopify — log in if prompted
+6. Review the permissions and click **Install app**
+7. After authorizing, you're redirected back to **Settings > Shopify** with your store listed as **Active**
+
+### Permissions requested
+
+| Permission | Why it's needed |
+|-----------|----------------|
+| Read products | Sync your product catalog for support context |
+| Read orders | Access order details when handling customer inquiries |
+| Read customers | Match email conversations to Shopify customer profiles |
+| Read/write inventory | View and update inventory levels |
+
+## Syncing data
+
+### Manual sync
+
+From **Settings > Shopify**, use the action buttons next to your connected store:
+
+- **Sync Products** — Pull in your full product catalog
+- **Sync Orders** — Import order history
+- **Sync Customers** — Import customer records
+
+Each sync runs as a background job. You can track progress in the sync job history.
+
+### Automatic sync
+
+Once connected, Auxx.ai registers webhooks with your Shopify store. When data changes in Shopify, it syncs to Auxx.ai automatically:
+
+| Event | Triggers |
+|-------|----------|
+| **Customers** | Created, updated |
+| **Orders** | Created, updated |
+| **Products** | Created, updated, deleted |
+
+## Browsing synced data
+
+After syncing, you can browse your Shopify data directly in Auxx.ai:
+
+- **Orders** — View order list and details at the Shopify section in the sidebar
+- **Customers** — Browse customer profiles with linked order history
+- **Products** — See your full product catalog with variants and inventory
+
+This data is also available as context when your team or AI responds to support tickets.
+
+## Managing your connection
+
+### Enable or disable
+
+You can temporarily disable a Shopify integration without removing it. From **Settings > Shopify**, toggle the store between **Active** and **Inactive**. Disabling pauses syncing and webhook processing but preserves your synced data.
+
+### Multiple stores
+
+You can connect more than one Shopify store to a single Auxx.ai organization. Each store appears as a separate entry on the Shopify settings page with its own sync controls.
+
+### Remove a store
+
+1. Go to **Settings > Shopify**
+2. Click **Remove** next to the store you want to disconnect
+3. Confirm the removal
+
+Removing a store deletes the connection and associated synced data from Auxx.ai.
+
+## Troubleshooting
+
+<Accordions type="single">
+  <Accordion title="I don't see the Connect Store button">
+    Only admins and owners can connect integrations. Check your role in **Settings > Members**.
+  </Accordion>
+  <Accordion title="Shopify says the app can't be installed">
+    Make sure you're logging in as the Shopify store owner or a staff member with permission to install apps. Collaborator accounts may not have sufficient access.
+  </Accordion>
+  <Accordion title="My data isn't syncing">
+    Go to **Settings > Shopify** and check if the store shows as **Active**. Try clicking one of the manual sync buttons. If the sync job fails, disconnect and reconnect the store.
+  </Accordion>
+  <Accordion title="I connected the wrong store">
+    Click **Remove** next to the incorrect store in **Settings > Shopify**, then connect the correct one.
+  </Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+  <Card title="Apps overview" href="/apps/overview">
+    Explore more integrations in the marketplace.
+  </Card>
+  <Card title="Connect your inbox" href="/getting-started/connect-inbox">
+    Set up email integration with Gmail or Outlook.
+  </Card>
+</Cards>

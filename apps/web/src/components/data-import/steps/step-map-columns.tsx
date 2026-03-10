@@ -73,16 +73,13 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
     }
   }, [mappableProperties, fields, job?.importMappingId])
 
-  // Report initial mapping counts to parent when mappings are loaded
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs only on initial load when mappings become available
+  // Report mapping counts to parent whenever mappings change
   useEffect(() => {
     if (mappings.length > 0) {
       const mappedCount = mappings.filter((m) => m.isMapped).length
       onMappingChange?.(mappedCount, mappings.length)
     }
-    // Only run on initial load, not on every mappings change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mappings.length > 0])
+  }, [mappings, onMappingChange])
 
   const handleMappingChange = async (
     columnIndex: number,
@@ -134,10 +131,6 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         return m
       })
 
-      // Report updated counts to parent immediately
-      const newMappedCount = updated.filter((m) => m.isMapped).length
-      onMappingChange?.(newMappedCount, updated.length)
-
       return updated
     })
 
@@ -184,10 +177,6 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         }
         return m
       })
-
-      // Report updated counts to parent immediately
-      const newMappedCount = updated.filter((m) => m.isMapped).length
-      onMappingChange?.(newMappedCount, updated.length)
 
       return updated
     })

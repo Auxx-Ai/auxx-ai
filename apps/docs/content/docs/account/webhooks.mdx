@@ -1,0 +1,124 @@
+---
+title: Webhooks
+description: Set up webhooks to receive real-time HTTP notifications when events happen in your Auxx.ai workspace.
+---
+
+Webhooks send HTTP POST requests to your server when events happen in Auxx.ai — like a new ticket being created or a message being received. Use them to build real-time integrations with your own applications.
+
+![Webhooks settings page showing webhook list with name, URL, secret, events, and status](/images/settings-webhooks.png)
+
+## Create a webhook
+
+![Create Webhook dialog with name, URL, event types, and active toggle](/images/settings-webhook-create.png)
+
+1. Go to **Settings > Webhooks**
+2. Click **Create**
+3. Fill in the details:
+   - **Name** — A label to identify this webhook
+   - **URL** — The HTTPS endpoint that will receive events
+   - **Events** — Select which event types to subscribe to
+4. Click **Save**
+
+The webhook is created in an active state and starts delivering events immediately.
+
+## Available events
+
+<Accordions type="multiple">
+  <Accordion title="User events">
+    - `user:created` — A new user joined the organization
+    - `user:updated` — A user's profile was updated
+    - `user:deleted` — A user was removed
+    - `membership:created` — A user was added to the organization
+  </Accordion>
+  <Accordion title="Message events">
+    - `message:received` — A new inbound message arrived
+    - `message:sent` — An outbound message was sent
+    - `message:failed` — A message failed to send
+    - `message:comment:created` — An internal comment was added
+    - `message:assignee:changed` — Message assignee was changed
+    - `message:tag:added` — A tag was added to a message
+    - `message:tag:removed` — A tag was removed from a message
+  </Accordion>
+  <Accordion title="Thread events">
+    - `thread:moved` — A thread was moved to a different inbox
+    - `thread:archived` — A thread was archived
+    - `thread:deleted` — A thread was deleted
+    - `thread:reopened` — A thread was reopened
+    - `thread:restored` — A thread was restored from archive
+  </Accordion>
+  <Accordion title="Ticket events">
+    - `ticket:created` — A new ticket was created
+    - `ticket:updated` — A ticket was updated
+    - `ticket:deleted` — A ticket was deleted
+    - `ticket:status:changed` — Ticket status changed
+    - `ticket:assignee:added` — An assignee was added to a ticket
+    - `ticket:assignee:removed` — An assignee was removed from a ticket
+  </Accordion>
+  <Accordion title="Workflow events">
+    - `workflow:paused` — A workflow execution was paused
+    - `workflow:resumed` — A workflow execution was resumed
+    - `workflow:resume:failed` — A workflow failed to resume
+  </Accordion>
+</Accordions>
+
+## Webhook security
+
+Each webhook is assigned a secret when created. Auxx.ai signs every delivery with this secret using HMAC-SHA256. Verify the signature on your server to ensure requests are authentic.
+
+The signature is included in two headers:
+
+- `X-Auxx-Signature`
+- `X-Webhook-Signature`
+
+### Verifying the signature
+
+```typescript
+import { createHmac } from 'crypto'
+
+function verifyWebhookSignature(
+  payload: string,
+  signature: string,
+  secret: string
+): boolean {
+  const expected = createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex')
+  return expected === signature
+}
+```
+
+## Managing webhooks
+
+From **Settings > Webhooks**, you can:
+
+- **Edit** — Change the name, URL, or subscribed events
+- **Activate / Deactivate** — Temporarily pause deliveries without deleting the webhook
+- **Test** — Send a test payload to verify your endpoint is reachable
+- **Delete** — Permanently remove the webhook
+
+The webhook list shows each webhook's name, URL, secret (masked), subscribed events, and status.
+
+## Troubleshooting
+
+<Accordions type="single">
+  <Accordion title="My webhook isn't receiving events">
+    Check that the webhook status is **Active** in Settings > Webhooks. Make sure your endpoint URL is correct and publicly accessible. Use the **Test** button to verify connectivity.
+  </Accordion>
+  <Accordion title="Events are arriving with a delay">
+    Webhook deliveries are sent asynchronously. Short delays are normal during high-traffic periods. If delays persist, check your server's response time — slow responses can cause queuing.
+  </Accordion>
+  <Accordion title="Signature verification is failing">
+    Make sure you're using the raw request body (not parsed JSON) when computing the HMAC. The signature is computed against the exact bytes sent, not a re-serialized version.
+  </Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+  <Card title="API keys" href="/account/api-keys">
+    Create API keys for programmatic access.
+  </Card>
+  <Card title="Import history" href="/account/import-history">
+    Track your data imports.
+  </Card>
+</Cards>

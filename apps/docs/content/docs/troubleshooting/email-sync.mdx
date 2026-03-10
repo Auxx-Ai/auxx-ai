@@ -1,0 +1,94 @@
+---
+title: Email sync problems
+description: Troubleshoot Gmail and Outlook email sync issues in Auxx.ai, including connection failures, missing messages, and sync delays.
+---
+
+If your Gmail or Outlook inbox isn't syncing correctly, use the steps below to diagnose and fix the issue.
+
+## Connection issues
+
+<Accordions type="single">
+  <Accordion title="My email integration shows as disconnected">
+    Go to **Settings > Integrations** and check the status of your connection. If it shows as disconnected or expired:
+
+    1. Click **Reconnect** next to the integration
+    2. Complete the OAuth authorization flow again
+    3. Verify the connection shows as **Active**
+
+    OAuth tokens can expire if your email provider revokes access or if you changed your email password.
+  </Accordion>
+  <Accordion title="I can't connect my Gmail account">
+    - Make sure you're signing in with the correct Google account
+    - Check that you've granted all requested permissions during the OAuth flow
+    - If your organization uses Google Workspace, your admin may need to allow third-party app access
+    - Try removing Auxx.ai from your Google account's connected apps (myaccount.google.com > Security > Third-party apps), then reconnect
+  </Accordion>
+  <Accordion title="I can't connect my Outlook account">
+    - Verify you're signing in with the correct Microsoft account
+    - If you're using a work or school account, your IT admin may need to approve the Auxx.ai app
+    - Check that you've granted all requested permissions
+    - Try clearing your browser cookies for microsoft.com and re-authorizing
+  </Accordion>
+</Accordions>
+
+## Missing messages
+
+<Accordions type="single">
+  <Accordion title="New emails aren't appearing in Auxx.ai">
+    - Check that the integration is active in **Settings > Integrations**
+    - New messages are delivered via webhooks — there may be a short delay
+    - Verify the email was sent to the address connected to Auxx.ai
+    - Check your inbox filters — the message may be in a different view
+  </Accordion>
+  <Accordion title="Sent replies aren't showing in my email client">
+    Replies sent from Auxx.ai are sent via your connected email provider. If they're not appearing in your sent folder:
+
+    - Check the **Sent** folder in Auxx.ai to confirm the message was sent successfully
+    - Some email configurations may not automatically save sent messages — check your provider's settings
+    - If the reply shows as failed in Auxx.ai, check the error message for details
+  </Accordion>
+  <Accordion title="Old emails aren't syncing">
+    Auxx.ai syncs messages going forward from the time you connect your inbox. Historical emails are not imported retroactively. Only new incoming and outgoing messages after connection are tracked.
+  </Accordion>
+</Accordions>
+
+## Sync delays
+
+<Accordions type="single">
+  <Accordion title="There's a delay between receiving an email and seeing it in Auxx.ai">
+    A short delay (usually under a minute) is normal. Email sync relies on webhooks from Gmail or Outlook. If delays are consistently longer:
+
+    - Check if the integration is still active
+    - Disconnect and reconnect the integration to re-register webhooks
+    - Check Auxx.ai's status page for any ongoing service issues
+  </Accordion>
+  <Accordion title="Emails are arriving out of order">
+    Messages are displayed by their received timestamp. If emails from different senders arrive at nearly the same time, they may appear in a different order than expected. This is normal behavior.
+  </Accordion>
+</Accordions>
+
+## Shared inboxes
+
+<Accordions type="single">
+  <Accordion title="Messages aren't routing to the correct shared inbox">
+    Shared inboxes are tied to specific email addresses. Make sure:
+
+    - The incoming email is addressed to the correct shared inbox email
+    - The inbox is configured correctly in **Settings > Inboxes**
+    - The integration for that email address is active
+  </Accordion>
+  <Accordion title="Team members can't see shared inbox messages">
+    Check that the team members are added to the shared inbox. Go to **Settings > Inboxes**, select the inbox, and verify the member list.
+  </Accordion>
+</Accordions>
+
+## Still stuck?
+
+<Cards>
+  <Card title="Common issues" href="/troubleshooting/common-issues">
+    General troubleshooting for login, permissions, and more.
+  </Card>
+  <Card title="Contact support" href="/troubleshooting/contact-support">
+    Get help from the Auxx.ai team.
+  </Card>
+</Cards>
