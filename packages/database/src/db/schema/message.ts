@@ -65,7 +65,10 @@ export const Message = pgTable(
     updatedAt: timestamp({ precision: 3 }).notNull(),
     sentAt: timestamp({ precision: 3 }),
     receivedAt: timestamp({ precision: 3 }),
-    signatureId: text().references((): AnyPgColumn => EntityInstance.id, { onUpdate: 'cascade' }),
+    signatureId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     hasAttachments: boolean().default(false).notNull(),
     attempts: integer().default(0).notNull(),
     lastAttemptAt: timestamp({ precision: 3 }),

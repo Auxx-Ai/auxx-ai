@@ -31,7 +31,7 @@ export type ContactWithDetails = any
  * Contact with custom field values
  */
 export type ContactWithCustomFields = ContactListItem & {
-  customFieldValues?: Array<{
+  fieldValues?: Array<{
     fieldId: string
     value: any
   }>
@@ -217,7 +217,7 @@ export class ContactService {
 
     const contactsWithFields: ContactWithCustomFields[] = result.items.map((contact) => ({
       ...contact,
-      customFieldValues: valuesByContactId[contact.id] || [],
+      fieldValues: valuesByContactId[contact.id] || [],
     }))
 
     return {
@@ -480,24 +480,29 @@ export class ContactService {
   /**
    * Bulk delete contacts via UnifiedCrudHandler.
    */
-  async bulkDeleteContacts(ids: string[]): Promise<{ count: number }> {
+  async bulkDeleteContacts(
+    ids: string[]
+  ): Promise<{ count: number; errors: Array<{ recordId: string; message: string }> }> {
     if (ids.length === 0) throw new Error('No contacts provided.')
 
     const handler = this.createHandler()
     const entityDef = await handler.resolveEntityDefinition('contact')
-    const { toRecordId } = await import('@auxx/types/resource')
+    const { toRecordId, parseRecordId } = await import('@auxx/types/resource')
     const recordIds = ids.map((id) => toRecordId(entityDef.id, id))
 
     const result = await handler.bulkDelete(recordIds)
 
-    if (result.count === 0) {
+    if (result.count === 0 && result.errors.length > 0) {
       throw new Error('No valid contacts found to delete.')
     }
 
     const effectiveUserId =
       this.userId || (await SystemUserService.getSystemUserForActions(this.organizationId))
 
+    const failedIds = new Set(result.errors.map((e) => parseRecordId(e.recordId).entityInstanceId))
+
     for (const id of ids) {
+      if (failedIds.has(id)) continue
       await publisher.publishLater({
         type: 'contact:deleted',
         data: {
@@ -510,11 +515,12 @@ export class ContactService {
 
     logger.info('Bulk deleted contacts', {
       count: result.count,
+      errors: result.errors.length,
       contactIds: ids,
       organizationId: this.organizationId,
     })
 
-    return { count: result.count }
+    return { count: result.count, errors: result.errors }
   }
 
   /**

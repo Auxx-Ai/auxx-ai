@@ -78,7 +78,7 @@ export function createFindExistingRecord(options: FindExistingRecordOptions) {
       return result
     }
 
-    // Custom entities - query via CustomFieldValue
+    // Custom entities - query via FieldValue
     if (resource.type === 'custom' && resource.entityDefinitionId) {
       const result = await findInCustomEntity(
         db,

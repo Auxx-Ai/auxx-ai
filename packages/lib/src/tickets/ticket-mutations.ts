@@ -5,7 +5,7 @@ import type { TicketPriority, TicketStatus } from '@auxx/database/types'
 import { TRPCError } from '@trpc/server'
 import { publisher } from '../events/publisher'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
-import { type RecordId, toRecordId } from '../resources/resource-id'
+import { parseRecordId, type RecordId, toRecordId } from '../resources/resource-id'
 
 /**
  * Input for updating multiple tickets' status
@@ -157,14 +157,18 @@ export async function deleteMultipleTickets(
   const recordIds = ticketIds.map((id) => toRecordId('ticket', id) as RecordId)
   const result = await handler.bulkDelete(recordIds)
 
+  const failedIds = new Set(result.errors.map((e) => parseRecordId(e.recordId).entityInstanceId))
+
   await Promise.all(
-    ticketIds.map(async (ticketId) => {
-      await publisher.publishLater({
-        type: 'ticket:deleted',
-        data: { organizationId, ticketId, userId },
+    ticketIds
+      .filter((id) => !failedIds.has(id))
+      .map(async (ticketId) => {
+        await publisher.publishLater({
+          type: 'ticket:deleted',
+          data: { organizationId, ticketId, userId },
+        })
       })
-    })
   )
 
-  return { success: true, count: result.count }
+  return { success: true, count: result.count, errors: result.errors }
 }

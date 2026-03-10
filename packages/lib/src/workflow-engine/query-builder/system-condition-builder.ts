@@ -328,7 +328,7 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
   }
 
   /**
-   * Build EXISTS subquery for CustomFieldValue table
+   * Build EXISTS subquery for FieldValue table
    * This is specific to system resources that support custom fields
    */
   private buildCustomFieldSubquery(
@@ -345,9 +345,9 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
     // Handle 'not exists' operator
     if (condition.operator === 'not exists') {
       return sql`NOT EXISTS (
-        SELECT 1 FROM ${schema.CustomFieldValue}
-        WHERE ${schema.CustomFieldValue.entityId} = ${resourceTable.id}
-          AND ${schema.CustomFieldValue.fieldId} = ${customFieldId}
+        SELECT 1 FROM ${schema.FieldValue}
+        WHERE ${schema.FieldValue.entityId} = ${resourceTable.id}
+          AND ${schema.FieldValue.fieldId} = ${customFieldId}
       )`
     }
 
@@ -358,67 +358,70 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
     if (!valueCondition) return undefined
 
     return sql`EXISTS (
-      SELECT 1 FROM ${schema.CustomFieldValue}
-      WHERE ${schema.CustomFieldValue.entityId} = ${resourceTable.id}
-        AND ${schema.CustomFieldValue.fieldId} = ${customFieldId}
+      SELECT 1 FROM ${schema.FieldValue}
+      WHERE ${schema.FieldValue.entityId} = ${resourceTable.id}
+        AND ${schema.FieldValue.fieldId} = ${customFieldId}
         AND ${valueCondition}
     )`
   }
 
   /**
-   * Build value condition for JSONB custom field
+   * Build value condition for FieldValue typed columns.
+   * Uses COALESCE across typed columns to produce a comparable text value,
+   * matching the old CustomFieldValue JSONB behavior.
    */
   private buildCustomFieldValueCondition(operator: Operator, value: any): SQL<unknown> | undefined {
-    const valueColumn = schema.CustomFieldValue.value
+    // COALESCE across typed columns to get a text representation
+    const textValue = sql`COALESCE(${schema.FieldValue.valueText}, ${schema.FieldValue.optionId}, CAST(${schema.FieldValue.valueNumber} AS text), CAST(${schema.FieldValue.valueBoolean} AS text), CAST(${schema.FieldValue.valueDate} AS text))`
 
     switch (operator) {
       case 'is':
         if (value === null || value === undefined) {
-          return sql`${valueColumn} IS NULL`
+          return sql`${textValue} IS NULL`
         }
-        return sql`${valueColumn}->>'data' = ${String(value)}`
+        return sql`${textValue} = ${String(value)}`
 
       case 'is not':
         if (value === null || value === undefined) {
-          return sql`${valueColumn} IS NOT NULL`
+          return sql`${textValue} IS NOT NULL`
         }
-        return sql`${valueColumn}->>'data' != ${String(value)}`
+        return sql`${textValue} != ${String(value)}`
 
       case 'contains':
-        return sql`${valueColumn}->>'data' ILIKE ${'%' + String(value ?? '') + '%'}`
+        return sql`${textValue} ILIKE ${'%' + String(value ?? '') + '%'}`
 
       case 'not contains':
-        return sql`${valueColumn}->>'data' NOT ILIKE ${'%' + String(value ?? '') + '%'}`
+        return sql`${textValue} NOT ILIKE ${'%' + String(value ?? '') + '%'}`
 
       case 'starts with':
-        return sql`${valueColumn}->>'data' ILIKE ${String(value ?? '') + '%'}`
+        return sql`${textValue} ILIKE ${String(value ?? '') + '%'}`
 
       case 'ends with':
-        return sql`${valueColumn}->>'data' ILIKE ${'%' + String(value ?? '')}`
+        return sql`${textValue} ILIKE ${'%' + String(value ?? '')}`
 
       case '>':
-        return sql`(${valueColumn}->>'data')::numeric > ${Number(value)}`
+        return sql`${schema.FieldValue.valueNumber} > ${Number(value)}`
 
       case '<':
-        return sql`(${valueColumn}->>'data')::numeric < ${Number(value)}`
+        return sql`${schema.FieldValue.valueNumber} < ${Number(value)}`
 
       case '>=':
-        return sql`(${valueColumn}->>'data')::numeric >= ${Number(value)}`
+        return sql`${schema.FieldValue.valueNumber} >= ${Number(value)}`
 
       case '<=':
-        return sql`(${valueColumn}->>'data')::numeric <= ${Number(value)}`
+        return sql`${schema.FieldValue.valueNumber} <= ${Number(value)}`
 
       case 'in': {
         const values = Array.isArray(value) ? value : [value]
         if (!values.length) return undefined
-        const conditions = values.map((v) => sql`${valueColumn}->>'data' = ${String(v)}`)
+        const conditions = values.map((v) => sql`${textValue} = ${String(v)}`)
         return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` OR `)})`
       }
 
       case 'not in': {
         const values = Array.isArray(value) ? value : [value]
         if (!values.length) return undefined
-        const conditions = values.map((v) => sql`${valueColumn}->>'data' != ${String(v)}`)
+        const conditions = values.map((v) => sql`${textValue} != ${String(v)}`)
         return conditions.length === 1 ? conditions[0] : sql`(${sql.join(conditions, sql` AND `)})`
       }
 
@@ -426,10 +429,10 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
         return sql`true`
 
       case 'empty':
-        return sql`(${valueColumn}->>'data' IS NULL OR ${valueColumn}->>'data' = '')`
+        return sql`(${textValue} IS NULL OR ${textValue} = '')`
 
       case 'not empty':
-        return sql`(${valueColumn}->>'data' IS NOT NULL AND ${valueColumn}->>'data' != '')`
+        return sql`(${textValue} IS NOT NULL AND ${textValue} != '')`
 
       default:
         return undefined

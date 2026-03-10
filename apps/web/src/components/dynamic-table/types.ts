@@ -130,7 +130,7 @@ export const NO_STATUS_COLUMN_ID = '__no_status__'
 export interface KanbanRow {
   id: string
   updatedAt?: string | Date
-  customFieldValues?: Array<{
+  fieldValues?: Array<{
     fieldId: string
     value: unknown
   }>

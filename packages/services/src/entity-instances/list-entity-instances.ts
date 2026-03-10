@@ -50,7 +50,7 @@ export async function listEntityInstances(params: ListEntityInstancesParams) {
         return and(...conditions)
       },
       with: {
-        typedValues: true,
+        values: true,
       },
       orderBy: (instances, { desc }) => [desc(instances.updatedAt)],
       limit: limit + 1,

@@ -591,14 +591,16 @@ export async function bulkDeleteEntities(
   ctx: MutationContext,
   recordIds: RecordId[],
   options: CrudOptions = {}
-): Promise<{ count: number }> {
-  if (recordIds.length === 0) return { count: 0 }
+): Promise<{ count: number; errors: Array<{ recordId: RecordId; message: string }> }> {
+  if (recordIds.length === 0) return { count: 0, errors: [] }
 
   // Get entityDefinitionId from first recordId for invalidation
   const { entityDefinitionId } = parseRecordId(recordIds[0]!)
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 
   let count = 0
+  const errors: Array<{ recordId: RecordId; message: string }> = []
+
   for (const recordId of recordIds) {
     try {
       await deleteEntity(ctx, recordId, {
@@ -606,8 +608,11 @@ export async function bulkDeleteEntities(
         skipSnapshotInvalidation: true, // Always skip - we'll do it once at end
       })
       count++
-    } catch {
-      // Skip failures
+    } catch (error) {
+      errors.push({
+        recordId,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      })
     }
   }
 
@@ -616,7 +621,7 @@ export async function bulkDeleteEntities(
     await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
   }
 
-  return { count }
+  return { count, errors }
 }
 
 /**

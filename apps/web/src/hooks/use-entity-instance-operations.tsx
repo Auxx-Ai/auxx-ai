@@ -1,10 +1,11 @@
 // apps/web/src/hooks/use-entity-instance-operations.tsx
 'use client'
 
-import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useRef } from 'react'
 import type { EntityRow } from '~/app/(protected)/app/custom/[slug]/_components/types'
+import { useRecordStore } from '~/components/resources/store/record-store'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -73,7 +74,9 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
   })
 
   const deleteInstance = api.record.delete.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      const { entityDefinitionId: defId, entityInstanceId } = parseRecordId(variables.recordId)
+      useRecordStore.getState().removeRecord(defId, entityInstanceId)
       onRefetch?.()
     },
     onError: (error) => {
@@ -87,7 +90,6 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
 
   const bulkDeleteInstances = api.record.bulkDelete.useMutation({
     onSuccess: () => {
-      onRefetch?.()
       onClearSelection?.()
     },
     onError: (error) => {
@@ -155,12 +157,38 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: true,
       })
       if (confirmed) {
-        await bulkDeleteInstances.mutateAsync({
+        const result = await bulkDeleteInstances.mutateAsync({
           recordIds: rows.map((r) => buildRecordId(r.id)),
         })
+
+        // Optimistic removal from store
+        const failedIds = new Set(
+          result.errors.map((e) => parseRecordId(e.recordId).entityInstanceId)
+        )
+        for (const row of rows) {
+          if (!failedIds.has(row.id) && entityDefinitionId) {
+            useRecordStore.getState().removeRecord(entityDefinitionId, row.id)
+          }
+        }
+        onRefetch?.()
+
+        if (result.errors.length > 0) {
+          toastError({
+            title: 'Some records could not be deleted',
+            description: `${result.count} deleted, ${result.errors.length} failed.`,
+          })
+        }
       }
     },
-    [confirmDelete, resourceLabel, resourcePlural, bulkDeleteInstances, buildRecordId]
+    [
+      confirmDelete,
+      resourceLabel,
+      resourcePlural,
+      bulkDeleteInstances,
+      buildRecordId,
+      entityDefinitionId,
+      onRefetch,
+    ]
   )
 
   /** Handle bulk archive action with confirmation */

@@ -631,6 +631,13 @@
       "when": 1772835684565,
       "tag": "0089_add-user-ban-and-force-password-change",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1773102141766,
+      "tag": "0090_entity_instance_fk_set_null_and_drop_custom_field_value",
+      "breakpoints": true
     }
   ]
 }

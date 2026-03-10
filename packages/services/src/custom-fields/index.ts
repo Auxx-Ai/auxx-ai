@@ -64,5 +64,5 @@ export {
 } from './types'
 export { type UpdateCustomFieldInput, updateCustomField } from './update-field'
 // Utils
-export { normalizeCustomFieldValue } from './utils/normalize-value'
+export { normalizeFieldValue } from './utils/normalize-value'
 export { type VerifyEntityInput, verifyEntityExistsQuery } from './verify-entity'

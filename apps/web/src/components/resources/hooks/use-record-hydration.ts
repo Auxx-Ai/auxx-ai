@@ -13,7 +13,7 @@ interface UseRecordHydrationOptions {
 }
 
 /**
- * Hook that hydrates record data into customFieldValueStore when data changes.
+ * Hook that hydrates record data into fieldValueStore when data changes.
  * Call this in components that display record fields (drawers, detail pages).
  */
 export function useRecordHydration({

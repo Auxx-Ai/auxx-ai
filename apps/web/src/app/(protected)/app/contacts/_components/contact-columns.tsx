@@ -31,7 +31,7 @@ export type Contact = {
   updatedAt: string
   phone: string | null
   status: CustomerStatus
-  customFieldValues?: Array<{
+  fieldValues?: Array<{
     fieldId: string
     value: any
   }>

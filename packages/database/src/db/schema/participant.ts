@@ -32,6 +32,7 @@ export const Participant = pgTable(
     /** Reference to EntityInstance (contact entity type) */
     entityInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
       onUpdate: 'cascade',
+      onDelete: 'set null',
     }),
     organizationId: text()
       .notNull()

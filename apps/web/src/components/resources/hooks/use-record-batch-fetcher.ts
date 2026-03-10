@@ -102,7 +102,7 @@ export function useRecordBatchFetcher() {
     // Complete the batch (removes from loadingIds)
     store.completeBatch(currentBatch)
 
-    // Hydrate field values into customFieldValueStore
+    // Hydrate field values into fieldValueStore
     for (const [entityDefinitionId, records] of byEntityDefinitionId) {
       const resource = getResourceById(entityDefinitionId)
       if (resource) {

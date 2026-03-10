@@ -18,11 +18,14 @@ export interface DeleteEntityInstanceParams {
 export async function deleteEntityInstance(params: DeleteEntityInstanceParams) {
   const { id, organizationId } = params
 
-  // Delete field values first (CASCADE should handle this, but being explicit)
-  await fromDatabase(
-    database.delete(schema.CustomFieldValue).where(eq(schema.CustomFieldValue.entityId, id)),
+  // Delete field values first
+  const fvResult = await fromDatabase(
+    database.delete(schema.FieldValue).where(eq(schema.FieldValue.entityId, id)),
     'delete-entity-instance-field-values'
   )
+  if (fvResult.isErr()) {
+    return err(fvResult.error)
+  }
 
   // Delete the instance
   const dbResult = await fromDatabase(

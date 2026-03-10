@@ -32,13 +32,13 @@ export interface UniqueViolation {
 
 /**
  * Normalize a value to string for comparison.
- * Handles both raw values and normalized CustomFieldValue objects ({ data: ... })
+ * Handles both raw values and normalized FieldValue objects ({ data: ... })
  * Returns null if the value is empty/null.
  */
 function normalizeValueForComparison(value: unknown): string | null {
   if (value === null || value === undefined) return null
 
-  // Handle normalized CustomFieldValue object format: { data: ... }
+  // Handle normalized { data: ... } object format
   if (typeof value === 'object' && value !== null && 'data' in value) {
     return normalizeValueForComparison((value as { data: unknown }).data)
   }

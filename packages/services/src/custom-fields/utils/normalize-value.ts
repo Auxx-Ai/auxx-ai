@@ -37,7 +37,7 @@ function unwrapValue(value: any): any {
  * @param field - Custom field definition with type and options
  * @returns Normalized value wrapped in {"data": x} format
  */
-export function normalizeCustomFieldValue(
+export function normalizeFieldValue(
   value: any,
   field: { type: FieldType; name: string; options?: any }
 ): { data: any } {

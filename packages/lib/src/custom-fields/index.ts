@@ -8,7 +8,7 @@ export type {
 // Export built-in field utilities
 export { BUILT_IN_FIELDS, getBuiltInFieldHandler, isBuiltInField } from './built-in-fields'
 export { type CheckUniqueValueTypedInput, checkUniqueValueTyped } from './check-unique-value-typed'
-export { CustomFieldService, normalizeCustomFieldValue } from './custom-field-service'
+export { CustomFieldService, normalizeFieldValue } from './custom-field-service'
 // Export default display options (for converters and seeder)
 export {
   DEFAULT_BOOLEAN_OPTIONS,

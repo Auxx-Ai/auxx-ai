@@ -421,8 +421,18 @@ export const recordRouter = createTRPCRouter({
 
       try {
         const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
-        return await handler.bulkDelete(input.recordIds)
+        const result = await handler.bulkDelete(input.recordIds)
+
+        if (result.errors.length > 0 && result.count === 0) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Failed to delete ${result.errors.length} record(s): ${result.errors[0]?.message}`,
+          })
+        }
+
+        return result
       } catch (error: any) {
+        if (error instanceof TRPCError) throw error
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to bulk delete records: ${error.message}`,
