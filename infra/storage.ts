@@ -60,14 +60,6 @@ export const privateBucket = new sst.aws.Bucket('PrivateAssets', {
     bucket: {
       bucket: $app.stage === 'production' ? 'auxx-private' : appify('private'), // auxx-private (prod), auxx-dev-private, auxx-local-private
 
-      // Block ALL public access
-      publicAccessBlockConfiguration: {
-        blockPublicAcls: true,
-        blockPublicPolicy: true,
-        ignorePublicAcls: true,
-        restrictPublicBuckets: true,
-      },
-
       // CORS for presigned uploads
       corsRules: [
         {
@@ -106,24 +98,19 @@ export const privateBucket = new sst.aws.Bucket('PrivateAssets', {
           ],
         },
       ],
-
-      // Server-side encryption
-      serverSideEncryptionConfiguration: {
-        rules: [
-          {
-            applyServerSideEncryptionByDefault: {
-              sseAlgorithm: 'AES256',
-            },
-          },
-        ],
-      },
-
       tags: {
         app: 'auxxai',
         stage: $app.stage,
         visibility: 'private',
         cdn: 'disabled',
       },
+    },
+    // Block all public access on the private bucket.
+    publicAccessBlock: {
+      blockPublicAcls: true,
+      blockPublicPolicy: true,
+      ignorePublicAcls: true,
+      restrictPublicBuckets: true,
     },
   },
 })

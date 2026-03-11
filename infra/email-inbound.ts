@@ -62,25 +62,29 @@ const inboundHostedZone =
  */
 export const inboundEmailBucket = shouldDeployInboundEmailResources
   ? new sst.aws.Bucket('InboundEmailBucket', {
+      policy: [
+        {
+          actions: ['s3:PutObject'],
+          principals: [
+            {
+              type: 'service',
+              identifiers: ['ses.amazonaws.com'],
+            },
+          ],
+          paths: [`${inboundKeyPrefix}/*`],
+          conditions: [
+            {
+              test: 'StringEquals',
+              variable: 'AWS:SourceAccount',
+              values: [callerIdentity.accountId],
+            },
+          ],
+        },
+      ],
       transform: {
         bucket: {
           bucket:
             $app.stage === 'production' ? 'auxx-inbound-email' : `auxx-${$app.stage}-inbound-email`,
-          publicAccessBlockConfiguration: {
-            blockPublicAcls: true,
-            blockPublicPolicy: true,
-            ignorePublicAcls: true,
-            restrictPublicBuckets: true,
-          },
-          serverSideEncryptionConfiguration: {
-            rules: [
-              {
-                applyServerSideEncryptionByDefault: {
-                  sseAlgorithm: 'AES256',
-                },
-              },
-            ],
-          },
           lifecycleRules: [
             {
               id: 'DeleteOldInboundRawEmails',
@@ -94,6 +98,12 @@ export const inboundEmailBucket = shouldDeployInboundEmailResources
             stage: $app.stage,
             purpose: 'inbound-email',
           },
+        },
+        publicAccessBlock: {
+          blockPublicAcls: true,
+          blockPublicPolicy: true,
+          ignorePublicAcls: true,
+          restrictPublicBuckets: true,
         },
       },
     })
@@ -137,10 +147,10 @@ export const sesInboundReceiver = shouldDeployInboundEmailResources
       timeout: '15 seconds',
       memory: '256 MB',
       environment: {
-        AWS_REGION: inboundEmailRegion,
         INBOUND_EMAIL_BUCKET: inboundEmailBucket!.name,
         INBOUND_EMAIL_DOMAIN: inboundEmailDomain,
         INBOUND_EMAIL_KEY_PREFIX: inboundKeyPrefix,
+        INBOUND_EMAIL_QUEUE_REGION: inboundEmailRegion,
         INBOUND_EMAIL_QUEUE_URL: inboundEmailQueue!.url,
       },
       permissions: [
@@ -149,44 +159,6 @@ export const sesInboundReceiver = shouldDeployInboundEmailResources
           resources: [inboundEmailQueue!.arn],
         },
       ],
-    })
-  : undefined
-
-/**
- * inboundBucketPolicyDocument scopes SES writes to the raw MIME prefix.
- */
-const inboundBucketPolicyDocument = shouldDeployInboundEmailResources
-  ? aws.iam.getPolicyDocumentOutput({
-      statements: [
-        {
-          effect: 'Allow',
-          principals: [
-            {
-              type: 'Service',
-              identifiers: ['ses.amazonaws.com'],
-            },
-          ],
-          actions: ['s3:PutObject'],
-          resources: [$interpolate`${inboundEmailBucket!.arn}/${inboundKeyPrefix}/*`],
-          conditions: [
-            {
-              test: 'StringEquals',
-              variable: 'AWS:SourceAccount',
-              values: [callerIdentity.accountId],
-            },
-          ],
-        },
-      ],
-    })
-  : undefined
-
-/**
- * inboundEmailBucketPolicy grants SES permission to write raw MIME into the bucket prefix.
- */
-export const inboundEmailBucketPolicy = shouldDeployInboundEmailResources
-  ? new aws.s3.BucketPolicy('InboundEmailBucketPolicy', {
-      bucket: inboundEmailBucket!.name,
-      policy: inboundBucketPolicyDocument!.json,
     })
   : undefined
 
@@ -250,7 +222,7 @@ export const inboundReceiptRule = shouldDeployInboundEmailResources
       },
       {
         dependsOn: [
-          inboundEmailBucketPolicy!,
+          inboundEmailBucket!,
           allowSesInvokeInboundReceiver!,
           activeInboundReceiptRuleSet!,
         ],
