@@ -11,6 +11,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@auxx/ui/components/empty'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   Table,
   TableBody,
@@ -22,8 +23,9 @@ import {
 import { format } from 'date-fns'
 import { Check, Copy, Loader2, PackageOpen } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useConfirm } from '@/hooks/use-confirm'
+import { PromoteDialog } from '~/components/apps/promote-dialog'
 import { PublishAppDialog } from '~/components/apps/publish-app-dialog'
 import { toastError } from '~/components/global/toast'
 import { useApp } from '~/components/providers/dehydrated-state-provider'
@@ -62,6 +64,84 @@ function getStatusVariant(
 }
 
 /**
+ * Get developer label for a development deployment
+ */
+function getDevLabel(deployment: Deployment): string {
+  const creator = deployment.createdBy
+  const org = deployment.targetOrganization
+
+  let label = 'Dev'
+  if (creator?.name) {
+    label = `Dev (${creator.name})`
+  } else if (creator?.email) {
+    label = `Dev (${creator.email})`
+  } else if (deployment.createdById) {
+    label = `Dev (${deployment.createdById.slice(0, 8)})`
+  }
+
+  if (org?.name) {
+    label += ` · ${org.name}`
+  }
+
+  return label
+}
+
+/**
+ * Status badge that shows a popover with rejection reason when clicked on rejected deployments
+ */
+function StatusBadge({ deployment }: { deployment: Deployment }) {
+  const label = deployment.status === 'pending-review' ? 'pending review' : deployment.status
+
+  if (deployment.status === 'rejected' && deployment.rejectionReason) {
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button type='button' className='cursor-pointer'>
+            <Badge variant={getStatusVariant(deployment.status)}>{label}</Badge>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align='start' className='w-80'>
+          <div className='space-y-2'>
+            <p className='text-sm font-medium'>Rejection reason</p>
+            <p className='text-sm text-muted-foreground'>{deployment.rejectionReason}</p>
+          </div>
+        </PopoverContent>
+      </Popover>
+    )
+  }
+
+  return <Badge variant={getStatusVariant(deployment.status)}>{label}</Badge>
+}
+
+const COLUMN_COUNT = 4
+
+/**
+ * Section header row for the deployment table
+ */
+function SectionHeaderRow({ title }: { title: string }) {
+  return (
+    <TableRow className='bg-primary-100 hover:bg-primary-100'>
+      <TableCell colSpan={COLUMN_COUNT} className='py-2'>
+        <span className='text-sm font-semibold text-muted-foreground'>{title}</span>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+/**
+ * Empty row for a section with no deployments
+ */
+function SectionEmptyRow({ message }: { message: string }) {
+  return (
+    <TableRow className='hover:bg-transparent'>
+      <TableCell colSpan={COLUMN_COUNT} className='py-4 text-center text-sm text-muted-foreground'>
+        {message}
+      </TableCell>
+    </TableRow>
+  )
+}
+
+/**
  * Versions page component
  */
 function VersionsPage() {
@@ -72,7 +152,7 @@ function VersionsPage() {
 
   const [confirm, ConfirmDialog] = useConfirm()
 
-  // Fetch deployments
+  // Fetch all deployments (no deploymentType filter = both types)
   const {
     data: deployments,
     isLoading,
@@ -90,6 +170,15 @@ function VersionsPage() {
   })
 
   const [copied, setCopied] = useState(false)
+
+  // Split deployments into production and developer sections
+  const { productionDeployments, developerDeployments } = useMemo(() => {
+    if (!deployments) return { productionDeployments: [], developerDeployments: [] }
+    return {
+      productionDeployments: deployments.filter((d) => d.deploymentType === 'production'),
+      developerDeployments: deployments.filter((d) => d.deploymentType === 'development'),
+    }
+  }, [deployments])
 
   /**
    * Handle deprecating a deployment
@@ -172,7 +261,7 @@ function VersionsPage() {
     )
   }
 
-  // Empty state
+  // Full empty state — no deployments of any type
   if (!deployments || deployments.length === 0) {
     return (
       <div className='flex flex-col items-center justify-center flex-1 overflow-y-auto'>
@@ -202,11 +291,11 @@ function VersionsPage() {
     )
   }
 
-  // Data state - display table
+  // Data state - display sectioned table
   return (
     <>
       <ConfirmDialog />
-      <div className='flex flex-col flex-1 overflow-y-auto p-6'>
+      <div className='flex flex-col flex-1 overflow-y-auto'>
         <Table>
           <TableHeader>
             <TableRow>
@@ -217,63 +306,102 @@ function VersionsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {deployments.map((deployment) => (
-              <TableRow key={deployment.id}>
-                <TableCell className='font-mono'>
-                  <div className='truncate'>{deployment.version || '—'}</div>
-                </TableCell>
-                <TableCell>
-                  <div className='truncate'>
-                    {format(new Date(deployment.createdAt), 'MMM dd, yyyy')}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={getStatusVariant(deployment.status)}>
-                    {deployment.status === 'pending-review' ? 'pending review' : deployment.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className='text-right'>
-                  {deployment.status === 'published' ? (
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={() => handleDeprecate(deployment)}
-                      loading={updateDeploymentStatus.isPending}>
-                      Deprecate
-                    </Button>
-                  ) : deployment.status === 'pending-review' ||
-                    deployment.status === 'in-review' ? (
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={() => handleWithdraw(deployment)}
-                      loading={updateDeploymentStatus.isPending}>
-                      Withdraw
-                    </Button>
-                  ) : deployment.status === 'approved' ? (
-                    <Button
-                      variant='default'
-                      size='sm'
-                      onClick={() => handlePublish(deployment)}
-                      loading={updateDeploymentStatus.isPending}>
-                      Publish
-                    </Button>
-                  ) : deployment.status === 'active' ? (
-                    <PublishAppDialog
-                      mode='version'
-                      appSlug={params.app_slug}
+            {/* Production section */}
+            <SectionHeaderRow title='Production' />
+            {productionDeployments.length === 0 ? (
+              <SectionEmptyRow message='No production deployments yet' />
+            ) : (
+              productionDeployments.map((deployment) => (
+                <TableRow key={deployment.id}>
+                  <TableCell className='font-mono'>
+                    <div className='truncate'>{deployment.version || '—'}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className='truncate'>
+                      {format(new Date(deployment.createdAt), 'MMM dd, yyyy')}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge deployment={deployment} />
+                  </TableCell>
+                  <TableCell className='text-right'>
+                    {deployment.status === 'published' ? (
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={() => handleDeprecate(deployment)}
+                        loading={updateDeploymentStatus.isPending}>
+                        Deprecate
+                      </Button>
+                    ) : deployment.status === 'pending-review' ||
+                      deployment.status === 'in-review' ? (
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={() => handleWithdraw(deployment)}
+                        loading={updateDeploymentStatus.isPending}>
+                        Withdraw
+                      </Button>
+                    ) : deployment.status === 'approved' ? (
+                      <Button
+                        variant='default'
+                        size='sm'
+                        onClick={() => handlePublish(deployment)}
+                        loading={updateDeploymentStatus.isPending}>
+                        Publish
+                      </Button>
+                    ) : deployment.status === 'active' ||
+                      deployment.status === 'withdrawn' ||
+                      deployment.status === 'rejected' ? (
+                      <PublishAppDialog
+                        mode='version'
+                        appSlug={params.app_slug}
+                        deployment={deployment}
+                        trigger={
+                          <Button variant='outline' size='sm'>
+                            {deployment.status === 'active' ? 'Submit for Review' : 'Resubmit'}
+                          </Button>
+                        }
+                        onSuccess={() => void refetch()}
+                      />
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+
+            {/* Developer section */}
+            <SectionHeaderRow title='Developer' />
+            {developerDeployments.length === 0 ? (
+              <SectionEmptyRow message='No developer deployments yet' />
+            ) : (
+              developerDeployments.map((deployment) => (
+                <TableRow key={deployment.id}>
+                  <TableCell>
+                    <div className='truncate text-sm'>{getDevLabel(deployment)}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className='truncate'>
+                      {format(new Date(deployment.createdAt), 'MMM dd, yyyy')}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge deployment={deployment} />
+                  </TableCell>
+                  <TableCell className='text-right'>
+                    <PromoteDialog
                       deployment={deployment}
                       trigger={
                         <Button variant='outline' size='sm'>
-                          Submit for Review
+                          Make Production
                         </Button>
                       }
                       onSuccess={() => void refetch()}
                     />
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </div>

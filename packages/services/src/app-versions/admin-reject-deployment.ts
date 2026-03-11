@@ -1,9 +1,10 @@
 // packages/services/src/app-versions/admin-reject-deployment.ts
 
-import { AdminActionLog, App, AppDeployment, database } from '@auxx/database'
+import { AdminActionLog, AppDeployment, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
+import { reconcileAppReviewState } from './reconcile-app-review-state'
 
 /**
  * Admin-only: Reject deployment in review
@@ -67,14 +68,8 @@ export async function adminRejectDeployment(params: {
     })
   }
 
-  // Recalculate app-level review status
-  await fromDatabase(
-    database
-      .update(App)
-      .set({ reviewStatus: 'rejected', updatedAt: new Date() })
-      .where(eq(App.id, app.id)),
-    'update-app-status'
-  )
+  const reconcileResult = await reconcileAppReviewState({ appId: app.id })
+  if (reconcileResult.isErr()) return reconcileResult
 
   // Log admin action
   await fromDatabase(

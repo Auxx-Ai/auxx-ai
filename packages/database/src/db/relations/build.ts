@@ -99,6 +99,10 @@ export const appDeploymentRelations = relations(AppDeployment, ({ one, many }) =
     fields: [AppDeployment.targetOrganizationId],
     references: [Organization.id],
   }),
+  createdBy: one(User, {
+    fields: [AppDeployment.createdById],
+    references: [User.id],
+  }),
   eventLogs: many(AppEventLog),
   settings: many(AppSetting),
 }))

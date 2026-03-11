@@ -254,7 +254,14 @@ export async function importApps(
         termsOfServiceUrl: appData.termsOfServiceUrl,
         oauthExternalEntrypointUrl: appData.oauthExternalEntrypointUrl,
         oauthApplicationId,
-        publicationStatus: 'unpublished' as const,
+        publicationStatus: appData.publicationStatus as 'unpublished' | 'published',
+        reviewStatus: appData.reviewStatus as
+          | 'pending-review'
+          | 'in-review'
+          | 'approved'
+          | 'rejected'
+          | 'withdrawn'
+          | null,
         updatedAt: new Date(),
       }
 

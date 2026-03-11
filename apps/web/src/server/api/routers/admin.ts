@@ -658,6 +658,35 @@ export const adminRouter = createTRPCRouter({
     }),
 
   /**
+   * Get a single developer account with app/member counts
+   */
+  getDeveloperAccount: superAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const [account] = await ctx.db
+        .select({
+          id: schema.DeveloperAccount.id,
+          slug: schema.DeveloperAccount.slug,
+          title: schema.DeveloperAccount.title,
+          logoUrl: schema.DeveloperAccount.logoUrl,
+          createdAt: schema.DeveloperAccount.createdAt,
+          appCount: sql<number>`cast(count(distinct ${schema.App.id}) as int)`,
+          memberCount: sql<number>`cast(count(distinct ${schema.DeveloperAccountMember.id}) as int)`,
+        })
+        .from(schema.DeveloperAccount)
+        .leftJoin(schema.App, eq(schema.App.developerAccountId, schema.DeveloperAccount.id))
+        .leftJoin(
+          schema.DeveloperAccountMember,
+          eq(schema.DeveloperAccountMember.developerAccountId, schema.DeveloperAccount.id)
+        )
+        .where(eq(schema.DeveloperAccount.id, input.id))
+        .groupBy(schema.DeveloperAccount.id)
+        .limit(1)
+
+      return account ?? null
+    }),
+
+  /**
    * Get members of a developer account
    */
   getDeveloperAccountMembers: superAdminProcedure

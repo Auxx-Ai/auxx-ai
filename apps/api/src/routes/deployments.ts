@@ -2,37 +2,14 @@
 // Deployment management routes
 
 import { database, schema } from '@auxx/database'
+import { calculateNextVersion } from '@auxx/services/app-versions'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { type ErrorStatusCode, errorResponse } from '../lib/response'
 import { authMiddleware } from '../middleware/auth'
 import { requireScope } from '../middleware/scope'
 import type { AppContext } from '../types/context'
-
-/**
- * Compute the next semver patch version for production deployments.
- * Finds the latest prod deployment with a valid semver version and bumps the minor.
- * Falls back to "0.1.0" if no previous version exists.
- */
-async function getNextVersion(appId: string): Promise<string> {
-  const latest = await database.query.AppDeployment.findFirst({
-    where: and(
-      eq(schema.AppDeployment.appId, appId),
-      eq(schema.AppDeployment.deploymentType, 'production')
-    ),
-    orderBy: desc(schema.AppDeployment.createdAt),
-    columns: { version: true },
-  })
-
-  if (!latest?.version) return '0.1.0'
-
-  const match = latest.version.match(/^(\d+)\.(\d+)\.(\d+)/)
-  if (!match) return '0.1.0'
-
-  const [, major, minor] = match
-  return `${major}.${Number(minor) + 1}.0`
-}
 
 const deployments = new Hono<AppContext>()
 
@@ -118,7 +95,9 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
 
   // Auto-calculate version for production deployments when not provided
   const resolvedVersion =
-    deploymentType === 'production' ? version || (await getNextVersion(appId)) : version || null
+    deploymentType === 'production'
+      ? version || (await calculateNextVersion(appId))
+      : version || null
 
   // Dev deployments: delete old deployments + insert + update installation atomically
   if (deploymentType === 'development' && targetOrganizationId) {

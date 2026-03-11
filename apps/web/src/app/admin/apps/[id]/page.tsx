@@ -34,6 +34,7 @@ import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Ban, CheckCircle, ExternalLink, Trash2, XCircle } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { use, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -46,7 +47,6 @@ function getPublicationStatusVariant(status: string): 'outline' | 'default' {
   switch (status) {
     case 'published':
       return 'default'
-    case 'unpublished':
     default:
       return 'outline'
   }
@@ -75,6 +75,13 @@ function getDeploymentStatusVariant(
     default:
       return 'outline'
   }
+}
+
+/**
+ * Render app content fields while preserving line breaks.
+ */
+function renderAppContent(value: string | null) {
+  return value ? <div className='whitespace-pre-wrap text-sm'>{value}</div> : '-'
 }
 
 /**
@@ -356,8 +363,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
         <MainPageContent>
           <div className='flex-1 overflow-hidden flex flex-col min-h-0 relative'>
             <div className='overflow-auto flex-1 relative'>
-              <div className='grid lg:grid-cols-3'>
-                <Card className='border-none rounded-none shadow-none'>
+              <div className='grid lg:grid-cols-4'>
+                <Card className='col-span-2 border-none rounded-none shadow-none'>
                   <CardHeader>
                     <CardTitle>App Information</CardTitle>
                     <CardDescription>Details about this app</CardDescription>
@@ -371,7 +378,16 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
                               Developer Account
                             </TableCell>
                             <TableCell className='py-2'>
-                              {app.developerAccount?.title || '-'}
+                              {app.developerAccount ? (
+                                <Button variant='link' size='sm' asChild className='p-0'>
+                                  <Link
+                                    href={`/admin/developer-accounts?selectedAccountId=${app.developerAccount.id}`}>
+                                    {app.developerAccount.title}
+                                  </Link>
+                                </Button>
+                              ) : (
+                                '-'
+                              )}
                             </TableCell>
                           </TableRow>
                           <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
@@ -505,6 +521,30 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
                               <TableCell className='py-2 text-sm'>{app.description}</TableCell>
                             </TableRow>
                           )}
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium align-top'>
+                              Content Overview
+                            </TableCell>
+                            <TableCell className='py-2 align-top'>
+                              {renderAppContent(app.contentOverview)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium align-top'>
+                              Content How It Works
+                            </TableCell>
+                            <TableCell className='py-2 align-top'>
+                              {renderAppContent(app.contentHowItWorks)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium align-top'>
+                              Content Configure
+                            </TableCell>
+                            <TableCell className='py-2 align-top'>
+                              {renderAppContent(app.contentConfigure)}
+                            </TableCell>
+                          </TableRow>
                         </TableBody>
                       </Table>
                     </div>

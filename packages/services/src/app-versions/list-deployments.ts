@@ -26,6 +26,12 @@ export async function listDeployments(params: {
       with: {
         clientBundle: true,
         serverBundle: true,
+        createdBy: {
+          columns: { id: true, name: true, email: true },
+        },
+        targetOrganization: {
+          columns: { id: true, name: true, slug: true },
+        },
       },
     }),
     'list-deployments'

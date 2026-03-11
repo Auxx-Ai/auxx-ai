@@ -1,9 +1,10 @@
 // packages/services/src/app-versions/admin-deprecate-deployment.ts
 
-import { AdminActionLog, App, AppDeployment, database } from '@auxx/database'
+import { AdminActionLog, AppDeployment, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
+import { reconcileAppReviewState } from './reconcile-app-review-state'
 
 /**
  * Admin-only: Deprecate a published deployment
@@ -61,24 +62,8 @@ export async function adminDeprecateDeployment(params: {
     })
   }
 
-  // Update app-level publication status if no other published deployments
-  const otherPublished = await fromDatabase(
-    database.query.AppDeployment.findFirst({
-      where: (d, { and, eq, ne }) =>
-        and(eq(d.appId, app.id), eq(d.status, 'published'), ne(d.id, deploymentId)),
-    }),
-    'check-other-published'
-  )
-
-  if (otherPublished.isOk() && !otherPublished.value) {
-    await fromDatabase(
-      database
-        .update(App)
-        .set({ publicationStatus: 'unpublished', updatedAt: new Date() })
-        .where(eq(App.id, app.id)),
-      'update-app-status'
-    )
-  }
+  const reconcileResult = await reconcileAppReviewState({ appId: app.id })
+  if (reconcileResult.isErr()) return reconcileResult
 
   // Log admin action
   await fromDatabase(
