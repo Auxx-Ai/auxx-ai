@@ -62,25 +62,6 @@ const inboundHostedZone =
  */
 export const inboundEmailBucket = shouldDeployInboundEmailResources
   ? new sst.aws.Bucket('InboundEmailBucket', {
-      policy: [
-        {
-          actions: ['s3:PutObject'],
-          principals: [
-            {
-              type: 'service',
-              identifiers: ['ses.amazonaws.com'],
-            },
-          ],
-          paths: [`${inboundKeyPrefix}/*`],
-          conditions: [
-            {
-              test: 'StringEquals',
-              variable: 'AWS:SourceAccount',
-              values: [callerIdentity.accountId],
-            },
-          ],
-        },
-      ],
       transform: {
         bucket: {
           bucket:
@@ -106,6 +87,37 @@ export const inboundEmailBucket = shouldDeployInboundEmailResources
           restrictPublicBuckets: true,
         },
       },
+    })
+  : undefined
+
+/**
+ * inboundEmailBucketPolicy explicitly allows SES to store raw MIME in the inbound bucket.
+ */
+export const inboundEmailBucketPolicy = shouldDeployInboundEmailResources
+  ? new aws.s3.BucketPolicy('InboundEmailBucketPolicy', {
+      bucket: inboundEmailBucket!.name,
+      policy: aws.iam.getPolicyDocumentOutput({
+        statements: [
+          {
+            effect: 'Allow',
+            principals: [
+              {
+                type: 'Service',
+                identifiers: ['ses.amazonaws.com'],
+              },
+            ],
+            actions: ['s3:PutObject'],
+            resources: [$interpolate`${inboundEmailBucket!.arn}/${inboundKeyPrefix}/*`],
+            conditions: [
+              {
+                test: 'StringEquals',
+                variable: 'AWS:SourceAccount',
+                values: [callerIdentity.accountId],
+              },
+            ],
+          },
+        ],
+      }).json,
     })
   : undefined
 
@@ -222,7 +234,7 @@ export const inboundReceiptRule = shouldDeployInboundEmailResources
       },
       {
         dependsOn: [
-          inboundEmailBucket!,
+          inboundEmailBucketPolicy!,
           allowSesInvokeInboundReceiver!,
           activeInboundReceiptRuleSet!,
         ],

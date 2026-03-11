@@ -2,6 +2,7 @@
 
 import { database } from '@auxx/database'
 import { err, ok } from 'neverthrow'
+import { type ConnectionDefinitionSummary, getAppConnectionDefinition } from '../app-connections'
 import { fromDatabase } from '../shared/utils'
 
 /**
@@ -59,6 +60,7 @@ export interface AppWithStatusOutput {
     installationType?: 'development' | 'production'
     installedAt?: Date
     currentDeploymentId?: string
+    connectionDefinition?: ConnectionDefinitionSummary
   }
 
   // Available deployments
@@ -154,6 +156,21 @@ export async function getAppWithInstallationStatus(input: GetAppWithStatusInput)
     })
   }
 
+  // Fetch connection definition if app is installed
+  let connectionDefinition: ConnectionDefinitionSummary | undefined
+  if (installation) {
+    // Try user-scoped first, then org-scoped
+    const userConnDef = await getAppConnectionDefinition(app.id, false)
+    if (userConnDef.isOk()) {
+      connectionDefinition = userConnDef.value
+    } else {
+      const orgConnDef = await getAppConnectionDefinition(app.id, true)
+      if (orgConnDef.isOk()) {
+        connectionDefinition = orgConnDef.value
+      }
+    }
+  }
+
   // Format response
   return ok({
     app: {
@@ -187,6 +204,7 @@ export async function getAppWithInstallationStatus(input: GetAppWithStatusInput)
       installationType: installation?.installationType as 'development' | 'production' | undefined,
       installedAt: installation?.installedAt,
       currentDeploymentId: installation?.currentDeploymentId ?? undefined,
+      connectionDefinition,
     },
     availableDeployments: app.deployments.map((deployment) => ({
       id: deployment.id,

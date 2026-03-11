@@ -76,6 +76,7 @@ export default function AppInstallButton({
     })
     posthog?.capture('app_installed', { app_slug: appSlug })
     await utils.apps.getBySlug.invalidate({ appSlug })
+    router.refresh()
     router.push(`/app/settings/apps/installed/${appSlug}`)
   }
 
@@ -88,6 +89,7 @@ export default function AppInstallButton({
       type: installationType,
     })
     await utils.apps.getBySlug.invalidate({ appSlug })
+    router.refresh()
     router.push(`/app/settings/apps/${appSlug}`)
   }
 
