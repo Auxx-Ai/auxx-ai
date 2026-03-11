@@ -1,0 +1,154 @@
+# .github/workflows/sst-deploy-platform.yml
+name: SST Platform Deploy
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        description: SST stage to deploy
+        required: false
+        type: string
+        default: dev
+      lock_max_attempts:
+        description: Number of deploy attempts when lock contention is detected
+        required: false
+        type: number
+        default: 3
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: SST stage to deploy
+        required: true
+        default: dev
+        type: string
+      force_unlock_before_deploy:
+        description: Unlock stage before deploy (use only when no active deploy is running)
+        required: false
+        default: false
+        type: boolean
+      lock_max_attempts:
+        description: Number of deploy attempts when lock contention is detected
+        required: false
+        default: 3
+        type: number
+
+concurrency:
+  group: sst-platform-state-${{ inputs.stage || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-platform:
+    name: Deploy platform (${{ inputs.stage || 'dev' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: ${{ inputs.stage || 'dev' }}
+    env:
+      STAGE: ${{ inputs.stage || 'dev' }}
+      AWS_REGION: us-west-1
+      SST_APP_NAME: auxxai-app
+      EXPECTED_AWS_ACCOUNT_ID: '716542960845'
+      AWS_DEPLOY_ROLE_ARN: arn:aws:iam::716542960845:role/AuxxGithubDeployRole
+      DEPLOY_PROFILE: platform
+      EMAIL_INFRA_OWNER_STAGE: dev
+      INBOUND_EMAIL_INFRA_OWNER_STAGE: dev
+      INBOUND_EMAIL_MANAGE_MX: 'false'
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS identity
+        run: |
+          set -euo pipefail
+          ASSUMED_ARN=$(aws sts get-caller-identity --query 'Arn' --output text)
+          ACTUAL_ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+          echo "Assumed identity: $ASSUMED_ARN"
+          echo "Expected account: ${EXPECTED_AWS_ACCOUNT_ID}"
+          if [ "$ACTUAL_ACCOUNT_ID" != "${EXPECTED_AWS_ACCOUNT_ID}" ]; then
+            echo "ERROR: Account mismatch. CI is running in account $ACTUAL_ACCOUNT_ID but expected ${EXPECTED_AWS_ACCOUNT_ID}."
+            echo "Check OIDC role trust and role-to-assume configuration."
+            exit 1
+          fi
+
+      - name: Install deps
+        run: pnpm i --frozen-lockfile=false
+
+      - name: Build workspace dependencies
+        run: pnpm turbo build --filter="./packages/*"
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: '2.1.4'
+
+      - name: Build Lambda bootstrap binary
+        run: pnpm --filter @auxx/lambda build
+
+      - name: Ensure ECR repository exists (sst-asset)
+        env:
+          AWS_REGION: us-west-1
+        run: |
+          set -e
+          aws ecr describe-repositories --repository-names sst-asset >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name sst-asset --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256
+
+      - name: Export platform deploy environment
+        run: |
+          APP_VERSION_FROM_ROOT=$(node -p "require('./package.json').version")
+
+          echo "GIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+          echo "APP_VERSION=${APP_VERSION_FROM_ROOT}" >> $GITHUB_ENV
+          echo "STAGE=${STAGE}" >> $GITHUB_ENV
+          echo "AWS_REGION=${AWS_REGION}" >> $GITHUB_ENV
+          echo "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder" >> $GITHUB_ENV
+
+      - name: Remove system Pulumi (avoid version conflict with SST)
+        run: rm -f /usr/local/bin/pulumi*
+
+      - name: Optional pre-deploy unlock (manual dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_unlock_before_deploy == true }}
+        run: pnpm exec sst unlock --stage="${STAGE}"
+
+      - name: Deploy platform (lock-aware retry)
+        env:
+          SST_PRINT_LOGS: '1'
+          PULUMI_MAX_CONCURRENT_REQUESTS: '20'
+          SST_TELEMETRY_DISABLED: '1'
+          SST_DEPLOY_CMD: 'pnpm sst:deploy'
+          SST_LOCK_MAX_ATTEMPTS: '${{ inputs.lock_max_attempts || 3 }}'
+          SST_UNLOCK_CMD: 'pnpm exec sst unlock --stage=${STAGE}'
+          SST_ENABLE_SIGNAL_UNLOCK_TRAP: 'false'
+        run: bash scripts/ci/sst-deploy-with-lock-retry.sh
+
+      - name: Post-deploy unlock cleanup
+        if: ${{ cancelled() || failure() }}
+        run: bash scripts/ci/sst-force-unlock.sh
+
+      - name: Deploy diagnostics
+        if: ${{ always() }}
+        run: |
+          echo "=== Platform deploy diagnostics ==="
+          echo "run_id:       ${{ github.run_id }}"
+          echo "run_attempt:  ${{ github.run_attempt }}"
+          echo "event_name:   ${{ github.event_name }}"
+          echo "actor:        ${{ github.actor }}"
+          echo "job_status:   ${{ job.status }}"
+          echo "stage:        ${STAGE}"
+          echo "profile:      ${DEPLOY_PROFILE}"

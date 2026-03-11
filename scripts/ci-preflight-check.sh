@@ -103,6 +103,17 @@ if command -v aws &>/dev/null; then
     else
       fail "AuxxGithubDeployRole trusts wrong repo: $TRUST"
     fi
+
+    RAILWAY_SYNC_TRUST=$(aws iam get-role --role-name AuxxInfraRailwaySyncRole \
+      --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.StringLike' \
+      --output text 2>/dev/null || echo "NOT_FOUND")
+    if echo "$RAILWAY_SYNC_TRUST" | grep -q "Auxx-Ai/auxx-infra"; then
+      pass "AuxxInfraRailwaySyncRole trusts repo:Auxx-Ai/auxx-infra"
+    elif echo "$RAILWAY_SYNC_TRUST" | grep -q "NOT_FOUND"; then
+      warn "AuxxInfraRailwaySyncRole not found yet"
+    else
+      fail "AuxxInfraRailwaySyncRole trusts wrong repo: $RAILWAY_SYNC_TRUST"
+    fi
   else
     warn "AWS credentials not configured — can't check IAM role"
   fi

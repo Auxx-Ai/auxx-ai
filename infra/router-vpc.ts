@@ -1,3 +1,4 @@
+import { shouldDeployClusterResources, shouldDeployRouterResources } from './deploy-profile'
 import { domain } from './dns'
 
 // Keep legacy VPC declared to avoid failed delete during migration.
@@ -9,16 +10,20 @@ export const vpc = new sst.aws.Vpc('AuxxAiVpcV2', { bastion: true, nat: 'ec2' })
 // Import existing CloudFront distribution
 // export const router = sst.aws.Router.get('AuxxAiRouter', 'E1UUUL5E15V4KL')
 
-export const cluster = new sst.aws.Cluster('AuxxAiCluster', { vpc })
+export const cluster = shouldDeployClusterResources()
+  ? new sst.aws.Cluster('AuxxAiCluster', { vpc })
+  : undefined
 // new router is this: E1UUUL5E15V4KL
-export const router = new sst.aws.Router('AuxxAiRouter', {
-  domain: {
-    name: domain,
-    aliases: [`*.${domain}`],
-    dns: false,
-    cert: 'arn:aws:acm:us-east-1:716542960845:certificate/24d1e0f6-6151-42c4-9ac9-d287bde1aa12',
-  },
-})
+export const router = shouldDeployRouterResources()
+  ? new sst.aws.Router('AuxxAiRouter', {
+      domain: {
+        name: domain,
+        aliases: [`*.${domain}`],
+        dns: false,
+        cert: 'arn:aws:acm:us-east-1:716542960845:certificate/24d1e0f6-6151-42c4-9ac9-d287bde1aa12',
+      },
+    })
+  : undefined
 
 // return {
 //   routerDistribution: router.distributionID,

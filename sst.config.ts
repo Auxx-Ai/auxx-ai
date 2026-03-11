@@ -21,9 +21,9 @@ export default $config({
     const infra = await import('./infra')
 
     return {
-      router: infra.router.distributionID,
-      routerDistribution: infra.router.distributionID,
-      routerUrl: infra.router.url,
+      router: infra.router?.distributionID,
+      routerDistribution: infra.router?.distributionID,
+      routerUrl: infra.router?.url,
       databaseDeployFunctionName: infra.databaseDeployFunction.name,
     }
   },

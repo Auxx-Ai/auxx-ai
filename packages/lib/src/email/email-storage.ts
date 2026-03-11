@@ -814,6 +814,7 @@ export class MessageStorageService {
           mimeType: attachment.mimeType,
           size: attachment.size,
           contentId: attachment.contentId ?? null,
+          content: attachment.content ?? null,
           contentLocation: attachment.contentLocation ?? null,
           inline: attachment.inline,
           messageId,
@@ -825,6 +826,7 @@ export class MessageStorageService {
             mimeType: attachment.mimeType,
             size: attachment.size,
             contentId: attachment.contentId ?? null,
+            content: attachment.content ?? null,
             contentLocation: attachment.contentLocation ?? null,
             inline: attachment.inline,
             messageId,
@@ -1099,6 +1101,7 @@ export class MessageStorageService {
           externalId: messageData.externalThreadId,
           integrationId: messageData.integrationId,
           organizationId: messageData.organizationId,
+          inboxId: messageData.inboxId ?? null,
           subject: messageData.subject ?? 'No Subject',
           status: ThreadStatus.OPEN,
           firstMessageAt: messageData.sentAt,
@@ -1111,6 +1114,7 @@ export class MessageStorageService {
           set: {
             // Minimal updates for existing threads
             subject: messageData.subject || undefined,
+            inboxId: messageData.inboxId ?? undefined,
           },
         })
         .returning({

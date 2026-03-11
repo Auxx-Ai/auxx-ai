@@ -1,6 +1,7 @@
 // infra/email.ts
 /// <reference path="../.sst/platform/config.d.ts" />
 
+import { shouldDeployEmailInfrastructure } from './deploy-profile'
 import { emailDomain } from './dns'
 
 /**
@@ -8,7 +9,7 @@ import { emailDomain } from './dns'
  * Only provisions AWS SES when EMAIL_PROVIDER === 'ses'.
  */
 const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || 'mailgun'
-const useSes = EMAIL_PROVIDER === 'ses'
+const useSes = EMAIL_PROVIDER === 'ses' && shouldDeployEmailInfrastructure($app.stage)
 
 export const email = useSes
   ? new sst.aws.Email('AuxxAiEmail', {
