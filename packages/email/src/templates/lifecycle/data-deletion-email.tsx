@@ -1,14 +1,16 @@
 // packages/email/src/templates/lifecycle/data-deletion-email.tsx
 import { HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
-
 const supportEmail = process.env.SUPPORT_EMAIL || 'support@auxx.ai'
 
-import type React from 'react'
+import React from 'react'
+
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
 import { EmailHeading } from '../../components/email-text'
+
+void React
 
 interface DataDeletionEmailProps {
   name: string

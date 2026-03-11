@@ -659,6 +659,13 @@
       "when": 1773176396045,
       "tag": "0093_drop-label-name-unique-index",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1773254234454,
+      "tag": "0094_add-label-sync-checkpoint",
+      "breakpoints": true
     }
   ]
 }

@@ -11,8 +11,11 @@ import {
   Tailwind,
   Text,
 } from '@react-email/components'
-import type React from 'react'
+import React from 'react'
+
 import { Logo } from './email-logo'
+
+void React
 
 const fbLogoUrl =
   'https://s3.eu-central-1.amazonaws.com/listmonk-formbricks/Formbricks-Light-transparent.png' //FB_LOGO_URL

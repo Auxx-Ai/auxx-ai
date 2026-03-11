@@ -1,12 +1,14 @@
 // packages/email/src/templates/lifecycle/trial-conversion-email.tsx
 import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
-import type React from 'react'
+import React from 'react'
+
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
 import { EmailHeading } from '../../components/email-text'
 
+void React
 interface TrialConversionEmailProps {
   name: string
   trialEndDate: string

@@ -1,7 +1,8 @@
 // packages/email/src/components/email-text.tsx
 import { Heading, Text } from '@react-email/components'
-import type React from 'react'
+import React from 'react'
 
+void React
 /** Props shared across email typography components */
 interface EmailHeadingProps {
   /** Child nodes rendered inside the component */

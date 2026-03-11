@@ -98,5 +98,17 @@
       "!**/*.generated.ts",
       "!**/packages/sdk/template"
     ]
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/email/src/**/*.tsx"],
+      "assist": {
+        "actions": {
+          "source": {
+            "organizeImports": "off"
+          }
+        }
+      }
+    }
+  ]
 }

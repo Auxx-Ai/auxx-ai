@@ -75,3 +75,54 @@ export interface ImapSyncResult {
     modSeq?: bigint
   }
 }
+
+// --- Full-sync checkpoint types ---
+
+/** UID scan window size for bounded folder discovery */
+export const UID_SCAN_WINDOW = 1000
+
+/** Import batch size for IMAP full sync */
+export const IMAP_IMPORT_BATCH_SIZE = 50
+
+/** Per-folder checkpoint for resumable IMAP full sync, stored in Label.syncCheckpoint */
+export interface ImapFolderCheckpoint {
+  runId: string
+  phase: 'listing' | 'importing' | 'done'
+  uidValidity: number
+  snapshotHighestUid: number
+  nextUidStart: number
+  activeWindowStart?: number
+  activeWindowEnd?: number
+  activeWindowBatchCount?: number
+  activeWindowCompletedBatches?: number
+  activeWindowFailedBatches?: number
+  discoveredMessageCount: number
+  importedMessageCount: number
+  failedMessageCount: number
+  /** Format: `${uidValidity}:${highestUid}` — encodes both validity and position */
+  candidateCursor: string
+  lastError?: string
+}
+
+/** Job payload for a single IMAP import batch (self-contained, retryable) */
+export interface ImapImportBatchJobData {
+  runId: string
+  integrationId: string
+  organizationId: string
+  provider: 'imap'
+  labelId: string
+  folderPath: string
+  externalIds: string[]
+}
+
+/** Result from scanning a single UID window */
+export interface UidWindowScanResult {
+  uids: number[]
+  windowStart: number
+  windowEnd: number
+  mailboxState: {
+    uidValidity: number
+    highestUid: number
+    modSeq?: bigint
+  }
+}

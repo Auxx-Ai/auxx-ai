@@ -140,6 +140,11 @@ export class ImapProvider
     return 'imap'
   }
 
+  /** Expose credentials for the windowed full-sync pipeline */
+  getCredentials(): ImapCredentialData {
+    return this.credentials
+  }
+
   // === Two-Phase Polling Sync ===
 
   supportsTwoPhaseSync(): boolean {

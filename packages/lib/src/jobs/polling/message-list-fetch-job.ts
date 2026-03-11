@@ -7,7 +7,10 @@ import { eq } from 'drizzle-orm'
 import { MessageStorageService } from '../../email/email-storage'
 import { FolderDiscoveryService } from '../../email/labels/folder-discovery-service'
 import { addToImportCache } from '../../email/polling-import-cache'
+import type { ImapImportBatchJobData } from '../../providers/imap/types'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
+import { getQueue } from '../queues'
+import { Queues } from '../queues/types'
 
 const logger = createScopedLogger('job:message-list-fetch')
 
@@ -26,6 +29,9 @@ export interface MessageListFetchJobData {
  * Phase 1: Discover message IDs from the provider.
  * Sets syncStage to MESSAGE_LIST_FETCH during execution,
  * then transitions to MESSAGES_IMPORT_PENDING or back to IDLE.
+ *
+ * For IMAP full sync: uses windowed UID scanning with checkpoints and
+ * enqueues self-contained import batches instead of Redis cache.
  */
 export const messageListFetchJob = async (job: Job<MessageListFetchJobData>) => {
   const { integrationId, organizationId, provider } = job.data
@@ -63,7 +69,13 @@ export const messageListFetchJob = async (job: Job<MessageListFetchJobData>) => 
         })
       }
 
-      // --- Fetch message IDs ---
+      // --- IMAP windowed full sync ---
+      if (provider === 'imap') {
+        await handleImapListFetch(providerInstance, integrationId, organizationId, now)
+        return
+      }
+
+      // --- Standard two-phase sync (Gmail, Outlook) ---
       const results = await providerInstance.fetchMessageIds!()
       let totalMessageIds = 0
       const storageService = new MessageStorageService(organizationId)
@@ -192,4 +204,192 @@ export const messageListFetchJob = async (job: Job<MessageListFetchJobData>) => 
 
     throw error
   }
+}
+
+/**
+ * Handle IMAP list fetch with windowed full sync and incremental sync.
+ * - Incremental sync (labels with committed cursors): uses standard two-phase via Redis cache.
+ * - Full sync (labels without cursors): uses windowed UID scanning with checkpoints.
+ */
+async function handleImapListFetch(
+  providerInstance: any,
+  integrationId: string,
+  organizationId: string,
+  now: Date
+): Promise<void> {
+  const { ImapGetMessageListService } = await import('../../providers/imap/imap-get-message-list')
+  const messageListService = new ImapGetMessageListService()
+
+  const storageService = new MessageStorageService(organizationId)
+  let totalIncrementalIds = 0
+  let totalFullSyncBatches = 0
+
+  // 1. Handle incremental sync for labels with cursors
+  const incrementalResults = await providerInstance.fetchMessageIds!()
+
+  for (const result of incrementalResults) {
+    if (result.deletedMessageIds.length > 0) {
+      await storageService.deleteMessagesByExternalIds(integrationId, result.deletedMessageIds)
+    }
+
+    if (result.messageIds.length > 0) {
+      await addToImportCache(integrationId, result.messageIds)
+      totalIncrementalIds += result.messageIds.length
+    }
+
+    // Safe to commit cursor for incremental sync immediately
+    if (result.labelId) {
+      await db
+        .update(schema.Label)
+        .set({ providerCursor: result.nextCursor, updatedAt: now })
+        .where(eq(schema.Label.id, result.labelId))
+    }
+  }
+
+  // 2. Handle windowed full sync for labels without cursors
+  const windowedResults = await messageListService.getWindowedFullSyncResults({
+    credentials: providerInstance.getCredentials(),
+    integrationId,
+    organizationId,
+  })
+
+  const pollingSyncQueue = getQueue(Queues.pollingSyncQueue)
+
+  for (const windowResult of windowedResults) {
+    // Persist the checkpoint before enqueuing import jobs
+    await db
+      .update(schema.Label)
+      .set({
+        syncCheckpoint: JSON.stringify(windowResult.checkpoint),
+        updatedAt: now,
+      })
+      .where(eq(schema.Label.id, windowResult.labelId))
+
+    // Enqueue self-contained import batch jobs
+    for (const batch of windowResult.batches) {
+      const batchJobData: ImapImportBatchJobData = {
+        runId: windowResult.checkpoint.runId,
+        integrationId,
+        organizationId,
+        provider: 'imap',
+        labelId: windowResult.labelId,
+        folderPath: windowResult.folderPath,
+        externalIds: batch,
+      }
+
+      await pollingSyncQueue.add('imapImportBatchJob', batchJobData, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 30000 },
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 200 },
+      })
+
+      totalFullSyncBatches++
+    }
+  }
+
+  // 3. Determine transition
+  const hasFullSyncWork = windowedResults.some((r) => r.batches.length > 0)
+  const hasFullSyncPending = windowedResults.some((r) => !r.folderScanComplete)
+
+  if (totalIncrementalIds > 0 || hasFullSyncWork) {
+    await db
+      .update(schema.Integration)
+      .set({
+        syncStage: 'MESSAGES_IMPORT_PENDING',
+        lastSyncedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(schema.Integration.id, integrationId))
+
+    logger.info('IMAP list fetch complete, transitioning to import', {
+      integrationId,
+      totalIncrementalIds,
+      totalFullSyncBatches,
+      foldersWithPendingWindows: windowedResults.filter((r) => !r.folderScanComplete).length,
+    })
+  } else if (hasFullSyncPending) {
+    // All windows were empty but there are more windows to scan — re-enqueue list fetch
+    await pollingSyncQueue.add(
+      'messageListFetchJob',
+      { integrationId, organizationId, provider: 'imap' },
+      {
+        jobId: `poll-list-fetch-${integrationId}-${Date.now()}`,
+        delay: 1000,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 },
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 100 },
+      }
+    )
+
+    logger.info('IMAP list fetch found empty windows, re-enqueuing for next window', {
+      integrationId,
+    })
+  } else {
+    // All folders fully scanned and no work — check if all checkpoints are done
+    const allDone = windowedResults.every((r) => r.folderScanComplete && r.batches.length === 0)
+
+    if (allDone && totalIncrementalIds === 0) {
+      // Commit cursors for completed full-sync folders
+      for (const windowResult of windowedResults) {
+        if (windowResult.checkpoint.phase === 'done') {
+          await commitFolderCursor(windowResult.labelId, windowResult.checkpoint, now)
+        }
+      }
+
+      await db
+        .update(schema.Integration)
+        .set({
+          syncStage: 'IDLE',
+          syncStatus: 'ACTIVE',
+          syncStageStartedAt: null,
+          lastSyncedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.Integration.id, integrationId))
+
+      logger.info('IMAP list fetch complete, all folders synced, transitioning to IDLE', {
+        integrationId,
+      })
+    }
+  }
+}
+
+/**
+ * Commit the providerCursor for a folder after successful full sync completion.
+ * Only called when all batches imported with zero failures.
+ */
+export async function commitFolderCursor(
+  labelId: string,
+  checkpoint: { candidateCursor: string; failedMessageCount: number },
+  now: Date
+): Promise<void> {
+  if (checkpoint.failedMessageCount > 0) {
+    logger.warn('Cannot commit folder cursor — failed messages remain', {
+      labelId,
+      failedMessageCount: checkpoint.failedMessageCount,
+    })
+    return
+  }
+
+  const [uidValidityStr, highestUidStr] = checkpoint.candidateCursor.split(':')
+  const cursorJson = JSON.stringify({
+    uidValidity: Number(uidValidityStr),
+    highestUid: Number(highestUidStr),
+  })
+
+  await db
+    .update(schema.Label)
+    .set({
+      providerCursor: cursorJson,
+      syncCheckpoint: null,
+      updatedAt: now,
+    })
+    .where(eq(schema.Label.id, labelId))
+
+  logger.info('Committed folder cursor after full sync', {
+    labelId,
+    cursor: cursorJson,
+  })
 }

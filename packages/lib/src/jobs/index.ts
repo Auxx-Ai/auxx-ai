@@ -88,6 +88,7 @@ export {
 export { oauth2TokenRefreshJob } from './oauth2-refresh'
 // Polling
 export {
+  imapImportBatchJob,
   messageListFetchJob,
   messagesImportJob,
   pollingRelaunchFailedJob,
