@@ -206,8 +206,7 @@ export const appsRouter = createTRPCRouter({
     .input(
       z.object({
         appId: z.string(),
-        targetStatus: z.enum(['private', 'review', 'published']),
-        force: z.boolean().optional(),
+        targetStatus: z.enum(['review', 'withdraw', 'unpublish']),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -215,7 +214,6 @@ export const appsRouter = createTRPCRouter({
         appId: input.appId,
         userId: ctx.session.userId,
         targetStatus: input.targetStatus,
-        force: input.force,
       })
 
       if (result.isErr()) {
@@ -237,7 +235,10 @@ export const appsRouter = createTRPCRouter({
                     error.code === 'APP_HAS_ACTIVE_INSTALLATIONS' ||
                     error.code === 'APP_LISTING_INCOMPLETE' ||
                     error.code === 'APP_OAUTH_CONFIG_INCOMPLETE' ||
-                    error.code === 'APP_NO_PROD_VERSION'
+                    error.code === 'APP_NO_PROD_VERSION' ||
+                    error.code === 'APP_NO_ACTIVE_PROD_DEPLOYMENT' ||
+                    error.code === 'APP_REVIEW_REQUIRES_DEPLOYMENT_SELECTION' ||
+                    error.code === 'APP_ALREADY_IN_REVIEW'
                   ? 'BAD_REQUEST'
                   : 'INTERNAL_SERVER_ERROR',
           message: error.message,

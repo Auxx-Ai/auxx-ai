@@ -22,6 +22,7 @@ import {
 } from '@auxx/ui/components/table'
 import { formatDistanceToNow } from 'date-fns'
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { parseAsString, useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
@@ -36,7 +37,10 @@ const PAGE_SIZE = 100
 export default function DeveloperAccountsPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  const [selectedAccountId, setSelectedAccountId] = useQueryState(
+    'selectedAccountId',
+    parseAsString.withDefault('')
+  )
 
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
@@ -50,7 +54,14 @@ export default function DeveloperAccountsPage() {
     search: search || undefined,
   })
 
-  const selectedAccount = accounts?.find((a) => a.id === selectedAccountId)
+  const selectedAccountFromList = accounts?.find((account) => account.id === selectedAccountId)
+
+  const { data: selectedAccountFromQuery } = api.admin.getDeveloperAccount.useQuery(
+    { id: selectedAccountId },
+    { enabled: !!selectedAccountId && !selectedAccountFromList }
+  )
+
+  const selectedAccount = selectedAccountFromList ?? selectedAccountFromQuery ?? undefined
   const isDrawerOpen = !!selectedAccountId
 
   /** Handle search input change */

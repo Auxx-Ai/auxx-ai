@@ -147,6 +147,9 @@ export interface AppDetails {
   slug: string
   title: string
   description: string | null
+  contentOverview: string | null
+  contentHowItWorks: string | null
+  contentConfigure: string | null
   category: string | null
   publicationStatus: string
   reviewStatus: string | null
@@ -1035,6 +1038,9 @@ export class AdminService {
       slug: app.slug,
       title: app.title,
       description: app.description,
+      contentOverview: app.contentOverview,
+      contentHowItWorks: app.contentHowItWorks,
+      contentConfigure: app.contentConfigure,
       category: app.category,
       publicationStatus: app.publicationStatus,
       reviewStatus: app.reviewStatus,

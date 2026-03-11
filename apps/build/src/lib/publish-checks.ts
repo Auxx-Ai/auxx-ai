@@ -70,6 +70,40 @@ export function isMainAppListingComplete(app: AppForPublishCheck): boolean {
  * @param app - App data to validate
  * @returns true if OAuth is properly configured (only when hasOauth is true)
  */
+/**
+ * Connection definition shape for publish validation
+ */
+export interface ConnectionForPublishCheck {
+  connectionType: string
+  label: string
+  oauth2AuthorizeUrl: string | null
+  oauth2AccessTokenUrl: string | null
+  oauth2ClientId: string | null
+  oauth2ClientSecret: string | null
+  oauth2Scopes: string[] | null
+}
+
+/**
+ * Check if all oauth2-code connections have complete configuration.
+ * Connections with type 'secret' or 'none' require no validation.
+ * @returns true if no oauth2-code connections exist, or all are properly configured
+ */
+export function isConnectionsConfigComplete(connections: ConnectionForPublishCheck[]): boolean {
+  const oauthConnections = connections.filter((c) => c.connectionType === 'oauth2-code')
+  if (oauthConnections.length === 0) return true
+
+  return oauthConnections.every((c) => {
+    const checks = {
+      oauth2AuthorizeUrl: isValidStringField(c.oauth2AuthorizeUrl),
+      oauth2AccessTokenUrl: isValidStringField(c.oauth2AccessTokenUrl),
+      oauth2ClientId: isValidStringField(c.oauth2ClientId),
+      oauth2ClientSecret: isValidStringField(c.oauth2ClientSecret),
+      oauth2Scopes: (c.oauth2Scopes ?? []).length > 0,
+    }
+    return Object.values(checks).every((check) => check)
+  })
+}
+
 export function isOAuthConfigComplete(app: AppForPublishCheck): boolean {
   // If OAuth is not enabled, this check is not applicable
   if (!app.hasOauth) {

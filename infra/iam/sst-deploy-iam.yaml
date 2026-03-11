@@ -40,6 +40,18 @@ Parameters:
     Type: String
     Default: /auxx/dev/railway/worker/
     Description: SSM path prefix that auxx-infra may read for Railway env synchronization
+  RailwayWorkerRuntimeUserName:
+    Type: String
+    Default: AuxxRailwayWorkerRuntimeUser
+    Description: Name of the IAM user used by the Railway worker at runtime
+  RailwayWorkerRuntimeManagedPolicyName:
+    Type: String
+    Default: AuxxRailwayWorkerRuntimePolicy
+    Description: Name of the managed policy granting the Railway worker runtime S3/SQS access
+  RailwayWorkerInboundBucketName:
+    Type: String
+    Default: auxx-dev-inbound-email
+    Description: S3 bucket name that stores raw inbound SES email objects
 
   CreateOidcProvider:
     Type: String
@@ -145,6 +157,31 @@ Resources:
                 - 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${NormalizedPrefix}*'
                 - NormalizedPrefix: !Ref RailwaySyncSsmPathPrefix
 
+  AuxxRailwayWorkerRuntimePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref RailwayWorkerRuntimeManagedPolicyName
+      Description: Runtime access for the Railway worker to consume inbound email from SQS and S3
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ReadInboundEmailQueue
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:ChangeMessageVisibility
+              - sqs:GetQueueAttributes
+              - sqs:GetQueueUrl
+            Resource:
+              - !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:InboundEmailQueue-*'
+          - Sid: ReadInboundRawEmails
+            Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub 'arn:aws:s3:::${RailwayWorkerInboundBucketName}/ses/raw/*'
+
   AuxxGithubDeployRole:
     Type: AWS::IAM::Role
     Properties:
@@ -185,6 +222,13 @@ Resources:
       ManagedPolicyArns:
         - !Ref AuxxInfraRailwaySyncPolicy
 
+  AuxxRailwayWorkerRuntimeUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Ref RailwayWorkerRuntimeUserName
+      ManagedPolicyArns:
+        - !Ref AuxxRailwayWorkerRuntimePolicy
+
 Outputs:
   RoleArn:
     Description: ARN of the GitHub OIDC deploy role
@@ -198,6 +242,12 @@ Outputs:
   RailwaySyncManagedPolicyArn:
     Description: ARN of the managed policy used by the auxx-infra Railway sync role
     Value: !Ref AuxxInfraRailwaySyncPolicy
+  RailwayWorkerRuntimeUserArn:
+    Description: ARN of the IAM user used by the Railway worker at runtime
+    Value: !GetAtt AuxxRailwayWorkerRuntimeUser.Arn
+  RailwayWorkerRuntimeManagedPolicyArn:
+    Description: ARN of the managed policy used by the Railway worker runtime IAM user
+    Value: !Ref AuxxRailwayWorkerRuntimePolicy
   OIDCProviderArn:
     Description: ARN of the GitHub OIDC provider
     Value: !Ref GitHubOidcProvider

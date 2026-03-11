@@ -1,19 +1,20 @@
 // packages/services/src/app-versions/update-deployment-status.ts
 
-import { App, AppDeployment, database } from '@auxx/database'
+import { AppDeployment, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
+import { findActiveReviewDeployment, reconcileAppReviewState } from './reconcile-app-review-state'
 
 /**
  * Valid developer-side status transitions:
- * - submit-for-review: active → pending-review
+ * - submit-for-review: active|withdrawn|rejected → pending-review
  * - withdraw: pending-review → withdrawn
  * - publish: approved → published
  * - deprecate: published → deprecated
  */
 const VALID_TRANSITIONS: Record<string, { from: string[]; to: string }> = {
-  'submit-for-review': { from: ['active'], to: 'pending-review' },
+  'submit-for-review': { from: ['active', 'withdrawn', 'rejected'], to: 'pending-review' },
   withdraw: { from: ['pending-review'], to: 'withdrawn' },
   publish: { from: ['approved'], to: 'published' },
   deprecate: { from: ['published'], to: 'deprecated' },
@@ -52,6 +53,25 @@ export async function updateDeploymentStatus(params: {
 
   const { app, ...deployment } = deploymentWithApp
 
+  const memberResult = await fromDatabase(
+    database.query.DeveloperAccountMember.findFirst({
+      where: (members, { and, eq }) =>
+        and(eq(members.developerAccountId, app.developerAccountId), eq(members.userId, userId)),
+    }),
+    'check-developer-access'
+  )
+
+  if (memberResult.isErr()) return memberResult
+
+  if (!memberResult.value) {
+    return err({
+      code: 'DEVELOPER_ACCESS_DENIED',
+      message: 'You do not have permission to update this deployment',
+      deploymentId,
+      userId,
+    })
+  }
+
   if (!transition.from.includes(deployment.status)) {
     return err({
       code: 'INVALID_STATUS_TRANSITION',
@@ -62,10 +82,34 @@ export async function updateDeploymentStatus(params: {
     })
   }
 
+  if (action === 'submit-for-review') {
+    const activeReviewResult = await findActiveReviewDeployment({
+      appId: app.id,
+      excludeDeploymentId: deploymentId,
+    })
+
+    if (activeReviewResult.isErr()) return activeReviewResult
+
+    const [activeReviewDeployment] = activeReviewResult.value.deployments
+    if (activeReviewDeployment) {
+      return err({
+        code: 'APP_REVIEW_ALREADY_IN_PROGRESS',
+        message: 'Another production deployment is already in review for this app',
+        deploymentId,
+        appId: app.id,
+        activeReviewDeploymentId: activeReviewDeployment.id,
+      })
+    }
+  }
+
+  // If the app has autoApprove enabled, skip review and go straight to approved
+  const targetStatus =
+    action === 'submit-for-review' && app.autoApprove ? 'approved' : transition.to
+
   const updateResult = await fromDatabase(
     database
       .update(AppDeployment)
-      .set({ status: transition.to })
+      .set({ status: targetStatus })
       .where(eq(AppDeployment.id, deploymentId))
       .returning(),
     'update-deployment-status'
@@ -82,16 +126,9 @@ export async function updateDeploymentStatus(params: {
     })
   }
 
-  // When publishing first deployment, update app-level publicationStatus
-  if (action === 'publish' && app.publicationStatus !== 'published') {
-    await fromDatabase(
-      database
-        .update(App)
-        .set({ publicationStatus: 'published', updatedAt: new Date() })
-        .where(eq(App.id, app.id)),
-      'update-app-publication-status'
-    )
-  }
+  const reconcileResult = await reconcileAppReviewState({ appId: app.id })
+  if (reconcileResult.isErr()) return reconcileResult
 
-  return ok({ deployment: updated })
+  const autoApproved = action === 'submit-for-review' && app.autoApprove === true
+  return ok({ deployment: updated, autoApproved })
 }

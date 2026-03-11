@@ -13,16 +13,14 @@ import { ChevronDown, Unplug } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useConfirm } from '@/hooks/use-confirm'
 import { toastError } from '~/components/global/toast'
-import type { AppForPublishCheck } from '~/lib/publish-checks'
+import type { DehydratedApp } from '~/lib/dehydration'
 import { api } from '~/trpc/react'
 import { PublishAppDialog } from './publish-app-dialog'
 
+/** Props for the app-level publish button */
 interface AppPublishButtonProps {
-  app: AppForPublishCheck & {
-    id: string
-    title: string
-    publicationStatus: 'unpublished' | 'published'
-    reviewStatus: string | null
+  app: DehydratedApp & {
+    reviewStatus?: string | null
   }
   size?: 'sm' | 'default'
   onSuccess?: () => void
@@ -160,9 +158,16 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
   // If app is approved but not published (awaiting admin publish)
   if (app.reviewStatus === 'approved' && app.publicationStatus === 'unpublished') {
     return (
-      <Button size={size} variant='outline' disabled>
-        Approved (Awaiting Admin)
-      </Button>
+      <PublishAppDialog
+        mode='app'
+        appSlug={app.slug}
+        onSuccess={onSuccess}
+        trigger={
+          <Button size={size} variant='outline'>
+            Publish to Marketplace
+          </Button>
+        }
+      />
     )
   }
 

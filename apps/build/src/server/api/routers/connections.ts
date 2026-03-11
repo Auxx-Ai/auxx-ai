@@ -12,6 +12,36 @@ import { createTRPCRouter, protectedProcedure } from '../trpc'
  */
 export const connectionsRouter = createTRPCRouter({
   /**
+   * List all connection definitions for an app
+   */
+  list: protectedProcedure.input(z.object({ appId: z.string() })).query(async ({ ctx, input }) => {
+    const [app] = await ctx.db.select().from(App).where(eq(App.id, input.appId)).limit(1)
+    if (!app) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'App not found' })
+    }
+
+    const [member] = await ctx.db
+      .select()
+      .from(DeveloperAccountMember)
+      .where(
+        and(
+          eq(DeveloperAccountMember.developerAccountId, app.developerAccountId),
+          eq(DeveloperAccountMember.userId, ctx.session.userId)
+        )
+      )
+      .limit(1)
+
+    if (!member) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this app' })
+    }
+
+    return ctx.db
+      .select()
+      .from(ConnectionDefinition)
+      .where(eq(ConnectionDefinition.appId, input.appId))
+  }),
+
+  /**
    * Get connection definition for an app version
    */
   get: protectedProcedure

@@ -3,14 +3,15 @@
 import { App, AppDeployment, database } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { findActiveReviewDeployment } from '../app-versions/reconcile-app-review-state'
 import { fromDatabase } from '../shared/utils'
 
 /**
  * Update app publication status
- * This submits ALL production deployments for review together
+ * This updates the app-level marketplace and review state
  *
  * Actions:
- * - 'review': Submit app (and all prod deployments) for review
+ * - 'review': Submit app (and one selected prod deployment) for review
  * - 'withdraw': Withdraw app from review
  * - 'unpublish': Unpublish app
  *
@@ -77,26 +78,66 @@ export async function updateAppPublicationStatus(params: {
 
 /**
  * Handle submitting app for review
- * Sets app reviewStatus and transitions all active prod deployments to pending-review
+ * Sets app reviewStatus and transitions a single active prod deployment to pending-review
  */
 async function handleSubmitForReview(appId: string, app: typeof App.$inferSelect) {
   const eligibilityResult = await validateAppEligibility(appId, app)
   if (eligibilityResult.isErr()) return eligibilityResult
 
-  if (app.reviewStatus === 'pending-review' || app.reviewStatus === 'in-review') {
+  const activeReviewResult = await findActiveReviewDeployment({ appId })
+  if (activeReviewResult.isErr()) return activeReviewResult
+
+  if (activeReviewResult.value.deployments.length > 0) {
     return err({
       code: 'APP_ALREADY_IN_REVIEW',
-      message: 'App is already in review',
+      message: 'Another production deployment is already in review for this app',
       appId,
-      currentReviewStatus: app.reviewStatus,
+      activeReviewDeploymentId: activeReviewResult.value.deployments[0]?.id,
     })
   }
 
-  // Update app to pending-review
+  const productionDeploymentsResult = await fromDatabase(
+    database.query.AppDeployment.findMany({
+      where: (deployments, { and, eq }) =>
+        and(eq(deployments.appId, appId), eq(deployments.deploymentType, 'production')),
+      orderBy: (deployments, { desc }) => [desc(deployments.createdAt)],
+    }),
+    'list-production-deployments'
+  )
+
+  if (productionDeploymentsResult.isErr()) return productionDeploymentsResult
+
+  const activeDeployments = productionDeploymentsResult.value.filter(
+    (deployment) => deployment.status === 'active'
+  )
+
+  if (productionDeploymentsResult.value.length > 0 && activeDeployments.length === 0) {
+    return err({
+      code: 'APP_NO_ACTIVE_PROD_DEPLOYMENT',
+      message: 'No active production deployment is available. Select a version from Versions.',
+      appId,
+    })
+  }
+
+  if (activeDeployments.length > 1) {
+    return err({
+      code: 'APP_REVIEW_REQUIRES_DEPLOYMENT_SELECTION',
+      message:
+        'Multiple active production deployments are available. Select a version from Versions.',
+      appId,
+      deploymentIds: activeDeployments.map((deployment) => deployment.id),
+    })
+  }
+
+  // If autoApprove is enabled, skip review and go straight to approved
+  const autoApproved = app.autoApprove === true
+  const targetReviewStatus = autoApproved ? 'approved' : 'pending-review'
+  const targetDeploymentStatus = autoApproved ? 'approved' : 'pending-review'
+
   const updateResult = await fromDatabase(
     database
       .update(App)
-      .set({ reviewStatus: 'pending-review', updatedAt: new Date() })
+      .set({ reviewStatus: targetReviewStatus, updatedAt: new Date() })
       .where(eq(App.id, appId))
       .returning(),
     'update-app-status'
@@ -109,29 +150,35 @@ async function handleSubmitForReview(appId: string, app: typeof App.$inferSelect
     return err({ code: 'APP_UPDATE_FAILED', message: 'Failed to update app status', appId })
   }
 
-  // Transition active production deployments to pending-review
-  await fromDatabase(
-    database
-      .update(AppDeployment)
-      .set({ status: 'pending-review' })
-      .where(
-        and(
-          eq(AppDeployment.appId, appId),
-          eq(AppDeployment.deploymentType, 'production'),
-          eq(AppDeployment.status, 'active')
-        )
-      ),
-    'update-deployments-to-pending-review'
-  )
+  if (activeDeployments[0]) {
+    const deploymentUpdateResult = await fromDatabase(
+      database
+        .update(AppDeployment)
+        .set({ status: targetDeploymentStatus })
+        .where(eq(AppDeployment.id, activeDeployments[0].id)),
+      'update-deployment-to-pending-review'
+    )
 
-  return ok({ app: updatedApp })
+    if (deploymentUpdateResult.isErr()) return deploymentUpdateResult
+  }
+
+  return ok({ app: updatedApp, autoApproved })
 }
 
 /**
  * Handle withdrawing from review
  */
 async function handleWithdrawFromReview(appId: string, app: typeof App.$inferSelect) {
-  if (app.reviewStatus !== 'pending-review' && app.reviewStatus !== 'in-review') {
+  const activeReviewResult = await findActiveReviewDeployment({ appId })
+  if (activeReviewResult.isErr()) return activeReviewResult
+
+  const reviewDeployments = activeReviewResult.value.deployments
+
+  if (
+    app.reviewStatus !== 'pending-review' &&
+    app.reviewStatus !== 'in-review' &&
+    reviewDeployments.length === 0
+  ) {
     return err({
       code: 'APP_NOT_IN_REVIEW',
       message: 'App is not in review',
@@ -156,20 +203,17 @@ async function handleWithdrawFromReview(appId: string, app: typeof App.$inferSel
     return err({ code: 'APP_UPDATE_FAILED', message: 'Failed to update app status', appId })
   }
 
-  // Withdraw deployments that are in review
-  await fromDatabase(
-    database
-      .update(AppDeployment)
-      .set({ status: 'withdrawn' })
-      .where(
-        and(
-          eq(AppDeployment.appId, appId),
-          eq(AppDeployment.deploymentType, 'production'),
-          eq(AppDeployment.status, 'pending-review')
-        )
-      ),
-    'withdraw-deployments-from-review'
-  )
+  if (reviewDeployments[0]) {
+    const deploymentUpdateResult = await fromDatabase(
+      database
+        .update(AppDeployment)
+        .set({ status: 'withdrawn' })
+        .where(eq(AppDeployment.id, reviewDeployments[0].id)),
+      'withdraw-deployment-from-review'
+    )
+
+    if (deploymentUpdateResult.isErr()) return deploymentUpdateResult
+  }
 
   return ok({ app: updatedApp })
 }
