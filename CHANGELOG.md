@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.67](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.66...auxx-v0.1.67) (2026-03-11)
+
+
+### Features
+
+* implement inbound email processing pipeline with S3 integration ([#216](https://github.com/Auxx-Ai/auxx-ai/issues/216)) ([b7b7c13](https://github.com/Auxx-Ai/auxx-ai/commit/b7b7c13c1f2074fd994dc41b309b37f72ba477ac))
+
 ## [0.1.66](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.65...auxx-v0.1.66) (2026-03-10)
 
 
