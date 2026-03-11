@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.70](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.69...auxx-v0.1.70) (2026-03-11)
+
+
+### Features
+
+* add connection listing and access control for apps ([#222](https://github.com/Auxx-Ai/auxx-ai/issues/222)) ([dbd883e](https://github.com/Auxx-Ai/auxx-ai/commit/dbd883ea3c78efb7b5341ce0eaad9d11eef0afda))
+
 ## [0.1.69](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.68...auxx-v0.1.69) (2026-03-11)
 
 
