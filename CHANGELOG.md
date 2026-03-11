@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.71](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.70...auxx-v0.1.71) (2026-03-11)
+
+
+### Bug Fixes
+
+* replace 'import type React' with 'import React' in email components ([#224](https://github.com/Auxx-Ai/auxx-ai/issues/224)) ([2493d31](https://github.com/Auxx-Ai/auxx-ai/commit/2493d311513032d68a5d1e898e68a11cb6970eb5))
+
 ## [0.1.70](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.69...auxx-v0.1.70) (2026-03-11)
 
 
