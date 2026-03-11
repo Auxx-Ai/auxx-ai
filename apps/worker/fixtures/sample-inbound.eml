@@ -1,0 +1,9 @@
+From: Alice Sender <alice@example.com>
+To: Forwarding Address <yourhandle@mail.auxx.ai>
+Subject: Local inbound email fixture
+Message-ID: <local-inbound-fixture@example.com>
+Date: Tue, 10 Mar 2026 22:15:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Hello from the localhost inbound email test harness.

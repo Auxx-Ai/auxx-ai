@@ -138,7 +138,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               externalUrl = await storageManager.buildExternalUrl(
                 session.provider,
                 session.storageKey,
-                session.credentialId
+                session.credentialId,
+                {
+                  bucket: session.bucket,
+                  visibility: session.visibility,
+                }
               )
             }
           } catch (urlErr) {

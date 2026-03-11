@@ -9,6 +9,7 @@ import type { Worker } from 'bullmq'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { type InboundEmailPoller, startInboundEmailPoller } from './inbound-email'
+import { devInboundEmailRoutes } from './inbound-email/dev-inbound-email'
 /**
  * The apps/worker directory is responsible for running the worker processes.
  * It is responsible for processing jobs from the queues defined in the packages/lib/src/queues directory.
@@ -54,6 +55,11 @@ async function initializeApp() {
       inboundEmail: inboundEmailPoller ? 'running' : 'disabled',
     })
   })
+
+  if (process.env.NODE_ENV !== 'production') {
+    app.route('', devInboundEmailRoutes)
+    console.log('Dev inbound email endpoint enabled: POST /dev/inbound-email')
+  }
 
   // Handle 404s - Should be after all other routes
   app.notFound((c) => {

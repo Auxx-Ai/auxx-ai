@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bot,
   ClipboardList,
+  Code,
   CreditCard,
   Globe,
   Headphones,
@@ -18,6 +19,7 @@ import Link from 'next/link'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { AppListCard } from '~/components/apps/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
+import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { api } from '~/trpc/react'
 
 /** Icon mapping for app categories */
@@ -228,8 +230,16 @@ export default function IntegrationList() {
                 {installedAppsToShow.map(({ app }) => (
                   <AppListCard
                     key={app.id}
-                    app={app}
+                    title={app.title}
+                    description={app.description}
                     href={`/app/settings/apps/installed/${app.slug}`}
+                    icon={app.avatarUrl ? <AppIcon iconId={app.avatarUrl} size='sm' /> : undefined}
+                    subtitle={`By ${app.developerAccount.title}`}
+                    verified={app.verified}
+                    badges={[
+                      ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
+                      ...(app.isInstalled ? [{ label: 'Installed' }] : []),
+                    ]}
                   />
                 ))}
               </div>
@@ -308,7 +318,25 @@ export default function IntegrationList() {
                         {hasCategoryApps ? (
                           <div className='grid w-full gap-2 grid-cols-2'>
                             {categoryApps.map((app) => (
-                              <AppListCard key={app.id} app={app} />
+                              <AppListCard
+                                key={app.id}
+                                title={app.title}
+                                description={app.description}
+                                href={`/app/settings/apps/${app.slug}/`}
+                                icon={
+                                  app.avatarUrl ? (
+                                    <AppIcon iconId={app.avatarUrl} size='sm' />
+                                  ) : undefined
+                                }
+                                subtitle={`By ${app.developerAccount.title}`}
+                                verified={app.verified}
+                                badges={[
+                                  ...(app.isDevelopment
+                                    ? [{ icon: <Code className='size-3' /> }]
+                                    : []),
+                                  ...(app.isInstalled ? [{ label: 'Installed' }] : []),
+                                ]}
+                              />
                             ))}
                           </div>
                         ) : (

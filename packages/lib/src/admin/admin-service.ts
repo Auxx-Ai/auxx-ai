@@ -154,6 +154,7 @@ export interface AppDetails {
   publicationStatus: string
   reviewStatus: string | null
   autoApprove: boolean
+  verified: boolean
   websiteUrl: string | null
   documentationUrl: string | null
   supportSiteUrl: string | null
@@ -1045,6 +1046,7 @@ export class AdminService {
       publicationStatus: app.publicationStatus,
       reviewStatus: app.reviewStatus,
       autoApprove: app.autoApprove,
+      verified: app.verified,
       websiteUrl: app.websiteUrl,
       documentationUrl: app.documentationUrl,
       supportSiteUrl: app.supportSiteUrl,
@@ -1105,6 +1107,33 @@ export class AdminService {
     }
 
     logger.info(`Successfully toggled auto-approve for app ${appId}`)
+    return app
+  }
+
+  /**
+   * Toggle verified badge for an app
+   * @param appId - App ID
+   * @param verified - New verified value
+   * @returns Updated app
+   * @throws Error if app not found
+   */
+  async toggleVerified(appId: string, verified: boolean) {
+    logger.info(`Admin toggling verified to ${verified} for app ${appId}`)
+
+    const [app] = await this.db
+      .update(schema.App)
+      .set({
+        verified,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.App.id, appId))
+      .returning()
+
+    if (!app) {
+      throw new Error('App not found')
+    }
+
+    logger.info(`Successfully toggled verified for app ${appId}`)
     return app
   }
 

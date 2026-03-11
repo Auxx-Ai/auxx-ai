@@ -666,6 +666,13 @@
       "when": 1773254234454,
       "tag": "0094_add-label-sync-checkpoint",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1773263018977,
+      "tag": "0095_add_app_verified",
+      "breakpoints": true
     }
   ]
 }

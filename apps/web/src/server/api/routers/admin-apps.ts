@@ -39,6 +39,7 @@ const appSchema = z.object({
   publicationStatus: z.string(),
   reviewStatus: z.string().nullable(),
   autoApprove: z.boolean(),
+  verified: z.boolean().optional(),
   overview: z.string().nullable(),
   contentOverview: z.string().nullable(),
   contentHowItWorks: z.string().nullable(),
@@ -272,6 +273,23 @@ export const adminAppsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.toggleAutoApprove(input.appId, input.autoApprove)
+
+      return { success: true }
+    }),
+
+  /**
+   * Toggle verified badge for an app
+   */
+  toggleVerified: superAdminProcedure
+    .input(
+      z.object({
+        appId: z.string(),
+        verified: z.boolean(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      await adminService.toggleVerified(input.appId, input.verified)
 
       return { success: true }
     }),

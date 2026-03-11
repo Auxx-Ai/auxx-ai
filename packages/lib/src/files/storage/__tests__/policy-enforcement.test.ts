@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UploadPreparedConfig } from '../../upload/init-types'
+import { storageLocationService } from '../storage-location-service'
 import { StorageManager } from '../storage-manager'
 
 // Mock credentials module used by StorageManager and S3Adapter
@@ -44,7 +45,9 @@ vi.mock('../storage-location-service', () => ({
 
 // Mock getBucketForVisibility (imported at module level by storage-manager)
 vi.mock('../../upload/util', () => ({
-  getBucketForVisibility: vi.fn().mockReturnValue('test-bucket'),
+  getBucketForVisibility: vi.fn((visibility: 'PUBLIC' | 'PRIVATE') =>
+    visibility === 'PUBLIC' ? 'test-public-bucket' : 'test-private-bucket'
+  ),
 }))
 
 const mockPresignUpload = vi.fn().mockResolvedValue({
@@ -57,6 +60,11 @@ const mockStartMultipartUpload = vi.fn().mockResolvedValue({
   uploadId: 'test-upload-id',
   key: 'org123/large-file.zip',
   expiresAt: new Date(Date.now() + 3600_000),
+})
+
+const mockPutObject = vi.fn().mockResolvedValue({
+  etag: 'etag-123',
+  size: 4,
 })
 
 // Mock S3 adapter — loaded dynamically via import() in StorageManager.getAdapter
@@ -79,15 +87,25 @@ vi.mock('../../adapters/s3-adapter', () => ({
     }
 
     resolvePlatformAuth() {
-      return { region: 'us-east-1', bucket: 'test-bucket' }
+      return {
+        region: 'us-east-1',
+        bucket: 'test-private-bucket',
+        privateBucket: 'test-private-bucket',
+        publicBucket: 'test-public-bucket',
+      }
     }
 
     resolveBucket() {
-      return 'test-bucket'
+      return 'test-private-bucket'
+    }
+
+    buildExternalUrl(key: string, auth?: { bucket?: string }) {
+      return `https://${auth?.bucket || 'missing-bucket'}.s3.amazonaws.com/${key}`
     }
 
     presignUpload = mockPresignUpload
     startMultipartUpload = mockStartMultipartUpload
+    putObject = mockPutObject
   },
 }))
 
@@ -465,6 +483,53 @@ describe('StorageManager – enforcePolicy via generatePresignedUploadUrl', () =
             uploader: 'user123',
           }),
         })
+      )
+    })
+
+    it('routes public uploadContent calls to the public bucket and persists bucket metadata', async () => {
+      vi.mocked(storageLocationService.create).mockResolvedValue({
+        id: 'loc_123',
+        provider: 'S3',
+        externalId: 'thumbs/avatar.webp',
+        externalUrl: 'https://test-public-bucket.s3.amazonaws.com/thumbs/avatar.webp',
+        externalRev: 'etag-123',
+        credentialId: null,
+        size: BigInt(4),
+        mimeType: 'image/webp',
+        metadata: {
+          bucket: 'test-public-bucket',
+          key: 'thumbs/avatar.webp',
+        },
+      } as any)
+
+      await expect(
+        manager.uploadContent({
+          provider: 'S3',
+          key: 'thumbs/avatar.webp',
+          content: Buffer.from('test'),
+          mimeType: 'image/webp',
+          size: 4,
+          visibility: 'PUBLIC',
+          organizationId: 'org123',
+        })
+      ).resolves.toBeDefined()
+
+      expect(mockPutObject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'thumbs/avatar.webp',
+          visibility: 'PUBLIC',
+        })
+      )
+
+      expect(storageLocationService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalUrl: 'https://test-public-bucket.s3.amazonaws.com/thumbs/avatar.webp',
+          metadata: expect.objectContaining({
+            bucket: 'test-public-bucket',
+            key: 'thumbs/avatar.webp',
+          }),
+        }),
+        undefined
       )
     })
   })

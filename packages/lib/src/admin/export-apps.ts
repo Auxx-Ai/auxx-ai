@@ -54,6 +54,7 @@ export async function exportByDeveloperAccount(db: Database, developerAccountId:
         publicationStatus: app.publicationStatus,
         reviewStatus: app.reviewStatus,
         autoApprove: app.autoApprove,
+        verified: app.verified,
         overview: app.overview,
         contentOverview: app.contentOverview,
         contentHowItWorks: app.contentHowItWorks,

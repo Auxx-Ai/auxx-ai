@@ -10,6 +10,7 @@ export type {
   InboundEmailAddress,
   InboundEmailAttachment,
   ParsedInboundEmail,
+  RawEmailStore,
   ResolvedInboundIntegration,
   SesInboundQueueMessage,
 } from './types'

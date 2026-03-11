@@ -50,6 +50,7 @@ const appDataSchema = z.object({
   avatarId: z.string().nullable().optional(),
   avatarUrl: z.string().nullable().optional(),
   category: z.string().nullable().optional(),
+  verified: z.boolean().optional(),
   createdAt: z.string().or(z.date()),
   updatedAt: z.string().or(z.date()),
 })

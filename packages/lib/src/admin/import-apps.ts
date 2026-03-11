@@ -28,6 +28,7 @@ export interface ExportData {
     publicationStatus: string
     reviewStatus: string | null
     autoApprove: boolean
+    verified?: boolean
     overview: string | null
     contentOverview: string | null
     contentHowItWorks: string | null
@@ -243,6 +244,7 @@ export async function importApps(
         hasOauth: appData.hasOauth,
         hasBundle: appData.hasBundle,
         autoApprove: appData.autoApprove,
+        verified: appData.verified ?? false,
         overview: appData.overview,
         contentOverview: appData.contentOverview,
         contentHowItWorks: appData.contentHowItWorks,
