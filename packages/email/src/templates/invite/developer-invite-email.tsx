@@ -1,12 +1,14 @@
 // packages/email/src/templates/invite/developer-invite-email.tsx
 
 import { Container, Text } from '@react-email/components'
-import type React from 'react'
+import React from 'react'
+
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
 import { EmailHeading } from '../../components/email-text'
 
+void React
 interface DeveloperInviteEmailProps {
   inviterName: string
   accountName: string

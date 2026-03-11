@@ -1,5 +1,6 @@
 import React from 'react'
 
+void React
 export const Logo = ({ className }: { className?: string }) => {
   return (
     <svg

@@ -1,9 +1,11 @@
 import { Container, Text } from '@react-email/components'
-import type React from 'react'
+import React from 'react'
+
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
 import { EmailHeading } from '../../components/email-text'
 
+void React
 interface SystemEmailProps {
   name: string
   subject: string

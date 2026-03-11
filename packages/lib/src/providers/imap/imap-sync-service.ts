@@ -2,13 +2,13 @@
 
 import type { ImapFlow, MailboxObject, SearchObject } from 'imapflow'
 import { BadRequestError } from '../../errors'
-import type { ImapSyncResult } from './types'
+import type { ImapSyncResult, UidWindowScanResult } from './types'
 import { canUseQresync } from './utils/can-use-qresync'
 import { extractMailboxState } from './utils/extract-mailbox-state'
 import { parseSyncCursor } from './utils/parse-sync-cursor'
 
 export class ImapSyncService {
-  /** Sync a single folder, returning new and deleted UIDs */
+  /** Sync a single folder, returning new and deleted UIDs (used for incremental sync) */
   async syncFolder(
     client: ImapFlow,
     mailbox: MailboxObject,
@@ -25,7 +25,7 @@ export class ImapSyncService {
       )
     }
 
-    // No previous cursor = first sync
+    // No previous cursor = first sync — caller should use scanUidWindow() instead
     if (!previousCursor) {
       return this.fullSync(client, mailboxState)
     }
@@ -42,6 +42,34 @@ export class ImapSyncService {
 
     // Fallback to UID range
     return this.uidRangeSync(client, previousCursor, mailboxState)
+  }
+
+  /**
+   * Scan a bounded UID window within a folder. Used for resumable full sync
+   * instead of unbounded SEARCH ALL.
+   *
+   * @param windowStart - Start of UID range (inclusive)
+   * @param windowEnd - End of UID range (inclusive)
+   */
+  async scanUidWindow(
+    client: ImapFlow,
+    mailbox: MailboxObject,
+    windowStart: number,
+    windowEnd: number
+  ): Promise<UidWindowScanResult> {
+    const mailboxState = extractMailboxState(mailbox)
+    const uidRange = `${windowStart}:${windowEnd}`
+
+    const searchResult = await client.search({ uid: uidRange } as SearchObject, { uid: true })
+
+    const uids: number[] = []
+    if (searchResult) {
+      for (const uid of searchResult) {
+        uids.push(uid)
+      }
+    }
+
+    return { uids, windowStart, windowEnd, mailboxState }
   }
 
   private async fullSync(

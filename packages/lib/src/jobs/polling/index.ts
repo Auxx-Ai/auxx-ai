@@ -1,7 +1,11 @@
 // packages/lib/src/jobs/polling/index.ts
 
 export { type MessageListFetchJobData, messageListFetchJob } from './message-list-fetch-job'
-export { type MessagesImportJobData, messagesImportJob } from './messages-import-job'
+export {
+  imapImportBatchJob,
+  type MessagesImportJobData,
+  messagesImportJob,
+} from './messages-import-job'
 export {
   type PollingRelaunchFailedJobData,
   pollingRelaunchFailedJob,

@@ -1,12 +1,14 @@
 // packages/email/src/templates/billing/payment-failed-email.tsx
 import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Text } from '@react-email/components'
-import type React from 'react'
+import React from 'react'
+
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
 import { EmailHeading, EmailP } from '../../components/email-text'
 
+void React
 interface PaymentFailedEmailProps {
   name: string
   planName: string
@@ -21,7 +23,7 @@ export async function PaymentFailedEmail({
   amount,
   nextRetryDate,
   billingPortalUrl = `${WEBAPP_URL}/settings/plans`,
-}: PaymentFailedEmailProps): Promise<React.JSX.Element> {
+}: PaymentFailedEmailProps) {
   return (
     <EmailTemplate>
       <Container>

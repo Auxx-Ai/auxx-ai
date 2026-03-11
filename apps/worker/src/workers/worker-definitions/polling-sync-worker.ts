@@ -1,6 +1,7 @@
 // apps/worker/src/workers/worker-definitions/polling-sync-worker.ts
 
 import {
+  imapImportBatchJob,
   messageListFetchJob,
   messagesImportJob,
   pollingRelaunchFailedJob,
@@ -17,6 +18,7 @@ const pollingSyncJobMappings = {
   pollingSyncScannerJob,
   messageListFetchJob,
   messagesImportJob,
+  imapImportBatchJob,
   pollingStaleCheckJob,
   pollingRelaunchFailedJob,
 }

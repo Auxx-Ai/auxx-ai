@@ -1,12 +1,14 @@
 // packages/email/src/templates/weekly-summary/weekly-summary-notification-email.tsx
 import { WEBAPP_URL } from '@auxx/config/server'
 import { Container, Hr, Text } from '@react-email/components'
-import type React from 'react'
+import React from 'react'
+
 import { EmailButton } from '../../components/email-button'
 import { EmailFooter } from '../../components/email-footer'
 import { EmailTemplate } from '../../components/email-template'
 import { EmailHeading } from '../../components/email-text'
 
+void React
 /**
  * Shape of the data consumed by the weekly summary notification email template.
  */

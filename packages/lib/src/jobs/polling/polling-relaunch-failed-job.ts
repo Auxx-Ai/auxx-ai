@@ -37,7 +37,7 @@ export const pollingRelaunchFailedJob = async (job: Job<PollingRelaunchFailedJob
       and(
         eq(schema.Integration.enabled, true),
         eq(schema.Integration.syncStage, 'FAILED'),
-        inArray(schema.Integration.provider, ['google', 'outlook'])
+        inArray(schema.Integration.provider, ['google', 'outlook', 'imap'])
       )
     )
 

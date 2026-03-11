@@ -46,6 +46,8 @@ export const Label = pgTable(
     isSentBox: boolean().default(false).notNull(),
     /** Self-referencing parent for folder hierarchy (IMAP nested folders). */
     parentLabelId: text().references((): AnyPgColumn => Label.id, { onDelete: 'set null' }),
+    /** Durable per-folder checkpoint for IMAP full-sync progress (JSON). Null when no sync is in progress. */
+    syncCheckpoint: text(),
   },
   (table) => [
     uniqueIndex('Label_labelId_organizationId_integrationId_key').using(

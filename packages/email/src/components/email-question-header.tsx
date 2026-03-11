@@ -1,7 +1,9 @@
 import { Text } from '@react-email/components'
-import type React from 'react'
+import React from 'react'
+
 import { cn } from '../lib/utils'
 
+void React
 interface QuestionHeaderProps {
   headline: string
   subheader?: string
