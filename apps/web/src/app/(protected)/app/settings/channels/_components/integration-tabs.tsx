@@ -80,7 +80,7 @@ export default function IntegrationTabs() {
       </div>
     )
   }
-  const title = `${getProviderName(integration.provider)} Integration`
+  const title = `${getProviderName(integration.provider, integration.metadata)} Integration`
 
   // Check if integration requires re-authentication using actual database fields
   const requiresReauth = integration.requiresReauth || false
@@ -149,7 +149,10 @@ export default function IntegrationTabs() {
 /**
  * Get provider display name
  */
-function getProviderName(provider: string) {
+function getProviderName(provider: string, metadata?: any) {
+  if (provider === 'email' && metadata?.channelType === 'forwarding-address') {
+    return 'Forwarding'
+  }
   switch (provider.toLowerCase()) {
     case 'google':
       return 'Gmail'

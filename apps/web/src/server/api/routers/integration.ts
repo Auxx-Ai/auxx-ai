@@ -312,6 +312,25 @@ export const integrationRouter = createTRPCRouter({
       return service.updateSettings(input.integrationId, input.settings)
     }),
   /**
+   * Update allowed senders for a forwarding integration.
+   */
+  updateAllowedSenders: protectedProcedure
+    .input(
+      z.object({
+        integrationId: z.string(),
+        allowedSenders: z.array(z.string().email()).max(50),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      await requireAdminAccess(userId, organizationId)
+
+      const service = new IntegrationService(ctx.db, organizationId, userId)
+      return service.updateAllowedSenders(input.integrationId, input.allowedSenders)
+    }),
+
+  /**
    * Get message statistics across all providers for the organization.
    */
   getAllEmailStats: protectedProcedure.query(async ({ ctx }) => {
