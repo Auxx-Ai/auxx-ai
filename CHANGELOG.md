@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.69](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.68...auxx-v0.1.69) (2026-03-11)
+
+
+### Bug Fixes
+
+* update SES inbound region handling and enhance S3 bucket policies ([#220](https://github.com/Auxx-Ai/auxx-ai/issues/220)) ([d045a5a](https://github.com/Auxx-Ai/auxx-ai/commit/d045a5add57b17697d186b13d2d74f4b29834252))
+
 ## [0.1.68](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.67...auxx-v0.1.68) (2026-03-11)
 
 
