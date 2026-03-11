@@ -6,7 +6,8 @@ import { z } from 'zod'
 /**
  * inboundRegion is the AWS region used by the SES bridge.
  */
-const inboundRegion = process.env.AWS_REGION || 'us-west-1'
+const inboundRegion =
+  process.env.INBOUND_EMAIL_QUEUE_REGION || process.env.AWS_REGION || 'us-west-1'
 
 /**
  * sqsClient is the shared SQS client used by the SES bridge Lambda.
