@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.73](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.72...auxx-v0.1.73) (2026-03-11)
+
+
+### Features
+
+* add verified badge to app schema and related services ([#229](https://github.com/Auxx-Ai/auxx-ai/issues/229)) ([b30face](https://github.com/Auxx-Ai/auxx-ai/commit/b30face4031cfa91aa8f61a70b15c52513586091))
+* update inbound email bucket policy and enhance app connection details ([#231](https://github.com/Auxx-Ai/auxx-ai/issues/231)) ([bff1082](https://github.com/Auxx-Ai/auxx-ai/commit/bff1082d6b99be7a016a99042e45b7d74128870e))
+
 ## [0.1.72](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.71...auxx-v0.1.72) (2026-03-11)
 
 
