@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.74](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.73...auxx-v0.1.74) (2026-03-11)
+
+
+### Features
+
+* simplify inbound email bucket policy by integrating it directly into the bucket definition ([#232](https://github.com/Auxx-Ai/auxx-ai/issues/232)) ([d68713a](https://github.com/Auxx-Ai/auxx-ai/commit/d68713a18fa5f4720148513c35faa027d8482a03))
+
 ## [0.1.73](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.72...auxx-v0.1.73) (2026-03-11)
 
 
