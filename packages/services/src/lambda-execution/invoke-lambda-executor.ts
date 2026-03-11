@@ -65,6 +65,13 @@ export async function invokeLambdaExecutor(params: {
 }): Promise<Result<LambdaExecutionResult, LambdaExecutionError>> {
   const { payload, caller, lambdaUrl = LAMBDA_URL } = params
 
+  console.log('[invoke-lambda] URL resolution debug:', {
+    resolvedUrl: lambdaUrl,
+    envLambdaUrl: process.env.LAMBDA_URL,
+    configLambdaUrl: LAMBDA_URL,
+    caller,
+  })
+
   try {
     const body = JSON.stringify(payload)
 
@@ -130,6 +137,12 @@ export async function invokeLambdaExecutor(params: {
     return ok(result as LambdaExecutionResult)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[invoke-lambda] Fetch failed:', {
+      url: lambdaUrl,
+      error: message,
+      cause: error instanceof Error ? (error as any).cause?.message : undefined,
+      code: error instanceof Error ? (error as any).cause?.code : undefined,
+    })
     return err({
       code: 'LAMBDA_INVOCATION_ERROR',
       message: `Failed to invoke Lambda: ${message}`,
