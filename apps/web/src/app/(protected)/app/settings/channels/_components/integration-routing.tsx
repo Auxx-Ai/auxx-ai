@@ -1,3 +1,4 @@
+// ~/app/(protected)/app/settings/channels/_components/integration-routing.tsx
 'use client'
 import type { IntegrationSyncStatus } from '@auxx/database/types'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
@@ -11,6 +12,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
@@ -21,18 +28,25 @@ import {
 } from '@auxx/ui/components/select'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useCopy } from '@auxx/ui/hooks/use-copy'
 import {
   AlertCircle,
   AlertTriangle,
+  Check,
   Clock,
   CloudDownload,
+  Copy,
   Edit,
   InboxIcon,
+  Mail,
   MailPlus,
+  Plus,
+  Shield,
+  Trash2,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-// ~/app/(protected)/app/settings/channels/_components/integration-routing.tsx
 import { useMemo, useState } from 'react'
+import { client } from '~/auth/auth-client'
 import MessageSyncStatus from '~/components/mail/message-sync-status'
 import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -64,6 +78,14 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
       toastError({ title: 'Error connecting inbox', description: error.message })
     },
   })
+
+  // Forwarding integration detection
+  const isForwarding =
+    integration.provider === 'email' &&
+    (integration.metadata as any)?.channelType === 'forwarding-address'
+  const allowedSenders: string[] = isForwarding
+    ? ((integration.metadata as any)?.allowedSenders ?? [])
+    : []
 
   // Get inbox resource definition
   const { resource: inboxResource } = useResource('inboxes')
@@ -143,7 +165,6 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
       setIsRemoving(true)
       const result = await removeIntegration.mutateAsync({ integrationId: integration.id })
       if (result) {
-        // Optionally, redirect or refresh the page
         router.push('/app/settings/channels')
       }
     }
@@ -151,48 +172,62 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
 
   return (
     <div className='p-6 space-y-10'>
-      <div className='space-y-1'>
-        <div className='flex items-center justify-between'>
-          <div className='space-y-1'>
-            <div className='flex items-center gap-2  tracking-tight font-semibold text-foreground text-base'>
-              <CloudDownload className='size-4' /> Data Sync
+      {/* Data Sync — hidden for forwarding integrations */}
+      {!isForwarding && (
+        <div className='space-y-1'>
+          <div className='flex items-center justify-between'>
+            <div className='space-y-1'>
+              <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
+                <CloudDownload className='size-4' /> Data Sync
+              </div>
+              <p className='text-sm text-muted-foreground'>
+                Configure how data from this integration is synced to your inboxes.
+              </p>
             </div>
-            <p className='text-sm text-muted-foreground'>
-              Configure how data from this integration is synced to your inboxes.
-            </p>
+            <MessageSyncStatus integrationId={integration.id} />
           </div>
-          <MessageSyncStatus integrationId={integration.id} />
-        </div>
-        <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
-          <div className='text-sm text-muted-foreground'>Last synced</div>
-          <Badge variant='green' size='sm'>
-            {lastSynced}
-          </Badge>
-        </div>
-        {integration.syncStatus && (
           <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
-            <div className='text-sm text-muted-foreground'>Sync status</div>
-            <SyncStatusBadge syncStatus={integration.syncStatus} />
+            <div className='text-sm text-muted-foreground'>Last synced</div>
+            <Badge variant='green' size='sm'>
+              {lastSynced}
+            </Badge>
           </div>
-        )}
-        {isThrottled && (
-          <Alert>
-            <Clock className='h-4 w-4' />
-            <AlertTitle>Rate limited</AlertTitle>
-            <AlertDescription>
-              This integration is temporarily throttled. Sync will resume after{' '}
-              {new Date(integration.throttleRetryAfter).toLocaleString()}.
-            </AlertDescription>
-          </Alert>
-        )}
-      </div>
+          {integration.syncStatus && (
+            <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
+              <div className='text-sm text-muted-foreground'>Sync status</div>
+              <SyncStatusBadge syncStatus={integration.syncStatus} />
+            </div>
+          )}
+          {isThrottled && (
+            <Alert>
+              <Clock className='h-4 w-4' />
+              <AlertTitle>Rate limited</AlertTitle>
+              <AlertDescription>
+                This integration is temporarily throttled. Sync will resume after{' '}
+                {new Date(integration.throttleRetryAfter).toLocaleString()}.
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+      )}
+
+      {/* Forwarding Address — only for forwarding integrations */}
+      {isForwarding && (
+        <ForwardingAddressSection email={integration.email} allowedSenders={allowedSenders} />
+      )}
+
+      {/* Allowed Senders — only for forwarding integrations */}
+      {isForwarding && (
+        <AllowedSendersSection integrationId={integration.id} allowedSenders={allowedSenders} />
+      )}
+
       {['outlook', 'imap'].includes(integration.provider) && (
         <IntegrationLabels integration={integration} />
       )}
 
       <div className='space-y-4'>
         <div className='space-y-1'>
-          <div className='flex items-center gap-2  tracking-tight font-semibold text-foreground text-base'>
+          <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
             <MailPlus className='size-4' /> Message Routing
           </div>
           <p className='text-sm text-muted-foreground'>
@@ -303,7 +338,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
       </div>
 
       <div className='space-y-2'>
-        <div className='flex items-center gap-2  tracking-tight font-semibold text-foreground text-base'>
+        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
           <AlertTriangle className='size-4' /> Danger Zone
         </div>
         <div className='group flex items-center border py-2 px-3 hover:bg-destructive/2 transition-colors duration-200 rounded-2xl border-destructive/50'>
@@ -333,6 +368,291 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
         </div>
       </div>
     </div>
+  )
+}
+
+/** Forwarding address display with copy button */
+function ForwardingAddressSection({
+  email,
+  allowedSenders,
+}: {
+  email: string
+  allowedSenders: string[]
+}) {
+  const { copied, copy } = useCopy({ toastMessage: 'Forwarding address copied' })
+  const hasAllowedSenders = allowedSenders.length > 0
+
+  return (
+    <div className='space-y-4'>
+      <div className='space-y-1'>
+        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
+          <Mail className='size-4' /> Forwarding Address
+        </div>
+        <p className='text-sm text-muted-foreground'>
+          Forward emails to this address to create tickets.
+        </p>
+      </div>
+      <div
+        className={`group flex items-center justify-between rounded-2xl border py-2 px-3 transition-colors duration-200 ${
+          hasAllowedSenders ? 'hover:bg-muted' : 'border-destructive/50 hover:bg-destructive/2'
+        }`}>
+        <div className='flex items-center gap-3'>
+          <div
+            className={`size-8 border rounded-lg flex items-center justify-center transition-colors overflow-hidden shrink-0 ${
+              hasAllowedSenders
+                ? 'bg-muted group-hover:bg-secondary'
+                : 'border-destructive/10 bg-destructive/2 group-hover:bg-destructive/5'
+            }`}>
+            <Mail className={`size-4 ${hasAllowedSenders ? '' : 'text-destructive'}`} />
+          </div>
+          <div className='flex flex-col'>
+            <span className='text-sm font-medium font-mono'>{email}</span>
+            {hasAllowedSenders ? (
+              <span className='text-xs text-muted-foreground'>Forward emails to this address</span>
+            ) : (
+              <span className='text-xs text-destructive'>
+                No allowed senders — emails will be rejected
+              </span>
+            )}
+          </div>
+        </div>
+        <Button variant='outline' size='sm' onClick={() => copy(email)}>
+          {copied ? <Check /> : <Copy />}
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** Allowed senders section with edit dialog */
+function AllowedSendersSection({
+  integrationId,
+  allowedSenders,
+}: {
+  integrationId: string
+  allowedSenders: string[]
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const hasEntries = allowedSenders.length > 0
+
+  return (
+    <div className='space-y-4'>
+      <div className='space-y-1'>
+        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
+          <Shield className='size-4' /> Allowed Senders
+        </div>
+        <p className='text-sm text-muted-foreground'>
+          Only emails from these addresses will be accepted.
+        </p>
+      </div>
+      <div
+        className={`group flex items-center justify-between rounded-2xl border py-2 px-3 transition-colors duration-200 ${
+          hasEntries ? 'hover:bg-muted' : 'border-destructive/50 hover:bg-destructive/2'
+        }`}>
+        <div className='flex items-center gap-3'>
+          <div
+            className={`size-8 border rounded-lg flex items-center justify-center transition-colors overflow-hidden shrink-0 ${
+              hasEntries
+                ? 'bg-muted group-hover:bg-secondary'
+                : 'border-destructive/10 bg-destructive/2 group-hover:bg-destructive/5'
+            }`}>
+            <Shield className={`size-4 ${hasEntries ? '' : 'text-destructive'}`} />
+          </div>
+          <div className='flex flex-col'>
+            {hasEntries ? (
+              <>
+                <span className='text-sm font-medium'>
+                  {allowedSenders.length} allowed{' '}
+                  {allowedSenders.length === 1 ? 'sender' : 'senders'}
+                </span>
+                <span className='text-xs text-muted-foreground'>
+                  Only emails from allowed addresses
+                </span>
+              </>
+            ) : (
+              <>
+                <span className='text-sm font-medium text-destructive'>No senders configured</span>
+                <span className='text-xs text-destructive'>
+                  Emails to this address will be rejected
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+        <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
+          {hasEntries ? <Edit /> : <Plus />}
+          {hasEntries ? 'Edit' : 'Add senders'}
+        </Button>
+      </div>
+
+      {dialogOpen && (
+        <AllowedSendersDialog
+          integrationId={integrationId}
+          allowedSenders={allowedSenders}
+          onClose={() => setDialogOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Dialog for managing allowed senders list */
+function AllowedSendersDialog({
+  integrationId,
+  allowedSenders,
+  onClose,
+}: {
+  integrationId: string
+  allowedSenders: string[]
+  onClose: () => void
+}) {
+  const [localSenders, setLocalSenders] = useState<string[]>(allowedSenders)
+  const [inputValue, setInputValue] = useState('')
+  const [inputError, setInputError] = useState('')
+  const { data: session } = client.useSession()
+  const userEmail = session?.user?.email
+  const utils = api.useUtils()
+
+  const updateAllowedSenders = api.integration.updateAllowedSenders.useMutation({
+    onSuccess: () => {
+      utils.integration.getIntegrations.invalidate()
+      onClose()
+    },
+    onError: (error) => {
+      toastError({ title: 'Error updating allowed senders', description: error.message })
+    },
+  })
+
+  const isEmailValid = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+
+  const addEmail = (email: string) => {
+    const normalized = email.trim().toLowerCase()
+    if (!normalized) return
+
+    if (!isEmailValid(normalized)) {
+      setInputError('Invalid email address')
+      return
+    }
+    if (localSenders.includes(normalized)) {
+      setInputError('Email already added')
+      return
+    }
+
+    setLocalSenders([...localSenders, normalized])
+    setInputValue('')
+    setInputError('')
+  }
+
+  const removeEmail = (email: string) => {
+    setLocalSenders(localSenders.filter((s) => s !== email))
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      addEmail(inputValue)
+    }
+  }
+
+  const handleSave = () => {
+    updateAllowedSenders.mutate({ integrationId, allowedSenders: localSenders })
+  }
+
+  const showSuggestion = userEmail && !localSenders.includes(userEmail.trim().toLowerCase())
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent size='sm'>
+        <DialogHeader className='mb-4'>
+          <DialogTitle>Allowed Senders</DialogTitle>
+          <DialogDescription>
+            Only emails from these addresses will be accepted by this forwarding address.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className='space-y-3'>
+          <div className='space-y-1'>
+            <InputGroup>
+              <InputGroupInput
+                placeholder='Add email address...'
+                value={inputValue}
+                onChange={(e) => {
+                  setInputValue((e.target as HTMLInputElement).value)
+                  setInputError('')
+                }}
+                onKeyDown={handleKeyDown}
+              />
+              <InputGroupAddon align='inline-end'>
+                <InputGroupButton
+                  size='xs'
+                  onClick={() => addEmail(inputValue)}
+                  disabled={!inputValue.trim()}>
+                  <Plus />
+                  Add
+                </InputGroupButton>
+              </InputGroupAddon>
+            </InputGroup>
+            {inputError && <p className='text-xs text-destructive'>{inputError}</p>}
+          </div>
+
+          {showSuggestion && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='w-full'
+              onClick={() => addEmail(userEmail)}>
+              <Plus />
+              Add your email ({userEmail})
+            </Button>
+          )}
+
+          {localSenders.length > 0 && (
+            <div className='space-y-1 max-h-60 overflow-y-auto p-0.5'>
+              {localSenders.map((email) => (
+                <InputGroup key={email}>
+                  <InputGroupInput value={email} readOnly className='font-mono text-sm' />
+                  <InputGroupAddon align='inline-end'>
+                    <InputGroupButton
+                      size='icon-xs'
+                      variant='destructive-hover'
+                      aria-label='Remove sender'
+                      title='Remove'
+                      className='rounded-lg mr-0.5'
+                      onClick={() => removeEmail(email)}>
+                      <Trash2 />
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                </InputGroup>
+              ))}
+            </div>
+          )}
+
+          {localSenders.length === 0 && (
+            <div className='rounded-lg border border-dashed py-6 text-center'>
+              <p className='text-sm text-muted-foreground'>
+                No allowed senders. Add at least one email address.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant='ghost' size='sm' onClick={onClose}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+          </Button>
+          <Button
+            data-dialog-submit
+            onClick={handleSave}
+            variant='outline'
+            size='sm'
+            loading={updateAllowedSenders.isPending}
+            loadingText='Saving...'>
+            Save <KbdSubmit variant='outline' size='sm' />
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

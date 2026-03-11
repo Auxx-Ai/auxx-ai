@@ -691,6 +691,71 @@ export class IntegrationService {
   }
 
   /**
+   * Update allowed senders for a forwarding integration.
+   */
+  async updateAllowedSenders(integrationId: string, allowedSenders: string[]) {
+    try {
+      await this.validateIntegrationOwnership(integrationId)
+
+      const [integration] = await this.db
+        .select({ metadata: schema.Integration.metadata })
+        .from(schema.Integration)
+        .where(
+          and(
+            eq(schema.Integration.id, integrationId),
+            eq(schema.Integration.organizationId, this.organizationId)
+          )
+        )
+        .limit(1)
+
+      if (!integration) {
+        throw new IntegrationError('Integration not found', 'INTEGRATION_NOT_FOUND')
+      }
+
+      const currentMetadata = (integration.metadata as any) || {}
+      if (currentMetadata.channelType !== 'forwarding-address') {
+        throw new IntegrationError(
+          'Only forwarding integrations support allowed senders',
+          'INVALID_INTEGRATION_TYPE'
+        )
+      }
+
+      const normalized = [
+        ...new Set(allowedSenders.map((s) => s.trim().toLowerCase()).filter(Boolean)),
+      ]
+
+      const updatedMetadata = {
+        ...currentMetadata,
+        allowedSenders: normalized,
+      }
+
+      await this.db
+        .update(schema.Integration)
+        .set({ metadata: updatedMetadata })
+        .where(eq(schema.Integration.id, integrationId))
+
+      logger.info('Updated allowed senders', {
+        integrationId,
+        count: normalized.length,
+        organizationId: this.organizationId,
+      })
+
+      return { allowedSenders: normalized }
+    } catch (error: any) {
+      if (error instanceof IntegrationError) throw error
+      logger.error('Error updating allowed senders:', {
+        error: error.message,
+        integrationId,
+      })
+      throw new IntegrationError(
+        'Failed to update allowed senders',
+        'UPDATE_ALLOWED_SENDERS_FAILED',
+        error
+      )
+    }
+  }
+
+  /**
    * Static method to get all stats
    */
   static async getAllStats(db: Database, organizationId: string) {
