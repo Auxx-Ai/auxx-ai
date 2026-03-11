@@ -7,9 +7,22 @@ import { InboundIntegrationResolver } from './integration-resolver'
 import { RawEmailParser } from './raw-email-parser'
 import { S3RawEmailStore } from './s3-raw-email'
 import { assertSenderAllowed } from './sender-allowlist-guard'
-import type { InboundEmailAddress, SesInboundQueueMessage } from './types'
+import type { InboundEmailAddress, RawEmailStore, SesInboundQueueMessage } from './types'
 
 const logger = createScopedLogger('inbound-email-processor')
+
+/**
+ * InboundEmailSource identifies whether the processor is handling real SES traffic or dev harness input.
+ */
+type InboundEmailSource = 'ses' | 'dev-harness'
+
+/**
+ * InboundEmailProcessorOptions configures optional test/dev overrides for inbound processing.
+ */
+interface InboundEmailProcessorOptions {
+  rawEmailStore?: RawEmailStore
+  inboundSource?: InboundEmailSource
+}
 
 /**
  * normalizeParticipant converts a parsed email address into MessageStorageService participant input.
@@ -53,7 +66,7 @@ export class InboundEmailProcessor {
   /**
    * rawEmailStore fetches raw MIME from S3.
    */
-  private rawEmailStore = new S3RawEmailStore()
+  private rawEmailStore: RawEmailStore
 
   /**
    * rawEmailParser parses raw MIME into normalized fields.
@@ -61,9 +74,22 @@ export class InboundEmailProcessor {
   private rawEmailParser = new RawEmailParser()
 
   /**
+   * inboundSource marks whether the message came from SES or the dev harness.
+   */
+  private inboundSource: InboundEmailSource
+
+  /**
    * integrationResolver maps forwarded recipients to org integrations.
    */
   private integrationResolver = new InboundIntegrationResolver()
+
+  /**
+   * constructor initializes the processor with optional dependency overrides.
+   */
+  constructor(options: InboundEmailProcessorOptions = {}) {
+    this.rawEmailStore = options.rawEmailStore ?? new S3RawEmailStore()
+    this.inboundSource = options.inboundSource ?? 'ses'
+  }
 
   /**
    * processFromQueueMessage fetches, parses, authorizes, and stores one inbound email.
@@ -105,6 +131,7 @@ export class InboundEmailProcessor {
       metadata: {
         inbound: {
           provider: 'ses',
+          ...(this.inboundSource === 'dev-harness' ? { source: this.inboundSource } : {}),
           sesMessageId: message.sesMessageId,
           s3Bucket: message.s3Bucket,
           s3Key: message.s3Key,

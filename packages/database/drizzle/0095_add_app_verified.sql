@@ -1,0 +1,1 @@
+ALTER TABLE "App" ADD COLUMN "verified" boolean DEFAULT false NOT NULL;

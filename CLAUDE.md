@@ -312,6 +312,33 @@ pnpm db:migrate
 
 ---
 
+# Railway CLI (production)
+
+The project is linked to Railway via `railway link`. The `.railway` config file is gitignored.
+
+**Workspace:** Auxx.Ai's Projects | **Project:** Auxx Ai | **Environment:** production
+
+**Services:** web, api, worker, build, lambda-server, homepage, docs, Postgres, pgvector, Redis
+
+```bash
+# List all projects
+railway list
+
+# Show all services and their deployment status
+railway service status -a --json
+
+# View variables for a specific service
+railway variables -s <service-name> --json
+
+# View logs for a specific service
+railway service logs -s <service-name>
+
+# Redeploy a service
+railway service redeploy -s <service-name>
+```
+
+---
+
 # AWS Debugging (dev)
 
 **Region:** `us-west-1` | **Profile:** `auxxai-dev`

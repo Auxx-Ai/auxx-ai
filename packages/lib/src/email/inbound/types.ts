@@ -1,6 +1,13 @@
 // packages/lib/src/email/inbound/types.ts
 
 /**
+ * RawEmailStore fetches a raw MIME payload by bucket/key identifier.
+ */
+export interface RawEmailStore {
+  getRawEmailString(bucket: string, key: string): Promise<string>
+}
+
+/**
  * SesInboundQueueMessage is the compact SQS payload produced by the SES bridge Lambda.
  */
 export interface SesInboundQueueMessage {

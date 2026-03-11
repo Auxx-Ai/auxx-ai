@@ -42,6 +42,7 @@ export interface AppWithStatusOutput {
     // Media
     screenshots: string[]
 
+    verified: boolean
     publicationStatus: string
   }
 
@@ -173,6 +174,7 @@ export async function getAppWithInstallationStatus(input: GetAppWithStatusInput)
       hasOauth: app.hasOauth,
       hasBundle: app.hasBundle,
       screenshots: (app.screenshots as string[]) ?? [],
+      verified: app.verified ?? false,
       publicationStatus: app.publicationStatus,
     },
     developerAccount: {

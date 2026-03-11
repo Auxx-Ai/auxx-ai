@@ -103,6 +103,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
   const deprecateDeployment = api.admin.apps.deprecateDeployment.useMutation()
   const deleteDeployment = api.admin.apps.deleteDeployment.useMutation()
   const toggleAutoApprove = api.admin.apps.toggleAutoApprove.useMutation()
+  const toggleVerified = api.admin.apps.toggleVerified.useMutation()
 
   /**
    * Handle delete app
@@ -243,6 +244,22 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
     }
   }
 
+  /**
+   * Handle toggle verified
+   */
+  const handleToggleVerified = async (checked: boolean) => {
+    try {
+      await toggleVerified.mutateAsync({
+        appId: id,
+        verified: checked,
+      })
+      router.refresh()
+      await utils.admin.apps.getApp.invalidate({ id })
+    } catch (error: any) {
+      toastError({ title: 'Failed to update verified status', description: error.message })
+    }
+  }
+
   if (isLoading) {
     return (
       <MainPage loading>
@@ -333,6 +350,13 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
         <MainPageHeader
           action={
             <div className='flex items-center gap-2'>
+              {app.verified && (
+                <Badge
+                  variant='secondary'
+                  className='bg-blue-500/10 text-blue-500 border-blue-500/20'>
+                  Verified
+                </Badge>
+              )}
               {app.autoApprove && (
                 <Badge
                   variant='secondary'
@@ -421,6 +445,21 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
                                 />
                                 <span className='text-sm text-muted-foreground'>
                                   {app.autoApprove ? 'Enabled' : 'Disabled'}
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>Verified</TableCell>
+                            <TableCell className='py-2'>
+                              <div className='flex items-center gap-2'>
+                                <Switch
+                                  checked={app.verified || false}
+                                  onCheckedChange={handleToggleVerified}
+                                  disabled={toggleVerified.isPending}
+                                />
+                                <span className='text-sm text-muted-foreground'>
+                                  {app.verified ? 'Enabled' : 'Disabled'}
                                 </span>
                               </div>
                             </TableCell>

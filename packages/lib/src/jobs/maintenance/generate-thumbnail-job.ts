@@ -132,6 +132,7 @@ export const generateThumbnailJob = async (job: any): Promise<void> => {
       content: processed.buffer,
       mimeType: getMimeTypeForFormat(processed.format),
       size: processed.size,
+      visibility: visibility ?? opts.visibility,
       metadata: {
         orgId,
         userId,

@@ -43,6 +43,7 @@ export interface AvailableApp {
   scopes: string[]
   hasOauth: boolean
   oauthExternalEntrypointUrl: string | null
+  verified: boolean
   isDevelopment: boolean
   isPublished: boolean
   isInstalled: boolean
@@ -242,6 +243,7 @@ export async function getAvailableApps(input: GetAvailableAppsInput) {
       scopes: app.scopes ?? [],
       hasOauth: app.hasOauth ?? false,
       oauthExternalEntrypointUrl: app.oauthExternalEntrypointUrl,
+      verified: app.verified ?? false,
       isDevelopment: isDev,
       isPublished: app.publicationStatus === 'published',
       isInstalled: !!installation,

@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import type { RawEmailStore } from './types'
 
 const logger = createScopedLogger('s3-raw-email')
 
@@ -21,7 +22,7 @@ const s3Client = new S3Client({
 /**
  * S3RawEmailStore fetches raw MIME payloads stored by SES in S3.
  */
-export class S3RawEmailStore {
+export class S3RawEmailStore implements RawEmailStore {
   /**
    * getRawEmailBuffer retrieves a raw MIME object from S3 as a Buffer.
    */

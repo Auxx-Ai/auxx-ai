@@ -389,8 +389,17 @@ export class StorageManager {
       })
 
       // Build external URL using adapter if it supports it
+      const externalUrlAuth =
+        params.provider === 'S3'
+          ? this.withResolvedS3Bucket({
+              auth,
+              bucket: params.bucket,
+              visibility: params.visibility,
+            })
+          : auth
+
       const externalUrl = adapter.buildExternalUrl
-        ? adapter.buildExternalUrl(params.key, auth)
+        ? adapter.buildExternalUrl(params.key, externalUrlAuth)
         : params.key
 
       // Create storage location record
@@ -727,7 +736,11 @@ export class StorageManager {
   async buildExternalUrl(
     provider: ProviderId,
     key: string,
-    credentialId?: string
+    credentialId?: string,
+    opts?: {
+      bucket?: string
+      visibility?: 'PUBLIC' | 'PRIVATE'
+    }
   ): Promise<string> {
     // Get adapter for the provider
     const adapter = await this.getAdapter(provider)
@@ -753,7 +766,16 @@ export class StorageManager {
 
     try {
       // Use adapter to build external URL
-      return adapter.buildExternalUrl(key, auth)
+      const externalUrlAuth =
+        provider === 'S3'
+          ? this.withResolvedS3Bucket({
+              auth,
+              bucket: opts?.bucket,
+              visibility: opts?.visibility,
+            })
+          : auth
+
+      return adapter.buildExternalUrl(key, externalUrlAuth)
     } catch (error) {
       logger.warn('Failed to build external URL, returning key as fallback', {
         provider,
@@ -997,25 +1019,20 @@ export class StorageManager {
       params.metadata?.privateBucket
 
     const visibilityFromMetadata = params.metadata?.visibility
+    const visibility = params.visibility || visibilityFromMetadata
 
     if (!bucket) {
-      const visibility = params.visibility || visibilityFromMetadata
       if (visibility === 'PUBLIC' || visibility === 'PRIVATE') {
         bucket = getBucketForVisibility(visibility)
       }
     }
 
-    if (!bucket && params.credentialId) {
+    if (!bucket) {
       try {
         const auth = await this.getProviderAuth('S3', params.credentialId)
-        bucket =
-          (auth as any)?.bucket ||
-          (auth as any)?.Bucket ||
-          (auth as any)?.s3Bucket ||
-          (auth as any)?.publicBucket ||
-          (auth as any)?.privateBucket
+        bucket = this.resolveS3BucketFromAuth(auth, visibility)
       } catch (error) {
-        logger.warn('Failed to resolve bucket from credentials', {
+        logger.warn('Failed to resolve bucket from provider auth', {
           credentialId: params.credentialId,
           error: error instanceof Error ? error.message : String(error),
         })
@@ -1026,6 +1043,71 @@ export class StorageManager {
     // which returns auth.bucket from configService. No separate configService fallback needed.
 
     return bucket || undefined
+  }
+
+  /**
+   * Resolve the S3 bucket from auth using the requested visibility when available.
+   */
+  private resolveS3BucketFromAuth(
+    auth?: ProviderAuth,
+    visibility?: 'PUBLIC' | 'PRIVATE'
+  ): string | undefined {
+    if (!auth) {
+      return undefined
+    }
+
+    if (visibility === 'PUBLIC') {
+      return (
+        (auth as any)?.publicBucket ||
+        (auth as any)?.bucket ||
+        (auth as any)?.privateBucket ||
+        undefined
+      )
+    }
+
+    if (visibility === 'PRIVATE') {
+      return (
+        (auth as any)?.privateBucket ||
+        (auth as any)?.bucket ||
+        (auth as any)?.publicBucket ||
+        undefined
+      )
+    }
+
+    return (
+      (auth as any)?.bucket ||
+      (auth as any)?.privateBucket ||
+      (auth as any)?.publicBucket ||
+      undefined
+    )
+  }
+
+  /**
+   * Ensure S3 URL generation uses the bucket that matches the requested visibility.
+   */
+  private withResolvedS3Bucket(params: {
+    auth?: ProviderAuth
+    bucket?: string
+    visibility?: 'PUBLIC' | 'PRIVATE'
+  }): ProviderAuth | undefined {
+    let bucket = params.bucket
+
+    if (!bucket && params.visibility) {
+      bucket = getBucketForVisibility(params.visibility) || undefined
+    }
+
+    if (!bucket) {
+      bucket = this.resolveS3BucketFromAuth(params.auth, params.visibility)
+    }
+
+    if (!bucket) {
+      return params.auth
+    }
+
+    return {
+      ...(params.auth ?? {}),
+      bucket,
+    }
   }
 
   /**

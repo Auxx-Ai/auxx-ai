@@ -3,6 +3,7 @@
 # dependencies
 .DS_Store
 node_modules
+.railway
 .turbo
 dist
 coverage

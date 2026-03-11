@@ -36,6 +36,9 @@ export const availableAppSchema = z.object({
   hasOauth: z.boolean(),
   oauthExternalEntrypointUrl: z.string().nullable(),
 
+  // Verified
+  verified: z.boolean(),
+
   // Publication status flags
   isDevelopment: z.boolean(),
   // isPublished: z.boolean(),
@@ -105,6 +108,7 @@ export const appDetailsSchema = z.object({
   oauthExternalEntrypointUrl: z.string().nullable(),
   isDevelopment: z.boolean(),
   isPublished: z.boolean(),
+  verified: z.boolean(),
 })
 
 export type AppDetails = z.infer<typeof appDetailsSchema>

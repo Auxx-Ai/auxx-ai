@@ -1,9 +1,13 @@
+// apps/web/src/app/(protected)/app/settings/channels/new/page.tsx
+
 'use client'
+
 import { Button } from '@auxx/ui/components/button'
 import { ArrowLeft, Mail, MessageSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { AppListCard } from '~/components/apps/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
-import IntegrationCard from '../_components/integration-card'
+import { getIntegrationProviderIcon } from '../_components/integration-table'
 
 /**
  * Integration Chooser Page
@@ -15,6 +19,59 @@ export default function IntegrationChooserPage() {
   const handleBack = () => {
     router.push('/app/settings/channels')
   }
+
+  const integrations = [
+    {
+      type: 'google',
+      title: 'Gmail',
+      subtitle: 'Email',
+      description: 'Connect your Gmail account to send and receive emails',
+    },
+    {
+      type: 'outlook',
+      title: 'Outlook',
+      subtitle: 'Email',
+      description: 'Connect your Microsoft Outlook account to send and receive emails',
+    },
+    {
+      type: 'imap',
+      title: 'IMAP Email',
+      subtitle: 'Email',
+      description: 'Connect any IMAP/SMTP email server (self-hosted, enterprise)',
+      icon: <Mail className='size-4' />,
+    },
+    {
+      type: 'facebook',
+      title: 'Facebook',
+      subtitle: 'Social',
+      description: 'Connect your Facebook page to manage messages and comments',
+    },
+    {
+      type: 'instagram',
+      title: 'Instagram',
+      subtitle: 'Social',
+      description: 'Connect your Instagram account to manage direct messages',
+    },
+    {
+      type: 'openphone',
+      title: 'OpenPhone',
+      subtitle: 'Phone',
+      description: 'Connect your OpenPhone account to send and receive SMS messages',
+    },
+    {
+      type: 'chat',
+      title: 'Chat Widget',
+      subtitle: 'Chat',
+      description: 'Create a live chat widget for your website',
+      icon: <MessageSquare className='size-4' />,
+    },
+    {
+      type: 'whatsapp',
+      title: 'WhatsApp',
+      subtitle: 'Social',
+      description: 'Connect your WhatsApp Business account to manage conversations',
+    },
+  ]
 
   return (
     <SettingsPage
@@ -33,60 +90,16 @@ export default function IntegrationChooserPage() {
       }>
       <div className='space-y-6 p-6'>
         <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {/* Email Channels */}
-          <IntegrationCard
-            type='google'
-            title='Gmail'
-            description='Connect your Gmail account to send and receive emails'
-          />
-
-          <IntegrationCard
-            type='outlook'
-            title='Outlook'
-            description='Connect your Microsoft Outlook account to send and receive emails'
-          />
-
-          <IntegrationCard
-            type='imap'
-            title='IMAP Email'
-            description='Connect any IMAP/SMTP email server (self-hosted, enterprise)'
-            icon={<Mail className='h-8 w-8 text-blue-500' />}
-          />
-
-          {/* Social Media Channels */}
-          <IntegrationCard
-            type='facebook'
-            title='Facebook'
-            description='Connect your Facebook page to manage messages and comments'
-          />
-
-          <IntegrationCard
-            type='instagram'
-            title='Instagram'
-            description='Connect your Instagram account to manage direct messages'
-            comingSoon={false}
-          />
-
-          {/* Phone Channels */}
-          <IntegrationCard
-            type='openphone'
-            title='OpenPhone'
-            description='Connect your OpenPhone account to send and receive SMS messages'
-          />
-          <IntegrationCard
-            type='chat' // Use the provider key
-            title='Chat Widget'
-            description='Create a live chat widget for your website'
-            icon={<MessageSquare className='h-8 w-8 text-indigo-500' />} // Custom icon
-          />
-
-          {/* Additional Channel Types (Coming Soon) */}
-          <IntegrationCard
-            type='whatsapp'
-            title='WhatsApp'
-            description='Connect your WhatsApp Business account to manage conversations'
-            comingSoon={true}
-          />
+          {integrations.map((integration) => (
+            <AppListCard
+              key={integration.type}
+              title={integration.title}
+              description={integration.description}
+              href={`/app/settings/channels/new/${integration.type}`}
+              icon={integration.icon ?? getIntegrationProviderIcon(integration.type, 'size-4')}
+              subtitle={integration.subtitle}
+            />
+          ))}
         </div>
       </div>
     </SettingsPage>

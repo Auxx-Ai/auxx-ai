@@ -1,9 +1,11 @@
 'use client'
 import { Input } from '@auxx/ui/components/input'
 // apps/web/src/app/(protected)/app/settings/apps/installed/page.tsx
+import { Code } from 'lucide-react'
 import { useState } from 'react'
 import { AppListCard } from '~/components/apps/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
+import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { api } from '~/trpc/react'
 
 /**
@@ -79,8 +81,16 @@ export default function AppsInstalledListPage() {
             {filteredInstalledApps.map(({ app }) => (
               <AppListCard
                 key={app.id}
-                app={app}
+                title={app.title}
+                description={app.description}
                 href={`/app/settings/apps/installed/${app.slug}`}
+                icon={app.avatarUrl ? <AppIcon iconId={app.avatarUrl} size='sm' /> : undefined}
+                subtitle={`By ${app.developerAccount.title}`}
+                verified={app.verified}
+                badges={[
+                  ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
+                  ...(app.isInstalled ? [{ label: 'Installed' }] : []),
+                ]}
               />
             ))}
           </div>
