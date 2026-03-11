@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.68](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.67...auxx-v0.1.68) (2026-03-11)
+
+
+### Bug Fixes
+
+* add SES permissions to IAM policy for SST deploys ([#218](https://github.com/Auxx-Ai/auxx-ai/issues/218)) ([653655d](https://github.com/Auxx-Ai/auxx-ai/commit/653655d965c3cadf081d3971a85e6e56a29bf764))
+
 ## [0.1.67](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.66...auxx-v0.1.67) (2026-03-11)
 
 
