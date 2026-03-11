@@ -38,7 +38,6 @@ import {
   X,
   XCircle,
 } from 'lucide-react'
-import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { SecretConnectionDialogContent } from '~/components/apps/app-connection-status'
@@ -64,7 +63,6 @@ function AppConnections({ app }: Props) {
   const [variableValues, setVariableValues] = useState<Record<string, string>>({})
   const [reconnectConnectionId, setReconnectConnectionId] = useState<string | null>(null)
 
-  const { data: installedResult } = api.apps.listInstalled.useQuery({})
   const { data: connectionsResult, refetch: refetchConnections } =
     api.apps.listConnections.useQuery()
 
@@ -74,10 +72,9 @@ function AppConnections({ app }: Props) {
     }
   }, [success, refetchConnections])
 
-  const installations = installedResult?.installations ?? []
   const allConnections = connectionsResult ?? []
-  const installation = installations.find((inst) => inst.app.id === app.app.id)
-  const connectionDefinition = installation?.connectionDefinition
+  const connectionDefinition = app.installation.connectionDefinition
+  const installationId = app.installation.id!
 
   const deleteConnection = api.apps.deleteConnection.useMutation({
     onSuccess: () => {
@@ -111,7 +108,7 @@ function AppConnections({ app }: Props) {
     },
   })
 
-  if (!installation) {
+  if (!app.installation.isInstalled) {
     return (
       <div className='flex-1 flex-col space-y-6 px-6 py-6'>
         <div className='border bg-primary-50 w-full p-6 rounded-2xl text-center'>
@@ -137,10 +134,7 @@ function AppConnections({ app }: Props) {
 
   // Filter connections for this app + installation (org-scoped only)
   const appConnections = allConnections.filter(
-    (conn) =>
-      conn.appId === app.app.id &&
-      conn.appInstallationId === installation.installationId &&
-      conn.global
+    (conn) => conn.appId === app.app.id && conn.appInstallationId === installationId && conn.global
   )
 
   const connectionType = connectionDefinition.global ? 'organization' : 'user'
@@ -164,7 +158,7 @@ function AppConnections({ app }: Props) {
       setVariableValues({})
       setVariableDialogOpen(true)
     } else {
-      window.location.href = `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installation.installationId}&type=${connectionType}&connectionId=${connectionId}`
+      window.location.href = `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${connectionType}&connectionId=${connectionId}`
     }
   }
 
@@ -181,7 +175,7 @@ function AppConnections({ app }: Props) {
     }
 
     const params = new URLSearchParams()
-    params.set('installation', installation.installationId)
+    params.set('installation', installationId)
     params.set('type', connectionType)
     if (reconnectConnectionId) {
       params.set('connectionId', reconnectConnectionId)
@@ -219,7 +213,7 @@ function AppConnections({ app }: Props) {
     }
     saveSecret.mutate({
       appId: app.app.id,
-      installationId: installation.installationId,
+      installationId: installationId,
       appName: app.app.title,
       connectionType,
       secret: secret.trim(),
@@ -233,7 +227,7 @@ function AppConnections({ app }: Props) {
 
   // Build "Add Connection" URL (new flow — no connectionId)
   const addConnectionUrl = isOAuth
-    ? `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installation.installationId}&type=${connectionType}`
+    ? `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${connectionType}`
     : null
 
   const StatusIcon = ({ status }: { status: string }) => {
