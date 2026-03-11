@@ -1,0 +1,19 @@
+{
+  "name": "@auxx/mail-ingress",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@auxx/typescript-config": "workspace:*",
+    "@types/aws-lambda": "^8.10.152",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

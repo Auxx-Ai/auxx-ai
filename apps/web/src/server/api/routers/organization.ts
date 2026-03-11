@@ -76,6 +76,7 @@ export const organizationRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id
+      const userEmail = ctx.session.user.email
       const { organizationId } = ctx.session
       const { name, handle, type, website, emailDomain, completedOnboarding } = input
 
@@ -85,6 +86,21 @@ export const organizationRouter = createTRPCRouter({
           code: 'BAD_REQUEST',
           message: 'This handle is reserved and cannot be used',
         })
+      }
+
+      if (handle !== undefined) {
+        const [existingHandle] = await ctx.db
+          .select({ id: schema.Organization.id })
+          .from(schema.Organization)
+          .where(eq(schema.Organization.handle, handle))
+          .limit(1)
+
+        if (existingHandle && existingHandle.id !== organizationId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This handle is already taken',
+          })
+        }
       }
 
       // Build update data object
@@ -101,6 +117,16 @@ export const organizationRouter = createTRPCRouter({
         .set({ ...updateData, updatedAt: new Date() })
         .where(eq(schema.Organization.id, organizationId))
         .returning()
+
+      if (organization?.handle) {
+        const orgService = new OrganizationService(ctx.db)
+        await orgService.ensureForwardingAddressIntegration({
+          organizationId,
+          userId,
+          userEmail: userEmail ?? undefined,
+          handle: organization.handle,
+        })
+      }
 
       // Also update user onboarding status if marking org as complete
       if (completedOnboarding) {

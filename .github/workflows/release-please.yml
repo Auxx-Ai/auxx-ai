@@ -101,18 +101,15 @@ jobs:
           cache-from: type=registry,ref=${{ matrix.image }}:buildcache
           cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max
 
-  sst-deploy:
+  sst-platform-deploy:
     needs: release-please
-    # Disabled: SST deploy paused while deploying via Railway instead.
-    # Re-enable by removing the `if: false` line below.
-    if: false
-    # if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    uses: ./.github/workflows/sst-deploy.yml
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    uses: ./.github/workflows/sst-deploy-platform.yml
     secrets: inherit
 
   railway-deploy:
     name: Deploy to Railway
-    needs: [release-please, docker-publish]
+    needs: [release-please, docker-publish, sst-platform-deploy]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -124,6 +121,7 @@ jobs:
           event-type: deploy-railway
           client-payload: >-
             {
+              "stage": "dev",
               "version": "${{ needs.release-please.outputs.version }}",
               "tag_name": "${{ needs.release-please.outputs.tag_name }}",
               "sha": "${{ github.sha }}",

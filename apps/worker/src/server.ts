@@ -8,6 +8,7 @@ import { serve } from '@hono/node-server'
 import type { Worker } from 'bullmq'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { type InboundEmailPoller, startInboundEmailPoller } from './inbound-email'
 /**
  * The apps/worker directory is responsible for running the worker processes.
  * It is responsible for processing jobs from the queues defined in the packages/lib/src/queues directory.
@@ -18,6 +19,7 @@ import { setupSchedules, startWorkers } from './workers'
 // --- Declare variables needed outside the async function ---
 let server: ReturnType<typeof serve> // Hono server type
 let workersInstance: Worker[] // Use a different name to avoid conflict with the imported 'workers' module/namespace if any
+let inboundEmailPoller: InboundEmailPoller | null = null
 
 // --- Wrap async setup in an async function ---
 async function initializeApp() {
@@ -32,6 +34,9 @@ async function initializeApp() {
   workersInstance = await startWorkers()
   console.log('Workers started.')
 
+  inboundEmailPoller = startInboundEmailPoller()
+  console.log(`Inbound email poller ${inboundEmailPoller ? 'started' : 'disabled'}.`)
+
   // Setup Hono App
   const app = new Hono()
 
@@ -43,7 +48,11 @@ async function initializeApp() {
 
   app.get('/health', (c) => {
     // You might want to add more checks here, e.g., worker health
-    return c.json({ status: 'OK', message: 'Workers are healthy' })
+    return c.json({
+      status: 'OK',
+      message: 'Workers are healthy',
+      inboundEmail: inboundEmailPoller ? 'running' : 'disabled',
+    })
   })
 
   // Handle 404s - Should be after all other routes
@@ -76,6 +85,12 @@ const gracefulShutdown = async (signal: string) => {
   console.log(`Received ${signal}, closing workers and server...`)
 
   try {
+    if (inboundEmailPoller) {
+      console.log('Stopping inbound email poller...')
+      await inboundEmailPoller.stop()
+      console.log('Inbound email poller stopped.')
+    }
+
     if (workersInstance) {
       // Close all workers gracefully
       console.log('Closing workers...')

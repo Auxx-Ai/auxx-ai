@@ -16,6 +16,7 @@ export {
 } from './email-storage'
 export { EmailTemplateService } from './email-templates'
 export { ReauthenticationRequiredError } from './errors-handlers'
+export * from './inbound'
 export { FolderDiscoveryService } from './labels/folder-discovery-service'
 export { LabelRepo } from './labels/label-repo'
 export { LabelService } from './labels/label-service'

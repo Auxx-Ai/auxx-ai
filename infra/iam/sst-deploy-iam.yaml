@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: IAM setup for SST v3 deploys via GitHub OIDC (Auxx) — policy + role + OIDC provider
+Description: IAM setup for SST deploys and auxx-infra Railway sync via GitHub OIDC
 
 Parameters:
   RepoOwner:
@@ -20,6 +20,26 @@ Parameters:
     Type: String
     Default: AuxxSSTDeployPolicy
     Description: Name of the managed policy allowing SST v3 deployments
+  InfraRepoOwner:
+    Type: String
+    Default: Auxx-Ai
+    Description: GitHub organization or user that owns the auxx-infra repository
+  InfraRepoName:
+    Type: String
+    Default: auxx-infra
+    Description: GitHub repository name for Railway deployment automation
+  RailwaySyncRoleName:
+    Type: String
+    Default: AuxxInfraRailwaySyncRole
+    Description: Name of the IAM role assumed by auxx-infra GitHub Actions via OIDC
+  RailwaySyncManagedPolicyName:
+    Type: String
+    Default: AuxxInfraRailwaySyncPolicy
+    Description: Name of the managed policy allowing auxx-infra to read Railway env sync parameters
+  RailwaySyncSsmPathPrefix:
+    Type: String
+    Default: /auxx/dev/railway/worker/
+    Description: SSM path prefix that auxx-infra may read for Railway env synchronization
 
   CreateOidcProvider:
     Type: String
@@ -105,6 +125,25 @@ Resources:
               - iam:PassRole
             Resource: '*'
 
+  AuxxInfraRailwaySyncPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref RailwaySyncManagedPolicyName
+      Description: Read-only access for auxx-infra to sync AWS-derived env vars into Railway
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ReadRailwaySyncParameters
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource:
+              - !Sub
+                - 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${NormalizedPrefix}*'
+                - NormalizedPrefix: !Ref RailwaySyncSsmPathPrefix
+
   AuxxGithubDeployRole:
     Type: AWS::IAM::Role
     Properties:
@@ -125,6 +164,26 @@ Resources:
       ManagedPolicyArns:
         - !Ref AuxxSSTDeployPolicy
 
+  AuxxInfraRailwaySyncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RailwaySyncRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [ UseExistingProvider, !Ref ExistingOidcProviderArn, !Ref GitHubOidcProvider ]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub 'repo:${InfraRepoOwner}/${InfraRepoName}:*'
+      ManagedPolicyArns:
+        - !Ref AuxxInfraRailwaySyncPolicy
+
 Outputs:
   RoleArn:
     Description: ARN of the GitHub OIDC deploy role
@@ -132,6 +191,12 @@ Outputs:
   ManagedPolicyArn:
     Description: ARN of the managed deploy policy
     Value: !Ref AuxxSSTDeployPolicy
+  RailwaySyncRoleArn:
+    Description: ARN of the auxx-infra GitHub OIDC Railway sync role
+    Value: !GetAtt AuxxInfraRailwaySyncRole.Arn
+  RailwaySyncManagedPolicyArn:
+    Description: ARN of the managed policy used by the auxx-infra Railway sync role
+    Value: !Ref AuxxInfraRailwaySyncPolicy
   OIDCProviderArn:
     Description: ARN of the GitHub OIDC provider
     Value: !Ref GitHubOidcProvider

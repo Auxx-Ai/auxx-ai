@@ -357,23 +357,56 @@ export class InboxService {
   }
 
   /**
-   * Add integration to default inbox (creates inbox if needed)
+   * Get or create the canonical shared inbox for the organization.
    */
-  async addIntegrationToDefaultInbox(integrationId: string) {
-    // Find existing default inbox by name
+  async getOrCreateSharedInbox(): Promise<Inbox> {
     const existingInboxes = await this.getInboxes()
-    let defaultInbox = existingInboxes.find((i) => i.name === 'Default Inbox')
+    let sharedInbox =
+      existingInboxes.find((i) => i.name === 'Shared Inbox') ??
+      existingInboxes.find((i) => i.name === 'Default Inbox')
 
-    if (!defaultInbox) {
-      defaultInbox = await this.createInbox({
-        name: 'Default Inbox',
+    if (!sharedInbox) {
+      sharedInbox = await this.createInbox({
+        name: 'Shared Inbox',
         description: 'Default inbox for all incoming emails',
         color: 'blue',
         status: 'ACTIVE',
       })
+      return sharedInbox
     }
 
-    return this.addIntegration(defaultInbox.recordId, integrationId, true)
+    if (sharedInbox.name === 'Default Inbox') {
+      sharedInbox = await this.updateInbox(sharedInbox.recordId, {
+        name: 'Shared Inbox',
+        description: 'Default shared inbox for all incoming emails',
+      })
+    }
+
+    return sharedInbox
+  }
+
+  /**
+   * Add an integration to the canonical shared inbox.
+   */
+  async addIntegrationToSharedInbox(
+    integrationId: string,
+    isDefault: boolean = true,
+    settings?: Record<string, unknown>
+  ) {
+    const sharedInbox = await this.getOrCreateSharedInbox()
+    return this.addIntegration(sharedInbox.recordId, integrationId, isDefault, settings)
+  }
+
+  /**
+   * Add integration to the shared inbox.
+   * Kept for backward compatibility with older call sites.
+   */
+  async addIntegrationToDefaultInbox(
+    integrationId: string,
+    isDefault: boolean = true,
+    settings?: Record<string, unknown>
+  ) {
+    return this.addIntegrationToSharedInbox(integrationId, isDefault, settings)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

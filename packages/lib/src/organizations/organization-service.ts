@@ -8,7 +8,9 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, sql } from 'drizzle-orm'
 import { DehydrationService } from '../dehydration'
+import type { ForwardingIntegrationMetadata } from '../email/inbound'
 import { type IntegrationProviderType, MessageService } from '../email/message-service'
+import { InboxService } from '../inboxes'
 import { MemberService } from '../members/member-service'
 import { OrganizationSeeder } from '../seed/organization-seeder'
 import { SystemUserService } from '../users/system-user-service'
@@ -25,6 +27,126 @@ export class OrganizationService {
    */
   constructor(db: Database) {
     this.db = db
+  }
+
+  /**
+   * getInboundEmailDomain returns the configured forwarding domain.
+   */
+  private getInboundEmailDomain(): string {
+    return (process.env.INBOUND_EMAIL_DOMAIN || 'mail.auxx.ai').trim().toLowerCase()
+  }
+
+  /**
+   * buildForwardingAddress creates the forwarding mailbox for an organization handle.
+   */
+  private buildForwardingAddress(handle: string): string {
+    return `${handle.trim().toLowerCase()}@${this.getInboundEmailDomain()}`
+  }
+
+  /**
+   * buildForwardingMetadata merges system-managed forwarding metadata with any existing metadata.
+   */
+  private buildForwardingMetadata(params: {
+    existingMetadata?: Record<string, unknown> | null
+    userEmail?: string
+  }): ForwardingIntegrationMetadata {
+    const existingMetadata = (params.existingMetadata ?? {}) as ForwardingIntegrationMetadata
+    const allowedSenders = new Set(
+      Array.isArray(existingMetadata.allowedSenders)
+        ? existingMetadata.allowedSenders.map((entry) => entry.trim().toLowerCase()).filter(Boolean)
+        : []
+    )
+
+    if (params.userEmail) {
+      allowedSenders.add(params.userEmail.trim().toLowerCase())
+    }
+
+    return {
+      ...existingMetadata,
+      channelType: 'forwarding-address',
+      systemManaged: true,
+      ingressProvider: 'ses-s3-sqs',
+      allowedSenders: Array.from(allowedSenders),
+    }
+  }
+
+  /**
+   * ensureForwardingAddressIntegration creates or updates the system-managed forwarding integration.
+   */
+  async ensureForwardingAddressIntegration(params: {
+    organizationId: string
+    userId: string
+    handle?: string | null
+    userEmail?: string
+  }): Promise<string | null> {
+    const handle = params.handle?.trim().toLowerCase()
+    if (!handle) return null
+
+    const forwardingAddress = this.buildForwardingAddress(handle)
+    const emailIntegrations = await this.db
+      .select()
+      .from(schema.Integration)
+      .where(
+        and(
+          eq(schema.Integration.organizationId, params.organizationId),
+          eq(schema.Integration.provider, 'email')
+        )
+      )
+
+    const forwardingIntegration =
+      emailIntegrations.find((integration) => {
+        const metadata = integration.metadata as ForwardingIntegrationMetadata | null
+        return metadata?.channelType === 'forwarding-address' || metadata?.systemManaged === true
+      }) ?? emailIntegrations.find((integration) => integration.email === forwardingAddress)
+
+    const metadata = this.buildForwardingMetadata({
+      existingMetadata: forwardingIntegration?.metadata as Record<string, unknown> | null,
+      userEmail: params.userEmail,
+    })
+
+    let integrationId: string
+
+    if (forwardingIntegration) {
+      const [updatedIntegration] = await this.db
+        .update(schema.Integration)
+        .set({
+          name: 'Forwarding Address',
+          email: forwardingAddress,
+          enabled: true,
+          metadata: metadata as unknown as any,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Integration.id, forwardingIntegration.id))
+        .returning({ id: schema.Integration.id })
+
+      integrationId = updatedIntegration!.id
+    } else {
+      const [createdIntegration] = await this.db
+        .insert(schema.Integration)
+        .values({
+          organizationId: params.organizationId,
+          provider: 'email',
+          name: 'Forwarding Address',
+          email: forwardingAddress,
+          enabled: true,
+          metadata: metadata as unknown as any,
+          updatedAt: new Date(),
+        })
+        .returning({ id: schema.Integration.id })
+
+      integrationId = createdIntegration!.id
+    }
+
+    const inboxService = new InboxService(this.db, params.organizationId, params.userId)
+    await inboxService.addIntegrationToSharedInbox(integrationId, true)
+
+    logger.info('Ensured forwarding address integration', {
+      organizationId: params.organizationId,
+      integrationId,
+      forwardingAddress,
+    })
+
+    return integrationId
   }
   /**
    * Verifies if a user is an OWNER of the specified organization.
@@ -442,6 +564,12 @@ export class OrganizationService {
     try {
       const seeder = new OrganizationSeeder(this.db, userId, userEmail)
       await seeder.seedNewOrganization(organizationId)
+      await this.ensureForwardingAddressIntegration({
+        organizationId,
+        userId,
+        handle,
+        userEmail,
+      })
       logger.info('Organization seeding complete', { organizationId })
     } catch (error) {
       logger.error('Failed to complete organization seeding', { organizationId, error })
