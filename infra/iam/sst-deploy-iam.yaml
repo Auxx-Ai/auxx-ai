@@ -98,6 +98,7 @@ Resources:
               - cloudfront:*
               - cloudfront-keyvaluestore:*
               - codebuild:*
+              - ses:*
             Resource: '*'
           - Sid: IAMRoleManagement
             Effect: Allow
