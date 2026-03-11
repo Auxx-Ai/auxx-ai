@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.72](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.71...auxx-v0.1.72) (2026-03-11)
+
+
+### Features
+
+* add allowed senders management for forwarding integrations ([#228](https://github.com/Auxx-Ai/auxx-ai/issues/228)) ([3a209f1](https://github.com/Auxx-Ai/auxx-ai/commit/3a209f1517a7fefba2115a7f941f96501edab5dc))
+* implement IMAP full sync with windowed UID scanning and checkpo… ([#226](https://github.com/Auxx-Ai/auxx-ai/issues/226)) ([7810390](https://github.com/Auxx-Ai/auxx-ai/commit/7810390489a0fff7d3fea835c1cab63f98b3cedd))
+
 ## [0.1.71](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.70...auxx-v0.1.71) (2026-03-11)
 
 
