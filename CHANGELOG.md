@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.75](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.74...auxx-v0.1.75) (2026-03-12)
+
+
+### Features
+
+* enhance logging for Lambda invocation and error handling ([#234](https://github.com/Auxx-Ai/auxx-ai/issues/234)) ([56df230](https://github.com/Auxx-Ai/auxx-ai/commit/56df230dc13d79fd41b4751b386207bb44af07fd))
+
 ## [0.1.74](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.73...auxx-v0.1.74) (2026-03-11)
 
 
