@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/share/execution-result-card.tsx
 'use client'
 
-import type { ContentSegment, WorkflowFileData } from '@auxx/lib/workflow-engine/types'
+import type { ContentSegment, WorkflowFileData } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { cn } from '@auxx/ui/lib/utils'

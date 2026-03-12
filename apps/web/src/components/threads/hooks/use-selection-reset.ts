@@ -1,7 +1,7 @@
 // apps/web/src/components/threads/hooks/use-selection-reset.ts
 'use client'
 
-import type { ConditionGroup } from '@auxx/lib/conditions'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { useEffect, useRef } from 'react'
 import { useThreadSelectionStore } from '../store/thread-selection-store'
 

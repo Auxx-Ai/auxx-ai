@@ -1,6 +1,6 @@
 // apps/web/src/components/threads/hooks/use-thread-list.ts
 
-import type { ConditionGroup } from '@auxx/lib/conditions'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { useCallback, useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'

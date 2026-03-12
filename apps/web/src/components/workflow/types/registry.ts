@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/types/registry.ts
 
-import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
 import type { UnifiedOutputVariablesFunction } from './output-variables'
 

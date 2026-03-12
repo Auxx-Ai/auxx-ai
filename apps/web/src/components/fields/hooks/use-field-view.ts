@@ -1,8 +1,8 @@
 // apps/web/src/components/fields/hooks/use-field-view.ts
 'use client'
 
-import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions'
-import { createDefaultFieldViewConfig } from '@auxx/lib/conditions'
+import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions/client'
+import { createDefaultFieldViewConfig } from '@auxx/lib/conditions/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { useCallback, useMemo } from 'react'
 import {

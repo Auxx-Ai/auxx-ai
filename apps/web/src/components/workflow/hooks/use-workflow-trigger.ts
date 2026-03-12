@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/hooks/use-workflow-trigger.ts
 
-import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { useStore, useStoreApi } from '@xyflow/react'
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import {

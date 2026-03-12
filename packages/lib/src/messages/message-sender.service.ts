@@ -72,9 +72,10 @@ export class MessageSenderService {
     })
     // Validate input
     this.validateInput(input)
+    let threadContext: ThreadContext | undefined
     try {
       // Step 1: Prepare thread
-      const threadContext = await this.threadManager.getOrCreateThreadForSending({
+      threadContext = await this.threadManager.getOrCreateThreadForSending({
         threadId: input.threadId,
         subject: input.subject,
         integrationId: input.integrationId,
@@ -166,6 +167,22 @@ export class MessageSenderService {
           threadId: input.threadId,
         },
       })
+
+      // Clean up orphaned thread if we created a new one during this send attempt
+      if (threadContext?.isPending) {
+        try {
+          await this.threadManager.deletePendingThread(threadContext.id)
+          logger.info('Cleaned up orphaned pending thread after send failure', {
+            threadId: threadContext.id,
+          })
+        } catch (cleanupError) {
+          logger.warn('Failed to clean up orphaned pending thread', {
+            threadId: threadContext.id,
+            error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+          })
+        }
+      }
+
       throw error
     }
   }

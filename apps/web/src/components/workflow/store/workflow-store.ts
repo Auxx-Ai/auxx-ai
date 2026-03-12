@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/store/workflow-store.ts
 
-import { type Workflow, WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { type Workflow, WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { Node } from '@xyflow/react'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'

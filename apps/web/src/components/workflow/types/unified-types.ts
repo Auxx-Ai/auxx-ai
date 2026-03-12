@@ -9,7 +9,7 @@
  */
 
 // Import BaseType from backend (single source of truth)
-export { BaseType } from '@auxx/lib/workflow-engine/types'
+export { BaseType } from '@auxx/lib/workflow-engine/client'
 
 /**
  * Validation rules for type values

@@ -26,7 +26,7 @@ export type {
   PhoneColumnFormatting,
   ViewConfig,
   ViewType,
-} from '@auxx/lib/conditions'
+} from '@auxx/lib/conditions/client'
 
 /**
  * Field types that support formatting

@@ -8,6 +8,13 @@ export { evaluateConditions, type FieldResolver } from './evaluate'
 export type { FieldInputConfig } from './field-input-modes'
 // Field input modes for resource-based conditions
 export { FieldInputMode, resolveFieldInputConfig } from './field-input-modes'
+export type { FieldViewConfig, ViewContextType } from './field-view-config'
+export {
+  createDefaultFieldViewConfig,
+  fieldViewConfigSchema,
+  viewContextTypeSchema,
+  viewContextTypes,
+} from './field-view-config'
 export type { Operator, OperatorDefinition } from './operator-definitions'
 // Operator definitions - SINGLE SOURCE OF TRUTH for operators
 export {
@@ -24,6 +31,7 @@ export {
 export { conditionGroupSchema, conditionGroupsSchema, conditionSchema } from './schema'
 export type { Condition, ConditionGroup, ConditionValidationResult } from './types'
 export type {
+  CheckboxColumnFormatting,
   ColumnFormatting,
   CurrencyColumnFormatting,
   DateColumnFormatting,

@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-events.ts
 
-import { WorkflowEventType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowEventType } from '@auxx/lib/workflow-engine/client'
 import { useMemo } from 'react'
 import { useRunCreated } from './use-run-created'
 import { useRunLoopCompleted } from './use-run-loop-completed'

@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/scheduled-trigger/schema.ts
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { z } from 'zod'
 import {
   NodeCategory,

@@ -1,7 +1,7 @@
 // apps/web/src/components/datasets/settings/sections/search-configuration-section.tsx
 'use client'
 import type { DatasetEntity as Dataset } from '@auxx/database/types'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
+import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@auxx/ui/components/form'
 import { RadioGroup } from '@auxx/ui/components/radio-group'

@@ -1,8 +1,8 @@
 // apps/web/src/components/fields/hooks/use-toggle-field-visibility.ts
 'use client'
 
-import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions'
-import { createDefaultFieldViewConfig } from '@auxx/lib/conditions'
+import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions/client'
+import { createDefaultFieldViewConfig } from '@auxx/lib/conditions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
 import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'

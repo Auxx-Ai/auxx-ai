@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/types/core.ts
 
 import type { Operator } from '@auxx/lib/conditions/client'
-import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { Viewport } from '@xyflow/react'
 import type { Edge } from './node-base'
 import type { BaseType } from './unified-types'

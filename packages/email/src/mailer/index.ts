@@ -52,6 +52,8 @@ import {
 import type { EmailOptions, UserEmail } from '../types'
 import { NodemailerService } from './nodemailer-service'
 
+export { NodemailerService } from './nodemailer-service'
+
 const logger = createScopedLogger('system-mail')
 
 function formatSubject(subject: string) {

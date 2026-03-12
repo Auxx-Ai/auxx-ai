@@ -36,8 +36,8 @@ export class MessageComposerService {
     textPlain?: string | null
     participants: ProcessedParticipants
     signatureId?: string | null
-    draftMessageId?: string | null
-    keepAsDraft?: boolean // @deprecated - no longer used, drafts use separate Draft table
+    draftMessageId?: string | null // @deprecated - ignored, drafts use separate Draft table
+    keepAsDraft?: boolean // @deprecated - ignored, drafts use separate Draft table
     inReplyTo?: string | null
     references?: string | null
     attachmentIds?: string[] // MediaAsset IDs to attach
@@ -45,25 +45,9 @@ export class MessageComposerService {
     const messageId = input.messageId || this.generateMessageId()
     const sendToken = this.generateSendToken()
 
-    if (input.draftMessageId) {
-      if (input.keepAsDraft) {
-        // Update existing draft without promoting to pending
-        return this.updateExistingDraft({
-          ...input,
-          draftMessageId: input.draftMessageId,
-          messageId,
-          sendToken,
-        })
-      } else {
-        // Promote draft to pending send
-        return this.promoteDraftToPending({
-          ...input,
-          draftMessageId: input.draftMessageId,
-          messageId,
-          sendToken,
-        })
-      }
-    }
+    // @deprecated - keepAsDraft / promoteDraftToPending used the old Message-table drafts.
+    // Drafts now live in the Draft table; the client passes all content fields on send,
+    // so we always create a fresh PENDING message. Draft cleanup is handled client-side.
 
     // Create new message in PENDING state
     return this.createPendingMessage({

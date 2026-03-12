@@ -2,7 +2,7 @@
 
 // Import from shared conditions module - single source of truth
 import type { ConditionGroup as BaseConditionGroup, Condition } from '@auxx/lib/conditions/client'
-import type { BaseType } from '@auxx/lib/workflow-engine/types'
+import type { BaseType } from '@auxx/lib/workflow-engine/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import type { ReactNode } from 'react'
 

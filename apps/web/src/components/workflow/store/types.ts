@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/store/types.ts
 
-import type { WorkflowExecutionResult } from '@auxx/lib/workflow-engine/types'
+import type { WorkflowExecutionResult } from '@auxx/lib/workflow-engine/client'
 // Import consolidated types
 import type {
   FlowEdge as BaseFlowEdge,

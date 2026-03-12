@@ -18,6 +18,7 @@ export interface MessageType {
   from?: {
     id: string
     identifier: string
+    identifierType: string
     name: string | null
     displayName?: string | null
   } | null
@@ -77,6 +78,7 @@ export interface DraftMessageType {
   from?: {
     id: string
     identifier: string
+    identifierType: string
     name: string | null
     displayName?: string | null
   } | null

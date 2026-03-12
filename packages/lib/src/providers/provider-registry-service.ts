@@ -11,6 +11,7 @@ import type {
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
 import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
+import { EmailForwardingProvider } from './email/email-forwarding-provider'
 import { FacebookProvider } from './facebook/facebook-provider'
 import { GoogleProvider } from './google/google-provider'
 import { ImapProvider } from './imap/imap-provider'
@@ -59,6 +60,7 @@ export class ProviderRegistryService {
       openphone: IntegrationProviderEnum.openphone,
       mailgun: IntegrationProviderEnum.mailgun,
       imap: IntegrationProviderEnum.imap,
+      email: IntegrationProviderEnum.email,
     }
   }
   /**
@@ -97,7 +99,9 @@ export class ProviderRegistryService {
         // Map string provider to IntegrationProviderType
         const providerType = providerTypeMap[integration.provider]
         if (providerType) {
-          const identifier = ProviderRegistryService.getIdentifierFromMetadata(integration.metadata)
+          const identifier =
+            integration.email ||
+            ProviderRegistryService.getIdentifierFromMetadata(integration.metadata)
           integrations.push({
             type: providerType,
             id: integration.id,
@@ -197,6 +201,9 @@ export class ProviderRegistryService {
           break
         case IntegrationProviderEnum.imap:
           provider = new ImapProvider(this.organizationId)
+          break
+        case IntegrationProviderEnum.email:
+          provider = new EmailForwardingProvider(this.organizationId)
           break
         default:
           logger.error('Attempted to initialize unsupported provider type', { type, integrationId })

@@ -1,11 +1,10 @@
 // apps/web/src/components/dynamic-table/index.tsx
 'use client'
 
-// Export view config schema (for programmatic validation)
-export { viewConfigSchema } from '@auxx/lib/conditions'
-
 // Re-export ConditionGroup for filter types (new filter system)
 export type { ConditionGroup } from '@auxx/lib/conditions/client'
+// Export view config schema (for programmatic validation)
+export { viewConfigSchema } from '@auxx/lib/conditions/client'
 export { PrimaryCell, type PrimaryCellProps } from './cells/primary-cell'
 export { PrimaryFieldCell } from './cells/primary-field-cell'
 export { BulkActionBar } from './components/bulk-action-bar'

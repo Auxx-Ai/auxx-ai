@@ -6,7 +6,7 @@ import type {
   WorkflowNodeExecutionEntity as WorkflowNodeExecution,
   WorkflowRunEntity as WorkflowRun,
 } from '@auxx/database/types'
-import type { WorkflowEventType } from '@auxx/lib/workflow-engine/types'
+import type { WorkflowEventType } from '@auxx/lib/workflow-engine/client'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { NodeRunningStatus } from '~/components/workflow/types'

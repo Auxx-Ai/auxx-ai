@@ -9,6 +9,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Loader2, Mail, Plus, Trash2, Upload, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useDropzone } from 'react-dropzone'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
@@ -37,7 +38,7 @@ import IntegrationSelector from './integration-selector'
 import { LazyTiptapEditor } from './lazy-tiptap-editor'
 import { MessageFile } from './message-file'
 import PrevMessage from './prev-message'
-import { RecipientInput } from './recipient-input'
+import { RecipientInput, type RecipientInputHandle } from './recipient-input'
 import type {
   FileAttachment,
   ParticipantInputData,
@@ -113,6 +114,11 @@ function ReplyComposeEditorComponent({
     CC: state.cc,
     BCC: state.bcc,
   }))
+  // Recipient input refs for pre-send commit
+  const toInputRef = useRef<RecipientInputHandle>(null)
+  const ccInputRef = useRef<RecipientInputHandle>(null)
+  const bccInputRef = useRef<RecipientInputHandle>(null)
+
   // Other UI state
   const [content, setContent] = useState(state.contentHtml)
   const [showCc, setShowCc] = useState(state.cc.length > 0)
@@ -529,6 +535,12 @@ function ReplyComposeEditorComponent({
   )
   const handleSendClick = useCallback(async () => {
     if (isSending || !editor?.isEditable) return
+    // 0. Commit any pending recipient input before validation
+    flushSync(() => {
+      toInputRef.current?.commitPendingInput()
+      ccInputRef.current?.commitPendingInput()
+      bccInputRef.current?.commitPendingInput()
+    })
     // 1. Set sending state immediately to prevent new autosaves
     setIsSending(true)
     // 2. Cancel any pending debounced saves
@@ -795,6 +807,7 @@ function ReplyComposeEditorComponent({
             <div className='flex items-center gap-2 px-4 py-2'>
               <span className='w-10 shrink-0 text-sm text-muted-foreground'>To:</span>
               <RecipientInput
+                ref={toInputRef}
                 recipients={recipients.TO}
                 onAdd={(r) => upsertRecipient('TO', r)}
                 onRemove={(id) => removeRecipient('TO', id)}
@@ -843,6 +856,7 @@ function ReplyComposeEditorComponent({
                 <div className='flex items-center gap-2 px-4 py-2'>
                   <span className='w-10 shrink-0 text-sm text-muted-foreground'>Cc:</span>
                   <RecipientInput
+                    ref={ccInputRef}
                     recipients={recipients.CC}
                     onAdd={(r) => upsertRecipient('CC', r)}
                     onRemove={(id) => removeRecipient('CC', id)}
@@ -872,6 +886,7 @@ function ReplyComposeEditorComponent({
                 <div className='flex items-center gap-2 px-4 py-2'>
                   <span className='w-10 shrink-0 text-sm text-muted-foreground'>Bcc:</span>
                   <RecipientInput
+                    ref={bccInputRef}
                     recipients={recipients.BCC}
                     onAdd={(r) => upsertRecipient('BCC', r)}
                     onRemove={(id) => removeRecipient('BCC', id)}

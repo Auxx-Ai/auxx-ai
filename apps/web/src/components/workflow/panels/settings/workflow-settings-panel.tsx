@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/panels/settings/workflow-settings-panel.tsx
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'

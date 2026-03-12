@@ -1,3 +1,5 @@
+export { EmailForwardingProvider } from './email'
+
 export type { FacebookIntegrationMetadata } from './facebook/facebook-oauth'
 export { FacebookOAuthService } from './facebook/facebook-oauth'
 

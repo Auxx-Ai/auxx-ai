@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/ui/output-variables/types.ts
 
-import type { Node } from '@auxx/lib/workflow-engine/types'
+import type { Node } from '@auxx/lib/workflow-engine/client'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { VariableGroup } from '../../hooks/use-available-variables'
 

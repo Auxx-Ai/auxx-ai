@@ -5,7 +5,7 @@ import {
   createDefaultFieldViewConfig,
   type FieldViewConfig,
   type ViewContextType,
-} from '@auxx/lib/conditions'
+} from '@auxx/lib/conditions/client'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Button, buttonVariants } from '@auxx/ui/components/button'

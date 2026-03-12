@@ -88,6 +88,7 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
         ? {
             id: fromParticipant.id,
             identifier: fromParticipant.identifier,
+            identifierType: fromParticipant.identifierType,
             name: fromParticipant.name,
             displayName: fromParticipant.displayName,
           }

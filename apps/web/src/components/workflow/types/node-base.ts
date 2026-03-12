@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/types/node-base.ts
 
-import { NodeRunningStatus } from '@auxx/lib/workflow-engine/types'
+import { NodeRunningStatus } from '@auxx/lib/workflow-engine/client'
 import type {
   Position,
   Edge as ReactFlowEdge,
