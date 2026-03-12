@@ -41,6 +41,8 @@ export interface MessageMeta {
   isInbound: boolean
   isFirstInThread: boolean
   hasAttachments: boolean
+  hasHtmlBody: boolean
+  hasTextBody: boolean
 
   sentAt: string | null // ISO date
   receivedAt: string | null // ISO date

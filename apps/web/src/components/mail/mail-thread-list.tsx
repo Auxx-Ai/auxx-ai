@@ -2,6 +2,7 @@
 'use client'
 
 import { parseRecordId } from '@auxx/types/resource'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -10,9 +11,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@auxx/ui/components/empty'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
-import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, User } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, Mail, User } from 'lucide-react'
 import { memo, useEffect, useRef } from 'react'
 // import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { useInView } from 'react-intersection-observer'
@@ -129,8 +137,16 @@ export const ThreadList = memo(function ThreadList({
           className={cn('relative flex flex-col gap-2 p-4 pt-0', isEmpty && 'flex-1')}
           ref={parent}>
           {isEmpty && (
-            <div className='p-8 text-center text-muted-foreground h-full flex items-center justify-center border rounded-2xl ring-inset ring-1 ring-muted/10'>
-              No threads found in this view.
+            <div className='p-4 text-center text-muted-foreground h-full flex items-center justify-center border rounded-2xl ring-inset ring-1 ring-muted/10'>
+              <Empty className=' md:p-3'>
+                <EmptyHeader className='gap-0'>
+                  <EmptyMedia variant='icon'>
+                    <Mail />
+                  </EmptyMedia>
+                  <EmptyTitle>Nothing here</EmptyTitle>
+                  <EmptyDescription>No threads found in this view.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             </div>
           )}
 
@@ -248,36 +264,38 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
 
   return (
     <div className='sticky top-0 z-10 h-10 bg-primary-100 flex flex-row items-center justify-between px-4'>
-      <div className='flex items-center justify-center rounded-full font-medium transition-colors text-xs py-0 w-[97px]'>
-        {viewMode === 'edit' && (
-          <div
-            className='ps-3 pe-2 border border-r-0 h-6 rounded-full rounded-r-none flex items-center justify-center cursor-pointer hover:bg-foreground/10'
-            onClick={handleSelectAll}>
-            <Checkbox
-              checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-              className='pointer-events-none'
-            />
+      <div className='flex items-center justify-start flex-row gap-2'>
+        <div className='flex items-center justify-center rounded-full font-medium transition-colors text-xs py-0 w-[97px]'>
+          {viewMode === 'edit' && (
+            <div
+              className='ps-3 pe-2 border border-r-0 h-6 rounded-full rounded-r-none flex items-center justify-center cursor-pointer hover:bg-foreground/10'
+              onClick={handleSelectAll}>
+              <Checkbox
+                checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                className='pointer-events-none'
+              />
+            </div>
+          )}
+
+          <Button
+            variant='ghost'
+            size='xs'
+            onClick={() => handleViewModeChange(viewMode === 'edit' ? 'view' : 'edit')}
+            className={cn(
+              'border h-6 flex text-muted-foreground px-2 hover:bg-foreground/10 flex-1',
+              viewMode === 'edit' ? 'rounded-full rounded-l-none' : 'rounded-full'
+            )}>
+            {viewMode === 'edit' ? 'Edit' : 'View'}
+            <ChevronDown className='size-3 ml-auto' />
+          </Button>
+        </div>
+        {viewMode === 'edit' && selectedCount > 0 && (
+          <div className='px-2 flex items-center border bg-red-400 dark:bg-bad-300 border-black/5 h-5.5 rounded-full text-xs text-white'>
+            {selectedCount}
           </div>
         )}
-
-        <Button
-          variant='ghost'
-          size='xs'
-          onClick={() => handleViewModeChange(viewMode === 'edit' ? 'view' : 'edit')}
-          className={cn(
-            'border h-6 flex text-muted-foreground px-2 hover:bg-foreground/10 flex-1',
-            viewMode === 'edit' ? 'rounded-full rounded-l-none' : 'rounded-full'
-          )}>
-          {viewMode === 'edit' ? 'Edit' : 'View'}
-          <ChevronDown className='size-3 ml-auto' />
-        </Button>
       </div>
-
       <div className='flex flex-row items-center gap-2'>
-        {viewMode === 'edit' && selectedCount > 0 && (
-          <div className='text-xs text-muted-foreground mr-2'>{selectedCount} selected</div>
-        )}
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

@@ -25,7 +25,6 @@ import {
   DatasetSearchQuery,
   Document,
   DocumentSegment,
-  EmailAttachment,
   EmailEmbedding,
   EmailTemplate,
   EndUser,
@@ -373,17 +372,6 @@ export const embeddingsRelations = relations(embeddings, ({ one }) => ({
   job: one(embedding_jobs, {
     fields: [embeddings.jobId],
     references: [embedding_jobs.id],
-  }),
-}))
-
-export const emailAttachmentRelations = relations(EmailAttachment, ({ one }) => ({
-  mediaAsset: one(MediaAsset, {
-    fields: [EmailAttachment.mediaAssetId],
-    references: [MediaAsset.id],
-  }),
-  message: one(Message, {
-    fields: [EmailAttachment.messageId],
-    references: [Message.id],
   }),
 }))
 

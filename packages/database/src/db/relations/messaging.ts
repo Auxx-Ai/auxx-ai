@@ -8,7 +8,6 @@ import {
   ChatSession,
   ChatWidget,
   Draft,
-  EmailAttachment,
   EmailEmbedding,
   EntityInstance,
   InboxIntegration,
@@ -145,7 +144,7 @@ export const messageRelations = relations(Message, ({ one, many }) => ({
     references: [Thread.id],
   }),
   participants: many(MessageParticipant),
-  attachments: many(EmailAttachment),
+  // EmailAttachment relation removed — inbound attachments now use canonical Attachment
 }))
 
 export const messageParticipantRelations = relations(MessageParticipant, ({ one }) => ({

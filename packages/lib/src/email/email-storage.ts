@@ -40,18 +40,6 @@ type JsonArray = any
 
 // --- Interfaces ---
 
-// Interface for attachment data coming from providers
-export interface EmailAttachment {
-  id?: string // Optional: Provider's attachment ID might be used for upsert key
-  filename: string
-  mimeType: string
-  size: number
-  inline: boolean
-  contentId?: string | null
-  content?: string | null // Base64 content? Potentially large.
-  contentLocation?: string | null // URL or storage path
-}
-
 // Structure for participant info provided by conversion methods
 export interface ParticipantInputData {
   identifier: string // The raw identifier (email, phone, PSID, etc.)
@@ -87,7 +75,9 @@ export interface MessageData {
 
   // Attachments
   hasAttachments: boolean
-  attachments: EmailAttachment[]
+
+  // Object-backed body storage (set by ingest pipeline)
+  htmlBodyStorageLocationId?: string | null
 
   // Optional/Provider-specific fields
   historyId?: number | null // DB schema uses bigint({ mode: 'number' })
@@ -803,42 +793,6 @@ export class MessageStorageService {
     }
   }
 
-  private async storeAttachment(messageId: string, attachment: EmailAttachment): Promise<void> {
-    const attachmentDbId = attachment.id || `${messageId}-${attachment.filename}-${attachment.size}` // Create a semi-unique ID if provider doesn't give one
-    try {
-      await db
-        .insert(schema.EmailAttachment)
-        .values({
-          id: attachmentDbId,
-          name: attachment.filename,
-          mimeType: attachment.mimeType,
-          size: attachment.size,
-          contentId: attachment.contentId ?? null,
-          content: attachment.content ?? null,
-          contentLocation: attachment.contentLocation ?? null,
-          inline: attachment.inline,
-          messageId,
-        })
-        .onConflictDoUpdate({
-          target: schema.EmailAttachment.id,
-          set: {
-            name: attachment.filename,
-            mimeType: attachment.mimeType,
-            size: attachment.size,
-            contentId: attachment.contentId ?? null,
-            content: attachment.content ?? null,
-            contentLocation: attachment.contentLocation ?? null,
-            inline: attachment.inline,
-            messageId,
-          },
-        })
-      logger.debug('Stored/Updated attachment', { attachmentId: attachmentDbId, messageId })
-    } catch (error) {
-      logger.error('Error storing attachment:', { error, messageId, filename: attachment.filename })
-      // Optional: throw error;
-    }
-  }
-
   // ========================================================================
   // Core Public Methods
   // ========================================================================
@@ -895,6 +849,7 @@ export class MessageStorageService {
             textPlain: existingByMsgId.textPlain ?? messageData.textPlain,
             textHtml: existingByMsgId.textHtml ?? messageData.textHtml,
             snippet: messageData.snippet ?? null,
+            htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? undefined,
             hasAttachments: messageData.hasAttachments,
             metadata: messageData.metadata ?? {},
             receivedAt: messageData.receivedAt,
@@ -1150,6 +1105,7 @@ export class MessageStorageService {
           textHtml: messageData.textHtml,
           textPlain: messageData.textPlain,
           snippet: messageData.snippet,
+          htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,
           metadata: messageData.metadata || null,
           isInbound: messageData.isInbound,
           isFirstInThread: isNewThread,
@@ -1170,6 +1126,7 @@ export class MessageStorageService {
             textHtml: messageData.textHtml,
             textPlain: messageData.textPlain,
             snippet: messageData.snippet,
+            htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,
             metadata: messageData.metadata || null,
             isInbound: messageData.isInbound,
             fromId: senderParticipantId, // Update direct link
@@ -1224,11 +1181,7 @@ export class MessageStorageService {
       }
 
       // --- 6. Store Attachments ---
-      if (messageData.attachments.length > 0) {
-        await Promise.all(
-          messageData.attachments.map((att) => this.storeAttachment(messageRecord.id, att))
-        )
-      }
+      // Attachment storage is now handled by the ingest pipeline via canonical Attachment + MediaAsset
 
       // --- 7. Update Thread Metadata (if needed) ---
       // Smart decision: only update if thread metadata might be stale
@@ -1436,7 +1389,7 @@ export class MessageStorageService {
 
   /**
    * Deletes messages by their provider external IDs, scoped to an integration.
-   * Cascading FKs handle MessageParticipant and EmailAttachment cleanup.
+   * Cascading FKs handle MessageParticipant cleanup.
    * Updates thread metadata for affected threads and removes empty threads.
    * @param integrationId - The integration the messages belong to
    * @param externalIds - Provider-side message IDs to delete
@@ -1461,7 +1414,7 @@ export class MessageStorageService {
     const messageIds = messages.map((m) => m.id)
     const affectedThreadIds = [...new Set(messages.map((m) => m.threadId).filter(Boolean))]
 
-    // Delete messages (cascades to MessageParticipant, EmailAttachment)
+    // Delete messages (cascades to MessageParticipant)
     await db.delete(schema.Message).where(inArray(schema.Message.id, messageIds))
 
     logger.info('Deleted messages by external IDs', {

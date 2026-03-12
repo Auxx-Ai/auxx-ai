@@ -3,8 +3,7 @@
 import type { GroupedAttachmentInfo } from '../files/core/attachment-service'
 
 /**
- * EmailAttachment-like structure for backwards compatibility
- * Used to transform new Attachment system data into the format expected by frontend
+ * Attachment info structure for frontend compatibility.
  */
 export interface MessageAttachmentInfo {
   id: string

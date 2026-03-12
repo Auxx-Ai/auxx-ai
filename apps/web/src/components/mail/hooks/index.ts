@@ -5,3 +5,4 @@ export {
   useCountUpdates,
   type ViewDefinition,
 } from './use-count-updates'
+export { useHtmlBody } from './use-html-body'

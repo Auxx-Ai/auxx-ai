@@ -4,7 +4,7 @@ import { IntegrationProviderType } from '../providers/types'
 
 export { IntegrationProviderType }
 
-export type { EmailAttachment, MessageData, ParticipantInputData } from './email-storage'
+export type { MessageData, ParticipantInputData } from './email-storage'
 // Email storage: services, enums, and types
 export {
   EmailLabel,

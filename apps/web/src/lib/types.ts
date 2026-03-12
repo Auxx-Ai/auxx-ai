@@ -42,7 +42,6 @@ export interface EmailMessage {
   textHtml?: string
   textPlain?: string
   snippet?: string
-  attachments: EmailAttachment[]
   inReplyTo?: string
   references?: string
   threadIndex?: string
@@ -73,16 +72,6 @@ export interface EmailAddress {
   name?: string
   address: string
   raw?: string
-}
-export interface EmailAttachment {
-  id: string
-  name: string
-  mimeType: string
-  size: number
-  inline: boolean
-  contentId?: string
-  content?: string
-  contentLocation?: string
 }
 export interface EmailHeader {
   name: string
