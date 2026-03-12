@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.77](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.76...auxx-v0.1.77) (2026-03-12)
+
+
+### Features
+
+* enhance record picker with external search and item selection callbacks ([#240](https://github.com/Auxx-Ai/auxx-ai/issues/240)) ([28bdc55](https://github.com/Auxx-Ai/auxx-ai/commit/28bdc5514ebb7b3ac038165fc56f00b12fa47263))
+* enhance user profile management and organization settings ([#242](https://github.com/Auxx-Ai/auxx-ai/issues/242)) ([13b46bd](https://github.com/Auxx-Ai/auxx-ai/commit/13b46bdc570eb82c6a1f6d5facc9d247f590bc4b))
+* implement inbound email attachment and body processing services ([#241](https://github.com/Auxx-Ai/auxx-ai/issues/241)) ([09a0cc1](https://github.com/Auxx-Ai/auxx-ai/commit/09a0cc19e0804b4eb0f5d67e3ce6b900f1012502))
+* implement inline email attachment handling and processing ([#238](https://github.com/Auxx-Ai/auxx-ai/issues/238)) ([1314b81](https://github.com/Auxx-Ai/auxx-ai/commit/1314b81a7a653c69d668703e477d949fa203c099))
+
 ## [0.1.76](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.75...auxx-v0.1.76) (2026-03-12)
 
 
