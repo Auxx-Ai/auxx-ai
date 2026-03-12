@@ -3,7 +3,7 @@
 'use client'
 
 import type { MailViewFieldDefinition } from '@auxx/lib/mail-views/client'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
+import { BaseType } from '@auxx/lib/workflow-engine/client'
 import {
   Command,
   CommandEmpty,

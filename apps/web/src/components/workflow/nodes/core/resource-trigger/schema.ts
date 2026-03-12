@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/resource-trigger/schema.ts
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { getResourceTriggerOutputVariables } from './output-variables'
 import {

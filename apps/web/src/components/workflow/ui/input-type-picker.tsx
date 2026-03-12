@@ -2,7 +2,7 @@
 
 'use client'
 
-import { BASE_TYPE_GROUPS, type BaseType } from '@auxx/lib/workflow-engine/types'
+import { BASE_TYPE_GROUPS, type BaseType } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,

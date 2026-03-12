@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/utils/trigger-type-mapper.ts
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 
 /**
  * Maps between node IDs and workflow trigger types

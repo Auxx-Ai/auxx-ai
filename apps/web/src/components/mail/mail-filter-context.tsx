@@ -1,6 +1,6 @@
 'use client'
 
-import type { ConditionGroup } from '@auxx/lib/conditions'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 
 import { createContext, type ReactNode, useContext, useMemo } from 'react'
 

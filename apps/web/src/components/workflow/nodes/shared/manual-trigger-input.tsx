@@ -2,7 +2,7 @@
 
 'use client'
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { useStore, useStoreApi } from '@xyflow/react'
 import { AlertCircle } from 'lucide-react'

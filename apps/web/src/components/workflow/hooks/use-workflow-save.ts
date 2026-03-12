@@ -4,7 +4,7 @@ import {
   RESOURCE_OPERATION_TO_TRIGGER_TYPE,
   type ResourceTriggerOperation,
   WorkflowTriggerType as TriggerType,
-} from '@auxx/lib/workflow-engine/types'
+} from '@auxx/lib/workflow-engine/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { debounce } from '@auxx/utils'
 import { useStoreApi } from '@xyflow/react'

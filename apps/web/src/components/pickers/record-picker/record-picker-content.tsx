@@ -68,6 +68,12 @@ export interface RecordPickerContentProps {
 
   /** RecordIds to exclude from results (filtered client-side) */
   excludeIds?: RecordId[]
+
+  /** Called with full item data on single-select (alternative to onSelectSingle) */
+  onSelectItem?: (item: RecordPickerItem) => void
+
+  /** External search value — hides internal CommandInput when provided */
+  externalSearch?: string
 }
 
 /**
@@ -96,8 +102,12 @@ export function RecordPickerContent({
   createLabel = 'Create new',
   className,
   excludeIds = [],
+  onSelectItem,
+  externalSearch,
 }: RecordPickerContentProps) {
-  const [search, setSearch] = useState('')
+  const [internalSearch, setInternalSearch] = useState('')
+  const search = externalSearch ?? internalSearch
+  const setSearch = externalSearch !== undefined ? () => {} : setInternalSearch
   const getResourceById = useResourceStore((s) => s.getResourceById)
 
   // Notify parent about capture state on mount/unmount
@@ -228,10 +238,16 @@ export function RecordPickerContent({
         } else {
           onChange([recordId])
           onSelectSingle?.(recordId)
+          // Pass full item data if callback provided
+          if (onSelectItem) {
+            const item =
+              searchResults?.items?.find((i) => i.recordId === recordId) ?? hydratedMap[recordId]
+            if (item) onSelectItem(item)
+          }
         }
       }
     },
-    [multi, value, onChange, isSelected, onSelectSingle]
+    [multi, value, onChange, isSelected, onSelectSingle, onSelectItem, searchResults, hydratedMap]
   )
 
   // Get related resource for create label
@@ -247,13 +263,15 @@ export function RecordPickerContent({
 
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
-      <CommandInput
-        placeholder={placeholder}
-        value={search}
-        onValueChange={setSearch}
-        disabled={disabled}
-        loading={isLoading}
-      />
+      {externalSearch === undefined && (
+        <CommandInput
+          placeholder={placeholder}
+          value={search}
+          onValueChange={setSearch}
+          disabled={disabled}
+          loading={isLoading}
+        />
+      )}
       <CommandList>
         <CommandEmpty>No results found</CommandEmpty>
 

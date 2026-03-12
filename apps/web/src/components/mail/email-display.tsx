@@ -37,6 +37,7 @@ import type { MessageMeta } from '~/components/threads/store'
 import { api } from '~/trpc/react'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
+import type { MessageType } from './email-editor/types'
 import { ParticipantList, type ParticipantListEntry } from './participant-display'
 import { SendStatusIndicator } from './send-status-indicator'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
@@ -123,6 +124,68 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
     }
   }, [message, retrySendMessage])
 
+  // Build a MessageType compatible with the editor from store data + resolved participants
+  const editorMessage: MessageType | null = useMemo(() => {
+    if (!message) return null
+    return {
+      id: message.id,
+      threadId: message.threadId,
+      subject: message.subject,
+      snippet: message.snippet,
+      textHtml: message.textHtml,
+      textPlain: message.textPlain,
+      isInbound: message.isInbound,
+      sentAt: message.sentAt ? new Date(message.sentAt) : null,
+      createdAt: new Date(message.createdAt),
+      messageType: message.messageType as MessageType['messageType'],
+      sendStatus: message.sendStatus,
+      providerError: message.providerError,
+      attempts: message.attempts,
+      from: from
+        ? {
+            id: from.id,
+            identifier: from.identifier,
+            identifierType: from.identifierType,
+            name: from.name,
+            displayName: from.displayName,
+          }
+        : null,
+      participants: [
+        ...(from
+          ? [
+              {
+                role: 'FROM',
+                participant: {
+                  id: from.id,
+                  identifier: from.identifier,
+                  identifierType: from.identifierType,
+                  name: from.name,
+                },
+              },
+            ]
+          : []),
+        ...to.map((p) => ({
+          role: 'TO',
+          participant: {
+            id: p.id,
+            identifier: p.identifier,
+            identifierType: p.identifierType,
+            name: p.name,
+          },
+        })),
+        ...cc.map((p) => ({
+          role: 'CC',
+          participant: {
+            id: p.id,
+            identifier: p.identifier,
+            identifierType: p.identifierType,
+            name: p.name,
+          },
+        })),
+      ],
+    }
+  }, [message, from, to, cc])
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: message triggers DOM manipulation when email content changes
   useEffect(() => {
     if (letterRef.current) {
@@ -135,20 +198,20 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
 
   const handleDirectReplyClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (message) messageActions.onReply(message as any)
+    if (editorMessage) messageActions.onReply(editorMessage)
   }
 
   const handleDirectReplyAllClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (message) messageActions.onReplyAll(message as any)
+    if (editorMessage) messageActions.onReplyAll(editorMessage)
   }
 
   const handleReply = useCallback(
     (e?: React.SyntheticEvent) => {
       e?.stopPropagation()
-      if (message) messageActions.onReply(message as any)
+      if (editorMessage) messageActions.onReply(editorMessage)
     },
-    [message, messageActions]
+    [editorMessage, messageActions]
   )
 
   // Loading state
@@ -225,6 +288,7 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
               <div className='flex items-center flex-row justify-end'>
                 <DropdownMenuDemo
                   message={message}
+                  editorMessage={editorMessage}
                   emailActions={messageActions}
                   onMarkUnread={markAsUnread}
                 />
@@ -319,15 +383,20 @@ function EmailSkeleton() {
  */
 export function DropdownMenuDemo({
   message,
+  editorMessage,
   emailActions,
   onMarkUnread,
 }: {
   message: MessageMeta
+  editorMessage: MessageType | null
   emailActions: EmailActions
   onMarkUnread: () => void
 }) {
   const handleSelect = (action: (msg: any) => void) => (event?: Event) => {
     action(message)
+  }
+  const handleEditorAction = (action: (msg: any) => void) => (event?: Event) => {
+    if (editorMessage) action(editorMessage)
   }
 
   return (
@@ -339,15 +408,15 @@ export function DropdownMenuDemo({
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end' className='w-56'>
         <DropdownMenuGroup>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onReply)}>
+          <DropdownMenuItem onSelect={handleEditorAction(emailActions.onReply)}>
             <Reply className='opacity-60' />
             Reply
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onReplyAll)}>
+          <DropdownMenuItem onSelect={handleEditorAction(emailActions.onReplyAll)}>
             <ReplyAll className='opacity-60' />
             Reply all
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onForward)}>
+          <DropdownMenuItem onSelect={handleEditorAction(emailActions.onForward)}>
             <Forward className='opacity-60' />
             Forward
           </DropdownMenuItem>

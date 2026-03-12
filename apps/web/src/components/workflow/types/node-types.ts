@@ -1,5 +1,5 @@
 // apps/web/src/components/workflow/types/node-types.ts
-// import { WorkflowNodeType } from '@auxx/lib/workflow-engine/types'
+// import { WorkflowNodeType } from '@auxx/lib/workflow-engine/client'
 /**
  * Centralized enum for all workflow node types
  * Use this enum instead of string literals throughout the codebase

@@ -1,6 +1,6 @@
 // apps/web/src/components/mail/types.ts
 
-import type { ConditionGroup } from '@auxx/lib/conditions'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { MessageType } from './email-editor/types'
 
 export const VALID_STATUS_SLUGS = [

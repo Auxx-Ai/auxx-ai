@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/trigger-registry.ts
 
-import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
 import type { ValidationResult } from '../types'
 

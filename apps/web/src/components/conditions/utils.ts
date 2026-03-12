@@ -1,7 +1,6 @@
 // apps/web/src/components/conditions/utils.ts
 
-import { getOperatorsForType } from '@auxx/lib/workflow-engine/client'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
+import { BaseType, getOperatorsForType } from '@auxx/lib/workflow-engine/client'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { Condition, ConditionGroup, FieldDefinition, OperatorDefinition } from './types'
 import { STANDARD_OPERATORS } from './types'

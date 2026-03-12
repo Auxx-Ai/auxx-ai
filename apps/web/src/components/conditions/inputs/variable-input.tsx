@@ -2,8 +2,7 @@
 
 'use client'
 
-import { InputMode, resolveInputConfig } from '@auxx/lib/workflow-engine/client'
-import { BaseType } from '@auxx/lib/workflow-engine/types'
+import { BaseType, InputMode, resolveInputConfig } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { Plus, Trash2 } from 'lucide-react'

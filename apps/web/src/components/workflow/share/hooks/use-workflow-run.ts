@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/share/hooks/use-workflow-run.ts
 'use client'
 
-import { WorkflowEventType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowEventType } from '@auxx/lib/workflow-engine/client'
 import type { ContentSegment } from '@auxx/lib/workflow-engine/types/content-segment'
 import { useCallback, useRef } from 'react'
 import { useWorkflowShareStore } from '../workflow-share-provider'

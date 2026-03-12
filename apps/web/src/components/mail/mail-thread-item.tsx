@@ -1,7 +1,7 @@
 // apps/web/src/components/mail/mail-thread-item.tsx
 'use client'
 
-import { evaluateConditions } from '@auxx/lib/conditions'
+import { evaluateConditions } from '@auxx/lib/conditions/client'
 import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'

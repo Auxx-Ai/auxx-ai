@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/panels/run/tabs/input-tab.tsx
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { Alert, AlertDescription, AlertIcon } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'

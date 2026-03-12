@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/nodes/initialize-triggers.ts
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ValidationResult } from '../types'
 import { ManualTriggerInput } from './shared/manual-trigger-input'
 import { ThreadInput } from './shared/node-inputs'

@@ -405,4 +405,28 @@ export class ThreadManagerService {
 
     return orphaned.length
   }
+
+  /**
+   * Deletes a pending thread that was created during a failed send attempt.
+   * Only deletes if the thread has no messages (safety check).
+   */
+  async deletePendingThread(threadId: string): Promise<void> {
+    const messageCount = await this.db.query.Message.findFirst({
+      where: (messages, { eq }) => eq(messages.threadId, threadId),
+      columns: { id: true },
+    })
+
+    if (messageCount) {
+      logger.warn('Skipping pending thread cleanup — thread has messages', { threadId })
+      return
+    }
+
+    await this.db
+      .delete(schema.Thread)
+      .where(
+        and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
+      )
+
+    logger.info('Deleted orphaned pending thread', { threadId })
+  }
 }

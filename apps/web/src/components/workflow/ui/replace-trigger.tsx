@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/ui/replace-trigger.tsx
 
-import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/types'
+import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import { RefreshCw } from 'lucide-react'
 import { useState } from 'react'

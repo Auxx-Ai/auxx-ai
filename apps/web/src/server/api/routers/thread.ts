@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { IdentifierType } from '@auxx/database/enums'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
+import { DraftService } from '@auxx/lib/drafts'
 import { getUserOrganizationId } from '@auxx/lib/email' // Adjust import path if needed
 import { MessageSenderService } from '@auxx/lib/messages'
 import { ProviderRegistryService, whereThreadMessageType } from '@auxx/lib/providers'
@@ -300,7 +301,6 @@ export const threadRouter = createTRPCRouter({
           name: p.name || undefined,
           identifierType: p.identifierType,
         })),
-        draftMessageId: draftMessageId || undefined,
         attachmentIds: attachments?.map((att) => att.id) || undefined, // Map attachments to IDs
       }
       logger.info('API: Sending message via MessageSenderService', {
@@ -309,6 +309,21 @@ export const threadRouter = createTRPCRouter({
         draftId: input.draftMessageId,
       })
       const sentMessage = await messageSender.sendMessage(senderInput)
+
+      // Clean up draft after successful send
+      if (draftMessageId) {
+        try {
+          const draftService = new DraftService(ctx.db, organizationId, userId)
+          await draftService.markAsSent(draftMessageId)
+        } catch (draftError) {
+          // Non-fatal: message was sent, draft cleanup failure is acceptable
+          logger.warn('Failed to clean up draft after send', {
+            draftMessageId,
+            error: draftError instanceof Error ? draftError.message : String(draftError),
+          })
+        }
+      }
+
       return sentMessage
     } catch (error: unknown) {
       if (error instanceof TRPCError) throw error

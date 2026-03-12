@@ -76,6 +76,8 @@ export class IntegrationService {
     if (integration.provider === 'chat' && integration.chatWidget) {
       return integration.chatWidget.name
     }
+    // Forwarding integrations store the alias in Integration.email
+    if (integration.email) return integration.email
     const metadata = integration.metadata
     if (metadata && typeof metadata === 'object') {
       if ('email' in metadata && typeof metadata.email === 'string') return metadata.email
@@ -292,6 +294,7 @@ export class IntegrationService {
           id: schema.Integration.id,
           provider: schema.Integration.provider,
           name: schema.Integration.name,
+          email: schema.Integration.email,
           metadata: schema.Integration.metadata,
           inboxId: schema.InboxIntegration.inboxId,
         })
@@ -308,8 +311,9 @@ export class IntegrationService {
         )
 
       const emailClients = integrations.map((int) => {
-        let email: string | undefined
-        if (int.metadata && typeof int.metadata === 'object' && 'email' in int.metadata) {
+        // Prefer Integration.email (used by forwarding integrations), fall back to metadata.email
+        let email: string | undefined = int.email ?? undefined
+        if (!email && int.metadata && typeof int.metadata === 'object' && 'email' in int.metadata) {
           // @ts-expect-error: dynamic metadata shape
           email = int.metadata.email
         }

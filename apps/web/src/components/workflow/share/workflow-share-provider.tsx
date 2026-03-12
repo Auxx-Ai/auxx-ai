@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/share/workflow-share-provider.tsx
 'use client'
 
-import type { ContentSegment } from '@auxx/lib/workflow-engine/types'
+import type { ContentSegment } from '@auxx/lib/workflow-engine/client'
 import { createContext, type ReactNode, useContext, useRef } from 'react'
 import { createStore, type StoreApi, useStore } from 'zustand'
 import type { WorkflowSiteInfo } from './hooks/use-workflow-share'
