@@ -84,5 +84,5 @@ async function handleRequest(req: Request): Promise<Response> {
   return new Response('Not Found', { status: 404 })
 }
 
-// Start HTTP server
-await serve(handleRequest, { port: PORT })
+// Start HTTP server — bind to 0.0.0.0 for container networking
+await serve(handleRequest, { port: PORT, hostname: '0.0.0.0' })
