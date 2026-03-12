@@ -64,11 +64,6 @@ export class UniversalThrottler {
 
     await Promise.all(initPromises)
     this.initialized = true
-
-    this.logger.info('Universal throttler initialized', {
-      provider: this.config.provider,
-      metricsEnabled: this.config.metricsEnabled,
-    })
   }
 
   /**
@@ -207,17 +202,12 @@ export class UniversalThrottler {
           const key = this.buildRateLimitKey(context, options)
           const cost = options?.cost ?? 1
 
-          this.logger.debug('Attempting to acquire tokens', { context, key, cost })
-
           // Try to acquire tokens from rate limiter
           const acquired = await limiter.acquire(key, cost)
-
-          this.logger.debug('Token acquisition result', { context, acquired, key })
 
           if (!acquired) {
             // If queuing is enabled, add to queue
             if (options?.queue) {
-              this.logger.debug('Queuing request', { context, key })
               return this.queueRequest(context, fn, options)
             }
 
@@ -240,12 +230,6 @@ export class UniversalThrottler {
           const concurrencyKey = `${context}:${key}`
 
           if (maxConcurrent && maxConcurrent > 0) {
-            this.logger.debug('Checking concurrency limit', {
-              context,
-              key: concurrencyKey,
-              maxConcurrent,
-            })
-
             concurrencyAcquired = await this.concurrencySemaphore.tryAcquire(
               concurrencyKey,
               maxConcurrent
@@ -278,12 +262,6 @@ export class UniversalThrottler {
                 )
               }
             }
-
-            this.logger.debug('Concurrency slot acquired', {
-              context,
-              key: concurrencyKey,
-              maxConcurrent,
-            })
           }
 
           // Record available tokens
@@ -293,13 +271,10 @@ export class UniversalThrottler {
           // Execute the function with default timeout if none specified
           const timeout = options?.timeout ?? DEFAULT_OPERATION_TIMEOUT_MS
 
-          this.logger.debug('Executing function', { context, timeout })
-
           try {
             const result = await this.executeWithTimeout(fn, timeout)
 
             const duration = Date.now() - startTime
-            this.logger.debug('Execute completed successfully', { context, duration })
 
             // Record success
             this.metrics.recordSuccess(context, duration, cost)
@@ -403,7 +378,7 @@ export class UniversalThrottler {
     this.processingQueues.add(context)
     const queue = this.getQueue(context)
 
-    this.logger.debug('Starting queue processing', { context, queueSize: queue.size() })
+    // this.logger.debug('Starting queue processing', { context, queueSize: queue.size() })
 
     try {
       while (!queue.isEmpty()) {

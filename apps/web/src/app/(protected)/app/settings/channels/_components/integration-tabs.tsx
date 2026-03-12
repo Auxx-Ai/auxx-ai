@@ -6,13 +6,13 @@ import { ArrowLeft } from 'lucide-react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 // ~/app/(protected)/app/settings/channels/_components/integration-tabs.tsx
 import { useState } from 'react'
+import { useChannel, useChannelsLoading } from '~/components/channels/hooks/use-channels'
 import {
   getIntegrationStatus,
   IntegrationStatusIndicator,
 } from '~/components/global/integration-status-indicator'
 import { ReauthBanner } from '~/components/global/reauth-banner'
 import SettingsPage from '~/components/global/settings-page'
-import { useIntegration } from '~/hooks/use-integration'
 import IntegrationRouting from './integration-routing'
 import IntegrationSettingsAdvanced from './integration-settings-advanced'
 
@@ -27,9 +27,8 @@ export default function IntegrationTabs() {
   const initialTab = searchParams?.get('tab') || 'routing'
   const [activeTab, setActiveTab] = useState(initialTab)
 
-  const { integrations, isLoading: isIntegrationsLoading } = useIntegration()
-
-  const integration = integrations?.integrations?.find((item) => item.id === integrationId)
+  const isIntegrationsLoading = useChannelsLoading()
+  const integration = useChannel(integrationId)
 
   // Handle tab change
   const handleTabChange = (value: string) => {

@@ -10,13 +10,14 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { ArrowLeft, Hash, Key, Phone, Shield } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import SettingsPage from '~/components/global/settings-page'
-import { useIntegration } from '~/hooks/use-integration'
+import { api } from '~/trpc/react'
 
 type Props = {}
 
@@ -31,7 +32,19 @@ const openPhoneSchema = z.object({
 type OpenPhoneFormValues = z.infer<typeof openPhoneSchema>
 
 function OpenPhoneIntegrationForm({}: Props) {
-  const { addOpenPhoneIntegration } = useIntegration()
+  const utils = api.useUtils()
+  const addOpenPhoneIntegration = api.channel.addOpenPhoneIntegration.useMutation({
+    onSuccess: () => {
+      utils.channel.list.invalidate()
+      toastSuccess({
+        title: 'OpenPhone connected',
+        description: 'Your OpenPhone account was connected successfully',
+      })
+    },
+    onError: (error) => {
+      toastError({ title: 'Error connecting OpenPhone', description: error.message })
+    },
+  })
   const router = useRouter()
 
   const handleBack = () => {

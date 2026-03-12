@@ -41,13 +41,13 @@ import {
   Mail,
   MailPlus,
   Plus,
+  RefreshCw,
   Shield,
   Trash2,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { client } from '~/auth/auth-client'
-import MessageSyncStatus from '~/components/mail/message-sync-status'
 import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -72,7 +72,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
   const addIntegration = api.inbox.addIntegration.useMutation({
     onSuccess: () => {
       setDialogOpen(false)
-      utils.integration.getIntegrations.invalidate()
+      utils.channel.list.invalidate()
     },
     onError: (error) => {
       toastError({ title: 'Error connecting inbox', description: error.message })
@@ -135,7 +135,16 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
   const isThrottled =
     integration.throttleRetryAfter && new Date(integration.throttleRetryAfter) > new Date()
 
-  const removeIntegration = api.integration.disconnect.useMutation({
+  const syncMessages = api.channel.syncMessages.useMutation({
+    onSuccess: () => {
+      utils.channel.list.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Error starting sync', description: error.message })
+    },
+  })
+
+  const removeIntegration = api.channel.disconnect.useMutation({
     onSuccess: () => {
       setIsRemoving(false)
       toastSuccess({
@@ -143,7 +152,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
         description: 'The integration has been removed from this inbox',
       })
       // Invalidate the integrations query to refresh the list
-      utils.integration.getIntegrations.invalidate()
+      utils.channel.list.invalidate()
       utils.thread.getCounts.invalidate()
     },
     onError: (error) => {
@@ -184,7 +193,16 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
                 Configure how data from this integration is synced to your inboxes.
               </p>
             </div>
-            <MessageSyncStatus integrationId={integration.id} />
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => syncMessages.mutate({ integrationId: integration.id, days: 7 })}
+              disabled={syncMessages.isPending || integration.syncStatus === 'SYNCING'}
+              loading={syncMessages.isPending}
+              loadingText='Starting...'>
+              <RefreshCw />
+              Sync Messages
+            </Button>
           </div>
           <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
             <div className='text-sm text-muted-foreground'>Last synced</div>
@@ -516,9 +534,9 @@ function AllowedSendersDialog({
   const userEmail = session?.user?.email
   const utils = api.useUtils()
 
-  const updateAllowedSenders = api.integration.updateAllowedSenders.useMutation({
+  const updateAllowedSenders = api.channel.updateAllowedSenders.useMutation({
     onSuccess: () => {
-      utils.integration.getIntegrations.invalidate()
+      utils.channel.list.invalidate()
       onClose()
     },
     onError: (error) => {

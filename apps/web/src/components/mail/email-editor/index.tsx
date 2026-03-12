@@ -97,7 +97,7 @@ function ReplyComposeEditorComponent({
   const { onSendDraft } = useCountUpdates()
 
   // Query integrations when needed
-  const { data: integrations } = api.integration.getIntegrations.useQuery(undefined, {
+  const { data: integrations } = api.channel.list.useQuery(undefined, {
     enabled: mode === 'new',
   })
   // Initialize state with pure function + lazy evaluation

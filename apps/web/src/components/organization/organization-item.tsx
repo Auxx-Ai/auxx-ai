@@ -17,6 +17,7 @@ import { EllipsisVertical, LogOut, Shield, ShieldAlert, Trash2, UserCircle2 } fr
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useSession } from '~/auth/auth-client'
+import { clearChannelCaches } from '~/components/channels/providers/channel-provider'
 import { clearResourceCaches } from '~/components/resources'
 import { useUser } from '~/hooks/use-user'
 import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
@@ -74,6 +75,7 @@ export function OrganizationItem({
 
       if (isDeletingCurrentOrg) {
         clearResourceCaches()
+        clearChannelCaches()
         await utils.invalidate()
         router.push('/organizations')
       } else {

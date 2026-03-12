@@ -8,10 +8,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@auxx/ui/components/card'
+import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import SettingsPage from '~/components/global/settings-page'
-import { useIntegration } from '~/hooks/use-integration'
+import { api } from '~/trpc/react'
 import ImapConnectForm from './imap-connect-form'
 import { getIntegrationProviderIcon } from './integration-table'
 
@@ -25,7 +26,11 @@ interface IntegrationFormProps {
  */
 export default function IntegrationForm({ type }: IntegrationFormProps) {
   const router = useRouter()
-  const { getAuthUrl } = useIntegration()
+  const getAuthUrl = api.channel.getAuthUrl.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Error generating authentication URL', description: error.message })
+    },
+  })
 
   // Handle OAuth connection
   const handleOAuthConnect = () => {

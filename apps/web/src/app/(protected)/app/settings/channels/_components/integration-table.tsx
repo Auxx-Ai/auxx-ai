@@ -12,6 +12,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Switch } from '@auxx/ui/components/switch'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
 import {
@@ -34,7 +35,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import type { InboxItem } from '~/components/threads/hooks'
 import { FacebookIcon, GoogleIcon, InstagramIcon, OutlookIcon } from '~/constants/icons'
 import { useAnalytics } from '~/hooks/use-analytics'
-import { useIntegration } from '~/hooks/use-integration'
+import { api } from '~/trpc/react'
 
 // Define type for integration (simplified, adjust based on actual API response)
 interface DisplayIntegration {
@@ -130,7 +131,34 @@ const isClickOnInteractiveElement = (event: React.MouseEvent): boolean => {
 export default function IntegrationTable({ integrations, inboxes }: IntegrationTableProps) {
   const router = useRouter()
   const posthog = useAnalytics()
-  const { toggleIntegration, disconnectIntegration, syncMessages } = useIntegration()
+  const utils = api.useUtils()
+  const toggleIntegration = api.channel.toggle.useMutation({
+    onSuccess: () => {
+      utils.channel.list.invalidate()
+      toastSuccess({ title: 'Integration updated', description: 'Status updated successfully' })
+    },
+    onError: (error) => {
+      toastError({ title: 'Error updating integration status', description: error.message })
+    },
+  })
+  const disconnectIntegration = api.channel.disconnect.useMutation({
+    onSuccess: () => {
+      utils.channel.list.invalidate()
+      utils.thread.getCounts.invalidate()
+      toastSuccess({ title: 'Integration disconnected' })
+    },
+    onError: (error) => {
+      toastError({ title: 'Error disconnecting integration', description: error.message })
+    },
+  })
+  const syncMessages = api.channel.syncMessages.useMutation({
+    onSuccess: () => {
+      toastSuccess({ title: 'Sync started' })
+    },
+    onError: (error) => {
+      toastError({ title: 'Error starting sync', description: error.message })
+    },
+  })
   /** Find connected inbox for an integration using its inboxId */
   const getConnectedInbox = (integration: DisplayIntegration) => {
     if (!integration.inboxId) return undefined

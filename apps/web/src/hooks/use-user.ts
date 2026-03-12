@@ -6,6 +6,7 @@ import type { FeatureMapObject } from '@auxx/lib/types'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo } from 'react'
 import { client as authClient } from '~/auth/auth-client'
+import { clearChannelCaches } from '~/components/channels/providers/channel-provider'
 import { clearResourceCaches } from '~/components/resources'
 import { useOrgDeepLink } from '~/hooks/use-org-deep-link'
 import {
@@ -166,6 +167,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
       // Optimistic: update org ID immediately — features, settings, org reads all update
       setOrganizationId(newOrganizationId)
       clearResourceCaches()
+      clearChannelCaches()
 
       // Persist to server
       switchOrganizationMutation.mutate(

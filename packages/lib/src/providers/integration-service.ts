@@ -3,6 +3,7 @@ import { type Database, schema } from '@auxx/database'
 import { and, count, desc, eq, inArray, isNotNull } from 'drizzle-orm'
 import { withAuthErrorHandling } from '../email/errors-handlers'
 import { type IntegrationProviderType, MessageService } from '../email/message-service'
+import { getImportCacheSize } from '../email/polling-import-cache'
 import { createScopedLogger } from '../logger'
 import { SyncMessages } from '../messages/sync-messages'
 import { FacebookOAuthService } from './facebook/facebook-oauth'
@@ -274,7 +275,22 @@ export class IntegrationService {
         }
       })
 
-      return { integrations: formattedIntegrations }
+      // Enrich syncing integrations with pending import counts from Redis
+      const syncingIds = formattedIntegrations
+        .filter((int) => int.syncStatus === 'SYNCING')
+        .map((int) => int.id)
+
+      const importCounts = await Promise.all(
+        syncingIds.map(async (id) => ({ id, count: await getImportCacheSize(id) }))
+      )
+      const countMap = new Map(importCounts.map((c) => [c.id, c.count]))
+
+      const enriched = formattedIntegrations.map((int) => ({
+        ...int,
+        pendingImportCount: countMap.get(int.id) ?? 0,
+      }))
+
+      return { integrations: enriched }
     } catch (error: any) {
       logger.error('Error getting integrations:', {
         error: error.message,
@@ -512,10 +528,23 @@ export class IntegrationService {
         )
       }
 
-      const since = new Date()
-      since.setDate(since.getDate() - days)
+      // Use incremental History API when available (lastHistoryId exists),
+      // only fall back to date-based sync for first-time syncs
+      const since = integration.lastHistoryId
+        ? undefined
+        : (() => {
+            const d = new Date()
+            d.setDate(d.getDate() - days)
+            return d
+          })()
+
       logger.info(
-        `Starting manual sync for integration ${integrationId} (${integration.provider}) since ${since.toISOString()}`
+        `Starting manual sync for integration ${integrationId} (${integration.provider})`,
+        {
+          mode: since ? 'message-list' : 'history-api',
+          since: since?.toISOString(),
+          lastHistoryId: integration.lastHistoryId,
+        }
       )
 
       if (!this.userId) {
