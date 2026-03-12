@@ -45,7 +45,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
   const [showValidation, setShowValidation] = useState(false)
 
   // Fetch integrations to display selected integration name
-  const { data: integrations } = api.integration.getIntegrationsForPicker.useQuery()
+  const { data: integrations } = api.channel.listForPicker.useQuery()
 
   // Get available variables to auto-detect resource type
   const { allVariables } = useAvailableVariables({

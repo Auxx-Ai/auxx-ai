@@ -3,10 +3,10 @@ import { FeatureKey } from '@auxx/lib/types'
 import { Button } from '@auxx/ui/components/button'
 import { Plus, Waypoints } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useChannels, useChannelsLoading } from '~/components/channels/hooks/use-channels'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { useInboxes } from '~/components/threads/hooks'
-import { useIntegration } from '~/hooks/use-integration'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import IntegrationTable from './integration-table'
 
@@ -16,7 +16,8 @@ import IntegrationTable from './integration-table'
  */
 export default function IntegrationList() {
   const router = useRouter()
-  const { integrations, isLoading } = useIntegration()
+  const channels = useChannels()
+  const isLoading = useChannelsLoading()
   const { inboxes } = useInboxes()
 
   const { hasAccess, getLimit, isLoading: isFeatureLoading } = useFeatureFlags()
@@ -52,8 +53,8 @@ export default function IntegrationList() {
           description='&nbsp;'
           button={<div className='h-12'></div>}
         />
-      ) : integrations?.integrations && integrations.integrations.length > 0 ? (
-        <IntegrationTable integrations={integrations.integrations} inboxes={inboxes || []} />
+      ) : channels.length > 0 ? (
+        <IntegrationTable integrations={channels} inboxes={inboxes || []} />
       ) : (
         <EmptyState
           icon={Waypoints}

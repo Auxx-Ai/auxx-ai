@@ -49,7 +49,7 @@ export const DYNAMIC_OPTIONS_REGISTRY: Record<string, DynamicOptionsEntry> = {
   // Integrations (for thread integration field)
   integrations: {
     useOptions: (enabled) => {
-      const { data, isLoading } = api.integration.getIntegrations.useQuery(undefined, {
+      const { data, isLoading } = api.channel.list.useQuery(undefined, {
         enabled,
         staleTime: 5 * 60 * 1000,
       })

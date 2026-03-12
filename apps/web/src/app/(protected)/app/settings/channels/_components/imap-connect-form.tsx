@@ -135,7 +135,7 @@ export default function ImapConnectForm({ onBack }: ImapConnectFormProps) {
   const authMode = form.watch('authMode')
   const smtpSameCredentials = form.watch('smtpSameCredentials')
 
-  const connectImap = api.integration.connectImap.useMutation({
+  const connectImap = api.channel.connectImap.useMutation({
     onSuccess: () => {
       router.push('/app/settings/channels')
     },
@@ -144,7 +144,7 @@ export default function ImapConnectForm({ onBack }: ImapConnectFormProps) {
     },
   })
 
-  const testConnection = api.integration.testImapConnection.useMutation({
+  const testConnection = api.channel.testImapConnection.useMutation({
     onSuccess: (data) => {
       setTestResults({
         imap: data.imap,

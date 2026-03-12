@@ -27,13 +27,14 @@ import {
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
 import { Switch } from '@auxx/ui/components/switch'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Clock, Mail, MailCheck, RefreshCw, User } from 'lucide-react'
 // ~/app/(protected)/app/settings/integrations/_components/integration-settings.tsx
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { useIntegration } from '~/hooks/use-integration'
+import { api } from '~/trpc/react'
 
 interface IntegrationSettingsProps {
   integration: any // Replace with stronger typing when available
@@ -64,7 +65,14 @@ type PhoneSettingsFormValues = z.infer<typeof phoneSettingsSchema>
  * Manages provider-specific settings for an integration
  */
 export default function IntegrationSettings({ integration }: IntegrationSettingsProps) {
-  const { syncMessages } = useIntegration()
+  const syncMessages = api.channel.syncMessages.useMutation({
+    onSuccess: () => {
+      toastSuccess({ title: 'Sync started' })
+    },
+    onError: (error) => {
+      toastError({ title: 'Error starting sync', description: error.message })
+    },
+  })
   const [isSyncing, setIsSyncing] = useState(false)
 
   // Initialize the appropriate form based on provider type

@@ -1,10 +1,11 @@
 'use client'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { MailPlus, UserCheck, Users, UserX } from 'lucide-react'
 // ~/app/(protected)/app/settings/integrations/_components/integration-settings-advanced.tsx
 import { useEffect, useState } from 'react'
-import { useIntegration } from '~/hooks/use-integration'
+import { api } from '~/trpc/react'
 
 interface IntegrationSettingsAdvancedProps {
   integration: {
@@ -25,7 +26,19 @@ interface IntegrationSettingsAdvancedProps {
 export default function IntegrationSettingsAdvanced({
   integration,
 }: IntegrationSettingsAdvancedProps) {
-  const { updateSettings } = useIntegration()
+  const utils = api.useUtils()
+  const updateSettings = api.channel.updateSettings.useMutation({
+    onSuccess: () => {
+      utils.channel.list.invalidate()
+      toastSuccess({
+        title: 'Settings updated',
+        description: 'Integration settings have been updated successfully',
+      })
+    },
+    onError: (error) => {
+      toastError({ title: 'Error updating settings', description: error.message })
+    },
+  })
   const [recordCreationMode, setRecordCreationMode] = useState<'all' | 'selective' | 'none'>(
     integration?.settings?.recordCreation?.mode ?? 'selective' // Default to selective mode
   )

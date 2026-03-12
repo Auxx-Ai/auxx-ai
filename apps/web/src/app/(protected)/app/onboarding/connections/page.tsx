@@ -8,9 +8,10 @@ import { Check, Mail } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { useChannels } from '~/components/channels/hooks/use-channels'
 import { PROVIDER_ICONS } from '~/constants/icons'
 import { useAnalytics } from '~/hooks/use-analytics'
-import { useIntegration } from '~/hooks/use-integration'
+import { api } from '~/trpc/react'
 import { OnboardingNavigation } from '../_components/onboarding-navigation'
 import { useOnboarding } from '../_components/onboarding-provider'
 
@@ -53,10 +54,16 @@ export default function ConnectionsOnboardingPage() {
   const { state, updateConnections, markStepCompleted, setCurrentStep } = useOnboarding()
   const [isConnecting, setIsConnecting] = useState<string | null>(null)
 
-  // Get the getAuthUrl mutation and integrations data from the integration hook
-  const { getAuthUrl, integrations: initialIntegrations } = useIntegration()
-  // State for integrations to allow variable data
-  const integrations = initialIntegrations?.integrations || []
+  const channels = useChannels()
+  const getAuthUrl = api.channel.getAuthUrl.useMutation({
+    onError: (error) => {
+      toastError({
+        title: 'Connection failed',
+        description: error.message,
+      })
+    },
+  })
+  const integrations = channels
 
   // Optionally, update integrations if initialIntegrations changes
   // (e.g., if useIntegration fetches new data)

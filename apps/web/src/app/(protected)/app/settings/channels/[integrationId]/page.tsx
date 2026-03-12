@@ -22,7 +22,7 @@ export default function IntegrationSettingsPage() {
     data: integrationBaseInfo,
     isLoading,
     error,
-  } = api.integration.getProviderType.useQuery(
+  } = api.channel.getProviderType.useQuery(
     { integrationId: integrationId! },
     {
       enabled: !!integrationId, // Only run query if integrationId is available

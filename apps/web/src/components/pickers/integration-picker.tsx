@@ -61,7 +61,7 @@ export function IntegrationPicker({
   ...props
 }: IntegrationPickerProps) {
   // Use tRPC to fetch integrations if not provided
-  const { data: fetchedIntegrations } = api.integration.getIntegrationsForPicker.useQuery()
+  const { data: fetchedIntegrations } = api.channel.listForPicker.useQuery()
   const integrations = externalIntegrations || fetchedIntegrations || []
 
   // Local state for managing selected integrations

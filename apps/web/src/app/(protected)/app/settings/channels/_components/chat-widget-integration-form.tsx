@@ -77,7 +77,7 @@ type ChatWidgetFormValues = z.infer<typeof formSchema>
 
 export default function ChatWidgetIntegrationForm() {
   const router = useRouter()
-  const addChatWidget = api.integration.addChatWidgetIntegration.useMutation()
+  const addChatWidget = api.channel.addChatWidgetIntegration.useMutation()
 
   const handleBack = () => {
     router.push('/app/settings/channels/new')

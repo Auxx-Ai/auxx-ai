@@ -21,7 +21,7 @@ interface IntegrationSelectorProps {
 }
 
 const IntegrationSelector: React.FC<IntegrationSelectorProps> = ({ value, onChange, disabled }) => {
-  const { data: integrations, isLoading } = api.integration.getEmailClients.useQuery()
+  const { data: integrations, isLoading } = api.channel.getEmailClients.useQuery()
 
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')

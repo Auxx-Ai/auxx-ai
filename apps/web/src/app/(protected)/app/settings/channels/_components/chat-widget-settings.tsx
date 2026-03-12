@@ -34,7 +34,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Switch } from '@auxx/ui/components/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs' // Import Tabs components
 import { Textarea } from '@auxx/ui/components/textarea'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { toastError, toastError as toastErrorUtil, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { AlertCircle, ArrowLeft, Eye, InboxIcon, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -43,7 +43,6 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useIntegration } from '~/hooks/use-integration'
 import { api } from '~/trpc/react'
 
 interface ChatWidgetSettingsPageProps {
@@ -79,7 +78,8 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
   // --- Hooks ---
   const router = useRouter()
   const utils = api.useUtils()
-  const { toggleIntegration, disconnectIntegration } = useIntegration()
+  const toggleIntegration = api.channel.toggle.useMutation()
+  const disconnectIntegration = api.channel.disconnect.useMutation()
   const [confirm, ConfirmDialog] = useConfirm()
 
   // --- State ---
@@ -91,18 +91,18 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
     data: integrationData,
     isLoading: isLoadingData,
     error: dataError,
-  } = api.integration.getChatWidgetIntegration.useQuery(
+  } = api.channel.getChatWidgetIntegration.useQuery(
     { integrationId },
     { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false }
   )
   const { data: installCodeData, isLoading: isLoadingCode } =
-    api.integration.getInstallationCode.useQuery({ integrationId }, { enabled: !!integrationData })
+    api.channel.getInstallationCode.useQuery({ integrationId }, { enabled: !!integrationData })
   const { data: inboxesData, isLoading: isLoadingInboxes } = api.inbox.getAll.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
   })
 
   // --- Mutations ---
-  const updateChatWidget = api.integration.updateChatWidgetIntegration.useMutation()
+  const updateChatWidget = api.channel.updateChatWidgetIntegration.useMutation()
 
   // --- Form Setup ---
   const form = useForm<ChatWidgetUpdateFormValues>({
@@ -163,8 +163,8 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
             title: 'Settings Saved',
             description: 'Chat widget configuration updated.',
           })
-          utils.integration.getChatWidgetIntegration.invalidate({ integrationId })
-          utils.integration.getIntegrations.invalidate()
+          utils.channel.getChatWidgetIntegration.invalidate({ integrationId })
+          utils.channel.list.invalidate()
           form.reset({}, { keepValues: true })
         },
         onError: (error) => {
@@ -181,8 +181,8 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
       {
         onSuccess: () => {
           toastSuccess({ description: 'Inbox Routing Updated' })
-          utils.integration.getChatWidgetIntegration.invalidate({ integrationId })
-          utils.integration.getIntegrations.invalidate()
+          utils.channel.getChatWidgetIntegration.invalidate({ integrationId })
+          utils.channel.list.invalidate()
         },
         onError: (error) => {
           toastError({ title: 'Update Failed', description: error.message })
@@ -197,8 +197,8 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
       {
         onSuccess: () => {
           toastSuccess({ description: `Widget ${enabled ? 'Enabled' : 'Disabled'}` })
-          utils.integration.getChatWidgetIntegration.invalidate({ integrationId })
-          utils.integration.getIntegrations.invalidate()
+          utils.channel.getChatWidgetIntegration.invalidate({ integrationId })
+          utils.channel.list.invalidate()
         },
         onError: (error) => {
           toastError({ title: 'Status Update Failed', description: error.message })
@@ -224,7 +224,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
         {
           onSuccess: () => {
             toastSuccess({ description: 'Integration Deleted' })
-            utils.integration.getIntegrations.invalidate()
+            utils.channel.list.invalidate()
             utils.user.me.invalidate()
             router.push('/app/settings/channels')
           },

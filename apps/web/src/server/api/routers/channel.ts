@@ -1,4 +1,4 @@
-// src/server/api/routers/integration.ts
+// src/server/api/routers/channel.ts
 
 import { CredentialService } from '@auxx/credentials'
 import { schema } from '@auxx/database'
@@ -19,7 +19,7 @@ import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
-const logger = createScopedLogger('integrations-router')
+const logger = createScopedLogger('channel-router')
 
 // Define supported provider types, removed 'mailgun'
 const SupportedProviderTypes = [
@@ -32,11 +32,11 @@ const SupportedProviderTypes = [
 ] as const // Add future types here
 const IntegrationProviderTypeEnum = z.enum(SupportedProviderTypes)
 
-export const integrationRouter = createTRPCRouter({
+export const channelRouter = createTRPCRouter({
   /**
    * Get integrations for picker components (lightweight query).
    */
-  getIntegrationsForPicker: protectedProcedure.query(async ({ ctx }) => {
+  listForPicker: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const integrations = await ctx.db
       .select({
@@ -74,7 +74,7 @@ export const integrationRouter = createTRPCRouter({
   /**
    * Get all configured integrations for the organization.
    */
-  getIntegrations: protectedProcedure.query(async ({ ctx }) => {
+  list: protectedProcedure.query(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
     const service = new IntegrationService(ctx.db, organizationId)
     return service.getAllIntegrations()
@@ -338,42 +338,6 @@ export const integrationRouter = createTRPCRouter({
     return IntegrationService.getAllStats(ctx.db, organizationId)
   }),
 
-  getSyncStatus: protectedProcedure
-    .input(z.object({ syncJobId: z.string() }))
-    .query(async ({ input, ctx }) => {
-      const { userId, organizationId } = ctx.session
-
-      const [syncJob] = await ctx.db
-        .select({
-          id: schema.SyncJob.id,
-          status: schema.SyncJob.status,
-          startTime: schema.SyncJob.startTime,
-          endTime: schema.SyncJob.endTime,
-          error: schema.SyncJob.error,
-          organizationId: schema.SyncJob.organizationId,
-          totalRecords: schema.SyncJob.totalRecords,
-          processedRecords: schema.SyncJob.processedRecords,
-          failedRecords: schema.SyncJob.failedRecords,
-        })
-        .from(schema.SyncJob)
-        .where(
-          and(
-            eq(schema.SyncJob.id, input.syncJobId),
-            eq(schema.SyncJob.organizationId, organizationId)
-          )
-        )
-        .limit(1)
-
-      if (!syncJob) {
-        logger.warn(
-          `Attempted to fetch sync job status for non-existent or unauthorized job: ${input.syncJobId}`,
-          { userId, organizationId }
-        )
-        throw new Error('Sync job not found or unauthorized.')
-      }
-
-      return syncJob
-    }),
   startSync: protectedProcedure
     .input(
       z.object({
@@ -388,20 +352,6 @@ export const integrationRouter = createTRPCRouter({
 
       const syncer = new SyncMessages(ctx.db, organizationId, userId)
       return await syncer.sync({ integrationId, since })
-    }),
-
-  /**
-   * Cancel an active message sync job
-   */
-  cancelSync: protectedProcedure
-    .input(z.object({ syncJobId: z.string() }))
-    .mutation(async ({ input, ctx }) => {
-      const { userId } = ctx.session
-      const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
-
-      const syncer = new SyncMessages(ctx.db, organizationId, userId)
-      return await syncer.cancel(input.syncJobId)
     }),
 
   /**

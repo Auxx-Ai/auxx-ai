@@ -4,6 +4,7 @@
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import type { ReactNode } from 'react'
+import { ChannelProvider } from '~/components/channels/providers/channel-provider'
 import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
 import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
 import { Dashboard } from '~/components/global/dashboard'
@@ -67,17 +68,19 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
   return (
     <ViewStoreProvider>
       <ResourceProvider>
-        <FilesystemProvider>
-          <PusherProvider>
-            <ThreadDataProvider>
-              <KBar>
-                <TooltipProvider>
-                  <Dashboard user={user}>{children}</Dashboard>
-                </TooltipProvider>
-              </KBar>
-            </ThreadDataProvider>
-          </PusherProvider>
-        </FilesystemProvider>
+        <ChannelProvider>
+          <FilesystemProvider>
+            <PusherProvider>
+              <ThreadDataProvider>
+                <KBar>
+                  <TooltipProvider>
+                    <Dashboard user={user}>{children}</Dashboard>
+                  </TooltipProvider>
+                </KBar>
+              </ThreadDataProvider>
+            </PusherProvider>
+          </FilesystemProvider>
+        </ChannelProvider>
       </ResourceProvider>
     </ViewStoreProvider>
   )

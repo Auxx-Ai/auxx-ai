@@ -131,6 +131,18 @@ export const syncSingleIntegrationMessagesJob = async (
       })
       .where(eq(schema.Integration.id, integrationId))
 
+    // Mark parent SyncJob as COMPLETED
+    await db
+      .update(schema.SyncJob)
+      .set({
+        status: SYNC_STATUS.COMPLETED,
+        endTime: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
+      )
+
     logger.info(`Completed syncSingleIntegrationMessagesJob successfully`, {
       bullmqJobId: job.id,
       syncJobId,
@@ -201,6 +213,19 @@ export const syncSingleIntegrationMessagesJob = async (
         updatedAt: new Date(),
       })
       .where(eq(schema.Integration.id, integrationId))
+
+    // Mark parent SyncJob as FAILED
+    await db
+      .update(schema.SyncJob)
+      .set({
+        status: SYNC_STATUS.FAILED,
+        endTime: new Date(),
+        error: error.message || 'Unknown error',
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
+      )
 
     logger.info(`Applied sync throttle to integration ${integrationId}`, {
       throttleFailureCount: newCount,
