@@ -1,7 +1,15 @@
 // apps/build/src/components/providers/dehydrated-state-provider.tsx
 'use client'
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react'
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import type {
   BuildDehydratedState,
   DehydratedApp,
@@ -19,6 +27,8 @@ interface BuildDehydratedStateContextValue {
   state: BuildDehydratedState
   addAccount: (account: DehydratedDeveloperAccount) => void
   addApp: (app: DehydratedApp) => void
+  patchAccount: (accountId: string, partial: Partial<DehydratedDeveloperAccount>) => void
+  patchApp: (appId: string, partial: Partial<DehydratedApp>) => void
 }
 
 /**
@@ -38,10 +48,15 @@ export function BuildDehydratedStateProvider({
 }) {
   const [state, setState] = useState<BuildDehydratedState>(initialState)
 
-  // Sync state when server re-renders with fresh data (e.g. after router.refresh())
+  // Sync on server re-render. Use a ref to compare by identity,
+  // not by timestamp, to avoid the stale-timestamp-from-cache problem.
+  const prevInitialRef = useRef(initialState)
   useEffect(() => {
-    setState(initialState)
-  }, [initialState.timestamp])
+    if (prevInitialRef.current !== initialState) {
+      prevInitialRef.current = initialState
+      setState(initialState)
+    }
+  }, [initialState])
 
   const addAccount = useCallback((account: DehydratedDeveloperAccount) => {
     setState((prev) => ({
@@ -59,10 +74,33 @@ export function BuildDehydratedStateProvider({
     }))
   }, [])
 
+  const patchAccount = useCallback(
+    (accountId: string, partial: Partial<DehydratedDeveloperAccount>) => {
+      setState((prev) => ({
+        ...prev,
+        developerAccounts: prev.developerAccounts.map((acct) =>
+          acct.id === accountId ? { ...acct, ...partial } : acct
+        ),
+        timestamp: Date.now(),
+      }))
+    },
+    []
+  )
+
+  const patchApp = useCallback((appId: string, partial: Partial<DehydratedApp>) => {
+    setState((prev) => ({
+      ...prev,
+      apps: prev.apps.map((app) => (app.id === appId ? { ...app, ...partial } : app)),
+      timestamp: Date.now(),
+    }))
+  }, [])
+
   const contextValue: BuildDehydratedStateContextValue = {
     state,
     addAccount,
     addApp,
+    patchAccount,
+    patchApp,
   }
 
   return (
@@ -102,6 +140,23 @@ export function useAddAccount(): (account: DehydratedDeveloperAccount) => void {
  */
 export function useAddApp(): (app: DehydratedApp) => void {
   return useBuildDehydratedStateContext().addApp
+}
+
+/**
+ * Hook to patch a developer account in dehydrated state
+ */
+export function usePatchAccount(): (
+  accountId: string,
+  partial: Partial<DehydratedDeveloperAccount>
+) => void {
+  return useBuildDehydratedStateContext().patchAccount
+}
+
+/**
+ * Hook to patch an app in dehydrated state
+ */
+export function usePatchApp(): (appId: string, partial: Partial<DehydratedApp>) => void {
+  return useBuildDehydratedStateContext().patchApp
 }
 
 /**

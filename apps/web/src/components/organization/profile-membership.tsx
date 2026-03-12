@@ -7,7 +7,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Building, Loader2, MailPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   LeaveOrganizationDialog,
   OrganizationItem,
@@ -15,25 +15,45 @@ import {
   PendingInvitationItem,
 } from '~/components/organization'
 import { useOrganization } from '~/hooks/use-organization'
+import { useUser } from '~/hooks/use-user'
+import {
+  useDehydratedOrganizations,
+  useDehydratedUser,
+} from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
+import { EditOrganizationSettings } from './edit-organization-settings'
 
 /** Displays user's organization memberships and pending invitations */
 export function ProfileMemberships() {
+  const { isAdminOrOwner } = useUser()
   const currentOrganization = useOrganization()
   const defaultOrganizationId = currentOrganization?.id
   const router = useRouter()
   const utils = api.useUtils()
 
+  // Organization list from dehydrated state (instant, no API call)
+  const dehydratedUser = useDehydratedUser()!
+  const dehydratedOrganizations = useDehydratedOrganizations()
+
+  const organizations = useMemo<OrganizationMembership[]>(
+    () =>
+      dehydratedUser.memberships.map((m) => {
+        const org = dehydratedOrganizations.find((o) => o.id === m.organizationId)
+        return {
+          id: m.organizationId,
+          name: org?.name ?? null,
+          handle: org?.handle ?? null,
+          role: m.role as OrganizationMembership['role'],
+        }
+      }),
+    [dehydratedUser.memberships, dehydratedOrganizations]
+  )
+
   // Leave dialog state
   const [selectedOrgToLeave, setSelectedOrgToLeave] = useState<OrganizationMembership | null>(null)
   const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false)
 
-  // Queries
-  const { data: organizations, isLoading: isLoadingMemberships } = api.organization.list.useQuery(
-    undefined,
-    { staleTime: 5 * 60 * 1000 }
-  )
-
+  // Pending invitations query (not in dehydrated state)
   const { data: pendingInvites, isLoading: isLoadingInvites } =
     api.member.myPendingInvitations.useQuery(undefined, { staleTime: 1 * 60 * 1000 })
 
@@ -46,7 +66,8 @@ export function ProfileMemberships() {
       })
       setSelectedOrgToLeave(null)
       setIsLeaveDialogOpen(false)
-      await utils.organization.list.invalidate()
+      await utils.invalidate()
+      router.refresh()
     },
     onError: (error) => {
       toastError({ title: 'Error leaving organization', description: error.message })
@@ -59,8 +80,8 @@ export function ProfileMemberships() {
         title: 'Invitation Accepted!',
         description: 'You have joined the organization.',
       })
-      await utils.organization.list.invalidate()
       await utils.member.myPendingInvitations.invalidate()
+      router.refresh()
     },
     onError: (error) => {
       toastError({ title: 'Failed to accept invitation', description: error.message })
@@ -72,15 +93,23 @@ export function ProfileMemberships() {
     leaveOrganization.mutate({ organizationId: selectedOrgToLeave.id })
   }
 
-  const isLoading = isLoadingMemberships || isLoadingInvites
+  const isLoading = isLoadingInvites
 
   return (
     <div className='p-6 space-y-6'>
+      {/* Organization General Settings (admin/owner only) */}
+      {isAdminOrOwner && (
+        <>
+          <EditOrganizationSettings />
+          <Separator />
+        </>
+      )}
+
       {/* Loading State */}
       {isLoading && (
         <div className='flex items-center justify-center py-6'>
           <Loader2 className='h-6 w-6 animate-spin text-muted-foreground' />
-          <span className='ml-2 text-muted-foreground'>Loading memberships...</span>
+          <span className='ml-2 text-muted-foreground'>Loading invitations...</span>
         </div>
       )}
 
@@ -105,10 +134,10 @@ export function ProfileMemberships() {
       )}
 
       {/* Existing Memberships Section */}
-      {!isLoading && organizations && organizations.length > 0 && (
+      {organizations.length > 0 && (
         <div className='space-y-4'>
           <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-            <Building className='size-4' /> Your Organization
+            <Building className='size-4' /> Your Organizations
           </div>
 
           {organizations.map((org) => {
@@ -118,11 +147,11 @@ export function ProfileMemberships() {
             return (
               <OrganizationItem
                 key={org.id}
-                organization={org as OrganizationMembership}
+                organization={org}
                 isDefault={org.id === defaultOrganizationId}
                 canLeave={canLeave}
                 onLeave={() => {
-                  setSelectedOrgToLeave(org as OrganizationMembership)
+                  setSelectedOrgToLeave(org)
                   setIsLeaveDialogOpen(true)
                 }}
                 isLeaving={leaveOrganization.isPending}
@@ -133,18 +162,16 @@ export function ProfileMemberships() {
       )}
 
       {/* No Memberships and No Invites */}
-      {!isLoading &&
-        (!organizations || organizations.length === 0) &&
-        (!pendingInvites || pendingInvites.length === 0) && (
-          <div className='py-6 text-center'>
-            <p className='text-muted-foreground'>
-              You don't belong to any organizations and have no pending invitations.
-            </p>
-            <Button className='mt-4' onClick={() => router.push('/onboarding')}>
-              Create an Organization
-            </Button>
-          </div>
-        )}
+      {organizations.length === 0 && (!pendingInvites || pendingInvites.length === 0) && (
+        <div className='py-6 text-center'>
+          <p className='text-muted-foreground'>
+            You don't belong to any organizations and have no pending invitations.
+          </p>
+          <Button className='mt-4' onClick={() => router.push('/onboarding')}>
+            Create an Organization
+          </Button>
+        </div>
+      )}
 
       {/* Leave Organization Dialog */}
       {isLeaveDialogOpen && (

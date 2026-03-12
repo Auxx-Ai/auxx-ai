@@ -1,15 +1,19 @@
 // components/organization/organization-item.tsx
 'use client'
 
-import {
-  OrganizationRole as OrganizationRoleEnum,
-  OrganizationType as OrganizationTypeEnum,
-} from '@auxx/database/enums'
+import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { LogOut, Shield, ShieldAlert, Trash2, UserCircle2 } from 'lucide-react'
+import { EllipsisVertical, LogOut, Shield, ShieldAlert, Trash2, UserCircle2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useSession } from '~/auth/auth-client'
@@ -113,20 +117,12 @@ export function OrganizationItem({
                 {organization.role}
               </span>
             </div>
-            <span className='text-xs text-muted-foreground'>
-              {organization.type === OrganizationTypeEnum.INDIVIDUAL
-                ? 'Individual Workspace'
-                : 'Team Organization'}
-            </span>
+            {organization.handle && (
+              <span className='text-xs text-muted-foreground font-mono'>{organization.handle}</span>
+            )}
           </div>
         </div>
         <div className='flex items-center gap-2'>
-          {isOwner && (
-            <Button variant='destructive' size='sm' onClick={() => setIsDeleteDialogOpen(true)}>
-              <Trash2 />
-              Delete
-            </Button>
-          )}
           {!isDefault && (
             <Button
               variant='outline'
@@ -136,27 +132,33 @@ export function OrganizationItem({
               Switch
             </Button>
           )}
-          {canLeave ? (
-            <Button
-              variant='outline'
-              size='sm'
-              className='text-destructive hover:text-destructive'
-              onClick={onLeave}
-              disabled={isLeaving}>
-              <LogOut />
-              Leave
-            </Button>
-          ) : (
-            <Button
-              variant='outline'
-              size='sm'
-              className='text-muted-foreground'
-              disabled
-              title='Cannot leave your only organization as the owner.'>
-              <LogOut />
-              Leave
-            </Button>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='ghost' size='icon-xs'>
+                <EllipsisVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              {canLeave ? (
+                <DropdownMenuItem variant='destructive' onClick={onLeave} disabled={isLeaving}>
+                  <LogOut />
+                  Leave
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem disabled variant='destructive'>
+                  <LogOut />
+                  Leave
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              {isOwner && (
+                <DropdownMenuItem variant='destructive' onClick={() => setIsDeleteDialogOpen(true)}>
+                  <Trash2 />
+                  Delete
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

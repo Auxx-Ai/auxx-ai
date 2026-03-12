@@ -1,3 +1,4 @@
+// apps/web/src/app/(protected)/app/settings/general/_components/edit-user-profile.tsx
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
@@ -45,7 +46,7 @@ const defaultValues: Partial<ProfileFormValues> = {
   // email: '',
 }
 
-export function EditOrganizationForm(): JSX.Element {
+export function EditUserProfileForm(): JSX.Element {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | undefined>()

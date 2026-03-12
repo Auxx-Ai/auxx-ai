@@ -1,80 +1,91 @@
-// export const middleware = () => {};
+// apps/web/src/proxy.ts
 
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 
-// import NextAuth from 'next-auth'
-// import { auth } from './server/auth'
-
-// import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-
-// const isPublicRoute = createRouteMatcher([
-// const publicPaths = [
-//   '/',
-//   '/login(.*)',
-//   '/sign-up(.*)',
-//   '/api/webhooks(.*)',
-//   '/api/initial-sync(.*)',
-//   '/api/email-analysis(.*',
-//   '/api/aurinko/webhook(.*)',
-//   '/api/stripe(.*)',
-//   '/privacy',
-//   '/terms-of-service',
-// ]
-
-// const noOnboardingPaths = [...publicPaths, '/onboarding']
-
-// export default clerkMiddleware((auth, req) => {
-//   if (!isPublicRoute(req)) {
-//     auth().protect();
-//   }
-// });
+/**
+ * Route prefixes that must NOT be treated as org handles.
+ * This is intentionally a self-contained set (no external imports) because
+ * the proxy runs on the Edge runtime where package imports can fail.
+ *
+ * The full reserved handle list lives in @auxx/config RESERVED_ORGANIZATION_HANDLES
+ * and is enforced at org creation time — this set only needs the actual URL
+ * segments that exist in the app router.
+ */
+const KNOWN_ROUTE_PREFIXES = new Set([
+  // (protected) routes
+  'app',
+  'organizations',
+  'preview',
+  'subscription',
+  // (auth) routes
+  'change-password',
+  'consent',
+  'deactivated',
+  'forgot-password',
+  'login',
+  'reset-password',
+  'signup',
+  'two-factor',
+  // (public) routes
+  'accept-invitation',
+  'workflows',
+  // Top-level routes
+  'admin',
+  'api',
+  'context',
+  'health',
+  'kb',
+  'ph',
+  'setup',
+  // Next.js / infra
+  '_next',
+  'trpc',
+])
 
 export async function proxy(req: NextRequest) {
-  // console.log('route', req.nextUrl.pathname)
-  // const session = await auth()
+  const { pathname, search } = req.nextUrl
 
-  const { pathname } = req.nextUrl
-  // const isPublicPath = publicPaths.some(
-  //   (path) => pathname === path || pathname.startsWith(`${path}/`)
-  // )
-  if (req.nextUrl.pathname.startsWith('/setup')) {
-    return NextResponse.next()
+  // Org handle deep link detection:
+  // If the first path segment is not a known route, treat it as an org handle.
+  // Sets a short-lived cookie and redirects to the remaining path so the
+  // client-side hook can trigger the org switch without a server mutation.
+  const segments = pathname.split('/')
+  const firstSegment = segments[1]
+
+  if (firstSegment && !KNOWN_ROUTE_PREFIXES.has(firstSegment)) {
+    const remainingPath = segments.slice(2).join('/')
+    const targetPath = remainingPath ? `/${remainingPath}` : '/app'
+
+    // Validate redirect target to prevent open redirects
+    if (targetPath.startsWith('//') || targetPath.includes('..')) {
+      return NextResponse.redirect(new URL('/app', req.url))
+    }
+
+    const redirectUrl = new URL(targetPath + search, req.url)
+    const response = NextResponse.redirect(redirectUrl)
+
+    // Cookie for client-side org switch hook (short-lived)
+    response.cookies.set('auxx-org-handle', firstSegment, {
+      maxAge: 60,
+      path: '/',
+      httpOnly: false, // client JS needs to read this
+      sameSite: 'lax',
+    })
+
+    // Cookie to preserve the full deep link path through the login flow.
+    // If the user is unauthenticated, the protected layout reads this and
+    // passes it as callbackUrl to /login. After login the user hits the
+    // deep link again and the proxy sets a fresh handle cookie.
+    response.cookies.set('auxx-org-deep-link', pathname + search, {
+      maxAge: 300, // 5 minutes — enough to complete login
+      path: '/',
+      httpOnly: false,
+      sameSite: 'lax',
+    })
+
+    return response
   }
-
-  /*
-  const sessionToken =
-    req.cookies.get('__Secure-next-auth.session-token') ||
-    req.cookies.get('next-auth.session-token') ||
-    req.cookies.get('authjs.session-token')
-
-  if (!sessionToken && !isPublicPath) {
-    // No session token found, redirect to login
-    const signInUrl = new URL('/login', req.url)
-    signInUrl.searchParams.set('callbackUrl', req.nextUrl.pathname)
-    return NextResponse.redirect(signInUrl)
-  }
-  */
-  // Token exists, proceed
-  // return NextResponse.next()
-
-  // console.log(req)
-  /*
-  if (!session && !isPublicPath) {
-    const url = new URL('/api/auth/signin', req.url)
-    url.searchParams.set('callbackUrl', encodeURI(req.url))
-    return NextResponse.redirect(url)
-  }
-  // If logged in but hasn't completed onboarding, redirect to onboarding
-  if (
-    session &&
-    !session.user.completedOnboarding &&
-    !noOnboardingPaths.some(
-      (path) => pathname === path || pathname.startsWith(`${path}/`)
-    )
-  ) { 
-    return NextResponse.redirect(new URL('/onboarding', req.url))
-  }*/
 }
 
 export const config = {

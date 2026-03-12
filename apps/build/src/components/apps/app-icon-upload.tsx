@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Camera, Loader2 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { toastError } from '~/components/global/toast'
+import { usePatchApp } from '~/components/providers/dehydrated-state-provider'
 import { useSimpleUpload } from '~/hooks/use-simple-upload'
 import { api } from '~/trpc/react'
 
@@ -26,9 +27,11 @@ export function AppIconUpload({ appId, appSlug, appTitle, currentAvatarUrl }: Ap
   const inputRef = useRef<HTMLInputElement>(null)
   const { upload, isUploading, progress } = useSimpleUpload()
   const utils = api.useUtils()
+  const patchApp = usePatchApp()
 
   const updateApp = api.apps.update.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      patchApp(appId, { avatarUrl: variables.avatarUrl ?? null })
       utils.apps.get.invalidate({ slug: appSlug })
     },
   })
