@@ -4,6 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, eq, inArray } from 'drizzle-orm'
+import { getImportCacheSize, recoverProcessingBatch } from '../../email/polling-import-cache'
 import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 
 const logger = createScopedLogger('job:polling-relaunch-failed')
@@ -58,11 +59,17 @@ export const pollingRelaunchFailedJob = async (job: Job<PollingRelaunchFailedJob
     // Skip integrations still in backoff
     if (integration.throttleRetryAfter && integration.throttleRetryAfter > now) continue
 
-    // Reset to MESSAGE_LIST_FETCH_PENDING
+    // Recover any in-flight processing batch and check cache
+    const recovered = await recoverProcessingBatch(integration.id)
+    const cacheSize = await getImportCacheSize(integration.id)
+
+    // If cache has IDs, resume from MESSAGES_IMPORT_PENDING (cursor already advanced)
+    const resetStage = cacheSize > 0 ? 'MESSAGES_IMPORT_PENDING' : 'MESSAGE_LIST_FETCH_PENDING'
+
     await db
       .update(schema.Integration)
       .set({
-        syncStage: 'MESSAGE_LIST_FETCH_PENDING',
+        syncStage: resetStage,
         syncStatus: 'NOT_SYNCED',
         syncStageStartedAt: null,
         updatedAt: now,
@@ -74,6 +81,9 @@ export const pollingRelaunchFailedJob = async (job: Job<PollingRelaunchFailedJob
     logger.info('Relaunched failed integration', {
       integrationId: integration.id,
       provider: integration.provider,
+      resetStage,
+      recoveredFromProcessing: recovered,
+      cacheSize,
     })
   }
 

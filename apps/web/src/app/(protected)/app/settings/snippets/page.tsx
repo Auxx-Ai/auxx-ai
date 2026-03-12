@@ -85,8 +85,9 @@ function SnippetsPageContent() {
         </Button>
       }>
       <div className='flex h-full w-full overflow-hidden'>
-        <ResizablePanelGroup direction='horizontal'>
+        <ResizablePanelGroup id='snippets-layout' direction='horizontal'>
           <ResizablePanel
+            id='snippets-folders'
             ref={folderPanelRef}
             defaultSize={folderPanelState.isCollapsed ? 0 : folderPanelState.defaultSize}
             minSize={folderPanelState.minSize}
@@ -100,7 +101,7 @@ function SnippetsPageContent() {
             />
           </ResizablePanel>
           <ResizableHandle />
-          <ResizablePanel defaultSize={75} minSize={0}>
+          <ResizablePanel id='snippets-table' defaultSize={75} minSize={0}>
             <SnippetTable
               // folderId={selectedFolderId}
               onEdit={handleEditSnippet}

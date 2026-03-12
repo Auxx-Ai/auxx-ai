@@ -79,9 +79,7 @@ export default function ThreadDetails() {
               thread={thread}
               draft={draft}
               onClose={() => handlers.closeReplyBox()}
-              onSendSuccess={() => {
-                console.log('onSendSuccess callback triggered')
-              }}
+              onSendSuccess={() => {}}
             />
           </div>
         )}

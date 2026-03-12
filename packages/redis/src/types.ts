@@ -4,6 +4,26 @@ import { createScopedLogger } from '@auxx/logger'
 export const logger = createScopedLogger('redis-client')
 
 /**
+ * Pipeline interface for batching Redis commands
+ */
+export interface RedisPipeline {
+  get(key: string): RedisPipeline
+  set(key: string, value: any, ...args: any[]): RedisPipeline
+  del(key: string): RedisPipeline
+  expire(key: string, seconds: number): RedisPipeline
+  incr(key: string): RedisPipeline
+  decr(key: string): RedisPipeline
+  sadd(key: string, ...members: string[]): RedisPipeline
+  srem(key: string, ...members: string[]): RedisPipeline
+  lpush(key: string, ...values: string[]): RedisPipeline
+  rpush(key: string, ...values: string[]): RedisPipeline
+  ltrim(key: string, start: number, stop: number): RedisPipeline
+  zadd(key: string, ...args: any[]): RedisPipeline
+  exec(): Promise<any[]>
+  [key: string]: any
+}
+
+/**
  * Enhanced Redis client interface with optional pub/sub methods
  * Not all providers support all operations
  */
@@ -63,9 +83,17 @@ export interface RedisClient {
   zrevrank(key: string, member: string): Promise<number | null>
   zscore(key: string, member: string): Promise<string | null>
 
+  // Atomic counter operations
+  incr(key: string): Promise<number>
+  decr(key: string): Promise<number>
+
   // TTL operations
   ttl(key: string): Promise<number>
   pttl(key: string): Promise<number>
+  pexpire(key: string, milliseconds: number): Promise<number>
+
+  // Pipeline support (batch operations)
+  pipeline(): RedisPipeline
 
   // Lua script support (IORedis/AWS)
   eval?(script: string, numKeys: number, ...args: any[]): Promise<any>

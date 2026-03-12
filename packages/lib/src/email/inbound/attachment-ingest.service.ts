@@ -39,7 +39,8 @@ export class InboundAttachmentIngestService {
    */
   async ingestAll(
     attachments: AttachmentIngestInput[],
-    context: AttachmentIngestContext
+    context: AttachmentIngestContext,
+    options?: { skipReconciliation?: boolean }
   ): Promise<StoredAttachmentMeta[]> {
     if (attachments.length === 0) return []
 
@@ -51,7 +52,10 @@ export class InboundAttachmentIngestService {
     }
 
     // Reconcile: remove stale ingest-managed attachments for this message
-    await this.reconcileAttachments(context, results)
+    // Skip reconciliation when the input set is known to be partial (e.g. some fetches failed)
+    if (!options?.skipReconciliation) {
+      await this.reconcileAttachments(context, results)
+    }
 
     return results
   }

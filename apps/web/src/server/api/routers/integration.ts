@@ -553,6 +553,71 @@ export const integrationRouter = createTRPCRouter({
     }),
 
   /**
+   * Reset sync state for a stuck integration.
+   * Clears throttle, resets stage to IDLE, and optionally clears lastHistoryId for full re-sync.
+   */
+  resetSyncState: protectedProcedure
+    .input(
+      z.object({
+        integrationId: z.string(),
+        fullResync: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      await requireAdminAccess(userId, organizationId)
+
+      // Verify integration belongs to this org
+      const [integration] = await ctx.db
+        .select({ id: schema.Integration.id, syncStage: schema.Integration.syncStage })
+        .from(schema.Integration)
+        .where(
+          and(
+            eq(schema.Integration.id, input.integrationId),
+            eq(schema.Integration.organizationId, organizationId)
+          )
+        )
+        .limit(1)
+
+      if (!integration) {
+        throw new Error('Integration not found')
+      }
+
+      // Clear Redis import cache (both main and processing sets)
+      const { clearImportCache } = await import('@auxx/lib/email/polling-import-cache')
+      await clearImportCache(input.integrationId)
+
+      // Reset sync state
+      const updateData: Record<string, any> = {
+        syncStage: 'IDLE',
+        syncStatus: 'ACTIVE',
+        syncStageStartedAt: null,
+        throttleFailureCount: 0,
+        throttleRetryAfter: null,
+        updatedAt: new Date(),
+      }
+
+      if (input.fullResync) {
+        updateData.lastHistoryId = null
+      }
+
+      await ctx.db
+        .update(schema.Integration)
+        .set(updateData)
+        .where(eq(schema.Integration.id, input.integrationId))
+
+      logger.info('Admin reset sync state', {
+        integrationId: input.integrationId,
+        fullResync: input.fullResync,
+        previousStage: integration.syncStage,
+        userId,
+      })
+
+      return { success: true }
+    }),
+
+  /**
    * Test IMAP/SMTP/LDAP connection without saving.
    */
   testImapConnection: protectedProcedure

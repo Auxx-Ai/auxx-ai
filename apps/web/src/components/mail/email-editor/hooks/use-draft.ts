@@ -1,6 +1,8 @@
 // apps/web/src/components/mail/email-editor/hooks/use-draft.ts
 'use client'
 
+import { useEffect } from 'react'
+import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { api } from '~/trpc/react'
 import type { DraftMessage } from '../types'
 
@@ -38,8 +40,21 @@ export function useDraft({ draftId, enabled = true }: UseDraftOptions): UseDraft
       enabled: enabled && !!draftId,
       // Always fetch fresh data - drafts change frequently via autosave
       staleTime: 0,
+      retry: (failureCount, error) => {
+        // Don't retry NOT_FOUND errors (draft was deleted after send)
+        if (error.data?.code === 'NOT_FOUND') return false
+        return failureCount < 3
+      },
     }
   )
+
+  // Defense-in-depth: if query fails with NOT_FOUND, tombstone the draft
+  // so useReplyBox skips future fetch attempts
+  useEffect(() => {
+    if (query.isError && draftId && query.error?.data?.code === 'NOT_FOUND') {
+      getThreadStoreState().markDraftNotFound(draftId)
+    }
+  }, [query.isError, query.error?.data?.code, draftId])
 
   return {
     draft: query.data,

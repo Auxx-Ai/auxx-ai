@@ -318,4 +318,32 @@ describe('InboundAttachmentIngestService', () => {
     expect(results[0]!.attachmentId).toBe(deriveAttachmentId('ses-msg-456', 0, 'a.png'))
     expect(results[1]!.attachmentId).toBe(deriveAttachmentId('ses-msg-456', 1, 'b.pdf'))
   })
+
+  it('skips reconciliation when skipReconciliation: true is passed', async () => {
+    // Only 1 duplicate check (empty), NO reconciliation select expected
+    const mockDb = buildMockDb([[]])
+    const service = new InboundAttachmentIngestService(mockDb as never)
+
+    await service.ingestAll([makeAttachment()], baseContext, { skipReconciliation: true })
+
+    // Upload + createWithVersion + attachmentCreate should still be called
+    expect(mocks.uploadContent).toHaveBeenCalledOnce()
+    expect(mocks.createWithVersion).toHaveBeenCalledOnce()
+    expect(mocks.attachmentCreate).toHaveBeenCalledOnce()
+
+    // Only 1 select call (the duplicate check), no reconciliation select
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
+    expect(mockDb.delete).not.toHaveBeenCalled()
+  })
+
+  it('runs reconciliation by default (skipReconciliation not set)', async () => {
+    // 1 duplicate check (empty) + 1 reconciliation select
+    const mockDb = buildMockDb([[], []])
+    const service = new InboundAttachmentIngestService(mockDb as never)
+
+    await service.ingestAll([makeAttachment()], baseContext)
+
+    // 2 select calls: duplicate check + reconciliation
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
 })

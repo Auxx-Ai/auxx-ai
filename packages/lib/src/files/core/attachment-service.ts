@@ -106,7 +106,7 @@ export class AttachmentService extends BaseService<
   }
   protected async processCreateData(data: CreateAttachmentRequest): Promise<any> {
     const orgId = data.organizationId || this.requireOrganization()
-    const userId = data.createdById || this.requireUserId()
+    const userId = data.createdById ?? this.userId ?? null
     this.validateTarget(data)
     await this.ensureAuth(data.entityType, data.entityId)
     const sort = data.sort ?? (await this.nextSort(data.entityType, data.entityId))

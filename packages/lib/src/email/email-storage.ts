@@ -47,6 +47,21 @@ export interface ParticipantInputData {
   raw?: string | null // Original raw string if available
 }
 
+/**
+ * Provider-side attachment metadata for downstream ingest (not persisted in DB).
+ */
+export interface MessageAttachmentMeta {
+  filename: string
+  mimeType: string
+  size: number
+  inline: boolean
+  contentId: string | null
+  /** Gmail: body.attachmentId for large parts; null for embedded parts */
+  providerAttachmentId?: string | null
+  /** Gmail: base64url-encoded body.data for small embedded parts */
+  embeddedData?: string | null
+}
+
 // Structure for message data coming from provider conversion methods
 export interface MessageData {
   externalId: string
@@ -92,6 +107,9 @@ export interface MessageData {
   isAutoReply?: boolean | null
   isFirstInThread?: boolean | null // Provider might determine this
   isAIGenerated?: boolean | null
+
+  /** Provider-side attachment metadata for downstream ingest (not persisted in DB) */
+  providerAttachments?: MessageAttachmentMeta[]
 }
 
 /**
@@ -847,7 +865,9 @@ export class MessageStorageService {
             externalId: messageData.externalId,
             externalThreadId: messageData.externalThreadId,
             textPlain: existingByMsgId.textPlain ?? messageData.textPlain,
-            textHtml: existingByMsgId.textHtml ?? messageData.textHtml,
+            textHtml: messageData.htmlBodyStorageLocationId
+              ? null
+              : (existingByMsgId.textHtml ?? messageData.textHtml),
             snippet: messageData.snippet ?? null,
             htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? undefined,
             hasAttachments: messageData.hasAttachments,
@@ -1102,7 +1122,7 @@ export class MessageStorageService {
             this.extractInternetMessageId(messageData) || messageData.internetMessageId,
           subject: messageData.subject ?? '',
           hasAttachments: messageData.hasAttachments,
-          textHtml: messageData.textHtml,
+          textHtml: messageData.htmlBodyStorageLocationId ? null : messageData.textHtml,
           textPlain: messageData.textPlain,
           snippet: messageData.snippet,
           htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,
@@ -1123,7 +1143,7 @@ export class MessageStorageService {
             receivedAt: messageData.receivedAt,
             subject: messageData.subject || '',
             hasAttachments: messageData.hasAttachments,
-            textHtml: messageData.textHtml,
+            textHtml: messageData.htmlBodyStorageLocationId ? null : messageData.textHtml,
             textPlain: messageData.textPlain,
             snippet: messageData.snippet,
             htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,

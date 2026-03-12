@@ -10,6 +10,7 @@ import { isDefined } from '../../provider-utils'
 import { handleGmailError } from '../shared/error-handler'
 import { executeWithThrottle } from '../shared/utils'
 import { getMessagesBatch } from './batch-fetch'
+import { GmailInboundContentIngestor } from './gmail-inbound-content-ingestor'
 import { convertMessagesToMessageData } from './parse-message'
 
 const logger = createScopedLogger('google-sync-messages')
@@ -182,8 +183,10 @@ async function syncViaHistory(
 ): Promise<{ messagesProcessed: number; messagesDeleted: number; newHistoryId: string }> {
   let nextPageToken: string | undefined | null
   let highestHistoryId = BigInt(startHistoryId)
+  let safeHistoryId = BigInt(startHistoryId) // Only advances when no retriable failures
   let totalProcessed = 0
   let totalDeleted = 0
+  let hasRetriableFailures = false
 
   logger.info('Starting history-based sync', {
     integrationId,
@@ -281,39 +284,79 @@ async function syncViaHistory(
         integrationId,
       })
 
-      const messages = await getMessagesBatch({
+      const {
+        parsed,
+        raw,
+        failedMessageIds: failedFetchIds,
+      } = await getMessagesBatch({
         messageIds: finalAddedIds,
         integrationId,
         throttler,
         accessToken,
       })
 
-      if (messages.length > 0) {
+      if (failedFetchIds.length > 0) {
+        logger.warn('Some message IDs failed to fetch', {
+          failedFetchCount: failedFetchIds.length,
+          failedFetchIds: failedFetchIds.slice(0, 20),
+          integrationId,
+        })
+      }
+
+      if (parsed.length > 0) {
         const messageDataArray = convertMessagesToMessageData(
-          messages,
+          parsed,
+          raw,
           integrationId,
           inboxId,
           organizationId,
           userEmails
         )
 
-        const storedCount = await storageService.batchStoreMessages(messageDataArray)
-        totalProcessed += storedCount
+        const ingestor = new GmailInboundContentIngestor(organizationId, storageService)
+        const result = await ingestor.storeBatchWithIngest(messageDataArray, {
+          accessToken,
+          integrationId,
+          throttler,
+        })
+        totalProcessed += result.storedCount
+
+        // If there are retriable failures, do not advance historyId past this page
+        if (result.retriableFailures.length > 0 || failedFetchIds.length > 0) {
+          hasRetriableFailures = true
+          logger.warn('Retriable failures detected — historyId will not advance past this page', {
+            retriableIngestFailures: result.retriableFailures.length,
+            failedFetchIds: failedFetchIds.length,
+            integrationId,
+          })
+        }
 
         logger.info('Processed history batch', {
-          fetched: messages.length,
-          stored: storedCount,
+          fetched: parsed.length,
+          stored: result.storedCount,
+          failedIngest: result.failedCount,
+          failedFetch: failedFetchIds.length,
           integrationId,
         })
       }
     }
 
+    // Only advance safeHistoryId if this page had no retriable failures
+    if (!hasRetriableFailures) {
+      safeHistoryId = highestHistoryId
+    }
+
     nextPageToken = historyResponse.data.nextPageToken
   } while (nextPageToken)
+
+  // Use safeHistoryId so we re-process pages that had retriable failures next cycle
+  const effectiveHistoryId = hasRetriableFailures ? safeHistoryId : highestHistoryId
 
   logger.info('Gmail history sync cycle completed', {
     integrationId,
     highestHistoryId: highestHistoryId.toString(),
+    effectiveHistoryId: effectiveHistoryId.toString(),
+    hasRetriableFailures,
     messagesProcessed: totalProcessed,
     messagesDeleted: totalDeleted,
   })
@@ -321,7 +364,7 @@ async function syncViaHistory(
   return {
     messagesProcessed: totalProcessed,
     messagesDeleted: totalDeleted,
-    newHistoryId: highestHistoryId.toString(),
+    newHistoryId: effectiveHistoryId.toString(),
   }
 }
 
@@ -352,7 +395,9 @@ async function syncViaMessageList(
   const query = since ? `after:${Math.floor(since.getTime() / 1000)}` : 'in:inbox'
   let nextPageToken: string | undefined | null
   let highestHistoryId = BigInt(0)
+  let safeHistoryId = BigInt(0)
   let totalProcessed = 0
+  let hasRetriableFailures = false
 
   logger.warn(`No startHistoryId found. Syncing via message list with query: "${query}"`, {
     integrationId,
@@ -393,24 +438,42 @@ async function syncViaMessageList(
       integrationId,
     })
 
-    const fetchedMessages = await getMessagesBatch({
+    const {
+      parsed: fetchedMessages,
+      raw: rawMessages,
+      failedMessageIds: failedFetchIds,
+    } = await getMessagesBatch({
       messageIds,
       integrationId,
       throttler,
       accessToken,
     })
 
+    if (failedFetchIds.length > 0) {
+      logger.warn('Some message IDs failed to fetch during list sync', {
+        failedFetchCount: failedFetchIds.length,
+        failedFetchIds: failedFetchIds.slice(0, 20),
+        integrationId,
+      })
+    }
+
     if (fetchedMessages.length > 0) {
       const messageDataArray = convertMessagesToMessageData(
         fetchedMessages,
+        rawMessages,
         integrationId,
         inboxId,
         organizationId,
         userEmails
       )
 
-      const storedCount = await storageService.batchStoreMessages(messageDataArray)
-      totalProcessed += storedCount
+      const ingestor = new GmailInboundContentIngestor(organizationId, storageService)
+      const result = await ingestor.storeBatchWithIngest(messageDataArray, {
+        accessToken,
+        integrationId,
+        throttler,
+      })
+      totalProcessed += result.storedCount
 
       // Track highest history ID
       for (const msg of fetchedMessages) {
@@ -420,9 +483,22 @@ async function syncViaMessageList(
         }
       }
 
+      if (result.retriableFailures.length > 0 || failedFetchIds.length > 0) {
+        hasRetriableFailures = true
+        logger.warn('Retriable failures in list batch — historyId may not advance fully', {
+          retriableIngestFailures: result.retriableFailures.length,
+          failedFetchIds: failedFetchIds.length,
+          integrationId,
+        })
+      } else {
+        safeHistoryId = highestHistoryId
+      }
+
       logger.info('Processed list batch', {
         fetched: fetchedMessages.length,
-        stored: storedCount,
+        stored: result.storedCount,
+        failedIngest: result.failedCount,
+        failedFetch: failedFetchIds.length,
         highestHistoryId: highestHistoryId.toString(),
         integrationId,
       })
@@ -431,14 +507,18 @@ async function syncViaMessageList(
     nextPageToken = listResponse.data.nextPageToken
   } while (nextPageToken)
 
+  const effectiveHistoryId = hasRetriableFailures ? safeHistoryId : highestHistoryId
+
   logger.info('Gmail list-based sync completed', {
     integrationId,
     messagesProcessed: totalProcessed,
     highestHistoryId: highestHistoryId.toString(),
+    effectiveHistoryId: effectiveHistoryId.toString(),
+    hasRetriableFailures,
   })
 
   return {
     messagesProcessed: totalProcessed,
-    newHistoryId: highestHistoryId.toString(),
+    newHistoryId: effectiveHistoryId.toString(),
   }
 }

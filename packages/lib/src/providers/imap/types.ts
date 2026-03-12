@@ -84,6 +84,15 @@ export const UID_SCAN_WINDOW = 1000
 /** Import batch size for IMAP full sync */
 export const IMAP_IMPORT_BATCH_SIZE = 50
 
+/** Max consecutive empty UID windows to scan per job before yielding */
+export const MAX_CONSECUTIVE_EMPTY_WINDOWS = 100
+
+/**
+ * Max total empty windows to scan across the entire full-sync lifecycle per folder.
+ * At 1K UIDs per window, 5000 windows = 5M UIDs — well beyond any realistic mailbox.
+ */
+export const MAX_TOTAL_EMPTY_WINDOWS = 5000
+
 /** Per-folder checkpoint for resumable IMAP full sync, stored in Label.syncCheckpoint */
 export interface ImapFolderCheckpoint {
   runId: string
@@ -102,6 +111,8 @@ export interface ImapFolderCheckpoint {
   /** Format: `${uidValidity}:${highestUid}` — encodes both validity and position */
   candidateCursor: string
   lastError?: string
+  /** Cumulative empty windows scanned across all jobs in this run */
+  totalEmptyWindowsScanned?: number
 }
 
 /** Job payload for a single IMAP import batch (self-contained, retryable) */

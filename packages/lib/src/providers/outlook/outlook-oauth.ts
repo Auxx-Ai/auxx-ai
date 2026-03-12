@@ -321,7 +321,13 @@ export class OutlookOAuthService {
               organizationId: orgId as string,
               provider: 'outlook',
             },
-            { jobId: `poll-list-fetch-${integration.id}` }
+            {
+              jobId: `poll-list-fetch-${integration.id}-${Date.now()}`,
+              attempts: 3,
+              backoff: { type: 'exponential', delay: 60000 },
+              removeOnComplete: { count: 50 },
+              removeOnFail: { count: 100 },
+            }
           )
 
           logger.info('Kicked off polling pipeline for new Outlook integration', {

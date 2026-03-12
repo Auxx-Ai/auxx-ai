@@ -369,7 +369,9 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
           ) : contentMode === 'html' && htmlError ? (
             <div className='p-4 text-sm text-destructive'>{htmlError}</div>
           ) : contentMode === 'html' && resolvedHtml ? (
-            <SandboxedEmailHtml html={resolvedHtml} className='p-4' />
+            <div className='p-4'>
+              <SandboxedEmailHtml html={resolvedHtml} />
+            </div>
           ) : (
             <div className='whitespace-pre-wrap p-4 text-sm'>
               {message.textPlain || message.snippet || ''}

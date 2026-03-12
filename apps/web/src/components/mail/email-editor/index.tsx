@@ -14,7 +14,10 @@ import { useDropzone } from 'react-dropzone'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
+import { useCountUpdates } from '~/components/mail/hooks'
 import { SignatureEditor } from '~/components/signatures/ui'
+import { getMessageListStoreState } from '~/components/threads/store/message-list-store'
+import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
@@ -91,6 +94,7 @@ function ReplyComposeEditorComponent({
   const activeState = useEditorActiveStateContext()
   const [confirm, ConfirmDialog] = useConfirm()
   const posthog = useAnalytics()
+  const { onSendDraft } = useCountUpdates()
 
   // Query integrations when needed
   const { data: integrations } = api.integration.getIntegrations.useQuery(undefined, {
@@ -257,8 +261,49 @@ function ReplyComposeEditorComponent({
 
   const sendMessageMutation = api.thread.sendMessage.useMutation({
     onMutate: () => setIsSending(true),
-    onSuccess: () => {
+    onSuccess: (sentMessage) => {
       toastSuccess({ description: 'Message sent successfully' })
+
+      // Draft cleanup (if sending from a draft)
+      if (state.draftId) {
+        // Tombstone: mark draft as not-found so useReplyBox skips fetch
+        getThreadStoreState().markDraftNotFound(state.draftId)
+
+        // Remove draft:<id> from thread's draftIds
+        const threadId = thread?.id ?? state.threadId
+        if (threadId) {
+          const currentThread = getThreadStoreState().getThread(threadId)
+          if (currentThread) {
+            const recordId = `draft:${state.draftId}`
+            getThreadStoreState().updateThread(threadId, {
+              draftIds: currentThread.draftIds.filter((id) => id !== recordId),
+            })
+          }
+        }
+
+        // Clear tRPC cache for this draft
+        utils.draft.getById.setData({ draftId: state.draftId }, undefined)
+
+        // Decrement draft count
+        onSendDraft()
+      }
+
+      // Message list refresh — invalidate both Zustand and React Query caches
+      if (sentMessage.threadId) {
+        getMessageListStoreState().invalidate(sentMessage.threadId)
+        utils.message.listByThread.invalidate({ threadId: sentMessage.threadId })
+      }
+
+      // Thread metadata patch
+      if (sentMessage.threadId) {
+        const currentThread = getThreadStoreState().getThread(sentMessage.threadId)
+        if (currentThread) {
+          getThreadStoreState().updateThread(sentMessage.threadId, {
+            lastMessageAt: sentMessage.sentAt?.toISOString() ?? new Date().toISOString(),
+          })
+        }
+      }
+
       onSendSuccess()
       onClose()
     },

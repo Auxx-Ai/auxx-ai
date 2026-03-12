@@ -35,6 +35,7 @@ import { addLabel, createLabel, deleteLabel, getLabels, removeLabel, updateLabel
 // Import modular functions
 import { getMessagesBatch } from './messages/batch-fetch'
 import { createEmailMessage } from './messages/create-message'
+import { GmailInboundContentIngestor } from './messages/gmail-inbound-content-ingestor'
 import { convertMessagesToMessageData } from './messages/parse-message'
 import { sendGmailMessage } from './messages/send-message'
 import { syncGmailMessages } from './messages/sync-messages'
@@ -869,7 +870,7 @@ export class GoogleProvider
         if (messages.length === 0) break
 
         for (const msg of messages) {
-          if (msg.id) messageIds.push(msg.id)
+          if (msg.id) addedMessageIds.push(msg.id)
         }
 
         // We need to get historyId from the first batch of actual messages
@@ -932,37 +933,54 @@ export class GoogleProvider
 
     const accessToken = await this.getAccessToken()
 
-    const messages = await getMessagesBatch({
+    const { parsed, raw, failedMessageIds } = await getMessagesBatch({
       messageIds: externalIds,
       integrationId: this.integrationId!,
       throttler: this.throttler!,
       accessToken,
     })
 
-    if (messages.length === 0) {
+    if (failedMessageIds.length > 0) {
+      logger.warn('Some message IDs failed to fetch during import', {
+        integrationId: this.integrationId,
+        failedFetchCount: failedMessageIds.length,
+        failedFetchIds: failedMessageIds.slice(0, 20),
+      })
+    }
+
+    if (parsed.length === 0) {
       return { imported: 0, failed: externalIds.length }
     }
 
     const messageDataArray = convertMessagesToMessageData(
-      messages,
+      parsed,
+      raw,
       this.integrationId!,
       this.inboxId!,
       this.organizationId,
       this.userEmails
     )
 
-    const storedCount = await this.storageService.batchStoreMessages(messageDataArray)
+    const ingestor = new GmailInboundContentIngestor(this.organizationId, this.storageService)
+    const result = await ingestor.storeBatchWithIngest(messageDataArray, {
+      accessToken,
+      integrationId: this.integrationId!,
+      throttler: this.throttler!,
+    })
 
     logger.info('importMessages completed', {
       integrationId: this.integrationId,
       requested: externalIds.length,
-      fetched: messages.length,
-      stored: storedCount,
+      fetched: parsed.length,
+      stored: result.storedCount,
+      failedIngest: result.failedCount,
+      retriableFailures: result.retriableFailures.length,
+      failedExternalIds: result.failedExternalIds.slice(0, 20),
     })
 
     return {
-      imported: storedCount,
-      failed: externalIds.length - storedCount,
+      imported: result.storedCount,
+      failed: externalIds.length - result.storedCount,
     }
   }
 
