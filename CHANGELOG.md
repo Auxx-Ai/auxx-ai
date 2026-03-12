@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.76](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.75...auxx-v0.1.76) (2026-03-12)
+
+
+### Features
+
+* enhance internal URL handling for Lambda execution and improve dev server binding ([#236](https://github.com/Auxx-Ai/auxx-ai/issues/236)) ([d4c848a](https://github.com/Auxx-Ai/auxx-ai/commit/d4c848a59d67ffa2c54fe972e7cdefbe24265052))
+
 ## [0.1.75](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.74...auxx-v0.1.75) (2026-03-12)
 
 
