@@ -23,7 +23,7 @@ export interface FileAttachment {
 
 /**
  * Service for handling message attachments using the unified Attachment system
- * Replaces direct EmailAttachment usage with polymorphic Attachment model
+ * Uses the unified polymorphic Attachment model for all message attachments
  */
 export class MessageAttachmentService {
   private attachmentService: AttachmentService

@@ -39,6 +39,7 @@ export const Attachment = pgTable(
     assetVersionId: text().references((): AnyPgColumn => MediaAssetVersion.id, {
       onUpdate: 'cascade',
     }),
+    contentId: text(),
     createdById: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',

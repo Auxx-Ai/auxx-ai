@@ -111,6 +111,7 @@ export class AttachmentService extends BaseService<
     await this.ensureAuth(data.entityType, data.entityId)
     const sort = data.sort ?? (await this.nextSort(data.entityType, data.entityId))
     return {
+      ...(data.id ? { id: data.id } : {}),
       organizationId: orgId,
       entityType: data.entityType,
       entityId: data.entityId,
@@ -118,6 +119,7 @@ export class AttachmentService extends BaseService<
       title: data.title,
       caption: data.caption,
       sort,
+      contentId: data.contentId ?? null,
       fileId: data.fileId,
       fileVersionId: data.fileVersionId,
       assetId: data.assetId,

@@ -11,7 +11,6 @@ import {
   DatasetSearchResult,
   Document,
   DocumentSegment,
-  EmailAttachment,
   ExternalKnowledgeSource,
   File,
   FileAttachment,
@@ -47,7 +46,6 @@ export const mediaAssetRelations = relations(MediaAsset, ({ one, many }) => ({
   versions: many(MediaAssetVersion, {
     relationName: 'mediaAssetVersion_assetId_mediaAsset_id',
   }),
-  emailAttachments: many(EmailAttachment),
   knowledgeBaseLogoDark: many(KnowledgeBase, {
     relationName: 'knowledgeBase_logoDarkId_mediaAsset_id',
   }),

@@ -67,6 +67,7 @@ export class MessageQueryService {
         isInbound: true,
         isFirstInThread: true,
         hasAttachments: true,
+        htmlBodyStorageLocationId: true,
         sentAt: true,
         receivedAt: true,
         createdAt: true,
@@ -92,16 +93,21 @@ export class MessageQueryService {
       const provider = providerMap.get(m.integrationId) ?? IntegrationProviderType.google
       const messageType = getMessageTypeFromProvider(provider)
 
+      const hasObjectBackedHtml = !!m.htmlBodyStorageLocationId
+
       return {
         id: m.id,
         threadId: m.threadId,
         subject: m.subject,
         snippet: m.snippet,
-        textHtml: m.textHtml,
+        // Suppress full HTML blob when body is object-backed; UI fetches lazily
+        textHtml: hasObjectBackedHtml ? null : m.textHtml,
         textPlain: m.textPlain,
         isInbound: m.isInbound,
         isFirstInThread: m.isFirstInThread ?? false,
         hasAttachments: m.hasAttachments,
+        hasHtmlBody: hasObjectBackedHtml || !!m.textHtml,
+        hasTextBody: !!m.textPlain,
         sentAt: m.sentAt?.toISOString() ?? null,
         receivedAt: m.receivedAt?.toISOString() ?? null,
         createdAt: m.createdAt.toISOString(),
@@ -150,6 +156,7 @@ export class MessageQueryService {
         isInbound: true,
         isFirstInThread: true,
         hasAttachments: true,
+        htmlBodyStorageLocationId: true,
         sentAt: true,
         receivedAt: true,
         createdAt: true,
@@ -178,16 +185,20 @@ export class MessageQueryService {
         const provider = providerMap.get(m.integrationId) ?? IntegrationProviderType.google
         const messageType = getMessageTypeFromProvider(provider)
 
+        const hasObjectBackedHtml = !!m.htmlBodyStorageLocationId
+
         const meta: MessageMeta = {
           id: m.id,
           threadId: m.threadId,
           subject: m.subject,
           snippet: m.snippet,
-          textHtml: m.textHtml,
+          textHtml: hasObjectBackedHtml ? null : m.textHtml,
           textPlain: m.textPlain,
           isInbound: m.isInbound,
           isFirstInThread: m.isFirstInThread ?? false,
           hasAttachments: m.hasAttachments,
+          hasHtmlBody: hasObjectBackedHtml || !!m.textHtml,
+          hasTextBody: !!m.textPlain,
           sentAt: m.sentAt?.toISOString() ?? null,
           receivedAt: m.receivedAt?.toISOString() ?? null,
           createdAt: m.createdAt.toISOString(),
@@ -217,44 +228,42 @@ export class MessageQueryService {
 
     const attachmentRows = await this.db
       .select({
-        id: schema.EmailAttachment.id,
-        messageId: schema.EmailAttachment.messageId,
-        name: schema.EmailAttachment.name,
-        mimeType: schema.EmailAttachment.mimeType,
-        size: schema.EmailAttachment.size,
-        inline: schema.EmailAttachment.inline,
-        contentId: schema.EmailAttachment.contentId,
+        id: schema.Attachment.id,
+        entityId: schema.Attachment.entityId,
+        title: schema.Attachment.title,
+        role: schema.Attachment.role,
+        sort: schema.Attachment.sort,
+        contentId: schema.Attachment.contentId,
+        assetMimeType: schema.MediaAsset.mimeType,
+        assetSize: schema.MediaAsset.size,
       })
-      .from(schema.EmailAttachment)
-      .innerJoin(schema.Message, eq(schema.EmailAttachment.messageId, schema.Message.id))
+      .from(schema.Attachment)
+      .leftJoin(schema.MediaAsset, eq(schema.Attachment.assetId, schema.MediaAsset.id))
       .where(
         and(
-          inArray(schema.EmailAttachment.messageId, messageIds),
-          eq(schema.Message.organizationId, this.organizationId)
+          eq(schema.Attachment.organizationId, this.organizationId),
+          eq(schema.Attachment.entityType, 'MESSAGE'),
+          inArray(schema.Attachment.entityId, messageIds)
         )
       )
-      .orderBy(
-        schema.EmailAttachment.messageId,
-        schema.EmailAttachment.attachmentOrder,
-        schema.EmailAttachment.createdAt
-      )
+      .orderBy(schema.Attachment.entityId, schema.Attachment.sort, schema.Attachment.createdAt)
 
     const attachmentsByMessage = new Map<string, AttachmentMeta[]>()
 
-    for (const attachment of attachmentRows) {
-      const existing = attachmentsByMessage.get(attachment.messageId) ?? []
+    for (const row of attachmentRows) {
+      const existing = attachmentsByMessage.get(row.entityId) ?? []
 
       existing.push({
-        id: attachment.id,
-        name: attachment.name,
-        mimeType: attachment.mimeType,
-        size: attachment.size,
+        id: row.id,
+        name: row.title ?? 'attachment',
+        mimeType: row.assetMimeType ?? null,
+        size: row.assetSize ?? null,
         url: null,
-        inline: attachment.inline,
-        contentId: attachment.contentId ?? null,
+        inline: row.role === 'INLINE',
+        contentId: row.contentId ?? null,
       })
 
-      attachmentsByMessage.set(attachment.messageId, existing)
+      attachmentsByMessage.set(row.entityId, existing)
     }
 
     return attachmentsByMessage

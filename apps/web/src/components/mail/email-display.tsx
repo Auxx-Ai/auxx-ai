@@ -30,7 +30,6 @@ import {
 } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Letter } from 'react-letter'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
 import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
@@ -38,9 +37,11 @@ import { api } from '~/trpc/react'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import type { MessageType } from './email-editor/types'
+import { useHtmlBody } from './hooks/use-html-body'
 import { ParticipantList, type ParticipantListEntry } from './participant-display'
 import { SendStatusIndicator } from './send-status-indicator'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
+import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
 
 interface EmailDisplayProps {
   /** Message ID to display */
@@ -214,6 +215,43 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
     [editorMessage, messageActions]
   )
 
+  // Determine whether HTML is available inline (outbound/legacy) or needs lazy fetch
+  const hasInlineHtml = !!message?.textHtml
+  const hasObjectBackedHtml = !hasInlineHtml && !!message?.hasHtmlBody
+
+  // Lazy-load object-backed HTML body
+  const {
+    html: fetchedHtml,
+    isLoading: isHtmlLoading,
+    error: htmlError,
+    fetchHtml,
+  } = useHtmlBody(messageId)
+
+  // Content mode: 'text' or 'html'
+  const [contentMode, setContentMode] = useState<'text' | 'html'>(hasInlineHtml ? 'html' : 'text')
+
+  // When switching to HTML mode, trigger fetch if needed
+  const handleSwitchToHtml = useCallback(() => {
+    setContentMode('html')
+    if (hasObjectBackedHtml && !fetchedHtml) {
+      fetchHtml()
+    }
+  }, [hasObjectBackedHtml, fetchedHtml, fetchHtml])
+
+  // Resolve inline images for whichever HTML source is active
+  const resolvedHtml = useMemo(() => {
+    const rawHtml = hasInlineHtml ? message?.textHtml : fetchedHtml
+    return resolveInlineEmailHtml(rawHtml, message?.attachments ?? [])
+  }, [hasInlineHtml, message?.textHtml, fetchedHtml, message?.attachments])
+
+  const nonInlineAttachments = useMemo(
+    () => (message?.attachments ?? []).filter((attachment) => !attachment.inline),
+    [message?.attachments]
+  )
+
+  // Whether the toggle should be shown
+  const showModeToggle = hasObjectBackedHtml || (hasInlineHtml && !!message?.textPlain)
+
   // Loading state
   if (isLoading) {
     return <EmailSkeleton />
@@ -226,14 +264,6 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
 
   const isMe = !message.isInbound
   const senderInitials = from?.displayName?.charAt(0)?.toUpperCase() ?? '?'
-  const resolvedHtml = useMemo(
-    () => resolveInlineEmailHtml(message.textHtml, message.attachments ?? []),
-    [message.attachments, message.textHtml]
-  )
-  const nonInlineAttachments = useMemo(
-    () => (message.attachments ?? []).filter((attachment) => !attachment.inline),
-    [message.attachments]
-  )
 
   return (
     <div
@@ -316,10 +346,35 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
       </div>
       {selected && (
         <div className='border-t border-secondary'>
-          <Letter
-            className={cn('bg-background p-4 text-foreground')}
-            html={resolvedHtml || message.textPlain || ''}
-          />
+          {showModeToggle && (
+            <div className='flex items-center gap-1 px-4 pt-2'>
+              <Button
+                variant={contentMode === 'text' ? 'secondary' : 'ghost'}
+                size='xs'
+                onClick={() => setContentMode('text')}>
+                Text
+              </Button>
+              <Button
+                variant={contentMode === 'html' ? 'secondary' : 'ghost'}
+                size='xs'
+                onClick={handleSwitchToHtml}>
+                HTML
+              </Button>
+            </div>
+          )}
+          {contentMode === 'html' && isHtmlLoading ? (
+            <div className='p-4'>
+              <Skeleton className='h-24 w-full' />
+            </div>
+          ) : contentMode === 'html' && htmlError ? (
+            <div className='p-4 text-sm text-destructive'>{htmlError}</div>
+          ) : contentMode === 'html' && resolvedHtml ? (
+            <SandboxedEmailHtml html={resolvedHtml} className='p-4' />
+          ) : (
+            <div className='whitespace-pre-wrap p-4 text-sm'>
+              {message.textPlain || message.snippet || ''}
+            </div>
+          )}
           {nonInlineAttachments.length > 0 && (
             <div className='px-4 pb-4'>
               <div className='flex items-center flex-row'>

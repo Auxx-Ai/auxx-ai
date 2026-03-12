@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => {
     parse: vi.fn(),
     resolve: vi.fn(),
     storeMessage: vi.fn(),
+    ingestBody: vi.fn(),
+    ingestAll: vi.fn(),
   }
 })
 
@@ -64,6 +66,32 @@ vi.mock('../../email-storage', () => {
   }
 
   return { MessageStorageService }
+})
+
+vi.mock('../body-ingest.service', () => {
+  /**
+   * InboundBodyIngestService is the mocked body ingest service used by these tests.
+   */
+  class InboundBodyIngestService {
+    async ingestBody() {
+      return mocks.ingestBody()
+    }
+  }
+
+  return { InboundBodyIngestService }
+})
+
+vi.mock('../attachment-ingest.service', () => {
+  /**
+   * InboundAttachmentIngestService is the mocked attachment ingest service used by these tests.
+   */
+  class InboundAttachmentIngestService {
+    async ingestAll(attachments: unknown[], context: unknown) {
+      return mocks.ingestAll(attachments, context)
+    }
+  }
+
+  return { InboundAttachmentIngestService }
 })
 
 import { InboundEmailProcessor } from '../inbound-email-processor'
@@ -130,10 +158,14 @@ describe('InboundEmailProcessor', () => {
     mocks.parse.mockReset()
     mocks.resolve.mockReset()
     mocks.storeMessage.mockReset()
+    mocks.ingestBody.mockReset()
+    mocks.ingestAll.mockReset()
 
     mocks.parse.mockResolvedValue(parsedEmailFixture)
     mocks.resolve.mockResolvedValue(resolvedIntegrationFixture)
     mocks.storeMessage.mockResolvedValue('message_123')
+    mocks.ingestBody.mockResolvedValue({ htmlBodyStorageLocationId: 'sl_body_123' })
+    mocks.ingestAll.mockResolvedValue([])
   })
 
   it('uses the injected raw email store when processing a queue message', async () => {
@@ -151,6 +183,7 @@ describe('InboundEmailProcessor', () => {
     expect(mocks.storeMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         externalId: 'ses-message-123',
+        htmlBodyStorageLocationId: 'sl_body_123',
         metadata: expect.objectContaining({
           inbound: expect.objectContaining({
             provider: 'ses',

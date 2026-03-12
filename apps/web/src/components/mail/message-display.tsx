@@ -28,7 +28,7 @@ import {
   Send,
   Trash,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Letter } from 'react-letter'
 import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
@@ -36,8 +36,10 @@ import { api } from '~/trpc/react'
 import { ContactHoverCard } from '../contacts/contact-hover-card'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
+import { useHtmlBody } from './hooks/use-html-body'
 import { SendStatusIndicator } from './send-status-indicator'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
+import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
 
 interface MessageDisplayProps {
   /** Message ID to display */
@@ -81,16 +83,34 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
     }
   }, [message, retrySendMessage])
 
-  const resolvedHtml = useMemo(
-    () => resolveInlineEmailHtml(message?.textHtml, message?.attachments ?? []),
-    [message?.attachments, message?.textHtml]
-  )
+  // Determine whether HTML is available inline or needs lazy fetch
+  const hasInlineHtml = !!message?.textHtml
+  const hasObjectBackedHtml = !hasInlineHtml && !!message?.hasHtmlBody
+
+  const { html: fetchedHtml, isLoading: isHtmlLoading, fetchHtml } = useHtmlBody(messageId)
+
+  const resolvedHtml = useMemo(() => {
+    const rawHtml = hasInlineHtml ? message?.textHtml : fetchedHtml
+    return resolveInlineEmailHtml(rawHtml, message?.attachments ?? [])
+  }, [hasInlineHtml, message?.textHtml, fetchedHtml, message?.attachments])
+
+  // Auto-fetch HTML for messages that have object-backed HTML (chat bubbles always show content)
+  useEffect(() => {
+    if (hasObjectBackedHtml && !fetchedHtml && !isHtmlLoading) {
+      fetchHtml()
+    }
+  }, [hasObjectBackedHtml, fetchedHtml, isHtmlLoading, fetchHtml])
 
   // Get message content based on available fields
   const getContent = useCallback(() => {
     if (!message) return ''
+    if (isHtmlLoading) {
+      return <Skeleton className='h-12 w-full' />
+    }
     if (resolvedHtml) {
-      return <Letter className={cn('bg-background p-4 text-foreground')} html={resolvedHtml} />
+      return (
+        <SandboxedEmailHtml html={resolvedHtml} className='bg-background p-4 text-foreground' />
+      )
     }
     if (message.textPlain) {
       return message.textPlain
@@ -99,7 +119,7 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
       return message.snippet
     }
     return <Letter className='' html={'<i>No content</i>'} />
-  }, [message, resolvedHtml])
+  }, [message, resolvedHtml, isHtmlLoading])
 
   // Loading state
   if (isLoading) {

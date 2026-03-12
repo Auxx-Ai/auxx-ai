@@ -96,12 +96,16 @@ export interface UpdateFolderRequest {
  * Request to create a new Attachment
  */
 export interface CreateAttachmentRequest {
+  /** Caller-supplied ID for deterministic inbound attachment creation */
+  id?: string
   entityType: EntityType
   entityId: string
   role?: AttachmentRole
   title?: string
   caption?: string
   sort?: number
+  /** MIME content ID for cid: inline resolution */
+  contentId?: string | null
   organizationId?: string
   createdById?: string
   // Either file OR asset, not both

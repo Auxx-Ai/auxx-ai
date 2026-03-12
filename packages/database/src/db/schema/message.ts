@@ -20,6 +20,7 @@ import { EntityInstance } from './entity-instance'
 import { Integration } from './integration'
 import { Organization } from './organization'
 import { Participant } from './participant'
+import { StorageLocation } from './storage-location'
 import { Thread } from './thread'
 import { User } from './user'
 
@@ -66,6 +67,10 @@ export const Message = pgTable(
     sentAt: timestamp({ precision: 3 }),
     receivedAt: timestamp({ precision: 3 }),
     signatureId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    htmlBodyStorageLocationId: text().references((): AnyPgColumn => StorageLocation.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),

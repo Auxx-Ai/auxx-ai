@@ -681,10 +681,6 @@ export class MessageSenderService {
           with: { participant: true },
           orderBy: [asc(schema.MessageParticipant.role)],
         },
-        attachments: {
-          with: { mediaAsset: true },
-          orderBy: [asc(schema.EmailAttachment.attachmentOrder)],
-        },
         from: true,
         signature: true,
       },
@@ -692,7 +688,46 @@ export class MessageSenderService {
     if (!row) {
       throw new Error(`Message ${messageId} not found`)
     }
-    return row
+
+    // Load canonical attachments separately
+    const attachments = await db
+      .select({
+        id: schema.Attachment.id,
+        assetId: schema.Attachment.assetId,
+        assetVersionId: schema.Attachment.assetVersionId,
+        title: schema.Attachment.title,
+        role: schema.Attachment.role,
+        sort: schema.Attachment.sort,
+      })
+      .from(schema.Attachment)
+      .where(
+        and(
+          eq(schema.Attachment.entityType, 'MESSAGE'),
+          eq(schema.Attachment.entityId, messageId),
+          eq(schema.Attachment.organizationId, row.organizationId)
+        )
+      )
+      .orderBy(asc(schema.Attachment.sort))
+
+    // Load media assets for attachments that have assetIds
+    const assetIds = attachments.map((a) => a.assetId).filter(Boolean) as string[]
+    const assetMap = new Map<string, any>()
+    if (assetIds.length > 0) {
+      const assets = await db.query.MediaAsset.findMany({
+        where: (t, { inArray }) => inArray(t.id, assetIds),
+      })
+      for (const asset of assets) {
+        assetMap.set(asset.id, asset)
+      }
+    }
+
+    const attachmentsWithAssets = attachments.map((a) => ({
+      ...a,
+      mediaAssetId: a.assetId,
+      mediaAsset: a.assetId ? (assetMap.get(a.assetId) ?? null) : null,
+    }))
+
+    return { ...row, attachments: attachmentsWithAssets }
   }
   /**
    * Validates that a message is eligible for retry

@@ -3,6 +3,8 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { MessageData, ParticipantInputData } from '../email-storage'
 import { MessageStorageService } from '../email-storage'
+import { InboundAttachmentIngestService } from './attachment-ingest.service'
+import { InboundBodyIngestService } from './body-ingest.service'
 import { PermanentProcessingError } from './errors'
 import { InboundIntegrationResolver } from './integration-resolver'
 import { RawEmailParser } from './raw-email-parser'
@@ -85,6 +87,16 @@ export class InboundEmailProcessor {
   private integrationResolver = new InboundIntegrationResolver()
 
   /**
+   * bodyIngestService uploads HTML bodies to object storage.
+   */
+  private bodyIngestService = new InboundBodyIngestService()
+
+  /**
+   * attachmentIngestService uploads MIME attachments and creates canonical records.
+   */
+  private attachmentIngestService = new InboundAttachmentIngestService()
+
+  /**
    * constructor initializes the processor with optional dependency overrides.
    */
   constructor(options: InboundEmailProcessorOptions = {}) {
@@ -109,6 +121,9 @@ export class InboundEmailProcessor {
     const resolvedIntegration = await this.integrationResolver.resolve(message.recipients)
     assertSenderAllowed(parsedEmail.from.address, resolvedIntegration.allowedSenders)
 
+    const organizationId = resolvedIntegration.organizationId
+    const contentScopeId = message.sesMessageId
+
     const receivedAt = new Date(message.receivedAt)
     const sentAt = parsedEmail.sentAt ?? receivedAt
     const fallbackRecipients =
@@ -116,6 +131,13 @@ export class InboundEmailProcessor {
         ? parsedEmail.to
         : message.recipients.map((recipient) => ({ address: recipient.toLowerCase(), name: null }))
 
+    // 1. Upload HTML body to object storage (before storeMessage so we have the storageLocationId)
+    const bodyMeta = await this.bodyIngestService.ingestBody(
+      { textHtml: parsedEmail.textHtml },
+      { organizationId, contentScopeId }
+    )
+
+    // 2. Store message with htmlBodyStorageLocationId
     const messageData: MessageData = {
       externalId: message.sesMessageId,
       externalThreadId: deriveExternalThreadId({
@@ -126,12 +148,13 @@ export class InboundEmailProcessor {
       }),
       inboxId: resolvedIntegration.inboxId ?? undefined,
       integrationId: resolvedIntegration.integrationId,
-      organizationId: resolvedIntegration.organizationId,
+      organizationId,
       isInbound: true,
       subject: parsedEmail.subject,
       textHtml: parsedEmail.textHtml,
       textPlain: parsedEmail.textPlain,
       snippet: parsedEmail.snippet,
+      htmlBodyStorageLocationId: bodyMeta.htmlBodyStorageLocationId,
       metadata: {
         inbound: {
           provider: 'ses',
@@ -153,29 +176,38 @@ export class InboundEmailProcessor {
       bcc: normalizeParticipants(parsedEmail.bcc),
       replyTo: normalizeParticipants(parsedEmail.replyTo),
       hasAttachments: parsedEmail.attachments.length > 0,
-      attachments: parsedEmail.attachments.map((attachment) => ({
-        filename: attachment.filename,
-        mimeType: attachment.mimeType,
-        size: attachment.size,
-        inline: attachment.inline,
-        contentId: attachment.contentId ?? null,
-        content: attachment.content ?? null,
-      })),
       internetMessageId: parsedEmail.internetMessageId,
       inReplyTo: parsedEmail.inReplyTo,
       references: parsedEmail.references,
     }
 
-    const storageService = new MessageStorageService(resolvedIntegration.organizationId)
-    await storageService.storeMessage(messageData)
+    const storageService = new MessageStorageService(organizationId)
+    const messageId = await storageService.storeMessage(messageData)
+
+    // 3. Ingest MIME-backed attachments (after message exists for Attachment.entityId)
+    if (parsedEmail.attachments.length > 0) {
+      await this.attachmentIngestService.ingestAll(
+        parsedEmail.attachments.map((att, index) => ({
+          content: Buffer.from(att.content ?? '', 'base64'),
+          filename: att.filename,
+          mimeType: att.mimeType,
+          inline: att.inline,
+          contentId: att.contentId ?? null,
+          attachmentOrder: index,
+        })),
+        { organizationId, messageId, contentScopeId }
+      )
+    }
 
     logger.info('Stored inbound email from SES queue message', {
       sesMessageId: message.sesMessageId,
-      organizationId: resolvedIntegration.organizationId,
+      organizationId,
       integrationId: resolvedIntegration.integrationId,
       inboxId: resolvedIntegration.inboxId,
       matchedRecipient: resolvedIntegration.matchedRecipient,
       sender: parsedEmail.from.address,
+      hasHtmlBody: !!bodyMeta.htmlBodyStorageLocationId,
+      attachmentCount: parsedEmail.attachments.length,
     })
   }
 }

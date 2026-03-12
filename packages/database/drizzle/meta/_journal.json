@@ -673,6 +673,13 @@
       "when": 1773263018977,
       "tag": "0095_add_app_verified",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1773297768370,
+      "tag": "0096_unified_attachment_schema",
+      "breakpoints": true
     }
   ]
 }
