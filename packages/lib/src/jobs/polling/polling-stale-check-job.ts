@@ -4,7 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, eq, inArray, isNotNull, lt } from 'drizzle-orm'
-import { clearImportCache } from '../../email/polling-import-cache'
+import { getImportCacheSize, recoverProcessingBatch } from '../../email/polling-import-cache'
 import type { ImapFolderCheckpoint } from '../../providers/imap/types'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
@@ -23,6 +23,9 @@ export interface PollingStaleCheckJobData {
  *
  * For IMAP integrations with checkpoints, resumes from checkpoint state
  * instead of clearing all work.
+ *
+ * For Gmail/Outlook: preserves the Redis import cache so recovered jobs
+ * can resume importing rather than re-listing with an already-advanced cursor.
  */
 export const pollingStaleCheckJob = async (job: Job<PollingStaleCheckJobData>) => {
   const { staleThresholdMs = DEFAULT_STALE_THRESHOLD_MS } = job.data
@@ -82,22 +85,36 @@ export const pollingStaleCheckJob = async (job: Job<PollingStaleCheckJobData>) =
       }
     }
 
-    // Non-IMAP or no checkpoints: standard reset
+    // Recover any in-flight processing batch back to main cache
+    const recovered = await recoverProcessingBatch(integration.id)
+    if (recovered > 0) {
+      logger.info('Recovered processing batch during stale check', {
+        integrationId: integration.id,
+        recoveredCount: recovered,
+      })
+    }
+
+    // Check cache size to decide reset target
+    const cacheSize = await getImportCacheSize(integration.id)
+
+    // If cache has IDs, reset to MESSAGES_IMPORT_PENDING so they get imported
+    // (cursor is already advanced, re-listing would miss these IDs)
+    // If cache is empty, reset to MESSAGE_LIST_FETCH_PENDING to re-enter pipeline
+    const resetStage = cacheSize > 0 ? 'MESSAGES_IMPORT_PENDING' : 'MESSAGE_LIST_FETCH_PENDING'
+
     logger.warn('Resetting stale integration', {
       integrationId: integration.id,
       syncStage: integration.syncStage,
       stuckDurationMs,
       stuckMinutes: Math.round(stuckDurationMs / 60000),
+      cacheSize,
+      resetStage,
     })
 
-    // Clear Redis import cache (may contain partial/stale data)
-    await clearImportCache(integration.id)
-
-    // Reset to MESSAGE_LIST_FETCH_PENDING (re-enter pipeline from the top)
     await db
       .update(schema.Integration)
       .set({
-        syncStage: 'MESSAGE_LIST_FETCH_PENDING',
+        syncStage: resetStage,
         syncStageStartedAt: null,
         updatedAt: now,
       })
@@ -180,6 +197,15 @@ async function resumeImapFromCheckpoints(
   }
 
   if (resumedAny) {
+    // Recover any in-flight processing batch
+    const recovered = await recoverProcessingBatch(integrationId)
+    if (recovered > 0) {
+      logger.info('Recovered processing batch during IMAP resume', {
+        integrationId,
+        recoveredCount: recovered,
+      })
+    }
+
     // Re-enqueue list fetch job to continue from checkpoints
     await pollingSyncQueue.add(
       'messageListFetchJob',

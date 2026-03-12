@@ -3,10 +3,14 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { MessageStorageService } from '../../email/email-storage'
 import { FolderDiscoveryService } from '../../email/labels/folder-discovery-service'
-import { addToImportCache } from '../../email/polling-import-cache'
+import {
+  addToImportCache,
+  getImportCacheSize,
+  recoverProcessingBatch,
+} from '../../email/polling-import-cache'
 import type { ImapImportBatchJobData } from '../../providers/imap/types'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
 import { getQueue } from '../queues'
@@ -23,6 +27,7 @@ export interface MessageListFetchJobData {
   integrationId: string
   organizationId: string
   provider: string
+  isWindowedScanContinuation?: boolean
 }
 
 /**
@@ -36,6 +41,9 @@ export interface MessageListFetchJobData {
 export const messageListFetchJob = async (job: Job<MessageListFetchJobData>) => {
   const { integrationId, organizationId, provider } = job.data
   const now = new Date()
+
+  // Extract signal from JobContext (passed via createJobHandler)
+  const signal = (job as any).signal as AbortSignal | undefined
 
   logger.info('Starting message list fetch', { integrationId, organizationId, provider })
 
@@ -57,8 +65,8 @@ export const messageListFetchJob = async (job: Job<MessageListFetchJobData>) => 
 
     // Check if provider supports two-phase sync
     if (providerInstance.supportsTwoPhaseSync?.()) {
-      // --- Label sync ---
-      if (providerInstance.discoverLabels) {
+      // --- Label sync (skip on windowed scan continuations — folders already discovered) ---
+      if (!job.data.isWindowedScanContinuation && providerInstance.discoverLabels) {
         const discoveredLabels = await providerInstance.discoverLabels()
         const folderDiscovery = new FolderDiscoveryService()
         await folderDiscovery.discoverAndUpsert({
@@ -200,9 +208,45 @@ export const messageListFetchJob = async (job: Job<MessageListFetchJobData>) => 
           updatedAt: new Date(),
         })
         .where(eq(schema.Integration.id, integrationId))
+    } else {
+      // Non-final attempt: reset stale timer so BullMQ retries get a fresh window
+      await db
+        .update(schema.Integration)
+        .set({ syncStageStartedAt: new Date(), updatedAt: new Date() })
+        .where(eq(schema.Integration.id, integrationId))
     }
 
     throw error
+  } finally {
+    // Phase 2: Signal-based recovery for lock loss / cancellation
+    if (signal?.aborted) {
+      const recovered = await recoverProcessingBatch(integrationId)
+      if (recovered > 0) {
+        logger.warn('Recovered processing batch after cancellation', {
+          integrationId,
+          recoveredCount: recovered,
+        })
+      }
+
+      const cacheSize = await getImportCacheSize(integrationId)
+      const resetStage = cacheSize > 0 ? 'MESSAGES_IMPORT_PENDING' : 'MESSAGE_LIST_FETCH_PENDING'
+
+      await db
+        .update(schema.Integration)
+        .set({ syncStage: resetStage, syncStageStartedAt: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.Integration.id, integrationId),
+            inArray(schema.Integration.syncStage, ['MESSAGE_LIST_FETCH', 'MESSAGES_IMPORT'])
+          )
+        )
+
+      logger.info('Reset integration after signal abort', {
+        integrationId,
+        resetStage,
+        cacheSize,
+      })
+    }
   }
 }
 
@@ -312,7 +356,7 @@ async function handleImapListFetch(
     // All windows were empty but there are more windows to scan — re-enqueue list fetch
     await pollingSyncQueue.add(
       'messageListFetchJob',
-      { integrationId, organizationId, provider: 'imap' },
+      { integrationId, organizationId, provider: 'imap', isWindowedScanContinuation: true },
       {
         jobId: `poll-list-fetch-${integrationId}-${Date.now()}`,
         delay: 1000,

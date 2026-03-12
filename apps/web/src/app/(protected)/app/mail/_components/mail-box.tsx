@@ -451,11 +451,13 @@ function MailboxInner({
             ) : (
               // Desktop: Keep existing ResizablePanelGroup
               <ResizablePanelGroup
+                id='mail-layout'
                 direction='horizontal'
                 // Ensure the group fills the available height and prevents internal overflow issues
                 className='h-full  flex-1 grow overflow-hidden bg-secondary dark:bg-primary-100'>
                 {/* Left Panel: Contains Tabs (if applicable), Search, and ThreadList */}
                 <ResizablePanel
+                  id='mail-thread-list'
                   defaultSize={defaultLayout[0]}
                   // minSize={20} // Minimum width for the list panel
                   // maxSize={40} // Maximum width for the list panel
@@ -477,7 +479,11 @@ function MailboxInner({
                 <ResizableHandle withHandle />
 
                 {/* Right Panel: Displays the selected thread details */}
-                <ResizablePanel defaultSize={defaultLayout[1]} minSize={30} collapsible>
+                <ResizablePanel
+                  id='mail-thread-display'
+                  defaultSize={defaultLayout[1]}
+                  minSize={30}
+                  collapsible>
                   <ThreadDisplay />
                 </ResizablePanel>
               </ResizablePanelGroup>

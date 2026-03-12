@@ -8,7 +8,12 @@ import type { MessageListResult } from '../integration-provider.interface'
 import { ImapClientProvider } from './imap-client-provider'
 import { ImapSyncService } from './imap-sync-service'
 import type { ImapCredentialData, ImapFolderCheckpoint } from './types'
-import { IMAP_IMPORT_BATCH_SIZE, UID_SCAN_WINDOW } from './types'
+import {
+  IMAP_IMPORT_BATCH_SIZE,
+  MAX_CONSECUTIVE_EMPTY_WINDOWS,
+  MAX_TOTAL_EMPTY_WINDOWS,
+  UID_SCAN_WINDOW,
+} from './types'
 import { createSyncCursor } from './utils/create-sync-cursor'
 import { extractMailboxState } from './utils/extract-mailbox-state'
 
@@ -215,21 +220,65 @@ export class ImapGetMessageListService {
             continue
           }
 
-          // Scan one UID window
-          const windowStart = checkpoint.nextUidStart
-          const windowEnd = Math.min(
-            windowStart + UID_SCAN_WINDOW - 1,
-            checkpoint.snapshotHighestUid
-          )
+          // Safety valve: if this folder has exhausted its empty-window budget across
+          // all jobs in this run, mark it done instead of scanning further.
+          if ((checkpoint.totalEmptyWindowsScanned ?? 0) >= MAX_TOTAL_EMPTY_WINDOWS) {
+            logger.warn('Folder exceeded max total empty windows, marking done', {
+              folderPath,
+              integrationId,
+              totalEmptyWindowsScanned: checkpoint.totalEmptyWindowsScanned,
+              snapshotHighestUid: checkpoint.snapshotHighestUid,
+              nextUidStart: checkpoint.nextUidStart,
+            })
 
-          const scanResult = await this.syncService.scanUidWindow(
-            client,
-            mailbox,
-            windowStart,
-            windowEnd
-          )
+            checkpoint.phase = 'done'
+            results.push({
+              labelId: label.id,
+              folderPath,
+              batches: [],
+              checkpoint,
+              folderScanComplete: true,
+            })
+            continue
+          }
 
-          const externalIds = scanResult.uids.map((uid) => `${folderPath}:${uid}`)
+          // Scan multiple UID windows until we find messages or exhaust budget
+          let windowStart = checkpoint.nextUidStart
+          let totalWindowsScanned = 0
+          let foundUids: number[] = []
+          let finalWindowEnd = windowStart
+
+          while (windowStart <= checkpoint.snapshotHighestUid) {
+            const windowEnd = Math.min(
+              windowStart + UID_SCAN_WINDOW - 1,
+              checkpoint.snapshotHighestUid
+            )
+
+            const scanResult = await this.syncService.scanUidWindow(
+              client,
+              mailbox,
+              windowStart,
+              windowEnd
+            )
+
+            totalWindowsScanned++
+            finalWindowEnd = windowEnd
+
+            if (scanResult.uids.length > 0) {
+              foundUids = scanResult.uids
+              break
+            }
+
+            // Empty window — advance
+            windowStart = windowEnd + 1
+
+            // Budget exhausted — yield to job queue
+            if (totalWindowsScanned >= MAX_CONSECUTIVE_EMPTY_WINDOWS) {
+              break
+            }
+          }
+
+          const externalIds = foundUids.map((uid) => `${folderPath}:${uid}`)
 
           // Split into bounded import batches
           const batches: string[][] = []
@@ -237,21 +286,24 @@ export class ImapGetMessageListService {
             batches.push(externalIds.slice(i, i + IMAP_IMPORT_BATCH_SIZE))
           }
 
-          const folderScanComplete = windowEnd >= checkpoint.snapshotHighestUid
+          const folderScanComplete = finalWindowEnd >= checkpoint.snapshotHighestUid
 
           // Update checkpoint
           checkpoint.phase = batches.length > 0 ? 'importing' : 'listing'
-          checkpoint.discoveredMessageCount += scanResult.uids.length
+          checkpoint.discoveredMessageCount += foundUids.length
+          checkpoint.totalEmptyWindowsScanned =
+            (checkpoint.totalEmptyWindowsScanned ?? 0) +
+            (totalWindowsScanned - (foundUids.length > 0 ? 1 : 0))
 
           if (batches.length > 0) {
             checkpoint.activeWindowStart = windowStart
-            checkpoint.activeWindowEnd = windowEnd
+            checkpoint.activeWindowEnd = finalWindowEnd
             checkpoint.activeWindowBatchCount = batches.length
             checkpoint.activeWindowCompletedBatches = 0
             checkpoint.activeWindowFailedBatches = 0
           } else {
-            // Empty window — advance nextUidStart immediately
-            checkpoint.nextUidStart = windowEnd + 1
+            // All windows were empty — advance nextUidStart past everything scanned
+            checkpoint.nextUidStart = finalWindowEnd + 1
           }
 
           // If scan is complete and no batches to import, mark done
@@ -259,21 +311,23 @@ export class ImapGetMessageListService {
             checkpoint.phase = 'done'
           }
 
+          logger.info('Scanned UID window(s) for folder', {
+            folderPath,
+            integrationId,
+            scanStart: checkpoint.nextUidStart - totalWindowsScanned * UID_SCAN_WINDOW,
+            scanEnd: finalWindowEnd,
+            windowsScanned: totalWindowsScanned,
+            totalEmptyWindowsScanned: checkpoint.totalEmptyWindowsScanned,
+            uidsFound: foundUids.length,
+            batchCount: batches.length,
+            folderScanComplete,
+          })
+
           results.push({
             labelId: label.id,
             folderPath,
             batches,
             checkpoint,
-            folderScanComplete,
-          })
-
-          logger.info('Scanned UID window for folder', {
-            folderPath,
-            integrationId,
-            windowStart,
-            windowEnd,
-            uidsFound: scanResult.uids.length,
-            batchCount: batches.length,
             folderScanComplete,
           })
         } catch (error) {

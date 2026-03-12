@@ -93,6 +93,7 @@ function createSidebarGroup(
         {items.map((item) => (
           <li className='group/menu-item relative' key={item.id}>
             <Link
+              prefetch={false}
               href={`${baseUrl}/${item.slug}`}
               data-active={item.slug == current}
               className={cn(

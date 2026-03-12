@@ -185,9 +185,18 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     zscore: async (key: string, member: string) =>
       (await client.zscore(key, member)) as string | null,
 
+    // Atomic counter operations
+    incr: async (key: string) => (await client.incr(key)) as number,
+    decr: async (key: string) => (await client.decr(key)) as number,
+
     // TTL operations (fully supported by IORedis)
     ttl: async (key: string) => (await client.ttl(key)) as number,
     pttl: async (key: string) => (await client.pttl(key)) as number,
+    pexpire: async (key: string, milliseconds: number) =>
+      (await client.pexpire(key, milliseconds)) as number,
+
+    // Pipeline support
+    pipeline: () => client.pipeline() as any,
   }
 
   logger.info(`Enhanced ${provider} Redis client created successfully`)

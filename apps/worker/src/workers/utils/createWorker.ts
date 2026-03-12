@@ -4,7 +4,7 @@ import type { JobHandler, LegacyJobHandler } from '@auxx/lib/jobs'
 import type { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { getConnectionOptions } from '@auxx/redis'
-import { Worker, type WorkerOptions } from 'bullmq'
+import { Job, Worker, type WorkerOptions } from 'bullmq'
 import { createJobHandler } from './createJobHandler'
 
 const logger = createScopedLogger('worker')
@@ -24,7 +24,7 @@ export interface EnhancedWorkerOptions extends Omit<WorkerOptions, 'connection'>
  * Creates a fully configured BullMQ worker with:
  * - Job handling and error handling
  * - Cancellation support via AbortSignal
- * - Lock renewal failure handling
+ * - Lock renewal failure handling with integration recovery
  *
  * @param queue The queue to process
  * @param jobMappings Object mapping job names to their handler functions
@@ -52,9 +52,53 @@ export function createWorker<T extends Record<string, JobHandler | LegacyJobHand
     logger.error(`Worker error on queue ${queue}:`, { error: error.message })
   })
 
-  // Lock renewal failure handling (cancel jobs that lost their lock)
-  worker.on('lockRenewalFailed', (jobId: string, error: Error) => {
-    logger.warn('Lock renewal failed, cancelling job', { jobId, queue, error: error.message })
+  // Lock renewal failure handling with integration recovery
+  worker.on('lockRenewalFailed', async (jobId: string, error: Error) => {
+    logger.warn('Lock renewal failed', { jobId, queue, error: error.message })
+
+    // Attempt to recover integration state for polling sync jobs
+    try {
+      const job = await Job.fromId(worker, jobId)
+
+      if (job?.data?.integrationId) {
+        const { integrationId } = job.data
+
+        // Dynamic imports to avoid circular dependencies
+        const { recoverProcessingBatch, getImportCacheSize } = await import(
+          '@auxx/lib/email/polling-import-cache'
+        )
+        const { database: db, schema } = await import('@auxx/database')
+        const { and, eq, inArray } = await import('drizzle-orm')
+
+        const recovered = await recoverProcessingBatch(integrationId)
+        const cacheSize = await getImportCacheSize(integrationId)
+
+        const resetStage = cacheSize > 0 ? 'MESSAGES_IMPORT_PENDING' : 'MESSAGE_LIST_FETCH_PENDING'
+
+        await db
+          .update(schema.Integration)
+          .set({ syncStage: resetStage, syncStageStartedAt: null, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.Integration.id, integrationId),
+              inArray(schema.Integration.syncStage, ['MESSAGE_LIST_FETCH', 'MESSAGES_IMPORT'])
+            )
+          )
+
+        logger.info('Recovered integration after lock loss', {
+          integrationId,
+          recoveredFromProcessing: recovered,
+          cacheSize,
+          resetStage,
+        })
+      }
+    } catch (err) {
+      // Best-effort — stale check will catch it in 15 minutes
+      logger.error('Failed to recover integration after lock loss', {
+        jobId,
+        error: (err as Error).message,
+      })
+    }
   })
 
   // Progress logging

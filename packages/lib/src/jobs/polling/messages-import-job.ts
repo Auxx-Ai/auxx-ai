@@ -3,8 +3,13 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq } from 'drizzle-orm'
-import { getImportCacheSize, popFromImportCache } from '../../email/polling-import-cache'
+import { and, eq, inArray } from 'drizzle-orm'
+import {
+  acknowledgeImportBatch,
+  claimImportBatch,
+  getImportCacheSize,
+  recoverProcessingBatch,
+} from '../../email/polling-import-cache'
 import type { ImapFolderCheckpoint, ImapImportBatchJobData } from '../../providers/imap/types'
 import {
   DEFAULT_IMPORT_BATCH_SIZE,
@@ -30,7 +35,7 @@ export interface MessagesImportJobData {
 
 /**
  * Phase 2: Fetch message content by external IDs from Redis cache.
- * Pops a batch, imports via provider, and transitions stage.
+ * Claims a batch (two-phase), imports via provider, then acknowledges.
  */
 export const messagesImportJob = async (job: Job<MessagesImportJobData>) => {
   const { integrationId, organizationId, provider } = job.data
@@ -38,7 +43,12 @@ export const messagesImportJob = async (job: Job<MessagesImportJobData>) => {
     job.data.batchSize ?? PROVIDER_IMPORT_BATCH_SIZE[provider] ?? DEFAULT_IMPORT_BATCH_SIZE
   const now = new Date()
 
+  // Extract signal from JobContext (passed via createJobHandler)
+  const signal = (job as any).signal as AbortSignal | undefined
+
   logger.info('Starting messages import', { integrationId, organizationId, batchSize })
+
+  let claimedIds: string[] = []
 
   try {
     // Set stage to MESSAGES_IMPORT
@@ -51,10 +61,10 @@ export const messagesImportJob = async (job: Job<MessagesImportJobData>) => {
       })
       .where(eq(schema.Integration.id, integrationId))
 
-    // Pop batch from Redis cache
-    const externalIds = await popFromImportCache(integrationId, batchSize)
+    // Claim batch from Redis cache (two-phase: main → processing set)
+    claimedIds = await claimImportBatch(integrationId, batchSize)
 
-    if (externalIds.length === 0) {
+    if (claimedIds.length === 0) {
       // No IDs remaining — done
       await db
         .update(schema.Integration)
@@ -83,13 +93,16 @@ export const messagesImportJob = async (job: Job<MessagesImportJobData>) => {
       throw new Error(`Provider ${provider} does not support importMessages`)
     }
 
-    const result = await providerInstance.importMessages(externalIds)
+    const result = await providerInstance.importMessages(claimedIds)
+
+    // Acknowledge successful import — remove from processing set
+    await acknowledgeImportBatch(integrationId, claimedIds)
 
     logger.info('Import batch completed', {
       integrationId,
       imported: result.imported,
       failed: result.failed,
-      batchSize: externalIds.length,
+      batchSize: claimedIds.length,
     })
 
     // Check remaining cache size
@@ -162,9 +175,45 @@ export const messagesImportJob = async (job: Job<MessagesImportJobData>) => {
           updatedAt: new Date(),
         })
         .where(eq(schema.Integration.id, integrationId))
+    } else {
+      // Non-final attempt: reset stale timer so BullMQ retries get a fresh window
+      await db
+        .update(schema.Integration)
+        .set({ syncStageStartedAt: new Date(), updatedAt: new Date() })
+        .where(eq(schema.Integration.id, integrationId))
     }
 
     throw error
+  } finally {
+    // Phase 2: Signal-based recovery for lock loss / cancellation
+    if (signal?.aborted) {
+      const recovered = await recoverProcessingBatch(integrationId)
+      if (recovered > 0) {
+        logger.warn('Recovered processing batch after cancellation', {
+          integrationId,
+          recoveredCount: recovered,
+        })
+      }
+
+      const cacheSize = await getImportCacheSize(integrationId)
+      const resetStage = cacheSize > 0 ? 'MESSAGES_IMPORT_PENDING' : 'MESSAGE_LIST_FETCH_PENDING'
+
+      await db
+        .update(schema.Integration)
+        .set({ syncStage: resetStage, syncStageStartedAt: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.Integration.id, integrationId),
+            inArray(schema.Integration.syncStage, ['MESSAGE_LIST_FETCH', 'MESSAGES_IMPORT'])
+          )
+        )
+
+      logger.info('Reset integration after signal abort', {
+        integrationId,
+        resetStage,
+        cacheSize,
+      })
+    }
   }
 }
 
@@ -340,6 +389,44 @@ export const imapImportBatchJob = async (job: Job<ImapImportBatchJobData>) => {
       runId,
       error: error.message,
     })
+
+    // Phase 5: Apply throttle on final attempt for IMAP batch jobs
+    const maxAttempts = job.opts.attempts ?? 1
+    const isFinalAttempt = job.attemptsMade + 1 >= maxAttempts
+
+    if (isFinalAttempt) {
+      const [integration] = await db
+        .select({ throttleFailureCount: schema.Integration.throttleFailureCount })
+        .from(schema.Integration)
+        .where(eq(schema.Integration.id, integrationId))
+        .limit(1)
+
+      const newCount = (integration?.throttleFailureCount ?? 0) + 1
+      const backoffMs = Math.min(
+        BASE_THROTTLE_BACKOFF_MS * 2 ** (newCount - 1),
+        MAX_THROTTLE_BACKOFF_MS
+      )
+
+      await db
+        .update(schema.Integration)
+        .set({
+          syncStage: 'FAILED',
+          syncStatus: 'FAILED',
+          syncStageStartedAt: null,
+          throttleFailureCount: newCount,
+          throttleRetryAfter: new Date(Date.now() + backoffMs),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Integration.id, integrationId))
+
+      logger.warn('IMAP batch final attempt failed, throttling integration', {
+        integrationId,
+        labelId,
+        newCount,
+        backoffMs,
+      })
+    }
+
     throw error
   }
 }
@@ -362,8 +449,7 @@ async function maybeTransitionImapToIdle(integrationId: string, now: Date): Prom
 
   if (!hasActiveCheckpoints) {
     // Check if there's still incremental work in the Redis cache
-    const { getImportCacheSize: getCacheSize } = await import('../../email/polling-import-cache')
-    const remaining = await getCacheSize(integrationId)
+    const remaining = await getImportCacheSize(integrationId)
 
     if (remaining > 0) {
       // Still have incremental imports — let messagesImportJob handle transition

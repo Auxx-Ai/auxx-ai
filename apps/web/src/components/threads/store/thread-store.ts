@@ -182,6 +182,9 @@ interface ThreadStoreState {
   startDraftBatch: () => string[]
   completeDraftBatch: (drafts: StandaloneDraftMeta[], notFoundIds: string[]) => void
 
+  /** Mark a draft as not-found (tombstone) so useReplyBox skips fetch */
+  markDraftNotFound: (id: string) => void
+
   // Selectors (for use outside React)
   getThread: (id: string) => ThreadMeta | undefined
   getDraft: (id: string) => StandaloneDraftMeta | undefined
@@ -520,6 +523,14 @@ export const useThreadStore = create<ThreadStoreState>()(
             state.loadingDraftIds.delete(id)
             state.notFoundDraftIds.add(id)
           }
+        }),
+
+      markDraftNotFound: (id) =>
+        set((state) => {
+          state.notFoundDraftIds.add(id)
+          state.pendingDraftIds.delete(id)
+          state.loadingDraftIds.delete(id)
+          state.standaloneDrafts.delete(id)
         }),
 
       // ═══════════════════════════════════════════════════════════════

@@ -69,3 +69,12 @@ export interface GmailMessageWithPayload extends gmail_v1.Schema$Message {
  * Throttler context for Gmail operations
  */
 export type GoogleThrottleContext = 'sync' | 'history' | 'batch' | 'send' | 'webhook' | 'labels'
+
+/**
+ * Context required for fetching Gmail attachment bytes.
+ */
+export interface GmailFetchContext {
+  accessToken: string
+  integrationId: string
+  throttler: UniversalThrottler
+}

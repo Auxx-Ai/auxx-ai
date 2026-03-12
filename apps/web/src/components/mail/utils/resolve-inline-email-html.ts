@@ -42,13 +42,26 @@ export function resolveInlineEmailHtml(
   attachments: AttachmentMeta[]
 ): string {
   if (!html) return ''
-  if (!html.includes('cid:') || attachments.length === 0) return html
 
-  const inlineAttachmentsByContentId = new Map(
+  const hasCid = html.includes('cid:')
+
+  console.log('[resolve-inline-email-html]', {
+    hasCid,
+    attachmentCount: attachments.length,
+    attachmentsWithContentId: attachments
+      .filter((a) => a.contentId)
+      .map((a) => ({ id: a.id, contentId: a.contentId, inline: a.inline })),
+  })
+
+  if (!hasCid || attachments.length === 0) return html
+
+  const attachmentsByContentId = new Map(
     attachments
-      .filter((attachment) => attachment.inline && attachment.contentId)
+      .filter((attachment) => attachment.contentId)
       .map((attachment) => [normalizeContentId(attachment.contentId!), attachment])
   )
+
+  console.log('[resolve-inline-email-html] lookup map keys:', [...attachmentsByContentId.keys()])
 
   let resolved = html
 
@@ -56,7 +69,14 @@ export function resolveInlineEmailHtml(
   resolved = resolved.replace(
     CID_SRC_QUOTED_PATTERN,
     (match, quote: string, rawContentId: string) => {
-      const attachment = inlineAttachmentsByContentId.get(normalizeContentId(rawContentId))
+      const normalized = normalizeContentId(rawContentId)
+      const attachment = attachmentsByContentId.get(normalized)
+      console.log('[resolve-inline-email-html] quoted match', {
+        rawContentId,
+        normalized,
+        found: !!attachment,
+        replacedWith: attachment ? `/api/attachments/${attachment.id}/content` : null,
+      })
       if (!attachment) return match
       return `src=${quote}/api/attachments/${attachment.id}/content${quote}`
     }
@@ -64,7 +84,13 @@ export function resolveInlineEmailHtml(
 
   // Rewrite unquoted src=cid:...
   resolved = resolved.replace(CID_SRC_UNQUOTED_PATTERN, (match, rawContentId: string) => {
-    const attachment = inlineAttachmentsByContentId.get(normalizeContentId(rawContentId))
+    const normalized = normalizeContentId(rawContentId)
+    const attachment = attachmentsByContentId.get(normalized)
+    console.log('[resolve-inline-email-html] unquoted match', {
+      rawContentId,
+      normalized,
+      found: !!attachment,
+    })
     if (!attachment) return match
     return `src="/api/attachments/${attachment.id}/content"`
   })
@@ -73,7 +99,13 @@ export function resolveInlineEmailHtml(
   resolved = resolved.replace(
     CID_CSS_URL_PATTERN,
     (match, _quote: string, rawContentId: string) => {
-      const attachment = inlineAttachmentsByContentId.get(normalizeContentId(rawContentId))
+      const normalized = normalizeContentId(rawContentId)
+      const attachment = attachmentsByContentId.get(normalized)
+      console.log('[resolve-inline-email-html] css match', {
+        rawContentId,
+        normalized,
+        found: !!attachment,
+      })
       if (!attachment) return match
       return `url('/api/attachments/${attachment.id}/content')`
     }

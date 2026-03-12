@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
 import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
@@ -11,6 +11,9 @@ import { Queues } from '../queues/types'
 const logger = createScopedLogger('job:polling-sync-scanner')
 
 const UNRECOVERABLE_AUTH_STATUSES = ['INVALID_GRANT', 'REVOKED_ACCESS', 'INSUFFICIENT_SCOPE']
+
+/** Minimum interval between enqueue claims to prevent double-enqueue from overlapping scanners */
+const CLAIM_COOLDOWN_MS = 30_000
 
 export interface PollingSyncScannerJobData {
   dryRun?: boolean
@@ -103,7 +106,7 @@ export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>)
           continue
         }
 
-        // IDLE: check if sync is due
+        // IDLE: check if sync is due and atomically transition
         if (integration.syncStage === 'IDLE') {
           const intervalMs = integration.pollingIntervalMs ?? 300000 // 5 min default
           const isDue =
@@ -112,23 +115,27 @@ export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>)
 
           if (!isDue) continue
 
-          // Transition to MESSAGE_LIST_FETCH_PENDING
           if (!dryRun) {
-            await db
+            // Atomic conditional UPDATE — only transition if still IDLE
+            const [updated] = await db
               .update(schema.Integration)
               .set({
                 syncStage: 'MESSAGE_LIST_FETCH_PENDING',
+                syncStageStartedAt: now,
                 updatedAt: now,
               })
-              .where(eq(schema.Integration.id, integration.id))
-          }
-        }
+              .where(
+                and(
+                  eq(schema.Integration.id, integration.id),
+                  eq(schema.Integration.syncStage, 'IDLE')
+                )
+              )
+              .returning({ id: schema.Integration.id })
 
-        // MESSAGE_LIST_FETCH_PENDING: enqueue list-fetch job
-        if (
-          integration.syncStage === 'MESSAGE_LIST_FETCH_PENDING' ||
-          integration.syncStage === 'IDLE' // Just transitioned above
-        ) {
+            if (!updated) continue // Another scanner already transitioned it
+          }
+
+          // Enqueue list-fetch job with unique ID
           if (!dryRun) {
             await pollingSyncQueue.add(
               'messageListFetchJob',
@@ -138,7 +145,7 @@ export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>)
                 provider: integration.provider,
               },
               {
-                jobId: `poll-list-fetch-${integration.id}`,
+                jobId: `poll-list-fetch-${integration.id}-${Date.now()}`,
                 attempts: 3,
                 backoff: { type: 'exponential', delay: 60000 },
                 removeOnComplete: { count: 50 },
@@ -147,11 +154,75 @@ export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>)
             )
           }
           stats.listFetchEnqueued++
+          continue
         }
 
-        // MESSAGES_IMPORT_PENDING: enqueue import job
+        // MESSAGE_LIST_FETCH_PENDING: atomically claim and enqueue list-fetch job
+        if (integration.syncStage === 'MESSAGE_LIST_FETCH_PENDING') {
+          if (!dryRun) {
+            const [claimed] = await db
+              .update(schema.Integration)
+              .set({ syncStageStartedAt: now, updatedAt: now })
+              .where(
+                and(
+                  eq(schema.Integration.id, integration.id),
+                  eq(schema.Integration.syncStage, 'MESSAGE_LIST_FETCH_PENDING'),
+                  or(
+                    isNull(schema.Integration.syncStageStartedAt),
+                    lt(
+                      schema.Integration.syncStageStartedAt,
+                      new Date(Date.now() - CLAIM_COOLDOWN_MS)
+                    )
+                  )
+                )
+              )
+              .returning({ id: schema.Integration.id })
+
+            if (!claimed) continue
+
+            await pollingSyncQueue.add(
+              'messageListFetchJob',
+              {
+                integrationId: integration.id,
+                organizationId: integration.organizationId,
+                provider: integration.provider,
+              },
+              {
+                jobId: `poll-list-fetch-${integration.id}-${Date.now()}`,
+                attempts: 3,
+                backoff: { type: 'exponential', delay: 60000 },
+                removeOnComplete: { count: 50 },
+                removeOnFail: { count: 100 },
+              }
+            )
+          }
+          stats.listFetchEnqueued++
+          continue
+        }
+
+        // MESSAGES_IMPORT_PENDING: atomically claim and enqueue import job
         if (integration.syncStage === 'MESSAGES_IMPORT_PENDING') {
           if (!dryRun) {
+            const [claimed] = await db
+              .update(schema.Integration)
+              .set({ syncStageStartedAt: now, updatedAt: now })
+              .where(
+                and(
+                  eq(schema.Integration.id, integration.id),
+                  eq(schema.Integration.syncStage, 'MESSAGES_IMPORT_PENDING'),
+                  or(
+                    isNull(schema.Integration.syncStageStartedAt),
+                    lt(
+                      schema.Integration.syncStageStartedAt,
+                      new Date(Date.now() - CLAIM_COOLDOWN_MS)
+                    )
+                  )
+                )
+              )
+              .returning({ id: schema.Integration.id })
+
+            if (!claimed) continue
+
             await pollingSyncQueue.add(
               'messagesImportJob',
               {
@@ -160,7 +231,7 @@ export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>)
                 provider: integration.provider,
               },
               {
-                jobId: `poll-import-${integration.id}`,
+                jobId: `poll-import-${integration.id}-${Date.now()}`,
                 attempts: 3,
                 backoff: { type: 'exponential', delay: 30000 },
                 removeOnComplete: { count: 50 },
@@ -172,10 +243,6 @@ export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>)
         }
       } catch (error: any) {
         stats.errors++
-        // Handle "Job already exists" — not an error
-        if (error.message?.includes('Job already exists')) {
-          continue
-        }
         logger.error('Error processing integration in scanner', {
           integrationId: integration.id,
           error: error.message,

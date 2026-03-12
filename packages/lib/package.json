@@ -142,6 +142,12 @@
       "import": "./dist/email/index.mjs",
       "default": "./src/email/index.ts"
     },
+    "./email/polling-import-cache": {
+      "types": "./src/email/polling-import-cache.ts",
+      "source": "./src/email/polling-import-cache.ts",
+      "import": "./dist/email/polling-import-cache.mjs",
+      "default": "./src/email/polling-import-cache.ts"
+    },
     "./embeddings": {
       "types": "./src/embeddings/index.ts",
       "source": "./src/embeddings/index.ts",

@@ -10,8 +10,11 @@ import type { GmailMessageWithPayload, ParsedGmailMessage } from '../types'
 
 const logger = createScopedLogger('google-batch-fetch')
 
-const BATCH_LIMIT = 50 // Maximum messages per batch request
-const INTER_BATCH_DELAY_MS = 250 // Delay between batches to prevent rate limiting
+const BATCH_LIMIT = 20 // Max messages per batch request (reduced from 50 to avoid per-item 429s)
+const RETRY_BATCH_LIMIT = 5 // Smaller batch size for retry attempts
+const MAX_ITEM_RETRIES = 2 // Max retry rounds for item-level 429 failures
+const INTER_BATCH_DELAY_MS = 500 // Delay between batches
+const RETRY_BASE_DELAY_MS = 1000 // Base delay for retry backoff
 const BATCH_REQUEST_TIMEOUT_MS = 30000 // 30 second timeout for each batch request
 
 /**
@@ -26,10 +29,6 @@ export interface GetMessagesBatchInput {
 
 /**
  * Wrap a promise with a timeout
- * @param promise - Promise to wrap
- * @param timeoutMs - Timeout in milliseconds
- * @param operationName - Name of the operation for error messages
- * @returns Promise that rejects if timeout is exceeded
  */
 async function withTimeout<T>(
   promise: Promise<T>,
@@ -55,19 +54,28 @@ async function withTimeout<T>(
 }
 
 /**
- * Fetches multiple Gmail messages in batches using Gmail batch API
- * @param input - Batch fetch parameters
- * @returns Array of parsed Gmail messages
+ * Result of batch fetching Gmail messages.
+ * Contains both parsed messages (for headers, body) and raw messages (for attachment extraction).
+ * Also surfaces IDs that could not be fetched after retries.
  */
-export async function getMessagesBatch(
-  input: GetMessagesBatchInput
-): Promise<ParsedGmailMessage[]> {
+export interface BatchFetchResult {
+  parsed: ParsedGmailMessage[]
+  raw: GmailMessageWithPayload[]
+  failedMessageIds: string[]
+}
+
+/**
+ * Fetches multiple Gmail messages in batches using Gmail batch API.
+ * Item-level 429 errors are retried with exponential backoff and smaller batches.
+ */
+export async function getMessagesBatch(input: GetMessagesBatchInput): Promise<BatchFetchResult> {
   const { messageIds, integrationId, throttler, accessToken } = input
 
-  if (messageIds.length === 0) return []
+  if (messageIds.length === 0) return { parsed: [], raw: [], failedMessageIds: [] }
 
   logger.info('Starting batch fetch', {
     totalMessages: messageIds.length,
+    batchSize: BATCH_LIMIT,
     integrationId,
   })
 
@@ -81,9 +89,10 @@ export async function getMessagesBatch(
   }
 
   const allMessages: ParsedGmailMessage[] = []
+  const allRawMessages: GmailMessageWithPayload[] = []
+  const allFailedIds: string[] = []
   const totalBatches = Math.ceil(limitedMessageIds.length / BATCH_LIMIT)
 
-  // Process in chunks of BATCH_LIMIT with delays between batches
   for (let i = 0; i < limitedMessageIds.length; i += BATCH_LIMIT) {
     const batchIds = limitedMessageIds.slice(i, i + BATCH_LIMIT)
     const batchNumber = Math.floor(i / BATCH_LIMIT) + 1
@@ -96,71 +105,33 @@ export async function getMessagesBatch(
     })
 
     try {
-      // Wrap the entire batch request with a timeout
-      const batchResponses = await withTimeout(
-        executeBatchRequest(
-          batchIds,
-          '/gmail/v1/users/me/messages',
-          accessToken,
-          integrationId,
-          throttler
-        ),
-        BATCH_REQUEST_TIMEOUT_MS,
-        `Batch ${batchNumber}/${totalBatches}`
-      )
-
-      logger.info('Batch request completed', {
+      const { parsed, raw, failedIds } = await fetchBatchWithRetry({
+        ids: batchIds,
+        accessToken,
+        integrationId,
+        throttler,
         batchNumber,
         totalBatches,
-        responsesReceived: batchResponses.length,
-        integrationId,
       })
 
-      const messages = batchResponses
-        .map((response) => {
-          if (isBatchError(response)) {
-            logger.warn('Batch item error', {
-              error: response.error,
-              integrationId,
-            })
-            return undefined
-          }
-
-          if (
-            response &&
-            typeof response === 'object' &&
-            response.id &&
-            response.threadId &&
-            response.payload
-          ) {
-            return parseGmailMessage(response as GmailMessageWithPayload)
-          }
-
-          return undefined
-        })
-        .filter((msg): msg is ParsedGmailMessage => msg !== undefined)
-
-      allMessages.push(...messages)
+      allMessages.push(...parsed)
+      allRawMessages.push(...raw)
+      allFailedIds.push(...failedIds)
 
       logger.info('Batch parsed', {
         batchNumber,
         totalBatches,
-        messagesParsed: messages.length,
+        messagesParsed: parsed.length,
+        failedInBatch: failedIds.length,
         totalSoFar: allMessages.length,
         integrationId,
       })
 
       // Add delay between batches (except for the last batch)
       if (batchNumber < totalBatches) {
-        logger.debug('Waiting between batches', {
-          delayMs: INTER_BATCH_DELAY_MS,
-          nextBatch: batchNumber + 1,
-          integrationId,
-        })
         await new Promise((resolve) => setTimeout(resolve, INTER_BATCH_DELAY_MS))
       }
     } catch (error: any) {
-      // Check if it's a timeout error
       const isTimeout = error?.message?.includes('timed out')
       if (isTimeout) {
         logger.error('Batch fetch timed out', {
@@ -170,25 +141,25 @@ export async function getMessagesBatch(
           messagesProcessed: allMessages.length,
           integrationId,
         })
-        // Continue with next batch on timeout
+        allFailedIds.push(...batchIds)
         continue
       }
 
-      // Check if it's a rate limit error
       const isRateLimit =
         error?.message?.includes('429') ||
         error?.message?.includes('rateLimitExceeded') ||
         error?.message?.includes('Too many concurrent requests')
 
       if (isRateLimit) {
-        logger.error('Rate limit hit during batch fetch, stopping', {
+        logger.error('Rate limit hit during batch fetch, stopping remaining batches', {
           error: error.message,
           batchNumber,
           totalBatches,
           messagesProcessed: allMessages.length,
           integrationId,
         })
-        // Stop processing more batches if we hit rate limit
+        // Mark all remaining IDs as failed
+        allFailedIds.push(...limitedMessageIds.slice(i))
         break
       }
 
@@ -198,17 +169,115 @@ export async function getMessagesBatch(
         totalBatches,
         integrationId,
       })
-      // Continue with next batch for other errors
+      allFailedIds.push(...batchIds)
     }
   }
 
   logger.info('Batch fetch completed', {
     totalRequested: limitedMessageIds.length,
     totalFetched: allMessages.length,
+    totalFailed: allFailedIds.length,
     integrationId,
   })
 
-  return allMessages
+  return { parsed: allMessages, raw: allRawMessages, failedMessageIds: allFailedIds }
+}
+
+/**
+ * Fetch a single batch of IDs, retrying item-level 429s with smaller sub-batches.
+ */
+async function fetchBatchWithRetry(opts: {
+  ids: string[]
+  accessToken: string
+  integrationId: string
+  throttler: UniversalThrottler
+  batchNumber: number
+  totalBatches: number
+}): Promise<{ parsed: ParsedGmailMessage[]; raw: GmailMessageWithPayload[]; failedIds: string[] }> {
+  const { accessToken, integrationId, throttler, batchNumber, totalBatches } = opts
+
+  let pendingIds = [...opts.ids]
+  const parsed: ParsedGmailMessage[] = []
+  const raw: GmailMessageWithPayload[] = []
+  let currentBatchSize = Math.min(pendingIds.length, BATCH_LIMIT)
+
+  for (let attempt = 0; attempt <= MAX_ITEM_RETRIES && pendingIds.length > 0; attempt++) {
+    const batchLabel = `Batch ${batchNumber}/${totalBatches}${attempt > 0 ? ` retry-${attempt}` : ''}`
+
+    const batchResponses = await withTimeout(
+      executeBatchRequest(
+        pendingIds.slice(0, currentBatchSize),
+        '/gmail/v1/users/me/messages',
+        accessToken,
+        integrationId,
+        throttler
+      ),
+      BATCH_REQUEST_TIMEOUT_MS,
+      batchLabel
+    )
+
+    const rateLimitedIds: string[] = []
+    const requestedIds = pendingIds.slice(0, currentBatchSize)
+
+    for (let i = 0; i < batchResponses.length; i++) {
+      const response = batchResponses[i]
+      const messageId = requestedIds[i]
+
+      if (isBatchItemRateLimited(response)) {
+        if (messageId) rateLimitedIds.push(messageId)
+        logger.warn('Batch item rate-limited', {
+          messageId,
+          batchNumber,
+          attempt,
+          reason: response?.error?.message,
+          integrationId,
+        })
+        continue
+      }
+
+      if (isBatchError(response)) {
+        logger.warn('Batch item error (non-retriable)', {
+          messageId,
+          error: response.error,
+          integrationId,
+        })
+        continue
+      }
+
+      if (
+        response &&
+        typeof response === 'object' &&
+        response.id &&
+        response.threadId &&
+        response.payload
+      ) {
+        const rawMsg = response as GmailMessageWithPayload
+        raw.push(rawMsg)
+        parsed.push(parseGmailMessage(rawMsg))
+      }
+    }
+
+    // Remove successfully fetched IDs from pending
+    const fetchedIdSet = new Set(parsed.map((m) => m.id))
+    pendingIds = pendingIds.filter((id) => !fetchedIdSet.has(id))
+
+    if (rateLimitedIds.length === 0 || attempt === MAX_ITEM_RETRIES) break
+
+    // Retry rate-limited IDs with smaller batch + backoff
+    pendingIds = rateLimitedIds
+    currentBatchSize = RETRY_BATCH_LIMIT
+    const delay = RETRY_BASE_DELAY_MS * 2 ** attempt
+    logger.info('Retrying rate-limited message IDs', {
+      count: rateLimitedIds.length,
+      attempt: attempt + 1,
+      delayMs: delay,
+      batchSize: currentBatchSize,
+      integrationId,
+    })
+    await new Promise((resolve) => setTimeout(resolve, delay))
+  }
+
+  return { parsed, raw, failedIds: pendingIds }
 }
 
 /**
@@ -353,11 +422,23 @@ function parseBatchResponse(batchResponseText: string, contentTypeHeader: string
 
 /**
  * Check if batch response item contains an error
- * @param response - Batch response item
- * @returns True if response is an error object
  */
 function isBatchError(response: any): boolean {
   return response && typeof response === 'object' && 'error' in response
+}
+
+/**
+ * Check if a batch item error is a rate-limit (429 / RESOURCE_EXHAUSTED).
+ */
+function isBatchItemRateLimited(response: any): boolean {
+  if (!isBatchError(response)) return false
+  const code = response.error?.code
+  if (code === 429) return true
+  const reason = response.error?.errors?.[0]?.reason
+  if (reason === 'rateLimitExceeded' || reason === 'RESOURCE_EXHAUSTED') return true
+  const message = response.error?.message ?? ''
+  if (message.includes('Too many concurrent requests')) return true
+  return false
 }
 
 /**

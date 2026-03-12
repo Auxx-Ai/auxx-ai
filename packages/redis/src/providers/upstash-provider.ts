@@ -386,6 +386,40 @@ export function createUpstashClient(): RedisClient {
       }
     },
 
+    pexpire: async (key: string, milliseconds: number) => {
+      try {
+        return (await upstashClient.pexpire(key, milliseconds)) as number
+      } catch (error) {
+        logger.error('Error setting PEXPIRE in Upstash', {
+          key,
+          error: (error as Error).message,
+        })
+        throw error
+      }
+    },
+
+    // Atomic counter operations
+    incr: async (key: string) => {
+      try {
+        return await upstashClient.incr(key)
+      } catch (error) {
+        logger.error('Error incrementing in Upstash', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
+    decr: async (key: string) => {
+      try {
+        return await upstashClient.decr(key)
+      } catch (error) {
+        logger.error('Error decrementing in Upstash', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
+    // Pipeline support (Upstash supports pipelines via REST)
+    pipeline: () => upstashClient.pipeline() as any,
+
     // Pub/Sub operations (not supported by Upstash, will throw errors)
     subscribe: async () => {
       throw new Error(
