@@ -6,7 +6,9 @@ import { type ParticipantId, toParticipantId } from '@auxx/types'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getOrgProviderMap } from '../providers/integration-cache'
 import { getMessageTypeFromProvider } from '../providers/type-utils'
+import { IntegrationProviderType } from '../providers/types'
 import type {
+  AttachmentMeta,
   ListMessagesByThreadResult,
   MessageMeta,
   SendStatus,
@@ -81,12 +83,13 @@ export class MessageQueryService {
     // Batch fetch all participant relationships
     const messageIds = rows.map((m) => m.id)
     const participantsByMessage = await this.getParticipantsForMessages(messageIds)
+    const attachmentsByMessage = await this.getAttachmentsForMessages(messageIds)
 
     const messages: MessageMeta[] = rows.map((m) => {
       const participantData = participantsByMessage.get(m.id)
       const participants = this.buildParticipantIds(m, participantData)
 
-      const provider = providerMap.get(m.integrationId) ?? 'google'
+      const provider = providerMap.get(m.integrationId) ?? IntegrationProviderType.google
       const messageType = getMessageTypeFromProvider(provider)
 
       return {
@@ -108,7 +111,7 @@ export class MessageQueryService {
         sendStatus: (m.sendStatus as SendStatus) ?? null,
         providerError: m.providerError ?? null,
         attempts: m.attempts ?? 0,
-        attachments: [],
+        attachments: attachmentsByMessage.get(m.id) ?? [],
       }
     })
 
@@ -163,6 +166,7 @@ export class MessageQueryService {
     // Batch fetch participant IDs for recipients (to, cc, bcc)
     const messageIds = messages.map((m) => m.id)
     const participantsByMessage = await this.getParticipantsForMessages(messageIds)
+    const attachmentsByMessage = await this.getAttachmentsForMessages(messageIds)
 
     // Create a map for quick lookup
     const messageMap = new Map(
@@ -171,7 +175,7 @@ export class MessageQueryService {
         const participants = this.buildParticipantIds(m, participantData)
 
         // Derive messageType from integration provider
-        const provider = providerMap.get(m.integrationId) ?? 'google'
+        const provider = providerMap.get(m.integrationId) ?? IntegrationProviderType.google
         const messageType = getMessageTypeFromProvider(provider)
 
         const meta: MessageMeta = {
@@ -193,7 +197,7 @@ export class MessageQueryService {
           sendStatus: (m.sendStatus as SendStatus) ?? null,
           providerError: m.providerError ?? null,
           attempts: m.attempts ?? 0,
-          attachments: [],
+          attachments: attachmentsByMessage.get(m.id) ?? [],
         }
         return [m.id, meta]
       })
@@ -201,6 +205,59 @@ export class MessageQueryService {
 
     // Return in input order, filtering out missing IDs
     return ids.map((id) => messageMap.get(id)).filter((m): m is MessageMeta => m !== undefined)
+  }
+
+  /**
+   * Gets attachment metadata grouped by message ID.
+   */
+  private async getAttachmentsForMessages(
+    messageIds: string[]
+  ): Promise<Map<string, AttachmentMeta[]>> {
+    if (messageIds.length === 0) return new Map()
+
+    const attachmentRows = await this.db
+      .select({
+        id: schema.EmailAttachment.id,
+        messageId: schema.EmailAttachment.messageId,
+        name: schema.EmailAttachment.name,
+        mimeType: schema.EmailAttachment.mimeType,
+        size: schema.EmailAttachment.size,
+        inline: schema.EmailAttachment.inline,
+        contentId: schema.EmailAttachment.contentId,
+      })
+      .from(schema.EmailAttachment)
+      .innerJoin(schema.Message, eq(schema.EmailAttachment.messageId, schema.Message.id))
+      .where(
+        and(
+          inArray(schema.EmailAttachment.messageId, messageIds),
+          eq(schema.Message.organizationId, this.organizationId)
+        )
+      )
+      .orderBy(
+        schema.EmailAttachment.messageId,
+        schema.EmailAttachment.attachmentOrder,
+        schema.EmailAttachment.createdAt
+      )
+
+    const attachmentsByMessage = new Map<string, AttachmentMeta[]>()
+
+    for (const attachment of attachmentRows) {
+      const existing = attachmentsByMessage.get(attachment.messageId) ?? []
+
+      existing.push({
+        id: attachment.id,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        url: null,
+        inline: attachment.inline,
+        contentId: attachment.contentId ?? null,
+      })
+
+      attachmentsByMessage.set(attachment.messageId, existing)
+    }
+
+    return attachmentsByMessage
   }
 
   /**

@@ -39,6 +39,7 @@ import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import { ParticipantList, type ParticipantListEntry } from './participant-display'
 import { SendStatusIndicator } from './send-status-indicator'
+import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 
 interface EmailDisplayProps {
   /** Message ID to display */
@@ -162,6 +163,14 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
 
   const isMe = !message.isInbound
   const senderInitials = from?.displayName?.charAt(0)?.toUpperCase() ?? '?'
+  const resolvedHtml = useMemo(
+    () => resolveInlineEmailHtml(message.textHtml, message.attachments ?? []),
+    [message.attachments, message.textHtml]
+  )
+  const nonInlineAttachments = useMemo(
+    () => (message.attachments ?? []).filter((attachment) => !attachment.inline),
+    [message.attachments]
+  )
 
   return (
     <div
@@ -245,12 +254,12 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
         <div className='border-t border-secondary'>
           <Letter
             className={cn('bg-background p-4 text-foreground')}
-            html={message.textHtml ?? message.textPlain ?? ''}
+            html={resolvedHtml || message.textPlain || ''}
           />
-          {message.attachments && message.attachments.length > 0 && (
+          {nonInlineAttachments.length > 0 && (
             <div className='px-4 pb-4'>
               <div className='flex items-center flex-row'>
-                {message.attachments.map((attachment) => (
+                {nonInlineAttachments.map((attachment) => (
                   <AttachmentDisplay
                     key={attachment.id}
                     attachment={attachment as any}

@@ -1,6 +1,8 @@
 // apps/worker/src/inbound-email/sqs-poller.ts
 
+import { PermanentProcessingError } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
+import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import {
   DeleteMessageCommand,
   type Message,
@@ -21,6 +23,13 @@ const inboundEmailQueueRegion =
  * sqsClient is the shared SQS client for inbound queue polling.
  */
 const sqsClient = new SQSClient({
+  region: inboundEmailQueueRegion,
+})
+
+/**
+ * s3Client is the shared S3 client for raw email cleanup.
+ */
+const s3Client = new S3Client({
   region: inboundEmailQueueRegion,
 })
 
@@ -100,6 +109,28 @@ class SqsInboundEmailPoller implements InboundEmailPoller {
   }
 
   /**
+   * deleteRawEmail removes the raw email object from S3 for permanently failed messages.
+   */
+  private async deleteRawEmail(message: Message): Promise<void> {
+    try {
+      const body = JSON.parse(message.Body ?? '{}')
+      if (body.s3Bucket && body.s3Key) {
+        await s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: body.s3Bucket,
+            Key: body.s3Key,
+          })
+        )
+      }
+    } catch (error) {
+      logger.warn('Failed to delete raw email from S3', {
+        error: error instanceof Error ? error.message : String(error),
+        messageId: message.MessageId,
+      })
+    }
+  }
+
+  /**
    * processMessage processes one received SQS message and deletes it on success.
    */
   private async processMessage(message: Message): Promise<void> {
@@ -141,11 +172,19 @@ class SqsInboundEmailPoller implements InboundEmailPoller {
           try {
             await this.processMessage(message)
           } catch (error) {
+            const isPermanent = error instanceof PermanentProcessingError
+
             logger.error('Failed to process inbound email SQS message', {
               error: error instanceof Error ? error.message : String(error),
               messageId: message.MessageId,
               receiveCount: message.Attributes?.ApproximateReceiveCount,
+              permanent: isPermanent,
             })
+
+            if (isPermanent) {
+              await this.deleteMessage(message)
+              await this.deleteRawEmail(message)
+            }
           }
         }
       } catch (error) {

@@ -1,5 +1,6 @@
 // packages/lib/src/email/inbound/index.ts
 
+export { PermanentProcessingError } from './errors'
 export { InboundEmailProcessor } from './inbound-email-processor'
 export { InboundIntegrationResolver } from './integration-resolver'
 export { RawEmailParser } from './raw-email-parser'

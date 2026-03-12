@@ -65,6 +65,7 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
   // Publish mutation
   const publishMutation = api.workflow.publish.useMutation({
     onSuccess: () => {
+      useWorkflowStore.setState({ hasPublishedVersion: true })
       toastSuccess({
         title: 'Workflow published',
         description: 'Your workflow has been published successfully.',

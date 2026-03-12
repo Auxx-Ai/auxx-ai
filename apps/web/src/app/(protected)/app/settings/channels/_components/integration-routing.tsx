@@ -337,36 +337,38 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
         ) : null}
       </div>
 
-      <div className='space-y-2'>
-        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-          <AlertTriangle className='size-4' /> Danger Zone
-        </div>
-        <div className='group flex items-center border py-2 px-3 hover:bg-destructive/2 transition-colors duration-200 rounded-2xl border-destructive/50'>
-          <div className='flex flex-col justify-between gap-4 w-full md:flex-row md:items-center'>
-            <div className='flex items-center gap-3'>
-              <div className='size-8 border border-destructive/10 bg-destructive/2 rounded-lg flex items-center justify-center group-hover:bg-destructive/5 transition-colors overflow-hidden shrink-0'>
-                <AlertTriangle className='size-4 text-destructive' />
+      {!isForwarding && (
+        <div className='space-y-2'>
+          <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
+            <AlertTriangle className='size-4' /> Danger Zone
+          </div>
+          <div className='group flex items-center border py-2 px-3 hover:bg-destructive/2 transition-colors duration-200 rounded-2xl border-destructive/50'>
+            <div className='flex flex-col justify-between gap-4 w-full md:flex-row md:items-center'>
+              <div className='flex items-center gap-3'>
+                <div className='size-8 border border-destructive/10 bg-destructive/2 rounded-lg flex items-center justify-center group-hover:bg-destructive/5 transition-colors overflow-hidden shrink-0'>
+                  <AlertTriangle className='size-4 text-destructive' />
+                </div>
+                <div className='flex flex-col'>
+                  <span className='text-sm text-destructive'>Delete Integration</span>
+                  <span className='text-xs text-destructive/80'>
+                    Permanently delete integration and all associated messages.
+                  </span>
+                </div>
               </div>
-              <div className='flex flex-col'>
-                <span className='text-sm text-destructive'>Delete Integration</span>
-                <span className='text-xs text-destructive/80'>
-                  Permanently delete integration and all associated messages.
-                </span>
+              <div className='shrink-0'>
+                <Button
+                  variant='destructive'
+                  onClick={handleRemoveIntegration}
+                  disabled={isRemoving}
+                  size='sm'>
+                  Delete Integration
+                </Button>
               </div>
+              <ConfirmDialog />
             </div>
-            <div className='shrink-0'>
-              <Button
-                variant='destructive'
-                onClick={handleRemoveIntegration}
-                disabled={isRemoving}
-                size='sm'>
-                Delete Integration
-              </Button>
-            </div>
-            <ConfirmDialog />
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

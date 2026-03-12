@@ -74,6 +74,7 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
   // Workflow info
   const workflow = useWorkflowStore((state) => state.workflow)
   const setWorkflow = useWorkflowStore((state) => state.setWorkflow)
+  const hasPublishedVersion = useWorkflowStore((state) => state.hasPublishedVersion)
 
   // Query workflowApp data for icon
   const { data: workflowAppData } = api.workflow.getById.useQuery(
@@ -408,6 +409,8 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
                 accessMode={workflowAppData?.accessMode}
                 config={workflowAppData?.config}
                 rateLimit={workflowAppData?.rateLimit}
+                hasPublishedVersion={hasPublishedVersion}
+                workflowEnabled={workflow?.enabled}
               />
             )}
             {workflowAppId && !isManualTrigger && (

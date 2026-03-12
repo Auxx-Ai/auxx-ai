@@ -286,6 +286,7 @@ export const workflowRouter = createTRPCRouter({
         rateLimit: workflowApp.rateLimit,
         totalRuns: workflowApp.totalRuns,
         lastRunAt: workflowApp.lastRunAt,
+        hasPublishedVersion: !!workflowApp.workflowId,
       }
       return result
     } catch (error) {

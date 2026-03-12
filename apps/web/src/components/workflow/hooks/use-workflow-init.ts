@@ -99,6 +99,7 @@ export const useWorkflowInit = (options?: UseWorkflowInitOptions): UseWorkflowIn
         workflowId: workflow.workflowId, // Use the actual workflow ID, not the WorkflowApp ID
         metadata,
         workflowAppId: workflow.workflowAppId,
+        hasPublishedVersion: !!(workflow as any).hasPublishedVersion,
         isDirty: false,
         isLoading: false,
       })

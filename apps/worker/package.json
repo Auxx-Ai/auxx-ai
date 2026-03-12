@@ -11,6 +11,7 @@
     "clean": "rm -rf node_modules dist .turbo"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "catalog:",
     "@aws-sdk/client-sqs": "catalog:",
     "@aws-sdk/s3-presigned-post": "catalog:",
     "@hono/node-server": "^1.13.7",
