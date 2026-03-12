@@ -30,6 +30,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { toastError } from '~/components/global/toast'
+import { useAddApp } from '~/components/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
 /** Slugify helper function */
@@ -90,6 +91,7 @@ export function CreateAppDialog({ accountSlug, trigger, onSuccess }: CreateAppDi
   }, [titleValue, slugTouched, form])
 
   const utils = api.useUtils()
+  const addApp = useAddApp()
 
   // Check if slug exists (debounced)
   const { data: slugCheck, isLoading: isCheckingSlug } = api.apps.slugExists.useQuery(
@@ -102,6 +104,34 @@ export function CreateAppDialog({ accountSlug, trigger, onSuccess }: CreateAppDi
 
   const createApp = api.apps.create.useMutation({
     onSuccess: (data) => {
+      // Add new app to dehydrated state immediately
+      addApp({
+        id: data.app.id,
+        developerAccountId: data.app.developerAccountId,
+        slug: data.app.slug,
+        title: data.app.title,
+        description: data.app.description ?? null,
+        avatarId: null,
+        avatarUrl: null,
+        category: null,
+        websiteUrl: null,
+        documentationUrl: null,
+        contactUrl: null,
+        supportSiteUrl: null,
+        termsOfServiceUrl: null,
+        overview: null,
+        contentOverview: null,
+        contentHowItWorks: null,
+        contentConfigure: null,
+        scopes: null,
+        hasOauth: false,
+        oauthExternalEntrypointUrl: null,
+        hasBundle: false,
+        publicationStatus: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
       // Invalidate developer account's first app query
       utils.developerAccounts.getFirstApp.invalidate({ slug: accountSlug })
 
@@ -112,9 +142,6 @@ export function CreateAppDialog({ accountSlug, trigger, onSuccess }: CreateAppDi
 
       // Call success callback
       onSuccess?.(data.app)
-
-      // Refresh server-side data by refreshing the router
-      router.refresh()
 
       // Navigate to the new app
       router.push(`/${accountSlug}/apps/${data.app.slug}`)

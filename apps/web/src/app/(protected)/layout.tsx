@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/layout.tsx
 
 import { DehydrationService } from '@auxx/lib/dehydration'
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Script from 'next/script'
 import type { ReactNode } from 'react'
@@ -21,8 +21,13 @@ interface ProtectedLayoutProps {
 export default async function ProtectedLayout({ children }: ProtectedLayoutProps) {
   const session = await auth.api.getSession({ headers: await headers() })
 
-  // Require authentication
+  // Require authentication — preserve deep link through login flow
   if (!session?.user) {
+    const cookieStore = await cookies()
+    const deepLink = cookieStore.get('auxx-org-deep-link')?.value
+    if (deepLink) {
+      redirect(`/login?callbackUrl=${encodeURIComponent(deepLink)}`)
+    }
     redirect('/login')
   }
 

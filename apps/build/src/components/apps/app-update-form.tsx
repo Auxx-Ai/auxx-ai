@@ -39,7 +39,10 @@ import { z } from 'zod'
 import { AppIconUpload } from '~/components/apps/app-icon-upload'
 import { AppScreenshotUpload } from '~/components/apps/app-screenshot-upload'
 import { toastError } from '~/components/global/toast'
-import { useBuildDehydratedState } from '~/components/providers/dehydrated-state-provider'
+import {
+  useBuildDehydratedState,
+  usePatchApp,
+} from '~/components/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
 /** Icon mapping for app categories */
@@ -135,6 +138,7 @@ interface AppUpdateFormProps {
  */
 export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
   const utils = api.useUtils()
+  const patchApp = usePatchApp()
   const { apps } = useBuildDehydratedState()
 
   // Find the app from dehydrated state (instant, no API call)
@@ -148,14 +152,27 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
       initialData: app as any, // Use dehydrated data as initial data
     }
   )
-  console.log('full app', fullApp)
   // Update mutation
   const updateApp = api.apps.update.useMutation({
-    onSuccess: () => {
-      // Invalidate and refetch
+    onSuccess: (_data, variables) => {
+      // Patch dehydrated state immediately for instant UI feedback
+      if (app) {
+        patchApp(app.id, {
+          title: variables.title,
+          description: variables.description ?? null,
+          category: variables.category ?? null,
+          contentOverview: variables.contentOverview ?? null,
+          contentHowItWorks: variables.contentHowItWorks ?? null,
+          contentConfigure: variables.contentConfigure ?? null,
+          websiteUrl: variables.websiteUrl ?? null,
+          documentationUrl: variables.documentationUrl ?? null,
+          contactUrl: variables.contactUrl ?? null,
+          supportSiteUrl: variables.supportSiteUrl ?? null,
+          termsOfServiceUrl: variables.termsOfServiceUrl ?? null,
+          updatedAt: new Date(),
+        })
+      }
       utils.apps.get.invalidate({ slug: appSlug })
-      // Note: router.refresh() not needed here since we're staying on the same page
-      // and the tRPC invalidation will refetch the data
     },
   })
 

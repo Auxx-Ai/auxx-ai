@@ -20,12 +20,15 @@ import {
 } from '@auxx/ui/components/input-group'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Building2, Check, Copy } from 'lucide-react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useCopyClipboard } from '@/hooks/use-copy-clipboard'
 import { toastError } from '~/components/global/toast'
-import { useDeveloperAccount } from '~/components/providers/dehydrated-state-provider'
+import {
+  useDeveloperAccount,
+  usePatchAccount,
+} from '~/components/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 import SettingsHeader from '../_components/settings-header'
 
@@ -40,16 +43,21 @@ type AccountSettingsFormValues = z.infer<typeof accountSettingsSchema>
 
 function SettingsGeneralPage() {
   const params = useParams<{ slug: string }>()
-  const router = useRouter()
   const { copy, copied } = useCopyClipboard()
 
   // Get developer account from dehydrated state
   const account = useDeveloperAccount(params.slug)
+  const patchAccount = usePatchAccount()
 
   // tRPC mutation
   const updateAccount = api.developerAccounts.update.useMutation({
-    onSuccess: () => {
-      router.refresh() // Refresh to update dehydrated state
+    onSuccess: (_data, variables) => {
+      if (account) {
+        patchAccount(account.id, {
+          title: variables.data.title,
+          updatedAt: new Date(),
+        })
+      }
     },
     onError: (error) => {
       if (error.data?.code === 'FORBIDDEN') {

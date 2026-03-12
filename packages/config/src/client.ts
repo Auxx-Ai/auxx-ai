@@ -1,6 +1,12 @@
 // packages/config/src/client.ts
 
-export { constants, RESERVED_API_SLUGS, type ReservedApiSlug } from './constants'
+export {
+  constants,
+  RESERVED_API_SLUGS,
+  RESERVED_ORGANIZATION_HANDLES,
+  type ReservedApiSlug,
+  type ReservedOrganizationHandle,
+} from './constants'
 export {
   CURRENCIES,
   type Currency,

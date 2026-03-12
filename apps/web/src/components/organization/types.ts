@@ -1,11 +1,11 @@
 // components/organization/types.ts
-import type { OrganizationRole, OrganizationType } from '@auxx/database/types'
+import type { OrganizationRole } from '@auxx/database/types'
 
 /** Organization membership data */
 export type OrganizationMembership = {
   id: string
   name: string | null
-  type: OrganizationType
+  handle: string | null
   role: OrganizationRole
 }
 

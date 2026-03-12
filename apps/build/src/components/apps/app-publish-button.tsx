@@ -13,6 +13,7 @@ import { ChevronDown, Unplug } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useConfirm } from '@/hooks/use-confirm'
 import { toastError } from '~/components/global/toast'
+import { usePatchApp } from '~/components/providers/dehydrated-state-provider'
 import type { DehydratedApp } from '~/lib/dehydration'
 import { api } from '~/trpc/react'
 import { PublishAppDialog } from './publish-app-dialog'
@@ -34,6 +35,7 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
   const [confirm, ConfirmDialog] = useConfirm()
   const router = useRouter()
   const utils = api.useUtils()
+  const patchApp = usePatchApp()
 
   const updateAppStatus = api.apps.updatePublicationStatus.useMutation()
 
@@ -49,6 +51,7 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
     if (confirmed) {
       try {
         await updateAppStatus.mutateAsync({ appId: app.id, targetStatus: 'withdraw' })
+        patchApp(app.id, { publicationStatus: 'unpublished' })
         router.refresh()
         await utils.versions.list.invalidate({ appId: app.id })
         onSuccess?.()
@@ -71,6 +74,7 @@ export function AppPublishButton({ app, size = 'default', onSuccess }: AppPublis
     if (confirmed) {
       try {
         await updateAppStatus.mutateAsync({ appId: app.id, targetStatus: 'unpublish' })
+        patchApp(app.id, { publicationStatus: 'unpublished' })
         router.refresh()
         await utils.versions.list.invalidate({ appId: app.id })
         onSuccess?.()

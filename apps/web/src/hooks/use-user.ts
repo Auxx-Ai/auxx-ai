@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo } from 'react'
 import { client as authClient } from '~/auth/auth-client'
 import { clearResourceCaches } from '~/components/resources'
+import { useOrgDeepLink } from '~/hooks/use-org-deep-link'
 import {
   useDehydratedOrganization,
   useDehydratedOrganizations,
@@ -184,6 +185,9 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
 
   // Get all organizations from dehydrated state
   const dehydratedOrganizations = useDehydratedOrganizations()
+
+  // Handle org deep link cookie set by the proxy (e.g. /my-shop/app/mail)
+  useOrgDeepLink(organizationId, dehydratedOrganizations, switchOrganization)
 
   // Build user data object for backward compatibility (memoized to prevent infinite re-renders)
   const userData: UserData = useMemo(
