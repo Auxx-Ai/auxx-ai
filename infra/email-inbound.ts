@@ -62,25 +62,6 @@ const inboundHostedZone =
  */
 export const inboundEmailBucket = shouldDeployInboundEmailResources
   ? new sst.aws.Bucket('InboundEmailBucket', {
-      policy: [
-        {
-          actions: ['s3:PutObject'],
-          principals: [
-            {
-              type: 'service',
-              identifiers: ['ses.amazonaws.com'],
-            },
-          ],
-          paths: [`${inboundKeyPrefix}/*`],
-          conditions: [
-            {
-              test: 'StringEquals',
-              variable: 'AWS:SourceAccount',
-              values: [callerIdentity.accountId],
-            },
-          ],
-        },
-      ],
       transform: {
         bucket: {
           bucket:
@@ -104,6 +85,21 @@ export const inboundEmailBucket = shouldDeployInboundEmailResources
           blockPublicPolicy: true,
           ignorePublicAcls: true,
           restrictPublicBuckets: true,
+        },
+        policy: (args) => {
+          args.policy = sst.aws.iamEdit(args.policy, (policy) => {
+            policy.Statement.push({
+              Effect: 'Allow',
+              Principal: { Service: 'ses.amazonaws.com' },
+              Action: 's3:PutObject',
+              Resource: $interpolate`arn:aws:s3:::${args.bucket}/${inboundKeyPrefix}/*`,
+              Condition: {
+                StringEquals: {
+                  'AWS:SourceAccount': callerIdentity.accountId,
+                },
+              },
+            })
+          })
         },
       },
     })

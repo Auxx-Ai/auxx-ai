@@ -990,6 +990,14 @@ export const CONFIG_VARIABLES = {
     isSensitive: false,
     isEnvOnly: true,
   },
+  LAMBDA_INTERNAL_URL: {
+    key: 'LAMBDA_INTERNAL_URL',
+    description: 'Internal Lambda executor URL for server-to-server calls',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.SERVER,
+    isSensitive: false,
+    isEnvOnly: true,
+  },
 
   // ── FRONTEND (Group B — build info, truly build-time) ─────
   GIT_SHA: {
