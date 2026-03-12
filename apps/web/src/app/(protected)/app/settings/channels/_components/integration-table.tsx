@@ -203,6 +203,10 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
                 integration.identifier ||
                 (integration.provider === 'chat' ? integration.widgetSettings?.name : '') ||
                 'Unknown'
+              const isForwarding =
+                integration.provider === 'email' &&
+                (integration.metadata as any)?.channelType === 'forwarding-address'
+
               return (
                 <TableRow
                   key={integration.id}
@@ -285,14 +289,15 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleSync(integration.id)}
-                          disabled={integration.provider === 'chat'}>
+                          disabled={integration.provider === 'chat' || isForwarding}>
                           <RefreshCw />
                           Sync Messages
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           variant='destructive'
-                          onClick={() => handleDisconnect(integration.id)}>
+                          onClick={() => handleDisconnect(integration.id)}
+                          disabled={isForwarding}>
                           <Trash2 />
                           Disconnect
                         </DropdownMenuItem>

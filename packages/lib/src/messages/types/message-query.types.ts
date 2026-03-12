@@ -22,6 +22,8 @@ export interface AttachmentMeta {
   mimeType: string | null
   size: number | null
   url: string | null
+  inline: boolean
+  contentId: string | null
 }
 
 /**

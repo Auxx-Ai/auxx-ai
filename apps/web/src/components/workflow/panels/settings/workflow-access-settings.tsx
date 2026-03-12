@@ -105,6 +105,10 @@ interface WorkflowAccessSettingsProps {
     windowMs: number
     perUser?: boolean
   }
+  /** Whether the workflow has at least one published version */
+  hasPublishedVersion?: boolean
+  /** Whether the workflow itself is enabled */
+  workflowEnabled?: boolean
 }
 
 /**
@@ -119,6 +123,8 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
   accessMode: initialAccessMode = 'public',
   config: initialConfig,
   rateLimit: initialRateLimit,
+  hasPublishedVersion = false,
+  workflowEnabled = true,
 }: WorkflowAccessSettingsProps) {
   const { appUrl, apiUrl } = useEnv()
 
@@ -454,16 +460,30 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
           <div className='space-y-1'>
             <div className='flex items-center gap-2'>
               <div
-                className={`size-2 rounded-full ${webEnabled ? 'bg-good-500' : 'bg-muted-foreground/50'}`}
+                className={`size-2 rounded-full ${
+                  !webEnabled || !workflowEnabled
+                    ? 'bg-bad-500'
+                    : hasPublishedVersion
+                      ? 'bg-good-500'
+                      : 'bg-orange-500'
+                }`}
               />
               <span className='text-sm'>
-                {webEnabled ? 'Web access enabled' : 'Web access disabled'}
+                {!workflowEnabled
+                  ? 'Workflow disabled'
+                  : webEnabled
+                    ? 'Web access enabled'
+                    : 'Web access disabled'}
               </span>
             </div>
             <p className='text-xs text-muted-foreground'>
-              {webEnabled
-                ? 'Others can run this workflow via the share link in their browser.'
-                : 'Enable web access to allow others to run this workflow via a public link.'}
+              {!workflowEnabled
+                ? 'Enable the workflow to allow others to run it.'
+                : !webEnabled
+                  ? 'Enable web access to allow others to run this workflow via a public link.'
+                  : !hasPublishedVersion
+                    ? 'Workflow must be published before others can run it via the share link.'
+                    : 'Others can run this workflow via the share link in their browser.'}
             </p>
           </div>
           {shareToken && (
@@ -608,16 +628,30 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
           <div className='space-y-1'>
             <div className='flex items-center gap-2'>
               <div
-                className={`size-2 rounded-full ${apiEnabled ? 'bg-good-500' : 'bg-muted-foreground/50'}`}
+                className={`size-2 rounded-full ${
+                  !apiEnabled || !workflowEnabled
+                    ? 'bg-bad-500'
+                    : hasPublishedVersion
+                      ? 'bg-good-500'
+                      : 'bg-orange-500'
+                }`}
               />
               <span className='text-sm'>
-                {apiEnabled ? 'API access enabled' : 'API access disabled'}
+                {!workflowEnabled
+                  ? 'Workflow disabled'
+                  : apiEnabled
+                    ? 'API access enabled'
+                    : 'API access disabled'}
               </span>
             </div>
             <p className='text-xs text-muted-foreground'>
-              {apiEnabled
-                ? 'Applications can run this workflow via API with a valid API key.'
-                : 'Enable API access to allow programmatic execution of this workflow.'}
+              {!workflowEnabled
+                ? 'Enable the workflow to allow API access.'
+                : !apiEnabled
+                  ? 'Enable API access to allow programmatic execution of this workflow.'
+                  : !hasPublishedVersion
+                    ? 'Workflow must be published before it can be accessed via the API.'
+                    : 'Applications can run this workflow via API with a valid API key.'}
             </p>
           </div>
           <Field

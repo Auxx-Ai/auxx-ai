@@ -1231,6 +1231,9 @@ importers:
       '@auxx/workflow-nodes':
         specifier: workspace:*
         version: link:../../packages/workflow-nodes
+      '@aws-sdk/client-s3':
+        specifier: 'catalog:'
+        version: 3.999.0
       '@aws-sdk/client-sqs':
         specifier: 'catalog:'
         version: 3.999.0

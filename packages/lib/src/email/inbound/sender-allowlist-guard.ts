@@ -1,5 +1,7 @@
 // packages/lib/src/email/inbound/sender-allowlist-guard.ts
 
+import { PermanentProcessingError } from './errors'
+
 /**
  * publicMailboxDomains lists public mailbox providers that cannot be wildcard-allowlisted.
  */
@@ -80,6 +82,9 @@ export function assertSenderAllowed(sender: string, allowlist: string[]): void {
   const isAllowed = normalizedAllowlist.some((entry) => isSenderMatch(normalizedSender, entry))
 
   if (!isAllowed) {
-    throw new Error(`Sender ${normalizedSender} is not allowed for this forwarding integration`)
+    throw new PermanentProcessingError(
+      `Sender ${normalizedSender} is not allowed for this forwarding integration`,
+      'sender_rejected'
+    )
   }
 }

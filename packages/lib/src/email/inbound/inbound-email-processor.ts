@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { MessageData, ParticipantInputData } from '../email-storage'
 import { MessageStorageService } from '../email-storage'
+import { PermanentProcessingError } from './errors'
 import { InboundIntegrationResolver } from './integration-resolver'
 import { RawEmailParser } from './raw-email-parser'
 import { S3RawEmailStore } from './s3-raw-email'
@@ -99,7 +100,10 @@ export class InboundEmailProcessor {
     const parsedEmail = await this.rawEmailParser.parse(rawEmail)
 
     if (!parsedEmail.from?.address) {
-      throw new Error(`Inbound SES message ${message.sesMessageId} is missing a sender address`)
+      throw new PermanentProcessingError(
+        `Inbound SES message ${message.sesMessageId} is missing a sender address`,
+        'malformed_email'
+      )
     }
 
     const resolvedIntegration = await this.integrationResolver.resolve(message.recipients)

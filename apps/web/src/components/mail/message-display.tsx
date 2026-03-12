@@ -28,7 +28,7 @@ import {
   Send,
   Trash,
 } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Letter } from 'react-letter'
 import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
@@ -37,6 +37,7 @@ import { ContactHoverCard } from '../contacts/contact-hover-card'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import { SendStatusIndicator } from './send-status-indicator'
+import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 
 interface MessageDisplayProps {
   /** Message ID to display */
@@ -80,11 +81,16 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
     }
   }, [message, retrySendMessage])
 
+  const resolvedHtml = useMemo(
+    () => resolveInlineEmailHtml(message?.textHtml, message?.attachments ?? []),
+    [message?.attachments, message?.textHtml]
+  )
+
   // Get message content based on available fields
   const getContent = useCallback(() => {
     if (!message) return ''
-    if (message.textHtml) {
-      return <Letter className={cn('bg-background p-4 text-foreground')} html={message.textHtml} />
+    if (resolvedHtml) {
+      return <Letter className={cn('bg-background p-4 text-foreground')} html={resolvedHtml} />
     }
     if (message.textPlain) {
       return message.textPlain
@@ -93,7 +99,7 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
       return message.snippet
     }
     return <Letter className='' html={'<i>No content</i>'} />
-  }, [message])
+  }, [message, resolvedHtml])
 
   // Loading state
   if (isLoading) {

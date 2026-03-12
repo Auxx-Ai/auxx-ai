@@ -3,6 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
+import { PermanentProcessingError } from './errors'
 import type { ForwardingIntegrationMetadata, ResolvedInboundIntegration } from './types'
 
 const logger = createScopedLogger('inbound-integration-resolver')
@@ -97,8 +98,9 @@ export class InboundIntegrationResolver {
       return resolved
     }
 
-    throw new Error(
-      `No active forwarding integration found for recipients: ${normalizedRecipients.join(', ')}`
+    throw new PermanentProcessingError(
+      `No active forwarding integration found for recipients: ${normalizedRecipients.join(', ')}`,
+      'integration_not_found'
     )
   }
 }

@@ -29,6 +29,8 @@ interface WorkflowStore extends DragState {
   workflowId: string | null
   metadata: WorkflowMetadata | null
   workflowAppId: string | null
+  /** Whether the workflow has at least one published version */
+  hasPublishedVersion: boolean
   isDirty: boolean
   isLoading: boolean
   isSaving: boolean
@@ -145,6 +147,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
     workflowId: null,
     metadata: null,
     workflowAppId: null,
+    hasPublishedVersion: false,
     isDirty: false,
     isLoading: false,
     isSaving: false,
@@ -251,6 +254,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
         workflow: null,
         workflowId: null,
         metadata: null,
+        hasPublishedVersion: false,
         isDirty: false,
       })
     },
