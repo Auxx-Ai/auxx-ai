@@ -4,8 +4,9 @@ import { schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { KBService } from '@auxx/lib/kb'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
+import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -196,6 +197,32 @@ export const knowledgeBaseRouter = createTRPCRouter({
       z.object({ id: z.string(), knowledgeBaseId: z.string().optional(), isPublished: z.boolean() })
     )
     .mutation(async ({ ctx, input }) => {
+      // Only enforce limit when publishing (not unpublishing)
+      if (input.isPublished) {
+        const organizationId = getUserOrganizationId(ctx.session)
+        const featureService = new FeaturePermissionService(ctx.db)
+        const articleLimit = await featureService.getLimit(
+          organizationId,
+          FeatureKey.kbPublishedArticles
+        )
+        if (typeof articleLimit === 'number' && articleLimit >= 0) {
+          const [{ value: current }] = await ctx.db
+            .select({ value: count() })
+            .from(schema.Article)
+            .where(
+              and(
+                eq(schema.Article.organizationId, organizationId),
+                eq(schema.Article.status, ArticleStatus.PUBLISHED)
+              )
+            )
+          if (current >= articleLimit) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: `You have reached your published article limit (${articleLimit}). Upgrade your plan to publish more articles.`,
+            })
+          }
+        }
+      }
       const kbService = getKBService(ctx)
       return await kbService.togglePublishArticle(input.id, input.isPublished)
     }),

@@ -11,11 +11,12 @@ import { eq } from 'drizzle-orm'
 const logger = createScopedLogger('plan-admin-service')
 
 /**
- * Feature limit definition
+ * Feature limit definition.
+ * Supports numeric limits (-1 for unlimited) and boolean gates (true/false).
  */
 export interface FeatureLimit {
   key: string
-  limit: number // -1 for unlimited
+  limit: number | boolean // -1 for unlimited, true/false for boolean gates
 }
 
 /**

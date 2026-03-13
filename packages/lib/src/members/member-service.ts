@@ -188,6 +188,48 @@ export class MemberService {
       })
     }
 
+    // 5. Check teammate limit BEFORE creating invitation
+    const featureService = new FeaturePermissionService(this.db)
+    const memberLimit = await featureService.getLimit(organizationId, FeatureKey.teammates)
+
+    if (typeof memberLimit === 'number' && memberLimit >= 0) {
+      // Count active members + pending invitations
+      const [memberCount] = await this.db
+        .select({ value: count() })
+        .from(schema.OrganizationMember)
+        .where(
+          and(
+            eq(schema.OrganizationMember.organizationId, organizationId),
+            eq(schema.OrganizationMember.status, 'ACTIVE')
+          )
+        )
+
+      const [pendingCount] = await this.db
+        .select({ value: count() })
+        .from(schema.OrganizationInvitation)
+        .where(
+          and(
+            eq(schema.OrganizationInvitation.organizationId, organizationId),
+            eq(schema.OrganizationInvitation.status, 'PENDING'),
+            gt(schema.OrganizationInvitation.expiresAt, new Date())
+          )
+        )
+
+      const totalUsed = (memberCount?.value ?? 0) + (pendingCount?.value ?? 0)
+      if (totalUsed >= memberLimit) {
+        logger.warn('Invitation blocked: teammate limit reached', {
+          organizationId,
+          limit: memberLimit,
+          activeMembers: memberCount?.value,
+          pendingInvites: pendingCount?.value,
+        })
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: `You have reached your team member limit (${memberLimit}). Upgrade your plan to add more teammates.`,
+        })
+      }
+    }
+
     // --- If not already a member and no pending invite, proceed to create invitation ---
     logger.info('Proceeding to create invitation.', {
       email,
@@ -195,7 +237,7 @@ export class MemberService {
       existingUserId: existingUser?.id,
     })
 
-    // 5. Create the invitation record in the database
+    // 6. Create the invitation record in the database
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date()
     expiresAt.setHours(expiresAt.getHours() + INVITATION_EXPIRATION_HOURS)
@@ -586,7 +628,7 @@ export class MemberService {
     })
     const featureService = new FeaturePermissionService(this.db)
     // 1. Check Feature Limit BEFORE Transaction
-    const memberLimit = await featureService.getLimit(organizationId, FeatureKey.TEAMMATES)
+    const memberLimit = await featureService.getLimit(organizationId, FeatureKey.teammates)
     let activeMemberCount = 0 // Initialize count
 
     if (typeof memberLimit === 'number' && memberLimit >= 0) {

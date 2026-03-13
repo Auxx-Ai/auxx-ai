@@ -1,6 +1,7 @@
 // apps/web/src/app/admin/organizations/page.tsx
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -45,6 +46,13 @@ export default function OrganizationsPage() {
     offset: page * PAGE_SIZE,
     search: search || undefined,
   })
+
+  const orgIds = data?.map((org) => org.id) ?? []
+  const { data: usageSummary } = api.admin.getOrganizationsUsageSummary.useQuery(
+    { organizationIds: orgIds },
+    { enabled: orgIds.length > 0 }
+  )
+  const usageMap = new Map(usageSummary?.map((u) => [u.organizationId, u]))
 
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
@@ -229,6 +237,7 @@ export default function OrganizationsPage() {
                       <TableHead>Trial Days Left</TableHead>
                       <TableHead className='text-right'>Users</TableHead>
                       <TableHead className='text-right'>Messages</TableHead>
+                      <TableHead className='text-right'>Usage</TableHead>
                       <TableHead>Created</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -269,6 +278,9 @@ export default function OrganizationsPage() {
                           </TableCell>
                           <TableCell>
                             <Skeleton className='h-4 w-12 ml-auto' />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className='h-5 w-10 ml-auto' />
                           </TableCell>
                           <TableCell>
                             <Skeleton className='h-4 w-24' />
@@ -344,6 +356,11 @@ export default function OrganizationsPage() {
                             {org.messageCount}
                           </TableCell>
                           <TableCell
+                            className='text-right cursor-pointer'
+                            onClick={() => handleRowClick(org.id)}>
+                            <UsageBadge summary={usageMap?.get(org.id)} />
+                          </TableCell>
+                          <TableCell
                             className='text-sm text-muted-foreground cursor-pointer'
                             onClick={() => handleRowClick(org.id)}>
                             {formatDistanceToNow(org.createdAt, { addSuffix: true })}
@@ -352,7 +369,7 @@ export default function OrganizationsPage() {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={12} className='text-center text-muted-foreground py-8'>
+                        <TableCell colSpan={13} className='text-center text-muted-foreground py-8'>
                           {search
                             ? 'No organizations found matching your search'
                             : 'No organizations'}
@@ -399,4 +416,16 @@ export default function OrganizationsPage() {
       </MainPage>
     </>
   )
+}
+
+/**
+ * Compact usage badge showing the highest usage percentage across metrics
+ */
+function UsageBadge({ summary }: { summary?: { maxPercentUsed: number; allUnlimited: boolean } }) {
+  if (!summary) return <Skeleton className='h-5 w-10 ml-auto' />
+  if (summary.allUnlimited) return <Badge variant='outline'>&#8734;</Badge>
+
+  const pct = Math.round(summary.maxPercentUsed)
+  const variant = pct >= 90 ? 'destructive' : pct >= 70 ? 'secondary' : 'outline'
+  return <Badge variant={variant}>{pct}%</Badge>
 }

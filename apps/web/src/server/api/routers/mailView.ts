@@ -1,8 +1,11 @@
 // apps/web/src/server/api/routers/mailView.ts
 
+import { schema } from '@auxx/database'
 import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
 import { MailViewService } from '@auxx/lib/mail-views'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
+import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -38,8 +41,31 @@ export const mailViewRouter = createTRPCRouter({
   create: protectedProcedure.input(createMailViewSchema).mutation(async ({ ctx, input }) => {
     const { organizationId } = ctx.session
     const userId = ctx.session.user.id
-    const mailViewService = new MailViewService(organizationId, ctx.db)
 
+    // Check saved view limit (only for shared/team views)
+    if (input.isShared) {
+      const featureService = new FeaturePermissionService(ctx.db)
+      const viewLimit = await featureService.getLimit(organizationId, FeatureKey.savedViews)
+      if (typeof viewLimit === 'number' && viewLimit >= 0) {
+        const [{ value: current }] = await ctx.db
+          .select({ value: count() })
+          .from(schema.MailView)
+          .where(
+            and(
+              eq(schema.MailView.organizationId, organizationId),
+              eq(schema.MailView.isShared, true)
+            )
+          )
+        if (current >= viewLimit) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: `You have reached your saved view limit (${viewLimit}). Upgrade your plan to create more views.`,
+          })
+        }
+      }
+    }
+
+    const mailViewService = new MailViewService(organizationId, ctx.db)
     return await mailViewService.createMailView(userId, input)
   }),
 

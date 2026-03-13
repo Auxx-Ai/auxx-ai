@@ -3,6 +3,7 @@
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, gt, gte, lt, lte, or } from 'drizzle-orm'
+import { UsageLimitError } from '../errors'
 import { getQueue, Queues } from '../jobs/queues'
 import { SystemUserService } from '../users/system-user-service'
 import { calculateTotalTokens } from '../workflow-engine/core/execution-utils'
@@ -91,6 +92,26 @@ export async function createWorkflowRun(
   }
 ) {
   const { workflow, organizationId, inputs, mode, userId } = params
+
+  // Usage guard: count workflow runs (skip test/dry-run mode)
+  if (mode === 'production') {
+    const { createUsageGuard } = await import('../usage/create-usage-guard')
+    const guard = await createUsageGuard(db)
+    if (guard) {
+      const usageResult = await guard.consume(organizationId, 'workflowRuns', {
+        userId: userId ?? undefined,
+      })
+      if (!usageResult.allowed) {
+        throw new UsageLimitError({
+          metric: 'workflowRuns',
+          current: usageResult.current ?? 0,
+          limit: usageResult.limit ?? 0,
+          message:
+            'You have reached your monthly workflow execution limit. Upgrade your plan to run more workflows.',
+        })
+      }
+    }
+  }
 
   // Get next sequence number
   const [lastRun] = await db

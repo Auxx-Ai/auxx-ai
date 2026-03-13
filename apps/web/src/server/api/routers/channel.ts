@@ -1,11 +1,12 @@
 // src/server/api/routers/channel.ts
 
 import { CredentialService } from '@auxx/credentials'
-import { schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { ChatWidgetService } from '@auxx/lib/chat'
 import { DehydrationService } from '@auxx/lib/dehydration'
 import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
 import { SyncMessages } from '@auxx/lib/messages'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import type { ImapCredentialData } from '@auxx/lib/providers'
 import {
   ImapClientProvider,
@@ -15,11 +16,35 @@ import {
 } from '@auxx/lib/providers'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { TRPCError } from '@trpc/server'
+import { and, asc, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('channel-router')
+
+/** Check channel limit before creating a new integration */
+async function checkChannelLimit(db: Database, organizationId: string) {
+  const featureService = new FeaturePermissionService(db)
+  const limit = await featureService.getLimit(organizationId, FeatureKey.channels)
+  if (typeof limit === 'number' && limit >= 0) {
+    const [{ value: current }] = await db
+      .select({ value: count() })
+      .from(schema.Integration)
+      .where(
+        and(
+          eq(schema.Integration.organizationId, organizationId),
+          isNull(schema.Integration.deletedAt)
+        )
+      )
+    if (current >= limit) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: `You have reached your channel limit (${limit}). Upgrade your plan to connect more channels.`,
+      })
+    }
+  }
+}
 
 // Define supported provider types, removed 'mailgun'
 const SupportedProviderTypes = [
@@ -71,6 +96,8 @@ export const channelRouter = createTRPCRouter({
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
+
+      await checkChannelLimit(ctx.db, organizationId)
 
       const service = new IntegrationService(ctx.db, organizationId, userId)
       return service.getAuthUrl(input.provider as any, input.redirectPath)
@@ -179,6 +206,8 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
+      await checkChannelLimit(ctx.db, organizationId)
+
       const service = new IntegrationService(ctx.db, organizationId, userId)
       const result = await service.addOpenPhoneIntegration(input)
 
@@ -216,6 +245,8 @@ export const channelRouter = createTRPCRouter({
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
+
+      await checkChannelLimit(ctx.db, organizationId)
 
       const service = new ChatWidgetService(ctx.db, organizationId)
       const result = await service.addChatWidgetIntegration(input)
@@ -425,6 +456,7 @@ export const channelRouter = createTRPCRouter({
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
+      await checkChannelLimit(ctx.db, organizationId)
 
       const credentialData: ImapCredentialData = {
         authMode: input.authMode,

@@ -1,4 +1,7 @@
 // Billing
+
+// Usage
+export { type RecordUsageEventJobData, recordUsageEventJob } from '../usage'
 export {
   type ApplyScheduledChangesJobData,
   type ApplyScheduledChangesResult,

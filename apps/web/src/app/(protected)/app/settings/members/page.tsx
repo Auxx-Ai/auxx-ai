@@ -37,8 +37,8 @@ export default async function MembersPage({}: Props) {
   const members = membersResult.members
 
   const features = new FeaturePermissionService(db)
-  const hasAccess = await features.hasAccess(defaultOrganizationId!, FeatureKey.TEAMMATES)
-  const limit = await features.getLimit(defaultOrganizationId!, FeatureKey.TEAMMATES)
+  const hasAccess = await features.hasAccess(defaultOrganizationId!, FeatureKey.teammates)
+  const limit = await features.getLimit(defaultOrganizationId!, FeatureKey.teammates)
 
   // Get user's role in this organization
   const userMembership = members.find((member) => member.userId === session.user.id)

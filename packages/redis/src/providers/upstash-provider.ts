@@ -408,11 +408,29 @@ export function createUpstashClient(): RedisClient {
       }
     },
 
+    incrby: async (key: string, amount: number) => {
+      try {
+        return await upstashClient.incrby(key, amount)
+      } catch (error) {
+        logger.error('Error incrby in Upstash', { key, amount, error: (error as Error).message })
+        throw error
+      }
+    },
+
     decr: async (key: string) => {
       try {
         return await upstashClient.decr(key)
       } catch (error) {
         logger.error('Error decrementing in Upstash', { key, error: (error as Error).message })
+        throw error
+      }
+    },
+
+    decrby: async (key: string, amount: number) => {
+      try {
+        return await upstashClient.decrby(key, amount)
+      } catch (error) {
+        logger.error('Error decrby in Upstash', { key, amount, error: (error as Error).message })
         throw error
       }
     },

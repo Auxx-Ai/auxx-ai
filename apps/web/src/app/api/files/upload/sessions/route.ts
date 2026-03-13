@@ -51,6 +51,46 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Storage limit check: verify org has capacity for this upload
+    try {
+      const { FeaturePermissionService } = await import('@auxx/lib/permissions')
+      const { calculateStorageUsage } = await import('@auxx/lib/files/lifecycle/quota-cleanup')
+      const featureService = new FeaturePermissionService()
+      const storageLimit = await featureService.getLimit(
+        session.user.defaultOrganizationId,
+        'storageGbHard'
+      )
+      if (storageLimit !== null && storageLimit !== '+' && typeof storageLimit === 'number') {
+        const storageLimitBytes = storageLimit * 1024 * 1024 * 1024
+        const quota = await calculateStorageUsage(session.user.defaultOrganizationId)
+        const projectedUsage = quota.totalUsed + sessionRequest.expectedSize
+        if (projectedUsage > storageLimitBytes) {
+          const currentGb = Math.round((quota.totalUsed / (1024 * 1024 * 1024)) * 100) / 100
+          return NextResponse.json(
+            {
+              error: 'USAGE_LIMIT',
+              message: `You have reached your storage limit. Usage: ${currentGb}GB/${storageLimit}GB. Upgrade your plan for more storage.`,
+              details: {
+                metric: 'storageGb',
+                current: String(currentGb),
+                limit: String(storageLimit),
+                upgradeRequired: 'true',
+              },
+            },
+            { status: 403 }
+          )
+        }
+      }
+    } catch (storageCheckError) {
+      // Fail open — allow the upload if storage check fails
+      logger.warn('Storage limit check failed (fail-open)', {
+        error:
+          storageCheckError instanceof Error
+            ? storageCheckError.message
+            : String(storageCheckError),
+      })
+    }
+
     // ============= NEW SIMPLIFIED THREE-STEP FLOW =============
 
     // Ensure processors are initialized before using the registry

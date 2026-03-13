@@ -1,6 +1,7 @@
 // apps/api/src/routes/workflows/run/execute.ts
 
 import { database } from '@auxx/database'
+import { createUsageGuard } from '@auxx/lib/usage'
 import {
   RedisWorkflowExecutionReporter,
   validateFormInputs,
@@ -113,6 +114,21 @@ executeRoute.post('/', async (c) => {
   // Check if workflow has a published version
   if (!workflow.publishedWorkflowId) {
     return c.json(errorResponse('WORKFLOW_NOT_PUBLISHED', 'Workflow has no published version'), 400)
+  }
+
+  // Usage guard: count API call
+  const guard = await createUsageGuard(database)
+  if (guard) {
+    const usageResult = await guard.consume(workflow.organizationId, 'apiCalls')
+    if (!usageResult.allowed) {
+      return c.json(
+        errorResponse(
+          'USAGE_LIMIT',
+          'You have reached your monthly API call limit. Upgrade your plan for more API access.'
+        ),
+        403
+      )
+    }
   }
 
   // Create execution service

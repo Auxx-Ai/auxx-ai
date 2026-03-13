@@ -34,12 +34,16 @@ import { format } from 'date-fns'
 import {
   ArrowLeft,
   BookOpen,
+  Bot,
   ChevronDown,
+  Code,
   Contact,
   CreditCard,
   Database,
   FileText,
+  HardDrive,
   LayoutDashboard,
+  Mail,
   MessageSquare,
   Plus,
   Ticket,
@@ -74,6 +78,10 @@ export default function OrganizationDetailsPage() {
 
   const { data: org, isLoading } = api.admin.getOrganization.useQuery({ id })
   const { data: plans } = api.admin.getPlans.useQuery()
+  const { data: usage } = api.admin.getOrganizationUsage.useQuery(
+    { organizationId: id },
+    { enabled: !isLoading && !!org }
+  )
 
   const deleteOrg = api.admin.deleteOrganization.useMutation({
     onSuccess: () => {
@@ -312,6 +320,89 @@ export default function OrganizationDetailsPage() {
     },
   ]
 
+  /** Get color class based on usage percentage */
+  const getUsageColor = (percent: number, unlimited: boolean): string => {
+    if (unlimited) return 'text-muted-foreground'
+    if (percent >= 90) return 'text-red-500'
+    if (percent >= 70) return 'text-yellow-500'
+    return 'text-blue-500'
+  }
+
+  /** Usage stat cards for the second StatCards row */
+  const usageCards: StatCardData[] = usage
+    ? [
+        {
+          title: 'Emails',
+          icon: <Mail className='size-4' />,
+          body: usage.metrics[0].unlimited
+            ? usage.metrics[0].current
+            : `${usage.metrics[0].current} / ${usage.metrics[0].hardLimit}`,
+          description: (
+            <span
+              className={getUsageColor(usage.metrics[0].percentUsed, usage.metrics[0].unlimited)}>
+              {usage.metrics[0].unlimited ? 'Unlimited' : `${usage.metrics[0].percentUsed}%`}
+            </span>
+          ),
+          color: 'text-blue-500',
+        },
+        {
+          title: 'Workflows',
+          icon: <Workflow className='size-4' />,
+          body: usage.metrics[1].unlimited
+            ? usage.metrics[1].current
+            : `${usage.metrics[1].current} / ${usage.metrics[1].hardLimit}`,
+          description: (
+            <span
+              className={getUsageColor(usage.metrics[1].percentUsed, usage.metrics[1].unlimited)}>
+              {usage.metrics[1].unlimited ? 'Unlimited' : `${usage.metrics[1].percentUsed}%`}
+            </span>
+          ),
+          color: 'text-blue-500',
+        },
+        {
+          title: 'AI Completions',
+          icon: <Bot className='size-4' />,
+          body: usage.metrics[2].unlimited
+            ? usage.metrics[2].current
+            : `${usage.metrics[2].current} / ${usage.metrics[2].hardLimit}`,
+          description: (
+            <span
+              className={getUsageColor(usage.metrics[2].percentUsed, usage.metrics[2].unlimited)}>
+              {usage.metrics[2].unlimited ? 'Unlimited' : `${usage.metrics[2].percentUsed}%`}
+            </span>
+          ),
+          color: 'text-blue-500',
+        },
+        {
+          title: 'API Calls',
+          icon: <Code className='size-4' />,
+          body: usage.metrics[3].unlimited
+            ? usage.metrics[3].current
+            : `${usage.metrics[3].current} / ${usage.metrics[3].hardLimit}`,
+          description: (
+            <span
+              className={getUsageColor(usage.metrics[3].percentUsed, usage.metrics[3].unlimited)}>
+              {usage.metrics[3].unlimited ? 'Unlimited' : `${usage.metrics[3].percentUsed}%`}
+            </span>
+          ),
+          color: 'text-blue-500',
+        },
+        {
+          title: 'Storage',
+          icon: <HardDrive className='size-4' />,
+          body: usage.storage.limitGb
+            ? `${usage.storage.currentGb} / ${usage.storage.limitGb} GB`
+            : `${usage.storage.currentGb} GB`,
+          description: (
+            <span className={getUsageColor(usage.storage.percentUsed, !usage.storage.limitGb)}>
+              {usage.storage.limitGb ? `${usage.storage.percentUsed}%` : 'Unlimited'}
+            </span>
+          ),
+          color: 'text-blue-500',
+        },
+      ]
+    : []
+
   return (
     <>
       <ConfirmDialog />
@@ -386,6 +477,16 @@ export default function OrganizationDetailsPage() {
               columns={{
                 default: 'grid-cols-4',
                 md: 'md:grid-cols-7',
+              }}
+            />
+
+            {/* Usage Metrics */}
+            <StatCards
+              cards={usageCards}
+              loading={!usage}
+              columns={{
+                default: 'grid-cols-3',
+                md: 'md:grid-cols-5',
               }}
             />
 

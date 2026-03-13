@@ -5,11 +5,13 @@ import type { ParticipantRole as ParticipantRoleType } from '@auxx/database/type
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { UsageLimitError } from '../errors'
 import { FileService } from '../files/core/file-service'
 import { MediaAssetService } from '../files/core/media-asset-service'
 import { ParticipantService } from '../participants/participant-service'
 import type { AttachmentFile } from '../providers/message-provider-interface'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
+import { createUsageGuard } from '../usage/create-usage-guard'
 import { MessageComposerService } from './message-composer.service'
 import { MessageReconcilerService } from './message-reconciler.service'
 import { ThreadManagerService } from './thread-manager.service'
@@ -72,6 +74,22 @@ export class MessageSenderService {
     })
     // Validate input
     this.validateInput(input)
+    // Usage guard: count outbound email before sending
+    const guard = await createUsageGuard(this.db ?? db)
+    if (guard) {
+      const usageResult = await guard.consume(input.organizationId, 'outboundEmails', {
+        userId: input.userId,
+      })
+      if (!usageResult.allowed) {
+        throw new UsageLimitError({
+          metric: 'outboundEmails',
+          current: usageResult.current ?? 0,
+          limit: usageResult.limit ?? 0,
+          message:
+            'You have reached your monthly email sending limit. Upgrade your plan to send more emails.',
+        })
+      }
+    }
     let threadContext: ThreadContext | undefined
     try {
       // Step 1: Prepare thread

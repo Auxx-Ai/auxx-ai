@@ -22,8 +22,8 @@ export default function IntegrationList() {
 
   const { hasAccess, getLimit, isLoading: isFeatureLoading } = useFeatureFlags()
 
-  const canUseChannels = hasAccess(FeatureKey.CHANNELS)
-  const channelsLimit = getLimit(FeatureKey.CHANNELS)
+  const canUseChannels = hasAccess(FeatureKey.channels)
+  const channelsLimit = getLimit(FeatureKey.channels)
 
   // Handle click on New Integration button
   const handleNewIntegration = () => {

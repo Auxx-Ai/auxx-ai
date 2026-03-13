@@ -14,12 +14,20 @@ import { stripeClient } from './stripe-client'
 
 const logger = createScopedLogger('admin-billing-service')
 
-/** Custom feature limits for Enterprise customers */
+/** Custom feature limits for Enterprise customers (camelCase keys match FeatureKey enum) */
 export interface CustomFeatureLimits {
-  TEAMMATES?: number // -1 for unlimited
-  CHANNELS?: number
-  MONTHLY_EMAILS?: number
-  AI_REQUESTS?: number
+  teammates?: number // -1 for unlimited
+  channels?: number
+  outboundEmailsPerMonthHard?: number
+  outboundEmailsPerMonthSoft?: number
+  workflowRunsPerMonthHard?: number
+  workflowRunsPerMonthSoft?: number
+  aiCompletionsPerMonthHard?: number
+  aiCompletionsPerMonthSoft?: number
+  apiCallsPerMonthHard?: number
+  apiCallsPerMonthSoft?: number
+  storageGbHard?: number
+  storageGbSoft?: number
   [key: string]: number | undefined // Extensible for future features
 }
 
