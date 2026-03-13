@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/tableView.ts
 
+import { schema } from '@auxx/database'
 import {
   type FieldViewConfig,
   fieldViewConfigSchema,
@@ -10,6 +11,7 @@ import {
 } from '@auxx/lib/conditions'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
 import { isAdminOrOwner } from '@auxx/lib/members'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import {
   createView,
   deleteView,
@@ -21,6 +23,7 @@ import {
   updateView,
 } from '@auxx/services/table-view'
 import { TRPCError } from '@trpc/server'
+import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -121,6 +124,30 @@ export const tableViewRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { userId, organizationId } = ctx.session
+
+      // Check saved view limit (only for shared/team views)
+      if (input.isShared) {
+        const featureService = new FeaturePermissionService(ctx.db)
+        const viewLimit = await featureService.getLimit(organizationId, FeatureKey.savedViews)
+        if (typeof viewLimit === 'number' && viewLimit >= 0) {
+          const [{ value: current }] = await ctx.db
+            .select({ value: count() })
+            .from(schema.TableView)
+            .where(
+              and(
+                eq(schema.TableView.organizationId, organizationId),
+                eq(schema.TableView.isShared, true)
+              )
+            )
+          if (current >= viewLimit) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: `You have reached your saved view limit (${viewLimit}). Upgrade your plan to create more views.`,
+            })
+          }
+        }
+      }
+
       let finalConfig = input.config
 
       // Handle new kanban field creation (stays in router - uses CustomFieldService)

@@ -166,6 +166,12 @@
       "import": "./dist/entity-definitions/types.mjs",
       "default": "./src/entity-definitions/types.ts"
     },
+    "./errors": {
+      "types": "./src/errors.ts",
+      "source": "./src/errors.ts",
+      "import": "./dist/errors.mjs",
+      "default": "./src/errors.ts"
+    },
     "./events": {
       "types": "./src/events/index.ts",
       "source": "./src/events/index.ts",
@@ -213,6 +219,12 @@
       "source": "./src/files/client.ts",
       "import": "./dist/files/client.mjs",
       "default": "./src/files/client.ts"
+    },
+    "./files/lifecycle/quota-cleanup": {
+      "types": "./src/files/lifecycle/quota-cleanup.ts",
+      "source": "./src/files/lifecycle/quota-cleanup.ts",
+      "import": "./dist/files/lifecycle/quota-cleanup.mjs",
+      "default": "./src/files/lifecycle/quota-cleanup.ts"
     },
     "./files/server": {
       "types": "./src/files/server.ts",
@@ -501,6 +513,12 @@
       "source": "./src/types.ts",
       "import": "./dist/types.mjs",
       "default": "./src/types.ts"
+    },
+    "./usage": {
+      "types": "./src/usage/index.ts",
+      "source": "./src/usage/index.ts",
+      "import": "./dist/usage/index.mjs",
+      "default": "./src/usage/index.ts"
     },
     "./users": {
       "types": "./src/users/index.ts",

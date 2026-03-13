@@ -102,8 +102,8 @@ export function MemberList({
     requireRoles: ['ADMIN', 'OWNER'], // Ensure user is an admin or owner
   })
   const { features, getLimit, hasAccess, isLoading: isFeaturesLoading } = useFeatureFlags()
-  const canUseTeam = hasAccess(FeatureKey.TEAMMATES)
-  const teamLimit = getLimit(FeatureKey.TEAMMATES)
+  const canUseTeam = hasAccess(FeatureKey.teammates)
+  const teamLimit = getLimit(FeatureKey.teammates)
   console.log('Feature access:', { canUseTeam, teamLimit })
   const router = useRouter()
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)

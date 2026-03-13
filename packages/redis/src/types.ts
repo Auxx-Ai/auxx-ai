@@ -12,7 +12,9 @@ export interface RedisPipeline {
   del(key: string): RedisPipeline
   expire(key: string, seconds: number): RedisPipeline
   incr(key: string): RedisPipeline
+  incrby(key: string, amount: number): RedisPipeline
   decr(key: string): RedisPipeline
+  decrby(key: string, amount: number): RedisPipeline
   sadd(key: string, ...members: string[]): RedisPipeline
   srem(key: string, ...members: string[]): RedisPipeline
   lpush(key: string, ...values: string[]): RedisPipeline
@@ -85,7 +87,9 @@ export interface RedisClient {
 
   // Atomic counter operations
   incr(key: string): Promise<number>
+  incrby(key: string, amount: number): Promise<number>
   decr(key: string): Promise<number>
+  decrby(key: string, amount: number): Promise<number>
 
   // TTL operations
   ttl(key: string): Promise<number>

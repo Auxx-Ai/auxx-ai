@@ -7,6 +7,7 @@ export enum AuxxErrorCodes {
   NotFoundError = 'NotFoundError',
   ConflictError = 'ConflictError',
   UnprocessableEntityError = 'UnprocessableEntityError',
+  UsageLimitError = 'UsageLimitError',
 }
 
 export enum RunErrorCodes {
@@ -121,6 +122,37 @@ export class RateLimitError extends AuxxError {
     }
     if (resetTime !== undefined) {
       this.headers['X-RateLimit-Reset'] = resetTime.toString()
+    }
+  }
+}
+
+export class UsageLimitError extends AuxxError {
+  public statusCode = 403
+  public name = AuxxErrorCodes.UsageLimitError
+  public metric: string
+  public current: number
+  public limit: number
+
+  constructor(params: {
+    metric: string
+    current: number
+    limit: number
+    message?: string
+  }) {
+    super(
+      params.message ??
+        `You have reached your plan limit for ${params.metric}. ` +
+          `Usage: ${params.current}/${params.limit}. ` +
+          `Upgrade your plan to continue.`
+    )
+    this.metric = params.metric
+    this.current = params.current
+    this.limit = params.limit
+    this.details = {
+      metric: params.metric,
+      current: String(params.current),
+      limit: String(params.limit),
+      upgradeRequired: 'true',
     }
   }
 }

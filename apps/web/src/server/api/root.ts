@@ -67,6 +67,7 @@ import { ticketRouter } from './routers/ticket'
 import { ticketAgentRouter } from './routers/ticketAgent'
 import { ticketSequenceRouter } from './routers/ticketSequence'
 import { timelineRouter } from './routers/timeline'
+import { usageRouter } from './routers/usage'
 import { userRouter } from './routers/user'
 import { vendorPartRouter } from './routers/vendorPart'
 import { webhookRouters } from './routers/webhook'
@@ -145,6 +146,7 @@ export const appRouter = createTRPCRouter({
   ticketAgent: ticketAgentRouter,
   ticketSequence: ticketSequenceRouter,
   timeline: timelineRouter,
+  usage: usageRouter,
   user: userRouter,
   vendorPart: vendorPartRouter,
   widget: widgetRouter,

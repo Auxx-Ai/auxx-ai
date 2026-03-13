@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { WorkflowRunStatus } from '@auxx/database/enums'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import {
   triggerManualResourceWorkflow,
   triggerManualResourceWorkflowBulk,
@@ -24,7 +25,7 @@ import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
 import { type RecordId, recordIdSchema } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils/generateId'
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
+import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { workflowTemplatesRouter } from './workflow-templates'
@@ -301,6 +302,22 @@ export const workflowRouter = createTRPCRouter({
    * Optionally from a template
    */
   create: protectedProcedure.input(createWorkflowSchema).mutation(async ({ ctx, input }) => {
+    // Check rule/workflow limit
+    const featureService = new FeaturePermissionService(ctx.db)
+    const ruleLimit = await featureService.getLimit(ctx.session.organizationId, FeatureKey.rules)
+    if (typeof ruleLimit === 'number' && ruleLimit >= 0) {
+      const [{ value: current }] = await ctx.db
+        .select({ value: count() })
+        .from(schema.WorkflowApp)
+        .where(eq(schema.WorkflowApp.organizationId, ctx.session.organizationId))
+      if (current >= ruleLimit) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: `You have reached your automation rule limit (${ruleLimit}). Upgrade your plan to create more rules.`,
+        })
+      }
+    }
+
     const workflowService = new WorkflowService(ctx.db)
 
     try {

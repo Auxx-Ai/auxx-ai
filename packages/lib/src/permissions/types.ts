@@ -1,4 +1,4 @@
-// src/types/features.ts
+// packages/lib/src/permissions/types.ts
 /**
  * Defines the possible limits for a feature.
  * '+' indicates unlimited access.
@@ -21,50 +21,61 @@ export interface FeatureDefinition {
 export type FeatureMapObject = Record<string, FeatureLimit> | null
 
 /**
- * Enum defining all valid feature keys used across the application.
- * Helps ensure consistency and prevent typos.
+ * Feature keys follow camelCase naming conventions:
+ * - Boolean gates: descriptiveName → true/false
+ * - Static limits: descriptiveName → number
+ * - Usage limits: namePerMonth{Soft|Hard} → number (-1 = unlimited → normalized to '+')
  */
 export enum FeatureKey {
-  TEAMMATES = 'TEAMMATES',
-  CHANNELS = 'CHANNELS',
-  CHANNELS_SOCIAL = 'CHANNELS_SOCIAL',
-  CHANNELS_TWITTER = 'CHANNELS_TWITTER',
-  CHANNELS_CHAT = 'CHANNELS_CHAT',
-  CHANNELS_EMAIL = 'CHANNELS_EMAIL',
-  // Explicit channel types can also be features if needed
-  // CHANNEL_EMAIL = "CHANNEL_EMAIL",
-  // CHANNEL_SMS = "CHANNEL_SMS",
-  // ...etc
-  RULES = 'RULES',
-  ANSWERS = 'ANSWERS', // Assuming this maps to Response Templates or similar
-  INTEGRATIONS = 'INTEGRATIONS',
-  // Specific integration categories/types if needed
-  // INT_DEFAULT = "INT_DEFAULT",
-  // ...etc
-  API = 'API',
-  PLUGINS = 'PLUGINS',
-  KNOWLEDGE_BASE = 'KNOWLEDGE_BASE',
-  KNOWLEDGE_BASE_DEPTH = 'KNOWLEDGE_BASE_DEPTH',
-  KNOWLEDGE_BASE_PUBLISHED_ARTICLES = 'KNOWLEDGE_BASE_PUBLISHED_ARTICLES',
-  KNOWLEDGE_BASE_PUBLISHED_LOCALES = 'KNOWLEDGE_BASE_PUBLISHED_LOCALES',
-  KNOWLEDGE_BASE_MULTIPLE = 'KNOWLEDGE_BASE_MULTIPLE',
-  CHANNELS_TEAMMATES_RATIO = 'CHANNELS_TEAMMATES_RATIO', // Example of a derived/complex limit
-  LINKED_CONVERSATIONS = 'LINKED_CONVERSATIONS',
-  SAVED_VIEWS_TEAM = 'SAVED_VIEWS_TEAM', // e.g., limit on team-shared views vs private
-  TICKET_IDS = 'TICKET_IDS', // Maybe enable custom ticket IDs?
-  TICKET_STATUSES = 'TICKET_STATUSES', // Custom ticket statuses?
+  // ── Boolean gates (on/off) ──
+  knowledgeBase = 'knowledgeBase',
+  knowledgeBaseMultiple = 'knowledgeBaseMultiple',
+  apiAccess = 'apiAccess',
+  customFields = 'customFields',
+  workflows = 'workflows',
+  aiAgent = 'aiAgent',
+  sso = 'sso',
+
+  // ── Static limits (count of things, not time-based) ──
+  teammates = 'teammates',
+  channels = 'channels',
+  rules = 'rules',
+  savedViews = 'savedViews',
+  kbPublishedArticles = 'kbPublishedArticles',
+
+  // ── Usage limits (per billing cycle, Soft + Hard) ──
+  outboundEmailsPerMonthHard = 'outboundEmailsPerMonthHard',
+  outboundEmailsPerMonthSoft = 'outboundEmailsPerMonthSoft',
+  workflowRunsPerMonthHard = 'workflowRunsPerMonthHard',
+  workflowRunsPerMonthSoft = 'workflowRunsPerMonthSoft',
+  aiCompletionsPerMonthHard = 'aiCompletionsPerMonthHard',
+  aiCompletionsPerMonthSoft = 'aiCompletionsPerMonthSoft',
+  apiCallsPerMonthHard = 'apiCallsPerMonthHard',
+  apiCallsPerMonthSoft = 'apiCallsPerMonthSoft',
+  storageGbHard = 'storageGbHard',
+  storageGbSoft = 'storageGbSoft',
 }
 
 /**
  * Represents the default features for a free plan or when no subscription exists.
  */
 export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
-  { key: FeatureKey.TEAMMATES, limit: 1 },
-  { key: FeatureKey.CHANNELS, limit: 1 },
-  { key: FeatureKey.RULES, limit: 1 },
-  { key: FeatureKey.ANSWERS, limit: 5 },
-  { key: FeatureKey.KNOWLEDGE_BASE, limit: false }, // Example: KB disabled on free
-  { key: FeatureKey.KNOWLEDGE_BASE_PUBLISHED_ARTICLES, limit: 0 },
-  { key: FeatureKey.API, limit: false },
-  // Add other features with appropriate free limits or 'false'
+  { key: FeatureKey.teammates, limit: 1 },
+  { key: FeatureKey.channels, limit: 1 },
+  { key: FeatureKey.rules, limit: 1 },
+  { key: FeatureKey.savedViews, limit: 5 },
+  { key: FeatureKey.knowledgeBase, limit: false },
+  { key: FeatureKey.kbPublishedArticles, limit: 0 },
+  { key: FeatureKey.apiAccess, limit: false },
+  { key: FeatureKey.workflows, limit: false },
+  { key: FeatureKey.aiAgent, limit: false },
+  { key: FeatureKey.sso, limit: false },
+  { key: FeatureKey.customFields, limit: false },
+  { key: FeatureKey.outboundEmailsPerMonthHard, limit: 100 },
+  { key: FeatureKey.outboundEmailsPerMonthSoft, limit: 80 },
+  { key: FeatureKey.workflowRunsPerMonthHard, limit: 0 },
+  { key: FeatureKey.aiCompletionsPerMonthHard, limit: 50 },
+  { key: FeatureKey.aiCompletionsPerMonthSoft, limit: 40 },
+  { key: FeatureKey.apiCallsPerMonthHard, limit: 0 },
+  { key: FeatureKey.storageGbHard, limit: 1 },
 ]

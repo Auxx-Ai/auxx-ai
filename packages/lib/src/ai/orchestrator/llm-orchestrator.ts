@@ -2,6 +2,8 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger, type Logger } from '@auxx/logger'
+import { UsageLimitError } from '../../errors'
+import { createUsageGuard } from '../../usage/create-usage-guard'
 import type { LLMClient } from '../clients/base/llm-client'
 import type {
   LLMInvokeParams,
@@ -76,6 +78,23 @@ export class LLMOrchestrator {
     const startTime = Date.now()
 
     try {
+      // Usage guard: count AI completion before invocation
+      if (this.config.enableQuotaEnforcement && this.db) {
+        const guard = await createUsageGuard(this.db)
+        if (guard) {
+          const usageResult = await guard.consume(organizationId, 'aiCompletions', { userId })
+          if (!usageResult.allowed) {
+            throw new UsageLimitError({
+              metric: 'aiCompletions',
+              current: usageResult.current ?? 0,
+              limit: usageResult.limit ?? 0,
+              message:
+                'You have reached your monthly AI usage limit. Upgrade your plan for more AI completions.',
+            })
+          }
+        }
+      }
+
       // Execute callbacks - beforeInvoke
       await this.triggerBeforeCallback(request.callbacks, {
         provider,
@@ -224,6 +243,23 @@ export class LLMOrchestrator {
       organizationId,
       userId,
     })
+
+    // Usage guard: count AI completion before streaming
+    if (this.config.enableQuotaEnforcement && this.db) {
+      const guard = await createUsageGuard(this.db)
+      if (guard) {
+        const usageResult = await guard.consume(organizationId, 'aiCompletions', { userId })
+        if (!usageResult.allowed) {
+          throw new UsageLimitError({
+            metric: 'aiCompletions',
+            current: usageResult.current ?? 0,
+            limit: usageResult.limit ?? 0,
+            message:
+              'You have reached your monthly AI usage limit. Upgrade your plan for more AI completions.',
+          })
+        }
+      }
+    }
 
     try {
       // Create provider manager and get credentials

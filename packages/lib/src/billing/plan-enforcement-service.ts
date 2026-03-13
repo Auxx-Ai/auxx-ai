@@ -71,7 +71,7 @@ export class PlanEnforcementService {
    * Deactivates excess members if necessary.
    */
   private async enforceMemberLimit(organizationId: string, featureMap: FeatureMap): Promise<void> {
-    const limit = featureMap.get(FeatureKey.TEAMMATES)
+    const limit = featureMap.get(FeatureKey.teammates)
     // Only enforce numeric limits (ignore '+', false, null, 0)
     if (typeof limit !== 'number' || limit <= 0) {
       if (limit !== '+') {

@@ -4,6 +4,8 @@ import { AdminBillingService, PlanAdminService, PlanService } from '@auxx/billin
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { createUsageGuard, type UsageMetric, type UsageStatus } from '@auxx/lib/usage'
 import { and, eq, ilike, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
@@ -285,6 +287,86 @@ export const adminRouter = createTRPCRouter({
         success: true,
         message: `Organization ${input.mode === 'reset' ? 'reset and' : ''} seeded successfully`,
       }
+    }),
+
+  /**
+   * Get usage status for a single organization (detail page)
+   */
+  getOrganizationUsage: superAdminProcedure
+    .input(z.object({ organizationId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const ALL_METRICS: UsageMetric[] = [
+        'outboundEmails',
+        'workflowRuns',
+        'aiCompletions',
+        'apiCalls',
+      ]
+
+      const guard = await createUsageGuard(ctx.db)
+      let metrics: UsageStatus[]
+      if (guard) {
+        metrics = await Promise.all(ALL_METRICS.map((m) => guard.check(input.organizationId, m)))
+      } else {
+        metrics = ALL_METRICS.map((m) => ({
+          metric: m,
+          current: 0,
+          hardLimit: 0,
+          softLimit: 0,
+          unlimited: true,
+          percentUsed: 0,
+        }))
+      }
+
+      // Storage — uses FeaturePermissionService for the limit and calculates current from DB
+      const featureService = new FeaturePermissionService(ctx.db)
+      const storageLimitRaw = await featureService.getLimit(
+        input.organizationId,
+        FeatureKey.storageGbHard
+      )
+      const { calculateStorageUsage } = await import('@auxx/lib/files/lifecycle/quota-cleanup')
+      const storageQuota = await calculateStorageUsage(input.organizationId)
+
+      const limitGb =
+        storageLimitRaw === '+'
+          ? null
+          : typeof storageLimitRaw === 'number'
+            ? storageLimitRaw
+            : null
+      const currentGb = Number((storageQuota.totalUsed / (1024 * 1024 * 1024)).toFixed(2))
+      const storagePercentUsed = limitGb ? Math.round((currentGb / limitGb) * 100) : 0
+
+      return {
+        metrics,
+        storage: { currentGb, limitGb, percentUsed: storagePercentUsed },
+      }
+    }),
+
+  /**
+   * Get lightweight usage summary for multiple organizations (list page)
+   */
+  getOrganizationsUsageSummary: superAdminProcedure
+    .input(z.object({ organizationIds: z.array(z.string()) }))
+    .query(async ({ ctx, input }) => {
+      const ALL_METRICS: UsageMetric[] = [
+        'outboundEmails',
+        'workflowRuns',
+        'aiCompletions',
+        'apiCalls',
+      ]
+
+      const guard = await createUsageGuard(ctx.db)
+      const results = await Promise.all(
+        input.organizationIds.map(async (orgId) => {
+          if (!guard) {
+            return { organizationId: orgId, maxPercentUsed: 0, allUnlimited: true }
+          }
+          const statuses = await Promise.all(ALL_METRICS.map((m) => guard.check(orgId, m)))
+          const allUnlimited = statuses.every((s) => s.unlimited)
+          const maxPercentUsed = allUnlimited ? 0 : Math.max(...statuses.map((s) => s.percentUsed))
+          return { organizationId: orgId, maxPercentUsed, allUnlimited }
+        })
+      )
+      return results
     }),
 
   /**
@@ -831,7 +913,7 @@ export const adminRouter = createTRPCRouter({
           featureLimits: z.array(
             z.object({
               key: z.string(),
-              limit: z.number().int(),
+              limit: z.union([z.number().int(), z.boolean()]),
             })
           ),
           hierarchyLevel: z.number().int().min(0).max(10),
@@ -866,7 +948,7 @@ export const adminRouter = createTRPCRouter({
             .array(
               z.object({
                 key: z.string(),
-                limit: z.number().int(),
+                limit: z.union([z.number().int(), z.boolean()]),
               })
             )
             .optional(),

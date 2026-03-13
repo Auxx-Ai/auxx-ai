@@ -187,7 +187,9 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
 
     // Atomic counter operations
     incr: async (key: string) => (await client.incr(key)) as number,
+    incrby: async (key: string, amount: number) => (await client.incrby(key, amount)) as number,
     decr: async (key: string) => (await client.decr(key)) as number,
+    decrby: async (key: string, amount: number) => (await client.decrby(key, amount)) as number,
 
     // TTL operations (fully supported by IORedis)
     ttl: async (key: string) => (await client.ttl(key)) as number,

@@ -687,6 +687,13 @@
       "when": 1773360405271,
       "tag": "0097_add-soft-delete-integration-storage-location",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1773379312101,
+      "tag": "0098_add_usage_event_table",
+      "breakpoints": true
     }
   ]
 }
