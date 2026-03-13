@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.81](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.80...auxx-v0.1.81) (2026-03-13)
+
+
+### Features
+
+* add optional name field to user profile update ([#255](https://github.com/Auxx-Ai/auxx-ai/issues/255)) ([4325331](https://github.com/Auxx-Ai/auxx-ai/commit/43253312cbb7165ef33dcb62dc54170a1352adb5))
+* implement attachment fetching and inbound content ingestion ([#252](https://github.com/Auxx-Ai/auxx-ai/issues/252)) ([1554fc7](https://github.com/Auxx-Ai/auxx-ai/commit/1554fc7e3f6d3f742caf65372e7ded1f13aeb102))
+* unique const for apiSlug in def, kanban color, default model ai for workflow ([#254](https://github.com/Auxx-Ai/auxx-ai/issues/254)) ([31217d9](https://github.com/Auxx-Ai/auxx-ai/commit/31217d95f8afe6be0a59fe7b0dee0d56c169bed2))
+
 ## [0.1.80](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.79...auxx-v0.1.80) (2026-03-13)
 
 
