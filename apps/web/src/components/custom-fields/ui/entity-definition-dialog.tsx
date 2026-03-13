@@ -44,12 +44,14 @@ import {
   useEntityDefinitionMutations,
   useResource,
   useResourceFields,
+  useResources,
 } from '~/components/resources/hooks'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { api } from '~/trpc/react'
+import { getNextIconColor } from '../utils/get-next-icon-color'
 import { CustomFieldDialog } from './custom-field-dialog'
 
 /** Props for EntityDefinitionDialog */
@@ -85,6 +87,13 @@ export function EntityDefinitionDialog({
 
   // Get fields from store (for display field selects)
   const { fields } = useResourceFields(entityDefinitionId)
+
+  // Get all resources to determine used icon colors
+  const { resources } = useResources()
+  const nextColor = useMemo(
+    () => getNextIconColor(resources.map((r) => r.color).filter(Boolean)),
+    [resources]
+  )
 
   // Determine if editing based on prop
   const isEditing = !!entityDefinitionId
@@ -191,8 +200,8 @@ export function EntityDefinitionDialog({
           avatarFieldId: editingResource.display.avatarField?.id ?? null,
         }
       } else {
-        // Create mode: reset to defaults
-        setIconValue({ icon: 'package', color: 'red' })
+        // Create mode: reset to defaults with auto-assigned color
+        setIconValue({ icon: 'package', color: nextColor })
         setSingular('')
         setPlural('')
         setSlug('')
@@ -207,7 +216,7 @@ export function EntityDefinitionDialog({
 
         initValues = {
           icon: 'package',
-          color: 'red',
+          color: nextColor,
           singular: '',
           plural: '',
           slug: '',
@@ -220,7 +229,7 @@ export function EntityDefinitionDialog({
       // Set baseline for dirty checking
       setInitial(initValues)
     }
-  }, [open, editingResource, setInitial])
+  }, [open, editingResource, setInitial, nextColor])
 
   // tRPC utils for slug check
   const utils = api.useUtils()

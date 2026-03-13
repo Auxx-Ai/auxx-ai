@@ -303,6 +303,9 @@ pnpm db:generate --name <descriptive_name>
 
 # Apply DB migrations
 pnpm db:migrate
+
+# Run standalone scripts (uses dotenv-cli to load .env with multiline values)
+npx dotenv -- npx tsx path/to/script.ts
 ```
 
 ### Rules

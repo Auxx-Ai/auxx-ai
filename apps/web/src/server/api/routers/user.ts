@@ -15,6 +15,7 @@ export const userRouter = createTRPCRouter({
   updateProfile: protectedProcedure
     .input(
       z.object({
+        name: z.string().min(1).optional(),
         firstName: z.string().min(1).optional(),
         lastName: z.string().min(1).optional(),
       })
@@ -22,12 +23,18 @@ export const userRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const updates: any = {}
 
+      // Update name directly if provided
+      if (input.name !== undefined) updates.name = input.name
+
       // Update separate fields
       if (input.firstName !== undefined) updates.firstName = input.firstName
       if (input.lastName !== undefined) updates.lastName = input.lastName
 
-      // Update full name field as well for display purposes
-      if (input.firstName !== undefined || input.lastName !== undefined) {
+      // Update full name field as well for display purposes (only if name wasn't directly set)
+      if (
+        input.name === undefined &&
+        (input.firstName !== undefined || input.lastName !== undefined)
+      ) {
         const [user] = await db
           .select({ firstName: schema.User.firstName, lastName: schema.User.lastName })
           .from(schema.User)

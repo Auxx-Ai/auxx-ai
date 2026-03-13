@@ -2,7 +2,8 @@
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
-import { formatToTypedInput } from '@auxx/lib/field-values/client'
+import { formatToRawValue, formatToTypedInput } from '@auxx/lib/field-values/client'
+import { getFieldId, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
 import { computedFieldRegistry } from './computed-field-registry'
 import {
@@ -18,24 +19,6 @@ import {
 function wrapCalcValue(value: unknown, resultType: string): StoredFieldValue {
   // Use existing formatToTypedInput which handles all field types correctly
   return formatToTypedInput(value, resultType as FieldType)
-}
-
-/**
- * Extract a text value from a stored field value.
- * Handles TypedFieldValue wrapper format or raw string values.
- */
-function extractTextValue(stored: unknown): string | null {
-  if (stored === null || stored === undefined) return null
-
-  // Handle TypedFieldValue format: { type, text: string }
-  if (typeof stored === 'object' && 'text' in (stored as object)) {
-    return (stored as { text: string }).text ?? null
-  }
-
-  // Handle raw string values
-  if (typeof stored === 'string') return stored
-
-  return null
 }
 
 /**
@@ -56,7 +39,14 @@ export function computeDependentCalcValues(
 
   for (const changedKey of changedKeys) {
     const { recordId, fieldRef } = parseFieldValueKey(changedKey)
-    const fieldId = typeof fieldRef === 'string' ? fieldRef : fieldRef[fieldRef.length - 1]
+    const fieldRefStr = typeof fieldRef === 'string' ? fieldRef : fieldRef[fieldRef.length - 1]
+    // Extract plain FieldId (UUID) from ResourceFieldId for dependency graph lookup.
+    // The dependency graph stores plain UUIDs as keys (from sourceFields config),
+    // but parseFieldValueKey returns ResourceFieldId format ("entityDef:fieldId").
+    const fieldId =
+      typeof fieldRefStr === 'string' && isResourceFieldId(fieldRefStr)
+        ? getFieldId(fieldRefStr as ResourceFieldId)
+        : fieldRefStr
 
     if (!affectedRecords.has(recordId)) {
       affectedRecords.set(recordId, new Set())
@@ -118,8 +108,8 @@ export function computeDependentCalcValues(
 
       // Handle NAME fields (no expression, just combine firstName + lastName)
       if (config.resultFieldType === FieldTypeEnum.NAME || !config.expression) {
-        const firstName = extractTextValue(sourceValues['firstName'])
-        const lastName = extractTextValue(sourceValues['lastName'])
+        const firstName = String(formatToRawValue(sourceValues['firstName'], 'TEXT') ?? '')
+        const lastName = String(formatToRawValue(sourceValues['lastName'], 'TEXT') ?? '')
         return wrapCalcValue({ firstName: firstName ?? '', lastName: lastName ?? '' }, 'NAME')
       }
 

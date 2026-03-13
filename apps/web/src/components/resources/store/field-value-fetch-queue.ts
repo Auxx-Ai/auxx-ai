@@ -1,7 +1,7 @@
 // apps/web/src/components/resources/store/field-value-fetch-queue.ts
 
 import type { RecordId } from '@auxx/lib/resources/client'
-import type { ResourceFieldId } from '@auxx/types/field'
+import { isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils/generateId'
 import { computedFieldRegistry } from './computed-field-registry'
 import {
@@ -59,17 +59,24 @@ class FieldValueFetchQueue {
   /**
    * Queue a fetch request. Will be batched and deduplicated automatically.
    * Returns true if the request was queued, false if already loading/cached.
-   * For CALC fields, queues source fields instead since CALC values are computed client-side.
+   * For computed fields (CALC, NAME), queues source fields instead since values are computed client-side.
    */
   queueFetch(recordId: RecordId, fieldRef: FieldReference): boolean {
-    // Check if this is a CALC field (only for string fieldRefs, not paths)
+    // Normalize fieldRef to ResourceFieldId first so computed field check uses consistent format.
+    // The registry keys are ResourceFieldId (e.g. "contact:abc123"), but callers may pass plain FieldId.
+    const normalizedRef =
+      typeof fieldRef === 'string' && !isResourceFieldId(fieldRef)
+        ? normalizeFieldRef(recordId, fieldRef)
+        : fieldRef
+
+    // Check if this is a computed field (CALC, NAME) — decompose into source fields
     if (
-      typeof fieldRef === 'string' &&
-      computedFieldRegistry.isComputed(fieldRef as ResourceFieldId)
+      typeof normalizedRef === 'string' &&
+      computedFieldRegistry.isComputed(normalizedRef as ResourceFieldId)
     ) {
-      const config = computedFieldRegistry.getConfig(fieldRef as ResourceFieldId)
+      const config = computedFieldRegistry.getConfig(normalizedRef as ResourceFieldId)
       if (config) {
-        // Queue source fields instead of the CALC field itself
+        // Queue source fields instead of the computed field itself
         let queued = false
         for (const sourceFieldId of Object.values(config.sourceFields)) {
           if (this.queueFetch(recordId, sourceFieldId)) {
@@ -80,7 +87,7 @@ class FieldValueFetchQueue {
       }
     }
 
-    const key = buildFieldValueKey(recordId, fieldRef)
+    const key = buildFieldValueKey(recordId, normalizedRef)
     const store = useFieldValueStore.getState()
 
     // Skip if already in store or already being fetched
@@ -93,8 +100,6 @@ class FieldValueFetchQueue {
       return false
     }
 
-    // Normalize fieldRef to ResourceFieldId or FieldPath for API
-    const normalizedRef = normalizeFieldRef(recordId, fieldRef)
     this.pending.push({ recordId, fieldRef: normalizedRef, key })
 
     // Mark as fetching immediately - this triggers skeleton in cells
@@ -106,6 +111,7 @@ class FieldValueFetchQueue {
 
   /**
    * Queue multiple fetch requests at once (more efficient than individual calls).
+   * Decomposes computed fields (CALC, NAME) into their source field fetches.
    */
   queueFetchBatch(
     requests: Array<{ recordId: RecordId; fieldRef: FieldReference }>
@@ -114,14 +120,37 @@ class FieldValueFetchQueue {
     const queued: FieldValueKey[] = []
 
     for (const { recordId, fieldRef } of requests) {
-      const key = buildFieldValueKey(recordId, fieldRef)
+      // Normalize fieldRef to ResourceFieldId for consistent registry lookups
+      const normalizedRef =
+        typeof fieldRef === 'string' && !isResourceFieldId(fieldRef)
+          ? normalizeFieldRef(recordId, fieldRef)
+          : fieldRef
+
+      // Decompose computed fields (CALC, NAME) into source fields
+      if (
+        typeof normalizedRef === 'string' &&
+        computedFieldRegistry.isComputed(normalizedRef as ResourceFieldId)
+      ) {
+        const config = computedFieldRegistry.getConfig(normalizedRef as ResourceFieldId)
+        if (config) {
+          for (const sourceFieldId of Object.values(config.sourceFields)) {
+            const sourceKey = buildFieldValueKey(recordId, sourceFieldId)
+            if (sourceKey in store.values || store.isKeyFetching(sourceKey)) continue
+            if (this.pending.some((e) => e.key === sourceKey)) continue
+            const sourceNormalized = normalizeFieldRef(recordId, sourceFieldId)
+            this.pending.push({ recordId, fieldRef: sourceNormalized, key: sourceKey })
+            queued.push(sourceKey)
+          }
+          continue // Skip the computed field itself
+        }
+      }
+
+      const key = buildFieldValueKey(recordId, normalizedRef)
 
       // Skip if already in store or already being fetched
       if (key in store.values || store.isKeyFetching(key)) continue
       if (this.pending.some((e) => e.key === key)) continue
 
-      // Normalize fieldRef to ResourceFieldId or FieldPath for API
-      const normalizedRef = normalizeFieldRef(recordId, fieldRef)
       this.pending.push({ recordId, fieldRef: normalizedRef, key })
       queued.push(key)
     }

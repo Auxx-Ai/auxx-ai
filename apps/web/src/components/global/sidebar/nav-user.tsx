@@ -80,7 +80,11 @@ export function NavUser({ user }: Prop) {
     requireOrganization: true, // Require organization membership
   })
 
-  const initials = getInitialsFromName(user.name, 'U')
+  // Use reactive data from dehydrated state instead of static server prop
+  const displayName = userData?.name || user.name
+  const displayEmail = userData?.email || user.email
+  const displayImage = userData?.image || user.image
+  const initials = getInitialsFromName(displayName, 'U')
 
   useEffect(() => {
     if (organizationId !== activeOrgId) {
@@ -106,12 +110,12 @@ export function NavUser({ user }: Prop) {
                 size='lg'
                 className='ps-1 pe-1.5  h-10 rounded-2xl ring-1 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'>
                 <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>
-                  <AvatarImage src={user.image!} alt={user.name} />
+                  <AvatarImage src={displayImage!} alt={displayName} />
                   <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
                 </Avatar>
                 <div className='grid flex-1 text-left text-sm leading-tight'>
-                  <span className='truncate font-semibold'>{user.name}</span>
-                  <span className='truncate text-xs'>{user.email}</span>
+                  <span className='truncate font-semibold'>{displayName}</span>
+                  <span className='truncate text-xs'>{displayEmail}</span>
                 </div>
                 <ChevronsUpDown className='ml-auto size-4' />
               </SidebarMenuButton>
@@ -124,12 +128,12 @@ export function NavUser({ user }: Prop) {
               <DropdownMenuLabel className='p-0 font-normal'>
                 <div className='flex items-center gap-2 px-1 py-1.5 text-left text-sm'>
                   <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>
-                    <AvatarImage src={user.image!} alt={user.name} />
+                    <AvatarImage src={displayImage!} alt={displayName} />
                     <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
                   </Avatar>
                   <div className='grid flex-1 text-left text-sm leading-tight'>
-                    <span className='truncate font-semibold'>{user.name}</span>
-                    <span className='truncate text-xs'>{user.email}</span>
+                    <span className='truncate font-semibold'>{displayName}</span>
+                    <span className='truncate text-xs'>{displayEmail}</span>
                   </div>
                 </div>
               </DropdownMenuLabel>
