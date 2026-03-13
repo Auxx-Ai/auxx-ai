@@ -17,6 +17,7 @@ import {
   sendGettingStartedEmailsJob,
   sendMidTrialEmailsJob,
   sendTrialConversionEmailsJob,
+  storageCleanupJob,
   stripeSubscriptionSyncJob,
   thumbnailCleanupJob,
 } from '@auxx/lib/jobs'
@@ -72,6 +73,9 @@ const jobMappings = {
 
   // Quota management jobs
   quotaResetJob,
+
+  // Storage cleanup (on-demand, enqueued by disconnect/delete flows)
+  storageCleanupJob,
 }
 
 export function startMaintenanceWorker() {

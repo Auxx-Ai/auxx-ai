@@ -16,7 +16,7 @@ import type {
   ThreadEntity as Thread,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { SelectiveModeCache } from '../cache/selective-mode-cache'
 import { MessageReconcilerService } from '../messages/message-reconciler.service'
@@ -232,7 +232,7 @@ export class MessageStorageService {
     const [integration] = await db
       .select({ provider: schema.Integration.provider })
       .from(schema.Integration)
-      .where(eq(schema.Integration.id, integrationId))
+      .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
       .limit(1)
 
     const provider = integration?.provider
@@ -969,7 +969,12 @@ export class MessageStorageService {
         const [integration] = await db
           .select({ metadata: schema.Integration.metadata })
           .from(schema.Integration)
-          .where(eq(schema.Integration.id, messageData.integrationId))
+          .where(
+            and(
+              eq(schema.Integration.id, messageData.integrationId),
+              isNull(schema.Integration.deletedAt)
+            )
+          )
           .limit(1)
 
         this.integrationSettings = (integration?.metadata as any)?.settings as

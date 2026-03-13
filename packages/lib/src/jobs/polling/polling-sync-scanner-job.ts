@@ -61,7 +61,8 @@ export const pollingSyncScannerJob = async (job: Job<PollingSyncScannerJobData>)
       .where(
         and(
           eq(schema.Integration.enabled, true),
-          inArray(schema.Integration.provider, ['google', 'outlook', 'imap'])
+          inArray(schema.Integration.provider, ['google', 'outlook', 'imap']),
+          isNull(schema.Integration.deletedAt)
         )
       )
 

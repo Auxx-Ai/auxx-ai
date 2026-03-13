@@ -1,8 +1,10 @@
 // packages/lib/src/files/lifecycle/orphaned-cleanup.ts
 
-import { database as db } from '@auxx/database'
+import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
+import { and, eq, isNotNull, lt } from 'drizzle-orm'
+import { StorageManager } from '../storage/storage-manager'
 import { deleteExpiredFiles, deleteFilesByIds } from './cleanup-service'
 import type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './types'
 
@@ -138,10 +140,68 @@ export async function deletedFileCleanupJob(
       await job.updateProgress(100)
     }
 
+    // Phase 2: Sweep marked StorageLocations (safety net for storageCleanupJob)
+    // Only sweep records marked for deletion > 24h ago (storageCleanupJob handles immediate cleanup)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    let storageLocationsSwept = 0
+
+    const markedLocations = await db
+      .select({
+        id: schema.StorageLocation.id,
+        provider: schema.StorageLocation.provider,
+        externalId: schema.StorageLocation.externalId,
+        organizationId: schema.StorageLocation.organizationId,
+      })
+      .from(schema.StorageLocation)
+      .where(
+        and(
+          isNotNull(schema.StorageLocation.deletedAt),
+          lt(schema.StorageLocation.deletedAt, oneDayAgo)
+        )
+      )
+      .limit(batchSize)
+
+    if (markedLocations.length > 0) {
+      logger.info(`Found ${markedLocations.length} stale marked StorageLocations to sweep`)
+
+      for (const loc of markedLocations) {
+        try {
+          if (!dryRun) {
+            // Delete from S3
+            const storageManager = new StorageManager(loc.organizationId || undefined)
+            try {
+              await storageManager.deleteByKey({
+                provider: loc.provider as any,
+                key: loc.externalId,
+              })
+            } catch (s3Error) {
+              logger.warn('Failed to delete S3 object during sweep, continuing', {
+                storageLocationId: loc.id,
+                error: s3Error instanceof Error ? s3Error.message : String(s3Error),
+              })
+            }
+
+            // Hard-delete the StorageLocation record
+            await db.delete(schema.StorageLocation).where(eq(schema.StorageLocation.id, loc.id))
+          }
+          storageLocationsSwept++
+        } catch (error) {
+          logger.error('Failed to sweep StorageLocation', {
+            storageLocationId: loc.id,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          result.errors++
+        }
+      }
+
+      logger.info(`Swept ${storageLocationsSwept} stale marked StorageLocations`, { dryRun })
+    }
+
     // Log summary
     logger.info('Soft-deleted file cleanup completed', {
       processed: result.processed,
       deleted: result.deleted,
+      storageLocationsSwept,
       errors: result.errors,
       dryRun,
     })

@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 import { getQueue, Queues } from '../queues'
 
@@ -105,6 +105,7 @@ export const integrationTokenRefreshScannerJob = async (
           inArray(schema.Integration.provider, [...OAUTH_PROVIDERS]),
           isNotNull(schema.Integration.credentialId),
           eq(schema.Integration.enabled, true),
+          isNull(schema.Integration.deletedAt),
           // Token expires within buffer period OR no expiration set (needs refresh)
           or(
             lt(schema.Integration.expiresAt, tokenRefreshThreshold),
@@ -138,7 +139,8 @@ export const integrationTokenRefreshScannerJob = async (
         and(
           inArray(schema.Integration.provider, [...OAUTH_PROVIDERS]),
           isNotNull(schema.Integration.credentialId),
-          eq(schema.Integration.enabled, true)
+          eq(schema.Integration.enabled, true),
+          isNull(schema.Integration.deletedAt)
         )
       )
 

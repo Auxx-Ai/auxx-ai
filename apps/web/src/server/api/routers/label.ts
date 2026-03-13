@@ -10,7 +10,7 @@ import {
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -353,7 +353,8 @@ export const labelRouter = createTRPCRouter({
         .where(
           and(
             eq(schema.Integration.id, input.integrationId),
-            eq(schema.Integration.organizationId, organizationId)
+            eq(schema.Integration.organizationId, organizationId),
+            isNull(schema.Integration.deletedAt)
           )
         )
         .limit(1)

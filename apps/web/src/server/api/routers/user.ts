@@ -5,7 +5,7 @@ import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { SettingsService, UserSettingsService } from '@auxx/lib/settings'
 import { autoSyncShopify } from '@auxx/lib/shopify'
 import { TRPCError } from '@trpc/server'
-import { count, eq } from 'drizzle-orm'
+import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -108,7 +108,12 @@ export const userRouter = createTRPCRouter({
     const [{ integrationCount }] = await db
       .select({ integrationCount: count() })
       .from(schema.Integration)
-      .where(eq(schema.Integration.organizationId, organizationId))
+      .where(
+        and(
+          eq(schema.Integration.organizationId, organizationId),
+          isNull(schema.Integration.deletedAt)
+        )
+      )
     const hasIntegrations = integrationCount > 0
 
     // Fetch avatar URL if user has an avatar asset

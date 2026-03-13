@@ -6,7 +6,7 @@ import type {
   StorageProvider,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, count, desc, eq, inArray, isNotNull, lt, sql, sum } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNotNull, isNull, lt, sql, sum } from 'drizzle-orm'
 
 // NOTE: StorageLocationService focuses only on database operations
 const logger = createScopedLogger('storage-location-service')
@@ -43,6 +43,8 @@ export interface CreateStorageLocationRequest {
   // Optional external URL (for URL providers or public files)
   externalUrl: string
   externalRev: string
+  // Organization scope (nullable for backfill compatibility, required going forward)
+  organizationId?: string
   // Authentication (all providers can have credentials)
   credentialId?: string
   // File metadata
@@ -271,6 +273,7 @@ export class StorageLocationService {
           provider: data.provider,
           externalId: data.externalId,
           externalUrl: data.externalUrl,
+          organizationId: data.organizationId || null,
           credentialId: data.credentialId,
           size: data.size || null,
           mimeType: data.mimeType || null,
@@ -293,7 +296,7 @@ export class StorageLocationService {
       const [location] = await db
         .select()
         .from(schema.StorageLocation)
-        .where(eq(schema.StorageLocation.id, id))
+        .where(and(eq(schema.StorageLocation.id, id), isNull(schema.StorageLocation.deletedAt)))
         .limit(1)
       return location || null
     } catch (error) {
@@ -330,7 +333,7 @@ export class StorageLocationService {
           schema.WorkflowCredentials,
           eq(schema.StorageLocation.credentialId, schema.WorkflowCredentials.id)
         )
-        .where(eq(schema.StorageLocation.id, id))
+        .where(and(eq(schema.StorageLocation.id, id), isNull(schema.StorageLocation.deletedAt)))
         .limit(1)
       if (!result) return null
       return {
@@ -422,7 +425,12 @@ export class StorageLocationService {
       return await db
         .select()
         .from(schema.StorageLocation)
-        .where(eq(schema.StorageLocation.provider, provider))
+        .where(
+          and(
+            eq(schema.StorageLocation.provider, provider),
+            isNull(schema.StorageLocation.deletedAt)
+          )
+        )
         .orderBy(desc(schema.StorageLocation.createdAt))
     } catch (error) {
       logger.error('Failed to get storage locations by provider', { provider, error })
@@ -437,7 +445,12 @@ export class StorageLocationService {
       return await db
         .select()
         .from(schema.StorageLocation)
-        .where(eq(schema.StorageLocation.credentialId, credentialId))
+        .where(
+          and(
+            eq(schema.StorageLocation.credentialId, credentialId),
+            isNull(schema.StorageLocation.deletedAt)
+          )
+        )
         .orderBy(desc(schema.StorageLocation.createdAt))
     } catch (error) {
       logger.error('Failed to get storage locations by credential', { credentialId, error })
@@ -458,7 +471,8 @@ export class StorageLocationService {
         .where(
           and(
             eq(schema.StorageLocation.provider, provider),
-            eq(schema.StorageLocation.externalId, externalId)
+            eq(schema.StorageLocation.externalId, externalId),
+            isNull(schema.StorageLocation.deletedAt)
           )
         )
         .orderBy(desc(schema.StorageLocation.createdAt))
@@ -479,7 +493,10 @@ export class StorageLocationService {
     metadataQuery: Record<string, any>
   ): Promise<StorageLocationEntity[]> {
     try {
-      const conditions = [eq(schema.StorageLocation.provider, provider)]
+      const conditions = [
+        eq(schema.StorageLocation.provider, provider),
+        isNull(schema.StorageLocation.deletedAt),
+      ]
       // Add metadata conditions for each key-value pair using PostgreSQL JSON operators
       for (const [key, value] of Object.entries(metadataQuery)) {
         conditions.push(sql`${schema.StorageLocation.metadata}->>${key} = ${value}`)
@@ -610,6 +627,7 @@ export class StorageLocationService {
                 externalId: location.externalId,
                 externalUrl: location.externalUrl,
                 externalRev: location.externalRev,
+                organizationId: location.organizationId || null,
                 credentialId: location.credentialId || null,
                 size: location.size || null,
                 mimeType: location.mimeType || null,
@@ -724,7 +742,10 @@ export class StorageLocationService {
   }> {
     try {
       // Get total count
-      const [{ totalCount }] = await db.select({ totalCount: count() }).from(schema.StorageLocation)
+      const [{ totalCount }] = await db
+        .select({ totalCount: count() })
+        .from(schema.StorageLocation)
+        .where(isNull(schema.StorageLocation.deletedAt))
       // Get count by provider
       const providerCounts = await db
         .select({
@@ -732,6 +753,7 @@ export class StorageLocationService {
           count: count(),
         })
         .from(schema.StorageLocation)
+        .where(isNull(schema.StorageLocation.deletedAt))
         .groupBy(schema.StorageLocation.provider)
       // Get size by provider
       const providerSizes = await db
@@ -740,7 +762,9 @@ export class StorageLocationService {
           totalSize: sum(schema.StorageLocation.size),
         })
         .from(schema.StorageLocation)
-        .where(isNotNull(schema.StorageLocation.size))
+        .where(
+          and(isNotNull(schema.StorageLocation.size), isNull(schema.StorageLocation.deletedAt))
+        )
         .groupBy(schema.StorageLocation.provider)
       // Transform results
       const locationsByProvider: Record<string, number> = {}
@@ -783,14 +807,24 @@ export class StorageLocationService {
           totalSize: sum(schema.StorageLocation.size),
         })
         .from(schema.StorageLocation)
-        .where(eq(schema.StorageLocation.credentialId, credentialId))
+        .where(
+          and(
+            eq(schema.StorageLocation.credentialId, credentialId),
+            isNull(schema.StorageLocation.deletedAt)
+          )
+        )
       // Get unique providers for this credential
       const providerResults = await db
         .selectDistinct({
           provider: schema.StorageLocation.provider,
         })
         .from(schema.StorageLocation)
-        .where(eq(schema.StorageLocation.credentialId, credentialId))
+        .where(
+          and(
+            eq(schema.StorageLocation.credentialId, credentialId),
+            isNull(schema.StorageLocation.deletedAt)
+          )
+        )
       const providers = providerResults.map((item) => item.provider)
       return {
         locationCount: stats.locationCount || 0,

@@ -8,11 +8,13 @@ import {
   index,
   jsonb,
   pgTable,
+  sql,
   storageProvider,
   text,
   timestamp,
 } from './_shared'
 
+import { Organization } from './organization'
 import { WorkflowCredentials } from './workflow-credentials'
 
 /** Drizzle table for storageLocation */
@@ -27,6 +29,10 @@ export const StorageLocation = pgTable(
     externalId: text().notNull(),
     externalUrl: text().notNull(),
     externalRev: text().notNull(),
+    organizationId: text().references((): AnyPgColumn => Organization.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
     credentialId: text().references((): AnyPgColumn => WorkflowCredentials.id, {
       onUpdate: 'cascade',
     }),
@@ -34,6 +40,7 @@ export const StorageLocation = pgTable(
     size: bigint({ mode: 'number' }).default(0),
     mimeType: text(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
+    deletedAt: timestamp({ precision: 3 }),
     metadata: jsonb().default({}).notNull(),
   },
   (table) => [
@@ -43,6 +50,13 @@ export const StorageLocation = pgTable(
       table.provider.asc().nullsLast(),
       table.externalId.asc().nullsLast()
     ),
+    index('StorageLocation_organizationId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast()
+    ),
+    index('StorageLocation_deletedAt_idx')
+      .using('btree', table.deletedAt.asc().nullsLast())
+      .where(sql`${table.deletedAt} IS NOT NULL`),
   ]
 )
 

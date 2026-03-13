@@ -102,7 +102,10 @@ export const generateThumbnailJob = async (job: any): Promise<void> => {
       .leftJoin(schema.MediaAsset, eq(schema.MediaAssetVersion.assetId, schema.MediaAsset.id))
       .leftJoin(
         schema.StorageLocation,
-        eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id)
+        and(
+          eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id),
+          isNull(schema.StorageLocation.deletedAt)
+        )
       )
       .where(eq(schema.MediaAssetVersion.id, versionId))
       .limit(1)
@@ -326,7 +329,10 @@ async function updateKBLogoIfApplicable(params: {
     .from(schema.MediaAssetVersion)
     .leftJoin(
       schema.StorageLocation,
-      eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id)
+      and(
+        eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id),
+        isNull(schema.StorageLocation.deletedAt)
+      )
     )
     .where(eq(schema.MediaAssetVersion.id, derivedVersionId))
     .limit(1)

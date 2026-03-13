@@ -780,7 +780,10 @@ export class FileService
           )
           .leftJoin(
             schema.StorageLocation,
-            eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id)
+            and(
+              eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id),
+              isNull(schema.StorageLocation.deletedAt)
+            )
           )
           .leftJoin(schema.User, eq(schema.FolderFile.createdById, schema.User.id))
           .where(where)
@@ -1464,7 +1467,10 @@ export class FileService
         .from(schema.FileVersion)
         .leftJoin(
           schema.StorageLocation,
-          eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id)
+          and(
+            eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id),
+            isNull(schema.StorageLocation.deletedAt)
+          )
         )
         .where(eq(schema.FileVersion.id, (entity as any).currentVersionId))
         .limit(1)
@@ -1493,7 +1499,10 @@ export class FileService
       .from(schema.FileVersion)
       .leftJoin(
         schema.StorageLocation,
-        eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id)
+        and(
+          eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id),
+          isNull(schema.StorageLocation.deletedAt)
+        )
       )
       .where(eq(schema.FileVersion.fileId, entityId))
       .orderBy(desc(schema.FileVersion.versionNumber))
@@ -1544,7 +1553,12 @@ export class FileService
       const [storageLocation] = await tx
         .select()
         .from(schema.StorageLocation)
-        .where(eq(schema.StorageLocation.id, storageLocationId))
+        .where(
+          and(
+            eq(schema.StorageLocation.id, storageLocationId),
+            isNull(schema.StorageLocation.deletedAt)
+          )
+        )
         .limit(1)
 
       if (!storageLocation) {
@@ -1623,7 +1637,10 @@ export class FileService
       .from(schema.FileVersion)
       .leftJoin(
         schema.StorageLocation,
-        eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id)
+        and(
+          eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id),
+          isNull(schema.StorageLocation.deletedAt)
+        )
       )
       .where(eq(schema.FileVersion.fileId, entityId))
       .orderBy(desc(schema.FileVersion.versionNumber))
@@ -1669,7 +1686,10 @@ export class FileService
       .from(schema.FileVersion)
       .leftJoin(
         schema.StorageLocation,
-        eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id)
+        and(
+          eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id),
+          isNull(schema.StorageLocation.deletedAt)
+        )
       )
       .where(
         and(
@@ -1772,7 +1792,10 @@ export class FileService
       .from(schema.FileVersion)
       .leftJoin(
         schema.StorageLocation,
-        eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id)
+        and(
+          eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id),
+          isNull(schema.StorageLocation.deletedAt)
+        )
       )
       .where(eq(schema.FileVersion.fileId, entityId))
       .orderBy(desc(schema.FileVersion.versionNumber))

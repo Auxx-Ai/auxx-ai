@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { MessageStorageService } from '../../email/email-storage'
 import { FolderDiscoveryService } from '../../email/labels/folder-discovery-service'
 import {
@@ -188,7 +188,7 @@ export const messageListFetchJob = async (job: Job<MessageListFetchJobData>) => 
       const [integration] = await db
         .select({ throttleFailureCount: schema.Integration.throttleFailureCount })
         .from(schema.Integration)
-        .where(eq(schema.Integration.id, integrationId))
+        .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
         .limit(1)
 
       const newCount = (integration?.throttleFailureCount ?? 0) + 1

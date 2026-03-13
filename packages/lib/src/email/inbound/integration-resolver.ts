@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { PermanentProcessingError } from './errors'
 import type { ForwardingIntegrationMetadata, ResolvedInboundIntegration } from './types'
 
@@ -59,7 +59,8 @@ export class InboundIntegrationResolver {
         and(
           eq(schema.Integration.provider, 'email'),
           eq(schema.Integration.enabled, true),
-          inArray(schema.Integration.email, normalizedRecipients)
+          inArray(schema.Integration.email, normalizedRecipients),
+          isNull(schema.Integration.deletedAt)
         )
       )
 

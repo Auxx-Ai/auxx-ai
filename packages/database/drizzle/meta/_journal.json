@@ -680,6 +680,13 @@
       "when": 1773297768370,
       "tag": "0096_unified_attachment_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1773360405271,
+      "tag": "0097_add-soft-delete-integration-storage-location",
+      "breakpoints": true
     }
   ]
 }

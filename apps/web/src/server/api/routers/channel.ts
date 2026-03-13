@@ -15,7 +15,7 @@ import {
 } from '@auxx/lib/providers'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -47,7 +47,12 @@ export const channelRouter = createTRPCRouter({
         enabled: schema.Integration.enabled,
       })
       .from(schema.Integration)
-      .where(eq(schema.Integration.organizationId, organizationId))
+      .where(
+        and(
+          eq(schema.Integration.organizationId, organizationId),
+          isNull(schema.Integration.deletedAt)
+        )
+      )
       .orderBy(asc(schema.Integration.name))
     return integrations
   }),
@@ -525,7 +530,8 @@ export const channelRouter = createTRPCRouter({
         .where(
           and(
             eq(schema.Integration.id, input.integrationId),
-            eq(schema.Integration.organizationId, organizationId)
+            eq(schema.Integration.organizationId, organizationId),
+            isNull(schema.Integration.deletedAt)
           )
         )
         .limit(1)

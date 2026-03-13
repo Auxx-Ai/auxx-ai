@@ -155,7 +155,10 @@ export async function quotaEnforcementCleanupJob(
       .leftJoin(schema.FileVersion, eq(schema.FolderFile.currentVersionId, schema.FileVersion.id))
       .leftJoin(
         schema.StorageLocation,
-        eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id)
+        and(
+          eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id),
+          isNull(schema.StorageLocation.deletedAt)
+        )
       )
       .leftJoin(schema.Attachment, eq(schema.FolderFile.id, schema.Attachment.folderFileId))
       .where(

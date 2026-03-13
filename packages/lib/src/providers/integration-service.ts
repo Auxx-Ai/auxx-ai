@@ -1,9 +1,10 @@
 // packages/lib/src/providers/integration-service.ts
 import { type Database, schema } from '@auxx/database'
-import { and, count, desc, eq, inArray, isNotNull } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { withAuthErrorHandling } from '../email/errors-handlers'
 import { type IntegrationProviderType, MessageService } from '../email/message-service'
-import { getImportCacheSize } from '../email/polling-import-cache'
+import { clearImportCache, getImportCacheSize } from '../email/polling-import-cache'
+import { enqueueStorageCleanupJob } from '../jobs/maintenance/storage-cleanup-job'
 import { createScopedLogger } from '../logger'
 import { SyncMessages } from '../messages/sync-messages'
 import { FacebookOAuthService } from './facebook/facebook-oauth'
@@ -96,7 +97,7 @@ export class IntegrationService {
       .select()
       .from(schema.Integration)
       .leftJoin(schema.ChatWidget, eq(schema.ChatWidget.integrationId, schema.Integration.id))
-      .where(eq(schema.Integration.id, integrationId))
+      .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
       .limit(1)
 
     if (
@@ -113,27 +114,86 @@ export class IntegrationService {
   }
 
   /**
-   * Delete threads and messages associated with an integration
+   * Delete threads and messages associated with an integration,
+   * cleaning up MediaAssets and marking StorageLocations for async S3 deletion.
    */
   private async deleteIntegrationData(tx: typeof this.db, integrationId: string, provider: string) {
     logger.warn(`Deleting data for integration: ${integrationId} (${provider})`)
 
     if (provider === 'chat') {
-      const deletedChatThreads = await tx
+      await tx
         .delete(schema.Thread)
         .where(and(eq(schema.Thread.integrationId, integrationId), whereThreadMessageType('CHAT')))
       logger.info(`Deleted CHAT threads for integration ${integrationId}`)
-    } else {
-      const deletedMessages = await tx
-        .delete(schema.Message)
-        .where(eq(schema.Message.integrationId, integrationId))
-      logger.info(`Deleted messages for integration ${integrationId}`)
-
-      const deletedThreads = await tx
-        .delete(schema.Thread)
-        .where(eq(schema.Thread.integrationId, integrationId))
-      logger.info(`Deleted threads for integration ${integrationId}`)
+      return
     }
+
+    // 1. Collect all messageIds for this integration
+    const messageRows = await tx
+      .select({ id: schema.Message.id })
+      .from(schema.Message)
+      .where(eq(schema.Message.integrationId, integrationId))
+    const messageIds = messageRows.map((r) => r.id)
+    logger.info(`Found ${messageIds.length} messages for integration ${integrationId}`)
+
+    if (messageIds.length > 0) {
+      // 2. Collect MediaAsset IDs via Attachment (polymorphic entityType='MESSAGE')
+      const assetRows = await tx
+        .selectDistinct({ assetId: schema.Attachment.assetId })
+        .from(schema.Attachment)
+        .where(
+          and(
+            eq(schema.Attachment.entityType, 'MESSAGE'),
+            inArray(schema.Attachment.entityId, messageIds),
+            isNotNull(schema.Attachment.assetId)
+          )
+        )
+      const mediaAssetIds = assetRows.map((r) => r.assetId).filter(Boolean) as string[]
+      logger.info(`Found ${mediaAssetIds.length} MediaAssets for integration ${integrationId}`)
+
+      // 3. Mark email body StorageLocations as deleted
+      await tx
+        .update(schema.StorageLocation)
+        .set({ deletedAt: new Date() })
+        .where(
+          sql`${schema.StorageLocation.id} IN (
+            SELECT ${schema.Message.htmlBodyStorageLocationId}
+            FROM ${schema.Message}
+            WHERE ${schema.Message.integrationId} = ${integrationId}
+            AND ${schema.Message.htmlBodyStorageLocationId} IS NOT NULL
+          )`
+        )
+
+      // 4. Mark attachment StorageLocations as deleted (via MediaAssetVersion)
+      if (mediaAssetIds.length > 0) {
+        await tx
+          .update(schema.StorageLocation)
+          .set({ deletedAt: new Date() })
+          .where(
+            sql`${schema.StorageLocation.id} IN (
+              SELECT ${schema.MediaAssetVersion.storageLocationId}
+              FROM ${schema.MediaAssetVersion}
+              WHERE ${schema.MediaAssetVersion.assetId} IN (${sql.join(
+                mediaAssetIds.map((id) => sql`${id}`),
+                sql`, `
+              )})
+              AND ${schema.MediaAssetVersion.storageLocationId} IS NOT NULL
+            )`
+          )
+
+        // 5. Delete MediaAssets (cascades to Attachment + MediaAssetVersion via FK)
+        await tx.delete(schema.MediaAsset).where(inArray(schema.MediaAsset.id, mediaAssetIds))
+        logger.info(`Deleted ${mediaAssetIds.length} MediaAssets for integration ${integrationId}`)
+      }
+    }
+
+    // 6. Delete Messages
+    await tx.delete(schema.Message).where(eq(schema.Message.integrationId, integrationId))
+    logger.info(`Deleted messages for integration ${integrationId}`)
+
+    // 7. Delete Threads
+    await tx.delete(schema.Thread).where(eq(schema.Thread.integrationId, integrationId))
+    logger.info(`Deleted threads for integration ${integrationId}`)
   }
 
   /**
@@ -240,7 +300,12 @@ export class IntegrationService {
           schema.InboxIntegration,
           eq(schema.InboxIntegration.integrationId, schema.Integration.id)
         )
-        .where(eq(schema.Integration.organizationId, this.organizationId))
+        .where(
+          and(
+            eq(schema.Integration.organizationId, this.organizationId),
+            isNull(schema.Integration.deletedAt)
+          )
+        )
         .orderBy(schema.Integration.provider, desc(schema.Integration.createdAt))
 
       const integrations = integrationsData
@@ -322,7 +387,8 @@ export class IntegrationService {
         .where(
           and(
             eq(schema.Integration.organizationId, this.organizationId),
-            inArray(schema.Integration.provider, getEmailProviders())
+            inArray(schema.Integration.provider, getEmailProviders()),
+            isNull(schema.Integration.deletedAt)
           )
         )
 
@@ -401,12 +467,19 @@ export class IntegrationService {
 
       // Perform database cleanup within a transaction
       await this.db.transaction(async (tx) => {
+        // Clean up MediaAssets, mark StorageLocations, delete Messages/Threads
         await this.deleteIntegrationData(tx, integrationId, integration.provider)
-        await tx.delete(schema.Integration).where(eq(schema.Integration.id, integrationId))
-        logger.info(
-          `Successfully deleted integration record ${integrationId} (${integration.provider}) from database.`
-        )
+
+        // Soft-delete Integration (partial unique index allows reconnect)
+        await tx
+          .update(schema.Integration)
+          .set({ deletedAt: new Date(), enabled: false })
+          .where(eq(schema.Integration.id, integrationId))
+        logger.info(`Soft-deleted integration record ${integrationId} (${integration.provider}).`)
       })
+
+      // Clear Redis polling cache inline (fast DEL operation)
+      await clearImportCache(integrationId)
 
       // Delete stale cached inbox counts for affected inboxes
       if (affectedInboxIds.length > 0) {
@@ -417,6 +490,13 @@ export class IntegrationService {
           `Deleted stale UserInboxUnreadCount rows for inboxes: ${affectedInboxIds.join(', ')}`
         )
       }
+
+      // Enqueue async job for S3 deletion, Redis cleanup, and hard-delete
+      await enqueueStorageCleanupJob({
+        type: 'integration',
+        organizationId: this.organizationId,
+        integrationId,
+      })
 
       return {
         success: true,
@@ -639,7 +719,8 @@ export class IntegrationService {
         .where(
           and(
             eq(schema.Integration.id, integrationId),
-            eq(schema.Integration.organizationId, this.organizationId)
+            eq(schema.Integration.organizationId, this.organizationId),
+            isNull(schema.Integration.deletedAt)
           )
         )
         .limit(1)
