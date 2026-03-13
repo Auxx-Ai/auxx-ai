@@ -7,7 +7,7 @@
     "build": "next build --turbopack",
     "build:opennext": "open-next build",
     "check:opennext": "open-next build",
-    "start": "next start",
+    "start": "PORT=3001 node .next/standalone/apps/homepage/server.js",
     "clean": "rm -rf node_modules .turbo .next .open-next *.tsbuildinfo"
   },
   "dependencies": {

@@ -8,7 +8,7 @@
     "build": "tsdown",
     "build:platform-runtime": "NODE_ENV=development tsx build-platform-runtime.ts",
     "dev:platform-runtime": "NODE_ENV=development tsx build-platform-runtime.ts --watch --include ../../packages/sdk/src --include ../../packages/sdk/lib",
-    "start": "node dist/index.mjs",
+    "start": "node --env-file ../../.env --env-file .env dist/index.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo",
     "test": "vitest run"

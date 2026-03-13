@@ -9,6 +9,7 @@ import HeroSection from './_components/sections/hero-section'
 import IntegrationSection from './_components/sections/integration-section'
 import StatsSection from './_components/sections/stats-section'
 import TestimonialsSection from './_components/sections/testimonials-section'
+import WorkflowAnimationSection from './_components/sections/workflow-animation/workflow-animation-section'
 import CrmHero from './platform/crm/_components/crm-hero'
 import TicketingFeature from './platform/ticketing/_components/ticketing-feature'
 import WorkflowContent from './platform/workflow/_components/workflow-content'
@@ -24,6 +25,7 @@ export default function MainPage() {
       <Header />
       <HeroSection />
       <LogoCloudTwo />
+      <WorkflowAnimationSection />
       <WorkflowContent />
       <CrmHero />
       <TicketingFeature />

@@ -23,6 +23,7 @@ export const organizationRouter = createTRPCRouter({
         handle: z
           .string()
           .min(4, 'Handle must be at least 4 characters')
+          .max(32, 'Handle must be at most 32 characters')
           .regex(/^[a-z0-9-]+$/, 'Handle can only contain lowercase letters, numbers, and hyphens'),
         type: z.enum(OrganizationType).default('TEAM'),
         website: z.string().optional(),
@@ -66,6 +67,7 @@ export const organizationRouter = createTRPCRouter({
         handle: z
           .string()
           .min(4, 'Handle must be at least 4 characters')
+          .max(32, 'Handle must be at most 32 characters')
           .regex(/^[a-z0-9-]+$/, 'Handle can only contain lowercase letters, numbers, and hyphens')
           .optional(),
         type: z.enum(OrganizationType).optional(),
@@ -263,6 +265,7 @@ export const organizationRouter = createTRPCRouter({
         handle: z
           .string()
           .min(4, 'Handle must be at least 4 characters')
+          .max(32, 'Handle must be at most 32 characters')
           .regex(/^[a-z0-9-]+$/, 'Handle can only contain lowercase letters, numbers, and hyphens'),
       })
     )

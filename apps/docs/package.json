@@ -7,7 +7,7 @@
     "build:opennext": "open-next build",
     "check:opennext": "open-next build",
     "dev": "next dev --turbopack --port 3004",
-    "start": "next start --port 3004",
+    "start": "PORT=3004 node .next/standalone/apps/docs/server.js",
     "postinstall": "fumadocs-mdx",
     "clean": "rm -rf node_modules .turbo .next .open-next *.tsbuildinfo"
   },

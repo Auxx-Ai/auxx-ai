@@ -1,7 +1,7 @@
 // apps/web/src/components/custom-fields/ui/options-editor.tsx
 'use client'
 
-import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { OPTION_COLORS, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
 import { GripVertical, PlusCircle, Trash2 } from 'lucide-react'
@@ -209,6 +209,25 @@ function SortableOption({ option, onChange, onColorChange, onRemove }: SortableO
   )
 }
 
+/**
+ * Get the next auto-assigned color for a new option.
+ * Cycles through OPTION_COLORS in order, skipping colors already used by existing options.
+ * Wraps around if all colors are used.
+ */
+function getNextOptionColor(existingOptions: Option[]): SelectOptionColor {
+  const usedColors = new Set(existingOptions.map((opt) => opt.color).filter(Boolean))
+
+  // Find the first unused color in the palette
+  for (const color of OPTION_COLORS) {
+    if (!usedColors.has(color.id)) {
+      return color.id
+    }
+  }
+
+  // All colors used — assign based on index (modulo wrap-around)
+  return OPTION_COLORS[existingOptions.length % OPTION_COLORS.length]!.id
+}
+
 interface OptionsEditorProps {
   options?: Array<{ label: string; value: string; color?: SelectOptionColor }>
   onChange: (options: Array<{ label: string; value: string; color?: SelectOptionColor }>) => void
@@ -248,7 +267,7 @@ export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
       {
         label: '',
         value: '',
-        color: DEFAULT_SELECT_OPTION_COLOR,
+        color: getNextOptionColor(internalOptions),
         id: crypto.randomUUID(),
       },
     ]

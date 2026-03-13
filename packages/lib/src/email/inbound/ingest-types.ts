@@ -44,3 +44,42 @@ export interface StoredAttachmentMeta {
   contentId: string | null
   attachmentOrder: number
 }
+
+/**
+ * Per-message failure detail returned by storeBatchWithIngest.
+ */
+export interface IngestFailure {
+  externalId: string
+  error: string
+  retriable: boolean
+}
+
+/**
+ * Structured result from storeBatchWithIngest.
+ */
+export interface BatchIngestResult {
+  storedCount: number
+  failedCount: number
+  failedExternalIds: string[]
+  retriableFailures: IngestFailure[]
+  nonRetriableFailures: IngestFailure[]
+}
+
+/**
+ * Classify whether an ingest error is likely retriable.
+ * DB connection errors, timeouts, and rate limits are retriable.
+ * Validation errors and constraint violations are not.
+ */
+export function isRetriableIngestError(error: unknown): boolean {
+  if (!(error instanceof Error)) return true
+  const msg = error.message.toLowerCase()
+  if (msg.includes('connection') || msg.includes('timeout') || msg.includes('econnrefused')) {
+    return true
+  }
+  if (msg.includes('rate limit') || msg.includes('too many')) return true
+  if (msg.includes('constraint') || msg.includes('unique') || msg.includes('validation')) {
+    return false
+  }
+  // Default to retriable for unknown errors
+  return true
+}

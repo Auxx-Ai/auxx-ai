@@ -17,12 +17,13 @@ export async function GET(req: NextRequest) {
 
   // Default redirect path
   let redirectPath = '/app/settings/channels/new/outlook/result' // Updated default path?
+  let parsedState: Record<string, unknown> | undefined
 
   try {
     if (state) {
-      const parsedState = JSON.parse(state) // State should contain orgId, userId, and optionally redirectPath
-      if (parsedState.redirectPath) {
-        redirectPath = parsedState.redirectPath
+      parsedState = JSON.parse(state) // State should contain orgId, userId, and optionally redirectPath
+      if (parsedState?.redirectPath) {
+        redirectPath = parsedState.redirectPath as string
       }
     }
   } catch (e) {

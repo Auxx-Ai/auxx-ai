@@ -166,12 +166,6 @@
       "import": "./dist/entity-definitions/types.mjs",
       "default": "./src/entity-definitions/types.ts"
     },
-    "./errors": {
-      "types": "./src/errors.ts",
-      "source": "./src/errors.ts",
-      "import": "./dist/errors.mjs",
-      "default": "./src/errors.ts"
-    },
     "./events": {
       "types": "./src/events/index.ts",
       "source": "./src/events/index.ts",

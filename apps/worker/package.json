@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsdown",
-    "start": "cd dist && node server.mjs",
+    "start": "node --env-file ../../.env --env-file .env dist/server.mjs",
     "dev": "node --conditions source --env-file ../../.env --env-file .env --import tsx/esm --watch src/server.ts",
     "tc": "tsc --noEmit",
     "clean": "rm -rf node_modules dist .turbo"

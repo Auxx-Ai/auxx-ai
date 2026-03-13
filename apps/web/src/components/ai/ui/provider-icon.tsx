@@ -12,7 +12,6 @@ interface ProviderIconProps {
   showLabel?: boolean
   variant?: 'icon' | 'badge' | 'card'
   description?: string
-  theme?: 'light' | 'dark'
 }
 
 const ProviderIcon: FC<ProviderIconProps> = ({
@@ -22,7 +21,6 @@ const ProviderIcon: FC<ProviderIconProps> = ({
   showLabel = false,
   variant = 'icon',
   description,
-  theme = 'light',
 }) => {
   const IconComponent = PROVIDER_ICONS[provider.icon]
 
@@ -35,13 +33,13 @@ const ProviderIcon: FC<ProviderIconProps> = ({
     return (
       <div
         className={cn(
-          'rounded-md justify-center border flex items-center gap-2',
+          'rounded-md justify-center border flex items-center gap-2 text-black dark:text-white',
           parentSizeClasses[size],
           className
         )}
         style={{ borderColor: provider.color }}>
         {IconComponent ? (
-          <IconComponent className={sizeClasses[size]} dark={theme === 'dark'} />
+          <IconComponent className={sizeClasses[size]} />
         ) : (
           <div
             className={cn(

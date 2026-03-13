@@ -22,6 +22,7 @@ import { Input } from '@auxx/ui/components/input'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -45,6 +46,7 @@ interface ResetPasswordFormProps {
 }
 
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
 
   const form = useForm<ResetPasswordFormValues>({
@@ -59,17 +61,22 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     }
     setIsLoading(true)
 
-    const { data, error } = await client.resetPassword({ newPassword: values.newPassword, token })
-    // http://localhost:3000/api/auth/reset-password/czxhgyhgZ4muLqt1sqzOuzjS?callbackURL=/reset-password
-    if (error) {
+    try {
+      const { data, error } = await client.resetPassword({ newPassword: values.newPassword, token })
+      if (error) {
+        toastError({ description: 'Reset Failed' })
+        return
+      }
+      if (data) {
+        toastSuccess({ description: 'Password Reset Successful' })
+        router.push('/login')
+        return
+      }
+    } catch {
       toastError({ description: 'Reset Failed' })
+    } finally {
+      setIsLoading(false)
     }
-    if (data) {
-      toastSuccess({ description: 'Password Reset Successful' })
-      // Redirect to login page on success
-      // router.push('/login')
-    }
-    setIsLoading(false)
   }
 
   return (

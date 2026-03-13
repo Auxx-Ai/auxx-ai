@@ -9,18 +9,18 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage,
 } from '@auxx/ui/components/form'
-import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
   InputGroupText,
 } from '@auxx/ui/components/input-group'
+import { Spinner } from '@auxx/ui/components/spinner'
 import { toastError } from '@auxx/ui/components/toast'
+import { TooltipError } from '@auxx/ui/components/tooltip'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { Check, Loader2, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -39,6 +39,7 @@ const formSchema = z.object({
   handle: z
     .string()
     .min(4, { error: 'Handle must be at least 4 characters' })
+    .max(32, { error: 'Handle must be at most 32 characters' })
     .regex(/^[a-z0-9-]+$/, {
       error: 'Handle can only contain lowercase letters, numbers, and hyphens',
     }),
@@ -235,9 +236,15 @@ export default function OrganizationOnboardingPage() {
                       <FormItem>
                         <FormLabel>Organization Name</FormLabel>
                         <FormControl>
-                          <Input placeholder='Acme Corp' {...field} />
+                          <InputGroup>
+                            <InputGroupInput placeholder='Acme Corp' {...field} />
+                            <InputGroupAddon align='inline-end'>
+                              {form.formState.errors.name && (
+                                <TooltipError text={form.formState.errors.name.message ?? ''} />
+                              )}
+                            </InputGroupAddon>
+                          </InputGroup>
                         </FormControl>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -252,43 +259,40 @@ export default function OrganizationOnboardingPage() {
                       <FormItem>
                         <FormLabel>Organization Handle</FormLabel>
                         <FormControl>
-                          <div className='relative'>
-                            <InputGroup>
-                              <InputGroupAddon align='inline-start'>
-                                <InputGroupText>auxx.ai /</InputGroupText>
-                              </InputGroupAddon>
-                              <InputGroupInput
-                                placeholder='acme-corp'
-                                {...field}
-                                onFocus={() => {
-                                  // Mark as manually edited when user focuses the field
-                                  if (watchHandle) {
-                                    setHandleManuallyEdited(true)
-                                  }
-                                }}
-                                onChange={(e) => {
-                                  // Mark as manually edited when user types
+                          <InputGroup>
+                            <InputGroupAddon align='inline-start'>
+                              <InputGroupText>auxx.ai /</InputGroupText>
+                            </InputGroupAddon>
+                            <InputGroupInput
+                              placeholder='acme-corp'
+                              {...field}
+                              onFocus={() => {
+                                // Mark as manually edited when user focuses the field
+                                if (watchHandle) {
                                   setHandleManuallyEdited(true)
-                                  field.onChange(e)
-                                }}
-                                className='pr-10'
-                              />
-                            </InputGroup>
-                            {watchHandle && watchHandle.length >= 4 && (
-                              <div className='absolute right-3 top-1/2 -translate-y-1/2'>
-                                {isCheckingAvailability ? (
-                                  <Loader2 className='h-4 w-4 animate-spin text-muted-foreground' />
-                                ) : handleAvailable === true ? (
-                                  <Check className='h-4 w-4 text-green-500' />
-                                ) : handleAvailable === false ? (
-                                  <X className='h-4 w-4 text-destructive' />
-                                ) : null}
-                              </div>
-                            )}
-                          </div>
+                                }
+                              }}
+                              onChange={(e) => {
+                                // Mark as manually edited when user types
+                                setHandleManuallyEdited(true)
+                                field.onChange(e)
+                              }}
+                            />
+                            <InputGroupAddon align='inline-end'>
+                              {isCheckingAvailability ? (
+                                <Spinner />
+                              ) : handleAvailable === true ? (
+                                <Check className='h-4 w-4 text-green-500' />
+                              ) : handleAvailable === false ? (
+                                <X className='h-4 w-4 text-destructive' />
+                              ) : null}
+                              {form.formState.errors.handle && (
+                                <TooltipError text={form.formState.errors.handle.message ?? ''} />
+                              )}
+                            </InputGroupAddon>
+                          </InputGroup>
                         </FormControl>
                         <FormDescription>This will be used in your public URLs</FormDescription>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -303,9 +307,15 @@ export default function OrganizationOnboardingPage() {
                       <FormItem>
                         <FormLabel>Website (optional)</FormLabel>
                         <FormControl>
-                          <Input placeholder='https://example.com' {...field} />
+                          <InputGroup>
+                            <InputGroupInput placeholder='https://example.com' {...field} />
+                            <InputGroupAddon align='inline-end'>
+                              {form.formState.errors.website && (
+                                <TooltipError text={form.formState.errors.website.message ?? ''} />
+                              )}
+                            </InputGroupAddon>
+                          </InputGroup>
                         </FormControl>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />

@@ -4,31 +4,18 @@ import { createScopedLogger } from '@auxx/logger'
 import type { MessageData, MessageStorageService } from '../../../email/email-storage'
 import { InboundAttachmentIngestService } from '../../../email/inbound/attachment-ingest.service'
 import { InboundBodyIngestService } from '../../../email/inbound/body-ingest.service'
-import type { AttachmentIngestInput } from '../../../email/inbound/ingest-types'
+import type {
+  AttachmentIngestInput,
+  BatchIngestResult,
+  IngestFailure,
+} from '../../../email/inbound/ingest-types'
+import { isRetriableIngestError } from '../../../email/inbound/ingest-types'
 import type { GmailFetchContext } from '../types'
 import { fetchAllGmailAttachmentBytes } from './gmail-attachment-fetcher'
 
+export type { BatchIngestResult, IngestFailure } from '../../../email/inbound/ingest-types'
+
 const logger = createScopedLogger('gmail-inbound-content-ingestor')
-
-/**
- * Per-message failure detail returned by storeBatchWithIngest.
- */
-export interface IngestFailure {
-  externalId: string
-  error: string
-  retriable: boolean
-}
-
-/**
- * Structured result from storeBatchWithIngest.
- */
-export interface BatchIngestResult {
-  storedCount: number
-  failedCount: number
-  failedExternalIds: string[]
-  retriableFailures: IngestFailure[]
-  nonRetriableFailures: IngestFailure[]
-}
 
 /**
  * Orchestrates body ingest + message storage + attachment ingest for Gmail.
@@ -280,23 +267,4 @@ export class GmailInboundContentIngestor {
 
     return messageId
   }
-}
-
-/**
- * Classify whether an ingest error is likely retriable.
- * DB connection errors, timeouts, and rate limits are retriable.
- * Validation errors and constraint violations are not.
- */
-function isRetriableIngestError(error: unknown): boolean {
-  if (!(error instanceof Error)) return true
-  const msg = error.message.toLowerCase()
-  if (msg.includes('connection') || msg.includes('timeout') || msg.includes('econnrefused')) {
-    return true
-  }
-  if (msg.includes('rate limit') || msg.includes('too many')) return true
-  if (msg.includes('constraint') || msg.includes('unique') || msg.includes('validation')) {
-    return false
-  }
-  // Default to retriable for unknown errors
-  return true
 }

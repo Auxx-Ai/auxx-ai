@@ -14,7 +14,6 @@ type ModelIconProps = {
   isDeprecated?: boolean
   size?: 'sm' | 'md' | 'lg'
   variant?: 'icon' | 'letter' | 'auto'
-  theme?: 'light' | 'dark'
 }
 
 const ModelIcon = ({
@@ -25,7 +24,6 @@ const ModelIcon = ({
   isDeprecated = false,
   size = 'md',
   variant = 'auto',
-  theme = 'light',
 }: ModelIconProps) => {
   const providerName = typeof provider === 'string' ? provider : provider?.provider
 
@@ -34,7 +32,6 @@ const ModelIcon = ({
   }
 
   const providerTheme = PROVIDER_THEMES[providerName]
-  const dark = theme === 'dark'
   // Use ModelData if available, otherwise fall back to theme/provider defaults
   const iconName = modelData?.icon || providerName
 
@@ -54,12 +51,12 @@ const ModelIcon = ({
       return (
         <div
           className={cn(
-            'flex items-center justify-center rounded',
+            'flex items-center justify-center rounded text-black dark:text-white',
             sizeClasses[size],
             isDeprecated && 'opacity-50',
             className
           )}>
-          <IconComponent className={sizeClasses[size]} dark={dark} />
+          <IconComponent className={sizeClasses[size]} />
         </div>
       )
     }
