@@ -15,6 +15,7 @@ export interface CreateEntityDefinitionParams {
   organizationId: string
   apiSlug: string
   icon: string
+  color: string
   singular: string
   plural: string
   entityType?: EntityType
@@ -26,7 +27,8 @@ export interface CreateEntityDefinitionParams {
  * Validates slug uniqueness before creation
  */
 export async function createEntityDefinition(params: CreateEntityDefinitionParams) {
-  const { organizationId, apiSlug, icon, singular, plural, entityType, standardType } = params
+  const { organizationId, apiSlug, icon, color, singular, plural, entityType, standardType } =
+    params
 
   // Check if slug is reserved (system entity type)
   if (RESERVED_API_SLUGS.includes(apiSlug.toLowerCase() as any)) {
@@ -60,6 +62,7 @@ export async function createEntityDefinition(params: CreateEntityDefinitionParam
         organizationId,
         apiSlug,
         icon,
+        color,
         singular,
         plural,
         entityType: entityType ?? null,
