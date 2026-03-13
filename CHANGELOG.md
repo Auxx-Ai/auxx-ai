@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.80](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.79...auxx-v0.1.80) (2026-03-13)
+
+
+### Features
+
+* implement usage limits and tracking for AI completions, outbound emails ([#251](https://github.com/Auxx-Ai/auxx-ai/issues/251)) ([4b2f497](https://github.com/Auxx-Ai/auxx-ai/commit/4b2f497183c8a5d5e75fc0c1303ff55771c67233))
+* update storeMessage method to return message ID and new insert status ([#249](https://github.com/Auxx-Ai/auxx-ai/issues/249)) ([55d44e4](https://github.com/Auxx-Ai/auxx-ai/commit/55d44e40c3e6b61e37bf3fde02a5f576c2aed1dd))
+
 ## [0.1.79](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.78...auxx-v0.1.79) (2026-03-13)
 
 
