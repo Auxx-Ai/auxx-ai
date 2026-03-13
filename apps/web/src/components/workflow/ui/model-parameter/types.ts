@@ -146,6 +146,8 @@ export type ModelParameterModalProps = {
   readonly?: boolean
   isInWorkflow?: boolean
   scope?: string
+  /** Which ModelType to use for auto-populating the org's system default. */
+  defaultModelType?: ModelTypeEnum
 }
 
 // export type AgentModelTriggerProps = {

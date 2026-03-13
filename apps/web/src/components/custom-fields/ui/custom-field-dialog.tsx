@@ -13,7 +13,7 @@ import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { canFieldBeUnique } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { Button } from '@auxx/ui/components/button'
+import { Button, buttonVariants } from '@auxx/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -45,6 +45,7 @@ import {
 import { Switch } from '@auxx/ui/components/switch'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -193,6 +194,8 @@ export function CustomFieldDialog({
   const [inverseName, setInverseName] = useState('')
   // State for field type picker open
   const [typePickerOpen, setTypePickerOpen] = useState(false)
+  // Track whether to keep dialog open after creating
+  const [createMore, setCreateMore] = useState(false)
 
   // Fetch inverse field for edit mode to get initial label
   const inverseResourceFieldId = editingField?.options?.relationship?.inverseResourceFieldId
@@ -508,8 +511,37 @@ export function CustomFieldDialog({
         resultField = { id: newField.id, name: newField.name }
       }
 
-      onOpenChange(false)
       onSuccess?.(resultField)
+
+      // If createMore is enabled and we're in create mode, reset form instead of closing
+      if (createMore && !isEditing) {
+        form.reset({
+          name: '',
+          type: FieldType.TEXT,
+          fieldType: FieldType.TEXT,
+          description: '',
+          required: false,
+          isUnique: false,
+          defaultValue: '',
+          icon: '',
+          isCustom: true,
+        })
+        setSelectOptions([])
+        setAddressComponents(parseAddressComponents())
+        setFileOptions(parseFileOptions())
+        setRelationshipOptions({
+          relatedResourceId: 'contact',
+          relationshipType: 'belongs_to',
+          inverseName: '',
+        })
+        setCurrencyOptions(parseCurrencyOptions())
+        setDisplayOptions({})
+        setShowDisplayOptions(false)
+        setCalcOptions(parseCalcOptions())
+        setActorOptions(getDefaultActorOptions())
+      } else {
+        onOpenChange(false)
+      }
     } catch (error) {
       // Error toast already handled by useCustomFieldMutations
       console.error('Failed to save field:', error)
@@ -888,24 +920,46 @@ export function CustomFieldDialog({
                 {renderDisplayOptionsEditor()}
               </FieldGroup>
 
-              <DialogFooter>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant='ghost'
-                  onClick={guardedClose}
-                  disabled={isPending}>
-                  Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-                </Button>
-                <Button
-                  size='sm'
-                  type='submit'
-                  variant='outline'
-                  loading={isPending}
-                  loadingText={isEditing ? 'Saving...' : 'Creating...'}>
-                  {isEditing ? 'Save Changes' : 'Create Field'}{' '}
-                  <KbdSubmit variant='outline' size='sm' />
-                </Button>
+              <DialogFooter className='sm:justify-between'>
+                {/* Left side: Create more toggle (only in create mode) */}
+                <div>
+                  {!isEditing && (
+                    <label
+                      className={cn(
+                        buttonVariants({ variant: 'ghost', size: 'sm' }),
+                        'gap-2 cursor-pointer'
+                      )}>
+                      <span className='text-muted-foreground text-xs'>Create more</span>
+                      <Switch
+                        size='sm'
+                        checked={createMore}
+                        onCheckedChange={setCreateMore}
+                        disabled={isPending}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Right side: Action buttons */}
+                <div className='flex items-center gap-2'>
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant='ghost'
+                    onClick={guardedClose}
+                    disabled={isPending}>
+                    Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+                  </Button>
+                  <Button
+                    size='sm'
+                    type='submit'
+                    variant='outline'
+                    loading={isPending}
+                    loadingText={isEditing ? 'Saving...' : 'Creating...'}>
+                    {isEditing ? 'Save Changes' : 'Create Field'}{' '}
+                    <KbdSubmit variant='outline' size='sm' />
+                  </Button>
+                </div>
               </DialogFooter>
             </form>
           </Form>

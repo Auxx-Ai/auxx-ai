@@ -5,6 +5,7 @@ import { createScopedLogger } from '../../logger'
 import { ProviderCacheService } from './provider-cache-service'
 import { ProviderConfigurationService } from './provider-configuration-service'
 import { ProviderRegistry } from './provider-registry'
+import { SystemModelService } from './system-model-service'
 import {
   type CacheOptions,
   // type ProviderCredentials,
@@ -278,7 +279,10 @@ export class ProviderManager {
       modelTypes?: ModelType[]
       includeUnconfigured?: boolean
     } = {}
-  ): Promise<{ providers: ProviderConfiguration[]; defaultModel: null }> {
+  ): Promise<{
+    providers: ProviderConfiguration[]
+    defaultModels: Record<string, { provider: string; model: string }>
+  }> {
     const { includeDefaults = true, modelTypes = [], includeUnconfigured = false } = options
 
     logger.info('Getting unified model data', {
@@ -336,9 +340,21 @@ export class ProviderManager {
           })
       }
 
+      // Build default models map from system model defaults
+      const systemModelService = new SystemModelService(this.db, this.organizationId)
+      const defaults = await systemModelService.getAllDefaults()
+
+      const defaultModels: Record<string, { provider: string; model: string }> = {}
+      for (const entry of defaults) {
+        defaultModels[entry.modelType] = {
+          provider: entry.provider,
+          model: entry.model,
+        }
+      }
+
       return {
         providers,
-        defaultModel: null, // TODO: Implement if needed
+        defaultModels,
       }
     } catch (error) {
       logger.error('Failed to get unified model data', {

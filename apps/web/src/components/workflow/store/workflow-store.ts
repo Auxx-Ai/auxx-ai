@@ -15,12 +15,7 @@ import { useVarStore } from './use-var-store'
 
 interface ModelData {
   providers: any[]
-  defaultModel: {
-    provider: string
-    model: string
-    mode: 'chat' | 'completion'
-    completionParams: Record<string, any>
-  } | null
+  defaultModels: Record<string, { provider: string; model: string }>
 }
 
 interface WorkflowStore extends DragState {

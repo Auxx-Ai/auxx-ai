@@ -367,6 +367,7 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
         header: field.name ?? field.label,
         fieldType: field.fieldType as FieldType,
         defaultFormatting,
+        defaultVisible: true,
         icon: getIconForFieldType(field.fieldType!),
         enableSorting: field.fieldType !== 'RELATIONSHIP' && field.capabilities.sortable !== false,
         enableFiltering:

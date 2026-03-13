@@ -70,12 +70,10 @@ export const EntityDefinition = pgTable(
     isVisible: boolean().notNull().default(true),
   },
   (table) => [
-    // Unique constraint: apiSlug must be unique per organization
-    uniqueIndex('EntityDefinition_apiSlug_organizationId_key').using(
-      'btree',
-      table.apiSlug.asc().nullsLast(),
-      table.organizationId.asc().nullsLast()
-    ),
+    // Unique constraint: apiSlug must be unique per organization (only for non-archived)
+    uniqueIndex('EntityDefinition_apiSlug_organizationId_key')
+      .using('btree', table.apiSlug.asc().nullsLast(), table.organizationId.asc().nullsLast())
+      .where(sql`${table.archivedAt} IS NULL`),
     // Index for organization lookups
     index('EntityDefinition_organizationId_idx').using(
       'btree',

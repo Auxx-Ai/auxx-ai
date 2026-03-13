@@ -6,7 +6,7 @@
   "scripts": {
     "prebuild": "tsx scripts/postinstall-migrate.ts",
     "postinstall": "tsx scripts/postinstall-migrate.ts",
-    "build": "next build --turbopack",
+    "build": "next build --turbopack && cp -r .next/static .next/standalone/apps/web/.next/static",
     "build:prod": "next build",
     "build:docker": "NODE_OPTIONS='--max-old-space-size=8192' next build",
     "check": "tsc --noEmit",

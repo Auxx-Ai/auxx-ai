@@ -215,6 +215,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
         initialOpen>
         <ModelParameterModal
           isAdvancedMode
+          defaultModelType='llm'
           mode={nodeData.model?.mode || AiModelMode.CHAT}
           modelId={nodeData.model?.name || ''}
           provider={nodeData.model?.provider || ''}
