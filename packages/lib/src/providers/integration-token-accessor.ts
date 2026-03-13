@@ -3,7 +3,7 @@
 import { CredentialService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 
 const logger = createScopedLogger('integration-token-accessor')
 
@@ -35,7 +35,7 @@ export class IntegrationTokenAccessor {
         schema.WorkflowCredentials,
         eq(schema.Integration.credentialId, schema.WorkflowCredentials.id)
       )
-      .where(eq(schema.Integration.id, integrationId))
+      .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
       .limit(1)
 
     if (!row) throw new Error(`Integration ${integrationId} not found`)
@@ -76,7 +76,7 @@ export class IntegrationTokenAccessor {
           provider: schema.Integration.provider,
         })
         .from(schema.Integration)
-        .where(eq(schema.Integration.id, integrationId))
+        .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
         .limit(1)
 
       if (!integration) throw new Error(`Integration ${integrationId} not found`)

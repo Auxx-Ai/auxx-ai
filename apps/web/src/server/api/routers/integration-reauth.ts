@@ -8,7 +8,7 @@ import {
   OutlookOAuthService,
 } from '@auxx/lib/providers'
 import { TRPCError } from '@trpc/server'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -37,7 +37,8 @@ export const integrationReauthRouter = createTRPCRouter({
         .where(
           and(
             eq(schema.Integration.id, input.integrationId),
-            eq(schema.Integration.organizationId, organizationId)
+            eq(schema.Integration.organizationId, organizationId),
+            isNull(schema.Integration.deletedAt)
           )
         )
         .limit(1)
@@ -134,7 +135,8 @@ export const integrationReauthRouter = createTRPCRouter({
         .where(
           and(
             eq(schema.Integration.id, input.integrationId),
-            eq(schema.Integration.organizationId, organizationId)
+            eq(schema.Integration.organizationId, organizationId),
+            isNull(schema.Integration.deletedAt)
           )
         )
         .limit(1)
@@ -192,7 +194,8 @@ export const integrationReauthRouter = createTRPCRouter({
         .where(
           and(
             eq(schema.Integration.id, input.integrationId),
-            eq(schema.Integration.organizationId, organizationId)
+            eq(schema.Integration.organizationId, organizationId),
+            isNull(schema.Integration.deletedAt)
           )
         )
         .limit(1)
@@ -255,6 +258,7 @@ export const integrationReauthRouter = createTRPCRouter({
         .where(
           and(
             eq(schema.Integration.organizationId, organizationId),
+            isNull(schema.Integration.deletedAt),
             ...(input.integrationIds ? [inArray(schema.Integration.id, input.integrationIds)] : [])
           )
         )

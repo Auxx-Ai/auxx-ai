@@ -9,7 +9,7 @@ import type {
   IntegrationProviderType,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
 import { EmailForwardingProvider } from './email/email-forwarding-provider'
 import { FacebookProvider } from './facebook/facebook-provider'
@@ -90,7 +90,8 @@ export class ProviderRegistryService {
         .where(
           and(
             eq(schema.Integration.organizationId, this.organizationId),
-            eq(schema.Integration.enabled, true)
+            eq(schema.Integration.enabled, true),
+            isNull(schema.Integration.deletedAt)
           )
         )
         .orderBy(desc(schema.Integration.updatedAt))
@@ -249,7 +250,8 @@ export class ProviderRegistryService {
         .where(
           and(
             eq(schema.Integration.id, integrationId),
-            eq(schema.Integration.organizationId, this.organizationId)
+            eq(schema.Integration.organizationId, this.organizationId),
+            isNull(schema.Integration.deletedAt)
           )
         )
         .limit(1)

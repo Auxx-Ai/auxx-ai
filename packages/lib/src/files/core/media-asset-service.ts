@@ -1137,7 +1137,10 @@ export class MediaAssetService
 
       // Get storage location details
       const storageLocation = await db.query.StorageLocation.findFirst({
-        where: eq(schema.StorageLocation.id, storageLocationId),
+        where: and(
+          eq(schema.StorageLocation.id, storageLocationId),
+          isNull(schema.StorageLocation.deletedAt)
+        ),
       })
 
       if (!storageLocation) {

@@ -823,6 +823,7 @@ export class StorageManager {
           externalId: params.externalId,
           externalUrl: params.externalUrl || '',
           externalRev: params.externalRev || '',
+          organizationId: this.organizationId,
           credentialId: params.credentialId,
           size: params.size,
           mimeType: params.mimeType,
@@ -1765,6 +1766,7 @@ export class StorageManager {
           externalId: params.key,
           externalUrl: '', // No URL for multipart uploads initially
           externalRev: result.etag || '',
+          organizationId: this.organizationId,
           credentialId: params.credentialId,
           size: result.size ? BigInt(result.size) : undefined,
           mimeType: undefined, // Not provided in completion

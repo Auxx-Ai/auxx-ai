@@ -6,11 +6,13 @@ import { type Database, schema } from '@auxx/database'
 import { OrganizationRole, type OrganizationType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { DehydrationService } from '../dehydration'
 import type { ForwardingIntegrationMetadata } from '../email/inbound'
 import { type IntegrationProviderType, MessageService } from '../email/message-service'
+import { clearImportCache } from '../email/polling-import-cache'
 import { InboxService } from '../inboxes'
+import { enqueueStorageCleanupJob } from '../jobs/maintenance/storage-cleanup-job'
 import { MemberService } from '../members/member-service'
 import { OrganizationSeeder } from '../seed/organization-seeder'
 import { SystemUserService } from '../users/system-user-service'
@@ -89,7 +91,8 @@ export class OrganizationService {
       .where(
         and(
           eq(schema.Integration.organizationId, params.organizationId),
-          eq(schema.Integration.provider, 'email')
+          eq(schema.Integration.provider, 'email'),
+          isNull(schema.Integration.deletedAt)
         )
       )
 
@@ -287,6 +290,42 @@ export class OrganizationService {
         `Organization ${organizationId} has ${allMemberIds.length} members identified for potential post-deletion checks.`
       )
     }
+    // --- Cancel Stripe subscription (synchronous, blocks deletion on failure) ---
+    const activeSubscription = await this.db.query.PlanSubscription.findFirst({
+      where: (sub, { eq: eqOp, and: andOp, or: orOp }) =>
+        andOp(
+          eqOp(sub.organizationId, organizationId),
+          orOp(eqOp(sub.status, 'active'), eqOp(sub.status, 'trialing'))
+        ),
+      columns: {
+        id: true,
+        stripeSubscriptionId: true,
+        status: true,
+      },
+    })
+
+    if (activeSubscription?.stripeSubscriptionId) {
+      try {
+        // Dynamically import to avoid circular dependency
+        const { stripeClient } = await import('@auxx/billing')
+        await stripeClient.getClient().subscriptions.cancel(activeSubscription.stripeSubscriptionId)
+        logger.info(
+          `Canceled Stripe subscription ${activeSubscription.stripeSubscriptionId} for org ${organizationId}`
+        )
+      } catch (stripeError) {
+        logger.error('Failed to cancel Stripe subscription before org deletion', {
+          organizationId,
+          stripeSubscriptionId: activeSubscription.stripeSubscriptionId,
+          error: stripeError instanceof Error ? stripeError.message : String(stripeError),
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message:
+            'Failed to cancel active subscription. Please cancel your subscription first or contact support.',
+        })
+      }
+    }
+
     // --- Begin Transaction ---
     try {
       await this.db.transaction(async (tx) => {
@@ -327,6 +366,22 @@ export class OrganizationService {
         await tx.delete(schema.ApiKey).where(eq(schema.ApiKey.organizationId, organizationId))
         logger.info(`[${txId}] Deleted API keys.`)
         // Add deletions for other models here if needed (e.g., custom integration settings)
+        // Step 5b: Mark ALL StorageLocations for this org as deleted (before cascade)
+        // S3 objects will be cleaned up asynchronously by storageCleanupJob
+        await tx
+          .update(schema.StorageLocation)
+          .set({ deletedAt: new Date() })
+          .where(eq(schema.StorageLocation.organizationId, organizationId))
+        logger.info(`[${txId}] Marked StorageLocations as deleted for async S3 cleanup.`)
+
+        // Step 5c: Clear Redis polling cache for all integrations
+        for (const integration of integrations) {
+          await clearImportCache(integration.id)
+        }
+        logger.info(
+          `[${txId}] Cleared Redis polling cache for ${integrations.length} integrations.`
+        )
+
         // Step 6: Delete the Organization itself (Trigger Cascades)
         // Cascades MUST handle deleting OrganizationMember records.
         logger.warn(
@@ -398,6 +453,13 @@ export class OrganizationService {
       logger.warn(
         `Organization ${organizationId} deletion process finished successfully by owner ${requestingUserId}. Requesting owner deleted: ${requestingUserWasDeleted}. Other users deleted: ${otherUsersDeletedCount}.`
       )
+
+      // Enqueue async S3 cleanup for marked StorageLocations
+      await enqueueStorageCleanupJob({
+        type: 'organization',
+        organizationId,
+      })
+
       // Return success status and whether the *requesting owner* was deleted
       return { success: true, userDeleted: requestingUserWasDeleted }
     } catch (error) {

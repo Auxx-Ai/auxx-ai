@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { IntegrationProviderType } from './types'
 
 /** Cache TTL - provider is immutable, only invalidate on add/remove */
@@ -41,7 +41,12 @@ export async function getOrgProviderMap(
   const integrations = await db
     .select({ id: schema.Integration.id, provider: schema.Integration.provider })
     .from(schema.Integration)
-    .where(eq(schema.Integration.organizationId, organizationId))
+    .where(
+      and(
+        eq(schema.Integration.organizationId, organizationId),
+        isNull(schema.Integration.deletedAt)
+      )
+    )
 
   const providerMap = new Map(integrations.map((i) => [i.id, i.provider]))
 

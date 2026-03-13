@@ -19,5 +19,10 @@ export { cleanupExpiredMediaAssetsJob, getMediaAssetCleanupStats } from './media
 export { type MidTrialStats, sendMidTrialEmailsJob } from './mid-trial-job'
 export { oauth2TokenRefreshScannerJob } from './oauth2-token-refresh-scanner-job'
 export { type QuotaResetStats, quotaResetJob } from './quota-reset-job'
+export {
+  enqueueStorageCleanupJob,
+  type StorageCleanupJobData,
+  storageCleanupJob,
+} from './storage-cleanup-job'
 export { getThumbnailCleanupStats, thumbnailCleanupJob } from './thumbnail-cleanup-job'
 export { sendTrialConversionEmailsJob, type TrialConversionStats } from './trial-conversion-job'

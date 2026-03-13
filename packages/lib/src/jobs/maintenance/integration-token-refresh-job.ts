@@ -4,7 +4,7 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { GoogleOAuthService } from '../../providers/google/google-oauth'
 import { OutlookOAuthService } from '../../providers/outlook/outlook-oauth'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
@@ -58,7 +58,7 @@ export const integrationTokenRefreshJob = async (
     const [integration] = await db
       .select()
       .from(schema.Integration)
-      .where(eq(schema.Integration.id, integrationId))
+      .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
       .limit(1)
 
     if (!integration) {

@@ -13,6 +13,7 @@ import {
   integrationSyncStatus,
   jsonb,
   pgTable,
+  sql,
   text,
   timestamp,
   uniqueIndex,
@@ -60,13 +61,12 @@ export const Integration = pgTable(
     metadata: jsonb(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
+    deletedAt: timestamp({ precision: 3 }),
   },
   (table) => [
-    uniqueIndex('Integration_organizationId_email_key').using(
-      'btree',
-      table.organizationId.asc().nullsLast(),
-      table.email.asc().nullsLast()
-    ),
+    uniqueIndex('Integration_organizationId_email_key')
+      .using('btree', table.organizationId.asc().nullsLast(), table.email.asc().nullsLast())
+      .where(sql`${table.deletedAt} IS NULL`),
     index('Integration_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     index('Integration_provider_organizationId_idx').using(
       'btree',

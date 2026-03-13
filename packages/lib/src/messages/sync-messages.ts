@@ -131,7 +131,8 @@ export class SyncMessages {
           and(
             eq(schema.Integration.id, integrationId),
             eq(schema.Integration.organizationId, organizationId),
-            eq(schema.Integration.enabled, true)
+            eq(schema.Integration.enabled, true),
+            isNull(schema.Integration.deletedAt)
           )
         )
         .limit(1)

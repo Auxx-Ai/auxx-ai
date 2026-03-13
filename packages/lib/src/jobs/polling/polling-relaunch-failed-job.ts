@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getImportCacheSize, recoverProcessingBatch } from '../../email/polling-import-cache'
 import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 
@@ -38,7 +38,8 @@ export const pollingRelaunchFailedJob = async (job: Job<PollingRelaunchFailedJob
       and(
         eq(schema.Integration.enabled, true),
         eq(schema.Integration.syncStage, 'FAILED'),
-        inArray(schema.Integration.provider, ['google', 'outlook', 'imap'])
+        inArray(schema.Integration.provider, ['google', 'outlook', 'imap']),
+        isNull(schema.Integration.deletedAt)
       )
     )
 

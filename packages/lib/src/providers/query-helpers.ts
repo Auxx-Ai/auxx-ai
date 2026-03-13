@@ -6,7 +6,7 @@
  */
 
 import { schema } from '@auxx/database'
-import { and, eq, exists, inArray, type SQL } from 'drizzle-orm'
+import { and, eq, exists, inArray, isNull, type SQL } from 'drizzle-orm'
 import type { IntegrationProviderType, MessageType } from './types'
 
 /**
@@ -40,7 +40,8 @@ export function whereThreadProvider(
     schema.Integration,
     and(
       eq(schema.Integration.id, schema.Thread.integrationId),
-      inArray(schema.Integration.provider, providers)
+      inArray(schema.Integration.provider, providers),
+      isNull(schema.Integration.deletedAt)
     )
   )
 }
@@ -70,7 +71,8 @@ export function whereMessageProvider(
     schema.Integration,
     and(
       eq(schema.Integration.id, schema.Message.integrationId),
-      inArray(schema.Integration.provider, providers)
+      inArray(schema.Integration.provider, providers),
+      isNull(schema.Integration.deletedAt)
     )
   )
 }
@@ -137,7 +139,8 @@ export function whereThreadMessageType(messageType: MessageType | MessageType[])
     schema.Integration,
     and(
       eq(schema.Integration.id, schema.Thread.integrationId),
-      inArray(schema.Integration.provider, uniqueProviders)
+      inArray(schema.Integration.provider, uniqueProviders),
+      isNull(schema.Integration.deletedAt)
     )
   )
 }
@@ -197,7 +200,8 @@ export function whereMessageMessageType(messageType: MessageType | MessageType[]
     schema.Integration,
     and(
       eq(schema.Integration.id, schema.Message.integrationId),
-      inArray(schema.Integration.provider, uniqueProviders)
+      inArray(schema.Integration.provider, uniqueProviders),
+      isNull(schema.Integration.deletedAt)
     )
   )
 }

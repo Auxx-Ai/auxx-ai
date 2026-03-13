@@ -1,7 +1,7 @@
 // packages/lib/src/files/upload/processors/entity-processors.ts
 import { database as db, schema } from '@auxx/database'
 import type { MediaAsset } from '@auxx/database/types'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { MemberService } from '../../../members/member-service'
 import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
 import type { ThumbnailSource } from '../../core/thumbnail-types'
@@ -242,7 +242,10 @@ export class UserProfileProcessor extends BaseAssetProcessor {
       )
       .leftJoin(
         schema.StorageLocation,
-        eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id)
+        and(
+          eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id),
+          isNull(schema.StorageLocation.deletedAt)
+        )
       )
       .where(eq(schema.MediaAsset.id, assetId))
       .limit(1)
@@ -664,7 +667,10 @@ export class KnowledgeBaseProcessor extends BaseAttachmentProcessor {
         )
         .leftJoin(
           schema.StorageLocation,
-          eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id)
+          and(
+            eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id),
+            isNull(schema.StorageLocation.deletedAt)
+          )
         )
         .where(eq(schema.MediaAsset.id, assetId))
         .limit(1)

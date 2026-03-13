@@ -64,6 +64,11 @@ export {
 export { type MidTrialStats, sendMidTrialEmailsJob } from './maintenance/mid-trial-job'
 export { oauth2TokenRefreshScannerJob } from './maintenance/oauth2-token-refresh-scanner-job'
 export { type QuotaResetStats, quotaResetJob } from './maintenance/quota-reset-job'
+export {
+  enqueueStorageCleanupJob,
+  type StorageCleanupJobData,
+  storageCleanupJob,
+} from './maintenance/storage-cleanup-job'
 export { getThumbnailCleanupStats, thumbnailCleanupJob } from './maintenance/thumbnail-cleanup-job'
 export {
   sendTrialConversionEmailsJob,

@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import {
   acknowledgeImportBatch,
   claimImportBatch,
@@ -155,7 +155,7 @@ export const messagesImportJob = async (job: Job<MessagesImportJobData>) => {
       const [integration] = await db
         .select({ throttleFailureCount: schema.Integration.throttleFailureCount })
         .from(schema.Integration)
-        .where(eq(schema.Integration.id, integrationId))
+        .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
         .limit(1)
 
       const newCount = (integration?.throttleFailureCount ?? 0) + 1
@@ -398,7 +398,7 @@ export const imapImportBatchJob = async (job: Job<ImapImportBatchJobData>) => {
       const [integration] = await db
         .select({ throttleFailureCount: schema.Integration.throttleFailureCount })
         .from(schema.Integration)
-        .where(eq(schema.Integration.id, integrationId))
+        .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
         .limit(1)
 
       const newCount = (integration?.throttleFailureCount ?? 0) + 1

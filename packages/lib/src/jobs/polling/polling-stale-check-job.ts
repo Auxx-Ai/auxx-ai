@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, inArray, isNotNull, lt } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm'
 import { getImportCacheSize, recoverProcessingBatch } from '../../email/polling-import-cache'
 import type { ImapFolderCheckpoint } from '../../providers/imap/types'
 import { getQueue } from '../queues'
@@ -52,7 +52,8 @@ export const pollingStaleCheckJob = async (job: Job<PollingStaleCheckJobData>) =
         eq(schema.Integration.enabled, true),
         inArray(schema.Integration.syncStage, ['MESSAGE_LIST_FETCH', 'MESSAGES_IMPORT']),
         isNotNull(schema.Integration.syncStageStartedAt),
-        lt(schema.Integration.syncStageStartedAt, staleThreshold)
+        lt(schema.Integration.syncStageStartedAt, staleThreshold),
+        isNull(schema.Integration.deletedAt)
       )
     )
 

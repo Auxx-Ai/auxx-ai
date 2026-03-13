@@ -84,7 +84,9 @@ export class UserAvatarService {
         .insert(schema.StorageLocation)
         .values({
           provider: 'S3',
-          key: config.storageKey,
+          externalId: config.storageKey,
+          externalUrl: '',
+          externalRev: uploadResult?.etag || '',
           size: size,
           mimeType: contentType,
           organizationId,
