@@ -1,5 +1,6 @@
 // packages/e2e/lib/fixtures/base.ts
 import { test as base } from '@playwright/test'
+import { EntityDefinitionPage } from '../pom/entity-definition-page'
 import { ConfirmationModal } from '../pom/helper/confirmation-modal'
 import { MainPage } from '../pom/main-page'
 import { SettingsPage } from '../pom/settings-page'
@@ -12,6 +13,7 @@ type Fixtures = {
   confirmationModal: ConfirmationModal
   settingsSidebar: SettingsSidebar
   settingsPage: SettingsPage
+  entityDefinitionPage: EntityDefinitionPage
 }
 
 export const test = base.extend<Fixtures>({
@@ -29,6 +31,9 @@ export const test = base.extend<Fixtures>({
   },
   settingsPage: async ({ page }, use) => {
     await use(new SettingsPage(page))
+  },
+  entityDefinitionPage: async ({ page }, use) => {
+    await use(new EntityDefinitionPage(page))
   },
 })
 

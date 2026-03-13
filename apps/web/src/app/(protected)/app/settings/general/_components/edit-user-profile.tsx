@@ -12,7 +12,7 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { AlertCircle, Edit, Laptop, Smartphone } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -24,6 +24,8 @@ import { client } from '~/auth/auth-client'
 import { UserRegistrationInfo } from '~/components/auth/user-registration-info'
 import { AvatarUpload } from '~/components/file-upload/ui/avatar-upload'
 import { useUser } from '~/hooks/use-user'
+import { useDehydratedStateContext } from '~/providers/dehydrated-state-provider'
+import { api } from '~/trpc/react'
 import { ChangePassword } from './change-password'
 import { EditEmailDialog } from './edit-email-dialog'
 import { ListPasskeys } from './list-passkeys'
@@ -53,6 +55,8 @@ export function EditUserProfileForm(): JSX.Element {
   const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 
   const { user } = useUser()
+  const { patchUser } = useDehydratedStateContext()
+  const updateProfile = api.user.updateProfile.useMutation()
 
   const form = useForm<ProfileFormValues>({
     resolver: standardSchemaResolver(profileFormSchema),
@@ -72,13 +76,9 @@ export function EditUserProfileForm(): JSX.Element {
     setIsSubmitting(true)
 
     try {
-      // Handle name update
       if (data.username !== user?.name) {
-        // TODO: Implement name update API call when available
-        toastSuccess({
-          title: 'Profile updated',
-          description: 'Your profile information has been updated',
-        })
+        await updateProfile.mutateAsync({ name: data.username })
+        patchUser({ name: data.username })
       }
     } catch (error) {
       toastError({

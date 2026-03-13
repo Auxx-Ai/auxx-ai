@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { cn } from '@auxx/ui/lib/utils'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
+import { useFieldNavigationOptional } from '../field-navigation-context'
 import { usePropertyContext } from '../property-provider'
 
 /**
@@ -41,13 +42,27 @@ function formatDisplayName(value: NameValue | null | undefined): string {
  * NameInputField
  * Editor for compound firstName + lastName field
  *
- * Pattern E: Save-on-close
+ * Pattern E: Save-on-close + keyboard navigation between inputs
  * - Local state for editing
  * - Uses onBeforeClose hook for fire-and-forget save
- * - Does NOT capture arrow keys (allows row navigation)
+ * - Captures arrow keys to navigate between firstName/lastName
+ * - Enter/ArrowDown in firstName → focus lastName
+ * - Enter/ArrowDown in lastName → commit and close
+ * - ArrowUp in lastName → focus firstName
+ * - ArrowUp in firstName → commit, close, navigate to previous row
  */
 export function NameInputField() {
-  const { value, commitValue, onBeforeClose, isSaving } = usePropertyContext()
+  const { value, commitValue, commitValueAndClose, onBeforeClose, isSaving } = usePropertyContext()
+  const nav = useFieldNavigationOptional()
+
+  const firstNameRef = useRef<HTMLInputElement>(null)
+  const lastNameRef = useRef<HTMLInputElement>(null)
+
+  // Capture arrow keys so FieldInput doesn't navigate rows
+  useEffect(() => {
+    nav?.setPopoverCapturing(true)
+    return () => nav?.setPopoverCapturing(false)
+  }, [nav])
 
   // Parse initial value
   const initial = (typeof value === 'object' && value !== null ? value : {}) as Partial<NameValue>
@@ -77,6 +92,49 @@ export function NameInputField() {
     }
   }, [onBeforeClose, initialName.firstName, initialName.lastName, commitValue])
 
+  /** Commit current fields and close, then navigate row */
+  const commitCloseAndNavigate = useCallback(
+    (direction: 'up' | 'down') => {
+      if (hasNameChanged(fieldsRef.current, initialName)) {
+        commitValueAndClose(fieldsRef.current)
+      } else {
+        commitValueAndClose(undefined)
+      }
+      nav?.moveFocus(direction)
+    },
+    [commitValueAndClose, initialName, nav]
+  )
+
+  const handleFirstNameKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        e.stopPropagation()
+        lastNameRef.current?.focus()
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        e.stopPropagation()
+        commitCloseAndNavigate('up')
+      }
+    },
+    [commitCloseAndNavigate]
+  )
+
+  const handleLastNameKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        e.stopPropagation()
+        commitCloseAndNavigate('down')
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        e.stopPropagation()
+        firstNameRef.current?.focus()
+      }
+    },
+    [commitCloseAndNavigate]
+  )
+
   return (
     <div className='p-3 pt-2 space-y-3'>
       <div className='space-y-2'>
@@ -84,10 +142,12 @@ export function NameInputField() {
           First Name
         </Label>
         <Input
+          ref={firstNameRef}
           id='firstName'
           size='sm'
           value={fields.firstName}
           onChange={(e) => setFields((f) => ({ ...f, firstName: e.target.value }))}
+          onKeyDown={handleFirstNameKeyDown}
           disabled={isSaving}
           placeholder='Enter first name'
           className='w-full'
@@ -99,10 +159,12 @@ export function NameInputField() {
           Last Name
         </Label>
         <Input
+          ref={lastNameRef}
           id='lastName'
           size='sm'
           value={fields.lastName}
           onChange={(e) => setFields((f) => ({ ...f, lastName: e.target.value }))}
+          onKeyDown={handleLastNameKeyDown}
           disabled={isSaving}
           placeholder='Enter last name'
           className='w-full'
@@ -199,16 +261,38 @@ export function NameFieldInput({
   }, [])
 
   /**
-   * Handle Enter key to commit and close
+   * firstName: Enter/ArrowDown → focus lastName
+   */
+  const handleFirstNameKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      e.preventDefault()
+      e.stopPropagation()
+      const lastNameInput = (e.currentTarget as HTMLElement)
+        .closest('[data-name-popover]')
+        ?.querySelector<HTMLInputElement>('#name-last')
+      lastNameInput?.focus()
+    }
+  }, [])
+
+  /**
+   * lastName: Enter → commit and close, ArrowUp → focus firstName
    */
   // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is a stable useState setter
-  const handleKeyDown = useCallback(
+  const handleLastNameKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.preventDefault()
+        e.stopPropagation()
         onChange({ firstName: localFirstName, lastName: localLastName })
         isDirty.current = false
         setOpen(false)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        e.stopPropagation()
+        const firstNameInput = (e.currentTarget as HTMLElement)
+          .closest('[data-name-popover]')
+          ?.querySelector<HTMLInputElement>('#name-first')
+        firstNameInput?.focus()
       }
     },
     [localFirstName, localLastName, onChange]
@@ -249,17 +333,19 @@ export function NameFieldInput({
           <span className='truncate'>{displayName}</span>
         </PickerTrigger>
       </PopoverTrigger>
-      <PopoverContent className='w-[280px] p-3' align='start' onKeyDown={handleKeyDown}>
-        <div className='space-y-3'>
+      <PopoverContent className='w-[280px] p-3' align='start'>
+        <div className='space-y-3' data-name-popover>
           <div className='space-y-1.5'>
             <Label htmlFor='name-first' className='text-xs text-muted-foreground'>
               First Name
             </Label>
             <Input
               id='name-first'
+              autoComplete='one-time-code'
               size='sm'
               value={localFirstName}
               onChange={handleFirstNameChange}
+              onKeyDown={handleFirstNameKeyDown}
               disabled={disabled}
               placeholder='First name'
               autoFocus
@@ -271,9 +357,11 @@ export function NameFieldInput({
             </Label>
             <Input
               id='name-last'
+              autoComplete='one-time-code'
               size='sm'
               value={localLastName}
               onChange={handleLastNameChange}
+              onKeyDown={handleLastNameKeyDown}
               disabled={disabled}
               placeholder='Last name'
             />

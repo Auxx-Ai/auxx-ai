@@ -1,6 +1,7 @@
 // packages/lib/src/field-values/field-value-queries.ts
 
 import { schema } from '@auxx/database'
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import type { FieldWithDefinition } from '@auxx/services'
 import { isArrayReturnFieldType, type TypedFieldValue } from '@auxx/types'
@@ -12,6 +13,7 @@ import {
 } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq, inArray } from 'drizzle-orm'
+import type { NameFieldOptions } from '../custom-fields/field-options'
 import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import {
@@ -268,6 +270,18 @@ async function resolveFieldReference(
     terminalFieldId
   )
 
+  // Handle NAME fields — compose from source fields (firstName + lastName)
+  if (terminalFieldType === FieldTypeEnum.NAME && currentRecordIds.length > 0) {
+    const terminalValues = await resolveNameFieldValues(ctx, currentRecordIds, terminalFieldId)
+    return mapResultsToSources(
+      sourceRecordIds,
+      traversalMaps,
+      terminalValues,
+      ref,
+      terminalFieldType
+    )
+  }
+
   const terminalValues =
     currentRecordIds.length > 0
       ? await batchFetchFieldValues(ctx, currentRecordIds, terminalFieldId, terminalFieldType)
@@ -461,4 +475,68 @@ function mapResultsToSources(
   }
 
   return results
+}
+
+// =============================================================================
+// COMPUTED FIELD RESOLUTION
+// =============================================================================
+
+/**
+ * Resolve NAME field values by fetching source fields (firstName, lastName)
+ * and composing a TypedFieldValue with type NAME.
+ *
+ * Falls back to empty map if the NAME field's options.name is not linked.
+ */
+async function resolveNameFieldValues(
+  ctx: FieldValueContext,
+  recordIds: RecordId[],
+  nameFieldId: string
+): Promise<Map<RecordId, TypedFieldValue | TypedFieldValue[]>> {
+  // Look up the NAME field to get source field IDs
+  const nameField = await getField(ctx, nameFieldId)
+  const nameOptions = (nameField.options as Record<string, any>)?.name as
+    | NameFieldOptions
+    | undefined
+
+  if (!nameOptions?.firstNameFieldId || !nameOptions?.lastNameFieldId) {
+    return new Map()
+  }
+
+  // Fetch both source fields in parallel
+  const [firstNameValues, lastNameValues] = await Promise.all([
+    batchFetchFieldValues(
+      ctx,
+      recordIds,
+      nameOptions.firstNameFieldId,
+      FieldTypeEnum.TEXT as FieldType
+    ),
+    batchFetchFieldValues(
+      ctx,
+      recordIds,
+      nameOptions.lastNameFieldId,
+      FieldTypeEnum.TEXT as FieldType
+    ),
+  ])
+
+  // Compose NAME values from source fields
+  const result = new Map<RecordId, TypedFieldValue | TypedFieldValue[]>()
+
+  for (const recordId of recordIds) {
+    const firstNameTyped = firstNameValues.get(recordId)
+    const lastNameTyped = lastNameValues.get(recordId)
+
+    const firstName =
+      firstNameTyped && !Array.isArray(firstNameTyped) ? (firstNameTyped.value as string) : ''
+    const lastName =
+      lastNameTyped && !Array.isArray(lastNameTyped) ? (lastNameTyped.value as string) : ''
+
+    if (firstName || lastName) {
+      result.set(recordId, {
+        type: 'NAME',
+        value: JSON.stringify({ firstName, lastName }),
+      } as TypedFieldValue)
+    }
+  }
+
+  return result
 }

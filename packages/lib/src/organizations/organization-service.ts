@@ -113,7 +113,7 @@ export class OrganizationService {
       const [updatedIntegration] = await this.db
         .update(schema.Integration)
         .set({
-          name: 'Forwarding Address',
+          name: forwardingAddress,
           email: forwardingAddress,
           enabled: true,
           metadata: metadata as unknown as any,
@@ -129,7 +129,7 @@ export class OrganizationService {
         .values({
           organizationId: params.organizationId,
           provider: 'email',
-          name: 'Forwarding Address',
+          name: forwardingAddress,
           email: forwardingAddress,
           enabled: true,
           metadata: metadata as unknown as any,

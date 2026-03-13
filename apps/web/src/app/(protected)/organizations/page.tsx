@@ -12,9 +12,10 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
-import { Building, MoreVertical } from 'lucide-react'
+import { Building, MoreVertical, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { CreateOrganizationDialog } from '~/components/global/create-org-dialog'
 import {
   useDehydratedOrganizations,
   useDehydratedUser,
@@ -162,6 +163,7 @@ export default function OrganizationsPage() {
   const { organizationId: currentOrgId, setOrganizationId } = useOrganizationIdContext()
   const router = useRouter()
   const [switching, setSwitching] = useState(false)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
   const switchOrg = api.organization.setDefault.useMutation({
     onSuccess: (data) => {
@@ -196,26 +198,36 @@ export default function OrganizationsPage() {
             <CardTitle>Organizations</CardTitle>
             <CardDescription>Jump into an existing workspace or add a new one</CardDescription>
           </CardHeader>
-          <CardContent className='space-y-3 min-h-[300px]'>
-            {organizations.length > 0 ? (
-              organizations.map((org) => (
-                <OrganizationCard
-                  key={org.id}
-                  org={org}
-                  isDefault={org.id === user.defaultOrganizationId}
-                  isCurrent={org.id === currentOrgId}
-                  onSwitch={() => handleSwitch(org.id)}
-                  onNavigate={handleNavigate}
-                  switching={switching}
-                />
-              ))
-            ) : (
-              <p className='text-center text-sm text-muted-foreground py-4'>
-                You are not a member of any organizations.
-              </p>
-            )}
+          <CardContent className='flex flex-col min-h-[300px]'>
+            <div className='space-y-3 flex-1'>
+              {organizations.length > 0 ? (
+                organizations.map((org) => (
+                  <OrganizationCard
+                    key={org.id}
+                    org={org}
+                    isDefault={org.id === user.defaultOrganizationId}
+                    isCurrent={org.id === currentOrgId}
+                    onSwitch={() => handleSwitch(org.id)}
+                    onNavigate={handleNavigate}
+                    switching={switching}
+                  />
+                ))
+              ) : (
+                <p className='text-center text-sm text-muted-foreground py-4'>
+                  You are not a member of any organizations.
+                </p>
+              )}
+            </div>
+            <Button
+              variant='outline'
+              className='w-full mt-3'
+              onClick={() => setCreateDialogOpen(true)}>
+              <Plus />
+              Add new organization
+            </Button>
           </CardContent>
         </Card>
+        <CreateOrganizationDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
       </div>
     </div>
   )

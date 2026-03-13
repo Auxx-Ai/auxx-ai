@@ -38,21 +38,6 @@ export const contactBuiltInFields: BuiltInFieldRegistry = {
     },
   },
 
-  // Compound field - name
-  name: {
-    id: 'name',
-    type: FieldType.NAME,
-    handler: async (db, entityId, value, organizationId) => {
-      const { ContactService } = await import('../../contacts/contact-service')
-      const service = new ContactService(organizationId, undefined)
-      await service.updateContact({
-        id: entityId,
-        firstName: value.firstName,
-        lastName: value.lastName,
-      })
-    },
-  },
-
   // Relationship field - customerGroups
   customerGroups: {
     id: 'customerGroups',

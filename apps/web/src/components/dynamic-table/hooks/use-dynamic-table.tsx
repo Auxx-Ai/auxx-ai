@@ -35,6 +35,7 @@ import {
 } from '../stores/store-actions'
 import {
   useActiveView,
+  useActiveViewId,
   useColumnFormatting,
   useColumnLabels,
   useColumnOrder,
@@ -76,8 +77,8 @@ export function useDynamicTable<TData extends Record<string, any>>({
     q: parseAsString,
   })
 
-  // View state is now managed locally instead of in URL
-  const [activeViewId, setActiveViewId] = useState<string | null>(null)
+  // Read active view ID directly from Zustand store (single source of truth)
+  const activeViewId = useActiveViewId(tableId)
 
   // Get views from unified store
   const views = useTableViews(tableId)
@@ -96,6 +97,9 @@ export function useDynamicTable<TData extends Record<string, any>>({
   }, [views])
 
   // Auto-select default view on mount if no view selected (skip for standalone)
+  // Ref guard ensures this only fires once, preventing re-runs when views.length
+  // changes (e.g. after creating a new view) from overwriting user selections.
+  const hasAutoSelectedRef = useRef(false)
   useEffect(() => {
     // Skip for standalone tables - they don't use views
     if (standalone) return
@@ -103,16 +107,23 @@ export function useDynamicTable<TData extends Record<string, any>>({
     // Only run when store is initialized and we have views
     if (!isStoreInitialized || views.length === 0) return
 
+    // Only auto-select once on mount
+    if (hasAutoSelectedRef.current) return
+    hasAutoSelectedRef.current = true
+
     // If no view selected and default view exists, auto-select it
     if (!activeViewId && defaultView) {
-      setActiveViewId(defaultView.id)
+      setActiveViewInStore(tableId, defaultView.id)
     }
-  }, [isStoreInitialized, activeViewId, defaultView, views.length, standalone])
-
-  // Sync view ID to store
-  useEffect(() => {
-    setActiveViewInStore(tableId, activeViewId)
-  }, [tableId, activeViewId, setActiveViewInStore])
+  }, [
+    isStoreInitialized,
+    activeViewId,
+    defaultView,
+    views.length,
+    standalone,
+    tableId,
+    setActiveViewInStore,
+  ])
 
   // Initialize persistence (handles auto-save when enabled, or manual save)
   const { saveView } = useViewStorePersistence(currentView?.id ?? null, tableId)
@@ -390,9 +401,12 @@ export function useDynamicTable<TData extends Record<string, any>>({
   // ACTIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const setActiveView = useCallback((viewId: string | null) => {
-    setActiveViewId(viewId)
-  }, [])
+  const setActiveView = useCallback(
+    (viewId: string | null) => {
+      setActiveViewInStore(tableId, viewId)
+    },
+    [tableId, setActiveViewInStore]
+  )
 
   const setSearchQuery = useCallback(
     (query: string) => {
