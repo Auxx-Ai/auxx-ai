@@ -5,6 +5,8 @@ import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
 import { PollingTriggerService } from '../../workflows/polling-trigger-service'
+import { WorkflowRunStatus } from '../../workflows/types'
+import { createWorkflowRun } from '../../workflows/workflow-execution-service'
 import { getQueue, Queues } from '../queues'
 
 const logger = createScopedLogger('polling-trigger-job')
@@ -122,27 +124,22 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
     jobId: job.id,
   })
 
-  // 1. Validate workflow still exists + enabled
-  const [workflowAppRow] = await db
-    .select({
-      id: schema.WorkflowApp.id,
-      enabled: schema.WorkflowApp.enabled,
-    })
-    .from(schema.WorkflowApp)
-    .where(
-      and(
-        eq(schema.WorkflowApp.id, workflowAppId),
-        eq(schema.WorkflowApp.organizationId, organizationId)
-      )
-    )
-    .limit(1)
+  // 1. Validate workflow still exists + enabled, and fetch published workflow for error runs
+  const workflowAppData = await db.query.WorkflowApp.findFirst({
+    where: and(
+      eq(schema.WorkflowApp.id, workflowAppId),
+      eq(schema.WorkflowApp.organizationId, organizationId)
+    ),
+    columns: { id: true, enabled: true },
+    with: { publishedWorkflow: true },
+  })
 
-  if (!workflowAppRow) {
+  if (!workflowAppData) {
     await cancelInvalidPollingScheduler(workflowAppId, 'Workflow deleted')
     return { skipped: true, reason: 'Workflow deleted' }
   }
 
-  if (!workflowAppRow.enabled) {
+  if (!workflowAppData.enabled) {
     await cancelInvalidPollingScheduler(workflowAppId, 'Workflow disabled')
     return { skipped: true, reason: 'Workflow disabled' }
   }
@@ -165,7 +162,17 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
     })
   }
 
-  // 4. Invoke Lambda with polling trigger type
+  // 4. Resolve org handle — needed for Lambda context and available in catch for error runs
+  const org = await db.query.Organization.findFirst({
+    where: eq(schema.Organization.id, organizationId),
+    columns: { id: true, handle: true },
+  })
+  if (!org) {
+    await cancelInvalidPollingScheduler(workflowAppId, 'Organization not found')
+    return { skipped: true, reason: 'Organization not found' }
+  }
+
+  // 5. Invoke Lambda with polling trigger type
   let pollResult: { events: Record<string, unknown>[]; state: Record<string, unknown> }
 
   try {
@@ -174,16 +181,6 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
     const { prepareLambdaContext, invokeLambdaExecutor } = await import(
       '@auxx/services/lambda-execution'
     )
-
-    // Resolve org handle for Lambda context
-    const org = await db.query.Organization.findFirst({
-      where: eq(schema.Organization.id, organizationId),
-      columns: { id: true, handle: true },
-    })
-    if (!org) {
-      await cancelInvalidPollingScheduler(workflowAppId, 'Organization not found')
-      return { skipped: true, reason: 'Organization not found' }
-    }
 
     const installationResult = await getInstallationDeployment({
       installationId,
@@ -198,7 +195,11 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
     const { serverBundleSha, installation } = installationResult.value
 
     if (!serverBundleSha) {
-      throw new Error('App does not have a server bundle')
+      const bundleError = new Error('App does not have a server bundle') as Error & {
+        code?: string
+      }
+      bundleError.code = 'NO_SERVER_BUNDLE'
+      throw bundleError
     }
 
     // Resolve connection
@@ -237,7 +238,11 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
     })
 
     if (lambdaResult.isErr()) {
-      throw new Error(`Lambda execution failed: ${lambdaResult.error.message}`)
+      const lambdaError = new Error(
+        `Lambda execution failed: ${lambdaResult.error.message}`
+      ) as Error & { code?: string }
+      lambdaError.code = lambdaResult.error.code
+      throw lambdaError
     }
 
     const execResult = lambdaResult.value.execution_result
@@ -246,20 +251,78 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
       state: execResult?.state ?? {},
     }
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorCode: string | undefined = error instanceof Error ? (error as any).code : undefined
+    const newConsecutiveErrors = pollingState.consecutiveErrors + 1
+    const isUnrecoverableError =
+      errorCode === 'CONNECTION_REQUIRED' || errorCode === 'NO_SERVER_BUNDLE'
+
+    // 1. FIRST: persist polling state — must not be blocked by run creation
     await updatePollingState(workflowAppId, triggerId, organizationId, {
       lastPollStatus: 'error',
-      lastPollError: error instanceof Error ? error.message : String(error),
-      consecutiveErrors: pollingState.consecutiveErrors + 1,
+      lastPollError: errorMessage,
+      consecutiveErrors: newConsecutiveErrors,
     })
+
+    // 2. Create FAILED run (best-effort) — only on first error + every 10th to avoid flooding
+    //    For connection errors, always create on first occurrence (auto-pause stops further polls)
+    const shouldCreateRun =
+      isUnrecoverableError ||
+      pollingState.consecutiveErrors === 0 ||
+      newConsecutiveErrors % 10 === 0
+    if (shouldCreateRun && workflowAppData.publishedWorkflow) {
+      try {
+        await createWorkflowRun(db, {
+          workflow: workflowAppData.publishedWorkflow,
+          organizationId,
+          inputs: {
+            _meta: {
+              trigger_type: 'app-polling-trigger',
+              app_id: appId,
+              trigger_id: triggerId,
+              triggered_at: new Date().toISOString(),
+              failure_reason: 'Polling trigger failed before execution',
+            },
+          },
+          mode: 'production',
+          userId: null,
+          status: WorkflowRunStatus.FAILED,
+          error: classifyPollingError(errorMessage, errorCode),
+          finishedAt: new Date(),
+          elapsedTime: 0,
+        })
+      } catch (runError) {
+        logger.warn('Failed to create error run for polling trigger', {
+          workflowAppId,
+          error: runError instanceof Error ? runError.message : String(runError),
+        })
+      }
+    }
+
+    // 3. Auto-pause on connection errors — expired/missing tokens won't self-heal
+    if (isUnrecoverableError) {
+      await db
+        .update(schema.WorkflowApp)
+        .set({ enabled: false, updatedAt: new Date() })
+        .where(eq(schema.WorkflowApp.id, workflowAppId))
+
+      await cancelInvalidPollingScheduler(workflowAppId, `Unrecoverable error: ${errorCode}`)
+
+      logger.warn('Auto-paused workflow due to unrecoverable error', {
+        workflowAppId,
+        errorCode,
+      })
+    }
+
     logger.error('Polling trigger execute failed', {
       workflowAppId,
       triggerId,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
     })
     throw error
   }
 
-  // 5. Dispatch events before persisting state (see plan §4.5 step 7)
+  // 6. Dispatch events before persisting state (see plan §4.5 step 7)
   if (pollResult.events.length > 0) {
     const appTriggerQueue = getQueue(Queues.appTriggerQueue)
 
@@ -280,7 +343,7 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
     }
   }
 
-  // 6. Persist updated state after successful dispatch
+  // 7. Persist updated state after successful dispatch
   await updatePollingState(workflowAppId, triggerId, organizationId, {
     state: { ...pollingState.state, ...pollResult.state },
     lastPollAt: new Date(),
@@ -296,4 +359,24 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
   })
 
   return { success: true, eventsDispatched: pollResult.events.length }
+}
+
+/**
+ * Classify a polling error into a user-friendly plain text message.
+ * The classified message is stored in WorkflowRun.error and rendered as-is in the UI.
+ */
+function classifyPollingError(rawError: string, errorCode?: string): string {
+  if (errorCode === 'CONNECTION_REQUIRED') {
+    return `Connection expired or not found — please reconnect your account in the workflow trigger settings.\n\nOriginal error: ${rawError}`
+  }
+  if (errorCode === 'NO_SERVER_BUNDLE') {
+    return `App does not have a server bundle — please republish the app.\n\nOriginal error: ${rawError}`
+  }
+  if (/rate limit|429|too many requests/i.test(rawError)) {
+    return `Rate limited by provider — will retry automatically.\n\nOriginal error: ${rawError}`
+  }
+  if (/timeout|ETIMEDOUT|ECONNREFUSED/i.test(rawError)) {
+    return `Request timed out — will retry automatically.\n\nOriginal error: ${rawError}`
+  }
+  return `Polling trigger failed: ${rawError}`
 }

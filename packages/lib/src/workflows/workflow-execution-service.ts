@@ -65,6 +65,91 @@ type SerializedExecutionState = {
 
 const logger = createScopedLogger('workflow-execution-service')
 
+/**
+ * Create a workflow run record directly without instantiating WorkflowExecutionService.
+ * Accepts optional overrides for status, error, finishedAt, elapsedTime to support
+ * creating runs in terminal states (e.g., FAILED polling trigger runs).
+ */
+export async function createWorkflowRun(
+  db: Database,
+  params: {
+    workflow: {
+      id: string
+      workflowAppId: string
+      triggerType: string | null
+      version: number
+      graph: any
+    }
+    organizationId: string
+    inputs: Record<string, any>
+    mode: 'test' | 'production'
+    userId: string | null
+    status?: WorkflowRunStatus
+    error?: string
+    finishedAt?: Date
+    elapsedTime?: number
+  }
+) {
+  const { workflow, organizationId, inputs, mode, userId } = params
+
+  // Get next sequence number
+  const [lastRun] = await db
+    .select({ sequenceNumber: schema.WorkflowRun.sequenceNumber })
+    .from(schema.WorkflowRun)
+    .where(eq(schema.WorkflowRun.workflowAppId, workflow.workflowAppId))
+    .orderBy(desc(schema.WorkflowRun.sequenceNumber))
+    .limit(1)
+  const sequenceNumber = (lastRun?.sequenceNumber ?? 0) + 1
+
+  // Count nodes for progress tracking
+  const graph = WorkflowGraphBuilder.buildGraph(workflow)
+  const nodeCount = graph.nodes.size
+
+  // Resolve user
+  const effectiveUserId =
+    userId || (await SystemUserService.getSystemUserForActions(organizationId))
+
+  const [workflowRun] = await db
+    .insert(schema.WorkflowRun)
+    .values({
+      organizationId,
+      workflowAppId: workflow.workflowAppId,
+      workflowId: workflow.id,
+      sequenceNumber,
+      type: workflow.triggerType || WorkflowTriggerType.MANUAL,
+      triggeredFrom:
+        mode === 'production' ? WorkflowTriggerSource.APP_RUN : WorkflowTriggerSource.DEBUGGING,
+      version: workflow.version.toString(),
+      graph: workflow.graph || {},
+      inputs,
+      status: params.status ?? WorkflowRunStatus.RUNNING,
+      error: params.error,
+      finishedAt: params.finishedAt,
+      elapsedTime: params.elapsedTime ?? 0,
+      totalTokens: 0,
+      totalSteps: nodeCount,
+      createdBy: effectiveUserId,
+    })
+    .returning({
+      id: schema.WorkflowRun.id,
+      organizationId: schema.WorkflowRun.organizationId,
+      workflowAppId: schema.WorkflowRun.workflowAppId,
+      workflowId: schema.WorkflowRun.workflowId,
+      sequenceNumber: schema.WorkflowRun.sequenceNumber,
+      type: schema.WorkflowRun.type,
+      triggeredFrom: schema.WorkflowRun.triggeredFrom,
+      version: schema.WorkflowRun.version,
+      inputs: schema.WorkflowRun.inputs,
+      status: schema.WorkflowRun.status,
+      totalTokens: schema.WorkflowRun.totalTokens,
+      totalSteps: schema.WorkflowRun.totalSteps,
+      createdBy: schema.WorkflowRun.createdBy,
+      createdAt: schema.WorkflowRun.createdAt,
+    })
+
+  return workflowRun!
+}
+
 export interface WorkflowExecutionServiceOptions {
   errorHandler?: ErrorHandler
 }
@@ -133,7 +218,7 @@ export class WorkflowExecutionService {
       | 'createdAt'
     >
   > {
-    const { workflowId, inputs, mode, userId, organizationId, userEmail, userName } = params
+    const { workflowId, inputs, mode, userId, organizationId } = params
 
     // Get workflow with validation
     const workflow = await this.db.query.Workflow.findFirst({
@@ -149,59 +234,13 @@ export class WorkflowExecutionService {
     }
     logger.info('create run:', workflow?.workflowAppId, workflowId, organizationId)
 
-    // Get next sequence number
-    const [lastRun] = await this.db
-      .select({ sequenceNumber: schema.WorkflowRun.sequenceNumber })
-      .from(schema.WorkflowRun)
-      .where(eq(schema.WorkflowRun.workflowAppId, workflow.workflowAppId))
-      .orderBy(desc(schema.WorkflowRun.sequenceNumber))
-      .limit(1)
-    const sequenceNumber = (lastRun?.sequenceNumber ?? 0) + 1
-
-    // Count nodes for progress tracking
-    const graph = WorkflowGraphBuilder.buildGraph(workflow)
-    const nodeCount = graph.nodes.size
-
-    // Create WorkflowRun record
-    const effectiveUserId =
-      userId || (await SystemUserService.getSystemUserForActions(organizationId))
-
-    const [workflowRun] = await this.db
-      .insert(schema.WorkflowRun)
-      .values({
-        organizationId,
-        workflowAppId: workflow.workflowAppId,
-        workflowId,
-        sequenceNumber,
-        type: workflow.triggerType || WorkflowTriggerType.MANUAL,
-        triggeredFrom:
-          mode === 'production' ? WorkflowTriggerSource.APP_RUN : WorkflowTriggerSource.DEBUGGING,
-        version: workflow.version.toString(),
-        graph: workflow.graph || {},
-        inputs,
-        status: WorkflowRunStatus.RUNNING,
-        totalTokens: 0,
-        totalSteps: nodeCount,
-        createdBy: effectiveUserId, // Use system user if userId is null
-      })
-      .returning({
-        id: schema.WorkflowRun.id,
-        organizationId: schema.WorkflowRun.organizationId,
-        workflowAppId: schema.WorkflowRun.workflowAppId,
-        workflowId: schema.WorkflowRun.workflowId,
-        sequenceNumber: schema.WorkflowRun.sequenceNumber,
-        type: schema.WorkflowRun.type,
-        triggeredFrom: schema.WorkflowRun.triggeredFrom,
-        version: schema.WorkflowRun.version,
-        inputs: schema.WorkflowRun.inputs,
-        status: schema.WorkflowRun.status,
-        totalTokens: schema.WorkflowRun.totalTokens,
-        totalSteps: schema.WorkflowRun.totalSteps,
-        createdBy: schema.WorkflowRun.createdBy,
-        createdAt: schema.WorkflowRun.createdAt,
-      })
-
-    return workflowRun!
+    return createWorkflowRun(this.db, {
+      workflow,
+      organizationId,
+      inputs,
+      mode,
+      userId,
+    })
   }
 
   /**
