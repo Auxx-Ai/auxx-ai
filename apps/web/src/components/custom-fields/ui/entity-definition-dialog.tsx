@@ -39,7 +39,7 @@ import {
 import { Spinner } from '@auxx/ui/components/spinner'
 import { toastError } from '@auxx/ui/components/toast'
 import { Check, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   useEntityDefinitionMutations,
   useResource,
@@ -94,6 +94,9 @@ export function EntityDefinitionDialog({
     () => getNextIconColor(resources.map((r) => r.color).filter(Boolean)),
     [resources]
   )
+  // Ref so the reset effect can read the latest color without depending on it
+  const nextColorRef = useRef(nextColor)
+  nextColorRef.current = nextColor
 
   // Determine if editing based on prop
   const isEditing = !!entityDefinitionId
@@ -170,6 +173,7 @@ export function EntityDefinitionDialog({
   })
 
   // Reset form when dialog opens/closes or editing resource changes
+  // nextColor is read from a ref to avoid re-running when resource cache invalidates
   useEffect(() => {
     if (open) {
       let initValues: typeof formValues
@@ -200,8 +204,9 @@ export function EntityDefinitionDialog({
           avatarFieldId: editingResource.display.avatarField?.id ?? null,
         }
       } else {
+        console.log('Resetting form for new entity, nextColor:', nextColorRef.current)
         // Create mode: reset to defaults with auto-assigned color
-        setIconValue({ icon: 'package', color: nextColor })
+        setIconValue({ icon: 'package', color: nextColorRef.current })
         setSingular('')
         setPlural('')
         setSlug('')
@@ -216,7 +221,7 @@ export function EntityDefinitionDialog({
 
         initValues = {
           icon: 'package',
-          color: nextColor,
+          color: nextColorRef.current,
           singular: '',
           plural: '',
           slug: '',
@@ -229,7 +234,7 @@ export function EntityDefinitionDialog({
       // Set baseline for dirty checking
       setInitial(initValues)
     }
-  }, [open, editingResource, setInitial, nextColor])
+  }, [open, editingResource, setInitial])
 
   // tRPC utils for slug check
   const utils = api.useUtils()
@@ -329,6 +334,7 @@ export function EntityDefinitionDialog({
   const handleCustomFieldDialogClose = (open: boolean) => {
     setCustomFieldDialogOpen(open)
     if (!open && createdEntityId) {
+      // Close the entity dialog too and clean up
       // Close the entity dialog too and clean up
       const savedSingular = singular.trim()
       const savedId = createdEntityId

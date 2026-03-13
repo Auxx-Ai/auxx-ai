@@ -221,25 +221,32 @@ export class EntityDefinitionPage {
 
   async submitCreateField() {
     const dialog = this.page.getByRole('dialog')
-    const createBtn = dialog.getByRole('button', { name: 'Create Field' })
-    await createBtn.click()
+    await dialog.getByRole('button', { name: 'Create Field' }).click()
 
-    // Wait for either: dialog closes, or button re-enables (form reset in "create more" mode)
-    await Promise.race([
-      dialog.waitFor({ state: 'hidden', timeout: 15000 }),
-      // In "create more" mode the button goes disabled (Creating...) then re-enables
-      createBtn.waitFor({ state: 'hidden', timeout: 15000 }).catch(() =>
-        this.page.waitForFunction(
-          () => {
-            const btn = [...document.querySelectorAll('button')].find((b) =>
-              b.textContent?.includes('Create Field')
-            )
-            return btn && !btn.disabled
-          },
-          { timeout: 15000 }
-        )
-      ),
-    ])
+    // Button changes to "Creating..." (disabled) while mutation runs.
+    // 1. Wait for button to become disabled (mutation started)
+    await this.page
+      .waitForFunction(
+        () => {
+          const dialog = document.querySelector('[role="dialog"]')
+          if (!dialog) return true // dialog already closed
+          const btns = dialog.querySelectorAll('button[disabled]')
+          return btns.length > 0
+        },
+        { timeout: 5000 }
+      )
+      .catch(() => {}) // might already be done
+
+    // 2. Wait for mutation to complete: dialog closes or no more disabled buttons
+    await this.page.waitForFunction(
+      () => {
+        const dialog = document.querySelector('[role="dialog"]')
+        if (!dialog) return true // dialog closed
+        const disabledBtns = dialog.querySelectorAll('button[disabled]')
+        return disabledBtns.length === 0
+      },
+      { timeout: 15000 }
+    )
   }
 
   // ---------------------------------------------------------------------------
