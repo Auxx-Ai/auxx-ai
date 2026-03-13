@@ -3,7 +3,7 @@
 'use client'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { useTheme } from 'next-themes'
+
 import type React from 'react'
 import { ProviderIcon } from '~/components/ai/ui/provider-icon'
 import type { ProviderConfiguration, ProviderStatusInfo } from '~/components/ai/ui/utils'
@@ -41,7 +41,6 @@ interface ProviderRowProps {
   className?: string
 }
 
-type Theme = 'dark' | 'light'
 /**
  * Expandable provider row component
  */
@@ -56,8 +55,6 @@ export const ProviderRow: React.FC<ProviderRowProps> = ({
   className,
 }) => {
   const utils = api.useUtils()
-  const { setTheme, theme: leTheme } = useTheme()
-  const theme = leTheme as Theme
 
   // Mutations
   const setDefaultProvider = api.aiIntegration.setDefaultProvider.useMutation()
@@ -142,13 +139,7 @@ export const ProviderRow: React.FC<ProviderRowProps> = ({
         disabled={disabled}
         className='flex items-center gap-3 ps-3 py-2 h-auto hover:bg-transparent flex-1 justify-start focus:outline-none'>
         {/* Provider icon */}
-        <ProviderIcon
-          provider={provider}
-          size='sm'
-          variant='icon'
-          theme={theme}
-          className='flex-shrink-0'
-        />
+        <ProviderIcon provider={provider} size='sm' variant='icon' className='flex-shrink-0' />
 
         {/* Provider info */}
         <div className='flex-1 text-left min-w-0'>

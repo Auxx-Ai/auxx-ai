@@ -20,7 +20,6 @@ interface ModelRowProps {
   className?: string
   /** All providers for passing to dialogs */
   providers: ProviderConfiguration[]
-  theme: 'light' | 'dark'
 }
 
 /**
@@ -33,7 +32,6 @@ export const ModelRow: React.FC<ModelRowProps> = ({
   isProcessing = false,
   className,
   providers,
-  theme,
 }) => {
   const [parameterDialogOpen, setParameterDialogOpen] = useState(false)
   const [configureDialogOpen, setConfigureDialogOpen] = useState(false)
@@ -56,7 +54,6 @@ export const ModelRow: React.FC<ModelRowProps> = ({
           provider={model.provider}
           modelName={model.modelId}
           size='sm'
-          theme={theme}
           className='flex-shrink-0'
         />
 

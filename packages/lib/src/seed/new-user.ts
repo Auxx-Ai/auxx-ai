@@ -97,12 +97,13 @@ export async function seedNewUserDatabase(user: {
 
       logger.info(`update defaultOrganizationId for user: ${updatedUser!.id}`)
 
-      // Seed user-specific data (avatar migration, etc.)
-      const userSeeder = new UserSeeder(organizationId, { ...user, ...updatedUser! }, db)
-      await userSeeder.seedNewUser()
-
+      // Seed organization first — creates entity definitions (signature, etc.) that user seeder depends on
       const seeder = new OrganizationSeeder(db, user.id, user.email ?? undefined)
       await seeder.seedNewOrganization(organizationId)
+
+      // Seed user-specific data (avatar migration, default signature, etc.)
+      const userSeeder = new UserSeeder(organizationId, { ...user, ...updatedUser! }, db)
+      await userSeeder.seedNewUser()
       return updatedUser
     } else if (pendingInvite) {
       // Accept the pending invite.

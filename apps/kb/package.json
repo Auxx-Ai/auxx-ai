@@ -7,7 +7,7 @@
     "dev": "next dev --turbopack --port 3002",
     "build": "next build",
     "clean": "rm -rf .turbo node_modules .next",
-    "start": "next start --port 3002"
+    "start": "PORT=3002 node .next/standalone/apps/kb/server.js"
   },
   "dependencies": {
     "@aws-sdk/s3-presigned-post": "catalog:",

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack --port=3006",
     "build": "next build --turbopack",
-    "start": "next start"
+    "start": "PORT=3006 node .next/standalone/apps/build/server.js"
   },
   "dependencies": {
     "@auxx/config": "workspace:*",

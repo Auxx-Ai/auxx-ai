@@ -9,9 +9,12 @@ export { InboundEmailProcessor } from './inbound-email-processor'
 export type {
   AttachmentIngestContext,
   AttachmentIngestInput,
+  BatchIngestResult,
   IngestedBodyMeta,
+  IngestFailure,
   StoredAttachmentMeta,
 } from './ingest-types'
+export { isRetriableIngestError } from './ingest-types'
 export { InboundIntegrationResolver } from './integration-resolver'
 export {
   buildInboundAttachmentKey,

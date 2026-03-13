@@ -8,7 +8,8 @@ import { EmailTemplateType } from '@auxx/database/enums'
 import { isSelfHosted } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
-import { DEFAULT_QUOTA_LIMITS, ProviderQuotaType } from '../ai/providers/types'
+import { SystemModelService } from '../ai/providers/system-model-service'
+import { DEFAULT_QUOTA_LIMITS, ModelType, ProviderQuotaType } from '../ai/providers/types'
 import { InboxService } from '../inboxes'
 import { KBService } from '../kb'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -17,6 +18,20 @@ import { EntitySeeder } from './entity-seeder'
 import { SYSTEM_ENTITIES } from './entity-seeder/constants'
 
 const logger = createScopedLogger('organization-seeder')
+
+// Default system model defaults for new organizations (OpenAI as default provider)
+const DEFAULT_SYSTEM_MODELS: Array<{
+  modelType: ModelType
+  provider: string
+  model: string
+}> = [
+  { modelType: ModelType.LLM, provider: 'openai', model: 'gpt-4.1-nano' },
+  { modelType: ModelType.TEXT_EMBEDDING, provider: 'openai', model: 'text-embedding-3-small' },
+  { modelType: ModelType.MODERATION, provider: 'openai', model: 'text-moderation-stable' },
+  { modelType: ModelType.VISION, provider: 'openai', model: 'gpt-4.1-nano' },
+  { modelType: ModelType.TTS, provider: 'openai', model: 'tts-1' },
+  { modelType: ModelType.SPEECH2TEXT, provider: 'openai', model: 'whisper-1' },
+]
 
 // Default ticket sequence settings
 const defaultTicketSequence = {
@@ -120,6 +135,7 @@ export class OrganizationSeeder {
         this.seedKnowledgeBase(organizationId),
         this.seedTrialSubscription(organizationId),
         this.seedAiProviderQuotas(organizationId),
+        this.seedSystemModelDefaults(organizationId),
       ])
       logger.info('Successfully completed seeding for organization', { organizationId })
     } catch (error) {
@@ -448,5 +464,19 @@ export class OrganizationSeeder {
     }
 
     logger.info('Successfully seeded AI provider quotas', { organizationId, providers })
+  }
+
+  /**
+   * Seed default system model selections for a new organization
+   * Sets OpenAI models as defaults so users have a working setup out of the box
+   * @param organizationId The organization ID
+   */
+  private async seedSystemModelDefaults(organizationId: string): Promise<void> {
+    logger.info('Seeding system model defaults for organization', { organizationId })
+    const service = new SystemModelService(this.db, organizationId)
+    for (const { modelType, provider, model } of DEFAULT_SYSTEM_MODELS) {
+      await service.setDefault(modelType, provider, model)
+    }
+    logger.info('Successfully seeded system model defaults', { organizationId })
   }
 }

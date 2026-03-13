@@ -157,7 +157,7 @@ export default function FooterSection() {
         <div className='flex flex-wrap justify-between gap-4'>
           <div className='flex flex-wrap items-center gap-4 text-muted-foreground text-sm'>
             <span>© {new Date().getFullYear()} Auxx.Ai, All rights reserved</span>
-            <Link href='/privacy-policy' className='underline hover:text-foreground'>
+            <Link href='https://auxx.ai/privacy-policy' className='underline hover:text-foreground'>
               Privacy Policy
             </Link>
             <Link href='/terms-of-service' className='underline hover:text-foreground'>

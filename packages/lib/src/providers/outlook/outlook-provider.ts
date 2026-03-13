@@ -33,6 +33,7 @@ import {
 } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import { parseGraphApiError } from './outlook-errors'
+import { OutlookInboundContentIngestor } from './outlook-inbound-content-ingestor'
 import {
   type OutlookClientContext,
   type OutlookIntegrationMetadata,
@@ -635,20 +636,39 @@ export class OutlookProvider
       await pageIterator.iterate()
 
       let totalMessagesProcessed = 0
+      let hasRetriableFailures = false
+
       if (allMessages.length > 0) {
         const messageDataArray = this.convertMessagesToMessageData(allMessages)
-        const storedCount = await this.storageService.batchStoreMessages(messageDataArray)
-        totalMessagesProcessed = storedCount
-        logger.info(`Processed ${messageDataArray.length} messages, stored ${storedCount}.`, {
-          integrationId: this.integrationId,
+        const ingestor = new OutlookInboundContentIngestor(this.organizationId, this.storageService)
+        const result = await ingestor.storeBatchWithIngest(messageDataArray, {
+          client: this.client!,
+          integrationId: this.integrationId!,
         })
+        totalMessagesProcessed = result.storedCount
+
+        if (result.retriableFailures.length > 0) {
+          hasRetriableFailures = true
+          logger.warn('Retriable ingest failures — delta link will NOT advance', {
+            count: result.retriableFailures.length,
+            externalIds: result.failedExternalIds,
+          })
+        }
+
+        logger.info(
+          `Processed ${messageDataArray.length} messages, stored ${result.storedCount}.`,
+          { integrationId: this.integrationId }
+        )
       }
 
+      // Delta cursor safety: only advance delta link when no retriable failures occurred
       const newDeltaLink = pageIterator.getDeltaLink()
-      if (newDeltaLink && this.integrationId) {
+      const effectiveDeltaLink = hasRetriableFailures ? storedDeltaLink : newDeltaLink
+
+      if (effectiveDeltaLink && this.integrationId) {
         const updatedMetadata = {
           ...(this.integration?.metadata || {}),
-          graphDeltaLink: newDeltaLink,
+          graphDeltaLink: effectiveDeltaLink,
         }
         await db
           .update(schema.Integration)
@@ -1500,19 +1520,23 @@ export class OutlookProvider
     }
 
     const messageDataArray = this.convertMessagesToMessageData(allMessages)
-    const storedCount = await this.storageService.batchStoreMessages(messageDataArray)
+    const ingestor = new OutlookInboundContentIngestor(this.organizationId, this.storageService)
+    const result = await ingestor.storeBatchWithIngest(messageDataArray, {
+      client: this.client!,
+      integrationId: this.integrationId!,
+    })
 
     logger.info('importMessages completed for Outlook', {
       integrationId: this.integrationId,
       requested: externalIds.length,
       fetched: allMessages.length,
-      stored: storedCount,
-      failed: failedCount,
+      stored: result.storedCount,
+      failed: failedCount + result.failedCount,
     })
 
     return {
-      imported: storedCount,
-      failed: failedCount + (allMessages.length - storedCount),
+      imported: result.storedCount,
+      failed: failedCount + result.failedCount,
     }
   }
 

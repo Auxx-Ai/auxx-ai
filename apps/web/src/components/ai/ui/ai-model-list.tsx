@@ -3,7 +3,7 @@ import { Button } from '@auxx/ui/components/button'
 // import { processUnifiedModelData } from './utils'
 import { cn } from '@auxx/ui/lib/utils'
 import { BarChart3, BotIcon, Plus, RefreshCw } from 'lucide-react'
-import { useTheme } from 'next-themes'
+
 import React from 'react'
 import { ModelRow } from '~/components/ai/ui/model-row'
 // New components
@@ -20,8 +20,6 @@ interface AiModelsListProps {
   initialUnifiedData?: RouterOutputs['aiIntegration']['getUnifiedModelData']
 }
 
-type Theme = 'dark' | 'light'
-
 export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [dialogMode, setDialogMode] = React.useState<'provider' | 'custom-model'>('provider')
@@ -34,8 +32,6 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
   })
 
   const utils = api.useUtils()
-  const { setTheme, theme: letheme } = useTheme()
-  const theme = letheme as Theme
   // Use new unified model data API
   const { data, isLoading } = api.aiIntegration.getUnifiedModelData.useQuery(
     { includeDefaults: true },
@@ -175,7 +171,6 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
                               model={model}
                               provider={provider}
                               providers={providersData}
-                              theme={theme}
                             />
                           )
                         })}
