@@ -818,9 +818,9 @@ export class MessageStorageService {
   /**
    * Stores a message and links its participants using the REVISED schema (Message.fromId -> Participant.id).
    * @param messageData - The message data object to store
-   * @returns A Promise containing the ID of the stored message
+   * @returns The stored message ID and whether it was a new insert (vs reconciled with existing).
    */
-  async storeMessage(messageData: MessageData): Promise<string> {
+  async storeMessage(messageData: MessageData): Promise<{ messageId: string; isNew: boolean }> {
     // Input validation
     if (!messageData.from?.identifier) {
       throw new Error(
@@ -910,7 +910,7 @@ export class MessageStorageService {
         await this.updateThreadMetadataEfficient(existingByMsgId.threadId)
 
         // Done: we reconciled, no thread upsert needed
-        return existingByMsgId.id
+        return { messageId: existingByMsgId.id, isNew: false }
       }
 
       // CRITICAL: Always check reconciliation with MessageReconcilerService first
@@ -956,7 +956,7 @@ export class MessageStorageService {
           await this.updateThreadMetadataEfficient(existingMessage.threadId)
         }
 
-        return existingMessage.id
+        return { messageId: existingMessage.id, isNew: false }
       }
 
       logger.info('Storing new message (Schema: Msg->Participant)', {
@@ -1226,7 +1226,7 @@ export class MessageStorageService {
         messageId: messageRecord.id,
         externalId: messageData.externalId,
       })
-      return messageRecord.id
+      return { messageId: messageRecord.id, isNew: true }
     } catch (error: any) {
       logger.error('Error storing message (Revised Schema v2):', {
         error: error.message,
@@ -1249,7 +1249,7 @@ export class MessageStorageService {
           )
           .limit(1)
 
-        if (existing) return existing.id // Return existing ID
+        if (existing) return { messageId: existing.id, isNew: false }
       }
       throw error
     }

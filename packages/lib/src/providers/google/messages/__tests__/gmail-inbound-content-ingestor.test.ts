@@ -70,7 +70,7 @@ describe('GmailInboundContentIngestor', () => {
     mocks.storeMessage.mockReset()
 
     mocks.ingestBody.mockResolvedValue({ htmlBodyStorageLocationId: 'sl_body_1' })
-    mocks.storeMessage.mockResolvedValue('msg_stored_1')
+    mocks.storeMessage.mockResolvedValue({ messageId: 'msg_stored_1', isNew: true })
     mocks.ingestAll.mockResolvedValue([])
     mocks.fetchAllGmailAttachmentBytes.mockResolvedValue({
       resolved: new Map(),
@@ -301,7 +301,7 @@ describe('GmailInboundContentIngestor', () => {
     const storedOrder: string[] = []
     mocks.storeMessage.mockImplementation(async (msg: MessageData) => {
       storedOrder.push(msg.externalId)
-      return `stored_${msg.externalId}`
+      return { messageId: `stored_${msg.externalId}`, isNew: true }
     })
 
     const ingestor = new GmailInboundContentIngestor('org_1', makeStorageService())
@@ -329,7 +329,9 @@ describe('GmailInboundContentIngestor', () => {
   })
 
   it('continues processing remaining messages when one fails and reports failures', async () => {
-    mocks.storeMessage.mockRejectedValueOnce(new Error('DB error')).mockResolvedValueOnce('msg_2')
+    mocks.storeMessage
+      .mockRejectedValueOnce(new Error('DB error'))
+      .mockResolvedValueOnce({ messageId: 'msg_2', isNew: true })
 
     const ingestor = new GmailInboundContentIngestor('org_1', makeStorageService())
 

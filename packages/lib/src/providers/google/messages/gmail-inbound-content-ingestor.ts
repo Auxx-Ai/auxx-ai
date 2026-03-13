@@ -148,7 +148,8 @@ export class GmailInboundContentIngestor {
   ): Promise<string> {
     // Skip ingest for outbound/draft messages — they go straight through
     if (!messageData.isInbound) {
-      return this.storageService.storeMessage(messageData)
+      const { messageId } = await this.storageService.storeMessage(messageData)
+      return messageId
     }
 
     const contentScopeId = messageData.externalId
@@ -172,9 +173,18 @@ export class GmailInboundContentIngestor {
     }
 
     // 2. Store message
-    const messageId = await this.storageService.storeMessage(messageData)
+    const { messageId, isNew } = await this.storageService.storeMessage(messageData)
 
-    // 3. Attachment ingest (after storeMessage, only for inbound with attachments)
+    // Skip attachment ingest for already-processed messages
+    if (!isNew) {
+      logger.debug('Message already exists, skipping attachment ingest', {
+        messageId,
+        externalId: messageData.externalId,
+      })
+      return messageId
+    }
+
+    // 3. Attachment ingest (after storeMessage, only for new inbound messages)
     const providerAttachments = messageData.providerAttachments ?? []
 
     logger.info('Attachment ingest check', {

@@ -163,7 +163,7 @@ describe('InboundEmailProcessor', () => {
 
     mocks.parse.mockResolvedValue(parsedEmailFixture)
     mocks.resolve.mockResolvedValue(resolvedIntegrationFixture)
-    mocks.storeMessage.mockResolvedValue('message_123')
+    mocks.storeMessage.mockResolvedValue({ messageId: 'message_123', isNew: true })
     mocks.ingestBody.mockResolvedValue({ htmlBodyStorageLocationId: 'sl_body_123' })
     mocks.ingestAll.mockResolvedValue([])
   })

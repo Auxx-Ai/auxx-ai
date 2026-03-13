@@ -182,10 +182,10 @@ export class InboundEmailProcessor {
     }
 
     const storageService = new MessageStorageService(organizationId)
-    const messageId = await storageService.storeMessage(messageData)
+    const { messageId, isNew } = await storageService.storeMessage(messageData)
 
-    // 3. Ingest MIME-backed attachments (after message exists for Attachment.entityId)
-    if (parsedEmail.attachments.length > 0) {
+    // 3. Ingest MIME-backed attachments (only for new messages)
+    if (isNew && parsedEmail.attachments.length > 0) {
       await this.attachmentIngestService.ingestAll(
         parsedEmail.attachments.map((att, index) => ({
           content: Buffer.from(att.content ?? '', 'base64'),
