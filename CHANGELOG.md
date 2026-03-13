@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.79](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.78...auxx-v0.1.79) (2026-03-13)
+
+
+### Features
+
+* enhance polling trigger execution with error handling and workflow run creation ([#247](https://github.com/Auxx-Ai/auxx-ai/issues/247)) ([6fd8b5f](https://github.com/Auxx-Ai/auxx-ai/commit/6fd8b5fab26f98a4604b591fbde2f0395f586c23))
+
 ## [0.1.78](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.77...auxx-v0.1.78) (2026-03-13)
 
 
