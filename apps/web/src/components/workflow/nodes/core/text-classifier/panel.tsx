@@ -51,6 +51,7 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
         isRequired>
         <ModelParameterModal
           isAdvancedMode={true}
+          defaultModelType='llm'
           mode={data.model.mode}
           modelId={data.model.name}
           provider={data.model.provider}

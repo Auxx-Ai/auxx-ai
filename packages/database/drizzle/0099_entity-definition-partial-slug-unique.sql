@@ -1,0 +1,2 @@
+DROP INDEX "EntityDefinition_apiSlug_organizationId_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "EntityDefinition_apiSlug_organizationId_key" ON "EntityDefinition" USING btree ("apiSlug","organizationId") WHERE "EntityDefinition"."archivedAt" IS NULL;

@@ -5,7 +5,6 @@ import { generateId } from '@auxx/utils/generateId'
 import type { FlowNode } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types'
 import { unifiedNodeRegistry } from '../../nodes/unified-registry'
-import { useWorkflowStore } from '../../store/workflow-store'
 import { LAYOUT_SPACING } from '../layout-constants'
 import { generateUniqueTitle } from '../unique-title-generator'
 import type { Point } from './collision-detector'
@@ -129,38 +128,16 @@ export class NodeFactory {
   }
 
   /**
-   * Apply node-specific defaults including model configuration
+   * Apply node-specific defaults.
+   * Model defaults are handled at the selector level (ModelParameterModal).
    */
   private static applyNodeDefaults(
-    nodeType: string,
+    _nodeType: string,
     defaultData: Record<string, any>,
     userData: Record<string, any>
   ): Record<string, any> {
     const data = cloneDeep(defaultData)
-
-    // Apply model defaults for AI nodes
-    if (NodeFactory.isModelNode(nodeType)) {
-      const modelData = useWorkflowStore.getState().modelData
-      if (modelData?.defaultModel && !userData.model?.provider) {
-        data.model = {
-          provider: modelData.defaultModel.provider,
-          name: modelData.defaultModel.model,
-          mode: modelData.defaultModel.mode,
-          completion_params: modelData.defaultModel.completionParams,
-        }
-      }
-    }
-
-    // Merge with user data
     return { ...data, ...userData }
-  }
-
-  /**
-   * Check if a node type requires model configuration
-   */
-  private static isModelNode(nodeType: string): boolean {
-    const modelNodeTypes = ['ai', 'text-classifier', 'information-extractor']
-    return modelNodeTypes.includes(nodeType)
   }
 
   /**

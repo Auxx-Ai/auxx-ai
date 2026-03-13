@@ -694,6 +694,13 @@
       "when": 1773379312101,
       "tag": "0098_add_usage_event_table",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1773431195224,
+      "tag": "0099_entity-definition-partial-slug-unique",
+      "breakpoints": true
     }
   ]
 }

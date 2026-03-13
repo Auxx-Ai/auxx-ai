@@ -2,6 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { getModelType, toRecordId } from '@auxx/lib/resources/client'
 import type { SelectOption as RawSelectOption, RelationshipConfig } from '@auxx/types/custom-field'
@@ -298,6 +299,17 @@ export function KanbanView<TData extends KanbanRow>({
     const unorderedColumns = normalizedOptions.filter((o) => !orderedIds.has(o.id))
     return [...orderedColumns, ...unorderedColumns]
   }, [groupByField.options, config.columnOrder])
+
+  // Collect used colors and labels from existing columns
+  // Include 'gray' since the No Status column implicitly uses it
+  const usedColors = useMemo(
+    () => [
+      'gray' as SelectOptionColor,
+      ...(allColumns.map((c) => c.color).filter(Boolean) as SelectOptionColor[]),
+    ],
+    [allColumns]
+  )
+  const existingLabels = useMemo(() => allColumns.map((c) => c.label), [allColumns])
 
   // Filter columns by visibility settings
   const columns = useMemo(() => {
@@ -609,7 +621,11 @@ export function KanbanView<TData extends KanbanRow>({
 
             {/* Add Stage button with create dropdown */}
             <div className='shrink-0'>
-              <KanbanColumnSettings mode='create' onCreate={handleColumnCreate}>
+              <KanbanColumnSettings
+                mode='create'
+                onCreate={handleColumnCreate}
+                usedColors={usedColors}
+                existingLabels={existingLabels}>
                 <Button
                   variant='ghost'
                   size='icon'

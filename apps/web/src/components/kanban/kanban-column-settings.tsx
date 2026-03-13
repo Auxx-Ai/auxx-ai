@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Switch } from '@auxx/ui/components/switch'
+import { TooltipError } from '@auxx/ui/components/tooltip'
 import { EyeOff, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -27,6 +28,7 @@ import {
   useFieldSelectOptionMutations,
 } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { OptionColorPicker } from '~/components/custom-fields/ui/option-color-picker'
+import { getNextOptionColor } from '~/components/custom-fields/utils/get-next-option-color'
 import { useFieldSelectOption } from '~/components/resources/hooks'
 
 /** Time unit options for target time in status */
@@ -48,6 +50,10 @@ interface KanbanColumnSettingsProps {
   onDelete?: () => void
   /** Called when create mode submits (Enter or blur with valid label) */
   onCreate?: (option: { label: string; color: string }) => void
+  /** Colors already in use by existing columns (for auto-assigning next color) */
+  usedColors?: SelectOptionColor[]
+  /** Labels already in use by existing columns (to prevent duplicates) */
+  existingLabels?: string[]
 
   /** Children = trigger element */
   children: React.ReactNode
@@ -66,6 +72,8 @@ export function KanbanColumnSettings({
   onVisibilityChange,
   onDelete,
   onCreate,
+  usedColors,
+  existingLabels,
   children,
 }: KanbanColumnSettingsProps) {
   const [open, setOpen] = useState(false)
@@ -103,10 +111,10 @@ export function KanbanColumnSettings({
   useEffect(() => {
     if (open && mode === 'create') {
       setNewLabel('')
-      setNewColor(DEFAULT_SELECT_OPTION_COLOR)
+      setNewColor(usedColors ? getNextOptionColor(usedColors) : DEFAULT_SELECT_OPTION_COLOR)
       setTimeout(() => inputRef.current?.focus(), 0)
     }
-  }, [open, mode])
+  }, [open, mode, usedColors])
 
   /** Helper for updating targetTimeInStatus in localChanges */
   const updateTargetTime = (updates: { value?: number; unit?: TimeUnit; enabled?: boolean }) => {
@@ -171,7 +179,7 @@ export function KanbanColumnSettings({
 
   /** Handle create submission */
   const handleCreate = () => {
-    if (mode === 'create' && newLabel.trim() && onCreate) {
+    if (mode === 'create' && newLabel.trim() && onCreate && !isDuplicateLabel) {
       onCreate({ label: newLabel.trim(), color: newColor })
       setOpen(false)
     }
@@ -190,6 +198,12 @@ export function KanbanColumnSettings({
   }
 
   const isCreateMode = mode === 'create'
+
+  // Check if the label already exists (case-insensitive)
+  const isDuplicateLabel =
+    isCreateMode &&
+    newLabel.trim().length > 0 &&
+    existingLabels?.some((l) => l.toLowerCase() === newLabel.trim().toLowerCase())
 
   return (
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>
@@ -220,6 +234,7 @@ export function KanbanColumnSettings({
             <InputGroupInput
               ref={inputRef}
               className='ps-1!'
+              aria-invalid={!!isDuplicateLabel}
               value={isCreateMode ? newLabel : display.label}
               onChange={(e) =>
                 isCreateMode
@@ -228,6 +243,11 @@ export function KanbanColumnSettings({
               }
               placeholder={isCreateMode ? 'New stage name' : 'Stage name'}
             />
+            {isDuplicateLabel && (
+              <InputGroupAddon align='inline-end'>
+                <TooltipError text='A stage with this name already exists' />
+              </InputGroupAddon>
+            )}
           </InputGroup>
         </div>
 

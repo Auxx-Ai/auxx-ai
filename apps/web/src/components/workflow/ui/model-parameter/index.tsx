@@ -43,6 +43,7 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
   renderTrigger,
   readonly,
   isInWorkflow,
+  defaultModelType,
 }) => {
   const [open, setOpen] = useState(false)
   const [localCompletionParams, setLocalCompletionParams] = useState(completionParams)
@@ -55,6 +56,21 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
   const modelData = useWorkflowStore((state) => state.modelData)
   const unifiedData = modelData
   const isLoading = !modelData // Loading if no model data yet
+
+  // Auto-apply system default when no model is selected
+  useEffect(() => {
+    if (modelId || provider) return
+    if (!defaultModelType || !modelData?.defaultModels) return
+
+    const defaultModel = modelData.defaultModels[defaultModelType]
+    if (!defaultModel) return
+
+    setModel({
+      modelId: defaultModel.model,
+      provider: defaultModel.provider,
+      mode: 'chat',
+    })
+  }, [modelId, provider, defaultModelType, modelData?.defaultModels, setModel])
 
   // Get current provider and model from combined ID
   const { provider: localProvider, modelId: localModelId } = useMemo(() => {

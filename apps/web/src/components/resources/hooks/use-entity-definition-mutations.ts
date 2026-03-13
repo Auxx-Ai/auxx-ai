@@ -18,6 +18,7 @@ export function useEntityDefinitionMutations() {
     utils.entityDefinition.getAll.invalidate()
     utils.entityDefinition.getBySlug.invalidate()
     utils.entityDefinition.getById.invalidate()
+    utils.resource.list.invalidate()
   }
 
   const createEntity = api.entityDefinition.create.useMutation({

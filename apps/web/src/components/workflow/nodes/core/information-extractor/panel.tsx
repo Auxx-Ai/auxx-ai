@@ -100,6 +100,7 @@ const InformationExtractorPanelContentComponent: React.FC<
         isRequired>
         <ModelParameterModal
           isAdvancedMode={true}
+          defaultModelType='llm'
           mode={config.model.mode}
           modelId={config.model.name}
           provider={config.model.provider}
