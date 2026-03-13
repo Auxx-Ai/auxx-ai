@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.78](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.77...auxx-v0.1.78) (2026-03-13)
+
+
+### Features
+
+* implement Gmail attachment fetching and inbound content ingestion ([#243](https://github.com/Auxx-Ai/auxx-ai/issues/243)) ([b938238](https://github.com/Auxx-Ai/auxx-ai/commit/b938238a9625ec6b2b1e575a7e911f5ce699b14a))
+* implement storage cleanup job for async S3 object deletion and Redis cache clearing ([#246](https://github.com/Auxx-Ai/auxx-ai/issues/246)) ([768da67](https://github.com/Auxx-Ai/auxx-ai/commit/768da6742d0a7c0bc2fc81e4b426ab29362f7eea))
+* renaming integration to channel and improve store/hooks,etc ([#245](https://github.com/Auxx-Ai/auxx-ai/issues/245)) ([ec1091d](https://github.com/Auxx-Ai/auxx-ai/commit/ec1091db8aa466d86c30ef025926496550dbd2dd))
+
 ## [0.1.77](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.76...auxx-v0.1.77) (2026-03-12)
 
 
