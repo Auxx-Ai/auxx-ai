@@ -237,6 +237,27 @@ check_port "API"        3007 "API_PORT"
 check_port "Worker"     3005 "WORKER_PORT"
 check_port "Lambda"     3008 "LAMBDA_PORT"
 
+# ─── Clean up stale volumes ──────────────────────────────
+# Docker volumes persist independently of the project directory.
+# If volumes from a previous install exist, the database password
+# won't match the freshly generated one (Postgres only sets the
+# password on first init), causing migration to fail.
+
+existing_volumes=$(docker volume ls -q --filter "name=${dir_name}_" 2>/dev/null)
+if [ -n "$existing_volumes" ]; then
+  echo ""
+  echo "⚠️  Found existing Docker volumes from a previous install:"
+  echo "$existing_volumes" | sed 's/^/   • /'
+  read -p "Remove them? (recommended for a clean install) (Y/n) " answer
+  if [ "$answer" != "n" ]; then
+    docker volume rm $existing_volumes
+    echo "✅ Old volumes removed"
+  else
+    echo "⚠️  Keeping old volumes. If the database password changed, migration will fail."
+  fi
+  echo ""
+fi
+
 # ─── Start services ──────────────────────────────────────
 
 read -p "🚀 Do you want to start the project now? (Y/n) " answer
@@ -250,9 +271,9 @@ else
 
   echo "Waiting for server to be healthy (this may take a few minutes while the database initializes)..."
 
-  # Tail logs in background
-  docker compose logs -f web &
-  pid=$!
+  # Tail logs in background so user sees progress
+  docker compose logs -f web 2>/dev/null &
+  log_pid=$!
 
   # Poll web container health
   while true; do
@@ -260,7 +281,8 @@ else
     if [ "$status" = "healthy" ]; then
       break
     elif [ "$status" = "unhealthy" ]; then
-      kill $pid 2>/dev/null || true
+      kill $log_pid 2>/dev/null || true
+      wait $log_pid 2>/dev/null || true
       echo ""
       echo "❌ Web service is unhealthy. Check logs: docker compose logs web"
       exit 1
@@ -268,18 +290,19 @@ else
     sleep 3
   done
 
-  kill $pid 2>/dev/null || true
-  wait $pid 2>/dev/null || true
+  # Stop log tailing and wait for it to finish before printing prompts
+  kill $log_pid 2>/dev/null || true
+  wait $log_pid 2>/dev/null || true
+  sleep 1
   echo ""
-  echo "✅ Server is up and running"
+  echo "✅ Server is up and running at http://localhost:$web_port"
 fi
 
 # ─── Open browser ────────────────────────────────────────
 
 function ask_open_browser {
-  read -p "🌐 Do you want to open the project in your browser? (Y/n) " answer
+  read -p "🌐 Open in your browser? (Y/n) " answer
   if [ "$answer" = "n" ]; then
-    echo "✅ Setup completed. Access your project at http://localhost:$web_port"
     exit 0
   fi
 }
@@ -292,6 +315,6 @@ else
     ask_open_browser
     xdg-open "http://localhost:$web_port"
   else
-    echo "✅ Setup completed. Your project is available at http://localhost:$web_port"
+    echo "Access your project at http://localhost:$web_port"
   fi
 fi

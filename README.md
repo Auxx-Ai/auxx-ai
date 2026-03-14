@@ -1,15 +1,15 @@
-<p align="center" style="margin-top: 20px">
-  <p align="center">
+<p align="center">
+  <img src="static/images/github-banner.svg" alt="auxx.ai - The Open Source AI-Powered CRM" width="100%"/>
+</p>
+
+<p align="center">
   The Open Source Front / Attio meets N8N Alternative.
   <br>
-    <a href="https://auxx.ai"><strong>Learn more »</strong></a>
-    <br />
-    <br />
-    ·
-    <a href="https://auxx.ai">Website</a>
-    ·
-    <a href="https://github.com/auxxai/auxx-ai/issues">Issues</a>
-  </p>
+  <a href="https://auxx.ai"><strong>Learn more »</strong></a>
+  <br /><br />
+  <a href="https://auxx.ai">Website</a>
+  ·
+  <a href="https://github.com/Auxx-Ai/auxx-ai/issues">Issues</a>
 </p>
 
 An open-source AI-powered email support ticket service for Shopify businesses. Integrates with Gmail and Outlook to provide automated customer support with workflow automation.
@@ -60,7 +60,7 @@ An open-source AI-powered email support ticket service for Shopify businesses. I
 - **Caching**: Redis
 - **Build**: Turborepo
 - **Real-time**: Pusher
-- **Deployment**: SST (AWS) / Docker
+- **Deployment**: SST (AWS) / Docker / Railway
 - **Package Manager**: pnpm
 
 ## Prerequisites
@@ -72,66 +72,30 @@ An open-source AI-powered email support ticket service for Shopify businesses. I
 
 ## Quick Start
 
-### Using Docker (Recommended)
+### 1-Click Docker Setup (Recommended)
+
+Run a single command to install and start Auxx.ai:
 
 ```bash
-# Clone the repository
-git clone https://github.com/auxxai/auxx-ai.git
-cd auxx-ai
-
-# Copy environment files
-cp .env.example .env
-
-# Start the application using Docker Compose
-pnpm docker:dev
+bash <(curl -sL https://raw.githubusercontent.com/Auxx-Ai/auxx-ai/main/docker/scripts/install.sh)
 ```
 
-Once the application is running, visit `http://localhost:3000` and follow the setup wizard.
+The install script automatically:
 
-### Manual Setup
+- Checks dependencies (Docker, Docker Compose v2, curl, openssl)
+- Downloads `docker-compose.yml` and `.env.example`
+- Generates all secrets (database password, Redis password, auth secret, Ed25519 keypair, etc.)
+- Detects port conflicts and prompts for alternatives
+- Starts all containers and waits for health checks
+- Opens the app in your browser
 
-1. **Install dependencies**:
+Pin a specific version:
 
-   ```bash
-   pnpm install
-   ```
+```bash
+VERSION=0.1.64 bash <(curl -sL https://raw.githubusercontent.com/Auxx-Ai/auxx-ai/main/docker/scripts/install.sh)
+```
 
-2. **Setup environment variables**:
-
-   ```bash
-   # Copy environment files
-   cp .env.example .env
-   cp apps/web/.env.example apps/web/.env
-   cp apps/api/.env.example apps/api/.env
-   cp apps/worker/.env.example apps/worker/.env
-   ```
-
-3. **Start PostgreSQL and Redis**:
-
-   ```bash
-   ./start-database.sh
-   ./start-redis.sh
-   ```
-
-4. **Run database migrations**:
-
-   ```bash
-   pnpm db:migrate
-   ```
-
-5. **Seed the database** (optional):
-
-   ```bash
-   pnpm seed
-   ```
-
-6. **Start the development server**:
-
-   ```bash
-   pnpm dev
-   ```
-
-7. Visit `http://localhost:3000` and follow the setup wizard.
+Once running, visit `http://localhost:3000` and follow the setup wizard.
 
 ## First-time Setup
 
@@ -142,22 +106,6 @@ When you first run the application, you'll be guided through a setup wizard to:
 3. Set up initial settings
 
 ## Environment Variables
-
-Environment files are distributed across apps for modularity:
-
-```
-Root:
-├── .env.example              # Shared variables
-
-Apps:
-├── apps/web/.env.example     # Web app (auth, integrations, AI models)
-├── apps/api/.env.example     # API server (CORS, SDK)
-├── apps/worker/.env.example  # Background worker (queues, integrations)
-├── apps/kb/.env.example      # Knowledge base
-├── apps/lambda/.env.example  # Lambda functions (S3)
-```
-
-### Key Configuration Categories
 
 | Category       | Variables                                                               |
 | -------------- | ----------------------------------------------------------------------- |
@@ -252,56 +200,6 @@ pnpm seed
 pnpm seed:dev         # Development seed
 pnpm seed:test        # Test data seed
 ```
-
-### Adding New Features
-
-1. Define models in `packages/database/src/schema/`
-2. Generate and run migrations: `pnpm db:generate && pnpm db:migrate`
-3. Create tRPC routers in `apps/web/src/server/api/routers/`
-4. Add UI components in `packages/ui/` or app-specific components
-5. Add pages in `apps/web/src/app/`
-
-## Deployment
-
-### SST (AWS) Deployment
-
-```bash
-# AWS SSO login
-pnpm sso
-
-# Deploy to development
-pnpm sst:dev
-
-# Deploy to production
-STAGE=production pnpm sst:deploy
-
-# Remove deployment
-pnpm sst:remove
-```
-
-### Docker Deployment
-
-```bash
-# Development
-pnpm docker:dev
-pnpm docker:stop
-pnpm docker:logs
-
-# Production
-pnpm docker:prod
-pnpm docker:build:prod
-pnpm docker:stop:prod
-pnpm docker:logs:prod
-```
-
-For production Docker deployment, update environment variables in `docker-compose.prod.yml`.
-
-## Monorepo Notes
-
-- Built with **Turborepo** for build orchestration
-- Package naming convention: `@auxx/<package-name>`
-- Workspace packages defined in `pnpm-workspace.yaml`
-- Shared dependencies managed via `catalog:` in pnpm
 
 ## Contributing
 
