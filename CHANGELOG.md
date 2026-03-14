@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.83](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.82...auxx-v0.1.83) (2026-03-14)
+
+
+### Features
+
+* add entity templates ([64ec4c7](https://github.com/Auxx-Ai/auxx-ai/commit/64ec4c77f4891db62e0e152e95a10f9d8e767244))
+* add EntityPreviewCard component for inline editing of entity fields ([#259](https://github.com/Auxx-Ai/auxx-ai/issues/259)) ([40962c2](https://github.com/Auxx-Ai/auxx-ai/commit/40962c2e671f523e7b7e182bf1541c7a4ba16036))
+* add new entity templates for meetings, projects, quality inspections, quotes, referrals ([#260](https://github.com/Auxx-Ai/auxx-ai/issues/260)) ([7ee6e30](https://github.com/Auxx-Ai/auxx-ai/commit/7ee6e302122cae538eea2a4d041305fd77a1d3a3))
+
 ## [0.1.82](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.81...auxx-v0.1.82) (2026-03-13)
 
 
