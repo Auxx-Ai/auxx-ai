@@ -1,0 +1,124 @@
+{
+  "id": "return-request",
+  "name": "Return Request",
+  "description": "Manage product returns — a common pain point for e-commerce businesses",
+  "categories": ["support", "e-commerce"],
+  "entity": {
+    "apiSlug": "return-requests",
+    "singular": "Return Request",
+    "plural": "Return Requests",
+    "icon": "undo-2",
+    "color": "red"
+  },
+  "primaryDisplayField": "returnId",
+  "companions": ["order", "product"],
+  "fields": [
+    {
+      "templateFieldId": "returnId",
+      "name": "Return ID",
+      "type": "TEXT",
+      "required": true,
+      "isUnique": true
+    },
+    {
+      "templateFieldId": "customer",
+      "name": "Customer",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Returns"
+      }
+    },
+    {
+      "templateFieldId": "originalOrder",
+      "name": "Original Order",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:order",
+        "relationshipType": "belongs_to",
+        "inverseName": "Returns"
+      }
+    },
+    {
+      "templateFieldId": "returnReason",
+      "name": "Return Reason",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Defective", "value": "defective", "color": "red" },
+        { "label": "Wrong Item", "value": "wrong-item", "color": "orange" },
+        { "label": "Changed Mind", "value": "changed-mind", "color": "blue" },
+        { "label": "Damaged in Shipping", "value": "damaged-shipping", "color": "amber" },
+        { "label": "Not as Described", "value": "not-as-described", "color": "purple" },
+        { "label": "Other", "value": "other", "color": "gray" }
+      ]
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Requested", "value": "requested", "color": "gray" },
+        { "label": "Approved", "value": "approved", "color": "blue" },
+        { "label": "Shipped Back", "value": "shipped-back", "color": "orange" },
+        { "label": "Received", "value": "received", "color": "teal" },
+        { "label": "Refunded", "value": "refunded", "color": "green" },
+        { "label": "Denied", "value": "denied", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "refundAmount",
+      "name": "Refund Amount",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "dateRequested",
+      "name": "Date Requested",
+      "type": "DATE"
+    },
+    {
+      "templateFieldId": "dateResolved",
+      "name": "Date Resolved",
+      "type": "DATE"
+    },
+    {
+      "templateFieldId": "photos",
+      "name": "Photos",
+      "type": "FILE",
+      "options": {
+        "file": { "multiple": true, "maxFiles": 5 }
+      }
+    },
+    {
+      "templateFieldId": "restockingFee",
+      "name": "Restocking Fee",
+      "type": "CHECKBOX"
+    },
+    {
+      "templateFieldId": "resolutionNotes",
+      "name": "Resolution Notes",
+      "type": "RICH_TEXT"
+    },
+    {
+      "templateFieldId": "handledBy",
+      "name": "Handled By",
+      "type": "ACTOR",
+      "options": {
+        "actor": { "target": "user", "multiple": false }
+      }
+    },
+    {
+      "templateFieldId": "relatedTicket",
+      "name": "Related Ticket",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:ticket",
+        "relationshipType": "belongs_to",
+        "inverseName": "Return Requests"
+      }
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "id": "subscription",
+  "name": "Subscription",
+  "description": "Track recurring subscriptions and renewals for subscription-based businesses",
+  "categories": ["e-commerce"],
+  "entity": {
+    "apiSlug": "subscriptions",
+    "singular": "Subscription",
+    "plural": "Subscriptions",
+    "icon": "repeat",
+    "color": "teal"
+  },
+  "primaryDisplayField": "subscriptionName",
+  "companions": ["product", "company"],
+  "fields": [
+    {
+      "templateFieldId": "subscriptionName",
+      "name": "Subscription Name",
+      "type": "TEXT",
+      "required": true
+    },
+    {
+      "templateFieldId": "customer",
+      "name": "Customer",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Subscriptions"
+      }
+    },
+    {
+      "templateFieldId": "company",
+      "name": "Company",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:company",
+        "relationshipType": "belongs_to",
+        "inverseName": "Subscriptions"
+      }
+    },
+    {
+      "templateFieldId": "plan",
+      "name": "Plan",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Starter", "value": "starter", "color": "gray" },
+        { "label": "Growth", "value": "growth", "color": "blue" },
+        { "label": "Pro", "value": "pro", "color": "purple" },
+        { "label": "Enterprise", "value": "enterprise", "color": "orange" }
+      ]
+    },
+    {
+      "templateFieldId": "monthlyAmount",
+      "name": "Monthly Amount",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "startDate",
+      "name": "Start Date",
+      "type": "DATE"
+    },
+    {
+      "templateFieldId": "renewalDate",
+      "name": "Renewal Date",
+      "type": "DATE"
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Active", "value": "active", "color": "green" },
+        { "label": "Paused", "value": "paused", "color": "orange" },
+        { "label": "Cancelled", "value": "cancelled", "color": "red" },
+        { "label": "Trial", "value": "trial", "color": "blue" }
+      ]
+    },
+    {
+      "templateFieldId": "autoRenew",
+      "name": "Auto-Renew",
+      "type": "CHECKBOX"
+    },
+    {
+      "templateFieldId": "paymentMethod",
+      "name": "Payment Method",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Credit Card", "value": "credit-card", "color": "blue" },
+        { "label": "PayPal", "value": "paypal", "color": "purple" },
+        { "label": "Bank Transfer", "value": "bank-transfer", "color": "green" },
+        { "label": "Shopify Payments", "value": "shopify-payments", "color": "teal" }
+      ]
+    },
+    {
+      "templateFieldId": "accountManager",
+      "name": "Account Manager",
+      "type": "ACTOR",
+      "options": {
+        "actor": { "target": "user", "multiple": false }
+      }
+    },
+    {
+      "templateFieldId": "products",
+      "name": "Products",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:product",
+        "relationshipType": "many_to_many",
+        "inverseName": "Subscriptions"
+      }
+    },
+    {
+      "templateFieldId": "notes",
+      "name": "Notes",
+      "type": "RICH_TEXT"
+    }
+  ]
+}

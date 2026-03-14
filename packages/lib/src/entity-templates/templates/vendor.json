@@ -1,0 +1,115 @@
+{
+  "id": "vendor",
+  "name": "Vendor",
+  "description": "Manage your supply chain by tracking vendors and linking them to products",
+  "categories": ["operations"],
+  "entity": {
+    "apiSlug": "vendors",
+    "singular": "Vendor",
+    "plural": "Vendors",
+    "icon": "truck",
+    "color": "orange"
+  },
+  "primaryDisplayField": "vendorName",
+  "secondaryDisplayField": "email",
+  "companions": ["product"],
+  "fields": [
+    {
+      "templateFieldId": "vendorName",
+      "name": "Vendor Name",
+      "type": "TEXT",
+      "required": true
+    },
+    {
+      "templateFieldId": "contactPerson",
+      "name": "Contact Person",
+      "type": "NAME"
+    },
+    {
+      "templateFieldId": "email",
+      "name": "Email",
+      "type": "EMAIL"
+    },
+    {
+      "templateFieldId": "phone",
+      "name": "Phone",
+      "type": "PHONE_INTL"
+    },
+    {
+      "templateFieldId": "website",
+      "name": "Website",
+      "type": "URL"
+    },
+    {
+      "templateFieldId": "address",
+      "name": "Address",
+      "type": "ADDRESS_STRUCT",
+      "addressComponents": ["street", "city", "state", "zip", "country"]
+    },
+    {
+      "templateFieldId": "paymentTerms",
+      "name": "Payment Terms",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Net 15", "value": "net-15", "color": "blue" },
+        { "label": "Net 30", "value": "net-30", "color": "green" },
+        { "label": "Net 60", "value": "net-60", "color": "orange" },
+        { "label": "COD", "value": "cod", "color": "gray" },
+        { "label": "Prepaid", "value": "prepaid", "color": "purple" }
+      ]
+    },
+    {
+      "templateFieldId": "minimumOrder",
+      "name": "Minimum Order",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "leadTimeDays",
+      "name": "Lead Time (days)",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "rating",
+      "name": "Rating",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "★★★★★", "value": "5", "color": "green" },
+        { "label": "★★★★", "value": "4", "color": "blue" },
+        { "label": "★★★", "value": "3", "color": "orange" },
+        { "label": "★★", "value": "2", "color": "amber" },
+        { "label": "★", "value": "1", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "active",
+      "name": "Active",
+      "type": "CHECKBOX"
+    },
+    {
+      "templateFieldId": "productsSupplied",
+      "name": "Products Supplied",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:product",
+        "relationshipType": "has_many",
+        "inverseName": "Vendor"
+      }
+    },
+    {
+      "templateFieldId": "contract",
+      "name": "Contract",
+      "type": "FILE",
+      "options": {
+        "file": { "multiple": false }
+      }
+    },
+    {
+      "templateFieldId": "notes",
+      "name": "Notes",
+      "type": "RICH_TEXT"
+    }
+  ]
+}

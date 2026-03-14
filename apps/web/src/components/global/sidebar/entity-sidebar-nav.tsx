@@ -3,7 +3,11 @@
 
 import type { CustomResource } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
-import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import {
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon } from '@auxx/ui/components/icons'
 
 import {
@@ -30,10 +34,11 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { Archive, Pencil, Plus, Settings, Settings2 } from 'lucide-react'
+import { Archive, LayoutTemplate, Pencil, Plus, Settings, Settings2 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
+import { EntityTemplateDialog } from '~/components/custom-fields/ui/entity-template-dialog'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { useEntityDefinitionMutations, useResources } from '~/components/resources/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -54,6 +59,7 @@ export function EntitySidebarNav() {
   const pathname = usePathname()
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [editingEntityId, setEditingEntityId] = useState<EntityDefinitionId | null>(null)
   const [confirm, ConfirmDialog] = useConfirm()
   const { archiveEntity } = useEntityDefinitionMutations()
@@ -293,14 +299,24 @@ export function EntitySidebarNav() {
                 }}>
                 <Settings /> Manage Entities
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Create Entity</DropdownMenuLabel>
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation()
                   setEditingEntityId(null)
                   setDialogOpen(true)
                 }}>
-                <Plus /> Create Entity
+                <Plus /> From Blank
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setTemplateDialogOpen(true)
+                }}>
+                <LayoutTemplate /> From Template
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
             </>
           }
         />
@@ -353,6 +369,8 @@ export function EntitySidebarNav() {
       )}
 
       <ConfirmDialog />
+
+      <EntityTemplateDialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen} />
     </>
   )
 }

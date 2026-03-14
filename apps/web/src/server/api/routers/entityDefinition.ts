@@ -5,6 +5,7 @@ import {
   createEntityDefinitionSchema,
   updateEntityDefinitionSchema,
 } from '@auxx/lib/entity-definitions/types'
+import { getAllTemplates, getTemplateById, installTemplates } from '@auxx/lib/entity-templates'
 import { checkSlugExists } from '@auxx/services/entity-definitions'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
@@ -133,5 +134,36 @@ export const entityDefinitionRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       return await service.delete(input.id)
+    }),
+
+  /**
+   * List all available entity templates (lightweight, no field details)
+   */
+  getTemplates: protectedProcedure
+    .input(z.object({ category: z.string().optional() }).optional())
+    .query(({ input }) => getAllTemplates(input?.category)),
+
+  /**
+   * Get full template details (with fields) for preview
+   */
+  getTemplateById: protectedProcedure.input(z.object({ id: z.string() })).query(({ input }) => {
+    const template = getTemplateById(input.id)
+    if (!template) {
+      throw new Error('Template not found')
+    }
+    return template
+  }),
+
+  /**
+   * Install selected templates — creates entity definitions with fields
+   */
+  createFromTemplates: protectedProcedure
+    .input(
+      z.object({
+        templateIds: z.array(z.string()).min(1).max(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return await installTemplates(ctx.session.organizationId, input.templateIds)
     }),
 })

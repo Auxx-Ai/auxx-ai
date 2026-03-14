@@ -24,6 +24,23 @@ import type {
   SystemResource,
 } from './types'
 
+/** Keys of metadata fields that should appear after business fields */
+const TRAILING_FIELD_KEYS = new Set(['id', 'createdAt', 'updatedAt', 'created_by_id'])
+
+/** Reorder fields so metadata fields (id, createdAt, updatedAt, created_by_id) appear last */
+function sortFieldsWithMetadataLast(fields: ResourceField[]): ResourceField[] {
+  const leading: ResourceField[] = []
+  const trailing: ResourceField[] = []
+  for (const field of fields) {
+    if (TRAILING_FIELD_KEYS.has(field.key)) {
+      trailing.push(field)
+    } else {
+      leading.push(field)
+    }
+  }
+  return [...leading, ...trailing]
+}
+
 /**
  * Old system types that use modelType string directly as entityDefinitionId.
  * These don't have an EntityDefinition row - the modelType IS the entityDefinitionId.
@@ -289,10 +306,12 @@ export class ResourceRegistryService {
 
       return {
         ...systemResourceBase,
-        fields: this.mergeSystemAndCustomFields(
-          staticFields,
-          orgCustomFields,
-          systemResourceBase.entityDefinitionId
+        fields: sortFieldsWithMetadataLast(
+          this.mergeSystemAndCustomFields(
+            staticFields,
+            orgCustomFields,
+            systemResourceBase.entityDefinitionId
+          )
         ),
       }
     })
@@ -310,10 +329,10 @@ export class ResourceRegistryService {
 
       return {
         ...toCustomResourceBase(def),
-        fields: [
+        fields: sortFieldsWithMetadataLast([
           ...hydratedInstanceFields,
           ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? [], def.id),
-        ],
+        ]),
       }
     })
 

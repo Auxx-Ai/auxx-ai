@@ -45,6 +45,15 @@ export const constants = {
     { value: 'sales', label: 'Sales & Marketing', icon: 'TrendingUp' },
   ] as const,
 
+  /** Entity definition template categories */
+  entityTemplateCategories: [
+    { value: 'all', label: 'All Templates', icon: 'LayoutGrid' },
+    { value: 'e-commerce', label: 'E-Commerce', icon: 'ShoppingBag' },
+    { value: 'crm', label: 'CRM & Sales', icon: 'Users' },
+    { value: 'operations', label: 'Operations', icon: 'Settings' },
+    { value: 'support', label: 'Support', icon: 'Headphones' },
+  ] as const,
+
   PRIVACY_URL: `${HOMEPAGE_URL}/privacy-policy`,
   IMPRINT_URL: `${HOMEPAGE_URL}/imprint`,
   TOS_URL: `${HOMEPAGE_URL}/terms-of-service`,

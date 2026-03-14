@@ -1,0 +1,107 @@
+{
+  "id": "product",
+  "name": "Product",
+  "description": "Build a product catalog with custom attributes beyond Shopify product data",
+  "categories": ["e-commerce"],
+  "entity": {
+    "apiSlug": "products",
+    "singular": "Product",
+    "plural": "Products",
+    "icon": "package",
+    "color": "purple"
+  },
+  "primaryDisplayField": "productName",
+  "secondaryDisplayField": "sku",
+  "companions": ["vendor", "campaign"],
+  "fields": [
+    {
+      "templateFieldId": "productName",
+      "name": "Product Name",
+      "type": "TEXT",
+      "required": true
+    },
+    {
+      "templateFieldId": "sku",
+      "name": "SKU",
+      "type": "TEXT",
+      "isUnique": true
+    },
+    {
+      "templateFieldId": "price",
+      "name": "Price",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "cost",
+      "name": "Cost",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "category",
+      "name": "Category",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Apparel", "value": "apparel", "color": "blue" },
+        { "label": "Electronics", "value": "electronics", "color": "purple" },
+        { "label": "Home & Garden", "value": "home-garden", "color": "green" },
+        { "label": "Beauty", "value": "beauty", "color": "pink" },
+        { "label": "Food & Beverage", "value": "food-beverage", "color": "orange" },
+        { "label": "Accessories", "value": "accessories", "color": "amber" }
+      ]
+    },
+    {
+      "templateFieldId": "inStock",
+      "name": "In Stock",
+      "type": "CHECKBOX"
+    },
+    {
+      "templateFieldId": "stockQuantity",
+      "name": "Stock Quantity",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "weight",
+      "name": "Weight (kg)",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "productUrl",
+      "name": "Product URL",
+      "type": "URL"
+    },
+    {
+      "templateFieldId": "productImages",
+      "name": "Product Images",
+      "type": "FILE",
+      "options": {
+        "file": { "multiple": true }
+      }
+    },
+    {
+      "templateFieldId": "supplier",
+      "name": "Supplier",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:company",
+        "relationshipType": "belongs_to",
+        "inverseName": "Products Supplied"
+      }
+    },
+    {
+      "templateFieldId": "tags",
+      "name": "Tags",
+      "type": "TAGS"
+    },
+    {
+      "templateFieldId": "description",
+      "name": "Description",
+      "type": "RICH_TEXT"
+    }
+  ]
+}

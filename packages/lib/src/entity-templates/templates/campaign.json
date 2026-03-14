@@ -1,0 +1,129 @@
+{
+  "id": "campaign",
+  "name": "Campaign",
+  "description": "Track marketing campaigns and promotions tied to your products",
+  "categories": ["crm"],
+  "entity": {
+    "apiSlug": "campaigns",
+    "singular": "Campaign",
+    "plural": "Campaigns",
+    "icon": "megaphone",
+    "color": "pink"
+  },
+  "primaryDisplayField": "campaignName",
+  "companions": ["product"],
+  "fields": [
+    {
+      "templateFieldId": "campaignName",
+      "name": "Campaign Name",
+      "type": "TEXT",
+      "required": true
+    },
+    {
+      "templateFieldId": "type",
+      "name": "Type",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Email Blast", "value": "email-blast", "color": "blue" },
+        { "label": "Social Media", "value": "social-media", "color": "purple" },
+        { "label": "Discount Code", "value": "discount-code", "color": "green" },
+        { "label": "Flash Sale", "value": "flash-sale", "color": "red" },
+        { "label": "Bundle Deal", "value": "bundle-deal", "color": "orange" }
+      ]
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Draft", "value": "draft", "color": "gray" },
+        { "label": "Active", "value": "active", "color": "green" },
+        { "label": "Paused", "value": "paused", "color": "orange" },
+        { "label": "Completed", "value": "completed", "color": "blue" },
+        { "label": "Cancelled", "value": "cancelled", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "startDate",
+      "name": "Start Date",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "endDate",
+      "name": "End Date",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "budget",
+      "name": "Budget",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "discountPercentage",
+      "name": "Discount Percentage",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "promoCode",
+      "name": "Promo Code",
+      "type": "TEXT",
+      "isUnique": true
+    },
+    {
+      "templateFieldId": "targetAudience",
+      "name": "Target Audience",
+      "type": "MULTI_SELECT",
+      "options": [
+        { "label": "New Customers", "value": "new-customers", "color": "blue" },
+        { "label": "Returning Customers", "value": "returning-customers", "color": "green" },
+        { "label": "VIP", "value": "vip", "color": "purple" },
+        { "label": "Abandoned Cart", "value": "abandoned-cart", "color": "orange" },
+        { "label": "Newsletter Subscribers", "value": "newsletter-subscribers", "color": "teal" }
+      ]
+    },
+    {
+      "templateFieldId": "productsIncluded",
+      "name": "Products Included",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:product",
+        "relationshipType": "many_to_many",
+        "inverseName": "Campaigns"
+      }
+    },
+    {
+      "templateFieldId": "managedBy",
+      "name": "Managed By",
+      "type": "ACTOR",
+      "options": {
+        "actor": { "target": "user", "multiple": false }
+      }
+    },
+    {
+      "templateFieldId": "landingPage",
+      "name": "Landing Page",
+      "type": "URL"
+    },
+    {
+      "templateFieldId": "creativeAssets",
+      "name": "Creative Assets",
+      "type": "FILE",
+      "options": {
+        "file": { "multiple": true }
+      }
+    },
+    {
+      "templateFieldId": "campaignBrief",
+      "name": "Campaign Brief",
+      "type": "RICH_TEXT"
+    },
+    {
+      "templateFieldId": "tags",
+      "name": "Tags",
+      "type": "TAGS"
+    }
+  ]
+}

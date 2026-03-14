@@ -166,6 +166,12 @@
       "import": "./dist/entity-definitions/types.mjs",
       "default": "./src/entity-definitions/types.ts"
     },
+    "./entity-templates": {
+      "types": "./src/entity-templates/index.ts",
+      "source": "./src/entity-templates/index.ts",
+      "import": "./dist/entity-templates/index.mjs",
+      "default": "./src/entity-templates/index.ts"
+    },
     "./events": {
       "types": "./src/events/index.ts",
       "source": "./src/events/index.ts",
