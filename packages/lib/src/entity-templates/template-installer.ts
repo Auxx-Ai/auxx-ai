@@ -31,7 +31,8 @@ export interface InstallTemplatesResult {
  */
 export async function installTemplates(
   organizationId: string,
-  templateIds: string[]
+  templateIds: string[],
+  fieldModifications?: Record<string, Record<string, { customName?: string; removed?: boolean }>>
 ): Promise<InstallTemplatesResult> {
   const templates = getTemplatesByIds(templateIds)
   if (templates.length === 0) {
@@ -151,7 +152,11 @@ export async function installTemplates(
     const nonRelFields = template.fields.filter((f) => f.type !== 'RELATIONSHIP')
 
     for (const field of nonRelFields) {
-      const result = await createField(field, organizationId, entityDefinitionId)
+      const mod = fieldModifications?.[template.id]?.[field.templateFieldId]
+      if (mod?.removed) continue
+
+      const fieldToCreate = mod?.customName ? { ...field, name: mod.customName } : field
+      const result = await createField(fieldToCreate, organizationId, entityDefinitionId)
 
       if (result.ok) {
         fieldIdMap.set(`${template.id}:${field.templateFieldId}`, result.fieldId)
@@ -169,6 +174,9 @@ export async function installTemplates(
     const relFields = template.fields.filter((f) => f.type === 'RELATIONSHIP')
 
     for (const field of relFields) {
+      const mod = fieldModifications?.[template.id]?.[field.templateFieldId]
+      if (mod?.removed) continue
+
       if (!field.relationship?.relatedResourceId) {
         skippedRelationships.push(`${template.name}.${field.name}: missing relatedResourceId`)
         continue
@@ -214,9 +222,10 @@ export async function installTemplates(
         continue
       }
 
+      const fieldToCreate = mod?.customName ? { ...field, name: mod.customName } : field
       const result = await createField(
         {
-          ...field,
+          ...fieldToCreate,
           relationship: {
             ...field.relationship,
             relatedResourceId: resolvedResourceId,
@@ -238,10 +247,18 @@ export async function installTemplates(
   for (const template of templates) {
     const entityDefinitionId = entityIdMap.get(template.id)!
 
-    const primaryFieldId = fieldIdMap.get(`${template.id}:${template.primaryDisplayField}`)
-    const secondaryFieldId = template.secondaryDisplayField
-      ? fieldIdMap.get(`${template.id}:${template.secondaryDisplayField}`)
+    const primaryMod = fieldModifications?.[template.id]?.[template.primaryDisplayField]
+    const primaryFieldId = primaryMod?.removed
+      ? undefined
+      : fieldIdMap.get(`${template.id}:${template.primaryDisplayField}`)
+
+    const secondaryMod = template.secondaryDisplayField
+      ? fieldModifications?.[template.id]?.[template.secondaryDisplayField]
       : undefined
+    const secondaryFieldId =
+      template.secondaryDisplayField && !secondaryMod?.removed
+        ? fieldIdMap.get(`${template.id}:${template.secondaryDisplayField}`)
+        : undefined
 
     if (primaryFieldId || secondaryFieldId) {
       await database
