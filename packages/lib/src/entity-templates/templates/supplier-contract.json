@@ -1,0 +1,70 @@
+{
+  "id": "supplier-contract",
+  "name": "Supplier Contract",
+  "description": "Track contracts and agreements with vendors and suppliers",
+  "categories": ["operations"],
+  "entity": {
+    "apiSlug": "supplier-contracts",
+    "singular": "Supplier Contract",
+    "plural": "Supplier Contracts",
+    "icon": "file-text",
+    "color": "gray"
+  },
+  "primaryDisplayField": "contractName",
+  "companions": ["vendor"],
+  "fields": [
+    {
+      "templateFieldId": "contractName",
+      "name": "Contract Name",
+      "type": "TEXT",
+      "required": true
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Draft", "value": "draft", "color": "gray" },
+        { "label": "Active", "value": "active", "color": "green" },
+        { "label": "Expiring Soon", "value": "expiring-soon", "color": "orange" },
+        { "label": "Expired", "value": "expired", "color": "red" },
+        { "label": "Terminated", "value": "terminated", "color": "gray" }
+      ]
+    },
+    { "templateFieldId": "startDate", "name": "Start Date", "type": "DATETIME" },
+    { "templateFieldId": "endDate", "name": "End Date", "type": "DATETIME" },
+    {
+      "templateFieldId": "value",
+      "name": "Value",
+      "type": "CURRENCY",
+      "options": { "currency": { "currencyCode": "USD", "showSymbol": true } }
+    },
+    {
+      "templateFieldId": "paymentTerms",
+      "name": "Payment Terms",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Net 15", "value": "net-15", "color": "blue" },
+        { "label": "Net 30", "value": "net-30", "color": "green" },
+        { "label": "Net 60", "value": "net-60", "color": "orange" },
+        { "label": "Monthly", "value": "monthly", "color": "purple" },
+        { "label": "Quarterly", "value": "quarterly", "color": "teal" }
+      ]
+    },
+    { "templateFieldId": "autoRenew", "name": "Auto-Renew", "type": "CHECKBOX" },
+    { "templateFieldId": "renewalDate", "name": "Renewal Date", "type": "DATETIME" },
+    { "templateFieldId": "contactPerson", "name": "Contact Person", "type": "TEXT" },
+    {
+      "templateFieldId": "vendor",
+      "name": "Vendor",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:vendor",
+        "relationshipType": "belongs_to",
+        "inverseName": "Contracts"
+      }
+    },
+    { "templateFieldId": "document", "name": "Document", "type": "FILE" },
+    { "templateFieldId": "notes", "name": "Notes", "type": "RICH_TEXT" }
+  ]
+}

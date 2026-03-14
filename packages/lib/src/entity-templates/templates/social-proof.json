@@ -1,0 +1,78 @@
+{
+  "id": "social-proof",
+  "name": "Social Proof",
+  "description": "Manage customer testimonials for marketing use",
+  "categories": ["crm"],
+  "entity": {
+    "apiSlug": "social-proof",
+    "singular": "Social Proof",
+    "plural": "Social Proof",
+    "icon": "star",
+    "color": "amber"
+  },
+  "primaryDisplayField": "customerName",
+  "companions": ["product"],
+  "fields": [
+    {
+      "templateFieldId": "customerName",
+      "name": "Customer Name",
+      "type": "TEXT",
+      "required": true
+    },
+    { "templateFieldId": "quote", "name": "Quote", "type": "RICH_TEXT", "required": true },
+    { "templateFieldId": "rating", "name": "Rating", "type": "NUMBER" },
+    {
+      "templateFieldId": "source",
+      "name": "Source",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Email", "value": "email", "color": "blue" },
+        { "label": "Review Site", "value": "review-site", "color": "orange" },
+        { "label": "Social Media", "value": "social-media", "color": "purple" },
+        { "label": "Survey", "value": "survey", "color": "teal" },
+        { "label": "Interview", "value": "interview", "color": "green" }
+      ]
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Collected", "value": "collected", "color": "gray" },
+        { "label": "Approved", "value": "approved", "color": "blue" },
+        { "label": "Published", "value": "published", "color": "green" },
+        { "label": "Archived", "value": "archived", "color": "purple" }
+      ]
+    },
+    { "templateFieldId": "productName", "name": "Product Name", "type": "TEXT" },
+    { "templateFieldId": "dateReceived", "name": "Date Received", "type": "DATETIME" },
+    { "templateFieldId": "permissionGranted", "name": "Permission Granted", "type": "CHECKBOX" },
+    {
+      "templateFieldId": "contact",
+      "name": "Contact",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Testimonials"
+      }
+    },
+    {
+      "templateFieldId": "product",
+      "name": "Product",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:product",
+        "relationshipType": "belongs_to",
+        "inverseName": "Testimonials"
+      }
+    },
+    {
+      "templateFieldId": "media",
+      "name": "Media",
+      "type": "FILE",
+      "options": { "file": { "multiple": true } }
+    },
+    { "templateFieldId": "tags", "name": "Tags", "type": "TAGS" }
+  ]
+}

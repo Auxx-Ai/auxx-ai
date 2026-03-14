@@ -1,0 +1,74 @@
+{
+  "id": "quality-inspection",
+  "name": "Quality Inspection",
+  "description": "Track product quality checks and inspections",
+  "categories": ["operations"],
+  "entity": {
+    "apiSlug": "quality-inspections",
+    "singular": "Quality Inspection",
+    "plural": "Quality Inspections",
+    "icon": "clipboard-check",
+    "color": "green"
+  },
+  "primaryDisplayField": "inspectionId",
+  "companions": ["product", "vendor"],
+  "fields": [
+    {
+      "templateFieldId": "inspectionId",
+      "name": "Inspection ID",
+      "type": "TEXT",
+      "required": true,
+      "isUnique": true
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Scheduled", "value": "scheduled", "color": "gray" },
+        { "label": "In Progress", "value": "in-progress", "color": "blue" },
+        { "label": "Passed", "value": "passed", "color": "green" },
+        { "label": "Failed", "value": "failed", "color": "red" },
+        { "label": "Conditional", "value": "conditional", "color": "orange" }
+      ]
+    },
+    {
+      "templateFieldId": "inspector",
+      "name": "Inspector",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    { "templateFieldId": "inspectionDate", "name": "Inspection Date", "type": "DATETIME" },
+    { "templateFieldId": "batchLotNumber", "name": "Batch/Lot Number", "type": "TEXT" },
+    { "templateFieldId": "defectsFound", "name": "Defects Found", "type": "NUMBER" },
+    { "templateFieldId": "passRate", "name": "Pass Rate", "type": "NUMBER" },
+    {
+      "templateFieldId": "product",
+      "name": "Product",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:product",
+        "relationshipType": "belongs_to",
+        "inverseName": "Quality Inspections"
+      }
+    },
+    {
+      "templateFieldId": "vendor",
+      "name": "Vendor",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:vendor",
+        "relationshipType": "belongs_to",
+        "inverseName": "Quality Inspections"
+      }
+    },
+    {
+      "templateFieldId": "photos",
+      "name": "Photos",
+      "type": "FILE",
+      "options": { "file": { "multiple": true } }
+    },
+    { "templateFieldId": "report", "name": "Report", "type": "FILE" },
+    { "templateFieldId": "notes", "name": "Notes", "type": "RICH_TEXT" }
+  ]
+}

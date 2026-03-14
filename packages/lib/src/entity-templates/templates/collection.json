@@ -1,0 +1,72 @@
+{
+  "id": "collection",
+  "name": "Collection",
+  "description": "Group products into collections and categories",
+  "categories": ["e-commerce"],
+  "entity": {
+    "apiSlug": "collections",
+    "singular": "Collection",
+    "plural": "Collections",
+    "icon": "layers",
+    "color": "indigo"
+  },
+  "primaryDisplayField": "collectionName",
+  "companions": ["product", "campaign"],
+  "fields": [
+    {
+      "templateFieldId": "collectionName",
+      "name": "Collection Name",
+      "type": "TEXT",
+      "required": true
+    },
+    {
+      "templateFieldId": "description",
+      "name": "Description",
+      "type": "RICH_TEXT"
+    },
+    {
+      "templateFieldId": "image",
+      "name": "Image",
+      "type": "FILE"
+    },
+    {
+      "templateFieldId": "sortOrder",
+      "name": "Sort Order",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Active", "value": "active", "color": "green" },
+        { "label": "Draft", "value": "draft", "color": "gray" },
+        { "label": "Archived", "value": "archived", "color": "blue" }
+      ]
+    },
+    {
+      "templateFieldId": "type",
+      "name": "Type",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Manual", "value": "manual", "color": "blue" },
+        { "label": "Automated", "value": "automated", "color": "green" }
+      ]
+    },
+    {
+      "templateFieldId": "products",
+      "name": "Products",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:product",
+        "relationshipType": "many_to_many",
+        "inverseName": "Collections"
+      }
+    },
+    {
+      "templateFieldId": "tags",
+      "name": "Tags",
+      "type": "TAGS"
+    }
+  ]
+}

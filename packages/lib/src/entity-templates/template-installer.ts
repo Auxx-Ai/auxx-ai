@@ -16,6 +16,11 @@ export interface InstallTemplatesResult {
     name: string
     apiSlug: string
   }>
+  linked: Array<{
+    templateId: string
+    entityDefinitionId: string
+    name: string
+  }>
   skippedRelationships: string[]
 }
 
@@ -32,9 +37,18 @@ export interface InstallTemplatesResult {
 export async function installTemplates(
   organizationId: string,
   templateIds: string[],
-  fieldModifications?: Record<string, Record<string, { customName?: string; removed?: boolean }>>
+  fieldModifications?: Record<string, Record<string, { customName?: string; removed?: boolean }>>,
+  linkedEntities?: Record<
+    string,
+    {
+      entityDefinitionId: string
+      newRelationshipFieldTemplateIds?: string[]
+    }
+  >
 ): Promise<InstallTemplatesResult> {
-  const templates = getTemplatesByIds(templateIds)
+  // Merge templateIds with linked entity template IDs so all templates are resolved
+  const allTemplateIds = [...new Set([...templateIds, ...Object.keys(linkedEntities ?? {})])]
+  const templates = getTemplatesByIds(allTemplateIds)
   if (templates.length === 0) {
     throw new Error('No valid templates found for the provided IDs')
   }
@@ -85,8 +99,21 @@ export async function installTemplates(
   const entityIdMap = new Map<string, string>()
 
   const created: InstallTemplatesResult['created'] = []
+  const linked: InstallTemplatesResult['linked'] = []
 
   for (const template of templates) {
+    // If this template is linked to an existing entity, skip creation
+    const linkConfig = linkedEntities?.[template.id]
+    if (linkConfig) {
+      entityIdMap.set(template.id, linkConfig.entityDefinitionId)
+      linked.push({
+        templateId: template.id,
+        entityDefinitionId: linkConfig.entityDefinitionId,
+        name: template.name,
+      })
+      continue
+    }
+
     // Handle slug conflicts by appending a number
     let apiSlug = template.entity.apiSlug
     let slugAttempt = 0
@@ -148,6 +175,9 @@ export async function installTemplates(
   const fieldIdMap = new Map<string, string>()
 
   for (const template of templates) {
+    // Skip all non-relationship field creation for linked entities
+    if (linkedEntities?.[template.id]) continue
+
     const entityDefinitionId = entityIdMap.get(template.id)!
     const nonRelFields = template.fields.filter((f) => f.type !== 'RELATIONSHIP')
 
@@ -171,9 +201,15 @@ export async function installTemplates(
   // ── Pass 4: Create relationship fields ────────────────────────────
   for (const template of templates) {
     const entityDefinitionId = entityIdMap.get(template.id)!
+    const linkConfig = linkedEntities?.[template.id]
     const relFields = template.fields.filter((f) => f.type === 'RELATIONSHIP')
 
     for (const field of relFields) {
+      // For linked entities, only create fields explicitly listed in newRelationshipFieldTemplateIds
+      if (linkConfig) {
+        if (!linkConfig.newRelationshipFieldTemplateIds?.includes(field.templateFieldId)) continue
+      }
+
       const mod = fieldModifications?.[template.id]?.[field.templateFieldId]
       if (mod?.removed) continue
 
@@ -245,6 +281,9 @@ export async function installTemplates(
 
   // ── Pass 5: Set display fields ────────────────────────────────────
   for (const template of templates) {
+    // Skip display field updates for linked entities
+    if (linkedEntities?.[template.id]) continue
+
     const entityDefinitionId = entityIdMap.get(template.id)!
 
     const primaryMod = fieldModifications?.[template.id]?.[template.primaryDisplayField]
@@ -272,7 +311,7 @@ export async function installTemplates(
     }
   }
 
-  return { created, skippedRelationships }
+  return { created, linked, skippedRelationships }
 }
 
 /** Helper: Create a single field from template field definition */

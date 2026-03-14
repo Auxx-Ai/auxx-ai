@@ -1,0 +1,64 @@
+{
+  "id": "task",
+  "name": "Task",
+  "description": "General-purpose task and to-do tracking",
+  "categories": ["operations"],
+  "entity": {
+    "apiSlug": "tasks",
+    "singular": "Task",
+    "plural": "Tasks",
+    "icon": "check-square",
+    "color": "blue"
+  },
+  "primaryDisplayField": "title",
+  "companions": ["project"],
+  "fields": [
+    { "templateFieldId": "title", "name": "Title", "type": "TEXT", "required": true },
+    { "templateFieldId": "description", "name": "Description", "type": "RICH_TEXT" },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "To Do", "value": "to-do", "color": "gray" },
+        { "label": "In Progress", "value": "in-progress", "color": "blue" },
+        { "label": "Blocked", "value": "blocked", "color": "red" },
+        { "label": "Done", "value": "done", "color": "green" },
+        { "label": "Cancelled", "value": "cancelled", "color": "gray" }
+      ]
+    },
+    {
+      "templateFieldId": "priority",
+      "name": "Priority",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Low", "value": "low", "color": "gray" },
+        { "label": "Medium", "value": "medium", "color": "blue" },
+        { "label": "High", "value": "high", "color": "orange" },
+        { "label": "Urgent", "value": "urgent", "color": "red" }
+      ]
+    },
+    { "templateFieldId": "dueDate", "name": "Due Date", "type": "DATETIME" },
+    {
+      "templateFieldId": "assignedTo",
+      "name": "Assigned To",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    {
+      "templateFieldId": "category",
+      "name": "Category",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Fulfillment", "value": "fulfillment", "color": "blue" },
+        { "label": "Marketing", "value": "marketing", "color": "pink" },
+        { "label": "Support", "value": "support", "color": "green" },
+        { "label": "Finance", "value": "finance", "color": "amber" },
+        { "label": "Operations", "value": "operations", "color": "purple" },
+        { "label": "Other", "value": "other", "color": "gray" }
+      ]
+    },
+    { "templateFieldId": "estimatedHours", "name": "Estimated Hours", "type": "NUMBER" },
+    { "templateFieldId": "tags", "name": "Tags", "type": "TAGS" }
+  ]
+}

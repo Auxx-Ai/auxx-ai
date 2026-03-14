@@ -2,6 +2,9 @@
 'use client'
 
 import { constants } from '@auxx/config/client'
+import type { ConflictResolution } from '@auxx/lib/entity-templates'
+import type { Resource } from '@auxx/lib/resources/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -26,10 +29,12 @@ import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import {
   ChevronLeft,
   Headphones,
   LayoutGrid,
+  Link2,
   Loader2,
   type LucideIcon,
   Search,
@@ -39,6 +44,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
+import { useResources } from '~/components/resources/hooks'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { api } from '~/trpc/react'
 import { EntityPreviewCard, type FieldState } from './entity-preview-card'
@@ -67,6 +73,7 @@ type ViewMode = 'list' | 'detail'
  */
 export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialogProps) {
   const router = useRouter()
+  const { resources, getResourceById } = useResources()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<EntityTemplateCategory>('all')
@@ -74,6 +81,9 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
   const [companionSelections, setCompanionSelections] = useState<Set<string>>(new Set())
   const [allFieldModifications, setAllFieldModifications] = useState<
     Record<string, Record<string, FieldState>>
+  >({})
+  const [conflictResolutions, setConflictResolutions] = useState<
+    Record<string, ConflictResolution>
   >({})
 
   // Fetch all templates
@@ -95,7 +105,7 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
       utils.entityDefinition.getAll.invalidate()
       utils.resource.list.invalidate()
       onOpenChange(false)
-      // Navigate to first created entity
+      // Navigate to first created entity, if any were created
       if (result.created.length > 0) {
         router.push(`/app/custom/${result.created[0]!.apiSlug}`)
       }
@@ -116,6 +126,87 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
     .map((q) => q.data)
     .filter(Boolean) as NonNullable<typeof templateDetail>[]
 
+  // ── Conflict detection ──────────────────────────────────────────────
+  /** Map of templateId → conflicting Resource (if any) */
+  const conflictMap = useMemo(() => {
+    const map = new Map<string, Resource>()
+    if (!templateDetail) return map
+
+    // Check all templates that will be installed (primary + companions)
+    const templatesToCheck = [templateDetail, ...companionTemplateDetails]
+    for (const template of templatesToCheck) {
+      // Try matching by apiSlug first
+      const bySlug = getResourceById(template.entity.apiSlug)
+      if (bySlug) {
+        map.set(template.id, bySlug)
+        continue
+      }
+      // Fallback: match by singular name (case-insensitive)
+      const byName = resources.find(
+        (r) => r.label.toLowerCase() === template.entity.singular.toLowerCase()
+      )
+      if (byName) {
+        map.set(template.id, byName)
+      }
+    }
+    return map
+  }, [templateDetail, companionTemplateDetails, resources, getResourceById])
+
+  const hasAnyConflict = conflictMap.size > 0
+
+  /** Get current resolution for a template (defaults to 'use-existing') */
+  function getResolution(templateId: string): ConflictResolution {
+    return conflictResolutions[templateId] ?? 'use-existing'
+  }
+
+  /** Compute new relationship fields for a linked (use-existing) template */
+  function getNewRelationshipFields(
+    template: NonNullable<typeof templateDetail>,
+    existingResource: Resource
+  ) {
+    const relFields = template.fields.filter((f) => f.type === 'RELATIONSHIP')
+    return relFields.filter((field) => {
+      const ref = field.relationship?.relatedResourceId
+      if (!ref) return false
+
+      // Resolve what entity definition ID this template field would point to
+      let targetEntityDefId: string | undefined
+      if (ref.startsWith('@template:')) {
+        const targetTemplateId = ref.slice('@template:'.length)
+        // Check if target template has a conflicting resource with "use-existing"
+        const targetConflict = conflictMap.get(targetTemplateId)
+        if (targetConflict && getResolution(targetTemplateId) === 'use-existing') {
+          targetEntityDefId = targetConflict.entityDefinitionId
+        }
+        // If the target template is being created fresh, we can't compare yet — include it
+        if (!targetConflict || getResolution(targetTemplateId) === 'create-new') {
+          return true
+        }
+      } else if (ref.startsWith('@system:')) {
+        const systemType = ref.slice('@system:'.length)
+        const systemResource = resources.find(
+          (r) => 'entityType' in r && r.entityType === systemType
+        )
+        targetEntityDefId = systemResource?.entityDefinitionId
+      } else {
+        targetEntityDefId = ref
+      }
+
+      if (!targetEntityDefId) return true // Can't resolve — include it as new
+
+      // Check if the existing resource already has a relationship field pointing to the same target
+      const alreadyHasRelationship = existingResource.fields.some((existingField) => {
+        if (!existingField.relationship) return false
+        const existingTarget = getRelatedEntityDefinitionId(
+          existingField.relationship as RelationshipConfig
+        )
+        return existingTarget === targetEntityDefId
+      })
+
+      return !alreadyHasRelationship
+    })
+  }
+
   const handleFieldModifications = useCallback(
     (templateId: string, modifications: Record<string, FieldState>) => {
       setAllFieldModifications((prev) => ({ ...prev, [templateId]: modifications }))
@@ -128,8 +219,20 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
     const ids = new Set<string>()
     if (selectedTemplateId) ids.add(selectedTemplateId)
     for (const id of companionSelections) ids.add(id)
+    // Also include linked templates so relationship refs resolve
+    for (const [templateId, resolution] of Object.entries(conflictResolutions)) {
+      if (resolution === 'use-existing' && conflictMap.has(templateId)) {
+        ids.add(templateId)
+      }
+    }
+    // Include default use-existing conflicts
+    for (const templateId of conflictMap.keys()) {
+      if (!conflictResolutions[templateId]) {
+        ids.add(templateId)
+      }
+    }
     return ids
-  }, [selectedTemplateId, companionSelections])
+  }, [selectedTemplateId, companionSelections, conflictResolutions, conflictMap])
 
   // Filter templates client-side
   const filteredTemplates = useMemo(() => {
@@ -155,6 +258,7 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
   function handleSelectTemplate(templateId: string) {
     setSelectedTemplateId(templateId)
     setAllFieldModifications({})
+    setConflictResolutions({})
 
     // Auto-select companions
     const template = templates?.find((t) => t.id === templateId)
@@ -173,6 +277,7 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
     setSelectedTemplateId(null)
     setCompanionSelections(new Set())
     setAllFieldModifications({})
+    setConflictResolutions({})
   }
 
   /** Toggle a companion template selection */
@@ -192,8 +297,41 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
   async function handleInstall() {
     if (!selectedTemplateId) return
 
-    const templateIds = [selectedTemplateId, ...companionSelections]
-    const uniqueIds = [...new Set(templateIds)]
+    const allTemplateIds = [selectedTemplateId, ...companionSelections]
+    const uniqueIds = [...new Set(allTemplateIds)]
+
+    // Build linkedEntities map for templates resolved as "use-existing"
+    const linkedEntities: Record<
+      string,
+      { entityDefinitionId: string; newRelationshipFieldTemplateIds?: string[] }
+    > = {}
+
+    // Separate template IDs: those being created vs those being linked
+    const templateIdsToCreate: string[] = []
+
+    for (const templateId of uniqueIds) {
+      const conflict = conflictMap.get(templateId)
+      const resolution = getResolution(templateId)
+
+      if (conflict && resolution === 'use-existing') {
+        // Find the full template detail to compute new relationship fields
+        const fullTemplate =
+          templateId === templateDetail?.id
+            ? templateDetail
+            : companionTemplateDetails.find((c) => c.id === templateId)
+
+        const newRelFields = fullTemplate ? getNewRelationshipFields(fullTemplate, conflict) : []
+
+        linkedEntities[templateId] = {
+          entityDefinitionId: conflict.entityDefinitionId,
+          ...(newRelFields.length > 0 && {
+            newRelationshipFieldTemplateIds: newRelFields.map((f) => f.templateFieldId),
+          }),
+        }
+      } else {
+        templateIdsToCreate.push(templateId)
+      }
+    }
 
     // Only include modifications that actually have changes
     const modifications: Record<
@@ -216,8 +354,9 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
     }
 
     await installTemplates.mutateAsync({
-      templateIds: uniqueIds,
+      templateIds: templateIdsToCreate,
       ...(Object.keys(modifications).length > 0 && { fieldModifications: modifications }),
+      ...(Object.keys(linkedEntities).length > 0 && { linkedEntities }),
     })
   }
 
@@ -229,6 +368,40 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
     )
   }, [viewMode, allFieldModifications])
 
+  /** Smart install button label based on create vs link counts */
+  const installButtonLabel = useMemo(() => {
+    if (!selectedTemplateId) return 'Use this template'
+
+    const allIds = [selectedTemplateId, ...companionSelections]
+    let createCount = 0
+    let linkCount = 0
+
+    for (const id of allIds) {
+      const conflict = conflictMap.get(id)
+      const resolution = conflictResolutions[id] ?? 'use-existing'
+      if (conflict && resolution === 'use-existing') {
+        linkCount++
+      } else {
+        createCount++
+      }
+    }
+
+    if (linkCount === 0) {
+      // No conflicts — original behavior
+      if (companionSelections.size > 0) {
+        return `Use this template (+${companionSelections.size} companion${companionSelections.size !== 1 ? 's' : ''})`
+      }
+      return 'Use this template'
+    }
+
+    if (createCount === 0) {
+      return 'Link relationships only'
+    }
+
+    const entityWord = createCount === 1 ? 'entity' : 'entities'
+    return `Create ${createCount} ${entityWord}, link ${linkCount} existing`
+  }, [selectedTemplateId, companionSelections, conflictMap, conflictResolutions])
+
   /** Reset all state and close the dialog */
   const handleConfirmedClose = useCallback(() => {
     setViewMode('list')
@@ -237,6 +410,7 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
     setSearchQuery('')
     setSelectedCategory('all')
     setAllFieldModifications({})
+    setConflictResolutions({})
     onOpenChange(false)
   }, [onOpenChange])
 
@@ -253,6 +427,7 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
       setCompanionSelections(new Set())
       setSearchQuery('')
       setSelectedCategory('all')
+      setConflictResolutions({})
     }
     onOpenChange(open)
   }
@@ -450,19 +625,61 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
                             primary
                             selectedTemplateIds={selectedTemplateIds}
                             onFieldModifications={handleFieldModifications}
+                            hasAnyConflict={hasAnyConflict}
+                            conflictingResource={conflictMap.get(templateDetail.id) ?? null}
+                            conflictResolution={getResolution(templateDetail.id)}
+                            onConflictResolutionChange={
+                              conflictMap.has(templateDetail.id)
+                                ? (r) =>
+                                    setConflictResolutions((prev) => ({
+                                      ...prev,
+                                      [templateDetail.id]: r,
+                                    }))
+                                : undefined
+                            }
+                            newRelationshipFields={
+                              conflictMap.has(templateDetail.id) &&
+                              getResolution(templateDetail.id) === 'use-existing'
+                                ? getNewRelationshipFields(
+                                    templateDetail,
+                                    conflictMap.get(templateDetail.id)!
+                                  )
+                                : undefined
+                            }
                           />
 
                           {/* Companion template cards */}
-                          {companionTemplateDetails.map((companion) => (
-                            <EntityPreviewCard
-                              key={companion.id}
-                              template={companion}
-                              selected={companionSelections.has(companion.id)}
-                              selectedTemplateIds={selectedTemplateIds}
-                              onToggle={() => toggleCompanion(companion.id)}
-                              onFieldModifications={handleFieldModifications}
-                            />
-                          ))}
+                          {companionTemplateDetails.map((companion) => {
+                            const conflict = conflictMap.get(companion.id) ?? null
+                            const resolution = getResolution(companion.id)
+                            return (
+                              <EntityPreviewCard
+                                key={companion.id}
+                                template={companion}
+                                selected={companionSelections.has(companion.id)}
+                                selectedTemplateIds={selectedTemplateIds}
+                                onToggle={() => toggleCompanion(companion.id)}
+                                onFieldModifications={handleFieldModifications}
+                                hasAnyConflict={hasAnyConflict}
+                                conflictingResource={conflict}
+                                conflictResolution={resolution}
+                                onConflictResolutionChange={
+                                  conflict
+                                    ? (r) =>
+                                        setConflictResolutions((prev) => ({
+                                          ...prev,
+                                          [companion.id]: r,
+                                        }))
+                                    : undefined
+                                }
+                                newRelationshipFields={
+                                  conflict && resolution === 'use-existing'
+                                    ? getNewRelationshipFields(companion, conflict)
+                                    : undefined
+                                }
+                              />
+                            )
+                          })}
                         </div>
                       </ScrollArea>
                     ) : (
@@ -506,10 +723,18 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
                                 const companion = templates?.find((t) => t.id === companionId)
                                 if (!companion) return null
 
+                                const conflict = conflictMap.get(companionId)
+                                const resolution = getResolution(companionId)
+                                const isLinked = conflict && resolution === 'use-existing'
+
                                 return (
                                   <label
                                     key={companionId}
-                                    className='flex items-center gap-2 rounded-lg border p-2 cursor-pointer hover:bg-muted transition-colors'>
+                                    className={cn(
+                                      'flex items-center gap-2 rounded-lg border p-2 cursor-pointer hover:bg-muted transition-colors',
+                                      isLinked &&
+                                        'border-amber-200 bg-amber-50/50 dark:bg-amber-50/10 hover:dark:bg-amber-300/10 dark:border-amber-300/30'
+                                    )}>
                                     <Checkbox
                                       checked={companionSelections.has(companionId)}
                                       onCheckedChange={() => toggleCompanion(companionId)}
@@ -521,9 +746,18 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
                                       inverse
                                     />
                                     <span className='text-sm'>{companion.name}</span>
-                                    <Badge variant='secondary' className='text-xs ml-auto'>
-                                      {companion.fieldCount} fields
-                                    </Badge>
+                                    {isLinked ? (
+                                      <Badge
+                                        variant='outline'
+                                        className='text-xs ml-auto border-amber-300 text-amber-700'>
+                                        <Link2 className='size-3' />
+                                        already exists
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant='secondary' className='text-xs ml-auto'>
+                                        {companion.fieldCount} fields
+                                      </Badge>
+                                    )}
                                   </label>
                                 )
                               })}
@@ -540,9 +774,7 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
                         onClick={handleInstall}
                         loading={installTemplates.isPending}
                         loadingText='Installing...'>
-                        Use this template
-                        {companionSelections.size > 0 &&
-                          ` (+${companionSelections.size} companion${companionSelections.size !== 1 ? 's' : ''})`}
+                        {installButtonLabel}
                       </Button>
                     </div>
                   </div>

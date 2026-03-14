@@ -1,0 +1,81 @@
+{
+  "id": "email-sequence",
+  "name": "Email Sequence",
+  "description": "Track automated email sequences and drip campaigns",
+  "categories": ["crm"],
+  "entity": {
+    "apiSlug": "email-sequences",
+    "singular": "Email Sequence",
+    "plural": "Email Sequences",
+    "icon": "mails",
+    "color": "blue"
+  },
+  "primaryDisplayField": "sequenceName",
+  "companions": ["campaign"],
+  "fields": [
+    {
+      "templateFieldId": "sequenceName",
+      "name": "Sequence Name",
+      "type": "TEXT",
+      "required": true
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Draft", "value": "draft", "color": "gray" },
+        { "label": "Active", "value": "active", "color": "green" },
+        { "label": "Paused", "value": "paused", "color": "orange" },
+        { "label": "Completed", "value": "completed", "color": "blue" }
+      ]
+    },
+    {
+      "templateFieldId": "trigger",
+      "name": "Trigger",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Purchase", "value": "purchase", "color": "green" },
+        { "label": "Sign-up", "value": "sign-up", "color": "blue" },
+        { "label": "Abandoned Cart", "value": "abandoned-cart", "color": "orange" },
+        { "label": "Post-Delivery", "value": "post-delivery", "color": "teal" },
+        { "label": "Re-engagement", "value": "re-engagement", "color": "purple" },
+        { "label": "Custom", "value": "custom", "color": "gray" }
+      ]
+    },
+    { "templateFieldId": "numberOfEmails", "name": "Number of Emails", "type": "NUMBER" },
+    { "templateFieldId": "sendDelay", "name": "Send Delay", "type": "TEXT" },
+    { "templateFieldId": "openRate", "name": "Open Rate", "type": "NUMBER" },
+    { "templateFieldId": "clickRate", "name": "Click Rate", "type": "NUMBER" },
+    { "templateFieldId": "unsubscribeRate", "name": "Unsubscribe Rate", "type": "NUMBER" },
+    {
+      "templateFieldId": "targetAudience",
+      "name": "Target Audience",
+      "type": "MULTI_SELECT",
+      "options": [
+        { "label": "New Customers", "value": "new-customers", "color": "blue" },
+        { "label": "Returning Customers", "value": "returning-customers", "color": "green" },
+        { "label": "VIP", "value": "vip", "color": "purple" },
+        { "label": "Abandoned Cart", "value": "abandoned-cart", "color": "orange" },
+        { "label": "Newsletter Subscribers", "value": "newsletter-subscribers", "color": "teal" }
+      ]
+    },
+    {
+      "templateFieldId": "owner",
+      "name": "Owner",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    {
+      "templateFieldId": "campaign",
+      "name": "Campaign",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:campaign",
+        "relationshipType": "belongs_to",
+        "inverseName": "Email Sequences"
+      }
+    },
+    { "templateFieldId": "notes", "name": "Notes", "type": "RICH_TEXT" }
+  ]
+}

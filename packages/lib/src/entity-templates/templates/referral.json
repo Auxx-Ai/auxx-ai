@@ -1,0 +1,86 @@
+{
+  "id": "referral",
+  "name": "Referral",
+  "description": "Track customer referrals and referral programs",
+  "categories": ["crm"],
+  "entity": {
+    "apiSlug": "referrals",
+    "singular": "Referral",
+    "plural": "Referrals",
+    "icon": "share",
+    "color": "teal"
+  },
+  "primaryDisplayField": "referralCode",
+  "companions": ["campaign"],
+  "fields": [
+    {
+      "templateFieldId": "referralCode",
+      "name": "Referral Code",
+      "type": "TEXT",
+      "isUnique": true
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Pending", "value": "pending", "color": "gray" },
+        { "label": "Qualified", "value": "qualified", "color": "blue" },
+        { "label": "Converted", "value": "converted", "color": "green" },
+        { "label": "Rewarded", "value": "rewarded", "color": "purple" },
+        { "label": "Expired", "value": "expired", "color": "orange" }
+      ]
+    },
+    { "templateFieldId": "referredDate", "name": "Referred Date", "type": "DATETIME" },
+    { "templateFieldId": "conversionDate", "name": "Conversion Date", "type": "DATETIME" },
+    {
+      "templateFieldId": "rewardType",
+      "name": "Reward Type",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Discount", "value": "discount", "color": "green" },
+        { "label": "Store Credit", "value": "store-credit", "color": "blue" },
+        { "label": "Cash", "value": "cash", "color": "amber" },
+        { "label": "Gift Card", "value": "gift-card", "color": "purple" },
+        { "label": "Free Product", "value": "free-product", "color": "teal" }
+      ]
+    },
+    {
+      "templateFieldId": "rewardValue",
+      "name": "Reward Value",
+      "type": "CURRENCY",
+      "options": { "currency": { "currencyCode": "USD", "showSymbol": true } }
+    },
+    {
+      "templateFieldId": "rewardStatus",
+      "name": "Reward Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Pending", "value": "pending", "color": "gray" },
+        { "label": "Issued", "value": "issued", "color": "blue" },
+        { "label": "Claimed", "value": "claimed", "color": "green" }
+      ]
+    },
+    {
+      "templateFieldId": "referrer",
+      "name": "Referrer",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Referrals Made"
+      }
+    },
+    {
+      "templateFieldId": "referredContact",
+      "name": "Referred Contact",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Referred By"
+      }
+    },
+    { "templateFieldId": "notes", "name": "Notes", "type": "RICH_TEXT" }
+  ]
+}

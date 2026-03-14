@@ -60,6 +60,9 @@ export const SYSTEM_REF_PREFIX = '@system:'
 /** Symbolic reference prefix for template entities */
 export const TEMPLATE_REF_PREFIX = '@template:'
 
+/** Resolution choice when a template conflicts with an existing entity */
+export type ConflictResolution = 'use-existing' | 'create-new'
+
 /** Type guard to check if a string is a symbolic ref */
 export function isSymbolicRef(value: string): boolean {
   return value.startsWith(SYSTEM_REF_PREFIX) || value.startsWith(TEMPLATE_REF_PREFIX)

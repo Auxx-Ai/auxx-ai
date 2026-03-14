@@ -1,0 +1,110 @@
+{
+  "id": "discount-rule",
+  "name": "Discount Rule",
+  "description": "Track discount codes and automatic discount rules",
+  "categories": ["e-commerce"],
+  "entity": {
+    "apiSlug": "discount-rules",
+    "singular": "Discount Rule",
+    "plural": "Discount Rules",
+    "icon": "percent",
+    "color": "green"
+  },
+  "primaryDisplayField": "name",
+  "secondaryDisplayField": "code",
+  "companions": ["campaign", "product"],
+  "fields": [
+    {
+      "templateFieldId": "code",
+      "name": "Code",
+      "type": "TEXT",
+      "isUnique": true
+    },
+    {
+      "templateFieldId": "name",
+      "name": "Name",
+      "type": "TEXT",
+      "required": true
+    },
+    {
+      "templateFieldId": "type",
+      "name": "Type",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Percentage", "value": "percentage", "color": "green" },
+        { "label": "Fixed Amount", "value": "fixed-amount", "color": "blue" },
+        { "label": "Free Shipping", "value": "free-shipping", "color": "teal" },
+        { "label": "Buy X Get Y", "value": "buy-x-get-y", "color": "purple" }
+      ]
+    },
+    {
+      "templateFieldId": "value",
+      "name": "Value",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "minimumOrderAmount",
+      "name": "Minimum Order Amount",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "usageLimit",
+      "name": "Usage Limit",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "timesUsed",
+      "name": "Times Used",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "startDate",
+      "name": "Start Date",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "endDate",
+      "name": "End Date",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Active", "value": "active", "color": "green" },
+        { "label": "Scheduled", "value": "scheduled", "color": "blue" },
+        { "label": "Expired", "value": "expired", "color": "gray" },
+        { "label": "Disabled", "value": "disabled", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "applicableTo",
+      "name": "Applicable To",
+      "type": "MULTI_SELECT",
+      "options": [
+        { "label": "All Products", "value": "all-products", "color": "green" },
+        { "label": "Specific Collections", "value": "specific-collections", "color": "blue" },
+        { "label": "Specific Products", "value": "specific-products", "color": "purple" }
+      ]
+    },
+    {
+      "templateFieldId": "campaign",
+      "name": "Campaign",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:campaign",
+        "relationshipType": "belongs_to",
+        "inverseName": "Discount Rules"
+      }
+    },
+    {
+      "templateFieldId": "notes",
+      "name": "Notes",
+      "type": "RICH_TEXT"
+    }
+  ]
+}

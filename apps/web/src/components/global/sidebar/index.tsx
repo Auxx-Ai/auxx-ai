@@ -15,6 +15,7 @@ import AppFooter from './app-footer'
 import { EntitySidebarNav } from './entity-sidebar-nav'
 import { NavMain } from './nav-main'
 import { NavUser } from './nav-user'
+import { useSidebarItemActions } from './sidebar-item-actions'
 import { SidebarStateProvider } from './sidebar-state-context'
 
 const navMain = { title: 'Main', items: SIDEBAR_MENU, route: '/app' }
@@ -32,6 +33,8 @@ type Prop = {
 
 /** Main application sidebar component with localStorage-persisted open/closed states */
 export default function AppSidebar({ user, ...props }: Prop) {
+  const { editItems, dialogs } = useSidebarItemActions()
+
   return (
     <SidebarStateProvider>
       <Sidebar collapsible='icon' {...props}>
@@ -40,7 +43,7 @@ export default function AppSidebar({ user, ...props }: Prop) {
         </SidebarHeader>
         <SidebarContent className='gap-0'>
           <MailSidebar />
-          <NavMain menu={navMain} />
+          <NavMain menu={navMain} itemActions={editItems} />
           <EntitySidebarNav />
         </SidebarContent>
         <SidebarFooter>
@@ -48,6 +51,7 @@ export default function AppSidebar({ user, ...props }: Prop) {
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>
+      {dialogs}
     </SidebarStateProvider>
   )
 }

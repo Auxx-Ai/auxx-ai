@@ -1,0 +1,68 @@
+{
+  "id": "inventory-location",
+  "name": "Inventory Location",
+  "description": "Track warehouses, fulfillment centers, and stock locations",
+  "categories": ["e-commerce", "operations"],
+  "entity": {
+    "apiSlug": "inventory-locations",
+    "singular": "Inventory Location",
+    "plural": "Inventory Locations",
+    "icon": "warehouse",
+    "color": "amber"
+  },
+  "primaryDisplayField": "locationName",
+  "companions": ["product", "vendor"],
+  "fields": [
+    {
+      "templateFieldId": "locationName",
+      "name": "Location Name",
+      "type": "TEXT",
+      "required": true
+    },
+    {
+      "templateFieldId": "address",
+      "name": "Address",
+      "type": "ADDRESS_STRUCT",
+      "addressComponents": ["street", "city", "state", "zip", "country"]
+    },
+    {
+      "templateFieldId": "type",
+      "name": "Type",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Warehouse", "value": "warehouse", "color": "blue" },
+        { "label": "Fulfillment Center", "value": "fulfillment-center", "color": "green" },
+        { "label": "Retail Store", "value": "retail-store", "color": "purple" },
+        { "label": "Drop-ship", "value": "drop-ship", "color": "orange" }
+      ]
+    },
+    {
+      "templateFieldId": "capacity",
+      "name": "Capacity",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "manager",
+      "name": "Manager",
+      "type": "ACTOR",
+      "options": {
+        "actor": { "target": "user", "multiple": false }
+      }
+    },
+    {
+      "templateFieldId": "products",
+      "name": "Products",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:product",
+        "relationshipType": "many_to_many",
+        "inverseName": "Inventory Locations"
+      }
+    },
+    {
+      "templateFieldId": "notes",
+      "name": "Notes",
+      "type": "RICH_TEXT"
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "id": "project",
+  "name": "Project",
+  "description": "Track larger initiatives and group tasks",
+  "categories": ["operations"],
+  "entity": {
+    "apiSlug": "projects",
+    "singular": "Project",
+    "plural": "Projects",
+    "icon": "folder-kanban",
+    "color": "purple"
+  },
+  "primaryDisplayField": "projectName",
+  "companions": ["task", "company"],
+  "fields": [
+    { "templateFieldId": "projectName", "name": "Project Name", "type": "TEXT", "required": true },
+    { "templateFieldId": "description", "name": "Description", "type": "RICH_TEXT" },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Planning", "value": "planning", "color": "gray" },
+        { "label": "Active", "value": "active", "color": "blue" },
+        { "label": "On Hold", "value": "on-hold", "color": "orange" },
+        { "label": "Completed", "value": "completed", "color": "green" },
+        { "label": "Cancelled", "value": "cancelled", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "priority",
+      "name": "Priority",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Low", "value": "low", "color": "gray" },
+        { "label": "Medium", "value": "medium", "color": "blue" },
+        { "label": "High", "value": "high", "color": "orange" },
+        { "label": "Critical", "value": "critical", "color": "red" }
+      ]
+    },
+    { "templateFieldId": "startDate", "name": "Start Date", "type": "DATETIME" },
+    { "templateFieldId": "targetDate", "name": "Target Date", "type": "DATETIME" },
+    { "templateFieldId": "actualCompletion", "name": "Actual Completion", "type": "DATETIME" },
+    {
+      "templateFieldId": "owner",
+      "name": "Owner",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    {
+      "templateFieldId": "budget",
+      "name": "Budget",
+      "type": "CURRENCY",
+      "options": { "currency": { "currencyCode": "USD", "showSymbol": true } }
+    },
+    {
+      "templateFieldId": "tasks",
+      "name": "Tasks",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:task",
+        "relationshipType": "has_many",
+        "inverseName": "Project"
+      }
+    },
+    {
+      "templateFieldId": "company",
+      "name": "Company",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:company",
+        "relationshipType": "belongs_to",
+        "inverseName": "Projects"
+      }
+    },
+    {
+      "templateFieldId": "documents",
+      "name": "Documents",
+      "type": "FILE",
+      "options": { "file": { "multiple": true } }
+    },
+    { "templateFieldId": "tags", "name": "Tags", "type": "TAGS" }
+  ]
+}
