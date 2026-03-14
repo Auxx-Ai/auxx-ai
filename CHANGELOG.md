@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.82](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.81...auxx-v0.1.82) (2026-03-13)
+
+
+### Features
+
+* update entity definition handling to use ref for color management ([#256](https://github.com/Auxx-Ai/auxx-ai/issues/256)) ([3c57f64](https://github.com/Auxx-Ai/auxx-ai/commit/3c57f64c2008d2601126146ee4131641b4f329d8))
+
 ## [0.1.81](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.80...auxx-v0.1.81) (2026-03-13)
 
 
