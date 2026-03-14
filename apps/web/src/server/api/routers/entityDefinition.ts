@@ -161,9 +161,25 @@ export const entityDefinitionRouter = createTRPCRouter({
     .input(
       z.object({
         templateIds: z.array(z.string()).min(1).max(10),
+        fieldModifications: z
+          .record(
+            z.string(),
+            z.record(
+              z.string(),
+              z.object({
+                customName: z.string().min(1).max(100).optional(),
+                removed: z.boolean().optional(),
+              })
+            )
+          )
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      return await installTemplates(ctx.session.organizationId, input.templateIds)
+      return await installTemplates(
+        ctx.session.organizationId,
+        input.templateIds,
+        input.fieldModifications
+      )
     }),
 })
