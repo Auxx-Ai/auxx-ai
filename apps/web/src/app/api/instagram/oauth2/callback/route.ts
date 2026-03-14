@@ -5,9 +5,14 @@ import { publisher } from '@auxx/lib/events'
 import type { InstagramIntegrationMetadata } from '@auxx/lib/providers'
 import { InstagramOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
-import type { NextRequest } from 'next/server'
+import { OAUTH_CSRF_COOKIE, validateRedirectPath } from '@auxx/utils'
+import { cookies, headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('instagram-oauth-callback')
+
+const DEFAULT_REDIRECT = '/app/settings/channels'
 
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams
@@ -17,33 +22,70 @@ export async function GET(req: NextRequest) {
   const errorReason = searchParams.get('error_reason')
   const errorDescription = searchParams.get('error_description')
 
-  let redirectPath = '/app/settings/channels' // Default redirect
+  let redirectPath = DEFAULT_REDIRECT
   let parsedState: any = null
 
-  // --- State Parameter Handling & CSRF Check ---
+  // --- Session Verification (CSRF protection) ---
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user) {
+    return NextResponse.redirect(
+      new URL(`/login?callbackUrl=${encodeURIComponent(req.url)}`, req.url)
+    )
+  }
+
+  // --- State Parameter Handling ---
   if (state) {
     try {
       const decodedStateString = Buffer.from(state, 'base64').toString('utf-8')
       parsedState = JSON.parse(decodedStateString)
-      if (parsedState.redirectPath) {
-        redirectPath = parsedState.redirectPath
-      }
-      // TODO: Verify CSRF token (parsedState.csrfToken)
+      redirectPath = validateRedirectPath(parsedState.redirectPath, DEFAULT_REDIRECT)
     } catch (e: any) {
       logger.error('Failed to parse/validate state parameter in Instagram callback', {
         state,
         error: e.message,
       })
-      return Response.redirect(
-        `${WEBAPP_URL}${redirectPath}?error=invalid_state&error_description=${encodeURIComponent(e.message || 'Invalid state parameter.')}`
+      return NextResponse.redirect(
+        new URL(
+          `${redirectPath}?error=invalid_state&error_description=${encodeURIComponent(e.message || 'Invalid state parameter.')}`,
+          WEBAPP_URL
+        )
       )
     }
   } else {
     logger.error('Missing state parameter in Instagram callback')
-    return Response.redirect(
-      `${WEBAPP_URL}/app/settings/channels?error=missing_state&error_description=${encodeURIComponent('State parameter missing.')}`
+    return NextResponse.redirect(
+      new URL(
+        `${DEFAULT_REDIRECT}?error=missing_state&error_description=${encodeURIComponent('State parameter missing.')}`,
+        WEBAPP_URL
+      )
     )
   }
+
+  // --- Verify user matches the one who initiated the flow ---
+  if (session.user.id !== parsedState?.userId) {
+    logger.error('User mismatch in Instagram OAuth callback', {
+      sessionUserId: session.user.id,
+      stateUserId: parsedState?.userId,
+    })
+    return NextResponse.redirect(
+      new URL(`/login?callbackUrl=${encodeURIComponent(req.url)}`, req.url)
+    )
+  }
+
+  // --- CSRF cookie verification ---
+  const cookieStore = await cookies()
+  const csrfCookie = cookieStore.get(OAUTH_CSRF_COOKIE)?.value
+  if (!csrfCookie || csrfCookie !== parsedState?.csrfToken) {
+    logger.error('CSRF token mismatch in Instagram OAuth callback')
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?error=csrf_mismatch&error_description=${encodeURIComponent('CSRF verification failed. Please try again.')}`,
+        WEBAPP_URL
+      )
+    )
+  }
+  // Clear the CSRF cookie after verification
+  cookieStore.delete(OAUTH_CSRF_COOKIE)
 
   // --- Handle OAuth Errors ---
   if (error) {
@@ -55,16 +97,22 @@ export async function GET(req: NextRequest) {
       errorDescription,
       state: parsedState,
     })
-    return Response.redirect(
-      `${WEBAPP_URL}${redirectPath}?error=${encodeURIComponent(error)}&error_reason=${encodeURIComponent(errorReason || '')}&error_description=${encodeURIComponent(errorMessage)}`
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?error=${encodeURIComponent(error)}&error_reason=${encodeURIComponent(errorReason || '')}&error_description=${encodeURIComponent(errorMessage)}`,
+        WEBAPP_URL
+      )
     )
   }
 
   // --- Handle Missing Code ---
   if (!code) {
     logger.error('Missing authorization code in Instagram callback', { state: parsedState })
-    return Response.redirect(
-      `${WEBAPP_URL}${redirectPath}?error=missing_code&error_description=${encodeURIComponent('Authorization code not found.')}`
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?error=missing_code&error_description=${encodeURIComponent('Authorization code not found.')}`,
+        WEBAPP_URL
+      )
     )
   }
 
@@ -97,8 +145,11 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    return Response.redirect(
-      `${WEBAPP_URL}${redirectPath}?success=true&provider=instagram&identifier=${encodeURIComponent(identifier)}&integrationId=${result.integration.id}`
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?success=true&provider=instagram&identifier=${encodeURIComponent(identifier)}&integrationId=${result.integration.id}`,
+        WEBAPP_URL
+      )
     )
   } catch (error: any) {
     logger.error('Error processing Instagram OAuth callback code:', {
@@ -117,8 +168,11 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    return Response.redirect(
-      `${WEBAPP_URL}${redirectPath}?error=oauth_callback_failed&error_description=${encodeURIComponent(error.message || 'Failed to complete Instagram authorization.')}`
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?error=oauth_callback_failed&error_description=${encodeURIComponent(error.message || 'Failed to complete Instagram authorization.')}`,
+        WEBAPP_URL
+      )
     )
   }
 }

@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/services/approval-response-service.ts
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import crypto from 'crypto'
 import { and, count, eq, sql } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'
 import { getQueue, Queues } from '../../jobs/queues'
@@ -305,7 +306,10 @@ export class ApprovalResponseService {
       })
       const metadata = approvalRequest?.metadata as any
       const storedToken = metadata?.approvalTokens?.[decoded.userId]
-      if (storedToken !== token) {
+      if (
+        !storedToken ||
+        !crypto.timingSafeEqual(Buffer.from(storedToken, 'utf8'), Buffer.from(token, 'utf8'))
+      ) {
         return { valid: false, message: 'Invalid token' }
       }
       return { valid: true, userId: decoded.userId }

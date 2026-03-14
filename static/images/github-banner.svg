@@ -1,6 +1,6 @@
-<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="1280" height="380" viewBox="0 0 1280 380" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="420" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#1a1a2e"/>
       <stop offset="100%" stop-color="#16213e"/>
     </linearGradient>
@@ -8,7 +8,7 @@
       <stop offset="0%" stop-color="#74b9ff"/>
       <stop offset="100%" stop-color="#5b9aff"/>
     </linearGradient>
-<filter id="logoShadow" x="-20%" y="-20%" width="140%" height="140%">
+    <filter id="logoShadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="4" stdDeviation="12" flood-color="#74b9ff" flood-opacity="0.3"/>
     </filter>
     <filter id="textGlow" x="-10%" y="-10%" width="120%" height="120%">
@@ -16,26 +16,83 @@
     </filter>
     <!-- Grid pattern -->
     <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
-      <path d="M 60 0 L 0 0 0 60" fill="none" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.04"/>
+      <path d="M 60 0 L 0 0 0 60" fill="none" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.08" stroke-dasharray="4 4"/>
     </pattern>
   </defs>
 
   <!-- Background -->
-  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="380" fill="url(#bg)"/>
 
   <!-- Grid overlay -->
-  <rect width="1280" height="640" fill="url(#grid)"/>
+  <rect width="1280" height="380" fill="url(#grid)"/>
+
+  <!-- Background waves -->
+  <path d="M0 280 Q160 240 320 270 Q480 300 640 260 Q800 220 960 260 Q1120 300 1280 250" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.14" fill="none"/>
+  <path d="M0 310 Q160 270 320 300 Q480 330 640 290 Q800 250 960 290 Q1120 330 1280 280" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.12" fill="none"/>
+  <path d="M0 340 Q160 300 320 330 Q480 360 640 320 Q800 280 960 320 Q1120 360 1280 310" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.09" fill="none"/>
+  <path d="M0 100 Q160 130 320 100 Q480 70 640 110 Q800 150 960 110 Q1120 70 1280 100" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.12" fill="none"/>
+  <path d="M0 70 Q160 100 320 70 Q480 40 640 80 Q800 120 960 80 Q1120 40 1280 70" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.09" fill="none"/>
+  <path d="M0 40 Q160 70 320 40 Q480 10 640 50 Q800 90 960 50 Q1120 10 1280 40" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.07" fill="none"/>
+  <path d="M0 130 Q160 160 320 130 Q480 100 640 140 Q800 180 960 140 Q1120 100 1280 130" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.08" fill="none"/>
+  <path d="M0 160 Q200 190 400 155 Q600 120 800 165 Q1000 210 1280 160" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.06" fill="none"/>
+  <path d="M0 250 Q200 215 400 245 Q600 275 800 235 Q1000 195 1280 240" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.07" fill="none"/>
+  <path d="M0 370 Q160 330 320 360 Q480 390 640 350 Q800 310 960 350 Q1120 390 1280 340" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.06" fill="none"/>
+  <path d="M0 200 Q240 170 480 210 Q720 250 960 200 Q1120 170 1280 195" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.05" fill="none"/>
+  <path d="M0 230 Q240 260 480 225 Q720 190 960 230 Q1120 260 1280 220" stroke="#74b9ff" stroke-width="1" stroke-opacity="0.05" fill="none"/>
 
   <!-- Decorative dots -->
-  <circle cx="180" cy="120" r="2" fill="#74b9ff" opacity="0.3"/>
-  <circle cx="220" cy="180" r="1.5" fill="#74b9ff" opacity="0.2"/>
-  <circle cx="1060" cy="140" r="2" fill="#74b9ff" opacity="0.25"/>
-  <circle cx="1100" cy="500" r="1.5" fill="#74b9ff" opacity="0.2"/>
-  <circle cx="150" cy="480" r="2" fill="#74b9ff" opacity="0.15"/>
-  <circle cx="1150" cy="200" r="1" fill="#74b9ff" opacity="0.3"/>
+  <circle cx="180" cy="80" r="2" fill="#74b9ff" opacity="0.3"/>
+  <circle cx="220" cy="140" r="1.5" fill="#74b9ff" opacity="0.2"/>
+  <circle cx="1060" cy="90" r="2" fill="#74b9ff" opacity="0.25"/>
+  <circle cx="1100" cy="300" r="1.5" fill="#74b9ff" opacity="0.2"/>
+  <circle cx="150" cy="290" r="2" fill="#74b9ff" opacity="0.15"/>
+  <circle cx="1150" cy="160" r="1" fill="#74b9ff" opacity="0.3"/>
+  <circle cx="90" cy="180" r="1" fill="#74b9ff" opacity="0.2"/>
+  <circle cx="340" cy="50" r="1.5" fill="#74b9ff" opacity="0.15"/>
+  <circle cx="950" cy="340" r="1" fill="#74b9ff" opacity="0.2"/>
+  <circle cx="800" cy="40" r="1.5" fill="#74b9ff" opacity="0.18"/>
+  <circle cx="1200" cy="280" r="2" fill="#74b9ff" opacity="0.12"/>
+  <circle cx="60" cy="350" r="1" fill="#74b9ff" opacity="0.15"/>
+  <circle cx="480" cy="360" r="1.5" fill="#74b9ff" opacity="0.1"/>
+  <circle cx="1020" cy="200" r="1" fill="#74b9ff" opacity="0.22"/>
+  <circle cx="42" cy="60" r="1.5" fill="#74b9ff" opacity="0.18"/>
+  <circle cx="310" cy="310" r="1" fill="#74b9ff" opacity="0.14"/>
+  <circle cx="520" cy="30" r="2" fill="#74b9ff" opacity="0.12"/>
+  <circle cx="680" cy="360" r="1" fill="#74b9ff" opacity="0.16"/>
+  <circle cx="870" cy="60" r="1.5" fill="#74b9ff" opacity="0.2"/>
+  <circle cx="1240" cy="70" r="1" fill="#74b9ff" opacity="0.15"/>
+  <circle cx="130" cy="140" r="1" fill="#74b9ff" opacity="0.12"/>
+  <circle cx="400" cy="180" r="1" fill="#74b9ff" opacity="0.1"/>
+  <circle cx="750" cy="350" r="1.5" fill="#74b9ff" opacity="0.13"/>
+  <circle cx="1180" cy="340" r="1" fill="#74b9ff" opacity="0.18"/>
+  <circle cx="260" cy="240" r="1.5" fill="#74b9ff" opacity="0.11"/>
+  <circle cx="980" cy="280" r="1" fill="#74b9ff" opacity="0.15"/>
+  <circle cx="560" cy="340" r="1" fill="#74b9ff" opacity="0.12"/>
+  <circle cx="1100" cy="50" r="2" fill="#74b9ff" opacity="0.14"/>
+  <circle cx="70" cy="250" r="1.5" fill="#74b9ff" opacity="0.17"/>
+  <circle cx="30" cy="30" r="2.5" fill="#74b9ff" opacity="0.1"/>
+  <circle cx="200" cy="340" r="1" fill="#74b9ff" opacity="0.2"/>
+  <circle cx="445" cy="90" r="3" fill="#74b9ff" opacity="0.08"/>
+  <circle cx="610" cy="15" r="1" fill="#74b9ff" opacity="0.22"/>
+  <circle cx="720" cy="370" r="1.5" fill="#74b9ff" opacity="0.12"/>
+  <circle cx="1030" cy="50" r="2.5" fill="#74b9ff" opacity="0.1"/>
+  <circle cx="900" cy="320" r="1" fill="#74b9ff" opacity="0.18"/>
+  <circle cx="380" cy="280" r="2" fill="#74b9ff" opacity="0.09"/>
+  <circle cx="1160" cy="110" r="1" fill="#74b9ff" opacity="0.2"/>
+  <circle cx="550" cy="200" r="3" fill="#74b9ff" opacity="0.06"/>
+  <circle cx="110" cy="100" r="1.5" fill="#74b9ff" opacity="0.14"/>
+  <circle cx="830" cy="150" r="1" fill="#74b9ff" opacity="0.16"/>
+  <circle cx="1250" cy="190" r="2" fill="#74b9ff" opacity="0.11"/>
+  <circle cx="460" cy="250" r="1" fill="#74b9ff" opacity="0.13"/>
+  <circle cx="1080" cy="370" r="2.5" fill="#74b9ff" opacity="0.08"/>
+  <circle cx="290" cy="160" r="1.5" fill="#74b9ff" opacity="0.15"/>
+  <circle cx="640" cy="370" r="1" fill="#74b9ff" opacity="0.1"/>
+  <circle cx="170" cy="220" r="3" fill="#74b9ff" opacity="0.07"/>
+  <circle cx="1220" cy="350" r="1.5" fill="#74b9ff" opacity="0.13"/>
+  <circle cx="770" cy="90" r="2" fill="#74b9ff" opacity="0.11"/>
 
   <!-- Logo icon -->
-  <g transform="translate(640, 220)" filter="url(#logoShadow)">
+  <g transform="translate(640, 120)" filter="url(#logoShadow)">
     <!-- Blue circle -->
     <circle cx="0" cy="0" r="72" fill="url(#accent)"/>
     <!-- Roof chevron -->
@@ -47,15 +104,15 @@
   </g>
 
   <!-- Title -->
-  <text x="640" y="360" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="white" filter="url(#textGlow)" letter-spacing="-1">
+  <text x="640" y="260" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="white" filter="url(#textGlow)" letter-spacing="-1">
     auxx.ai
   </text>
 
   <!-- Tagline -->
-  <text x="640" y="410" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" fill="#8899bb" font-weight="400" letter-spacing="0.5">
+  <text x="640" y="310" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" fill="#8899bb" font-weight="400" letter-spacing="0.5">
     The Open Source AI-Powered CRM
   </text>
 
   <!-- Bottom border accent line -->
-  <rect x="440" y="630" width="400" height="2" rx="1" fill="url(#accent)" opacity="0.4"/>
+  <rect x="440" y="370" width="400" height="2" rx="1" fill="url(#accent)" opacity="0.4"/>
 </svg>

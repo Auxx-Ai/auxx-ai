@@ -9,7 +9,7 @@ import {
   WEBHOOK_TOPIC,
 } from '@auxx/lib/shopify'
 import { createScopedLogger } from '@auxx/logger'
-import { createHmac } from 'crypto'
+import { createHmac, timingSafeEqual } from 'crypto'
 import { and, eq } from 'drizzle-orm'
 import type { NextRequest } from 'next/server'
 
@@ -59,6 +59,18 @@ export const POST = async (req: NextRequest) => {
 
   // const body = await getRequestBody(req)
   const body = await req.text()
+
+  // Validate HMAC before any database writes
+  const calculatedHmac = createHmac('sha256', shopifySecret).update(body).digest('base64')
+  const hmacValid =
+    calculatedHmac.length === hmacHeader?.length &&
+    timingSafeEqual(Buffer.from(calculatedHmac), Buffer.from(hmacHeader ?? ''))
+
+  if (!hmacValid) {
+    logger.error('Shopify webhook HMAC validation failed')
+    return new Response(null, { status: 401 })
+  }
+
   const [subscription] = await db
     .select({
       id: schema.Subscription.id,
@@ -105,15 +117,6 @@ export const POST = async (req: NextRequest) => {
   } else {
     logger.info('Unable to create subscription event:')
   }
-  const calculatedHmac = createHmac('sha256', shopifySecret).update(body).digest('base64')
-
-  logger.info('Received webhook:', { shopifySecret, calculatedHmac, hmacHeader })
-
-  if (calculatedHmac !== hmacHeader) {
-    logger.error(`hmacHeaders don't match`)
-    return new Response(null, { status: 401 })
-  }
-
   const webhookEventData = {
     webhookEventId: event.id,
     organizationId: subscription.organizationId,

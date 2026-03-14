@@ -121,7 +121,7 @@ export const searchRouter = createTRPCRouter({
     .input(z.object({ accountId: z.string(), query: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const [acc] = await ctx.db
-        .select()
+        .select({ id: schema.account.id, userId: schema.account.userId })
         .from(schema.account)
         .where(eq(schema.account.id, input.accountId))
         .limit(1)

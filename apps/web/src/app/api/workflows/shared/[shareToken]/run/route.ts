@@ -4,6 +4,7 @@ import type { WorkflowShareConfig } from '@auxx/database'
 import { database, schema } from '@auxx/database'
 import { WorkflowRunStatus, WorkflowTriggerSource } from '@auxx/database/enums'
 import { SystemUserService } from '@auxx/lib/users'
+import { getApiRateLimiter, getClientIp } from '@auxx/lib/utils/rate-limiter'
 import {
   checkWorkflowRateLimit,
   RedisWorkflowExecutionReporter,
@@ -29,6 +30,20 @@ import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('shared-workflow-run-api')
 
+/** Rate limiter for failed passport verification — per IP (5 failures/minute) */
+const failedPassportLimiterByIp = getApiRateLimiter({
+  name: 'passport-fail:ip',
+  maxRequests: 5,
+  perInterval: 60_000,
+})
+
+/** Rate limiter for failed passport verification — per share token (15 failures/minute) */
+const failedPassportLimiterByToken = getApiRateLimiter({
+  name: 'passport-fail:token',
+  maxRequests: 15,
+  perInterval: 60_000,
+})
+
 /**
  * POST /api/workflows/shared/[shareToken]/run
  * Execute a shared workflow and stream results via SSE
@@ -49,10 +64,31 @@ export async function POST(
     return NextResponse.json({ error: 'Passport token required' }, { status: 401 })
   }
 
+  // Check rate limits before passport verification to block brute-force attempts
+  const clientIp = getClientIp(request)
+  const ipKey = `passport:ip:${clientIp}`
+  const tokenKey = `passport:token:${shareToken}`
+
+  const [ipTokens, tokenTokens] = await Promise.all([
+    failedPassportLimiterByIp.getAvailableTokens(ipKey),
+    failedPassportLimiterByToken.getAvailableTokens(tokenKey),
+  ])
+
+  if (ipTokens < 1 || tokenTokens < 1) {
+    return NextResponse.json(
+      { error: 'Too many failed attempts. Try again later.' },
+      { status: 429 }
+    )
+  }
+
   // Verify passport
   const passportResult = await verifyWorkflowPassport(passportToken)
 
   if (passportResult.isErr()) {
+    await Promise.all([
+      failedPassportLimiterByIp.acquire(ipKey),
+      failedPassportLimiterByToken.acquire(tokenKey),
+    ])
     logger.warn('Invalid passport token', { error: passportResult.error })
     return NextResponse.json({ error: passportResult.error.message }, { status: 401 })
   }
@@ -61,6 +97,10 @@ export async function POST(
 
   // Verify passport matches the requested share token
   if (passport.shareToken !== shareToken) {
+    await Promise.all([
+      failedPassportLimiterByIp.acquire(ipKey),
+      failedPassportLimiterByToken.acquire(tokenKey),
+    ])
     return NextResponse.json({ error: 'Invalid passport for this workflow' }, { status: 401 })
   }
 

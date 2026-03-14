@@ -29,7 +29,7 @@ import { eq } from 'drizzle-orm'
 import { isValidPhoneNumber } from 'libphonenumber-js'
 
 const logger = createScopedLogger('auth')
-const isDev = configService.get<string>('NODE_ENV') === 'development'
+const isProduction = configService.get<string>('NODE_ENV') === 'production'
 
 // async function sendViaOpenPhone(to: string, text: string) {
 //   const res = await fetch('https://api.openphone.com/v1/messages', {
@@ -70,7 +70,7 @@ export const auth = betterAuth({
           }
         },
         after: async (user) => {
-          console.warn('AFTER CREATING:', user)
+          logger.info('User created', { userId: user.id })
           await seedNewUserDatabase(user)
         },
       },
@@ -82,9 +82,7 @@ export const auth = betterAuth({
     // disableSignUp: false,
     minPasswordLength: 8,
     sendResetPassword: async ({ user, url, token }, request) => {
-      if (isDev) {
-        logger.debug('sendResetPassword', { user, url, token, request })
-      }
+      logger.info('Sending password reset email', { userId: user.id })
       await enqueueEmailJob('reset-password', {
         recipient: { email: user.email!, name: user.name || 'User' },
         resetLink: url,
@@ -92,15 +90,28 @@ export const auth = betterAuth({
       })
     },
     onPasswordReset: async ({ user }, request) => {
-      if (isDev) {
-        logger.debug('pass', { user, request })
-      }
+      logger.info('Password reset completed', { userId: user.id })
+
+      // Invalidate all existing sessions for this user
+      await database
+        .delete(schema.session)
+        .where(eq(schema.session.userId, user.id))
+        .catch((error) => {
+          logger.error('Failed to invalidate sessions on password reset', {
+            userId: user.id,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
+
       await enqueueEmailJob('password-reset-notify', {
         recipient: { email: user.email!, name: user.name! },
         source: 'auth.server',
       })
     },
   }, // enable email/password auth
+  account: {
+    encryptOAuthTokens: true,
+  },
   socialProviders: {
     google: {
       clientId: configService.get<string>('AUTH_GOOGLE_ID')!,
@@ -122,10 +133,7 @@ export const auth = betterAuth({
     sendOnSignIn: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url, token }, request) => {
-      console.log('sendVerificationEmail', user)
-      if (isDev) {
-        logger.info('sendVerificationEmail', { user, url, token, request })
-      }
+      logger.info('Sending verification email', { userId: user.id, email: user.email })
 
       await enqueueEmailJob('verification', {
         recipient: { email: user.email!, name: user.name || 'User' },
@@ -139,15 +147,29 @@ export const auth = betterAuth({
     // Global defaults (per IP+path)
     window: 60, // 60‑second window
     max: 10, // at most 10 requests per window
-    // tighten it up for our OTP sends:
     customRules: {
       '/phone-number/send-otp': {
-        window: 60, // 1 minute
-        max: 3, // only 3 sends per minute
+        window: 60,
+        max: 3,
+      },
+      '/sign-up/email': {
+        window: 3600, // 1 hour
+        max: 5,
+      },
+      '/sign-in/email': {
+        window: 60,
+        max: 5,
+      },
+      '/forget-password': {
+        window: 60,
+        max: 3,
+      },
+      '/send-verification-email': {
+        window: 60,
+        max: 3,
       },
     },
-    // In dev this is off by default—flip it on to test:
-    enabled: !isDev,
+    enabled: configService.get<string>('DISABLE_RATE_LIMITING') !== 'true',
   },
 
   user: {
@@ -155,10 +177,7 @@ export const auth = betterAuth({
     changeEmail: {
       enabled: true,
       sendChangeEmailVerification: async ({ user, newEmail, url, token }, request) => {
-        if (isDev) {
-          logger.debug('sendChangeEmailVerification', { user, newEmail, token, url, request })
-        }
-
+        logger.info('Sending email change verification', { userId: user.id })
         await enqueueEmailJob('email-change-verification', {
           recipient: { email: user.email!, name: user.name || 'User' },
           newEmail,
@@ -184,7 +203,7 @@ export const auth = betterAuth({
     cookieCache: { enabled: true, maxAge: 5 * 60 },
     cookieOptions: {
       httpOnly: true,
-      secure: !isDev,
+      secure: isProduction || !!configService.get<string>('DOMAIN'),
       sameSite: 'lax',
       domain: getCookieDomain(),
     },
@@ -204,13 +223,12 @@ export const auth = betterAuth({
       issuer: 'Auxx.Ai',
       otpOptions: {
         async sendOTP({ user, otp }) {
-          console.log('sendOTP', { user, otp })
-          // await resend.emails.send({
-          //   from,
-          //   to: user.email,
-          //   subject: 'Your OTP',
-          //   html: `Your OTP is ${otp}`,
-          // })
+          logger.info('Sending 2FA OTP email', { userId: user.id })
+          await enqueueEmailJob('two-factor-otp', {
+            recipient: { email: user.email!, name: user.name || 'User' },
+            otp,
+            source: 'auth.server',
+          })
         },
       },
     }),
@@ -330,7 +348,8 @@ export const auth = betterAuth({
     }),
     phoneNumber({
       sendOTP: async ({ phoneNumber, code }) => {
-        console.log('sendOTP', { phoneNumber, code })
+        logger.info('Sending phone OTP', { phoneNumber: phoneNumber.slice(-4) })
+        // TODO: Implement SMS delivery (e.g. OpenPhone, Twilio)
         // await sendViaOpenPhone(phoneNumber, `Your verification code is: ${code}`)
       },
       // callbackOnVerification: async ({ phoneNumber, user }) => {
@@ -350,6 +369,8 @@ export const auth = betterAuth({
       expiresIn: 300,
     }),
     oidcProvider({
+      // Hash client secrets at rest (prevents plaintext exposure on DB breach)
+      storeClientSecret: 'hashed',
       // Custom consent page
       consentPage: '/consent',
       // Trusted clients (first-party apps like SDK CLI)
@@ -358,8 +379,7 @@ export const auth = betterAuth({
           clientId: 'auxx-sdk-cli',
           // Public clients don't use clientSecret for auth (PKCE only), but better-auth
           // still needs it to sign the ID token. This secret is never sent by the SDK.
-          clientSecret:
-            configService.get<string>('SDK_CLIENT_SECRET') || 'auxx-sdk-cli-secret-for-jwt-signing',
+          clientSecret: configService.get<string>('SDK_CLIENT_SECRET')!,
           name: 'Auxx SDK CLI',
           type: 'public', // Public client - uses PKCE, not clientSecret for auth
           redirectUrls: [
@@ -392,8 +412,7 @@ export const auth = betterAuth({
         },
         {
           clientId: 'test-app-connection',
-          clientSecret:
-            configService.get<string>('TEST_APP_CLIENT_SECRET') || 'test-app-connection-secret',
+          clientSecret: configService.get<string>('TEST_APP_CLIENT_SECRET')!,
           name: 'Test App Connection',
           type: 'web', // Web application - uses client_id + client_secret
           redirectUrls: [

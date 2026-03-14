@@ -4,37 +4,78 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { publisher } from '@auxx/lib/events'
 import { OutlookOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
-import type { NextRequest } from 'next/server'
+import { OAUTH_CSRF_COOKIE, validateRedirectPath } from '@auxx/utils'
+import { cookies, headers } from 'next/headers'
+import { type NextRequest, NextResponse } from 'next/server'
+import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('outlook-oauth-callback')
+
+const DEFAULT_REDIRECT = '/app/settings/channels/new/outlook/result'
 
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams
   const code = searchParams.get('code')
   const state = searchParams.get('state')
   const error = searchParams.get('error')
-  const errorDescription = searchParams.get('error_description') // Capture error description
+  const errorDescription = searchParams.get('error_description')
 
-  // Default redirect path
-  let redirectPath = '/app/settings/channels/new/outlook/result' // Updated default path?
+  let redirectPath = DEFAULT_REDIRECT
   let parsedState: Record<string, unknown> | undefined
 
-  try {
-    if (state) {
-      parsedState = JSON.parse(state) // State should contain orgId, userId, and optionally redirectPath
-      if (parsedState?.redirectPath) {
-        redirectPath = parsedState.redirectPath as string
-      }
-    }
-  } catch (e) {
-    logger.error('Failed to parse state parameter in Outlook callback', { state, error: e })
-    // Redirect with a generic state error, as we don't know the intended redirect path
-    return Response.redirect(
-      `${WEBAPP_URL}${redirectPath}?error=invalid_state&error_description=${encodeURIComponent('Invalid state parameter received.')}`
+  // --- Session Verification (CSRF protection) ---
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user) {
+    return NextResponse.redirect(
+      new URL(`/login?callbackUrl=${encodeURIComponent(req.url)}`, req.url)
     )
   }
 
-  // Handle OAuth errors or missing code
+  // --- State Parameter Handling ---
+  try {
+    if (state) {
+      parsedState = JSON.parse(state)
+      redirectPath = validateRedirectPath(
+        parsedState?.redirectPath as string | undefined,
+        DEFAULT_REDIRECT
+      )
+    }
+  } catch (e) {
+    logger.error('Failed to parse state parameter in Outlook callback', { state, error: e })
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?error=invalid_state&error_description=${encodeURIComponent('Invalid state parameter received.')}`,
+        WEBAPP_URL
+      )
+    )
+  }
+
+  // --- Verify user matches the one who initiated the flow ---
+  if (session.user.id !== parsedState?.userId) {
+    logger.error('User mismatch in Outlook OAuth callback', {
+      sessionUserId: session.user.id,
+      stateUserId: parsedState?.userId,
+    })
+    return NextResponse.redirect(
+      new URL(`/login?callbackUrl=${encodeURIComponent(req.url)}`, req.url)
+    )
+  }
+
+  // --- CSRF cookie verification ---
+  const cookieStore = await cookies()
+  const csrfCookie = cookieStore.get(OAUTH_CSRF_COOKIE)?.value
+  if (!csrfCookie || csrfCookie !== parsedState?.csrfToken) {
+    logger.error('CSRF token mismatch in Outlook OAuth callback')
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?error=csrf_mismatch&error_description=${encodeURIComponent('CSRF verification failed. Please try again.')}`,
+        WEBAPP_URL
+      )
+    )
+  }
+  cookieStore.delete(OAUTH_CSRF_COOKIE)
+
+  // --- Handle OAuth errors or missing code ---
   if (error || !code || !state) {
     const errorMessage = errorDescription || error || 'missing_code'
     logger.warn('OAuth error or missing code in Outlook callback', {
@@ -42,18 +83,19 @@ export async function GET(req: NextRequest) {
       errorDescription,
       state,
     })
-    return Response.redirect(
-      `${WEBAPP_URL}${redirectPath}?error=${encodeURIComponent(error || 'oauth_error')}&error_description=${encodeURIComponent(errorMessage)}`
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?error=${encodeURIComponent(error || 'oauth_error')}&error_description=${encodeURIComponent(errorMessage)}`,
+        WEBAPP_URL
+      )
     )
   }
 
   try {
-    // Process the OAuth callback using the service
     const oauthService = OutlookOAuthService.getInstance()
-    // handleCallback now returns the integration object which includes metadata
     const result = await oauthService.handleCallback(code, state)
 
-    // Extract identifier (email) from metadata for the redirect URL (optional)
+    // Extract identifier (email) from metadata for the redirect URL
     let identifier = 'unknown'
     if (
       result.integration.metadata &&
@@ -79,9 +121,11 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    // Redirect to success page (e.g., integrations settings)
-    return Response.redirect(
-      `${WEBAPP_URL}${redirectPath}?success=true&identifier=${encodeURIComponent(identifier)}&integrationId=${result.integration.id}` // Pass back identifier and integration ID
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?success=true&identifier=${encodeURIComponent(identifier)}&integrationId=${result.integration.id}`,
+        WEBAPP_URL
+      )
     )
   } catch (error: any) {
     logger.error('Error processing Outlook OAuth callback:', {
@@ -99,9 +143,11 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    // Redirect with error information
-    return Response.redirect(
-      `${WEBAPP_URL}${redirectPath}?error=oauth_failed&error_description=${encodeURIComponent(error.message || 'Failed to complete Microsoft authorization')}`
+    return NextResponse.redirect(
+      new URL(
+        `${redirectPath}?error=oauth_failed&error_description=${encodeURIComponent(error.message || 'Failed to complete Microsoft authorization')}`,
+        WEBAPP_URL
+      )
     )
   }
 }

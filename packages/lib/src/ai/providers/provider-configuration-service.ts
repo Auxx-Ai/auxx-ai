@@ -1,4 +1,5 @@
 // packages/lib/src/ai/providers/provider-configuration-service.ts
+import { CredentialService } from '@auxx/credentials'
 import { type Database, schema } from '@auxx/database'
 import type {
   LoadBalancingConfigEntity as LoadBalancingConfigModel,
@@ -1801,31 +1802,29 @@ export class ProviderConfigurationService {
   }
 
   /**
-   * Encrypt credentials for secure storage
-   * TODO: Implement proper encryption using existing encryption utilities
-   * Currently returns credentials as-is but should encrypt sensitive fields in production
+   * Encrypt credentials for secure storage using AES-256-GCM
    * @param credentials - The credentials object to encrypt
-   * @returns Promise<Record<string, any>> - Encrypted credentials object
+   * @returns Promise<Record<string, any>> - Wrapped encrypted credentials as `{ _encrypted: "<base64>" }`
    */
   private async _encryptCredentials(
     credentials: Record<string, any>
   ): Promise<Record<string, any>> {
-    // TODO: Implement proper encryption using your existing encryption utilities
-    // For now, return as-is (in production, encrypt sensitive fields)
-    return credentials
+    return { _encrypted: CredentialService.encrypt(credentials) }
   }
 
   /**
    * Decrypt credentials for use
-   * TODO: Implement proper decryption using existing encryption utilities
-   * Currently returns credentials as-is but should decrypt sensitive fields in production
-   * @param encryptedCredentials - The encrypted credentials object to decrypt
+   * Handles both encrypted (`{ _encrypted: "..." }`) and legacy plaintext formats
+   * @param encryptedCredentials - The encrypted or plaintext credentials object
    * @returns Promise<Record<string, any>> - Decrypted credentials object
    */
   private async _decryptCredentials(encryptedCredentials: any): Promise<Record<string, any>> {
-    // TODO: Implement proper decryption using your existing encryption utilities
-    // For now, return as-is (in production, decrypt sensitive fields)
-    return encryptedCredentials || {}
+    if (!encryptedCredentials) return {}
+    if (encryptedCredentials._encrypted) {
+      return CredentialService.decrypt(encryptedCredentials._encrypted) as Record<string, any>
+    }
+    // Legacy plaintext fallback
+    return encryptedCredentials
   }
 
   /**

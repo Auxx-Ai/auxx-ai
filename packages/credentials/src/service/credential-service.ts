@@ -24,7 +24,14 @@ interface CredentialListItem {
 
 export class CredentialService {
   private static getEncryptionKey(): string {
-    return process.env.WORKFLOW_CREDENTIAL_ENCRYPTION_KEY || 'fallback-dev-key-32-chars-long!!'
+    const key = process.env.WORKFLOW_CREDENTIAL_ENCRYPTION_KEY
+    if (!key) {
+      throw new Error(
+        'WORKFLOW_CREDENTIAL_ENCRYPTION_KEY environment variable is required. ' +
+          'Generate one with: openssl rand -hex 16'
+      )
+    }
+    return key
   }
 
   /**
