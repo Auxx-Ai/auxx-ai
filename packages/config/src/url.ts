@@ -154,12 +154,20 @@ export function getCookieDomain(): string | undefined {
 }
 
 /**
- * Passkey relying party ID (bare hostname).
- * "localhost" in dev, "app.dev.auxx.ai" in dev stage, "app.auxx.ai" in prod.
+ * Passkey relying party ID (base domain for cross-subdomain support).
+ * "localhost" in dev, "dev.auxx.ai" in dev stage, "auxx.ai" in prod.
  */
 export function getPasskeyRpId(): string {
+  // Use DOMAIN env var directly for subdomain support
+  const domain = readEnv('DOMAIN')
+  if (domain) return domain
+
   const hostname = getHostname('web')
-  return hostname === '127.0.0.1' ? 'localhost' : hostname
+  if (hostname === '127.0.0.1' || hostname === 'localhost') return 'localhost'
+
+  // Extract base domain (e.g. "app.auxx.ai" → "auxx.ai")
+  const parts = hostname.split('.')
+  return parts.length >= 2 ? parts.slice(-2).join('.') : hostname
 }
 
 /**

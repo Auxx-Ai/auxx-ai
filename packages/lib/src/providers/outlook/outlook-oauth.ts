@@ -97,6 +97,7 @@ export class OutlookOAuthService {
       integrationId?: string // For re-auth context
       isReauth?: boolean // Force consent for re-auth
       type?: 'initial' | 'reauth' // Auth type for callback handling
+      csrfToken?: string // Externally provided CSRF token (for cookie-based verification)
     } = {}
   ): Promise<string> {
     const stateWithContext = {
@@ -108,6 +109,7 @@ export class OutlookOAuthService {
       ...(options.integrationId && { integrationId: options.integrationId }),
       ...(options.isReauth && { type: 'reauth' }),
       ...(options.type && { type: options.type }),
+      ...(options.csrfToken && { csrfToken: options.csrfToken }),
     }
     const authCodeUrlParameters = {
       scopes: OutlookOAuthService.scopes,

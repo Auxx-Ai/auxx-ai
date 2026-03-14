@@ -5,6 +5,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter'
 import {
   getOrCreateEndUser,
   getSharedWorkflowByToken,
@@ -17,11 +18,30 @@ import { validateSessionFromCookies } from '../../../lib/session-validator'
 
 const passportRoute = new Hono()
 
+/** Rate limiter for passport issuance — per IP (10 requests/minute) */
+const passportIssuanceLimiter = new RedisRateLimiter({
+  name: 'passport-issue:ip',
+  maxRequests: 10,
+  perInterval: 60_000,
+})
+
 /**
  * GET /api/v1/workflows/share/:shareToken/passport
  * Issue or refresh passport token for workflow access
  */
 passportRoute.get('/', async (c) => {
+  // Rate limit passport issuance per IP
+  const clientIp =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown'
+
+  const allowed = await passportIssuanceLimiter.acquire(`issue:ip:${clientIp}`)
+  if (!allowed) {
+    return c.json(
+      { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
+      429
+    )
+  }
+
   const shareToken = c.req.param('shareToken')
 
   if (!shareToken) {

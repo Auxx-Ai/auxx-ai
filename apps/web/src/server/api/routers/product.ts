@@ -49,7 +49,7 @@ export const productRouter = createTRPCRouter({
     return 'you can now see this secret message!'
   }),
   /** getCategories aggregates unique tags and vendors from products. */
-  getCategories: publicProcedure.query(async ({ ctx }) => {
+  getCategories: protectedProcedure.query(async ({ ctx }) => {
     // Get all products to extract tags and vendors
     const products = await ctx.db.query.Product.findMany({
       columns: {

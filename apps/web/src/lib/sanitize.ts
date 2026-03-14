@@ -60,7 +60,7 @@ const DEFAULT_CONFIG: DOMPurify.Config = {
     'th',
     'td',
   ],
-  ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'src', 'alt', 'title', 'style'],
+  ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'src', 'alt', 'title'],
   ALLOW_DATA_ATTR: false,
 }
 

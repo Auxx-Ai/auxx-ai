@@ -114,6 +114,7 @@ export class GoogleOAuthService {
       integrationId?: string // For re-auth context
       isReauth?: boolean // Force consent for re-auth
       type?: 'initial' | 'reauth' // Auth type for callback handling
+      csrfToken?: string // Externally provided CSRF token (for cookie-based verification)
     } = {}
   ): string {
     const oauth2Client = this.getOAuthClient()
@@ -126,6 +127,7 @@ export class GoogleOAuthService {
       ...(options.integrationId && { integrationId: options.integrationId }),
       ...(options.isReauth && { type: 'reauth' }),
       ...(options.type && { type: options.type }),
+      ...(options.csrfToken && { csrfToken: options.csrfToken }),
     }
 
     const url = oauth2Client.generateAuthUrl({

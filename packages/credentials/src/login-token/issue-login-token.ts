@@ -6,6 +6,7 @@ import { err, ok, type Result } from 'neverthrow'
 import { configService } from '../config'
 import type { IssueLoginTokenOptions, IssueLoginTokenResult, LoginTokenError } from './types'
 
+/** Default TTL for cross-app login tokens. Use shorter values for sensitive operations. */
 const DEFAULT_EXPIRY = '10m'
 
 /**

@@ -63,7 +63,7 @@ export function SandboxedEmailHtml({ html, className }: SandboxedEmailHtmlProps)
 }
 
 const CSP_TAG =
-  "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' https: http: data: blob:; style-src 'unsafe-inline'; frame-src 'none'; script-src 'none'; form-action 'none';\">"
+  "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' https: data: blob:; style-src 'unsafe-inline'; frame-src 'none'; script-src 'none'; form-action 'none';\">"
 
 const BASE_STYLES =
   "<style>body, p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, figure, figcaption, dl, dd { margin: 0; padding: 0; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; color: inherit; word-wrap: break-word; overflow-wrap: break-word; overflow: hidden; } img { max-width: 100%; height: auto; }</style>"

@@ -1,5 +1,7 @@
 // packages/lib/src/providers/integration-service.ts
+
 import { type Database, schema } from '@auxx/database'
+import crypto from 'crypto'
 import { and, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { withAuthErrorHandling } from '../email/errors-handlers'
 import { type IntegrationProviderType, MessageService } from '../email/message-service'
@@ -213,12 +215,14 @@ export class IntegrationService {
       }
 
       let authUrl: string | null = null
+      const csrfToken = crypto.randomBytes(32).toString('hex')
 
       switch (provider) {
         case 'google': {
           const googleOAuthService = GoogleOAuthService.getInstance()
           authUrl = googleOAuthService.getAuthUrl(this.organizationId, this.userId, {
             redirectPath,
+            csrfToken,
           })
           break
         }
@@ -226,6 +230,7 @@ export class IntegrationService {
           const outlookOAuthService = OutlookOAuthService.getInstance()
           authUrl = await outlookOAuthService.getAuthUrl(this.organizationId, this.userId, {
             redirectPath,
+            csrfToken,
           })
           break
         }
@@ -233,6 +238,7 @@ export class IntegrationService {
           const facebookOAuthService = FacebookOAuthService.getInstance()
           authUrl = await facebookOAuthService.getAuthUrl(this.organizationId, this.userId, {
             redirectPath,
+            csrfToken,
           })
           break
         }
@@ -240,6 +246,7 @@ export class IntegrationService {
           const instagramOAuthService = InstagramOAuthService.getInstance()
           authUrl = instagramOAuthService.getAuthUrl(this.organizationId, this.userId, {
             redirectPath,
+            csrfToken,
           })
           break
         }
@@ -247,7 +254,7 @@ export class IntegrationService {
           throw new IntegrationError(`Unsupported provider: ${provider}`, 'UNSUPPORTED_PROVIDER')
       }
 
-      return { authUrl }
+      return { authUrl, csrfToken }
     } catch (error: any) {
       logger.error('Error generating auth URL:', {
         error: error.message,

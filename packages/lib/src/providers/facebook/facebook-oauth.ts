@@ -77,6 +77,7 @@ export class FacebookOAuthService {
       integrationId?: string // For re-auth context
       isReauth?: boolean // Force consent for re-auth
       type?: 'initial' | 'reauth' // Auth type for callback handling
+      csrfToken?: string // Externally provided CSRF token (for cookie-based verification)
     } = {}
   ): Promise<string> {
     const stateWithContext = {
@@ -88,8 +89,7 @@ export class FacebookOAuthService {
       ...(options.integrationId && { integrationId: options.integrationId }),
       ...(options.isReauth && { type: 'reauth' }),
       ...(options.type && { type: options.type }),
-      // Add a CSRF token to state for security
-      csrfToken: crypto.randomBytes(16).toString('hex'),
+      csrfToken: options.csrfToken || crypto.randomBytes(16).toString('hex'),
     }
     const encodedState = Buffer.from(JSON.stringify(stateWithContext)).toString('base64') // Base64 encode state
 

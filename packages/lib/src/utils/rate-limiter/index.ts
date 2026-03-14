@@ -17,6 +17,7 @@
  * - Adaptive rate limiting based on API responses
  */
 
+export { getApiRateLimiter, getClientIp } from './api-rate-limiter'
 export { ExponentialBackoff } from './backoff-handler'
 export { CircuitBreaker } from './circuit-breaker'
 export { ConcurrencySemaphore } from './concurrency-semaphore'

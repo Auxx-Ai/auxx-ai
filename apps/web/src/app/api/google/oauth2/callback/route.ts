@@ -4,7 +4,8 @@ import { requireAdminAccess } from '@auxx/lib/email'
 import { publisher } from '@auxx/lib/events'
 import { GoogleOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
-import { headers } from 'next/headers'
+import { OAUTH_CSRF_COOKIE, validateRedirectPath } from '@auxx/utils'
+import { cookies, headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
 
@@ -77,6 +78,17 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // --- CSRF cookie verification ---
+    const cookieStore = await cookies()
+    const csrfCookie = cookieStore.get(OAUTH_CSRF_COOKIE)?.value
+    if (!csrfCookie || csrfCookie !== state.csrfToken) {
+      logger.error('CSRF token mismatch in Google OAuth callback')
+      return NextResponse.redirect(
+        new URL(`${defaultRedirectPath}?success=false&error=csrf_mismatch`, request.url)
+      )
+    }
+    cookieStore.delete(OAUTH_CSRF_COOKIE)
+
     // Handle the OAuth2 callback
     const oauthService = GoogleOAuthService.getInstance()
     const result = await oauthService.handleCallback(code, stateString)
@@ -90,8 +102,8 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Redirect to the specified path or default
-    const redirectPath = state.redirectPath || '/app/settings/channels/new/google/result'
+    // Redirect to the specified path or default (validated against open redirect)
+    const redirectPath = validateRedirectPath(state.redirectPath, defaultRedirectPath)
     return NextResponse.redirect(new URL(`${redirectPath}?success=true`, request.url))
   } catch (error: any) {
     logger.error('OAuth callback error:', { error })

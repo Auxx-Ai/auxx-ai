@@ -7,8 +7,11 @@ import {
   InstagramOAuthService,
   OutlookOAuthService,
 } from '@auxx/lib/providers'
+import { OAUTH_CSRF_COOKIE, OAUTH_CSRF_MAX_AGE } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
+import crypto from 'crypto'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -52,6 +55,7 @@ export const integrationReauthRouter = createTRPCRouter({
 
       // Generate OAuth URL using existing services with re-auth options
       let authUrl: string
+      const csrfToken = crypto.randomBytes(32).toString('hex')
 
       try {
         switch (integration.provider) {
@@ -61,6 +65,7 @@ export const integrationReauthRouter = createTRPCRouter({
               integrationId: integration.id,
               isReauth: true,
               type: 'reauth',
+              csrfToken,
             })
             break
           }
@@ -71,6 +76,7 @@ export const integrationReauthRouter = createTRPCRouter({
               integrationId: integration.id,
               isReauth: true,
               type: 'reauth',
+              csrfToken,
             })
             break
           }
@@ -81,6 +87,7 @@ export const integrationReauthRouter = createTRPCRouter({
               integrationId: integration.id,
               isReauth: true,
               type: 'reauth',
+              csrfToken,
             })
             break
           }
@@ -91,6 +98,7 @@ export const integrationReauthRouter = createTRPCRouter({
               integrationId: integration.id,
               isReauth: true,
               type: 'reauth',
+              csrfToken,
             })
             break
           }
@@ -107,6 +115,16 @@ export const integrationReauthRouter = createTRPCRouter({
           message: `Failed to generate re-authentication URL: ${error.message}`,
         })
       }
+
+      // Set CSRF token as httpOnly cookie for callback verification
+      const cookieStore = await cookies()
+      cookieStore.set(OAUTH_CSRF_COOKIE, csrfToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: OAUTH_CSRF_MAX_AGE,
+        path: '/',
+      })
 
       return {
         success: true,

@@ -16,8 +16,10 @@ import {
 } from '@auxx/lib/providers'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
+import { OAUTH_CSRF_COOKIE, OAUTH_CSRF_MAX_AGE } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
 import { and, asc, count, eq, isNull } from 'drizzle-orm'
+import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -100,7 +102,19 @@ export const channelRouter = createTRPCRouter({
       await checkChannelLimit(ctx.db, organizationId)
 
       const service = new IntegrationService(ctx.db, organizationId, userId)
-      return service.getAuthUrl(input.provider as any, input.redirectPath)
+      const result = await service.getAuthUrl(input.provider as any, input.redirectPath)
+
+      // Set CSRF token as httpOnly cookie for callback verification
+      const cookieStore = await cookies()
+      cookieStore.set(OAUTH_CSRF_COOKIE, result.csrfToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: OAUTH_CSRF_MAX_AGE,
+        path: '/',
+      })
+
+      return { authUrl: result.authUrl }
     }),
 
   /**
