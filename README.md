@@ -26,6 +26,30 @@ An open-source AI-powered email support ticket service for Shopify businesses. I
 - Comprehensive ticket management
 - Advanced filtering and searching
 
+## Screenshots
+<table align="center" style="width: 100%;">
+  <tr>
+    <td width="50%"><img alt="Mail View" src="static/images/mail-view.png"></td>
+    <td width="50%"><img alt="Mail Filter" src="static/images/mail-filter.png"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Contacts Table" src="static/images/contacts-table.png"></td>
+    <td width="50%"><img alt="Workflow" src="static/images/workflow.png"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Marketplace" src="static/images/marketplace.png"></td>
+    <td width="50%"><img alt="App Creator" src="static/images/app-creator.png"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Email Template Dialog" src="static/images/email-template-dialog.png"></td>
+    <td width="50%"><img alt="Email Template Select" src="static/images/email-template-select.png"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Channels Add" src="static/images/channels-add.png"></td>
+    <td width="50%"></td>
+  </tr>
+</table>
+
 ## Tech Stack
 
 - **Framework**: Next.js 16.1 with React Server Components
@@ -135,19 +159,19 @@ Apps:
 
 ### Key Configuration Categories
 
-| Category | Variables |
-|----------|-----------|
-| Database | `DATABASE_URL` |
-| Redis | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` |
-| Auth | `AUTH_GOOGLE_*`, `AUTH_GITHUB_*` |
-| Gmail | `GOOGLE_CLIENT_*`, `GOOGLE_PUBSUB_*` |
-| Outlook | `OUTLOOK_CLIENT_*`, `OUTLOOK_WEBHOOK_*` |
-| Shopify | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET` |
-| AI Models | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY` |
-| Email Provider | `EMAIL_PROVIDER`, `MAILGUN_*` or `SMTP_*` |
-| Storage | `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
-| Payments | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
-| Real-time | `PUSHER_*` |
+| Category       | Variables                                                               |
+| -------------- | ----------------------------------------------------------------------- |
+| Database       | `DATABASE_URL`                                                          |
+| Redis          | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`                            |
+| Auth           | `AUTH_GOOGLE_*`, `AUTH_GITHUB_*`                                        |
+| Gmail          | `GOOGLE_CLIENT_*`, `GOOGLE_PUBSUB_*`                                    |
+| Outlook        | `OUTLOOK_CLIENT_*`, `OUTLOOK_WEBHOOK_*`                                 |
+| Shopify        | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`                                 |
+| AI Models      | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY` |
+| Email Provider | `EMAIL_PROVIDER`, `MAILGUN_*` or `SMTP_*`                               |
+| Storage        | `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`    |
+| Payments       | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`                            |
+| Real-time      | `PUSHER_*`                                                              |
 
 See individual `.env.example` files for complete configuration options.
 

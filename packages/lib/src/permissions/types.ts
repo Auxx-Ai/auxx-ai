@@ -61,8 +61,8 @@ export enum FeatureKey {
  */
 export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
   { key: FeatureKey.teammates, limit: 1 },
-  { key: FeatureKey.channels, limit: 1 },
-  { key: FeatureKey.rules, limit: 1 },
+  { key: FeatureKey.channels, limit: 3 },
+  { key: FeatureKey.rules, limit: 5 },
   { key: FeatureKey.savedViews, limit: 5 },
   { key: FeatureKey.knowledgeBase, limit: false },
   { key: FeatureKey.kbPublishedArticles, limit: 0 },

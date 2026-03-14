@@ -47,8 +47,8 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
     trialDays: 0,
     featureLimits: [
       { key: 'teammates', limit: 1 },
-      { key: 'channels', limit: 1 },
-      { key: 'rules', limit: 1 },
+      { key: 'channels', limit: 3 },
+      { key: 'rules', limit: 5 },
       { key: 'savedViews', limit: 5 },
       { key: 'knowledgeBase', limit: false },
       { key: 'apiAccess', limit: false },
@@ -74,7 +74,7 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
     featureLimits: [
       { key: 'teammates', limit: -1 },
       { key: 'channels', limit: 5 },
-      { key: 'rules', limit: 10 },
+      { key: 'rules', limit: 20 },
       { key: 'savedViews', limit: 20 },
       { key: 'knowledgeBase', limit: true },
       { key: 'kbPublishedArticles', limit: 50 },
