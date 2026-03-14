@@ -1,13 +1,38 @@
 // packages/lib/src/entity-templates/template-registry.ts
 
 import campaignTemplate from './templates/campaign.json'
+import collectionTemplate from './templates/collection.json'
 import companyTemplate from './templates/company.json'
+import complaintTemplate from './templates/complaint.json'
+import customerFeedbackTemplate from './templates/customer-feedback.json'
+import dealTemplate from './templates/deal.json'
+import discountRuleTemplate from './templates/discount-rule.json'
+import emailSequenceTemplate from './templates/email-sequence.json'
+import exchangeRequestTemplate from './templates/exchange-request.json'
+import expenseTemplate from './templates/expense.json'
+import faqArticleTemplate from './templates/faq-article.json'
+import featureRequestTemplate from './templates/feature-request.json'
+import giftCardTemplate from './templates/gift-card.json'
+import inventoryLocationTemplate from './templates/inventory-location.json'
+import invoiceTemplate from './templates/invoice.json'
+import leadTemplate from './templates/lead.json'
+import loyaltyMemberTemplate from './templates/loyalty-member.json'
+import meetingTemplate from './templates/meeting.json'
 import orderTemplate from './templates/order.json'
 import productTemplate from './templates/product.json'
+import projectTemplate from './templates/project.json'
+import qualityInspectionTemplate from './templates/quality-inspection.json'
+import quoteTemplate from './templates/quote.json'
+import referralTemplate from './templates/referral.json'
 import returnRequestTemplate from './templates/return-request.json'
+import shipmentTemplate from './templates/shipment.json'
+import socialProofTemplate from './templates/social-proof.json'
 import subscriptionTemplate from './templates/subscription.json'
+import supplierContractTemplate from './templates/supplier-contract.json'
+import taskTemplate from './templates/task.json'
 import vendorTemplate from './templates/vendor.json'
 import warrantyClaimTemplate from './templates/warranty-claim.json'
+import wholesaleOrderTemplate from './templates/wholesale-order.json'
 import type { EntityTemplate } from './types'
 import { isSymbolicRef, parseSymbolicRef } from './types'
 
@@ -15,6 +40,7 @@ import { isSymbolicRef, parseSymbolicRef } from './types'
 const templateMap = new Map<string, EntityTemplate>()
 
 const allTemplates: EntityTemplate[] = [
+  // Existing
   companyTemplate,
   orderTemplate,
   productTemplate,
@@ -23,6 +49,36 @@ const allTemplates: EntityTemplate[] = [
   subscriptionTemplate,
   campaignTemplate,
   warrantyClaimTemplate,
+  // E-commerce
+  shipmentTemplate,
+  giftCardTemplate,
+  discountRuleTemplate,
+  collectionTemplate,
+  inventoryLocationTemplate,
+  wholesaleOrderTemplate,
+  // CRM
+  leadTemplate,
+  dealTemplate,
+  quoteTemplate,
+  referralTemplate,
+  loyaltyMemberTemplate,
+  // Support
+  faqArticleTemplate,
+  featureRequestTemplate,
+  customerFeedbackTemplate,
+  complaintTemplate,
+  exchangeRequestTemplate,
+  // Operations
+  taskTemplate,
+  projectTemplate,
+  invoiceTemplate,
+  expenseTemplate,
+  supplierContractTemplate,
+  meetingTemplate,
+  // Marketing / Other
+  emailSequenceTemplate,
+  socialProofTemplate,
+  qualityInspectionTemplate,
 ] as EntityTemplate[]
 
 // Index templates and validate at import time

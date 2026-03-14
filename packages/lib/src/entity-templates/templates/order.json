@@ -11,7 +11,15 @@
     "color": "green"
   },
   "primaryDisplayField": "orderNumber",
-  "companions": ["company", "return-request"],
+  "companions": [
+    "company",
+    "return-request",
+    "shipment",
+    "customer-feedback",
+    "complaint",
+    "exchange-request",
+    "invoice"
+  ],
   "fields": [
     {
       "templateFieldId": "orderNumber",

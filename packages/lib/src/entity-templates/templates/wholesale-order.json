@@ -1,0 +1,116 @@
+{
+  "id": "wholesale-order",
+  "name": "Wholesale Order",
+  "description": "Track B2B wholesale orders separately from DTC",
+  "categories": ["e-commerce", "operations"],
+  "entity": {
+    "apiSlug": "wholesale-orders",
+    "singular": "Wholesale Order",
+    "plural": "Wholesale Orders",
+    "icon": "package",
+    "color": "teal"
+  },
+  "primaryDisplayField": "poNumber",
+  "companions": ["company", "product", "vendor"],
+  "fields": [
+    {
+      "templateFieldId": "poNumber",
+      "name": "PO Number",
+      "type": "TEXT",
+      "required": true,
+      "isUnique": true
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Pending", "value": "pending", "color": "gray" },
+        { "label": "Confirmed", "value": "confirmed", "color": "blue" },
+        { "label": "Processing", "value": "processing", "color": "orange" },
+        { "label": "Shipped", "value": "shipped", "color": "teal" },
+        { "label": "Delivered", "value": "delivered", "color": "green" },
+        { "label": "Cancelled", "value": "cancelled", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "orderDate",
+      "name": "Order Date",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "expectedShipDate",
+      "name": "Expected Ship Date",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "subtotal",
+      "name": "Subtotal",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "discount",
+      "name": "Discount",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "total",
+      "name": "Total",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "paymentTerms",
+      "name": "Payment Terms",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Net 15", "value": "net-15", "color": "blue" },
+        { "label": "Net 30", "value": "net-30", "color": "green" },
+        { "label": "Net 60", "value": "net-60", "color": "orange" },
+        { "label": "COD", "value": "cod", "color": "amber" },
+        { "label": "Prepaid", "value": "prepaid", "color": "purple" }
+      ]
+    },
+    {
+      "templateFieldId": "company",
+      "name": "Company",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:company",
+        "relationshipType": "belongs_to",
+        "inverseName": "Wholesale Orders"
+      }
+    },
+    {
+      "templateFieldId": "customer",
+      "name": "Customer",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Wholesale Orders"
+      }
+    },
+    {
+      "templateFieldId": "documents",
+      "name": "Documents",
+      "type": "FILE",
+      "options": {
+        "file": { "multiple": true }
+      }
+    },
+    {
+      "templateFieldId": "notes",
+      "name": "Notes",
+      "type": "RICH_TEXT"
+    }
+  ]
+}

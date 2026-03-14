@@ -1,0 +1,108 @@
+{
+  "id": "shipment",
+  "name": "Shipment",
+  "description": "Track shipments and deliveries for orders",
+  "categories": ["e-commerce", "operations"],
+  "entity": {
+    "apiSlug": "shipments",
+    "singular": "Shipment",
+    "plural": "Shipments",
+    "icon": "truck",
+    "color": "blue"
+  },
+  "primaryDisplayField": "trackingNumber",
+  "companions": ["order"],
+  "fields": [
+    {
+      "templateFieldId": "trackingNumber",
+      "name": "Tracking Number",
+      "type": "TEXT",
+      "required": true,
+      "isUnique": true
+    },
+    {
+      "templateFieldId": "carrier",
+      "name": "Carrier",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "USPS", "value": "usps", "color": "blue" },
+        { "label": "UPS", "value": "ups", "color": "amber" },
+        { "label": "FedEx", "value": "fedex", "color": "purple" },
+        { "label": "DHL", "value": "dhl", "color": "orange" },
+        { "label": "Canada Post", "value": "canada-post", "color": "red" },
+        { "label": "Other", "value": "other", "color": "gray" }
+      ]
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Label Created", "value": "label-created", "color": "gray" },
+        { "label": "In Transit", "value": "in-transit", "color": "blue" },
+        { "label": "Out for Delivery", "value": "out-for-delivery", "color": "orange" },
+        { "label": "Delivered", "value": "delivered", "color": "green" },
+        { "label": "Exception", "value": "exception", "color": "red" },
+        { "label": "Returned", "value": "returned", "color": "purple" }
+      ]
+    },
+    {
+      "templateFieldId": "shipDate",
+      "name": "Ship Date",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "estimatedDelivery",
+      "name": "Estimated Delivery",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "actualDelivery",
+      "name": "Actual Delivery",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "shippingCost",
+      "name": "Shipping Cost",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "weight",
+      "name": "Weight",
+      "type": "NUMBER"
+    },
+    {
+      "templateFieldId": "trackingUrl",
+      "name": "Tracking URL",
+      "type": "URL"
+    },
+    {
+      "templateFieldId": "order",
+      "name": "Order",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:order",
+        "relationshipType": "belongs_to",
+        "inverseName": "Shipments"
+      }
+    },
+    {
+      "templateFieldId": "customer",
+      "name": "Customer",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Shipments"
+      }
+    },
+    {
+      "templateFieldId": "notes",
+      "name": "Notes",
+      "type": "RICH_TEXT"
+    }
+  ]
+}

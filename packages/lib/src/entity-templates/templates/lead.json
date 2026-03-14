@@ -1,0 +1,94 @@
+{
+  "id": "lead",
+  "name": "Lead",
+  "description": "Track potential customers and sales opportunities",
+  "categories": ["crm"],
+  "entity": {
+    "apiSlug": "leads",
+    "singular": "Lead",
+    "plural": "Leads",
+    "icon": "user-plus",
+    "color": "blue"
+  },
+  "primaryDisplayField": "name",
+  "companions": ["company", "deal"],
+  "fields": [
+    { "templateFieldId": "name", "name": "Name", "type": "TEXT", "required": true },
+    { "templateFieldId": "email", "name": "Email", "type": "EMAIL" },
+    { "templateFieldId": "phone", "name": "Phone", "type": "PHONE" },
+    {
+      "templateFieldId": "source",
+      "name": "Source",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Website", "value": "website", "color": "blue" },
+        { "label": "Referral", "value": "referral", "color": "green" },
+        { "label": "Social Media", "value": "social-media", "color": "purple" },
+        { "label": "Trade Show", "value": "trade-show", "color": "orange" },
+        { "label": "Cold Outreach", "value": "cold-outreach", "color": "gray" },
+        { "label": "Ad Campaign", "value": "ad-campaign", "color": "pink" },
+        { "label": "Other", "value": "other", "color": "gray" }
+      ]
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "New", "value": "new", "color": "gray" },
+        { "label": "Contacted", "value": "contacted", "color": "blue" },
+        { "label": "Qualified", "value": "qualified", "color": "teal" },
+        { "label": "Proposal", "value": "proposal", "color": "purple" },
+        { "label": "Negotiation", "value": "negotiation", "color": "orange" },
+        { "label": "Won", "value": "won", "color": "green" },
+        { "label": "Lost", "value": "lost", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "priority",
+      "name": "Priority",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Low", "value": "low", "color": "gray" },
+        { "label": "Medium", "value": "medium", "color": "blue" },
+        { "label": "High", "value": "high", "color": "orange" },
+        { "label": "Urgent", "value": "urgent", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "estimatedValue",
+      "name": "Estimated Value",
+      "type": "CURRENCY",
+      "options": { "currency": { "currencyCode": "USD", "showSymbol": true } }
+    },
+    { "templateFieldId": "nextFollowUp", "name": "Next Follow-up", "type": "DATETIME" },
+    {
+      "templateFieldId": "assignedTo",
+      "name": "Assigned To",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    {
+      "templateFieldId": "company",
+      "name": "Company",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:company",
+        "relationshipType": "belongs_to",
+        "inverseName": "Leads"
+      }
+    },
+    {
+      "templateFieldId": "contact",
+      "name": "Contact",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Leads"
+      }
+    },
+    { "templateFieldId": "notes", "name": "Notes", "type": "RICH_TEXT" },
+    { "templateFieldId": "tags", "name": "Tags", "type": "TAGS" }
+  ]
+}

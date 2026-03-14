@@ -11,7 +11,7 @@
     "color": "red"
   },
   "primaryDisplayField": "returnId",
-  "companions": ["order", "product"],
+  "companions": ["order", "product", "exchange-request"],
   "fields": [
     {
       "templateFieldId": "returnId",

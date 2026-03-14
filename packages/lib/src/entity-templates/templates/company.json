@@ -12,7 +12,16 @@
   },
   "primaryDisplayField": "companyName",
   "secondaryDisplayField": "website",
-  "companions": ["order", "vendor"],
+  "companions": [
+    "order",
+    "vendor",
+    "lead",
+    "deal",
+    "wholesale-order",
+    "project",
+    "invoice",
+    "meeting"
+  ],
   "fields": [
     {
       "templateFieldId": "companyName",

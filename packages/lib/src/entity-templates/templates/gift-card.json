@@ -1,0 +1,91 @@
+{
+  "id": "gift-card",
+  "name": "Gift Card",
+  "description": "Manage gift card inventory and redemptions",
+  "categories": ["e-commerce"],
+  "entity": {
+    "apiSlug": "gift-cards",
+    "singular": "Gift Card",
+    "plural": "Gift Cards",
+    "icon": "gift",
+    "color": "purple"
+  },
+  "primaryDisplayField": "code",
+  "companions": ["order"],
+  "fields": [
+    {
+      "templateFieldId": "code",
+      "name": "Code",
+      "type": "TEXT",
+      "required": true,
+      "isUnique": true
+    },
+    {
+      "templateFieldId": "initialValue",
+      "name": "Initial Value",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "remainingBalance",
+      "name": "Remaining Balance",
+      "type": "CURRENCY",
+      "options": {
+        "currency": { "currencyCode": "USD", "showSymbol": true }
+      }
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Active", "value": "active", "color": "green" },
+        { "label": "Redeemed", "value": "redeemed", "color": "blue" },
+        { "label": "Expired", "value": "expired", "color": "gray" },
+        { "label": "Cancelled", "value": "cancelled", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "issueDate",
+      "name": "Issue Date",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "expiryDate",
+      "name": "Expiry Date",
+      "type": "DATETIME"
+    },
+    {
+      "templateFieldId": "purchaserEmail",
+      "name": "Purchaser Email",
+      "type": "EMAIL"
+    },
+    {
+      "templateFieldId": "recipientEmail",
+      "name": "Recipient Email",
+      "type": "EMAIL"
+    },
+    {
+      "templateFieldId": "message",
+      "name": "Message",
+      "type": "TEXT"
+    },
+    {
+      "templateFieldId": "customer",
+      "name": "Customer",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Gift Cards"
+      }
+    },
+    {
+      "templateFieldId": "notes",
+      "name": "Notes",
+      "type": "RICH_TEXT"
+    }
+  ]
+}

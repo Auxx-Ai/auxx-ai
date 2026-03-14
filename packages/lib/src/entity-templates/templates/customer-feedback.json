@@ -1,0 +1,107 @@
+{
+  "id": "customer-feedback",
+  "name": "Customer Feedback",
+  "description": "Collect and track customer reviews and feedback",
+  "categories": ["support", "crm"],
+  "entity": {
+    "apiSlug": "customer-feedback",
+    "singular": "Customer Feedback",
+    "plural": "Customer Feedback",
+    "icon": "message-square",
+    "color": "green"
+  },
+  "primaryDisplayField": "title",
+  "companions": ["product", "order"],
+  "fields": [
+    { "templateFieldId": "title", "name": "Title", "type": "TEXT" },
+    { "templateFieldId": "rating", "name": "Rating", "type": "NUMBER" },
+    {
+      "templateFieldId": "sentiment",
+      "name": "Sentiment",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Positive", "value": "positive", "color": "green" },
+        { "label": "Neutral", "value": "neutral", "color": "gray" },
+        { "label": "Negative", "value": "negative", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "channel",
+      "name": "Channel",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Email", "value": "email", "color": "blue" },
+        { "label": "Social Media", "value": "social-media", "color": "purple" },
+        { "label": "Review Site", "value": "review-site", "color": "orange" },
+        { "label": "Survey", "value": "survey", "color": "teal" },
+        { "label": "In-App", "value": "in-app", "color": "green" },
+        { "label": "Phone", "value": "phone", "color": "gray" }
+      ]
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "New", "value": "new", "color": "gray" },
+        { "label": "Acknowledged", "value": "acknowledged", "color": "blue" },
+        { "label": "In Progress", "value": "in-progress", "color": "orange" },
+        { "label": "Resolved", "value": "resolved", "color": "green" },
+        { "label": "Archived", "value": "archived", "color": "purple" }
+      ]
+    },
+    {
+      "templateFieldId": "category",
+      "name": "Category",
+      "type": "MULTI_SELECT",
+      "options": [
+        { "label": "Product Quality", "value": "product-quality", "color": "blue" },
+        { "label": "Shipping", "value": "shipping", "color": "teal" },
+        { "label": "Customer Service", "value": "customer-service", "color": "green" },
+        { "label": "Pricing", "value": "pricing", "color": "amber" },
+        { "label": "Website", "value": "website", "color": "purple" },
+        { "label": "Other", "value": "other", "color": "gray" }
+      ]
+    },
+    { "templateFieldId": "feedback", "name": "Feedback", "type": "RICH_TEXT" },
+    { "templateFieldId": "response", "name": "Response", "type": "RICH_TEXT" },
+    {
+      "templateFieldId": "respondedBy",
+      "name": "Responded By",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    { "templateFieldId": "responseDate", "name": "Response Date", "type": "DATETIME" },
+    {
+      "templateFieldId": "contact",
+      "name": "Contact",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Feedback"
+      }
+    },
+    {
+      "templateFieldId": "product",
+      "name": "Product",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:product",
+        "relationshipType": "belongs_to",
+        "inverseName": "Customer Feedback"
+      }
+    },
+    {
+      "templateFieldId": "order",
+      "name": "Order",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:order",
+        "relationshipType": "belongs_to",
+        "inverseName": "Customer Feedback"
+      }
+    },
+    { "templateFieldId": "tags", "name": "Tags", "type": "TAGS" }
+  ]
+}

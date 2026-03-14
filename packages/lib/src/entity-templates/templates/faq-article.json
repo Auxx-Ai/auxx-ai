@@ -1,0 +1,57 @@
+{
+  "id": "faq-article",
+  "name": "FAQ Article",
+  "description": "Build an internal or customer-facing knowledge base",
+  "categories": ["support"],
+  "entity": {
+    "apiSlug": "faq-articles",
+    "singular": "FAQ Article",
+    "plural": "FAQ Articles",
+    "icon": "help-circle",
+    "color": "blue"
+  },
+  "primaryDisplayField": "question",
+  "fields": [
+    { "templateFieldId": "question", "name": "Question", "type": "TEXT", "required": true },
+    { "templateFieldId": "answer", "name": "Answer", "type": "RICH_TEXT", "required": true },
+    {
+      "templateFieldId": "category",
+      "name": "Category",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Shipping", "value": "shipping", "color": "blue" },
+        { "label": "Returns", "value": "returns", "color": "orange" },
+        { "label": "Products", "value": "products", "color": "green" },
+        { "label": "Billing", "value": "billing", "color": "purple" },
+        { "label": "Account", "value": "account", "color": "teal" },
+        { "label": "General", "value": "general", "color": "gray" }
+      ]
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Draft", "value": "draft", "color": "gray" },
+        { "label": "Published", "value": "published", "color": "green" },
+        { "label": "Archived", "value": "archived", "color": "blue" }
+      ]
+    },
+    { "templateFieldId": "views", "name": "Views", "type": "NUMBER" },
+    { "templateFieldId": "helpfulVotes", "name": "Helpful Votes", "type": "NUMBER" },
+    {
+      "templateFieldId": "author",
+      "name": "Author",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    { "templateFieldId": "lastReviewed", "name": "Last Reviewed", "type": "DATETIME" },
+    { "templateFieldId": "tags", "name": "Tags", "type": "TAGS" },
+    {
+      "templateFieldId": "attachments",
+      "name": "Attachments",
+      "type": "FILE",
+      "options": { "file": { "multiple": true } }
+    }
+  ]
+}

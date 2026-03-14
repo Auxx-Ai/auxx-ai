@@ -1,0 +1,105 @@
+{
+  "id": "complaint",
+  "name": "Complaint",
+  "description": "Formal complaint tracking with escalation",
+  "categories": ["support"],
+  "entity": {
+    "apiSlug": "complaints",
+    "singular": "Complaint",
+    "plural": "Complaints",
+    "icon": "alert-triangle",
+    "color": "red"
+  },
+  "primaryDisplayField": "subject",
+  "companions": ["order"],
+  "fields": [
+    { "templateFieldId": "subject", "name": "Subject", "type": "TEXT", "required": true },
+    { "templateFieldId": "description", "name": "Description", "type": "RICH_TEXT" },
+    {
+      "templateFieldId": "severity",
+      "name": "Severity",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Low", "value": "low", "color": "gray" },
+        { "label": "Medium", "value": "medium", "color": "blue" },
+        { "label": "High", "value": "high", "color": "orange" },
+        { "label": "Critical", "value": "critical", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Open", "value": "open", "color": "gray" },
+        { "label": "Investigating", "value": "investigating", "color": "blue" },
+        { "label": "Escalated", "value": "escalated", "color": "orange" },
+        { "label": "Resolved", "value": "resolved", "color": "green" },
+        { "label": "Closed", "value": "closed", "color": "purple" }
+      ]
+    },
+    {
+      "templateFieldId": "category",
+      "name": "Category",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Product Defect", "value": "product-defect", "color": "red" },
+        { "label": "Shipping Issue", "value": "shipping-issue", "color": "orange" },
+        { "label": "Billing Error", "value": "billing-error", "color": "amber" },
+        { "label": "Service Quality", "value": "service-quality", "color": "blue" },
+        { "label": "Other", "value": "other", "color": "gray" }
+      ]
+    },
+    { "templateFieldId": "resolution", "name": "Resolution", "type": "RICH_TEXT" },
+    {
+      "templateFieldId": "assignedTo",
+      "name": "Assigned To",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    {
+      "templateFieldId": "escalatedTo",
+      "name": "Escalated To",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    { "templateFieldId": "openedDate", "name": "Opened Date", "type": "DATETIME" },
+    { "templateFieldId": "resolvedDate", "name": "Resolved Date", "type": "DATETIME" },
+    {
+      "templateFieldId": "contact",
+      "name": "Contact",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Complaints"
+      }
+    },
+    {
+      "templateFieldId": "relatedTicket",
+      "name": "Related Ticket",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:ticket",
+        "relationshipType": "belongs_to",
+        "inverseName": "Complaints"
+      }
+    },
+    {
+      "templateFieldId": "order",
+      "name": "Order",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:order",
+        "relationshipType": "belongs_to",
+        "inverseName": "Complaints"
+      }
+    },
+    {
+      "templateFieldId": "documents",
+      "name": "Documents",
+      "type": "FILE",
+      "options": { "file": { "multiple": true } }
+    }
+  ]
+}

@@ -12,7 +12,13 @@
   },
   "primaryDisplayField": "vendorName",
   "secondaryDisplayField": "email",
-  "companions": ["product"],
+  "companions": [
+    "product",
+    "inventory-location",
+    "expense",
+    "supplier-contract",
+    "quality-inspection"
+  ],
   "fields": [
     {
       "templateFieldId": "vendorName",

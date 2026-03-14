@@ -313,8 +313,10 @@ export function EntitySidebarNav() {
                 onClick={(e) => {
                   e.stopPropagation()
                   setTemplateDialogOpen(true)
-                }}>
-                <LayoutTemplate /> <AnimatedGradientText>From Template</AnimatedGradientText>
+                }}
+                className='data-highlighted:bg-[#ffaa40]/10'>
+                <LayoutTemplate className='text-[#ffaa40]' />{' '}
+                <AnimatedGradientText>From Template</AnimatedGradientText>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>

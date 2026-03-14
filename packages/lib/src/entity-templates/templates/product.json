@@ -12,7 +12,16 @@
   },
   "primaryDisplayField": "productName",
   "secondaryDisplayField": "sku",
-  "companions": ["vendor", "campaign"],
+  "companions": [
+    "vendor",
+    "campaign",
+    "collection",
+    "inventory-location",
+    "discount-rule",
+    "customer-feedback",
+    "social-proof",
+    "quality-inspection"
+  ],
   "fields": [
     {
       "templateFieldId": "productName",

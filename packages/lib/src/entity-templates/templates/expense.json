@@ -1,0 +1,96 @@
+{
+  "id": "expense",
+  "name": "Expense",
+  "description": "Track business expenses and costs",
+  "categories": ["operations"],
+  "entity": {
+    "apiSlug": "expenses",
+    "singular": "Expense",
+    "plural": "Expenses",
+    "icon": "credit-card",
+    "color": "red"
+  },
+  "primaryDisplayField": "description",
+  "companions": ["vendor"],
+  "fields": [
+    { "templateFieldId": "description", "name": "Description", "type": "TEXT", "required": true },
+    {
+      "templateFieldId": "amount",
+      "name": "Amount",
+      "type": "CURRENCY",
+      "options": { "currency": { "currencyCode": "USD", "showSymbol": true } }
+    },
+    {
+      "templateFieldId": "category",
+      "name": "Category",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Shipping", "value": "shipping", "color": "blue" },
+        { "label": "Marketing", "value": "marketing", "color": "pink" },
+        { "label": "Software", "value": "software", "color": "purple" },
+        { "label": "Supplies", "value": "supplies", "color": "green" },
+        { "label": "Inventory", "value": "inventory", "color": "teal" },
+        { "label": "Travel", "value": "travel", "color": "orange" },
+        { "label": "Other", "value": "other", "color": "gray" }
+      ]
+    },
+    { "templateFieldId": "date", "name": "Date", "type": "DATETIME" },
+    {
+      "templateFieldId": "paymentMethod",
+      "name": "Payment Method",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Company Card", "value": "company-card", "color": "blue" },
+        { "label": "Personal Reimbursement", "value": "personal-reimbursement", "color": "orange" },
+        { "label": "Bank Transfer", "value": "bank-transfer", "color": "green" },
+        { "label": "Cash", "value": "cash", "color": "gray" }
+      ]
+    },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Pending", "value": "pending", "color": "gray" },
+        { "label": "Approved", "value": "approved", "color": "blue" },
+        { "label": "Reimbursed", "value": "reimbursed", "color": "green" },
+        { "label": "Denied", "value": "denied", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "submittedBy",
+      "name": "Submitted By",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    {
+      "templateFieldId": "approvedBy",
+      "name": "Approved By",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    {
+      "templateFieldId": "vendor",
+      "name": "Vendor",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:vendor",
+        "relationshipType": "belongs_to",
+        "inverseName": "Expenses"
+      }
+    },
+    {
+      "templateFieldId": "project",
+      "name": "Project",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@template:project",
+        "relationshipType": "belongs_to",
+        "inverseName": "Expenses"
+      }
+    },
+    { "templateFieldId": "receipt", "name": "Receipt", "type": "FILE" },
+    { "templateFieldId": "notes", "name": "Notes", "type": "RICH_TEXT" },
+    { "templateFieldId": "tags", "name": "Tags", "type": "TAGS" }
+  ]
+}

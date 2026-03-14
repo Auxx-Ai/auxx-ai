@@ -8,6 +8,7 @@ import {
   SidebarMenuSubItem,
 } from '@auxx/ui/components/sidebar'
 import { usePathname } from 'next/navigation'
+import type * as React from 'react'
 import type { SidebarProps } from '~/constants/menu'
 import { CollapsibleSidebarSection } from './collapsible-sidebar-section'
 import { SidebarGroupHeader } from './sidebar-group-header'
@@ -16,11 +17,11 @@ import { useSidebarStateContext } from './sidebar-state-context'
 
 type Menu = { title: string; route: string; items: SidebarProps[] }
 type Props = {
-  // slug: string
-  // page: string;
   menu: Menu
+  /** Optional per-item action renderers, keyed by item id */
+  itemActions?: Record<string, () => React.ReactNode>
 }
-export function NavMain({ menu }: Props) {
+export function NavMain({ menu, itemActions }: Props) {
   const pathname = usePathname()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
   const isOpen = getGroupOpen('configurations')
@@ -119,6 +120,7 @@ export function NavMain({ menu }: Props) {
                     icon={item.icon}
                     isActive={isActive(item)}
                     className='ps-[30px]'
+                    editItems={itemActions?.[item.id]?.()}
                   />
                 </SidebarMenuItem>
               )}

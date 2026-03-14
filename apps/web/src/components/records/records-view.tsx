@@ -391,10 +391,8 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
    * Primary display column is first with integrated actions
    */
   const columns: ExtendedColumnDef<EntityRow>[] = useMemo(() => {
-    // Sort fields by sortOrder
-    const sortedFields = [...customFields]
-      .filter((f) => f.active !== false)
-      .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
+    // Fields arrive pre-sorted from ResourceRegistryService (sortOrder + metadata-last)
+    const sortedFields = customFields.filter((f) => f.active !== false)
 
     // Find primary display field (only available on custom resources)
     const primaryFieldId = resource?.display.primaryDisplayField?.id

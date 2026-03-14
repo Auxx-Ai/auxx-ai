@@ -1,0 +1,85 @@
+{
+  "id": "feature-request",
+  "name": "Feature Request",
+  "description": "Track customer feature requests and product feedback",
+  "categories": ["support"],
+  "entity": {
+    "apiSlug": "feature-requests",
+    "singular": "Feature Request",
+    "plural": "Feature Requests",
+    "icon": "lightbulb",
+    "color": "amber"
+  },
+  "primaryDisplayField": "title",
+  "fields": [
+    { "templateFieldId": "title", "name": "Title", "type": "TEXT", "required": true },
+    { "templateFieldId": "description", "name": "Description", "type": "RICH_TEXT" },
+    {
+      "templateFieldId": "status",
+      "name": "Status",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "New", "value": "new", "color": "gray" },
+        { "label": "Under Review", "value": "under-review", "color": "blue" },
+        { "label": "Planned", "value": "planned", "color": "purple" },
+        { "label": "In Progress", "value": "in-progress", "color": "orange" },
+        { "label": "Completed", "value": "completed", "color": "green" },
+        { "label": "Declined", "value": "declined", "color": "red" }
+      ]
+    },
+    {
+      "templateFieldId": "priority",
+      "name": "Priority",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Low", "value": "low", "color": "gray" },
+        { "label": "Medium", "value": "medium", "color": "blue" },
+        { "label": "High", "value": "high", "color": "orange" },
+        { "label": "Critical", "value": "critical", "color": "red" }
+      ]
+    },
+    { "templateFieldId": "votes", "name": "Votes", "type": "NUMBER" },
+    {
+      "templateFieldId": "category",
+      "name": "Category",
+      "type": "SINGLE_SELECT",
+      "options": [
+        { "label": "Product", "value": "product", "color": "blue" },
+        { "label": "Shipping", "value": "shipping", "color": "teal" },
+        { "label": "Checkout", "value": "checkout", "color": "green" },
+        { "label": "Account", "value": "account", "color": "purple" },
+        { "label": "Mobile App", "value": "mobile-app", "color": "orange" },
+        { "label": "Other", "value": "other", "color": "gray" }
+      ]
+    },
+    { "templateFieldId": "submittedDate", "name": "Submitted Date", "type": "DATETIME" },
+    { "templateFieldId": "targetRelease", "name": "Target Release", "type": "TEXT" },
+    {
+      "templateFieldId": "assignedTo",
+      "name": "Assigned To",
+      "type": "ACTOR",
+      "options": { "actor": { "target": "user", "multiple": false } }
+    },
+    {
+      "templateFieldId": "contact",
+      "name": "Contact",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:contact",
+        "relationshipType": "belongs_to",
+        "inverseName": "Feature Requests"
+      }
+    },
+    {
+      "templateFieldId": "relatedTicket",
+      "name": "Related Ticket",
+      "type": "RELATIONSHIP",
+      "relationship": {
+        "relatedResourceId": "@system:ticket",
+        "relationshipType": "belongs_to",
+        "inverseName": "Feature Requests"
+      }
+    },
+    { "templateFieldId": "tags", "name": "Tags", "type": "TAGS" }
+  ]
+}
