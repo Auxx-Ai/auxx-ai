@@ -13,9 +13,11 @@ const logger = createScopedLogger('search-router')
 
 /** Schema for search conditions stored in recent searches */
 const searchConditionSchema = z.object({
+  id: z.string().optional(),
   fieldId: z.string(),
   operator: z.string(),
   value: z.any(),
+  displayLabel: z.string().optional(),
 })
 // Helper function to get operator description
 const getOperatorDescription = (operator: string): string => {
@@ -503,5 +505,20 @@ export const searchRouter = createTRPCRouter({
         logger.error('Failed to save search', { error })
         return { success: false }
       }
+    }),
+
+  /** Delete a recent search entry */
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      await ctx.db
+        .delete(schema.SearchHistory)
+        .where(
+          and(
+            eq(schema.SearchHistory.id, input.id),
+            eq(schema.SearchHistory.userId, ctx.session.userId)
+          )
+        )
+      return { success: true }
     }),
 })

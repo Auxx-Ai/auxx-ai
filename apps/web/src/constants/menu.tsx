@@ -123,30 +123,27 @@ export const SIDEBAR_MENU: SidebarProps[] = [
       { id: 'files', label: 'Files', slug: 'files', icon: <Folder />, featureKey: 'files' },
     ],
   },
-  ...(process.env.NODE_ENV === 'development'
-    ? [
-        {
-          id: 'examples',
-          label: 'Examples',
-          slug: 'examples',
-          icon: <ComponentIcon />,
-          items: [
-            {
-              id: 'examples-file-upload',
-              label: 'File Upload',
-              slug: 'file-upload',
-              icon: <FileUp />,
-            },
-            {
-              id: 'examples-apps',
-              label: 'Apps',
-              slug: 'apps',
-              icon: <AppWindow />,
-            },
-          ],
-        },
-      ]
-    : []),
+  {
+    id: 'examples',
+    label: 'Examples',
+    slug: 'examples',
+    icon: <ComponentIcon />,
+    featureKey: 'devTools',
+    items: [
+      {
+        id: 'examples-file-upload',
+        label: 'File Upload',
+        slug: 'file-upload',
+        icon: <FileUp />,
+      },
+      {
+        id: 'examples-apps',
+        label: 'Apps',
+        slug: 'apps',
+        icon: <AppWindow />,
+      },
+    ],
+  },
   // { id: 'settings', label: 'Settings', slug: 'settings', icon: <Settings /> },
 ]
 

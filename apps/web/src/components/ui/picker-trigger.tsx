@@ -31,6 +31,9 @@ export interface PickerTriggerOptions {
 
   /** Additional className for trigger */
   className?: string
+
+  /** Size for badges rendered inside the trigger */
+  badgeSize?: 'default' | 'sm'
 }
 
 /**

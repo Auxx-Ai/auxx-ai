@@ -3,7 +3,7 @@
 'use client'
 
 import type { MailViewFieldDefinition } from '@auxx/lib/mail-views/client'
-import { BaseType } from '@auxx/lib/workflow-engine/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandEmpty,
@@ -12,6 +12,10 @@ import {
   CommandList,
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { Trash2 } from 'lucide-react'
+import { VAR_TYPE_ICON_MAP } from '~/components/workflow/utils/icon-helper'
+import { useDeleteRecentSearch } from './_hooks/use-search-suggestions'
+import { RecentSearchDisplay } from './recent-search-display'
 import type { SearchCondition } from './store'
 
 /**
@@ -42,28 +46,6 @@ export interface SearchSuggestion {
   description?: string
 }
 
-/**
- * Maps BaseType to EntityIcon iconId for visual representation
- */
-const BASE_TYPE_ICON_MAP: Record<string, string> = {
-  [BaseType.STRING]: 'text',
-  [BaseType.NUMBER]: 'hash',
-  [BaseType.BOOLEAN]: 'toggle-left',
-  [BaseType.DATE]: 'calendar',
-  [BaseType.DATETIME]: 'calendar-clock',
-  [BaseType.TIME]: 'clock',
-  [BaseType.EMAIL]: 'mail',
-  [BaseType.URL]: 'link',
-  [BaseType.PHONE]: 'phone',
-  [BaseType.ENUM]: 'list',
-  [BaseType.RELATION]: 'link-2',
-  [BaseType.ACTOR]: 'circle-user',
-  [BaseType.TAGS]: 'tags',
-  [BaseType.FILE]: 'paperclip',
-  [BaseType.ADDRESS]: 'map-pin',
-  [BaseType.CURRENCY]: 'dollar-sign',
-}
-
 /** Default icon for unknown types */
 const DEFAULT_ICON = 'filter'
 
@@ -84,7 +66,7 @@ function getSuggestionIcon(suggestion: SearchSuggestion): string {
   }
 
   if (suggestion.type === 'field' && suggestion.fieldDefinition) {
-    return BASE_TYPE_ICON_MAP[suggestion.fieldDefinition.type] ?? DEFAULT_ICON
+    return VAR_TYPE_ICON_MAP[suggestion.fieldDefinition.type] ?? DEFAULT_ICON
   }
 
   return DEFAULT_ICON
@@ -98,13 +80,6 @@ interface SearchSuggestionsListProps {
   onSelect: (suggestion: SearchSuggestion) => void
   showEmpty?: boolean
   emptyMessage?: string
-  className?: string
-  /** Controlled input value */
-  inputValue?: string
-  /** Callback when input changes */
-  onInputChange?: (value: string) => void
-  /** Placeholder for the search input */
-  placeholder?: string
 }
 
 /**
@@ -116,11 +91,8 @@ export function SearchSuggestionsList({
   onSelect,
   showEmpty = true,
   emptyMessage = 'Type to search or select a filter field',
-  className,
-  inputValue,
-  onInputChange,
-  placeholder = 'Search...',
 }: SearchSuggestionsListProps) {
+  const deleteRecentSearch = useDeleteRecentSearch()
   if (suggestions.length === 0 && !showEmpty) {
     return null
   }
@@ -167,7 +139,7 @@ export function SearchSuggestionsList({
                     key={`${type}-${suggestion.value}-${index}`}
                     value={`${type}-${suggestion.value}-${index}`}
                     onSelect={() => onSelect(suggestion)}>
-                    <div className='flex items-center gap-2 w-full'>
+                    <div data-slot='suggestion-item' className='flex items-center gap-2 w-full'>
                       <div className='border bg-primary-50 rounded-md size-6 flex items-center justify-center relative'>
                         <EntityIcon size='sm' iconId={getSuggestionIcon(suggestion)} />
                       </div>
@@ -175,7 +147,11 @@ export function SearchSuggestionsList({
                       {/* Main content */}
                       <div className='flex-1 min-w-0'>
                         <div className='flex items-center gap-1'>
-                          <span className='truncate text-primary-700'>{suggestion.label}</span>
+                          {suggestion.type === 'recent' && suggestion.conditions ? (
+                            <RecentSearchDisplay conditions={suggestion.conditions} />
+                          ) : (
+                            <span className='truncate text-primary-700'>{suggestion.label}</span>
+                          )}
                           {suggestion.description && (
                             <span className='text-xs text-primary-400 truncate'>
                               {suggestion.description}
@@ -183,6 +159,19 @@ export function SearchSuggestionsList({
                           )}
                         </div>
                       </div>
+
+                      {suggestion.type === 'recent' && (
+                        <Button
+                          size='icon-sm'
+                          variant='destructive-hover'
+                          className='opacity-0 [[data-selected=true]_&]:opacity-100 hover:opacity-100'
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteRecentSearch(suggestion.value)
+                          }}>
+                          <Trash2 />
+                        </Button>
+                      )}
                     </div>
                   </CommandItem>
                 ))}

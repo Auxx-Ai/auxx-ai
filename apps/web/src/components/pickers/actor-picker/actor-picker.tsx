@@ -144,7 +144,9 @@ export function ActorPicker({
       className={triggerProps?.className}>
       <ItemsListView
         items={value}
-        renderItem={(item) => <ActorBadge actorId={item as ActorId} />}
+        renderItem={(item) => (
+          <ActorBadge actorId={item as ActorId} size={triggerProps?.badgeSize} />
+        )}
       />
     </PickerTrigger>
   )

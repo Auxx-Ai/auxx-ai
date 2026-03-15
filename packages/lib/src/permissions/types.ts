@@ -37,6 +37,7 @@ export enum FeatureKey {
   files = 'files',
   webhooks = 'webhooks',
   shopify = 'shopify',
+  devTools = 'devTools',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -99,6 +100,7 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
   { key: FeatureKey.files, type: 'boolean', label: 'Files', group: 'Storage' },
   { key: FeatureKey.webhooks, type: 'boolean', label: 'Webhooks', group: 'Integrations' },
   { key: FeatureKey.shopify, type: 'boolean', label: 'Shopify', group: 'Integrations' },
+  { key: FeatureKey.devTools, type: 'boolean', label: 'Dev Tools', group: 'Internal' },
 
   // ── Static limits ──
   { key: FeatureKey.teammates, type: 'static', label: 'Teammates', group: 'Team', unit: 'seats' },
@@ -284,6 +286,7 @@ export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
   { key: FeatureKey.files, limit: false },
   { key: FeatureKey.webhooks, limit: false },
   { key: FeatureKey.shopify, limit: false },
+  { key: FeatureKey.devTools, limit: false },
   { key: FeatureKey.outboundEmailsPerMonthHard, limit: 100 },
   { key: FeatureKey.outboundEmailsPerMonthSoft, limit: 80 },
   { key: FeatureKey.workflowRunsPerMonthHard, limit: 0 },

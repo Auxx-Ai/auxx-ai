@@ -105,6 +105,7 @@ export const StringInput = createNodeInput<StringInputProps>(
           onChange={handleChange}
           placeholder={placeholder}
           disabled={isLoading}
+          autoComplete='one-time-code'
           minRows={1}
           maxRows={10}
         />
@@ -123,6 +124,7 @@ export const StringInput = createNodeInput<StringInputProps>(
           minWidth={autoGrow.minWidth}
           maxWidth={autoGrow.maxWidth}
           placeholderIsMinWidth={autoGrow.placeholderIsMinWidth}
+          autoComplete='one-time-code'
           inputClassName={cn(
             'bg-transparent border-0 outline-none focus:ring-0 text-sm',
             baseClassName,
@@ -137,7 +139,7 @@ export const StringInput = createNodeInput<StringInputProps>(
         variant='transparent'
         className={cn(baseClassName, className)}
         size='sm'
-        autoComplete='off'
+        autoComplete='one-time-code'
         id={inputId}
         type={getInputType(validationType)}
         value={localValue}

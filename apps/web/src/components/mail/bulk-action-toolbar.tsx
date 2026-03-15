@@ -38,6 +38,7 @@ export default function BulkActionToolbar() {
   const hasMultipleSelected = useHasMultipleSelected()
   const viewMode = useViewMode()
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection)
+  const setViewMode = useThreadSelectionStore((s) => s.setViewMode)
 
   // Compute visibility internally
   const open = hasMultipleSelected || viewMode === 'edit'
@@ -228,7 +229,10 @@ export default function BulkActionToolbar() {
       <ActionBar
         open={open}
         onOpenChange={(isOpen) => {
-          if (!isOpen) clearSelection()
+          if (!isOpen) {
+            clearSelection()
+            setViewMode('view')
+          }
         }}
         selectedCount={selectionCount}
         selectedLabel='selected'

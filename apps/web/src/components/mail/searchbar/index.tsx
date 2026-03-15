@@ -13,6 +13,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popo
 import { cn } from '@auxx/ui/lib/utils'
 import { Filter, Loader2, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { v4 as generateId } from 'uuid'
 import { ConditionProvider } from '~/components/conditions/condition-context'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useSaveSearchQuery, useSearchSuggestions } from './_hooks/use-search-suggestions'
@@ -63,6 +64,7 @@ export function MailSearchBar({
 }: MailSearchBarProps) {
   const inputRef = useRef<AutosizeInputRef>(null)
   const filterButtonRef = useRef<HTMLButtonElement>(null)
+  const searchInputRowRef = useRef<HTMLDivElement>(null)
 
   // Local UI state
   const [isOpen, setIsOpen] = useState(false)
@@ -115,7 +117,11 @@ export function MailSearchBar({
     (suggestion: SearchSuggestion) => {
       // Recent search - restore conditions and execute
       if (suggestion.type === 'recent' && suggestion.conditions) {
-        actions.setConditions(suggestion.conditions)
+        const conditionsWithIds = suggestion.conditions.map((c) => ({
+          ...c,
+          id: c.id || generateId(),
+        }))
+        actions.setConditions(conditionsWithIds)
         setInputValue('')
         // Execute search with restored conditions
         setTimeout(() => {
@@ -149,13 +155,16 @@ export function MailSearchBar({
       context: 'tickets',
       has_filters: conditions.length > 0,
     })
-    // Save conditions for recent searches
-    if (conditions.length > 0) {
+    // Save conditions for recent searches (exclude scope — it's a UI setting, not a filter)
+    const saveable = conditions.filter((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
+    if (saveable.length > 0) {
       saveSearchQuery(
-        conditions.map((c) => ({
+        saveable.map((c) => ({
+          id: c.id,
           fieldId: c.fieldId,
           operator: c.operator,
           value: c.value,
+          displayLabel: c.displayLabel,
         })),
         query
       )
@@ -290,6 +299,7 @@ export function MailSearchBar({
       <div className={cn('w-full min-w-[20rem] ', className)}>
         {/* Search input row - always visible, outside popover */}
         <div
+          ref={searchInputRowRef}
           className={cn(
             'flex items-center h-8 bg-primary-50 hover:bg-background pe-1 transition-colors border',
             isOpen
@@ -345,9 +355,31 @@ export function MailSearchBar({
             sideOffset={0}
             // onOpenAutoFocus={(e) => e.preventDefault()}
             onInteractOutside={(e) => {
+              const target = e.target as HTMLElement
               // Prevent closing when clicking the filter button
-              if (filterButtonRef.current?.contains(e.target as Node)) {
+              if (filterButtonRef.current?.contains(target)) {
                 e.preventDefault()
+                return
+              }
+              // Prevent closing when clicking inside the search input row
+              // (badge triggers, operator buttons, input — all live outside PopoverContent)
+              if (searchInputRowRef.current?.contains(target)) {
+                e.preventDefault()
+                return
+              }
+              // Prevent closing when clicking inside portaled popover content
+              // owned by searchbar badges (operator/value pickers portal to <body>).
+              // Trace back to the trigger via aria-controls to verify ownership.
+              const popoverWrapper = target.closest('[data-radix-popper-content-wrapper]')
+              if (popoverWrapper && searchInputRowRef.current) {
+                const contentEl = popoverWrapper.querySelector('[id]')
+                if (contentEl) {
+                  const trigger = document.querySelector(`[aria-controls="${contentEl.id}"]`)
+                  if (trigger && searchInputRowRef.current.contains(trigger)) {
+                    e.preventDefault()
+                    return
+                  }
+                }
               }
             }}
             style={{ width: 'var(--radix-popover-trigger-width)' }}>
