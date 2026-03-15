@@ -149,6 +149,20 @@ interface ParticipantListProps {
 export const ParticipantList: React.FC<ParticipantListProps> = ({ participants, className }) => {
   const [showDetails, setShowDetails] = React.useState(false)
 
+  // Group participants by role, preserving display order
+  const grouped = React.useMemo(() => {
+    const roleOrder: ParticipantRole[] = ['FROM', 'TO', 'CC', 'BCC']
+    const map = new Map<ParticipantRole, ParticipantListEntry[]>()
+    for (const entry of participants) {
+      const list = map.get(entry.role) ?? []
+      list.push(entry)
+      map.set(entry.role, list)
+    }
+    return roleOrder
+      .filter((role) => map.has(role))
+      .map((role) => ({ role, entries: map.get(role)! }))
+  }, [participants])
+
   if (!participants.length) return null
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -158,20 +172,21 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({ participants, 
 
   return (
     <div onClick={handleClick}>
-      {participants.map((entry) => (
-        <div className={cn('flex flex-row gap-1', className)} key={entry.id}>
-          {entry.role && (
-            <span className='mr-[4px] shrink-0 text-sm text-muted-foreground'>
-              {titleize(entry.role)}:
-            </span>
-          )}
-          <div className='flex flex-wrap gap-x-2 gap-y-1 truncate'>
-            <ParticipantDisplay
-              participantId={entry.participantId}
-              participant={entry.participant}
-              role={entry.role}
-              showDetails={showDetails}
-            />
+      {grouped.map(({ role, entries }) => (
+        <div className={cn('flex flex-row gap-1', className)} key={role}>
+          <span className='mr-[4px] shrink-0 text-sm text-muted-foreground'>{titleize(role)}:</span>
+          <div className='flex flex-wrap gap-x-1 gap-y-0.5'>
+            {entries.map((entry, i) => (
+              <React.Fragment key={entry.id}>
+                <ParticipantDisplay
+                  participantId={entry.participantId}
+                  participant={entry.participant}
+                  role={entry.role}
+                  showDetails={showDetails}
+                />
+                {i < entries.length - 1 && <span className='text-muted-foreground text-sm'>,</span>}
+              </React.Fragment>
+            ))}
           </div>
         </div>
       ))}

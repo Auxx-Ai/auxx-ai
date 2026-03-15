@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/searchbar/search-filter-input.tsx
 'use client'
 
+import { SEARCH_SCOPE_FIELD_ID } from '@auxx/lib/mail-views/client'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
@@ -18,6 +19,8 @@ interface SearchFilterInputProps {
   onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
   /** Current input text value */
   inputValue: string
+  /** Whether to show the scope badge (even without store conditions) */
+  showScopeBadge?: boolean
   /** Placeholder text when empty */
   placeholder?: string
   /** Additional CSS classes */
@@ -37,6 +40,7 @@ export function SearchFilterInput({
   onInputChange,
   onInputKeyDown,
   inputValue,
+  showScopeBadge = false,
   placeholder = 'Search...',
   className,
   inputRef: externalInputRef,
@@ -68,17 +72,19 @@ export function SearchFilterInput({
   /** Handle input keydown for badge navigation */
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      // Backspace on empty input
+      // Backspace on empty input — skip scope condition
       if (e.key === 'Backspace' && inputValue === '' && conditions.length > 0) {
+        const lastRealIndex = conditions.findLastIndex((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
+        if (lastRealIndex === -1) return // Only scope condition left
+
         e.preventDefault()
-        if (highlightedIndex === conditions.length - 1) {
+        if (highlightedIndex === lastRealIndex) {
           // Second backspace: delete highlighted condition
-          const condition = conditions[highlightedIndex]
-          removeCondition(condition.id)
+          removeCondition(conditions[highlightedIndex].id)
           setHighlightedIndex(null)
         } else {
-          // First backspace: highlight last condition
-          setHighlightedIndex(conditions.length - 1)
+          // First backspace: highlight last real condition
+          setHighlightedIndex(lastRealIndex)
         }
         return
       }
@@ -104,19 +110,26 @@ export function SearchFilterInput({
         onClick={handleContainerClick}
         className='flex items-center gap-1 h-8 cursor-text pt-0.5 pb-1'>
         {/* Condition badges - full editable badges with field/operator/value/remove */}
-        {conditions.map((condition, index) => (
-          <ConditionBadge
-            key={condition.id}
-            condition={condition}
-            isHighlighted={highlightedIndex === index}
-            showRemoveButton={true}
-            onUpdate={(updates) => updateCondition(condition.id, updates)}
-            onRemove={() => {
-              removeCondition(condition.id)
-              inputRef.current?.focus()
-            }}
-          />
-        ))}
+        {conditions.map((condition, index) => {
+          const isScopeBadge = condition.fieldId === SEARCH_SCOPE_FIELD_ID
+          // Hide scope badge when showScopeBadge is false
+          if (isScopeBadge && !showScopeBadge) return null
+          return (
+            <ConditionBadge
+              key={condition.id}
+              condition={condition}
+              isHighlighted={highlightedIndex === index}
+              showRemoveButton={!isScopeBadge}
+              lockField={isScopeBadge}
+              className={isScopeBadge ? 'bg-accent/30 border-accent/40' : undefined}
+              onUpdate={(updates) => updateCondition(condition.id, updates)}
+              onRemove={() => {
+                removeCondition(condition.id)
+                inputRef.current?.focus()
+              }}
+            />
+          )
+        })}
 
         {/* Text input */}
         <AutosizeInput
@@ -125,7 +138,11 @@ export function SearchFilterInput({
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={handleInputKeyDown}
           onFocus={onFocus}
-          placeholder={conditions.length === 0 ? placeholder : ''}
+          placeholder={
+            !conditions.some((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID) && !showScopeBadge
+              ? placeholder
+              : ''
+          }
           minWidth={100}
           inputClassName='bg-transparent outline-none text-sm'
         />
