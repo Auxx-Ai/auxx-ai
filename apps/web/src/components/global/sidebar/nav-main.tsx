@@ -10,6 +10,7 @@ import {
 import { usePathname } from 'next/navigation'
 import type * as React from 'react'
 import type { SidebarProps } from '~/constants/menu'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { CollapsibleSidebarSection } from './collapsible-sidebar-section'
 import { SidebarGroupHeader } from './sidebar-group-header'
 import { SidebarItem } from './sidebar-item'
@@ -24,6 +25,7 @@ type Props = {
 export function NavMain({ menu, itemActions }: Props) {
   const pathname = usePathname()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
+  const { hasAccess } = useFeatureFlags()
   const isOpen = getGroupOpen('configurations')
 
   /** Toggle the Configurations group open/closed state */
@@ -42,8 +44,17 @@ export function NavMain({ menu, itemActions }: Props) {
     return fullUrl
   }
 
+  // Filter items by feature access
+  const filteredItems = menu.items
+    .filter((item) => !item.featureKey || hasAccess(item.featureKey))
+    .map((item) => ({
+      ...item,
+      items: item.items?.filter((sub) => !sub.featureKey || hasAccess(sub.featureKey)),
+    }))
+    .filter((item) => !item.items || item.items.length > 0)
+
   // Process menu.items URLs
-  menu.items = menu.items.map((item) => {
+  menu.items = filteredItems.map((item) => {
     if (item.items && item.items.length > 0) {
       item.items = item.items.map((subItem) => {
         if (item.skipParentSlug) {

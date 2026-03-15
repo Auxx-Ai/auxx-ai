@@ -1,16 +1,35 @@
 // apps/web/src/app/(protected)/app/settings/webhooks/page.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
-import { PlusCircle, PlusIcon, Webhook } from 'lucide-react'
+import { Lock, PlusCircle, PlusIcon, Webhook } from 'lucide-react'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { DialogWebhook } from './_components/dialog-webhook'
 import { WebhookList } from './_components/webhook-list'
 
 export default function WebhooksPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const { hasAccess } = useFeatureFlags()
+
+  if (!hasAccess(FeatureKey.webhooks)) {
+    return (
+      <SettingsPage
+        title='Webhooks'
+        description='Manage webhooks to integrate with external services.'
+        breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Webhooks' }]}>
+        <EmptyState
+          icon={Lock}
+          title='Webhooks Not Available'
+          description='Upgrade your plan to use webhooks.'
+          button={<div className='h-12' />}
+        />
+      </SettingsPage>
+    )
+  }
 
   return (
     <SettingsPage

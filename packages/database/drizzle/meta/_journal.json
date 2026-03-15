@@ -701,6 +701,13 @@
       "when": 1773431195224,
       "tag": "0099_entity-definition-partial-slug-unique",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1773546149036,
+      "tag": "0100_add-trial-feature-limits",
+      "breakpoints": true
     }
   ]
 }

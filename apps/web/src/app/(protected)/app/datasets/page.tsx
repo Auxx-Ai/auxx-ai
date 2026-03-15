@@ -2,6 +2,7 @@
 
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -10,6 +11,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Lock } from 'lucide-react'
 import {
   CreateDatasetButton,
   DatasetsEmptyState,
@@ -19,6 +21,8 @@ import {
   DatasetsStatsCards,
   useDatasets,
 } from '~/components/datasets'
+import { EmptyState } from '~/components/global/empty-state'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 /**
  * Main content component for the datasets page
@@ -71,6 +75,28 @@ function DatasetsPageContent() {
  * Main datasets page with provider wrapper
  */
 export default function DatasetsPage() {
+  const { hasAccess } = useFeatureFlags()
+
+  if (!hasAccess(FeatureKey.datasets)) {
+    return (
+      <MainPage>
+        <MainPageHeader>
+          <MainPageBreadcrumb>
+            <MainPageBreadcrumbItem title='Datasets' href='/app/datasets' />
+          </MainPageBreadcrumb>
+        </MainPageHeader>
+        <MainPageContent>
+          <EmptyState
+            icon={Lock}
+            title='Datasets Not Available'
+            description='Upgrade your plan to use datasets.'
+            button={<div className='h-12' />}
+          />
+        </MainPageContent>
+      </MainPage>
+    )
+  }
+
   return (
     <DatasetsProvider>
       <DatasetsPageContent />

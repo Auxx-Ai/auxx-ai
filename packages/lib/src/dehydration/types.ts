@@ -138,6 +138,15 @@ export interface DehydratedOrganization {
   // Feature permissions
   features: Record<string, boolean | number | '+'>
 
+  /** Features that exceed the current plan's limits (empty if none) */
+  overages: Array<{
+    key: string
+    label: string
+    current: number
+    limit: number
+    excess: number
+  }>
+
   // User settings for this org
   settings: Record<string, any>
 

@@ -1,12 +1,16 @@
 // apps/web/src/server/api/routers/entityDefinition.ts
 
+import { schema } from '@auxx/database'
 import { EntityDefinitionService } from '@auxx/lib/entity-definitions'
 import {
   createEntityDefinitionSchema,
   updateEntityDefinitionSchema,
 } from '@auxx/lib/entity-definitions/types'
 import { getAllTemplates, getTemplateById, installTemplates } from '@auxx/lib/entity-templates'
+import { ForbiddenError } from '@auxx/lib/errors'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { checkSlugExists } from '@auxx/services/entity-definitions'
+import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -84,6 +88,25 @@ export const entityDefinitionRouter = createTRPCRouter({
   create: protectedProcedure
     .input(createEntityDefinitionSchema)
     .mutation(async ({ ctx, input }) => {
+      // Feature gate: check custom entity limit (only counts custom entities, not system ones)
+      await new FeaturePermissionService(ctx.db).requireLimit(
+        ctx.session.organizationId,
+        FeatureKey.entities,
+        async () => {
+          const [{ value }] = await ctx.db
+            .select({ value: count() })
+            .from(schema.EntityDefinition)
+            .where(
+              and(
+                eq(schema.EntityDefinition.organizationId, ctx.session.organizationId),
+                isNull(schema.EntityDefinition.entityType),
+                isNull(schema.EntityDefinition.archivedAt)
+              )
+            )
+          return value
+        }
+      )
+
       const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
       return await service.create(input)
     }),
@@ -185,6 +208,28 @@ export const entityDefinitionRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Feature gate: check custom entity limit before installing templates
+      const featureService = new FeaturePermissionService(ctx.db)
+      const limit = await featureService.getLimit(ctx.session.organizationId, FeatureKey.entities)
+      if (typeof limit === 'number') {
+        const [{ value: currentCount }] = await ctx.db
+          .select({ value: count() })
+          .from(schema.EntityDefinition)
+          .where(
+            and(
+              eq(schema.EntityDefinition.organizationId, ctx.session.organizationId),
+              isNull(schema.EntityDefinition.entityType),
+              isNull(schema.EntityDefinition.archivedAt)
+            )
+          )
+        const newCount = currentCount + input.templateIds.length
+        if (newCount > limit) {
+          throw new ForbiddenError(
+            `Installing ${input.templateIds.length} template(s) would exceed your custom entities limit (${limit}). You currently have ${currentCount}.`
+          )
+        }
+      }
+
       return await installTemplates(
         ctx.session.organizationId,
         input.templateIds,

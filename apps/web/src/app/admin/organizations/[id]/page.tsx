@@ -46,18 +46,21 @@ import {
   Mail,
   MessageSquare,
   Plus,
+  Sliders,
   Ticket,
   Trash2,
   Users,
   Workflow,
 } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { ActionHistoryPanel } from './_components/action-history-panel'
 import { EnterpriseManagementSection } from './_components/enterprise-management-section'
 import { MembersSection } from './_components/members-section'
+import { OrgFeaturesTab } from './_components/org-features-tab'
 import { OrganizationAccessSection } from './_components/organization-access-section'
 
 import { SubscriptionManagementSection } from './_components/subscription-management-section'
@@ -70,7 +73,7 @@ export default function OrganizationDetailsPage() {
   const params = useParams()
   const router = useRouter()
   const id = params.id as string
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
   const [confirm, ConfirmDialog] = useConfirm()
@@ -439,6 +442,10 @@ export default function OrganizationDetailsPage() {
                 <LayoutDashboard />
                 Overview
               </TabsTrigger>
+              <TabsTrigger value='features' variant='outline'>
+                <Sliders />
+                Features
+              </TabsTrigger>
               <TabsTrigger value='billing' variant='outline'>
                 <CreditCard />
                 Billing Actions
@@ -643,6 +650,14 @@ export default function OrganizationDetailsPage() {
                 {/* Members */}
               </div>
               <MembersSection organizationId={org.id} />
+            </TabsContent>
+
+            {/* Features Tab */}
+            <TabsContent value='features' className='flex-1 flex flex-col min-h-0 overflow-y-auto'>
+              <OrgFeaturesTab
+                organizationId={org.id}
+                currentPlan={org.subscription?.plan ?? null}
+              />
             </TabsContent>
 
             {/* Billing Actions Tab */}

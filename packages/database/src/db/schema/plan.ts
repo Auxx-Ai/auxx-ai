@@ -27,6 +27,7 @@ export const Plan = pgTable('Plan', {
   isMostPopular: boolean().default(false).notNull(),
   isFree: boolean().default(false).notNull(),
   featureLimits: jsonb().default([]),
+  trialFeatureLimits: jsonb(),
   stripeProductId: text(),
   stripePriceIdMonthly: text(),
   stripePriceIdAnnual: text(),

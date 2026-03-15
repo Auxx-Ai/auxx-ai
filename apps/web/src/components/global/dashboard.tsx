@@ -21,9 +21,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import React, { useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
+import { OverageBanner } from '~/components/banner/overage-banner'
 import AppSidebar from '~/components/global/sidebar'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { useThreadMutation } from '~/components/threads/hooks'
+import { useOverages } from '~/hooks/use-overages'
 import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
@@ -43,6 +45,7 @@ export const Dashboard = ({
   const organizationId = useDehydratedOrganizationId()
   const currentOrg = useDehydratedOrganization(organizationId)
   const orgCompletedOnboarding = currentOrg?.completedOnboarding ?? false
+  const overages = useOverages(organizationId)
 
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [activeDragData, setActiveDragData] = useState<Record<string, any> | null>(null)
@@ -120,7 +123,10 @@ export const Dashboard = ({
         <DndStateProvider activeDndItem={activeDndItem}>
           <div className='flex h-screen overflow-hidden w-full'>
             <AppSidebar className='min-w-0' user={user} />
-            <SidebarInset>{children}</SidebarInset>
+            <SidebarInset>
+              <OverageBanner overages={overages} />
+              {children}
+            </SidebarInset>
           </div>
         </DndStateProvider>
         {portalContainer &&

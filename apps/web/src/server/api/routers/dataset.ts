@@ -7,6 +7,7 @@ import {
   VectorDbTypeValues,
 } from '@auxx/database/enums'
 import { DatasetService } from '@auxx/lib/datasets'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, eq, sum } from 'drizzle-orm'
 import { z } from 'zod'
@@ -85,6 +86,21 @@ export const datasetRouter = createTRPCRouter({
     if (!organizationId) {
       throw new Error('No organization found')
     }
+
+    // Feature gate: check datasets access + limit
+    await new FeaturePermissionService(ctx.db).requireAccessAndLimit(
+      organizationId,
+      FeatureKey.datasets,
+      FeatureKey.datasetsLimit,
+      async () => {
+        const [{ value }] = await ctx.db
+          .select({ value: count() })
+          .from(schema.Dataset)
+          .where(eq(schema.Dataset.organizationId, organizationId))
+        return value
+      }
+    )
+
     logger.info('Creating dataset', { organizationId, userId, name: input.name })
     const datasetService = new DatasetService(ctx.db)
     const dataset = await datasetService.create(organizationId, userId, input)

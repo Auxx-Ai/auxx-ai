@@ -263,7 +263,7 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
   }
 
   return (
-    <div className='sticky top-0 z-10 h-10 bg-primary-100 flex flex-row items-center justify-between px-4'>
+    <div className='sticky top-0 z-10 h-10  flex flex-row items-center justify-between px-4'>
       <div className='flex items-center justify-start flex-row gap-2'>
         <div className='flex items-center justify-center rounded-full font-medium transition-colors text-xs py-0 w-[97px]'>
           {viewMode === 'edit' && (

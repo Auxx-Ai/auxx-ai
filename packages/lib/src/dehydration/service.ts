@@ -9,7 +9,7 @@ import { count, eq } from 'drizzle-orm'
 import { PromiseMemoizer } from '../cache/promise-memoizer'
 import { MediaAssetService } from '../files'
 import { createScopedLogger } from '../logger'
-import { FeaturePermissionService } from '../permissions'
+import { FeaturePermissionService, OverageDetectionService } from '../permissions'
 import { SETTINGS_CATALOG, SettingsService } from '../settings'
 import { DehydrationCacheService } from './cache'
 import type {
@@ -308,6 +308,26 @@ export class DehydrationService {
       .where(eq(schema.Integration.organizationId, organizationId))
     const hasIntegrations = integrationCount > 0
 
+    // Detect overages against current plan (only for cloud with active subscriptions)
+    let overages: Array<{
+      key: string
+      label: string
+      current: number
+      limit: number
+      excess: number
+    }> = []
+    if (subscription?.planId) {
+      try {
+        const overageService = new OverageDetectionService(this.db)
+        overages = await overageService.detectCurrentOverages(organizationId)
+      } catch (error) {
+        logger.warn('Failed to detect overages for dehydration', {
+          organizationId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
     return {
       id: org.id,
       name: org.name,
@@ -341,6 +361,7 @@ export class DehydrationService {
           }
         : null,
       features,
+      overages,
       settings,
       hasIntegrations,
     }

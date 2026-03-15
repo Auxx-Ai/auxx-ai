@@ -8,8 +8,9 @@
  */
 
 import { database as db } from '@auxx/database'
+import { AuxxError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
-import { initTRPC, TRPCError } from '@trpc/server'
+import { initTRPC, type TRPC_ERROR_CODE_KEY, TRPCError } from '@trpc/server'
 import superjson from 'superjson'
 import { ZodError } from 'zod'
 
@@ -171,6 +172,36 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
   return result
 })
 
+/** Maps HTTP status codes to tRPC error codes */
+const HTTP_TO_TRPC: Record<number, TRPC_ERROR_CODE_KEY> = {
+  400: 'BAD_REQUEST',
+  401: 'UNAUTHORIZED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  409: 'CONFLICT',
+  422: 'UNPROCESSABLE_CONTENT',
+  429: 'TOO_MANY_REQUESTS',
+}
+
+/**
+ * Middleware that catches AuxxError instances thrown by service-layer code
+ * and re-throws them as proper TRPCErrors with the correct error code.
+ */
+const auxxErrorMiddleware = t.middleware(async ({ next }) => {
+  try {
+    return await next()
+  } catch (error) {
+    if (error instanceof AuxxError) {
+      throw new TRPCError({
+        code: HTTP_TO_TRPC[error.statusCode] ?? 'INTERNAL_SERVER_ERROR',
+        message: error.message,
+        cause: error,
+      })
+    }
+    throw error
+  }
+})
+
 /**
  * Public (unauthenticated) procedure
  *
@@ -178,7 +209,7 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
  * guarantee that a user querying is authorized, but you can still access user session data if they
  * are logged in.
  */
-export const publicProcedure = t.procedure.use(timingMiddleware)
+export const publicProcedure = t.procedure.use(timingMiddleware).use(auxxErrorMiddleware)
 
 /**
  * Protected (authenticated) procedure
@@ -188,24 +219,27 @@ export const publicProcedure = t.procedure.use(timingMiddleware)
  *
  * @see https://trpc.io/docs/procedures
  */
-export const protectedProcedure = t.procedure.use(timingMiddleware).use(({ ctx, next }) => {
-  if (!ctx.session || !ctx.session.user || !ctx.session.user.defaultOrganizationId) {
-    throw new TRPCError({ code: 'UNAUTHORIZED' })
-  }
+export const protectedProcedure = t.procedure
+  .use(timingMiddleware)
+  .use(auxxErrorMiddleware)
+  .use(({ ctx, next }) => {
+    if (!ctx.session || !ctx.session.user || !ctx.session.user.defaultOrganizationId) {
+      throw new TRPCError({ code: 'UNAUTHORIZED' })
+    }
 
-  return next({
-    ctx: {
-      headers: ctx.headers,
-      // infers the `session` as non-nullable
-      session: {
-        ...ctx.session,
-        user: ctx.session.user,
-        organizationId: ctx.session.user.defaultOrganizationId,
-        userId: ctx.session.user.id,
+    return next({
+      ctx: {
+        headers: ctx.headers,
+        // infers the `session` as non-nullable
+        session: {
+          ...ctx.session,
+          user: ctx.session.user,
+          organizationId: ctx.session.user.defaultOrganizationId,
+          userId: ctx.session.user.id,
+        },
       },
-    },
+    })
   })
-})
 /*create a new admin route */
 
 export const adminProcedure = t.procedure.use(timingMiddleware).use(async ({ ctx, next }) => {

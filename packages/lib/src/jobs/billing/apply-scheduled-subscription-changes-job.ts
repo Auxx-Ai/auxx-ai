@@ -5,6 +5,7 @@ import { database as db, schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { createScopedLogger } from '../../logger'
+import { handlePlanDowngrade } from '../../permissions/overage-handler'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('apply-scheduled-subscription-changes-job')
@@ -241,6 +242,19 @@ async function applyScheduledChange(
       organizationId,
       newPlan: scheduledPlan,
     })
+
+    // Check for overages if this is a downgrade
+    if (scheduledPlanId && subscription.plan) {
+      const currentPlan = subscription.plan // The plan object from the joined query
+      const targetPlan = await db.query.Plan.findFirst({
+        where: eq(schema.Plan.id, scheduledPlanId),
+        columns: { hierarchyLevel: true },
+      })
+
+      if (targetPlan && targetPlan.hierarchyLevel < currentPlan.hierarchyLevel) {
+        await handlePlanDowngrade(db, organizationId, scheduledPlanId)
+      }
+    }
 
     return { success: true }
   } catch (error) {

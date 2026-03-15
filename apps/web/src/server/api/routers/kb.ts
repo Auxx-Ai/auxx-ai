@@ -101,6 +101,25 @@ export const knowledgeBaseRouter = createTRPCRouter({
    * Create a new knowledge base
    */
   create: protectedProcedure.input(kbCreateSchema).mutation(async ({ ctx, input }) => {
+    const organizationId = getUserOrganizationId(ctx.session)
+    if (!organizationId) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User organization context not found' })
+    }
+
+    // Feature gate: check KB access + limit
+    await new FeaturePermissionService(ctx.db).requireAccessAndLimit(
+      organizationId,
+      FeatureKey.knowledgeBase,
+      FeatureKey.knowledgeBases,
+      async () => {
+        const [{ value }] = await ctx.db
+          .select({ value: count() })
+          .from(schema.KnowledgeBase)
+          .where(eq(schema.KnowledgeBase.organizationId, organizationId))
+        return value
+      }
+    )
+
     const kbService = getKBService(ctx)
     return await kbService.createKnowledgeBase(input, ctx.session.user.id)
   }),
