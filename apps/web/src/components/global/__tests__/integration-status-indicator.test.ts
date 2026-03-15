@@ -1,7 +1,7 @@
 // apps/web/src/components/global/__tests__/integration-status-indicator.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { getIntegrationStatus } from '../integration-status-utils'
+import { formatSyncStage, getIntegrationStatus } from '../integration-status-utils'
 
 describe('getIntegrationStatus', () => {
   // disabled wins over everything
@@ -125,5 +125,31 @@ describe('getIntegrationStatus', () => {
         enabled: true,
       })
     ).toBe('authenticated')
+  })
+})
+
+describe('formatSyncStage', () => {
+  it('returns label for MESSAGE_LIST_FETCH_PENDING', () => {
+    expect(formatSyncStage('MESSAGE_LIST_FETCH_PENDING')).toBe('Preparing to fetch messages')
+  })
+
+  it('returns label for MESSAGE_LIST_FETCH', () => {
+    expect(formatSyncStage('MESSAGE_LIST_FETCH')).toBe('Fetching message list')
+  })
+
+  it('returns label for MESSAGES_IMPORT_PENDING', () => {
+    expect(formatSyncStage('MESSAGES_IMPORT_PENDING')).toBe('Preparing to import messages')
+  })
+
+  it('returns label for MESSAGES_IMPORT', () => {
+    expect(formatSyncStage('MESSAGES_IMPORT')).toBe('Importing messages')
+  })
+
+  it('returns label for FAILED', () => {
+    expect(formatSyncStage('FAILED')).toBe('Sync failed')
+  })
+
+  it('returns label for IDLE', () => {
+    expect(formatSyncStage('IDLE')).toBe('In progress')
   })
 })

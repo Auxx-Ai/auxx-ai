@@ -413,6 +413,7 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
           ref={ref}
           type='text'
           inputMode='decimal'
+          autoComplete='one-time-code'
           data-slot='input-group-control'
           role='spinbutton'
           aria-valuenow={value}

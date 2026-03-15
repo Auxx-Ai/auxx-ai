@@ -373,7 +373,7 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
               <SandboxedEmailHtml html={resolvedHtml} />
             </div>
           ) : (
-            <div className='whitespace-pre-wrap p-4 text-sm'>
+            <div className='whitespace-pre-wrap break-words p-4 text-sm'>
               {message.textPlain || message.snippet || ''}
             </div>
           )}

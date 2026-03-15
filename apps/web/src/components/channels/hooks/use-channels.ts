@@ -17,6 +17,11 @@ export function useSyncingChannels(): Channel[] {
   return useChannelStore((state) => state.syncingChannels)
 }
 
+/** Get channels that have auth errors (pre-computed, stable reference) */
+export function useAuthErrorChannels(): Channel[] {
+  return useChannelStore((state) => state.authErrorChannels)
+}
+
 /** Check if channels are loading */
 export function useChannelsLoading(): boolean {
   return useChannelStore((state) => state.isLoading)

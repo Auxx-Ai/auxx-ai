@@ -10,6 +10,7 @@ import { useCallback, useMemo } from 'react'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 import type { SearchSuggestion } from '../search-suggestions-list'
+import type { SearchCondition } from '../store'
 
 /**
  * Props for useSearchSuggestions hook
@@ -99,6 +100,20 @@ function mapFieldToSuggestion(field: MailViewFieldDefinition): SearchSuggestion 
 }
 
 /**
+ * Hook to delete a recent search entry
+ */
+export function useDeleteRecentSearch() {
+  const utils = api.useUtils()
+  const { mutate } = api.search.delete.useMutation({
+    onSuccess: () => {
+      utils.search.recentSearches.invalidate()
+    },
+  })
+
+  return useCallback((id: string) => mutate({ id }), [mutate])
+}
+
+/**
  * Hook to save search query - now saves conditions instead of text
  */
 export function useSaveSearchQuery() {
@@ -109,10 +124,7 @@ export function useSaveSearchQuery() {
   })
 
   return useCallback(
-    (
-      conditions: Array<{ fieldId: string; operator: string; value: unknown }>,
-      displayText: string
-    ) => {
+    (conditions: SearchCondition[], displayText: string) => {
       if (conditions.length > 0) {
         mutate({ conditions, displayText })
       }

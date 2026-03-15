@@ -16,9 +16,11 @@ import { TRPCReactProvider } from '~/trpc/react'
 export function ClientProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute='class' defaultTheme='system' enableSystem disableTransitionOnChange>
-      <Toaster />
       <NuqsAdapter>
-        <TRPCReactProvider>{children}</TRPCReactProvider>
+        <TRPCReactProvider>
+          <Toaster />
+          {children}
+        </TRPCReactProvider>
       </NuqsAdapter>
     </ThemeProvider>
   )

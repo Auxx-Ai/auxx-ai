@@ -90,6 +90,7 @@ const BOOLEAN_GATES = {
     files: false,
     webhooks: false,
     shopify: false,
+    devTools: false,
   },
   starter: {
     knowledgeBase: true,
@@ -101,6 +102,7 @@ const BOOLEAN_GATES = {
     files: true,
     webhooks: false,
     shopify: false,
+    devTools: false,
   },
   growth: {
     knowledgeBase: true,
@@ -112,6 +114,7 @@ const BOOLEAN_GATES = {
     files: true,
     webhooks: true,
     shopify: false,
+    devTools: false,
   },
   enterprise: {
     knowledgeBase: true,
@@ -123,6 +126,7 @@ const BOOLEAN_GATES = {
     files: true,
     webhooks: true,
     shopify: false,
+    devTools: false,
   },
 } as const
 

@@ -224,6 +224,7 @@ export const ConditionBadge = ({
         autoGrow={{ minWidth: 30, placeholderIsMinWidth: true }}
         triggerProps={{
           size: 'sm',
+          badgeSize: 'sm',
           className: 'min-h-6 h-6 ps-1 pe-1 mx-0',
           hideIcon: true,
           showClear: false,

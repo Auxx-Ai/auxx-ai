@@ -14,8 +14,12 @@ export type IntegrationStatus =
  */
 export function formatSyncStage(stage: IntegrationSyncStage): string {
   switch (stage) {
+    case 'MESSAGE_LIST_FETCH_PENDING':
+      return 'Preparing to fetch messages'
     case 'MESSAGE_LIST_FETCH':
       return 'Fetching message list'
+    case 'MESSAGES_IMPORT_PENDING':
+      return 'Preparing to import messages'
     case 'MESSAGES_IMPORT':
       return 'Importing messages'
     case 'FAILED':

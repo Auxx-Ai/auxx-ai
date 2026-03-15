@@ -15,22 +15,36 @@ import { useActor } from '~/components/resources/hooks/use-actor'
 /**
  * Variants for the ActorBadge component
  */
-export const actorBadgeVariants = cva(
-  'flex text-sm items-center h-5 gap-1.5 rounded-[5px] ring-1 ps-0.5 pe-1.5 py-0 truncate',
-  {
-    variants: {
-      variant: {
-        default:
-          'cursor-default ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800',
-        text: 'cursor-default h-4 ring-0 ps-0 pe-0 ',
-        link: 'cursor-pointer ring-transparent hover:ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 [&_[data-slot=actor-display]]:underline hover:[&_[data-slot=actor-display]]:no-underline',
-      },
+export const actorBadgeVariants = cva('flex items-center rounded-[5px] ring-1 py-0 truncate', {
+  variants: {
+    variant: {
+      default:
+        'cursor-default ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800',
+      text: 'cursor-default h-4! ring-0 ps-0! pe-0!',
+      link: 'cursor-pointer ring-transparent hover:ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 [&_[data-slot=actor-display]]:underline hover:[&_[data-slot=actor-display]]:no-underline',
     },
-    defaultVariants: {
-      variant: 'default',
+    size: {
+      default: [
+        'h-5 gap-1.5 ps-0.5 pe-1.5 text-sm',
+        '[&_[data-slot=avatar-fallback]]:text-[10px]',
+        '[&_[data-slot=actor-fallback-icon]]:size-2.5',
+        '[&_[data-slot=skeleton]:first-child]:size-4 [&_[data-slot=skeleton]:first-child]:rounded-full',
+        '[&_[data-slot=skeleton]:last-child]:h-4 [&_[data-slot=skeleton]:last-child]:w-20 [&_[data-slot=skeleton]:last-child]:rounded-full',
+      ].join(' '),
+      sm: [
+        'h-4 gap-1 ps-0.5 pe-1 text-xs',
+        '[&_[data-slot=avatar-fallback]]:text-[8px]',
+        '[&_[data-slot=actor-fallback-icon]]:size-2',
+        '[&_[data-slot=skeleton]:first-child]:size-3 [&_[data-slot=skeleton]:first-child]:rounded-full',
+        '[&_[data-slot=skeleton]:last-child]:h-3 [&_[data-slot=skeleton]:last-child]:w-14 [&_[data-slot=skeleton]:last-child]:rounded-full',
+      ].join(' '),
     },
-  }
-)
+  },
+  defaultVariants: {
+    variant: 'default',
+    size: 'default',
+  },
+})
 
 /**
  * Props for the ActorBadge component.
@@ -72,6 +86,7 @@ export function ActorBadge({
   showIcon = true,
   className,
   variant,
+  size,
   onRemove,
   ...props
 }: ActorBadgeProps) {
@@ -88,24 +103,30 @@ export function ActorBadge({
   // Show loading state when actorId is undefined or when loading AND no cached data exists
   const showLoading = !actorId || (isLoading && !actor)
 
+  const avatarSize = size === 'sm' ? 'size-3' : 'size-4'
+
   return (
     <div
       data-slot='actor-badge'
       aria-busy={showLoading}
-      className={cn(actorBadgeVariants({ variant }), className)}
+      className={cn(actorBadgeVariants({ variant, size }), className)}
       {...props}>
       {showLoading ? (
         <>
-          {showIcon && <Skeleton className='size-4 rounded-full' />}
-          <Skeleton className='h-4 w-20 rounded-full' />
+          {showIcon && <Skeleton />}
+          <Skeleton />
         </>
       ) : (
         <>
           {showIcon && (
-            <Avatar className='size-4' data-slot='actor-icon'>
+            <Avatar className={avatarSize} data-slot='actor-icon'>
               <AvatarImage src={actor?.avatarUrl ?? undefined} />
-              <AvatarFallback className='text-[10px] bg-neutral-200 dark:bg-neutral-700'>
-                {type === 'user' ? <User className='size-2.5' /> : <Users className='size-2.5' />}
+              <AvatarFallback className='bg-neutral-200 dark:bg-neutral-700'>
+                {type === 'user' ? (
+                  <User data-slot='actor-fallback-icon' />
+                ) : (
+                  <Users data-slot='actor-fallback-icon' />
+                )}
               </AvatarFallback>
             </Avatar>
           )}
