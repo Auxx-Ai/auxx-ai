@@ -172,6 +172,12 @@
       "import": "./dist/entity-templates/index.mjs",
       "default": "./src/entity-templates/index.ts"
     },
+    "./errors": {
+      "types": "./src/errors.ts",
+      "source": "./src/errors.ts",
+      "import": "./dist/errors.mjs",
+      "default": "./src/errors.ts"
+    },
     "./events": {
       "types": "./src/events/index.ts",
       "source": "./src/events/index.ts",
@@ -382,6 +388,12 @@
       "import": "./dist/permissions/index.mjs",
       "default": "./src/permissions/index.ts"
     },
+    "./permissions/client": {
+      "types": "./src/permissions/client.ts",
+      "source": "./src/permissions/client.ts",
+      "import": "./dist/permissions/client.mjs",
+      "default": "./src/permissions/client.ts"
+    },
     "./providers": {
       "types": "./src/providers/index.ts",
       "source": "./src/providers/index.ts",
@@ -525,6 +537,12 @@
       "source": "./src/users/index.ts",
       "import": "./dist/users/index.mjs",
       "default": "./src/users/index.ts"
+    },
+    "./utils/rate-limiter": {
+      "types": "./src/utils/rate-limiter/index.ts",
+      "source": "./src/utils/rate-limiter/index.ts",
+      "import": "./dist/utils/rate-limiter/index.mjs",
+      "default": "./src/utils/rate-limiter/index.ts"
     },
     "./webhooks": {
       "types": "./src/webhooks/index.ts",

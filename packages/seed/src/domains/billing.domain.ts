@@ -13,7 +13,7 @@ import type { SeedingContext, SeedingScenario } from '../types'
 /** Feature limit definition */
 interface FeatureLimit {
   key: string
-  limit: number
+  limit: number | boolean
 }
 
 /** Plan definition structure */
@@ -27,8 +27,171 @@ interface PlanDefinition {
   hasTrial: boolean
   trialDays: number
   featureLimits: FeatureLimit[]
+  trialFeatureLimits: FeatureLimit[] | null
   hierarchyLevel: number
   isFree: boolean
+}
+
+// ── Shared feature building blocks ──
+
+/** Static limits (count of things) keyed by plan tier */
+const STATIC_LIMITS = {
+  free: {
+    teammates: 1,
+    channels: 3,
+    rules: 5,
+    savedViews: 5,
+    knowledgeBases: 0,
+    kbPublishedArticles: 0,
+    datasetsLimit: 0,
+    entities: 3,
+  },
+  starter: {
+    teammates: -1,
+    channels: 5,
+    rules: 20,
+    savedViews: 20,
+    knowledgeBases: 1,
+    kbPublishedArticles: 50,
+    datasetsLimit: 5,
+    entities: 10,
+  },
+  growth: {
+    teammates: -1,
+    channels: -1,
+    rules: -1,
+    savedViews: -1,
+    knowledgeBases: -1,
+    kbPublishedArticles: -1,
+    datasetsLimit: -1,
+    entities: -1,
+  },
+  enterprise: {
+    teammates: -1,
+    channels: -1,
+    rules: -1,
+    savedViews: -1,
+    knowledgeBases: -1,
+    kbPublishedArticles: -1,
+    datasetsLimit: -1,
+    entities: -1,
+  },
+} as const
+
+/** Boolean gates (on/off) keyed by plan tier */
+const BOOLEAN_GATES = {
+  free: {
+    knowledgeBase: false,
+    apiAccess: false,
+    workflows: false,
+    aiAgent: false,
+    sso: false,
+    datasets: false,
+    files: false,
+    webhooks: false,
+    shopify: false,
+  },
+  starter: {
+    knowledgeBase: true,
+    apiAccess: false,
+    workflows: true,
+    aiAgent: false,
+    sso: false,
+    datasets: true,
+    files: true,
+    webhooks: false,
+    shopify: false,
+  },
+  growth: {
+    knowledgeBase: true,
+    apiAccess: true,
+    workflows: true,
+    aiAgent: false,
+    sso: false,
+    datasets: true,
+    files: true,
+    webhooks: true,
+    shopify: false,
+  },
+  enterprise: {
+    knowledgeBase: true,
+    apiAccess: true,
+    workflows: true,
+    aiAgent: true,
+    sso: true,
+    datasets: true,
+    files: true,
+    webhooks: true,
+    shopify: false,
+  },
+} as const
+
+/** Usage limits (per billing cycle) keyed by plan tier */
+const USAGE_LIMITS = {
+  free: {
+    outboundEmailsPerMonthHard: 100,
+    outboundEmailsPerMonthSoft: 80,
+    workflowRunsPerMonthHard: 0,
+    workflowRunsPerMonthSoft: 0,
+    aiCompletionsPerMonthHard: 50,
+    aiCompletionsPerMonthSoft: 40,
+    apiCallsPerMonthHard: 0,
+    apiCallsPerMonthSoft: 0,
+    storageGbHard: 1,
+    storageGbSoft: 0.8,
+  },
+  starter: {
+    outboundEmailsPerMonthHard: 1000,
+    outboundEmailsPerMonthSoft: 800,
+    workflowRunsPerMonthHard: 500,
+    workflowRunsPerMonthSoft: 400,
+    aiCompletionsPerMonthHard: 500,
+    aiCompletionsPerMonthSoft: 400,
+    apiCallsPerMonthHard: 0,
+    apiCallsPerMonthSoft: 0,
+    storageGbHard: 10,
+    storageGbSoft: 8,
+  },
+  growth: {
+    outboundEmailsPerMonthHard: 10000,
+    outboundEmailsPerMonthSoft: 8000,
+    workflowRunsPerMonthHard: 5000,
+    workflowRunsPerMonthSoft: 4000,
+    aiCompletionsPerMonthHard: 5000,
+    aiCompletionsPerMonthSoft: 4000,
+    apiCallsPerMonthHard: 10000,
+    apiCallsPerMonthSoft: 8000,
+    storageGbHard: 50,
+    storageGbSoft: 40,
+  },
+  enterprise: {
+    outboundEmailsPerMonthHard: -1,
+    outboundEmailsPerMonthSoft: -1,
+    workflowRunsPerMonthHard: -1,
+    workflowRunsPerMonthSoft: -1,
+    aiCompletionsPerMonthHard: -1,
+    aiCompletionsPerMonthSoft: -1,
+    apiCallsPerMonthHard: -1,
+    apiCallsPerMonthSoft: -1,
+    storageGbHard: -1,
+    storageGbSoft: -1,
+  },
+} as const
+
+/**
+ * Compose a FeatureLimit[] from building blocks.
+ * Guarantees every plan has the same keys in the same order.
+ */
+function composeFeatureLimits(
+  staticLimits: Record<string, number>,
+  booleanGates: Record<string, boolean>,
+  usageLimits: Record<string, number>
+): FeatureLimit[] {
+  return [
+    ...Object.entries(staticLimits).map(([key, limit]) => ({ key, limit })),
+    ...Object.entries(booleanGates).map(([key, limit]) => ({ key, limit })),
+    ...Object.entries(usageLimits).map(([key, limit]) => ({ key, limit })),
+  ]
 }
 
 /**
@@ -45,20 +208,8 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
     isCustomPricing: false,
     hasTrial: false,
     trialDays: 0,
-    featureLimits: [
-      { key: 'teammates', limit: 1 },
-      { key: 'channels', limit: 3 },
-      { key: 'rules', limit: 5 },
-      { key: 'savedViews', limit: 5 },
-      { key: 'knowledgeBase', limit: false },
-      { key: 'apiAccess', limit: false },
-      { key: 'workflows', limit: false },
-      { key: 'outboundEmailsPerMonthHard', limit: 100 },
-      { key: 'outboundEmailsPerMonthSoft', limit: 80 },
-      { key: 'aiCompletionsPerMonthHard', limit: 50 },
-      { key: 'aiCompletionsPerMonthSoft', limit: 40 },
-      { key: 'storageGbHard', limit: 1 },
-    ],
+    featureLimits: composeFeatureLimits(STATIC_LIMITS.free, BOOLEAN_GATES.free, USAGE_LIMITS.free),
+    trialFeatureLimits: null,
     hierarchyLevel: 0,
     isFree: true,
   },
@@ -71,23 +222,16 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
     isCustomPricing: false,
     hasTrial: true,
     trialDays: 14,
-    featureLimits: [
-      { key: 'teammates', limit: -1 },
-      { key: 'channels', limit: 5 },
-      { key: 'rules', limit: 20 },
-      { key: 'savedViews', limit: 20 },
-      { key: 'knowledgeBase', limit: true },
-      { key: 'kbPublishedArticles', limit: 50 },
-      { key: 'apiAccess', limit: false },
-      { key: 'workflows', limit: true },
-      { key: 'outboundEmailsPerMonthHard', limit: 1000 },
-      { key: 'outboundEmailsPerMonthSoft', limit: 800 },
-      { key: 'workflowRunsPerMonthHard', limit: 500 },
-      { key: 'workflowRunsPerMonthSoft', limit: 400 },
-      { key: 'aiCompletionsPerMonthHard', limit: 500 },
-      { key: 'aiCompletionsPerMonthSoft', limit: 400 },
-      { key: 'storageGbHard', limit: 10 },
-    ],
+    featureLimits: composeFeatureLimits(
+      STATIC_LIMITS.starter,
+      BOOLEAN_GATES.starter,
+      USAGE_LIMITS.starter
+    ),
+    trialFeatureLimits: composeFeatureLimits(
+      STATIC_LIMITS.starter,
+      BOOLEAN_GATES.starter,
+      USAGE_LIMITS.free
+    ),
     hierarchyLevel: 1,
     isFree: false,
   },
@@ -105,27 +249,16 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
     isCustomPricing: false,
     hasTrial: true,
     trialDays: 14,
-    featureLimits: [
-      { key: 'teammates', limit: -1 },
-      { key: 'channels', limit: -1 },
-      { key: 'rules', limit: -1 },
-      { key: 'savedViews', limit: -1 },
-      { key: 'knowledgeBase', limit: true },
-      { key: 'knowledgeBaseMultiple', limit: true },
-      { key: 'kbPublishedArticles', limit: -1 },
-      { key: 'apiAccess', limit: true },
-      { key: 'customFields', limit: true },
-      { key: 'workflows', limit: true },
-      { key: 'outboundEmailsPerMonthHard', limit: 10000 },
-      { key: 'outboundEmailsPerMonthSoft', limit: 8000 },
-      { key: 'workflowRunsPerMonthHard', limit: 5000 },
-      { key: 'workflowRunsPerMonthSoft', limit: 4000 },
-      { key: 'aiCompletionsPerMonthHard', limit: 5000 },
-      { key: 'aiCompletionsPerMonthSoft', limit: 4000 },
-      { key: 'apiCallsPerMonthHard', limit: 10000 },
-      { key: 'apiCallsPerMonthSoft', limit: 8000 },
-      { key: 'storageGbHard', limit: 50 },
-    ],
+    featureLimits: composeFeatureLimits(
+      STATIC_LIMITS.growth,
+      BOOLEAN_GATES.growth,
+      USAGE_LIMITS.growth
+    ),
+    trialFeatureLimits: composeFeatureLimits(
+      STATIC_LIMITS.growth,
+      BOOLEAN_GATES.growth,
+      USAGE_LIMITS.free
+    ),
     hierarchyLevel: 2,
     isFree: false,
   },
@@ -138,25 +271,12 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
     isCustomPricing: true,
     hasTrial: false,
     trialDays: 0,
-    featureLimits: [
-      { key: 'teammates', limit: -1 },
-      { key: 'channels', limit: -1 },
-      { key: 'rules', limit: -1 },
-      { key: 'savedViews', limit: -1 },
-      { key: 'knowledgeBase', limit: true },
-      { key: 'knowledgeBaseMultiple', limit: true },
-      { key: 'kbPublishedArticles', limit: -1 },
-      { key: 'apiAccess', limit: true },
-      { key: 'customFields', limit: true },
-      { key: 'workflows', limit: true },
-      { key: 'aiAgent', limit: true },
-      { key: 'sso', limit: true },
-      { key: 'outboundEmailsPerMonthHard', limit: -1 },
-      { key: 'workflowRunsPerMonthHard', limit: -1 },
-      { key: 'aiCompletionsPerMonthHard', limit: -1 },
-      { key: 'apiCallsPerMonthHard', limit: -1 },
-      { key: 'storageGbHard', limit: -1 },
-    ],
+    featureLimits: composeFeatureLimits(
+      STATIC_LIMITS.enterprise,
+      BOOLEAN_GATES.enterprise,
+      USAGE_LIMITS.enterprise
+    ),
+    trialFeatureLimits: null,
     hierarchyLevel: 3,
     isFree: false,
   },
@@ -210,6 +330,7 @@ export class BillingDomain {
           hasTrial: planData.hasTrial,
           trialDays: planData.trialDays,
           featureLimits: planData.featureLimits,
+          trialFeatureLimits: planData.trialFeatureLimits,
           hierarchyLevel: planData.hierarchyLevel,
           isFree: planData.isFree,
           updatedAt: new Date(),
@@ -277,6 +398,38 @@ export class BillingDomain {
 
     console.log('✅ Billing plans seeded successfully')
     return plansCreated
+  }
+
+  /**
+   * Update only the featureLimits columns on existing plans, matched by name.
+   * Safe to run on a live database — does not delete plans or affect subscriptions.
+   */
+  async updateFeatureLimitsOnly(db: any): Promise<number> {
+    console.log('💳 Updating plan feature limits...')
+
+    let plansUpdated = 0
+
+    for (const planData of PLAN_DEFINITIONS) {
+      const result = await db
+        .update(schema.Plan)
+        .set({
+          featureLimits: planData.featureLimits,
+          trialFeatureLimits: planData.trialFeatureLimits,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Plan.name, planData.name))
+        .returning({ id: schema.Plan.id })
+
+      if (result.length > 0) {
+        console.log(`  ✓ Updated feature limits: ${planData.name}`)
+        plansUpdated += 1
+      } else {
+        console.log(`  ⚠ Plan not found, skipped: ${planData.name}`)
+      }
+    }
+
+    console.log(`✅ Feature limits updated for ${plansUpdated} plans`)
+    return plansUpdated
   }
 
   /**

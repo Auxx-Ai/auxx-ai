@@ -1,6 +1,7 @@
 // apps/web/src/app/(protected)/app/files/page.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -8,11 +9,14 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { Lock } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { FilesManagement } from '~/components/files'
 import { FileDetailDrawer } from '~/components/files/file-detail-drawer'
 import type { FileItem } from '~/components/files/files-store'
+import { EmptyState } from '~/components/global/empty-state'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useDockStore } from '~/stores/dock-store'
 
 function FilesPageContent() {
@@ -78,5 +82,27 @@ function FilesPageContent() {
 }
 
 export default function FilesPage() {
+  const { hasAccess } = useFeatureFlags()
+
+  if (!hasAccess(FeatureKey.files)) {
+    return (
+      <MainPage>
+        <MainPageHeader>
+          <MainPageBreadcrumb>
+            <MainPageBreadcrumbItem title='Files' href='/app/files' />
+          </MainPageBreadcrumb>
+        </MainPageHeader>
+        <MainPageContent>
+          <EmptyState
+            icon={Lock}
+            title='Files Not Available'
+            description='Upgrade your plan to access file management.'
+            button={<div className='h-12' />}
+          />
+        </MainPageContent>
+      </MainPage>
+    )
+  }
+
   return <FilesPageContent />
 }

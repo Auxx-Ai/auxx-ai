@@ -5,6 +5,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, or } from 'drizzle-orm'
 import type Stripe from 'stripe'
@@ -273,6 +274,37 @@ async function syncStripeSubscription(
     status: stripeSubscription.status,
     cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
   })
+
+  // Detect overages if plan changed (downgrade or trial expiry)
+  const newPlanId = updatePayload.planId ?? localSubscription.planId
+  if (newPlanId) {
+    const oldPlanId = localSubscription.planId
+    const planChanged = oldPlanId !== newPlanId || wasTrialing
+
+    if (planChanged) {
+      // Compare hierarchy levels to determine if this is a downgrade
+      const [oldPlan, newPlan] = await Promise.all([
+        oldPlanId
+          ? db.query.Plan.findFirst({
+              where: (p, { eq }) => eq(p.id, oldPlanId),
+              columns: { hierarchyLevel: true },
+            })
+          : null,
+        db.query.Plan.findFirst({
+          where: (p, { eq }) => eq(p.id, newPlanId),
+          columns: { hierarchyLevel: true },
+        }),
+      ])
+
+      const isDowngrade =
+        wasTrialing || // Trial expiry always checks overages
+        (oldPlan && newPlan && newPlan.hierarchyLevel < oldPlan.hierarchyLevel)
+
+      if (isDowngrade) {
+        await handlePlanDowngrade(db, localSubscription.organizationId, newPlanId)
+      }
+    }
+  }
 }
 
 /**

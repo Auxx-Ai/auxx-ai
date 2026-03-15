@@ -7,6 +7,7 @@ import type { SidebarProps } from '~/constants/menu'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useUser } from '~/hooks/use-user'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 type Props = { items: SidebarProps[]; baseUrl: string; title: string; current: string | undefined }
 
@@ -19,6 +20,7 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
     requireOrganization: true, // Require organization membership
   })
   const role = isAdminOrOwner ? 'ADMIN' : 'USER'
+  const { hasAccess: hasFeatureAccess } = useFeatureFlags()
 
   return (
     // <div className='flex h-full min-h-screen w-[16rem] overflow-auto border-r bg-sidebar text-sidebar-foreground'>
@@ -53,7 +55,7 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
           )}>
           {items.map((group) => (
             <React.Fragment key={group.id}>
-              {createSidebarGroup(group, baseUrl, current, role, selfHosted)}
+              {createSidebarGroup(group, baseUrl, current, role, selfHosted, hasFeatureAccess)}
             </React.Fragment>
           ))}
         </div>
@@ -67,11 +69,13 @@ function createSidebarGroup(
   baseUrl: string,
   current: string | undefined,
   role: 'ADMIN' | 'USER',
-  selfHosted: boolean
+  selfHosted: boolean,
+  hasFeatureAccess: (key: string) => boolean
 ) {
   const title = group.label
-  // Filter out cloud-only items in self-hosted mode
-  const items = selfHosted ? group.items?.filter((item) => !item.cloudOnly) : group.items
+  // Filter out cloud-only items in self-hosted mode, then by feature access
+  let items = selfHosted ? group.items?.filter((item) => !item.cloudOnly) : group.items
+  items = items?.filter((item) => !item.featureKey || hasFeatureAccess(item.featureKey))
   if (!items || items.length === 0) {
     return null
   }

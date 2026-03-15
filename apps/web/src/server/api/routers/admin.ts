@@ -4,6 +4,7 @@ import { AdminBillingService, PlanAdminService, PlanService } from '@auxx/billin
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
+import { DehydrationService } from '@auxx/lib/dehydration'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createUsageGuard, type UsageMetric, type UsageStatus } from '@auxx/lib/usage'
 import { and, eq, ilike, or, sql } from 'drizzle-orm'
@@ -240,9 +241,10 @@ export const adminRouter = createTRPCRouter({
       const { schema } = await import('@auxx/database')
       const { eq } = await import('drizzle-orm')
 
-      // Get the plan by name
+      // Get the plan by name (getPlans returns lowercased names)
       const planService = new PlanService(ctx.db)
-      const plan = await planService.findPlan({ name: input.planName })
+      const plans = await planService.getPlans()
+      const plan = plans.find((p) => p.name === input.planName.toLowerCase())
 
       if (!plan) {
         throw new Error(`Plan ${input.planName} not found`)
@@ -265,6 +267,15 @@ export const adminRouter = createTRPCRouter({
         .update(schema.PlanSubscription)
         .set(updateData)
         .where(eq(schema.PlanSubscription.organizationId, input.organizationId))
+
+      // Invalidate cached feature permissions so new plan limits take effect immediately
+      const featureService = new FeaturePermissionService(ctx.db)
+      await featureService.invalidateCache(input.organizationId)
+
+      // Invalidate dehydrated state cache so org members see new features on next load
+      const { DehydrationCacheService } = await import('@auxx/lib/dehydration')
+      const dehydrationCache = new DehydrationCacheService()
+      await dehydrationCache.invalidateOrganization(input.organizationId)
 
       return { success: true }
     }),
@@ -566,7 +577,7 @@ export const adminRouter = createTRPCRouter({
       .input(
         z.object({
           organizationId: z.string(),
-          limits: z.record(z.string(), z.number()),
+          limits: z.record(z.string(), z.union([z.number(), z.boolean()])),
           reason: z.string().optional(),
         })
       )
@@ -576,6 +587,10 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        const featureService = new FeaturePermissionService(ctx.db)
+        await featureService.invalidateCache(input.organizationId)
+        const dehydrationService = new DehydrationService(ctx.db)
+        await dehydrationService.refreshOrganization(input.organizationId)
         return { success: true }
       }),
 
@@ -590,6 +605,10 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        const featureService = new FeaturePermissionService(ctx.db)
+        await featureService.invalidateCache(input.organizationId)
+        const dehydrationService = new DehydrationService(ctx.db)
+        await dehydrationService.refreshOrganization(input.organizationId)
         return { success: true }
       }),
 
@@ -1063,6 +1082,38 @@ export const adminRouter = createTRPCRouter({
         success: true,
         plansCreated,
         message: `Successfully seeded ${plansCreated} plans`,
+      }
+    }),
+
+    /**
+     * Update feature limits on existing plans without deleting/recreating them.
+     * Safe to run with active subscribers.
+     */
+    updatePlanFeatureLimits: superAdminProcedure.mutation(async ({ ctx }) => {
+      const { BillingDomain, ScenarioBuilder } = await import('@auxx/seed')
+
+      const scenario = ScenarioBuilder.build('demo')
+      const context = {
+        auth: {
+          testUsers: [],
+          randomUsers: [],
+          credentials: { message: '', password: '', accounts: [] },
+        },
+        services: {
+          organizations: [],
+          integrations: [],
+          inboxes: [],
+          shopifyIntegrations: [],
+        },
+      }
+
+      const billingDomain = new BillingDomain(scenario, context)
+      const plansUpdated = await billingDomain.updateFeatureLimitsOnly(ctx.db)
+
+      return {
+        success: true,
+        plansUpdated,
+        message: `Successfully updated feature limits for ${plansUpdated} plans`,
       }
     }),
   }),

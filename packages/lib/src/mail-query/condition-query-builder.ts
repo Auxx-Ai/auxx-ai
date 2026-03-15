@@ -4,6 +4,8 @@ import { database as db, schema } from '@auxx/database'
 
 const { Thread } = schema
 
+import { type ActorId, getActorRawId, isActorId } from '@auxx/types/actor'
+import { getInstanceId, isRecordId, type RecordId } from '@auxx/types/resource'
 import {
   and,
   eq,
@@ -142,13 +144,20 @@ function buildTagQuery(
       return threadHasAnyTags(db, Thread.id, organizationId)
     case 'in':
     case 'is': {
-      const tagIds = Array.isArray(value) ? value : [value]
+      const raw = Array.isArray(value) ? value : [value]
+      // Strip RecordId prefix if present (e.g., "tag:abc123" → "abc123")
+      const tagIds: string[] = raw.map((v: string) =>
+        isRecordId(v) ? getInstanceId(v as RecordId) : v
+      )
       if (tagIds.length === 0) return null
       return threadHasTags(db, Thread.id, tagIds, organizationId)
     }
     case 'not in':
     case 'is not': {
-      const excludeTagIds = Array.isArray(value) ? value : [value]
+      const rawExclude = Array.isArray(value) ? value : [value]
+      const excludeTagIds: string[] = rawExclude.map((v: string) =>
+        isRecordId(v) ? getInstanceId(v as RecordId) : v
+      )
       if (excludeTagIds.length === 0) return null
       return threadDoesNotHaveTags(db, Thread.id, excludeTagIds, organizationId)
     }
@@ -164,12 +173,15 @@ function buildTagQuery(
 function buildAssigneeQuery(operator: Operator, value: any): SQL<unknown> | null {
   const extractIds = (v: any): string[] => {
     if (!v) return []
-    if (Array.isArray(v)) {
-      return v
-        .map((item) => (typeof item === 'object' && item !== null ? item.id : item))
-        .filter(Boolean)
-    }
-    return [typeof v === 'object' && v !== null ? v.id : v].filter(Boolean)
+    const items = Array.isArray(v) ? v : [v]
+    return items
+      .map((item) => {
+        if (typeof item === 'object' && item !== null) return item.id
+        // Strip ActorId prefix (e.g., "user:abc123" → "abc123")
+        if (isActorId(item)) return getActorRawId(item as ActorId)
+        return item
+      })
+      .filter(Boolean)
   }
 
   switch (operator) {
@@ -203,7 +215,11 @@ function buildAssigneeQuery(operator: Operator, value: any): SQL<unknown> | null
  * Uses the direct Thread.inboxId column (denormalized from InboxIntegration).
  */
 function buildInboxQuery(operator: Operator, value: any): SQL<unknown> | null {
-  const inboxIds = Array.isArray(value) ? value : [value]
+  const raw = Array.isArray(value) ? value : [value]
+  // Strip RecordId prefix if present (e.g., "inbox:abc123" → "abc123")
+  const inboxIds: string[] = raw.map((v: string) =>
+    isRecordId(v) ? getInstanceId(v as RecordId) : v
+  )
 
   switch (operator) {
     case 'empty':
@@ -236,7 +252,7 @@ function buildInboxQuery(operator: Operator, value: any): SQL<unknown> | null {
 function buildStatusQuery(operator: Operator, value: any): SQL<unknown> | null {
   // Map user-facing status values to database conditions
   const getStatusCondition = (statusValue: string): SQL<unknown> | null => {
-    switch (statusValue) {
+    switch (statusValue.toLowerCase()) {
       case 'open':
         return eq(Thread.status, 'OPEN')
       case 'unassigned':
@@ -244,12 +260,11 @@ function buildStatusQuery(operator: Operator, value: any): SQL<unknown> | null {
       case 'assigned':
         return and(isNotNull(Thread.assigneeId), eq(Thread.status, 'OPEN'))!
       case 'done':
+      case 'archived':
         return eq(Thread.status, 'ARCHIVED')
       case 'trash':
-      case 'TRASH':
         return eq(Thread.status, 'TRASH')
       case 'spam':
-      case 'SPAM':
         return eq(Thread.status, 'SPAM')
       default:
         return null

@@ -1,4 +1,5 @@
 'use client'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Table,
@@ -9,24 +10,46 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { format } from 'date-fns'
-import { ComponentIcon, PlusIcon } from 'lucide-react'
+import { ComponentIcon, Lock, PlusIcon } from 'lucide-react'
 import React from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { CreateAPIKeyButton, RevokeAPIKeyButton } from './create-api-key-button'
 
 type Props = { initialData: any }
 
 function ApiKeyTable({ initialData }: Props) {
-  // const apiKeys = []
   const [isOpen, setIsOpen] = React.useState(false)
+  const { hasAccess } = useFeatureFlags()
+  const hasApiAccess = hasAccess(FeatureKey.apiAccess)
   const { data: apiKeys, isLoading } = api.apiKey.getAll.useQuery(
     {},
     {
       initialData: initialData,
+      enabled: hasApiAccess,
     }
   )
+
+  if (!hasApiAccess) {
+    return (
+      <SettingsPage
+        title='API Keys'
+        description='Connect to the Auxx.Ai API'
+        breadcrumbs={[{ title: 'Settings', href: '/app/settings' }]}>
+        <EmptyState
+          icon={Lock}
+          title='API Access Not Available'
+          description={
+            <>API access is not included in your current plan. Upgrade to use the Auxx.Ai API.</>
+          }
+          button={<div className='h-12' />}
+        />
+      </SettingsPage>
+    )
+  }
+
   return (
     <SettingsPage
       title='API Keys'

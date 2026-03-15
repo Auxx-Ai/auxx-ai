@@ -1,5 +1,6 @@
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import {
   DropdownMenu,
@@ -14,7 +15,8 @@ import {
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Book, ChevronsUpDown, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { KnowledgeBaseDialog, type KnowledgeBaseFormValues } from './kb-knowledge-base-dialog'
 // import {
@@ -32,6 +34,10 @@ export function KBSwitcher() {
 
   // State for the create dialog
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+
+  // Feature gate
+  const { getLimit } = useFeatureFlags()
+  const kbLimit = getLimit(FeatureKey.knowledgeBases)
 
   // Fetch all knowledge bases
   const { data: knowledgeBases, isLoading, refetch } = api.kb.list.useQuery()
@@ -76,6 +82,14 @@ export function KBSwitcher() {
       isPublic: values.isPublic ?? false,
     })
   }
+
+  // Check if the user can create more KBs
+  const canCreateKB = useMemo(() => {
+    if (kbLimit === null || kbLimit === false || kbLimit === 0) return false
+    if (kbLimit === '+' || kbLimit === true) return true
+    if (typeof kbLimit === 'number') return (knowledgeBases?.length ?? 0) < kbLimit
+    return true
+  }, [kbLimit, knowledgeBases?.length])
 
   // Get the active knowledge base
   const activeKB = knowledgeBases?.find((kb) => kb.id === activeKBId)
@@ -161,11 +175,15 @@ export function KBSwitcher() {
               <DropdownMenuItem disabled>No knowledge bases found</DropdownMenuItem>
             )}
           </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setShowCreateDialog(true)}>
-            <Plus />
-            Add Knowledge Base
-          </DropdownMenuItem>
+          {canCreateKB && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowCreateDialog(true)}>
+                <Plus />
+                Add Knowledge Base
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       {/* </SidebarMenuItem>

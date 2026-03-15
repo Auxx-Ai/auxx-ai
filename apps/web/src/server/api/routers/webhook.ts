@@ -1,4 +1,5 @@
 import { schema } from '@auxx/database'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { WebhookService } from '@auxx/lib/webhooks'
 import { WEBHOOK_EVENT_TYPES } from '@auxx/lib/webhooks/types'
 import { and, desc, eq } from 'drizzle-orm'
@@ -39,6 +40,9 @@ export const webhookRouters = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+
+      // Feature gate: check webhooks access
+      await new FeaturePermissionService(ctx.db).requireAccess(organizationId, FeatureKey.webhooks)
 
       const service = new WebhookService(organizationId, ctx.db)
       const result = await service.createWebhook({ params: { ...input, organizationId } })

@@ -1,4 +1,7 @@
 export { FeaturePermissionService } from './feature-permission-service'
+export type { Overage } from './overage-detection-service'
+export { OverageDetectionService } from './overage-detection-service'
+export { handlePlanDowngrade } from './overage-handler'
 export { PermissionService } from './permission-service'
 export type { FeatureDefinition, FeatureLimit, FeatureMapObject } from './types'
 export { FeatureKey } from './types'

@@ -3,9 +3,10 @@ import { type Database, database as ddb, schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { getRedisClient } from '@auxx/redis'
 import { eq } from 'drizzle-orm'
+import { ForbiddenError } from '../errors'
 import { createScopedLogger } from '../logger'
 import type { FeatureDefinition, FeatureLimit, FeatureMapObject } from './types'
-import { DEFAULT_FREE_PLAN_FEATURES, FeatureKey } from './types'
+import { DEFAULT_FREE_PLAN_FEATURES, FEATURE_REGISTRY_MAP, FeatureKey } from './types'
 
 const logger = createScopedLogger('feature-permission-service')
 
@@ -89,20 +90,22 @@ export class FeaturePermissionService {
 
       if (subscription?.planId) {
         const [plan] = await this.db
-          .select({ featureLimits: schema.Plan.featureLimits })
+          .select({
+            featureLimits: schema.Plan.featureLimits,
+            trialFeatureLimits: schema.Plan.trialFeatureLimits,
+          })
           .from(schema.Plan)
           .where(eq(schema.Plan.id, subscription.planId))
           .limit(1)
-        const limitsSource = plan?.featureLimits
 
-        // Use trial plan if active, otherwise active plan
         if (subscription.status === 'trialing' && !subscription.hasTrialEnded) {
           logger.info(`Using trial plan features for org ${organizationId}`)
-          // Note: Ensure trial plan features are correctly defined in the Plan model
-          featureDefinitions = this.parseFeaturesFromJson(limitsSource)
+          // Prefer trial-specific limits, fall back to regular limits
+          const trialSource = plan?.trialFeatureLimits ?? plan?.featureLimits
+          featureDefinitions = this.parseFeaturesFromJson(trialSource)
         } else if (subscription.status === 'active') {
           logger.info(`Using active plan features for org ${organizationId}`)
-          featureDefinitions = this.parseFeaturesFromJson(limitsSource)
+          featureDefinitions = this.parseFeaturesFromJson(plan?.featureLimits)
         } else {
           logger.warn(
             `Subscription for org ${organizationId} is not active or trialing (status: ${subscription.status}). Falling back to default.`
@@ -132,6 +135,8 @@ export class FeaturePermissionService {
               if (typeof limit === 'number') {
                 // Convert -1 to '+' for unlimited, otherwise use the number
                 featureMap.set(key, limit === -1 ? '+' : limit)
+              } else if (typeof limit === 'boolean') {
+                featureMap.set(key, limit)
               }
             })
           }
@@ -249,6 +254,71 @@ export class FeaturePermissionService {
     }
 
     return false // Should not happen with current types, but default to false
+  }
+
+  // ── Guard methods (throw on denial) ──
+
+  /**
+   * Throws ForbiddenError if the organization does not have access to the feature.
+   *
+   * @example
+   * await featureService.requireAccess(orgId, FeatureKey.datasets)
+   */
+  async requireAccess(organizationId: string, featureKey: FeatureKey | string): Promise<void> {
+    const allowed = await this.hasAccess(organizationId, featureKey)
+    if (!allowed) {
+      const label = FEATURE_REGISTRY_MAP.get(featureKey as FeatureKey)?.label ?? featureKey
+      throw new ForbiddenError(`${label} is not available on your plan.`)
+    }
+  }
+
+  /**
+   * Throws ForbiddenError if the organization has reached the limit for the feature.
+   * The `countFn` callback should return the current count of the resource.
+   *
+   * @example
+   * await featureService.requireLimit(orgId, FeatureKey.datasetsLimit, async () => {
+   *   const [{ value }] = await db.select({ value: count() }).from(schema.Dataset).where(...)
+   *   return value
+   * })
+   */
+  async requireLimit(
+    organizationId: string,
+    featureKey: FeatureKey | string,
+    countFn: () => Promise<number>
+  ): Promise<void> {
+    const limit = await this.getLimit(organizationId, featureKey)
+    if (limit === null || limit === false) return // no numeric limit to enforce
+    if (limit === '+' || limit === true) return // unlimited
+    if (typeof limit === 'number') {
+      const current = await countFn()
+      if (current >= limit) {
+        const label = FEATURE_REGISTRY_MAP.get(featureKey as FeatureKey)?.label ?? featureKey
+        throw new ForbiddenError(`You have reached your ${label.toLowerCase()} limit (${limit}).`)
+      }
+    }
+  }
+
+  /**
+   * Combined guard: checks boolean access + numeric limit in one call.
+   * Throws ForbiddenError on either denial.
+   *
+   * @example
+   * await featureService.requireAccessAndLimit(
+   *   orgId,
+   *   FeatureKey.datasets,
+   *   FeatureKey.datasetsLimit,
+   *   async () => datasetCount
+   * )
+   */
+  async requireAccessAndLimit(
+    organizationId: string,
+    accessKey: FeatureKey | string,
+    limitKey: FeatureKey | string,
+    countFn: () => Promise<number>
+  ): Promise<void> {
+    await this.requireAccess(organizationId, accessKey)
+    await this.requireLimit(organizationId, limitKey, countFn)
   }
 
   /**

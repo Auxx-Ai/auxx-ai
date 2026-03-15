@@ -4,7 +4,7 @@
  */
 'use client'
 
-import type { FeatureLimit } from '@auxx/billing'
+import type { FeatureDefinition } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
@@ -15,31 +15,11 @@ import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
+import { FeatureLimitsCard } from '~/app/admin/_components/features'
 import { api } from '~/trpc/react'
-import { FeatureLimitsEditor } from './feature-limits-editor'
 import { FeaturesListEditor } from './features-list-editor'
+import type { PlanFormData } from './plan-form-types'
 import { StripeSync } from './stripe-sync'
-
-/**
- * Plan form data
- */
-interface PlanFormData {
-  name: string
-  description: string
-  features: string[]
-  monthlyPrice: number
-  annualPrice: number
-  isCustomPricing: boolean
-  isFree: boolean
-  hasTrial: boolean
-  trialDays: number
-  featureLimits: FeatureLimit[]
-  hierarchyLevel: number
-  selfServed: boolean
-  isMostPopular: boolean
-  minSeats: number
-  maxSeats: number
-}
 
 /**
  * Plan form component props
@@ -259,6 +239,7 @@ export function PlanForm({ plan }: PlanFormProps) {
           <div className='flex items-center gap-2'>
             <Switch
               id='hasTrial'
+              size='sm'
               checked={watchHasTrial}
               onCheckedChange={(checked) => setValue('hasTrial', checked, { shouldDirty: true })}
             />
@@ -296,18 +277,12 @@ export function PlanForm({ plan }: PlanFormProps) {
       </Card>
 
       {/* Feature Limits */}
-      <Card>
-        <CardHeader>
-          <CardTitle className='text-lg'>Feature Limits</CardTitle>
-          <CardDescription>Usage limits for this plan (-1 = unlimited)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FeatureLimitsEditor
-            limits={watch('featureLimits')}
-            onChange={(limits) => setValue('featureLimits', limits, { shouldDirty: true })}
-          />
-        </CardContent>
-      </Card>
+      <FeatureLimitsCard
+        limits={watch('featureLimits')}
+        onChange={(limits: FeatureDefinition[]) =>
+          setValue('featureLimits', limits, { shouldDirty: true })
+        }
+      />
 
       {/* Seats */}
       <Card>
@@ -348,6 +323,7 @@ export function PlanForm({ plan }: PlanFormProps) {
           <div className='flex items-center gap-2'>
             <Switch
               id='selfServed'
+              size='sm'
               {...register('selfServed')}
               checked={watch('selfServed')}
               onCheckedChange={(checked) => setValue('selfServed', checked, { shouldDirty: true })}
@@ -360,6 +336,7 @@ export function PlanForm({ plan }: PlanFormProps) {
           <div className='flex items-center gap-2'>
             <Switch
               id='isMostPopular'
+              size='sm'
               {...register('isMostPopular')}
               checked={watch('isMostPopular')}
               onCheckedChange={(checked) =>

@@ -332,7 +332,8 @@
 .dark {
   --background: #23272e; /* oklch(0.145 0 0); */
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
+  /* --card: oklch(0.145 0 0); */
+  --card:#23272e;
   --card-foreground: oklch(0.985 0 0);
   --popover: #1e2227; /*oklch(0.145 0 0);*/
   --popover-foreground: oklch(0.985 0 0);
@@ -418,7 +419,8 @@
   --info: rgb(59, 130, 246);
   --info-100: rgb(79, 143, 247);
   --info-foreground: rgb(30, 41, 59);
-  --border: #1e2227;
+  --border: #ffffff11;
+  /* --border: rgb(var(--primary-50)); */
   /* --border: oklch(0.269 0 0); */
   --input: oklch(0.269 0 0);
   --ring: oklch(0.556 0 0);

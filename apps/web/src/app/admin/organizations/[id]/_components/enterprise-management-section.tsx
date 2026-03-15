@@ -7,11 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Label } from '@auxx/ui/components/label'
 import { toastError } from '@auxx/ui/components/toast'
-import { Crown, Settings } from 'lucide-react'
+import { Crown } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { FeatureLimitsConfigurator } from './feature-limits-configurator'
 
 interface EnterpriseManagementSectionProps {
   organizationId: string
@@ -131,26 +130,17 @@ export function EnterpriseManagementSection({
               </div>
             </div>
           ) : (
-            <div className='space-y-4'>
-              <div className='p-4 rounded-lg border border-amber-500/20 bg-amber-500/5'>
-                <div className='flex items-start gap-3'>
-                  <Crown className='size-5 text-amber-500 mt-0.5' />
-                  <div className='flex-1'>
-                    <div className='font-medium text-amber-500 mb-1'>Enterprise Plan Active</div>
-                    <p className='text-sm text-muted-foreground'>
-                      This organization is on the Enterprise plan with custom configuration
-                      capabilities.
-                    </p>
-                  </div>
+            <div className='p-4 rounded-lg border border-amber-500/20 bg-amber-500/5'>
+              <div className='flex items-start gap-3'>
+                <Crown className='size-5 text-amber-500 mt-0.5' />
+                <div className='flex-1'>
+                  <div className='font-medium text-amber-500 mb-1'>Enterprise Plan Active</div>
+                  <p className='text-sm text-muted-foreground'>
+                    This organization is on the Enterprise plan. Use the{' '}
+                    <span className='font-medium text-foreground'>Features</span> tab to configure
+                    custom feature limits and overrides.
+                  </p>
                 </div>
-              </div>
-
-              <div className='border-t pt-4'>
-                <div className='flex items-center gap-2 mb-4'>
-                  <Settings className='size-4' />
-                  <h4 className='text-sm font-medium'>Custom Feature Limits</h4>
-                </div>
-                <FeatureLimitsConfigurator organizationId={organizationId} />
               </div>
             </div>
           )}

@@ -454,7 +454,7 @@ function MailboxInner({
                 id='mail-layout'
                 direction='horizontal'
                 // Ensure the group fills the available height and prevents internal overflow issues
-                className='h-full  flex-1 grow overflow-hidden bg-secondary dark:bg-primary-100'>
+                className='h-full  flex-1 grow overflow-hidden bg-secondary dark:bg-muted/50'>
                 {/* Left Panel: Contains Tabs (if applicable), Search, and ThreadList */}
                 <ResizablePanel
                   id='mail-thread-list'

@@ -28,7 +28,7 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
-import { Archive, ArchiveRestore, Plus, Search, Sparkles } from 'lucide-react'
+import { Archive, ArchiveRestore, Plus, RefreshCw, Search, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -70,6 +70,21 @@ export default function PlansPage() {
     onError: (error) => {
       toastError({
         title: 'Failed to restore plan',
+        description: error.message,
+      })
+    },
+  })
+
+  const updateFeatureLimits = api.admin.plans.updatePlanFeatureLimits.useMutation({
+    onSuccess: (data) => {
+      utils.admin.plans.getAll.invalidate()
+      toast.success('Feature limits updated', {
+        description: data.message,
+      })
+    },
+    onError: (error) => {
+      toastError({
+        title: 'Failed to update feature limits',
         description: error.message,
       })
     },
@@ -140,6 +155,23 @@ export default function PlansPage() {
   }
 
   /**
+   * Handle update feature limits on existing plans
+   */
+  const handleUpdateFeatureLimits = async () => {
+    const confirmed = await confirm({
+      title: 'Update Feature Limits?',
+      description:
+        'This will update the feature limits on all existing plans to the latest definitions. Subscriptions will not be affected.',
+      confirmText: 'Update Limits',
+      cancelText: 'Cancel',
+    })
+
+    if (confirmed) {
+      await updateFeatureLimits.mutateAsync()
+    }
+  }
+
+  /**
    * Handle seed initial plans
    */
   const handleSeedPlans = async () => {
@@ -164,6 +196,15 @@ export default function PlansPage() {
         <MainPageHeader
           action={
             <div className='flex items-center gap-2'>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={handleUpdateFeatureLimits}
+                loading={updateFeatureLimits.isPending}
+                loadingText='Updating...'>
+                <RefreshCw />
+                Update Feature Limits
+              </Button>
               <Button
                 variant='outline'
                 size='sm'

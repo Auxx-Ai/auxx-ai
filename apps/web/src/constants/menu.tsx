@@ -45,6 +45,8 @@ export type SidebarProps = {
   preventNavigation?: boolean
   /** Hidden in self-hosted mode */
   cloudOnly?: boolean
+  /** Feature key required for this menu item to be visible */
+  featureKey?: string
 } & FieldProps
 
 import type * as React from 'react'
@@ -79,7 +81,13 @@ export const MAIL_MENU: SidebarProps[] = [
 ]
 
 export const SIDEBAR_MENU: SidebarProps[] = [
-  { id: 'workflows', label: 'Workflows', slug: 'workflows', icon: <Zap /> },
+  {
+    id: 'workflows',
+    label: 'Workflows',
+    slug: 'workflows',
+    icon: <Zap />,
+    featureKey: 'workflows',
+  },
   { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
   {
     id: 'shopify',
@@ -87,6 +95,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'shopify',
     icon: <ShopifyIcon />,
     preventNavigation: true,
+    featureKey: 'shopify',
     items: SHOPIFY_MENU,
   },
   {
@@ -97,9 +106,21 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     skipParentSlug: true,
     preventNavigation: true,
     items: [
-      { id: 'datasets', label: 'Datasets', slug: 'datasets', icon: <Database /> },
-      { id: 'kb', label: 'Knowledge Base', slug: 'kb', icon: <BookOpen /> },
-      { id: 'files', label: 'Files', slug: 'files', icon: <Folder /> },
+      {
+        id: 'datasets',
+        label: 'Datasets',
+        slug: 'datasets',
+        icon: <Database />,
+        featureKey: 'datasets',
+      },
+      {
+        id: 'kb',
+        label: 'Knowledge Base',
+        slug: 'kb',
+        icon: <BookOpen />,
+        featureKey: 'knowledgeBase',
+      },
+      { id: 'files', label: 'Files', slug: 'files', icon: <Folder />, featureKey: 'files' },
     ],
   },
   ...(process.env.NODE_ENV === 'development'
@@ -153,7 +174,13 @@ export const SETTINGS_MENU: SidebarProps[] = [
       //   icon: <Waypoints />,
       // },
 
-      { id: 'settings-apiKeys', label: 'API Keys', slug: 'apiKeys', icon: <ComponentIcon /> },
+      {
+        id: 'settings-apiKeys',
+        label: 'API Keys',
+        slug: 'apiKeys',
+        icon: <ComponentIcon />,
+        featureKey: 'apiAccess',
+      },
     ],
   },
   // Channels
@@ -182,6 +209,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'webhooks',
         icon: <Webhook />,
         access: 'ADMIN',
+        featureKey: 'webhooks',
       },
 
       // {
@@ -210,6 +238,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'shopify',
         icon: <ShopifyIcon />,
         access: 'ADMIN',
+        featureKey: 'shopify',
       },
     ],
   },
