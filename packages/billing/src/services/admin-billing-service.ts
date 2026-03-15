@@ -7,9 +7,9 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
+import type { PlanChangeHandler } from '../types'
 import { auditLog } from '../utils/audit-logger'
 import { stripeClient } from './stripe-client'
 
@@ -39,7 +39,8 @@ export interface CustomFeatureLimits {
 export class AdminBillingService {
   constructor(
     private db: Database,
-    private baseUrl: string
+    private baseUrl: string,
+    private onPlanChange?: PlanChangeHandler
   ) {}
 
   // ============ Trial Management ============
@@ -467,7 +468,7 @@ export class AdminBillingService {
     logger.info('Organization set to Enterprise plan', { organizationId: input.organizationId })
 
     // Check for overages against the new enterprise plan
-    await handlePlanDowngrade(this.db, input.organizationId, enterprisePlan.id)
+    await this.onPlanChange?.(this.db, input.organizationId, enterprisePlan.id)
   }
 
   /**
@@ -511,7 +512,7 @@ export class AdminBillingService {
 
     // Check for overages with the updated custom limits
     if (subscription.planId) {
-      await handlePlanDowngrade(this.db, input.organizationId, subscription.planId)
+      await this.onPlanChange?.(this.db, input.organizationId, subscription.planId)
     }
   }
 
@@ -550,7 +551,7 @@ export class AdminBillingService {
 
     // Check for overages now that custom limits are removed
     if (subscription.planId) {
-      await handlePlanDowngrade(this.db, input.organizationId, subscription.planId)
+      await this.onPlanChange?.(this.db, input.organizationId, subscription.planId)
     }
   }
 

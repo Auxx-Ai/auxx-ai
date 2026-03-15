@@ -21,25 +21,20 @@ import { OutlookProvider } from '../outlook/outlook-provider'
 import { getProviderCapabilities, PROVIDER_CAPABILITIES } from '../provider-capabilities'
 import { ProviderRegistryService } from '../provider-registry-service'
 
-// Mock the database
-vi.mock('@auxx/database', () => ({
-  database: {
-    select: vi.fn(),
-    query: {
-      Integration: {
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-      },
-      OrganizationSetting: {
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-      },
+// Recursive chainable mock — supports any method chain (select().from().where().prepare(), etc.)
+function createChain(): any {
+  const fn = (..._args: any[]) => createChain()
+  return new Proxy(fn, {
+    get: (_target, prop) => {
+      if (prop === 'then') return undefined
+      return createChain()
     },
-    insert: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  },
-  schema: { Integration: {} },
+  })
+}
+
+vi.mock('@auxx/database', () => ({
+  database: createChain(),
+  schema: { Integration: {}, User: {}, Organization: {} },
 }))
 
 vi.mock('drizzle-orm', () => ({

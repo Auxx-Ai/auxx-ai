@@ -26,7 +26,7 @@ vi.mock('mailgun.js', () => ({
   },
 }))
 
-import { createMailgunTransport } from '../nodemailer-mailgun-transport'
+import { createMailgunTransport } from '../../../../email/src/transports/mailgun-transport'
 
 describe('createMailgunTransport', () => {
   beforeEach(() => {

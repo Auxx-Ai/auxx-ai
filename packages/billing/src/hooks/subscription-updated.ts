@@ -5,10 +5,10 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, or } from 'drizzle-orm'
 import type Stripe from 'stripe'
+import type { PlanChangeHandler } from '../types'
 
 /**
  * Scoped logger used to emit structured subscription synchronization events.
@@ -31,7 +31,8 @@ const logger = createScopedLogger('webhook:subscription-sync')
 async function syncStripeSubscription(
   db: Database,
   stripeSubscription: Stripe.Subscription,
-  eventType: string
+  eventType: string,
+  onPlanChange?: PlanChangeHandler
 ): Promise<void> {
   const firstItem = stripeSubscription.items.data.at(0)
   const priceId = firstItem?.price.id ?? null
@@ -301,7 +302,7 @@ async function syncStripeSubscription(
         (oldPlan && newPlan && newPlan.hierarchyLevel < oldPlan.hierarchyLevel)
 
       if (isDowngrade) {
-        await handlePlanDowngrade(db, localSubscription.organizationId, newPlanId)
+        await onPlanChange?.(db, localSubscription.organizationId, newPlanId)
       }
     }
   }
@@ -322,11 +323,12 @@ async function syncStripeSubscription(
 async function processSubscriptionWebhook(
   db: Database,
   event: Stripe.Event,
-  eventType: 'customer.subscription.updated' | 'customer.subscription.created'
+  eventType: 'customer.subscription.updated' | 'customer.subscription.created',
+  onPlanChange?: PlanChangeHandler
 ): Promise<void> {
   try {
     const stripeSubscription = event.data.object as Stripe.Subscription
-    await syncStripeSubscription(db, stripeSubscription, eventType)
+    await syncStripeSubscription(db, stripeSubscription, eventType, onPlanChange)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : ''
     logger.error('Stripe webhook subscription sync failed', {
@@ -344,8 +346,12 @@ async function processSubscriptionWebhook(
  * @param event Stripe webhook event that encapsulates the updated subscription payload
  * @returns Promise that resolves once the subscription has been brought up to date locally
  */
-export async function handleSubscriptionUpdated(db: Database, event: Stripe.Event): Promise<void> {
-  await processSubscriptionWebhook(db, event, 'customer.subscription.updated')
+export async function handleSubscriptionUpdated(
+  db: Database,
+  event: Stripe.Event,
+  onPlanChange?: PlanChangeHandler
+): Promise<void> {
+  await processSubscriptionWebhook(db, event, 'customer.subscription.updated', onPlanChange)
 }
 
 /**
@@ -355,6 +361,10 @@ export async function handleSubscriptionUpdated(db: Database, event: Stripe.Even
  * @param event Stripe webhook event that encapsulates the newly created subscription payload
  * @returns Promise that resolves once the subscription creation has been mirrored locally
  */
-export async function handleSubscriptionCreated(db: Database, event: Stripe.Event): Promise<void> {
-  await processSubscriptionWebhook(db, event, 'customer.subscription.created')
+export async function handleSubscriptionCreated(
+  db: Database,
+  event: Stripe.Event,
+  onPlanChange?: PlanChangeHandler
+): Promise<void> {
+  await processSubscriptionWebhook(db, event, 'customer.subscription.created', onPlanChange)
 }

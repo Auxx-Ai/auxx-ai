@@ -7,6 +7,7 @@ import { WebhookService } from '@auxx/billing'
 import { configService } from '@auxx/credentials'
 import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
+import { handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -52,7 +53,8 @@ export async function POST(req: NextRequest) {
         onInvoicePaymentFailed: async (event) => {
           logger.warn('Invoice payment failed', { eventId: event.id })
         },
-      }
+      },
+      handlePlanDowngrade
     )
 
     await webhookService.processWebhook(body, signature)

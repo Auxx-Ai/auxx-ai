@@ -70,7 +70,7 @@ describe('WebhookService', () => {
     await service.processWebhook('body', 'sig')
 
     const { handleSubscriptionUpdated } = await import('../../hooks')
-    expect(handleSubscriptionUpdated).toHaveBeenCalledWith(db, event)
+    expect(handleSubscriptionUpdated).toHaveBeenCalledWith(db, event, undefined)
     expect(customHandler).toHaveBeenCalledWith(event)
   })
 
@@ -83,7 +83,7 @@ describe('WebhookService', () => {
     await service.processWebhook('body', 'sig')
 
     const { handleSubscriptionCreated } = await import('../../hooks')
-    expect(handleSubscriptionCreated).toHaveBeenCalledWith(db, event)
+    expect(handleSubscriptionCreated).toHaveBeenCalledWith(db, event, undefined)
     expect(customHandler).toHaveBeenCalledWith(event)
   })
 

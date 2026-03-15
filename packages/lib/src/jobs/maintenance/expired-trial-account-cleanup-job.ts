@@ -4,7 +4,7 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { subDays } from 'date-fns'
+import { differenceInCalendarDays, subDays } from 'date-fns'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { OrganizationService } from '../../organizations'
@@ -176,9 +176,7 @@ async function findEligibleOrganizations(
       continue
     }
 
-    const daysSinceExpiry = Math.floor(
-      (Date.now() - org.trialEnd.getTime()) / (1000 * 60 * 60 * 24)
-    )
+    const daysSinceExpiry = differenceInCalendarDays(new Date(), org.trialEnd)
 
     const orgData: OrganizationToDelete = {
       organizationId: org.organizationId,
@@ -191,10 +189,10 @@ async function findEligibleOrganizations(
 
     if (daysSinceExpiry >= 14) {
       deletionReady.push(orgData)
-    } else if (daysSinceExpiry >= 7 && !org.lastNotificationSent?.includes('WARNING')) {
-      warningNeeded.push(orgData)
     } else if (daysSinceExpiry >= 13 && !org.lastNotificationSent?.includes('FINAL')) {
       finalNoticeNeeded.push(orgData)
+    } else if (daysSinceExpiry >= 7 && !org.lastNotificationSent?.includes('WARNING')) {
+      warningNeeded.push(orgData)
     }
   }
 
@@ -333,9 +331,7 @@ async function processDeletionBatch(
       }
 
       if (dryRun) {
-        const daysSinceExpiry = Math.floor(
-          (Date.now() - org.trialEnd.getTime()) / (1000 * 60 * 60 * 24)
-        )
+        const daysSinceExpiry = differenceInCalendarDays(new Date(), org.trialEnd)
 
         logger.info('[DRY RUN] Would delete organization', {
           organizationId: org.organizationId,
@@ -357,9 +353,7 @@ async function processDeletionBatch(
         logger.info('Deleted expired trial organization', {
           organizationId: org.organizationId,
           organizationName: org.organizationName,
-          daysSinceExpiry: Math.floor(
-            (Date.now() - org.trialEnd.getTime()) / (1000 * 60 * 60 * 24)
-          ),
+          daysSinceExpiry: differenceInCalendarDays(new Date(), org.trialEnd),
         })
         stats.deleted++
       }

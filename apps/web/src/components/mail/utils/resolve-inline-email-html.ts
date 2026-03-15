@@ -57,7 +57,7 @@ export function resolveInlineEmailHtml(
 
   const attachmentsByContentId = new Map(
     attachments
-      .filter((attachment) => attachment.contentId)
+      .filter((attachment) => attachment.contentId && attachment.inline)
       .map((attachment) => [normalizeContentId(attachment.contentId!), attachment])
   )
 

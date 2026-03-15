@@ -25,10 +25,27 @@ vi.mock('@auxx/billing/services/stripe-client', () => ({
   },
 }))
 
+// Recursive chainable mock — supports any method chain (select().from().where().prepare(), etc.)
+const { mockChainableDb } = vi.hoisted(() => {
+  function createChain(): any {
+    const fn = (..._args: any[]) => createChain()
+    return new Proxy(fn, {
+      get: (_target, prop) => {
+        if (prop === 'then') return undefined // prevent promise-like behavior
+        return createChain()
+      },
+    })
+  }
+  return { mockChainableDb: createChain() }
+})
+
 vi.mock('@auxx/database', () => ({
+  database: mockChainableDb,
   schema: {
     PlanSubscription: { id: 'id', organizationId: 'organizationId' },
     Plan: {},
+    User: { id: 'id' },
+    Organization: { id: 'id' },
   },
   eq: vi.fn(),
   and: vi.fn(),
