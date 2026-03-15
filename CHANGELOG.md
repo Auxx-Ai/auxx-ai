@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.84](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.83...auxx-v0.1.84) (2026-03-15)
+
+
+### Features
+
+* add overage detection and handling for feature limits ([#265](https://github.com/Auxx-Ai/auxx-ai/issues/265)) ([80fbd97](https://github.com/Auxx-Ai/auxx-ai/commit/80fbd974b372f4ce5e8556defcb6d877e970aca5))
+* enhance logging and security measures, implement CSRF protection for OAuth flows ([#264](https://github.com/Auxx-Ai/auxx-ai/issues/264)) ([3dec1c7](https://github.com/Auxx-Ai/auxx-ai/commit/3dec1c773d783e28e846ec678303191f6750ac14))
+* enhance README and install script; add SVG banner and improve installation process ([#263](https://github.com/Auxx-Ai/auxx-ai/issues/263)) ([bede7cf](https://github.com/Auxx-Ai/auxx-ai/commit/bede7cf4c3391bef48f7776e2739983349b362ba))
+* update feature limits for free plan and premium plan; add screenshots to README ([#261](https://github.com/Auxx-Ai/auxx-ai/issues/261)) ([7cbeb64](https://github.com/Auxx-Ai/auxx-ai/commit/7cbeb645e0aabb15fd61242e07a765107a367947))
+
 ## [0.1.83](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.82...auxx-v0.1.83) (2026-03-14)
 
 
