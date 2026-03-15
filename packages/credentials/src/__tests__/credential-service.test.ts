@@ -1,7 +1,11 @@
 // packages/credentials/src/__tests__/credential-service.test.ts
 
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { CredentialService } from '../service/credential-service'
+
+beforeAll(() => {
+  process.env.WORKFLOW_CREDENTIAL_ENCRYPTION_KEY = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
+})
 
 describe('CredentialService', () => {
   describe('encrypt / decrypt', () => {

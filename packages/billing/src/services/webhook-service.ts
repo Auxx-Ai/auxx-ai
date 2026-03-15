@@ -14,7 +14,7 @@ import {
   handleSubscriptionDeleted,
   handleSubscriptionUpdated,
 } from '../hooks'
-import type { WebhookHandlers } from '../types'
+import type { PlanChangeHandler, WebhookHandlers } from '../types'
 import { stripeClient } from './stripe-client'
 
 /** Scoped logger for Stripe webhook service operations. */
@@ -38,7 +38,8 @@ export class WebhookService {
   constructor(
     private db: Database,
     private webhookSecret: string,
-    private customHandlers?: WebhookHandlers
+    private customHandlers?: WebhookHandlers,
+    private onPlanChange?: PlanChangeHandler
   ) {}
 
   /**
@@ -74,12 +75,12 @@ export class WebhookService {
           break
 
         case 'customer.subscription.updated':
-          await handleSubscriptionUpdated(this.db, event)
+          await handleSubscriptionUpdated(this.db, event, this.onPlanChange)
           await this.customHandlers?.onSubscriptionUpdated?.(event)
           break
 
         case 'customer.subscription.created':
-          await handleSubscriptionCreated(this.db, event)
+          await handleSubscriptionCreated(this.db, event, this.onPlanChange)
           await this.customHandlers?.onSubscriptionCreated?.(event)
           break
 

@@ -70,7 +70,19 @@ const schemaHandler: ProxyHandler<any> = {
 }
 const mockSchema = new Proxy({}, schemaHandler)
 
+// Recursive chainable mock for transitive module-level prepared statements (system-user-service.ts)
+function createChain(): any {
+  const fn = (..._args: any[]) => createChain()
+  return new Proxy(fn, {
+    get: (_target, prop) => {
+      if (prop === 'then') return undefined
+      return createChain()
+    },
+  })
+}
+
 vi.mock('@auxx/database', () => ({
+  database: createChain(),
   schema: mockSchema,
 }))
 
@@ -80,6 +92,9 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(),
   eq: vi.fn(),
   inArray: vi.fn(),
+  isNull: vi.fn(),
+  isNotNull: vi.fn(),
+  sql: vi.fn(),
 }))
 
 /**

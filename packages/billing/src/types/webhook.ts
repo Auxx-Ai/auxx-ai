@@ -3,7 +3,15 @@
  * Webhook-related types for billing package.
  */
 
+import type { Database } from '@auxx/database'
 import type Stripe from 'stripe'
+
+/** Callback invoked when a plan change (downgrade or trial expiry) requires overage detection. */
+export type PlanChangeHandler = (
+  db: Database,
+  organizationId: string,
+  newPlanId: string
+) => Promise<void>
 
 /** Webhook event handlers */
 export interface WebhookHandlers {

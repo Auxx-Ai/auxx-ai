@@ -5,7 +5,7 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
 import { DehydrationService } from '@auxx/lib/dehydration'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createUsageGuard, type UsageMetric, type UsageStatus } from '@auxx/lib/usage'
 import { and, eq, ilike, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -397,7 +397,7 @@ export const adminRouter = createTRPCRouter({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.endTrialImmediately({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -417,7 +417,7 @@ export const adminRouter = createTRPCRouter({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.extendTrial({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -437,7 +437,7 @@ export const adminRouter = createTRPCRouter({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.convertTrialToPaid({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -458,7 +458,7 @@ export const adminRouter = createTRPCRouter({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.disableOrganization({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -472,7 +472,7 @@ export const adminRouter = createTRPCRouter({
     enableOrganization: superAdminProcedure
       .input(z.object({ organizationId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.enableOrganization({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -486,7 +486,7 @@ export const adminRouter = createTRPCRouter({
     cancelScheduledDeletion: superAdminProcedure
       .input(z.object({ organizationId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.cancelScheduledDeletion({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -507,7 +507,7 @@ export const adminRouter = createTRPCRouter({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.cancelSubscriptionImmediately({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -521,7 +521,7 @@ export const adminRouter = createTRPCRouter({
     reactivateSubscription: superAdminProcedure
       .input(z.object({ organizationId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.reactivateCanceledSubscription({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -541,7 +541,7 @@ export const adminRouter = createTRPCRouter({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.forceStatusChange({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -562,7 +562,7 @@ export const adminRouter = createTRPCRouter({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.setEnterprisePlan({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -582,7 +582,7 @@ export const adminRouter = createTRPCRouter({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.configureCustomFeatureLimits({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -600,7 +600,7 @@ export const adminRouter = createTRPCRouter({
     clearCustomLimits: superAdminProcedure
       .input(z.object({ organizationId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.clearCustomFeatureLimits({
           ...input,
           adminUserId: ctx.session.user.id,
@@ -626,7 +626,7 @@ export const adminRouter = createTRPCRouter({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const service = new AdminBillingService(ctx.db, WEBAPP_URL)
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
         await service.applyCreditAdjustment({
           ...input,
           adminUserId: ctx.session.user.id,

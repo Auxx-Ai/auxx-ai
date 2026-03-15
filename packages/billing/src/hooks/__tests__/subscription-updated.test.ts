@@ -5,10 +5,27 @@ import type Stripe from 'stripe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { handleSubscriptionCreated, handleSubscriptionUpdated } from '../subscription-updated'
 
+// Recursive chainable mock — supports any method chain (select().from().where().prepare(), etc.)
+const { mockChainableDb } = vi.hoisted(() => {
+  function createChain(): any {
+    const fn = (..._args: any[]) => createChain()
+    return new Proxy(fn, {
+      get: (_target, prop) => {
+        if (prop === 'then') return undefined
+        return createChain()
+      },
+    })
+  }
+  return { mockChainableDb: createChain() }
+})
+
 vi.mock('@auxx/database', () => ({
+  database: mockChainableDb,
   schema: {
     PlanSubscription: { id: 'id' },
     Plan: {},
+    User: { id: 'id' },
+    Organization: { id: 'id' },
   },
   eq: vi.fn(),
   and: vi.fn(),

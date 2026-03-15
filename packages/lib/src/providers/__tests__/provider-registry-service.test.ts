@@ -13,7 +13,19 @@ const {
   mockWhere,
   mockFrom,
   mockSelect,
+  createChain,
 } = vi.hoisted(() => {
+  // Recursive chainable fallback for transitive module-level prepared statements
+  function createChain(): any {
+    const fn = (..._args: any[]) => createChain()
+    return new Proxy(fn, {
+      get: (_target, prop) => {
+        if (prop === 'then') return undefined
+        return createChain()
+      },
+    })
+  }
+
   const IntegrationAuthStatus = {
     AUTHENTICATED: 'AUTHENTICATED',
     UNAUTHENTICATED: 'UNAUTHENTICATED',
@@ -58,7 +70,8 @@ const {
   const mockLimit = vi.fn()
   const mockWhere = vi.fn()
   const mockFrom = vi.fn()
-  const mockSelect = vi.fn()
+  // Default to chainable proxy so module-level prepared statements don't crash
+  const mockSelect = vi.fn().mockReturnValue(createChain())
 
   return {
     IntegrationAuthStatus,
@@ -69,16 +82,21 @@ const {
     mockWhere,
     mockFrom,
     mockSelect,
+    createChain,
   }
 })
 
 // Mock @auxx/database/enums before any imports that use it
-vi.mock('@auxx/database/enums', () => ({
-  IntegrationAuthStatus,
-  IntegrationProviderType,
-  IntegrationProviderTypeValues: Object.values(IntegrationProviderType),
-  IntegrationAuthStatusValues: Object.values(IntegrationAuthStatus),
-}))
+vi.mock('@auxx/database/enums', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@auxx/database/enums')>()
+  return {
+    ...actual,
+    IntegrationAuthStatus,
+    IntegrationProviderType,
+    IntegrationProviderTypeValues: Object.values(IntegrationProviderType),
+    IntegrationAuthStatusValues: Object.values(IntegrationAuthStatus),
+  }
+})
 
 import { ProviderRegistryService } from '../provider-registry-service'
 
@@ -109,8 +127,14 @@ function setupSelectChain(terminalValue: unknown[]) {
 }
 
 vi.mock('@auxx/database', () => ({
-  database: { select: (...args: unknown[]) => mockSelect(...args) },
-  schema: { Integration: mockIntegrationSchema },
+  database: {
+    select: (...args: unknown[]) => mockSelect(...args),
+  },
+  schema: {
+    Integration: mockIntegrationSchema,
+    User: { id: 'User.id' },
+    Organization: { id: 'Organization.id' },
+  },
 }))
 
 // Mock drizzle-orm operators — these are called by the source but we don't
@@ -119,6 +143,10 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn((...args: unknown[]) => args),
   and: vi.fn((...args: unknown[]) => args),
   desc: vi.fn((col: unknown) => col),
+  isNull: vi.fn(),
+  isNotNull: vi.fn(),
+  inArray: vi.fn(),
+  sql: vi.fn(),
 }))
 
 vi.mock('../google/google-provider', () => {
@@ -202,6 +230,8 @@ describe('ProviderRegistryService', () => {
   beforeEach(() => {
     service = new ProviderRegistryService(ORG_ID)
     vi.clearAllMocks()
+    // Restore default chainable return after clearAllMocks wipes it
+    mockSelect.mockReturnValue(createChain())
   })
 
   afterEach(() => {
