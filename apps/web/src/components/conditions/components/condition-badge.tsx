@@ -19,6 +19,8 @@ import ResourceFieldSelector from './resource-field-selector'
 interface ConditionBadgeProps extends ConditionItemProps {
   /** Whether this badge is highlighted via keyboard navigation */
   isHighlighted?: boolean
+  /** Prevents field selection, shows label as static text */
+  lockField?: boolean
 }
 
 /**
@@ -35,6 +37,7 @@ export const ConditionBadge = ({
   showRemoveButton = true,
   compactMode = false,
   isHighlighted = false,
+  lockField = false,
   className,
   onUpdate,
   onRemove,
@@ -147,29 +150,39 @@ export const ConditionBadge = ({
     <div
       data-slot='condition-badge'
       className={cn(
-        'flex flex-row h-6 items-center rounded-xl bg-primary-200/30 border shrink-0',
+        'flex flex-row h-6 items-center rounded-xl bg-primary-200/30 border shrink-0 [&>*:last-child]:rounded-r-xl',
         isHighlighted && 'ring-2 ring-info',
         isHovered && 'bg-destructive/10 border-destructive/20',
         className
       )}>
       {/* Field Selector */}
-      <ResourceFieldSelector
-        value={condition.fieldId}
-        onChange={handleFieldChange}
-        disabled={readOnly}
-        placeholder='Field'
-        availableFields={getAvailableFields()}
-        renderTrigger={() => (
-          <Button
-            variant='transparent'
-            className={cn(
-              'h-6 hover:bg-primary-200/50 px-1.5 text-xs rounded-r-none border-r',
-              isHovered && 'border-destructive/20'
-            )}>
-            {fieldDef?.label ?? 'Field'}
-          </Button>
-        )}
-      />
+      {lockField ? (
+        <span
+          className={cn(
+            'h-6 px-1.5 text-xs flex items-center border-r text-muted-foreground shrink-0',
+            isHovered && 'border-destructive/20'
+          )}>
+          {fieldDef?.label ?? 'Field'}
+        </span>
+      ) : (
+        <ResourceFieldSelector
+          value={condition.fieldId}
+          onChange={handleFieldChange}
+          disabled={readOnly}
+          placeholder='Field'
+          availableFields={getAvailableFields()}
+          renderTrigger={() => (
+            <Button
+              variant='transparent'
+              className={cn(
+                'h-6 hover:bg-primary-200/50 px-1.5 text-xs rounded-r-none border-r',
+                isHovered && 'border-destructive/20'
+              )}>
+              {fieldDef?.label ?? 'Field'}
+            </Button>
+          )}
+        />
+      )}
 
       {/* Operator Selector */}
       <ConditionOperator

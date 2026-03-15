@@ -3,7 +3,9 @@
 
 import {
   getDefaultOperatorForField,
+  getMailViewFieldDefinition,
   MAIL_VIEW_FIELD_DEFINITIONS,
+  SEARCH_SCOPE_FIELD_ID,
 } from '@auxx/lib/mail-views/client'
 import type { AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Button } from '@auxx/ui/components/button'
@@ -279,10 +281,11 @@ export function MailSearchBar({
       conditions={conditions}
       config={{
         mode: 'resource',
-        fields: MAIL_VIEW_FIELD_DEFINITIONS,
+        fields: MAIL_VIEW_FIELD_DEFINITIONS.filter((f) => f.id !== SEARCH_SCOPE_FIELD_ID),
         showGrouping: false,
         compactMode: true,
       }}
+      getFieldDefinition={(fieldId) => getMailViewFieldDefinition(fieldId) as any}
       onConditionsChange={handleConditionsChange}>
       <div className={cn('w-full min-w-[20rem] ', className)}>
         {/* Search input row - always visible, outside popover */}
@@ -298,6 +301,7 @@ export function MailSearchBar({
           <SearchFilterInput
             inputRef={inputRef}
             inputValue={inputValue}
+            showScopeBadge={isOpen || hasActiveConditions}
             onInputChange={setInputValue}
             onInputKeyDown={handleInputKeyDown}
             onFocus={handleInputFocus}

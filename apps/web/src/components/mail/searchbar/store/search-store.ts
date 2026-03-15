@@ -2,7 +2,7 @@
 'use client'
 
 import type { Operator } from '@auxx/lib/conditions/client'
-import { getMailViewFieldDefinition } from '@auxx/lib/mail-views/client'
+import { getMailViewFieldDefinition, SEARCH_SCOPE_FIELD_ID } from '@auxx/lib/mail-views/client'
 import { v4 as generateId } from 'uuid'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -49,7 +49,6 @@ interface SearchState {
   showAdvanced: boolean
   editingConditionId: string | null
   highlightedIndex: number | null
-
   /** Persisted state */
   recentSearches: SearchCondition[][]
 
@@ -73,11 +72,22 @@ interface SearchState {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CONSTANTS
+// CONSTANTS & HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Stable empty conditions array */
 export const EMPTY_CONDITIONS: SearchCondition[] = []
+
+/** Create a scope condition with a default or specified operator */
+function createScopeCondition(operator: Operator = 'this_mailbox' as Operator): SearchCondition {
+  return { id: generateId(), fieldId: SEARCH_SCOPE_FIELD_ID, operator, value: undefined }
+}
+
+/** Ensure conditions array always contains a scope condition at the front */
+function ensureScope(conditions: SearchCondition[], operator?: Operator): SearchCondition[] {
+  if (conditions.some((c) => c.fieldId === SEARCH_SCOPE_FIELD_ID)) return conditions
+  return [createScopeCondition(operator), ...conditions]
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STORE
@@ -86,8 +96,8 @@ export const EMPTY_CONDITIONS: SearchCondition[] = []
 export const useSearchStore = create<SearchState>()(
   persist(
     immer((set) => ({
-      // Core state
-      conditions: EMPTY_CONDITIONS,
+      // Core state — scope condition always present
+      conditions: [createScopeCondition()],
 
       // Context scoping
       contextKey: null,
@@ -153,12 +163,13 @@ export const useSearchStore = create<SearchState>()(
 
       clearConditions: () =>
         set((state) => {
-          state.conditions = []
+          state.conditions = [createScopeCondition()]
         }),
 
       setConditions: (conditions) =>
         set((state) => {
-          state.conditions = conditions
+          const currentScope = state.conditions.find((c) => c.fieldId === SEARCH_SCOPE_FIELD_ID)
+          state.conditions = ensureScope(conditions, currentScope?.operator)
         }),
 
       // ─────────────────────────────────────────────────────────────────
@@ -196,7 +207,7 @@ export const useSearchStore = create<SearchState>()(
         set((state) => {
           if (state.contextKey !== contextKey) {
             state.contextKey = contextKey
-            state.conditions = []
+            state.conditions = [createScopeCondition()]
             state.isOpen = false
             state.showAdvanced = false
             state.editingConditionId = null
@@ -210,10 +221,12 @@ export const useSearchStore = create<SearchState>()(
 
       saveToRecent: () =>
         set((state) => {
-          if (state.conditions.length === 0) return
+          // Exclude scope condition from recent searches
+          const realConditions = state.conditions.filter((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
+          if (realConditions.length === 0) return
 
-          // Deep clone conditions
-          const clone = JSON.parse(JSON.stringify(state.conditions)) as SearchCondition[]
+          // Deep clone conditions (without scope)
+          const clone = JSON.parse(JSON.stringify(realConditions)) as SearchCondition[]
 
           // Remove duplicates and limit to 10
           const isDuplicate = (a: SearchCondition[], b: SearchCondition[]) =>
@@ -244,24 +257,26 @@ export const useSearchStore = create<SearchState>()(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Check if any conditions are currently active.
+ * Check if any conditions are currently active (excluding scope).
  */
 export const selectHasActiveConditions = (state: SearchState): boolean => {
-  return state.conditions.length > 0
+  return state.conditions.some((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
 }
 
 /**
- * Count the number of active conditions.
+ * Count the number of active conditions (excluding scope).
  */
 export const selectConditionCount = (state: SearchState): number => {
-  return state.conditions.length
+  return state.conditions.filter((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID).length
 }
 
 /**
  * Generate display text from conditions (for showing in collapsed search bar).
+ * Excludes scope condition.
  */
 export const selectDisplayText = (state: SearchState): string => {
   return state.conditions
+    .filter((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
     .map((c) => {
       const field = getMailViewFieldDefinition(c.fieldId)
       const label = field?.label?.toLowerCase() || c.fieldId
@@ -315,7 +330,7 @@ export const EMPTY_CHIPS: FilterChip[] = []
 export function buildFilterChips(conditions: SearchCondition[]): FilterChip[] {
   const chips: FilterChip[] = []
 
-  for (const condition of conditions) {
+  for (const condition of conditions.filter((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)) {
     const field = getMailViewFieldDefinition(condition.fieldId)
     const label = field?.label?.toLowerCase() || condition.fieldId
 

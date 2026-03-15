@@ -22,7 +22,8 @@
     },
     "chrome-devtools": {
       "type": "stdio",
-      "command": "chrome-devtools-mcp"
+      "command": "npx",
+      "args": ["chrome-devtools-mcp@latest", "--autoConnect", "--channel=beta"]
     }
   }
 }

@@ -79,6 +79,8 @@ export function resolveFieldInputConfig(fieldType: string, operator: Operator): 
       'is_text_format',
       'is_compressed',
       'is_executable',
+      'this_mailbox',
+      'everywhere',
     ].includes(operator)
   ) {
     return { mode: FieldInputMode.NONE }

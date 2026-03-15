@@ -745,6 +745,27 @@ export const OPERATOR_DEFINITIONS = {
     category: 'object',
     description: 'Format: key:value',
   },
+  // ===== SCOPE OPERATORS =====
+  this_mailbox: {
+    key: 'this_mailbox',
+    label: 'This mailbox',
+    requiresValue: false,
+    supportedTypes: [],
+    supportedFieldTypes: ['SCOPE'],
+    valueType: 'none',
+    category: 'equality',
+    description: 'Search within current mailbox/view context',
+  },
+  everywhere: {
+    key: 'everywhere',
+    label: 'Everywhere',
+    requiresValue: false,
+    supportedTypes: [],
+    supportedFieldTypes: ['SCOPE'],
+    valueType: 'none',
+    category: 'equality',
+    description: 'Search across all mailboxes',
+  },
 } as const satisfies Record<string, OperatorDefinition>
 
 /**

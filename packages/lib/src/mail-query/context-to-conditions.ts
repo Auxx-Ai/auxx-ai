@@ -2,6 +2,7 @@
 
 import { nanoid } from 'nanoid'
 import type { Condition, ConditionGroup } from '../conditions/types'
+import { SEARCH_SCOPE_FIELD_ID } from '../mail-views/mail-view-field-definitions'
 
 /**
  * Parameters for building context conditions.
@@ -210,6 +211,13 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
  * Combines context conditions (from URL routing) with search conditions (from searchbar)
  * into a single array of ConditionGroups for the API.
  *
+ * Scope handling:
+ * - "This mailbox" (default): Keep context conditions, AND search conditions on top.
+ *   If a search condition uses the same fieldId as a context condition, the search
+ *   condition replaces the context condition to prevent conflicts.
+ * - "Everywhere": Drop all context conditions, only apply search conditions +
+ *   default TRASH/SPAM exclusion.
+ *
  * @param contextParams - Context parameters from URL
  * @param searchConditions - Search conditions from the search store
  * @returns Array of ConditionGroups to send to the API
@@ -220,17 +228,48 @@ export function buildConditionGroups(
 ): ConditionGroup[] {
   const groups: ConditionGroup[] = []
 
-  // 1. Add context condition group
-  const contextGroup = buildContextConditions(contextParams)
-  if (contextGroup.conditions.length > 0) {
-    groups.push(contextGroup)
+  // Extract scope from search conditions
+  const scopeCondition = searchConditions?.find((c) => c.fieldId === SEARCH_SCOPE_FIELD_ID)
+  const searchScope = scopeCondition?.operator === 'everywhere' ? 'everywhere' : 'current'
+
+  // Filter out the scope condition — it's not a real query condition
+  const realSearchConditions = searchConditions?.filter((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
+
+  if (searchScope === 'everywhere') {
+    // Only add default TRASH/SPAM exclusion
+    groups.push({
+      id: 'context',
+      logicalOperator: 'AND',
+      conditions: [
+        {
+          id: nanoid(8),
+          fieldId: 'status',
+          operator: 'not in',
+          value: ['TRASH', 'SPAM'],
+        },
+      ],
+    })
+  } else {
+    // Build context group, but remove conditions whose fieldId
+    // is overridden by a search condition
+    const contextGroup = buildContextConditions(contextParams)
+    if (realSearchConditions?.length) {
+      const searchFieldIds = new Set(realSearchConditions.map((c) => c.fieldId))
+      contextGroup.conditions = contextGroup.conditions.filter(
+        (c) => !searchFieldIds.has(c.fieldId)
+      )
+    }
+    if (contextGroup.conditions.length > 0) {
+      groups.push(contextGroup)
+    }
   }
 
-  // 2. Add search conditions as a separate group
-  if (searchConditions && searchConditions.length > 0) {
-    // Filter out empty conditions
-    const validConditions = searchConditions.filter(
-      (c) => c.value !== undefined && c.value !== '' && c.value !== null
+  // Add real search conditions (excluding scope)
+  if (realSearchConditions && realSearchConditions.length > 0) {
+    const validConditions = realSearchConditions.filter(
+      (c) =>
+        (c.value !== undefined && c.value !== '' && c.value !== null) ||
+        ['empty', 'not empty'].includes(c.operator)
     )
 
     if (validConditions.length > 0) {

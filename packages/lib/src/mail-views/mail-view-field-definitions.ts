@@ -26,6 +26,26 @@ export interface MailViewFieldDefinition {
   description?: string
 }
 
+/** Reserved fieldId for the search scope condition */
+export const SEARCH_SCOPE_FIELD_ID = 'searchScope'
+
+/** Check if a condition is the search scope condition */
+export function isSearchScopeCondition(condition: { fieldId: string }): boolean {
+  return condition.fieldId === SEARCH_SCOPE_FIELD_ID
+}
+
+/**
+ * Search scope field definition.
+ * Not included in the main array — only used for field resolution in ConditionBadge.
+ */
+export const SEARCH_SCOPE_FIELD_DEFINITION: MailViewFieldDefinition = {
+  id: SEARCH_SCOPE_FIELD_ID,
+  label: 'Scope',
+  type: BaseType.STRING,
+  fieldType: 'SCOPE' as any,
+  description: 'Search scope — this mailbox or everywhere',
+}
+
 /**
  * Field definitions for mail view filters.
  * Defines all filterable fields for threads in mail views.
@@ -201,6 +221,7 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
  * Get field definition by ID.
  */
 export function getMailViewFieldDefinition(fieldId: string): MailViewFieldDefinition | undefined {
+  if (fieldId === SEARCH_SCOPE_FIELD_ID) return SEARCH_SCOPE_FIELD_DEFINITION
   return MAIL_VIEW_FIELD_DEFINITIONS.find((f) => f.id === fieldId)
 }
 
