@@ -217,7 +217,7 @@ export class OverageDetectionService {
         return result?.value ?? 0
       }
 
-      case FeatureKey.rules: {
+      case FeatureKey.workflowsLimit: {
         const [result] = await this.db
           .select({ value: count() })
           .from(schema.WorkflowApp)

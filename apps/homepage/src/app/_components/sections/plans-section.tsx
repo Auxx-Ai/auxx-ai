@@ -397,7 +397,7 @@ export default function PlansSection() {
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger className='flex size-7'>
-                                  <span className='bg-foreground/10 text-foreground/65 m-auto flex size-4 items-center justify-center rounded-full text-sm'>
+                                  <span className='bg-foreground/10 text-foreground/75 m-auto flex size-4 items-center justify-center rounded-full text-sm'>
                                     ?
                                   </span>
                                 </TooltipTrigger>
@@ -437,7 +437,7 @@ const Indicator = ({ checked = false }: { checked?: boolean }) => {
   return (
     <span
       className={cn(
-        'bg-foreground/[0.065] text-foreground/65 flex size-5 items-center justify-center rounded-full font-sans text-xs font-semibold',
+        'bg-foreground/[0.065] text-foreground/75 flex size-5 items-center justify-center rounded-full font-sans text-xs font-semibold',
         checked && 'bg-emerald-500/10 text-emerald-600'
       )}>
       {checked ? '✓' : '-'}

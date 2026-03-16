@@ -46,7 +46,7 @@ type WorkflowFormDialogProps =
     }
 
 /** Default icon value for new workflows */
-const DEFAULT_ICON: IconPickerValue = { icon: 'workflow', color: 'blue' }
+const DEFAULT_ICON: IconPickerValue = { icon: 'zap', color: 'blue' }
 
 /**
  * Dialog for creating new workflows or editing existing workflow metadata
@@ -90,6 +90,7 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
       setName('')
       setDescription('')
       setIconValue(DEFAULT_ICON)
+      void utils.workflow.list.invalidate()
     },
     onError: (error) => {
       toastError({ title: 'Failed to create workflow', description: error.message })

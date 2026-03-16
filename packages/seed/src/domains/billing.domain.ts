@@ -39,7 +39,7 @@ const STATIC_LIMITS = {
   free: {
     teammates: 1,
     channels: 3,
-    rules: 5,
+    workflowsLimit: 5,
     savedViews: 5,
     knowledgeBases: 0,
     kbPublishedArticles: 0,
@@ -49,7 +49,7 @@ const STATIC_LIMITS = {
   starter: {
     teammates: -1,
     channels: 5,
-    rules: 20,
+    workflowsLimit: 5,
     savedViews: 20,
     knowledgeBases: 1,
     kbPublishedArticles: 50,
@@ -59,7 +59,7 @@ const STATIC_LIMITS = {
   growth: {
     teammates: -1,
     channels: -1,
-    rules: -1,
+    workflowsLimit: -1,
     savedViews: -1,
     knowledgeBases: -1,
     kbPublishedArticles: -1,
@@ -69,7 +69,7 @@ const STATIC_LIMITS = {
   enterprise: {
     teammates: -1,
     channels: -1,
-    rules: -1,
+    workflowsLimit: -1,
     savedViews: -1,
     knowledgeBases: -1,
     kbPublishedArticles: -1,

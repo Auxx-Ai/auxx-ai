@@ -37,7 +37,7 @@ export const config = {
     twitter: 'https://x.com/auxxaiapp',
     linkedin: 'https://www.linkedin.com/company/auxx-ai',
     github: 'https://github.com/m4rkuskk/auxxai',
-    docs: 'https://auxx-lift.com',
+    docs: DOCS_URL,
   },
   version: getAppVersion(),
 }

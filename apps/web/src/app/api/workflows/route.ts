@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     // Call tRPC procedure
     const caller = appRouter.createCaller(ctx)
-    const result = await caller.workflow.getAll(input)
+    const result = await caller.workflow.list(input)
 
     return NextResponse.json(result)
   } catch (error) {

@@ -113,7 +113,7 @@ export async function MidTrialEmail({
             <strong>Team collaboration:</strong> Add team members to share the workload
           </li>
           <li>
-            <strong>Custom workflows:</strong> Build automation rules for repetitive tasks
+            <strong>Custom workflows:</strong> Build automations for repetitive tasks
           </li>
         </ul>
 
@@ -186,7 +186,7 @@ Features You Might Have Missed:
 • Auto-categorization: Let AI automatically tag and prioritize incoming tickets
 • Knowledge base training: Upload FAQs and documentation to improve AI responses
 • Team collaboration: Add team members to share the workload
-• Custom workflows: Build automation rules for repetitive tasks
+• Custom workflows: Build automations for repetitive tasks
 
 💡 Pro Tip:
 Companies that connect both email and Shopify see 3x faster response times and 40% higher customer satisfaction scores.

@@ -4,7 +4,13 @@ import { AdminBillingService, PlanAdminService, PlanService } from '@auxx/billin
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
-import { getAppCache, onCacheEvent } from '@auxx/lib/cache'
+import {
+  flushOrganization,
+  getAppCache,
+  getOrgCache,
+  getUserCache,
+  onCacheEvent,
+} from '@auxx/lib/cache'
 import { FeatureKey, FeaturePermissionService, handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createUsageGuard, type UsageMetric, type UsageStatus } from '@auxx/lib/usage'
 import { and, eq, ilike, or, sql } from 'drizzle-orm'
@@ -60,6 +66,7 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.deleteOrganization(input.id)
+      await flushOrganization(input.id)
       return { success: true }
     }),
 
@@ -120,6 +127,7 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.deleteUser(input.id)
+      await getUserCache().invalidateUser(input.id)
       return { success: true }
     }),
 
@@ -131,6 +139,7 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.verifyUserEmail(input.id)
+      await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
       return { success: true }
     }),
 
@@ -160,6 +169,7 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.revokeAllSessions(input.id)
+      await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
       return { success: true }
     }),
 
@@ -171,6 +181,7 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.disableTwoFactor(input.id)
+      await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
       return { success: true }
     }),
 
@@ -182,6 +193,7 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.forcePasswordChange(input.id)
+      await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
       return { success: true }
     }),
 
@@ -199,6 +211,7 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.setUserBanned(input.id, input.banned, input.reason)
+      await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
       return { success: true }
     }),
 
@@ -215,6 +228,7 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
       await adminService.setUserSuperAdmin(input.id, input.isSuperAdmin)
+      await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
       return { success: true }
     }),
 
@@ -287,6 +301,7 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ input }) => {
       const { OrganizationSeeder } = await import('@auxx/seed')
       await OrganizationSeeder.seedOrganization(input.organizationId, input.mode)
+      await flushOrganization(input.organizationId)
 
       return {
         success: true,
@@ -396,6 +411,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -416,6 +432,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -436,6 +453,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -457,6 +475,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('org.updated', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -471,6 +490,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('org.updated', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -485,6 +505,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -566,6 +587,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('plan.canceled', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -580,6 +602,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -600,6 +623,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -621,6 +645,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -679,6 +704,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -1136,6 +1162,7 @@ export const adminRouter = createTRPCRouter({
       const billingDomain = new BillingDomain(scenario, context, { plansOnly: false })
       const plansCreated = await billingDomain.insertDirectly(ctx.db)
       await getAppCache().invalidateAndRecompute(['plans', 'planMap'])
+      await getOrgCache().flushKeyForAllOrgs(['features', 'subscription', 'overages'])
 
       return {
         success: true,
@@ -1169,6 +1196,7 @@ export const adminRouter = createTRPCRouter({
       const billingDomain = new BillingDomain(scenario, context)
       const plansUpdated = await billingDomain.updateFeatureLimitsOnly(ctx.db)
       await getAppCache().invalidateAndRecompute(['plans', 'planMap'])
+      await getOrgCache().flushKeyForAllOrgs(['features', 'subscription', 'overages'])
 
       return {
         success: true,

@@ -42,7 +42,7 @@ export enum FeatureKey {
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
   channels = 'channels',
-  rules = 'rules',
+  workflowsLimit = 'workflowsLimit',
   savedViews = 'savedViews',
   kbPublishedArticles = 'kbPublishedArticles',
   knowledgeBases = 'knowledgeBases',
@@ -111,7 +111,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     group: 'Communication',
     unit: 'channels',
   },
-  { key: FeatureKey.rules, type: 'static', label: 'Rules', group: 'Automation', unit: 'rules' },
+  {
+    key: FeatureKey.workflowsLimit,
+    type: 'static',
+    label: 'Workflows',
+    group: 'Automation',
+    unit: 'workflows',
+  },
   {
     key: FeatureKey.savedViews,
     type: 'static',
@@ -271,7 +277,7 @@ export const USAGE_METRICS = [
 export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
   { key: FeatureKey.teammates, limit: 1 },
   { key: FeatureKey.channels, limit: 3 },
-  { key: FeatureKey.rules, limit: 5 },
+  { key: FeatureKey.workflowsLimit, limit: 5 },
   { key: FeatureKey.savedViews, limit: 5 },
   { key: FeatureKey.knowledgeBase, limit: false },
   { key: FeatureKey.knowledgeBases, limit: 0 },

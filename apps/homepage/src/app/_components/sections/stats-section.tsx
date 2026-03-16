@@ -30,19 +30,19 @@ export default function StatsSection() {
 
                 <div className='**:text-center bg-background *:hover:bg-muted/25 @xl:grid-cols-3 grid grid-cols-2 divide-x border *:p-8'>
                   <div className='space-y-2'>
-                    <div className='bg-linear-to-t from-foreground to-muted-foreground bg-clip-text text-3xl font-medium text-transparent md:text-5xl'>
+                    <div className='bg-linear-to-t from-foreground to-foreground/75 bg-clip-text text-3xl font-medium text-transparent md:text-5xl'>
                       +85%
                     </div>
                     <p className='text-muted-foreground text-sm'>Conversion Rate</p>
                   </div>
                   <div className='@max-xl:border-0 space-y-2'>
-                    <div className='bg-linear-to-t from-foreground to-muted-foreground bg-clip-text text-3xl font-medium text-transparent md:text-5xl'>
+                    <div className='bg-linear-to-t from-foreground to-foreground/75 bg-clip-text text-3xl font-medium text-transparent md:text-5xl'>
                       12K
                     </div>
                     <p className='text-muted-foreground text-sm'>Active Users</p>
                   </div>
                   <div className='@max-xl:hidden space-y-2'>
-                    <div className='bg-linear-to-t from-foreground to-muted-foreground bg-clip-text text-3xl font-medium text-transparent md:text-5xl'>
+                    <div className='bg-linear-to-t from-foreground to-foreground/75 bg-clip-text text-3xl font-medium text-transparent md:text-5xl'>
                       40%
                     </div>
                     <p className='text-muted-foreground text-sm'>Revenue Growth</p>

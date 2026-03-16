@@ -60,9 +60,7 @@ export function WorkflowsProvider({ children }: WorkflowsProviderProps) {
     isLoading,
     error,
     refetch: refetchWorkflows,
-  } = api.workflow.getAll.useQuery(filters)
-
-  console.log('Workflows data:', workflowsData)
+  } = api.workflow.list.useQuery(filters)
 
   // Calculate stats from workflow apps data
   const stats = React.useMemo(() => {

@@ -98,7 +98,9 @@ export default function LogoCloudTwo() {
               </span>
             </p>
           </div>
-          <div className='perspective-dramatic mx-auto grid max-w-5xl grid-cols-3 items-center gap-8 md:h-10 md:grid-cols-5'>
+          <div
+            aria-hidden='true'
+            className='perspective-dramatic mx-auto grid max-w-5xl grid-cols-3 items-center gap-8 md:h-10 md:grid-cols-5'>
             <AnimatePresence initial={false} mode='popLayout'>
               {logos[currentGroup].map((logo, i) => (
                 <motion.div

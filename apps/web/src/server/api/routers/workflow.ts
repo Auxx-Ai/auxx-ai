@@ -33,6 +33,16 @@ import { workflowTemplatesRouter } from './workflow-templates'
 /**
  * Convert database workflow format to workflow-engine format for validation
  */
+// Legacy resource trigger types that should map to unified resource-trigger
+const LEGACY_RESOURCE_TRIGGER_TYPES = new Set([
+  'contact-created-trigger',
+  'contact-updated-trigger',
+  'contact-deleted-trigger',
+  'ticket-created-trigger',
+  'ticket-updated-trigger',
+  'ticket-deleted-trigger',
+])
+
 function convertToEngineFormat(dbWorkflow: any): Workflow {
   // Convert graph nodes to WorkflowNode format
   const nodes: WorkflowNode[] = (dbWorkflow.graph?.nodes || []).map((node: any) => {
@@ -50,6 +60,11 @@ function convertToEngineFormat(dbWorkflow: any): Workflow {
       engineType = node.data?.config?.polling
         ? WorkflowNodeType.APP_POLLING_TRIGGER
         : WorkflowNodeType.APP_TRIGGER
+    }
+
+    // Normalize legacy resource trigger types to unified resource-trigger
+    if (typeof engineType === 'string' && LEGACY_RESOURCE_TRIGGER_TYPES.has(engineType)) {
+      engineType = WorkflowNodeType.RESOURCE_TRIGGER
     }
 
     return {
@@ -234,7 +249,7 @@ export const workflowRouter = createTRPCRouter({
   /**
    * Get all workflow apps for the organization
    */
-  getAll: protectedProcedure.input(listWorkflowsSchema).query(async ({ ctx, input }) => {
+  list: protectedProcedure.input(listWorkflowsSchema).query(async ({ ctx, input }) => {
     const workflowService = new WorkflowService(ctx.db)
     try {
       return await workflowService.getAll(ctx.session.organizationId, input)
@@ -302,21 +317,19 @@ export const workflowRouter = createTRPCRouter({
    * Optionally from a template
    */
   create: protectedProcedure.input(createWorkflowSchema).mutation(async ({ ctx, input }) => {
-    // Check rule/workflow limit
-    const featureService = new FeaturePermissionService(ctx.db)
-    const ruleLimit = await featureService.getLimit(ctx.session.organizationId, FeatureKey.rules)
-    if (typeof ruleLimit === 'number' && ruleLimit >= 0) {
-      const [{ value: current }] = await ctx.db
-        .select({ value: count() })
-        .from(schema.WorkflowApp)
-        .where(eq(schema.WorkflowApp.organizationId, ctx.session.organizationId))
-      if (current >= ruleLimit) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: `You have reached your automation rule limit (${ruleLimit}). Upgrade your plan to create more rules.`,
-        })
+    // Check workflow limit
+    const featureService = new FeaturePermissionService()
+    await featureService.requireLimit(
+      ctx.session.organizationId,
+      FeatureKey.workflowsLimit,
+      async () => {
+        const [{ value }] = await ctx.db
+          .select({ value: count() })
+          .from(schema.WorkflowApp)
+          .where(eq(schema.WorkflowApp.organizationId, ctx.session.organizationId))
+        return value
       }
-    }
+    )
 
     const workflowService = new WorkflowService(ctx.db)
 
@@ -522,14 +535,26 @@ export const workflowRouter = createTRPCRouter({
         await workflowEngine.getNodeRegistry().initializeWithDefaults()
         const validationResult = await workflowEngine.validateWorkflowForPublish(engineWorkflow)
         if (!validationResult.valid) {
-          console.error('[workflow.publish] Validation failed:', {
-            workflowId: input.workflowId,
-            errors: validationResult.errors,
-            warnings: validationResult.warnings,
-          })
+          console.error(
+            '[workflow.publish] Validation failed:',
+            JSON.stringify(
+              {
+                workflowId: input.workflowId,
+                errors: validationResult.errors,
+                warnings: validationResult.warnings,
+                nodeTypes: engineWorkflow.nodes.map((n) => ({
+                  id: n.nodeId,
+                  type: n.type,
+                  name: n.name,
+                })),
+              },
+              null,
+              2
+            )
+          )
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'Workflow has validation errors that must be fixed before publishing',
+            message: `Workflow validation failed: ${validationResult.errors.join('; ')}`,
             cause: {
               errors: validationResult.errors,
               warnings: validationResult.warnings,

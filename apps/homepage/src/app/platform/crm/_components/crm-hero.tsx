@@ -5,9 +5,9 @@ import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'
 import { ProductIllustration } from './product-illustration'
 
-export default function CrmHero() {
+export default function CrmHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
   return (
-    <main role='main' className='overflow-x-hidden relative border-b'>
+    <section className='overflow-x-hidden relative border-b'>
       <section>
         <div
           aria-hidden
@@ -22,9 +22,9 @@ export default function CrmHero() {
             <div className='grid items-center max-lg:gap-12 lg:grid-cols-2 '>
               <div className='h-[550px]'>
                 <div className='lg:max-w-sm'>
-                  <h1 className='text-balance text-4xl font-semibold md:text-5xl'>
+                  <Heading className='text-balance text-4xl font-semibold md:text-5xl'>
                     Know Your Customers, Grow Your Business
-                  </h1>
+                  </Heading>
                   <p className='text-muted-foreground mb-6 mt-4 text-balance text-lg'>
                     Complete customer relationship management that scales with your success.
                   </p>
@@ -68,6 +68,6 @@ export default function CrmHero() {
           </div>
         </div>
       </section>
-    </main>
+    </section>
   )
 }

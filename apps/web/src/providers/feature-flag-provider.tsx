@@ -16,6 +16,26 @@ interface FeatureFlagContextType {
   error: unknown
   hasAccess: (key: FeatureKey | string) => boolean
   getLimit: (key: FeatureKey | string) => FeatureLimit | boolean | null
+  /** True if currentCount >= the static limit for this key */
+  isAtLimit: (key: FeatureKey | string, currentCount: number) => boolean
+  /** True if currentCount >= the soft usage limit for this key */
+  isAtSoftLimit: (key: FeatureKey | string, currentCount: number) => boolean
+  /** True if currentCount >= the hard usage limit for this key */
+  isAtHardLimit: (key: FeatureKey | string, currentCount: number) => boolean
+}
+
+/** Core limit check: is currentCount >= the numeric limit for this key? */
+function checkLimit(
+  features: FeatureMapObject,
+  key: FeatureKey | string,
+  currentCount: number
+): boolean {
+  if (!features) return true
+  const limit = features[key]
+  if (limit === '+') return false
+  if (limit === true) return false
+  if (typeof limit === 'number' && limit > 0) return currentCount >= limit
+  return true
 }
 
 // Create the context with a default value
@@ -97,9 +117,36 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
     [features]
   )
 
+  const isAtLimit = useMemo(
+    () => (key: FeatureKey | string, currentCount: number) =>
+      checkLimit(features, key, currentCount),
+    [features]
+  )
+
+  const isAtSoftLimit = useMemo(
+    () => (key: FeatureKey | string, currentCount: number) =>
+      checkLimit(features, key, currentCount),
+    [features]
+  )
+
+  const isAtHardLimit = useMemo(
+    () => (key: FeatureKey | string, currentCount: number) =>
+      checkLimit(features, key, currentCount),
+    [features]
+  )
+
   const value = useMemo(
-    () => ({ features, isLoading, error, hasAccess, getLimit }),
-    [features, hasAccess, getLimit]
+    () => ({
+      features,
+      isLoading,
+      error,
+      hasAccess,
+      getLimit,
+      isAtLimit,
+      isAtSoftLimit,
+      isAtHardLimit,
+    }),
+    [features, hasAccess, getLimit, isAtLimit, isAtSoftLimit, isAtHardLimit]
   )
 
   return <FeatureFlagContext.Provider value={value}>{children}</FeatureFlagContext.Provider>

@@ -3,6 +3,7 @@
 
 import { constants } from '@auxx/config/client'
 import type { ConflictResolution } from '@auxx/lib/entity-templates'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { Resource } from '@auxx/lib/resources/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
@@ -37,6 +38,7 @@ import {
   Link2,
   Loader2,
   type LucideIcon,
+  Plus,
   Search,
   Settings,
   ShoppingBag,
@@ -45,7 +47,9 @@ import {
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
 import { useResources } from '~/components/resources/hooks'
+import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { EntityPreviewCard, type FieldState } from './entity-preview-card'
 
@@ -73,7 +77,11 @@ type ViewMode = 'list' | 'detail'
  */
 export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialogProps) {
   const router = useRouter()
-  const { resources, getResourceById } = useResources()
+  const { resources, customResources, getResourceById } = useResources()
+  const { getLimit } = useFeatureFlags()
+  const entityLimit = getLimit(FeatureKey.entities)
+  const userCreatedEntityCount = customResources?.filter((r) => !r.entityType).length ?? 0
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<EntityTemplateCategory>('all')
@@ -330,6 +338,14 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
         }
       } else {
         templateIdsToCreate.push(templateId)
+      }
+    }
+
+    // Check if installing these templates would exceed the entity limit
+    if (typeof entityLimit === 'number' && entityLimit > 0) {
+      if (userCreatedEntityCount + templateIdsToCreate.length > entityLimit) {
+        setLimitDialogOpen(true)
+        return
       }
     }
 
@@ -785,6 +801,13 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
         </DialogContent>
       </Dialog>
       <ConfirmDialog />
+      <LimitReachedDialog
+        open={limitDialogOpen}
+        onOpenChange={setLimitDialogOpen}
+        icon={Plus}
+        title='Entity Limit Reached'
+        description={`You've reached the maximum of ${entityLimit} custom entities on your current plan.`}
+      />
     </>
   )
 }

@@ -50,7 +50,7 @@ export class PlanEnforcementService {
       }
       // 2. Enforce limits for each feature type
       await this.enforceMemberLimit(organizationId, featureMap)
-      await this.enforceRuleLimit(organizationId, featureMap)
+      await this.enforceWorkflowLimit(organizationId, featureMap)
       await this.enforceIntegrationLimit(organizationId, featureMap)
       // Add calls for other features here...
       logger.info(`Finished plan limit enforcement for organization ${organizationId}`)
@@ -151,50 +151,30 @@ export class PlanEnforcementService {
     }
   }
   /**
-   * Enforces the rule limit based on the current plan.
+   * Enforces the workflow limit based on the current plan.
    * Placeholder - Implement specific logic (disable, delete oldest, etc.).
    */
-  private async enforceRuleLimit(organizationId: string, featureMap: FeatureMap): Promise<void> {
-    const limit = featureMap.get('rules' as FeatureKey) // Assuming 'rules' is a FeatureKey
+  private async enforceWorkflowLimit(
+    organizationId: string,
+    featureMap: FeatureMap
+  ): Promise<void> {
+    const limit = featureMap.get(FeatureKey.workflowsLimit)
     if (typeof limit !== 'number' || limit < 0) {
-      // Handle 0 limit if needed
       if (limit !== '+')
         logger.debug(
-          `Skipping rule limit enforcement for org ${organizationId}: Limit is not numeric or unlimited (${limit}).`
+          `Skipping workflow limit enforcement for org ${organizationId}: Limit is not numeric or unlimited (${limit}).`
         )
       return
     }
     logger.info(
-      `Rule enforcement: Checking limit (${limit}) for org ${organizationId}. (Logic Placeholder)`
+      `Workflow enforcement: Checking limit (${limit}) for org ${organizationId}. (Logic Placeholder)`
     )
     try {
-      // 1. Get current active rule count
-      // const currentRuleCount = await this.db.rule.count({ where: { organizationId, enabled: true } });
-      // 2. Calculate excess
-      // const excessRules = currentRuleCount - limit;
-      // 3. If excess > 0:
-      //    - Find rules to disable/delete (e.g., oldest, lowest priority)
-      //    - Perform update/delete operation
-      //    - Log action
-      // Example (Disabling oldest):
-      // if (excessRules > 0) {
-      //     const rulesToDisable = await this.db.rule.findMany({
-      //         where: { organizationId, enabled: true },
-      //         orderBy: { createdAt: 'asc' },
-      //         take: excessRules,
-      //         select: { id: true }
-      //     });
-      //     const idsToDisable = rulesToDisable.map(r => r.id);
-      //     if (idsToDisable.length > 0) {
-      //         const result = await this.db.rule.updateMany({
-      //             where: { id: { in: idsToDisable } },
-      //             data: { enabled: false } // Or delete
-      //         });
-      //         logger.info(`Rule enforcement: Disabled ${result.count} rules for org ${organizationId}.`);
-      //     }
-      // }
+      // TODO: Implement workflow limit enforcement logic
     } catch (error: any) {
-      logger.error(`Rule enforcement: Failed for org ${organizationId}`, { error: error.message })
+      logger.error(`Workflow enforcement: Failed for org ${organizationId}`, {
+        error: error.message,
+      })
     }
   }
   /**

@@ -82,7 +82,7 @@ export async function TrialDeletionFinalEmail({
             <li style={{ marginBottom: '8px' }}>Email integrations (Gmail, Outlook)</li>
             <li style={{ marginBottom: '8px' }}>Team members and their access</li>
             <li style={{ marginBottom: '8px' }}>All uploaded files and attachments</li>
-            <li style={{ marginBottom: '8px' }}>Custom rules and automation</li>
+            <li style={{ marginBottom: '8px' }}>Custom workflows and automation</li>
             <li style={{ marginBottom: '8px' }}>Analytics and reporting data</li>
           </ul>
         </div>
@@ -125,7 +125,7 @@ What will be deleted:
 • Email integrations (Gmail, Outlook)
 • Team members and their access  
 • All uploaded files and attachments
-• Custom rules and automation
+• Custom workflows and automation
 • Analytics and reporting data
 
 Need immediate help? Contact support at ${supportEmail} right away.

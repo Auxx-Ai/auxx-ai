@@ -340,6 +340,38 @@ export class OrganizationCacheService {
   }
 
   /**
+   * Flush specific cache keys for ALL organizations.
+   * Uses Redis SCAN to find and delete matching keys by prefix.
+   * Does NOT recompute — next read per org will trigger lazy recompute.
+   */
+  async flushKeyForAllOrgs(keys: readonly OrgCacheKeyName[]): Promise<void> {
+    for (const keyName of keys) {
+      this.localCache.deleteByPrefix(ORG_CACHE_KEY_CONFIG[keyName].prefix)
+    }
+
+    const redis = await this.getRedis()
+    if (!redis) return
+
+    for (const keyName of keys) {
+      const prefix = ORG_CACHE_KEY_CONFIG[keyName].prefix
+      let cursor = '0'
+      do {
+        const [nextCursor, matchedKeys] = await redis.scan(
+          cursor,
+          'MATCH',
+          `${prefix}:*`,
+          'COUNT',
+          100
+        )
+        cursor = nextCursor
+        if (matchedKeys.length > 0) {
+          await Promise.all(matchedKeys.map((k) => redis.del(k)))
+        }
+      } while (cursor !== '0')
+    }
+  }
+
+  /**
    * Flush all (or specific) keys for an org.
    * Does NOT recompute — next read will trigger recompute.
    */

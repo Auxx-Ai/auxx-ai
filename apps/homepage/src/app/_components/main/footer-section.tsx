@@ -155,7 +155,7 @@ export default function FooterSection() {
           className='h-px bg-[length:6px_1px] bg-repeat-x opacity-25 [background-image:linear-gradient(90deg,var(--color-foreground)_1px,transparent_1px)]'
         />
         <div className='flex flex-wrap justify-between gap-4'>
-          <div className='flex flex-wrap items-center gap-4 text-muted-foreground text-sm'>
+          <div className='flex flex-wrap items-center gap-4 text-foreground/70 text-sm'>
             <span>© {new Date().getFullYear()} Auxx.Ai, All rights reserved</span>
             <Link href='https://auxx.ai/privacy-policy' className='underline hover:text-foreground'>
               Privacy Policy

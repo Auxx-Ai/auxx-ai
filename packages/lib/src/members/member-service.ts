@@ -827,7 +827,7 @@ export class MemberService {
     // 5. Cache Invalidation
     try {
       const { onCacheEvent } = await import('../cache')
-      await onCacheEvent('member.removed', { orgId: organizationId })
+      await onCacheEvent('member.added', { orgId: organizationId })
       logger.info('Helper: Relevant caches invalidated.', { organizationId })
     } catch (cacheError) {
       logger.warn('Helper: Failed to invalidate cache.', { organizationId, error: cacheError })
