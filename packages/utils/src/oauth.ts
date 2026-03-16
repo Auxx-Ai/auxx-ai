@@ -1,11 +1,5 @@
 // packages/utils/src/oauth.ts
 
-/** Cookie name used to store the OAuth CSRF token for callback verification. */
-export const OAUTH_CSRF_COOKIE = 'oauth_csrf'
-
-/** Max age for the OAuth CSRF cookie (10 minutes). */
-export const OAUTH_CSRF_MAX_AGE = 600
-
 /**
  * Validates a redirect path from an OAuth state parameter to prevent open redirects.
  * Returns a safe path or the provided fallback.

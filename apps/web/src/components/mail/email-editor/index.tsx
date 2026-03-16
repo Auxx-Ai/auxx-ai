@@ -449,8 +449,8 @@ function ReplyComposeEditorComponent({
   }, [editor, content])
   // Check if thread has previous messages
   const hasPreviousMessages = useMemo(() => {
-    if (!thread?.messages) return false
-    return thread.messages.length > 0
+    if (!thread) return false
+    return thread.messageCount > 0
   }, [thread])
   // AI Tools State Management
   const {

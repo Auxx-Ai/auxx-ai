@@ -2,7 +2,7 @@
 
 import { CredentialService } from '@auxx/credentials'
 import { type Database, schema } from '@auxx/database'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
 import { ChatWidgetService } from '@auxx/lib/chat'
 import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
 import { SyncMessages } from '@auxx/lib/messages'
@@ -16,10 +16,8 @@ import {
 } from '@auxx/lib/providers'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
-import { OAUTH_CSRF_COOKIE, OAUTH_CSRF_MAX_AGE } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
 import { and, asc, count, eq, isNull } from 'drizzle-orm'
-import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -104,15 +102,8 @@ export const channelRouter = createTRPCRouter({
       const service = new ChannelService(ctx.db, organizationId, userId)
       const result = await service.getAuthUrl(input.provider as any, input.redirectPath)
 
-      // Set CSRF token as httpOnly cookie for callback verification
-      const cookieStore = await cookies()
-      cookieStore.set(OAUTH_CSRF_COOKIE, result.csrfToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: OAUTH_CSRF_MAX_AGE,
-        path: '/',
-      })
+      // Store CSRF token in Redis for callback verification
+      await storeOAuthCsrfToken(userId, result.csrfToken)
 
       return { authUrl: result.authUrl }
     }),

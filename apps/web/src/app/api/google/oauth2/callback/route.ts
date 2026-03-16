@@ -1,11 +1,12 @@
 // /api/google/oauth2/callback/route.ts
 
+import { consumeOAuthCsrfToken } from '@auxx/lib/cache'
 import { requireAdminAccess } from '@auxx/lib/email'
 import { publisher } from '@auxx/lib/events'
 import { GoogleOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
-import { OAUTH_CSRF_COOKIE, validateRedirectPath } from '@auxx/utils'
-import { cookies, headers } from 'next/headers'
+import { validateRedirectPath } from '@auxx/utils'
+import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
 
@@ -78,16 +79,14 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // --- CSRF cookie verification ---
-    const cookieStore = await cookies()
-    const csrfCookie = cookieStore.get(OAUTH_CSRF_COOKIE)?.value
-    if (!csrfCookie || csrfCookie !== state.csrfToken) {
+    // --- CSRF token verification (Redis-based) ---
+    const storedToken = await consumeOAuthCsrfToken(session.user.id)
+    if (!storedToken || storedToken !== state.csrfToken) {
       logger.error('CSRF token mismatch in Google OAuth callback')
       return NextResponse.redirect(
         new URL(`${defaultRedirectPath}?success=false&error=csrf_mismatch`, request.url)
       )
     }
-    cookieStore.delete(OAUTH_CSRF_COOKIE)
 
     // Handle the OAuth2 callback
     const oauthService = GoogleOAuthService.getInstance()

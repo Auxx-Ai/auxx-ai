@@ -103,6 +103,26 @@ export class AuxxUnexpectedTransportError extends AuxxError {
   }
 }
 
+/**
+ * Error thrown when a connection token is rejected by the external provider
+ * (e.g. revoked, expired server-side, or invalid credentials).
+ *
+ * Platform catches this and auto-pauses the workflow, prompting the user
+ * to reconnect their account.
+ */
+export class ConnectionExpiredError extends AuxxError {
+  readonly scope: 'user' | 'organization'
+
+  constructor(scope: 'user' | 'organization' = 'organization') {
+    super(
+      `${scope} connection expired or revoked. Please reconnect your account.`,
+      'CONNECTION_EXPIRED'
+    )
+    this.name = 'ConnectionExpiredError'
+    this.scope = scope
+  }
+}
+
 // ============================================================
 // Workflow block execution errors (thrown inside execute())
 // ============================================================

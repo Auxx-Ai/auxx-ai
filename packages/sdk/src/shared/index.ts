@@ -8,6 +8,7 @@ export {
   AuxxUnexpectedTransportError,
   BlockRuntimeError,
   BlockValidationError,
+  ConnectionExpiredError,
   ExtensionInitError,
   ExtensionLoadError,
   MessageError,

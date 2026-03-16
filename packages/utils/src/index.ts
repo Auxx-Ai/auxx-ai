@@ -117,7 +117,7 @@ export {
   validateMimeStructure,
 } from './mime'
 // OAuth utilities
-export { OAUTH_CSRF_COOKIE, OAUTH_CSRF_MAX_AGE, validateRedirectPath } from './oauth'
+export { validateRedirectPath } from './oauth'
 // Object utilities
 export { cloneDeep, deepMerge, getByPath } from './objects'
 // Parse utilities

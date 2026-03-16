@@ -8,6 +8,7 @@ export { createInlinePickerExtension } from './core/inline-picker-extension'
 export { useInlinePicker } from './hooks/use-inline-picker'
 export { useMentionEditor } from './hooks/use-mention-editor'
 export { useRecordLinkEditor } from './hooks/use-record-link-editor'
+export { useSlashCommand } from './hooks/use-slash-command'
 // Types
 export type {
   InlineNodeBadgeProps,
