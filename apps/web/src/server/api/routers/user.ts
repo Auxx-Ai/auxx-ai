@@ -1,5 +1,5 @@
 import { database as db, schema } from '@auxx/database'
-import { DehydrationService } from '@auxx/lib/dehydration'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { MediaAssetService } from '@auxx/lib/files'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { SettingsService, UserSettingsService } from '@auxx/lib/settings'
@@ -50,8 +50,10 @@ export const userRouter = createTRPCRouter({
         .where(eq(schema.User.id, ctx.session.user.id))
         .returning()
 
-      const dehydrationService = new DehydrationService(db)
-      await dehydrationService.refreshUser(ctx.session.user.id)
+      await onCacheEvent('user.updated', {
+        orgId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+      })
 
       return updatedUser
     }),
@@ -208,8 +210,7 @@ export const userRouter = createTRPCRouter({
       .set({ avatarAssetId: null, updatedAt: new Date() })
       .where(eq(schema.User.id, userId))
 
-    const dehydrationService = new DehydrationService(db)
-    await dehydrationService.refreshUser(userId)
+    await onCacheEvent('user.updated', { orgId: ctx.session.organizationId, userId })
 
     return { success: true }
   }),
@@ -241,8 +242,7 @@ export const userRouter = createTRPCRouter({
         .where(eq(schema.User.id, userId))
         .returning()
 
-      const dehydrationService = new DehydrationService(db)
-      await dehydrationService.refreshUser(userId)
+      await onCacheEvent('user.updated', { orgId: ctx.session.organizationId, userId })
 
       return updatedUser
     }),

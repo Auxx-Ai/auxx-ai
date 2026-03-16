@@ -3,6 +3,7 @@
 import { RESERVED_ORGANIZATION_HANDLES } from '@auxx/config'
 import { schema } from '@auxx/database'
 import { OrganizationType } from '@auxx/database/enums'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { DehydrationService } from '@auxx/lib/dehydration'
 import { MemberService } from '@auxx/lib/members'
 import { OrganizationService } from '@auxx/lib/organizations'
@@ -139,8 +140,7 @@ export const organizationRouter = createTRPCRouter({
       }
 
       // Invalidate dehydration cache for all org members (org data visible to all)
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshOrganization(organizationId)
+      await onCacheEvent('org.updated', { orgId: organizationId })
 
       return organization
     }),
@@ -389,8 +389,7 @@ export const organizationRouter = createTRPCRouter({
           .where(eq(schema.User.id, userId))
       }
 
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshUser(userId)
+      await onCacheEvent('member.removed', { orgId: organizationId, userId })
 
       return { success: true }
     }),

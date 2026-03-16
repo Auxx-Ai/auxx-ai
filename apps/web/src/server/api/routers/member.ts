@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { MemberType, OrganizationRole } from '@auxx/database/enums'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { DehydrationService } from '@auxx/lib/dehydration'
 import { MemberService } from '@auxx/lib/members'
 import { createScopedLogger } from '@auxx/logger'
@@ -167,8 +168,10 @@ export const memberRouter = createTRPCRouter({
         memberToRemoveId: input.memberId,
       })
 
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshUser(input.memberId)
+      await onCacheEvent('member.removed', {
+        orgId: ctx.session.organizationId,
+        userId: input.memberId,
+      })
 
       return result
     }),
@@ -190,8 +193,10 @@ export const memberRouter = createTRPCRouter({
         newRole: input.role,
       })
 
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshUser(input.memberId)
+      await onCacheEvent('member.role.changed', {
+        orgId: ctx.session.organizationId,
+        userId: input.memberId,
+      })
 
       return result
     }),

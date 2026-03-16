@@ -1,20 +1,21 @@
 // packages/lib/src/groups/permissions.ts
 
-import { schema } from '@auxx/database'
 import { ResourcePermission } from '@auxx/database/enums'
 import type { GroupContext } from '@auxx/types/groups'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
 import { ForbiddenError } from '../errors'
 import { checkAccess, hasPermission as resourceHasPermission } from '../resource-access'
-import { ResourceRegistryService } from '../resources/registry'
 
 /**
- * Get the entity_group entityDefinitionId using efficient cached resolution
+ * Get the entity_group entityDefinitionId using cached entity defs
  */
 async function getGroupEntityDefId(ctx: GroupContext): Promise<string> {
-  const registry = new ResourceRegistryService(ctx.organizationId, ctx.db)
-  return registry.resolveEntityDefId('entity_group')
+  const { entityDefs } = await getOrgCache().getOrRecompute(ctx.organizationId, ['entityDefs'])
+  const defId = entityDefs.entity_group
+  if (!defId)
+    throw new Error(`entity_group EntityDefinition not found for org ${ctx.organizationId}`)
+  return defId
 }
 
 /**
@@ -27,20 +28,15 @@ export async function getGroupPermission(
 ): Promise<ResourcePermission | null> {
   const { db, userId, organizationId } = ctx
 
-  // Check org role first (owners/admins get admin)
-  const member = await db.query.OrganizationMember.findFirst({
-    where: and(
-      eq(schema.OrganizationMember.userId, userId),
-      eq(schema.OrganizationMember.organizationId, organizationId)
-    ),
-    columns: { role: true },
-  })
+  // Check org role from cache (no DB query)
+  const { memberRoleMap } = await getOrgCache().getOrRecompute(organizationId, ['memberRoleMap'])
+  const role = memberRoleMap[userId]
 
-  if (member && ['OWNER', 'ADMIN'].includes(member.role)) {
+  if (role === 'OWNER' || role === 'ADMIN') {
     return ResourcePermission.admin
   }
 
-  // Get entity_group entityDefinitionId (cached for 30 days)
+  // Get entity_group entityDefinitionId (cached)
   const entityDefinitionId = await getGroupEntityDefId(ctx)
 
   // Check ResourceAccess
@@ -65,20 +61,15 @@ export async function hasGroupPermission(
 ): Promise<boolean> {
   const { db, organizationId, userId } = ctx
 
-  // Check org role first (owners/admins have admin)
-  const member = await db.query.OrganizationMember.findFirst({
-    where: and(
-      eq(schema.OrganizationMember.userId, userId),
-      eq(schema.OrganizationMember.organizationId, organizationId)
-    ),
-    columns: { role: true },
-  })
+  // Check org role from cache (no DB query)
+  const { memberRoleMap } = await getOrgCache().getOrRecompute(organizationId, ['memberRoleMap'])
+  const role = memberRoleMap[userId]
 
-  if (member && ['OWNER', 'ADMIN'].includes(member.role)) {
+  if (role === 'OWNER' || role === 'ADMIN') {
     return true // Admin satisfies any permission
   }
 
-  // Get entity_group entityDefinitionId (cached for 30 days)
+  // Get entity_group entityDefinitionId (cached)
   const entityDefinitionId = await getGroupEntityDefId(ctx)
 
   // Use ResourceAccess hasPermission
