@@ -18,6 +18,7 @@ import type {
 } from '@auxx/types/groups'
 import { generateNKeysBetween } from '@auxx/utils'
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+import { getCachedEntityDefId, getCachedGroups, getOrgCache, onCacheEvent } from '../cache'
 import { NotFoundError } from '../errors'
 import { hasGroupPermission, requireGroupPermission } from './permissions'
 
@@ -47,15 +48,10 @@ export async function createGroup(
 ): Promise<EntityInstanceEntity> {
   const { db, organizationId, userId } = ctx
 
-  // Get group EntityDefinition
-  const groupDef = await db.query.EntityDefinition.findFirst({
-    where: and(
-      eq(schema.EntityDefinition.entityType, 'entity_group'),
-      eq(schema.EntityDefinition.organizationId, organizationId)
-    ),
-  })
+  // Get group EntityDefinition ID from org cache
+  const groupDefId = await getCachedEntityDefId(organizationId, 'entity_group')
 
-  if (!groupDef) {
+  if (!groupDefId) {
     throw new NotFoundError('Entity group definition not found. Please run entity seeder first.')
   }
 
@@ -70,7 +66,7 @@ export async function createGroup(
 
   const result = await createEntityInstance(
     {
-      entityDefinitionId: groupDef.id,
+      entityDefinitionId: groupDefId,
       organizationId,
       createdById: userId,
       displayName: input.name,
@@ -89,6 +85,8 @@ export async function createGroup(
   // Create default permissions
   await createDefaultPermissions(ctx, groupInstance.id, input.visibility)
 
+  await onCacheEvent('group.created', { orgId: organizationId })
+
   return groupInstance
 }
 
@@ -102,6 +100,8 @@ export async function deleteGroup(ctx: GroupContext, groupId: string): Promise<v
 
   // Cascade deletes handle members and permissions
   await db.delete(schema.EntityInstance).where(eq(schema.EntityInstance.id, groupId))
+
+  await onCacheEvent('group.deleted', { orgId: ctx.organizationId })
 }
 
 /**
@@ -113,39 +113,21 @@ export async function listAccessibleGroups(
 ): Promise<EntityInstanceEntity[]> {
   const { db, organizationId, userId } = ctx
 
-  // Check if user is org admin (sees all groups)
-  const member = await db.query.OrganizationMember.findFirst({
-    where: and(
-      eq(schema.OrganizationMember.userId, userId),
-      eq(schema.OrganizationMember.organizationId, organizationId)
-    ),
-    columns: { role: true },
-  })
+  // Check role from memberRoleMap cache instead of DB query
+  const memberRoleMap = await getOrgCache().get(organizationId, 'memberRoleMap')
+  const role = memberRoleMap[userId]
+  const isAdmin = role && ['OWNER', 'ADMIN'].includes(role)
 
-  const isAdmin = member && ['OWNER', 'ADMIN'].includes(member.role)
-
-  // Get group definition for filtering
-  const groupDef = await db.query.EntityDefinition.findFirst({
-    where: and(
-      eq(schema.EntityDefinition.entityType, 'entity_group'),
-      eq(schema.EntityDefinition.organizationId, organizationId)
-    ),
-    columns: { id: true },
-  })
-
-  if (!groupDef) return []
+  // Get group definition ID from org cache
+  const groupDefId = await getCachedEntityDefId(organizationId, 'entity_group')
+  if (!groupDefId) return []
 
   if (isAdmin) {
-    // Admin sees all groups
-    return db.query.EntityInstance.findMany({
-      where: and(
-        eq(schema.EntityInstance.entityDefinitionId, groupDef.id),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        isNull(schema.EntityInstance.archivedAt)
-      ),
-      limit: options?.limit ?? 50,
-      offset: options?.offset ?? 0,
-    })
+    // Admin sees all groups — use cache instead of DB query
+    const cachedGroups = await getCachedGroups(organizationId)
+    const start = options?.offset ?? 0
+    const end = start + (options?.limit ?? 50)
+    return cachedGroups.slice(start, end) as unknown as EntityInstanceEntity[]
   }
 
   // Use ResourceAccess to get accessible group IDs
@@ -155,14 +137,14 @@ export async function listAccessibleGroups(
   const result = await getUserAccessibleInstances(
     { db, organizationId, userId },
     userId,
-    groupDef.id
+    groupDefId
   )
 
   if (result.hasTypeAccess) {
     // User has type-level access to ALL groups
     return db.query.EntityInstance.findMany({
       where: and(
-        eq(schema.EntityInstance.entityDefinitionId, groupDef.id),
+        eq(schema.EntityInstance.entityDefinitionId, groupDefId),
         eq(schema.EntityInstance.organizationId, organizationId),
         isNull(schema.EntityInstance.archivedAt)
       ),
@@ -228,6 +210,8 @@ export async function addMembers(
   // Update member count
   await updateMemberCount(ctx, groupId)
 
+  await onCacheEvent('group.members.changed', { orgId: ctx.organizationId })
+
   return {
     added: result.length,
     skipped: members.length - result.length,
@@ -263,6 +247,8 @@ export async function removeMembers(
     .returning()
 
   await updateMemberCount(ctx, groupId)
+
+  await onCacheEvent('group.members.changed', { orgId: ctx.organizationId })
 
   return result.length
 }
@@ -410,10 +396,9 @@ async function createDefaultPermissions(
 ): Promise<void> {
   const { db, organizationId, userId } = ctx
 
-  // Get entity_group entityDefinitionId (cached for 30 days)
-  const { ResourceRegistryService } = await import('../resources/registry')
-  const registry = new ResourceRegistryService(organizationId, db)
-  const entityDefinitionId = await registry.resolveEntityDefId('entity_group')
+  // Get entity_group entityDefinitionId from org cache (30-day TTL)
+  const entityDefinitionId = await getCachedEntityDefId(organizationId, 'entity_group')
+  if (!entityDefinitionId) return
 
   const { grantInstanceAccess } = await import('../resource-access')
   const { toRecordId } = await import('@auxx/types/resource')

@@ -11,6 +11,7 @@ import {
 import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
 import { isMultiRelationship } from '@auxx/utils/relationships'
+import { getCachedResource, getCachedResourceFields } from '../../../cache'
 import {
   ContactService,
   type CreateContactInput,
@@ -32,7 +33,6 @@ import {
 } from '../../../resources/registry'
 import type { TableId } from '../../../resources/registry/field-registry'
 import type { ResourceField } from '../../../resources/registry/field-types'
-import { ResourceRegistryService } from '../../../resources/registry/resource-registry-service'
 import type { CustomResource } from '../../../resources/registry/types'
 import { ThreadMutationService } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
@@ -80,17 +80,6 @@ interface CrudDefaultValue {
  */
 export class CrudNodeProcessor extends BaseNodeProcessor {
   readonly type: WorkflowNodeType = WorkflowNodeType.CRUD
-  private resourceServiceCache: ResourceRegistryService | null = null
-
-  /**
-   * Get or create a ResourceRegistryService instance for the given organization
-   */
-  private getResourceService(organizationId: string, db: Database): ResourceRegistryService {
-    if (!this.resourceServiceCache) {
-      this.resourceServiceCache = new ResourceRegistryService(organizationId, db)
-    }
-    return this.resourceServiceCache
-  }
   /**
    * Preprocess CRUD node - resolve variables and validate configuration
    */
@@ -661,8 +650,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
     // Check if this is a custom entity (UUID/CUID format)
     if (isCustomResourceId(resourceType)) {
-      const resourceService = this.getResourceService(organizationId, database)
-      const resource = await resourceService.getById(resourceType)
+      const resource = await getCachedResource(organizationId, resourceType)
 
       if (!resource) {
         throw new Error(`Unknown custom resource type: ${resourceType}`)

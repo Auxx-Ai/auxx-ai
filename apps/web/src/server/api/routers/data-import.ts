@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/data-import.ts
 
 import { schema } from '@auxx/database'
+import { findCachedResource } from '@auxx/lib/cache'
 import {
   createImportJob,
   deleteJob,
@@ -26,7 +27,6 @@ import {
   updateValueResolution,
 } from '@auxx/lib/import'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
-import { ResourceRegistryService } from '@auxx/lib/resources'
 import { TRPCError } from '@trpc/server'
 import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -150,9 +150,10 @@ export const dataImportRouter = createTRPCRouter({
 
       // Run initial auto-mapping (fallback only, no AI cost)
       try {
-        const registry = new ResourceRegistryService(organizationId, ctx.db)
-        const resolvedId = await registry.resolveEntityDefId(job.importMapping.entityDefinitionId)
-        const resource = await registry.getById(resolvedId)
+        const resource = await findCachedResource(
+          organizationId,
+          job.importMapping.entityDefinitionId
+        )
 
         if (resource) {
           const result = await runAutoMap(ctx.db, resource, {
@@ -187,11 +188,7 @@ export const dataImportRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const registry = new ResourceRegistryService(organizationId, ctx.db)
-
-      // Resolve entity type strings (e.g., "contact") to actual EntityDefinition IDs
-      const resolvedId = await registry.resolveEntityDefId(input.entityDefinitionId)
-      const resource = await registry.getById(resolvedId)
+      const resource = await findCachedResource(organizationId, input.entityDefinitionId)
       if (!resource) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Resource not found' })
       }
@@ -293,10 +290,11 @@ export const dataImportRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Import job not found' })
       }
 
-      // Get resource for target entity
-      const registry = new ResourceRegistryService(organizationId, ctx.db)
-      const resolvedId = await registry.resolveEntityDefId(job.importMapping.entityDefinitionId)
-      const resource = await registry.getById(resolvedId)
+      // Get resource for target entity from org cache
+      const resource = await findCachedResource(
+        organizationId,
+        job.importMapping.entityDefinitionId
+      )
 
       if (!resource) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Resource not found' })

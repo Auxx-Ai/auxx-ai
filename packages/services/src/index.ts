@@ -38,7 +38,6 @@ export type {
   DuplicateViewInput,
   GetViewInput,
   GetViewOptions,
-  ListViewsInput,
   SetDefaultViewInput,
   TableViewError,
   UpdateViewInput,
@@ -51,7 +50,6 @@ export {
   deleteView,
   duplicateView,
   getView,
-  listViews,
   setDefaultView,
   updateView,
 } from './table-view'

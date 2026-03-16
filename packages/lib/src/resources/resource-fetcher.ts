@@ -6,13 +6,13 @@ import { getEntityInstance } from '@auxx/services/entity-instances'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, type SQL, sql } from 'drizzle-orm'
+import { getCachedResourceFields } from '../cache'
 import {
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,
   type TableId,
 } from './registry/field-registry'
 import type { ResourceField } from './registry/field-types'
-import { ResourceRegistryService } from './registry/resource-registry-service'
 import { isCustomResourceId } from './registry/types'
 import { BaseType } from './types'
 
@@ -321,7 +321,7 @@ export function getRecordIdField(eventType: string): string | null {
 
 /**
  * Fetch resource with specific relationships loaded
- * Uses ResourceRegistryService for unified field lookup (system + custom)
+ * Uses org cache for unified field lookup (system + custom)
  *
  * This is the core of lazy loading - fetches only requested relationships
  * instead of loading everything upfront.
@@ -330,7 +330,7 @@ export function getRecordIdField(eventType: string): string | null {
  * @param relationships - Array of relationship field names to load (e.g., ["contact", "Variants"])
  * @param organizationId - Organization context
  * @param db - Database connection
- * @param existingService - Optional pre-existing ResourceRegistryService to avoid re-instantiation
+ * @param _db - Database instance (unused, kept for backward compat)
  * @returns Resource with requested relationships populated, or null if not found
  *
  * @example
@@ -348,8 +348,7 @@ export async function fetchResourceWithRelationships(
   recordId: RecordId,
   relationships: string[],
   organizationId: string | undefined,
-  db?: Database,
-  existingService?: ResourceRegistryService
+  db?: Database
 ): Promise<any | null> {
   // Parse RecordId to extract both components
   const { entityDefinitionId } = parseRecordId(recordId)
@@ -362,21 +361,18 @@ export async function fetchResourceWithRelationships(
   // If no relationships requested or no DB for custom entity lookups, return base resource
   if (relationships.length === 0) return resource
 
-  // 2. Get field definitions using ResourceRegistryService (handles both system + custom)
-  // Fall back to static registry for system resources if no DB provided
+  // 2. Get field definitions from org cache or static registry
   let fields: ResourceField[]
-  let registryService: ResourceRegistryService | null = existingService ?? null
 
-  if (db && organizationId) {
-    registryService = registryService ?? new ResourceRegistryService(organizationId, db)
-    fields = await registryService.getFieldsForResource(resourceType)
+  if (organizationId) {
+    fields = await getCachedResourceFields(organizationId, resourceType)
   } else if (!isCustomResourceId(resourceType)) {
     // System resource - use static registry
     const fieldRegistry = RESOURCE_FIELD_REGISTRY[resourceType as TableId]
     fields = fieldRegistry ? Object.values(fieldRegistry) : []
   } else {
-    // Custom resource but no DB - can't fetch relationships
-    logger.warn('DB required for custom entity relationship lookup', { resourceType })
+    // Custom resource but no org context - can't fetch relationships
+    logger.warn('organizationId required for custom entity relationship lookup', { resourceType })
     return resource
   }
 
@@ -413,15 +409,14 @@ export async function fetchResourceWithRelationships(
         // has_many: Query child resources where FK points to this resource
         let items: any[] = []
 
-        if (db && organizationId && registryService) {
+        if (db && organizationId) {
           items = await fetchHasManyRelationship(
             recordId,
             resourceType,
             targetResourceType,
             fieldDef,
             organizationId,
-            db,
-            registryService
+            db
           )
         } else if (!isCustomResourceId(targetResourceType)) {
           // System resource without DB - use static registry for has_many
@@ -501,7 +496,7 @@ function getRelatedIdForBelongsTo(
 
 /**
  * Fetch related entities for a has_many relationship
- * Uses ResourceRegistryService for unified field lookup
+ * Uses org cache for unified field lookup
  *
  * For has_many, children store a reference to the parent.
  * We need to find all child entities where their relationship field = parentId
@@ -512,11 +507,11 @@ async function fetchHasManyRelationship(
   targetResourceType: string,
   fieldDef: ResourceField,
   organizationId: string,
-  db: Database,
-  registryService: ResourceRegistryService
+  db: Database
 ): Promise<any[]> {
-  // Get target resource fields using the already-instantiated registryService
-  const targetResource = await registryService.getById(targetResourceType)
+  // Get target resource from org cache
+  const { getCachedResource } = await import('../cache')
+  const targetResource = await getCachedResource(organizationId, targetResourceType)
 
   if (!targetResource) {
     logger.warn('Target resource not found for has_many', { targetResourceType })
@@ -555,8 +550,8 @@ async function fetchHasManyRelationship(
     parentRecordId,
     reciprocalField,
     targetResourceType,
-    db,
-    registryService
+    organizationId,
+    db
   )
 }
 
@@ -590,8 +585,8 @@ async function fetchHasManyCustomEntity(
   parentRecordId: string,
   reciprocalField: ResourceField,
   targetResourceType: string,
-  db: Database,
-  registryService: ResourceRegistryService
+  organizationId: string,
+  db: Database
 ): Promise<any[]> {
   if (!reciprocalField.id) {
     logger.warn('Reciprocal field missing ID for has_many custom entity lookup')
@@ -611,8 +606,8 @@ async function fetchHasManyCustomEntity(
     },
   })
 
-  // Get field definitions from cache (no DB query!)
-  const fields = await registryService.getFieldsForResource(targetResourceType)
+  // Get field definitions from org cache
+  const fields = await getCachedResourceFields(organizationId, targetResourceType)
   const fieldIdToName = new Map(fields.map((f) => [f.id, f.key]))
 
   // Transform to standard entity format
@@ -650,7 +645,7 @@ async function fetchHasManyCustomEntity(
  * @param path - Path like "contact.firstName" or "Variants.first.Price"
  * @param organizationId - Organization ID for custom entity lookups
  * @param db - Database connection
- * @param existingService - Optional pre-existing ResourceRegistryService to avoid re-instantiation
+ * @param _db - Database instance (unused, kept for backward compat)
  * @returns Array of relationship field names needed
  *
  * @example
@@ -664,15 +659,11 @@ export async function analyzePathForRelationships(
   resourceType: string,
   path: string,
   organizationId: string,
-  db: Database,
-  existingService?: ResourceRegistryService
+  _db?: Database
 ): Promise<string[]> {
   const segments = path.split('.')
   const relationshipsNeeded: string[] = []
   let currentResourceType: string = resourceType
-
-  // Use existing service if provided, otherwise create a new one
-  const registryService = existingService ?? new ResourceRegistryService(organizationId, db)
 
   logger.debug('analyzePathForRelationships: starting analysis', {
     resourceType,
@@ -692,8 +683,8 @@ export async function analyzePathForRelationships(
       continue
     }
 
-    // Get fields for current resource type (handles both system and custom)
-    const fields = await registryService.getFieldsForResource(currentResourceType)
+    // Get fields for current resource type from org cache
+    const fields = await getCachedResourceFields(organizationId, currentResourceType)
 
     logger.debug('analyzePathForRelationships: got fields', {
       currentResourceType,

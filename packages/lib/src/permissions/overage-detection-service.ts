@@ -3,6 +3,7 @@
 import { type Database, database as ddb, schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { and, count, eq, isNull } from 'drizzle-orm'
+import { getAppCache } from '../cache'
 import { createScopedLogger } from '../logger'
 import type { FeatureDefinition } from './types'
 import { DEFAULT_FREE_PLAN_FEATURES, FEATURE_REGISTRY_MAP, FeatureKey } from './types'
@@ -37,14 +38,9 @@ export class OverageDetectionService {
   async detectOverages(organizationId: string, planId: string): Promise<Overage[]> {
     if (isSelfHosted()) return []
 
-    // Fetch plan limits
-    const [plan] = await this.db
-      .select({
-        featureLimits: schema.Plan.featureLimits,
-      })
-      .from(schema.Plan)
-      .where(eq(schema.Plan.id, planId))
-      .limit(1)
+    // Fetch plan limits from cache
+    const planMap = await getAppCache().get('planMap')
+    const plan = planMap[planId]
 
     if (!plan) {
       logger.warn('Plan not found for overage detection', { planId })
@@ -92,15 +88,9 @@ export class OverageDetectionService {
 
     if (!subscription?.planId) return []
 
-    // Fetch plan limits — use trial limits if still trialing
-    const [plan] = await this.db
-      .select({
-        featureLimits: schema.Plan.featureLimits,
-        trialFeatureLimits: schema.Plan.trialFeatureLimits,
-      })
-      .from(schema.Plan)
-      .where(eq(schema.Plan.id, subscription.planId))
-      .limit(1)
+    // Fetch plan limits from cache — use trial limits if still trialing
+    const planMap = await getAppCache().get('planMap')
+    const plan = planMap[subscription.planId]
 
     if (!plan) return []
 

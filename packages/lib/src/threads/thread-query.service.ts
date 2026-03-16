@@ -19,6 +19,7 @@ import {
   type SQL,
   sql,
 } from 'drizzle-orm'
+import { requireCachedEntityDefId } from '../cache'
 import { batchGetThreadTagIds } from '../field-values/relationship-queries'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import {
@@ -27,7 +28,6 @@ import {
   isDraftsContextQuery,
 } from '../mail-query/draft-condition-builder'
 import { MailViewService } from '../mail-views/mail-view-service'
-import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import type {
   IntegrationProvider,
   ListThreadIdsInput,
@@ -736,9 +736,8 @@ export class ThreadQueryService {
     // Note: batchGetThreadTagIds returns RecordIds (from FieldValue.relatedEntityId which stores RecordIds)
     const tagIdMap = await batchGetThreadTagIds(this.db, ids, this.organizationId)
 
-    // Resolve inbox entityDefinitionId for RecordId conversion
-    const registryService = new ResourceRegistryService(this.organizationId, this.db)
-    const inboxEntityDefId = await registryService.resolveEntityDefId('inbox')
+    // Resolve inbox entityDefinitionId from org cache
+    const inboxEntityDefId = await requireCachedEntityDefId(this.organizationId, 'inbox')
 
     // Fetch read status for all threads for this user
     const readStatuses = await this.db

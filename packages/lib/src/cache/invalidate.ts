@@ -18,7 +18,7 @@ import { INVALIDATION_GRAPH, isMixedMapping, isOrgOnlyMapping } from './invalida
  */
 export async function onCacheEvent(
   event: CacheEvent,
-  context: { orgId: string; userId?: string }
+  context: { orgId: string; userId?: string; broadcastUserKeys?: boolean }
 ): Promise<void> {
   const mapping = INVALIDATION_GRAPH[event]
   if (!mapping) return
@@ -33,10 +33,16 @@ export async function onCacheEvent(
     if ('org' in mapping && mapping.org && mapping.org.length > 0) {
       promises.push(getOrgCache().invalidateAndRecompute(context.orgId, mapping.org))
     }
-    if ('user' in mapping && mapping.user && mapping.user.length > 0 && context.userId) {
-      promises.push(
-        getUserCache().invalidateAndRecompute(context.userId, mapping.user, context.orgId)
-      )
+    if ('user' in mapping && mapping.user && mapping.user.length > 0) {
+      if (context.broadcastUserKeys) {
+        // Invalidate for ALL org members
+        promises.push(getUserCache().invalidateOrgUsersForKeys(context.orgId, mapping.user))
+      } else if (context.userId) {
+        // Invalidate for a single user
+        promises.push(
+          getUserCache().invalidateAndRecompute(context.userId, mapping.user, context.orgId)
+        )
+      }
     }
 
     await Promise.all(promises)

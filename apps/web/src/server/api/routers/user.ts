@@ -1,8 +1,8 @@
 import { database as db, schema } from '@auxx/database'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import { MediaAssetService } from '@auxx/lib/files'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
-import { SettingsService, UserSettingsService } from '@auxx/lib/settings'
+import { UserSettingsService } from '@auxx/lib/settings'
 import { autoSyncShopify } from '@auxx/lib/shopify'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq, isNull } from 'drizzle-orm'
@@ -107,9 +107,8 @@ export const userRouter = createTRPCRouter({
       )
       .where(eq(schema.OrganizationMember.userId, userId))
 
-    // Fetch user settings
-    const settingsService = new SettingsService(db)
-    const settings = await settingsService.getAllUserSettings({ userId, organizationId })
+    // Fetch user settings from cache
+    const settings = await getUserCache().get(userId, 'userSettings', organizationId)
 
     const featureService = new FeaturePermissionService(db)
     const features = await featureService.getOrganizationFeaturesMap(organizationId)

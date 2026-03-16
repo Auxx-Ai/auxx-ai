@@ -156,6 +156,28 @@ export function setEntityVariables(
 }
 
 // ─────────────────────────────────────────────────────────────
+// IDENTIFIER FIELD HELPERS (pure functions on Resource)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Get all fields that can be used to identify/match existing records.
+ * Includes system fields with isIdentifier and custom fields with isUnique.
+ */
+export function getIdentifierFields(resource: { fields: ResourceField[] }): ResourceField[] {
+  return resource.fields.filter((f) => f.isIdentifier)
+}
+
+/**
+ * Get the default identifier field for a resource.
+ * Returns the first identifier field, or undefined if none.
+ */
+export function getDefaultIdentifierField(resource: {
+  fields: ResourceField[]
+}): ResourceField | undefined {
+  return getIdentifierFields(resource)[0]
+}
+
+// ─────────────────────────────────────────────────────────────
 // SYSTEM FIELD HELPERS
 // ─────────────────────────────────────────────────────────────
 

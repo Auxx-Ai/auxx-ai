@@ -3,11 +3,11 @@
 import type { Database } from '@auxx/database'
 import { database as defaultDatabase, schema } from '@auxx/database'
 import { checkUniqueValue } from '@auxx/services/custom-fields'
-import { getEntityDefinition } from '@auxx/services/entity-definitions'
 import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-instances'
 import { ModelTypes } from '@auxx/types/custom-field'
 import { isEntityDefinitionType } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
+import { findCachedResource, getCachedCustomFields, requireCachedEntityDefId } from '../../cache'
 import type { ConditionGroup } from '../../conditions'
 import { publisher } from '../../events/publisher'
 import { FieldValueService } from '../../field-values'
@@ -15,7 +15,6 @@ import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../.
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
 import type { TableId } from '../registry/field-registry'
-import { ResourceRegistryService } from '../registry/resource-registry-service'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
 import {
   archiveEntity,
@@ -43,7 +42,7 @@ import {
   listAll as listAllQuery,
   queryEntityInstanceIds,
   querySystemResourceIds,
-  resolveEntityId,
+  resolveEntityIdFromCache,
 } from './unified-handler-queries'
 
 /** Inferred type for CustomField select (not exported from schema) */
@@ -106,14 +105,7 @@ export type { CrudOptions } from './unified-handler-mutations'
  */
 export class UnifiedCrudHandler {
   private fieldValueService: FieldValueService
-  private registryService: ResourceRegistryService
   private db: Database
-
-  /** Cache for EntityDefinition lookups (keyed by entityDefinitionId or system type) */
-  private entityDefCache: Map<string, EntityDefinitionEntity> = new Map()
-
-  /** Cache for CustomField lookups (keyed by entityDefinitionId) */
-  private customFieldsCache: Map<string, CustomFieldEntity[]> = new Map()
 
   constructor(
     private organizationId: string,
@@ -122,7 +114,6 @@ export class UnifiedCrudHandler {
   ) {
     this.db = db ?? defaultDatabase
     this.fieldValueService = new FieldValueService(organizationId, userId, this.db)
-    this.registryService = new ResourceRegistryService(organizationId, this.db)
   }
 
   /**
@@ -144,16 +135,12 @@ export class UnifiedCrudHandler {
 
   /**
    * Pre-warm caches for bulk operations.
-   * Call this once before processing many records of the same entity type.
+   * Now backed by org cache — triggers cache population if not already loaded.
    *
    * @param entityDefinitionId - Entity definition ID to cache
    */
   async warmCache(entityDefinitionId: string): Promise<void> {
     await this.resolveEntityDefinition(entityDefinitionId)
-    const entityDef = this.entityDefCache.get(entityDefinitionId)
-    if (entityDef) {
-      await this.getCustomFieldsCached(entityDef.id)
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -422,7 +409,7 @@ export class UnifiedCrudHandler {
     entityDefinitionId?: string
     apiSlug?: string
   }): Promise<string> {
-    return resolveEntityId(this.registryService, params)
+    return resolveEntityIdFromCache(this.organizationId, params)
   }
 
   /**
@@ -551,24 +538,26 @@ export class UnifiedCrudHandler {
     const { query, apiSlug, limit, cursor, entityDefinitionIds } = params
     let { entityDefinitionId } = params
 
-    // Resolve apiSlug to entityDefinitionId if provided
-    if (apiSlug && !entityDefinitionId) {
-      entityDefinitionId = await this.registryService.resolveEntityDefIdFromApiSlug(apiSlug)
-    }
-
-    // Resolve system names (contact, ticket) to actual UUIDs
-    if (entityDefinitionId) {
-      entityDefinitionId = await this.registryService.resolveEntityDefId(entityDefinitionId)
+    // Resolve apiSlug or entityDefinitionId to actual UUID via cache
+    const key = apiSlug ?? entityDefinitionId
+    if (key && !entityDefinitionId) {
+      const resource = await findCachedResource(this.organizationId, key)
+      entityDefinitionId = resource?.entityDefinitionId ?? resource?.id
+    } else if (entityDefinitionId) {
+      const resource = await findCachedResource(this.organizationId, entityDefinitionId)
+      entityDefinitionId = resource?.entityDefinitionId ?? resource?.id ?? entityDefinitionId
     }
 
     // Also resolve entityDefinitionIds if provided
     let resolvedEntityDefinitionIds = entityDefinitionIds
     if (entityDefinitionIds && entityDefinitionIds.length > 0) {
       resolvedEntityDefinitionIds = await Promise.all(
-        entityDefinitionIds.map((id) => this.registryService.resolveEntityDefId(id))
+        entityDefinitionIds.map(async (id) => {
+          const resource = await findCachedResource(this.organizationId, id)
+          return resource?.entityDefinitionId ?? resource?.id ?? id
+        })
       )
     }
-    console.log('entityDefinitionId:', entityDefinitionId)
 
     const service = new RecordPickerService(this.organizationId, this.userId, this.db)
     return service.search({
@@ -680,79 +669,46 @@ export class UnifiedCrudHandler {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Resolve entity definition by ID or system type (cached).
-   * Returns the full EntityDefinition for a given system type or UUID.
+   * Resolve entity definition by ID or system type.
+   * Returns an EntityDefinition-shaped object from the org cache or DB.
    *
    * @param entityDefinitionId - 'contact', 'ticket', 'tag', 'thread', or UUID for custom entities
    * @returns The resolved EntityDefinition
    */
   async resolveEntityDefinition(entityDefinitionId: string) {
-    // Check cache first
-    const cached = this.entityDefCache.get(entityDefinitionId)
-    if (cached) return cached
+    let resolvedId = entityDefinitionId
 
-    let entityDef: EntityDefinitionEntity
-
-    // System types map to entityType column - query by entityType
+    // System types map to entityType → resolve via org cache
     if (isEntityDefinitionType(entityDefinitionId)) {
-      const rows = await this.db
-        .select()
-        .from(schema.EntityDefinition)
-        .where(
-          and(
-            eq(schema.EntityDefinition.entityType, entityDefinitionId),
-            eq(schema.EntityDefinition.organizationId, this.organizationId)
-          )
+      resolvedId = await requireCachedEntityDefId(this.organizationId, entityDefinitionId)
+    }
+
+    // Fetch from DB for full EntityDefinition row (needed for mutations)
+    const rows = await this.db
+      .select()
+      .from(schema.EntityDefinition)
+      .where(
+        and(
+          eq(schema.EntityDefinition.id, resolvedId),
+          eq(schema.EntityDefinition.organizationId, this.organizationId)
         )
-        .limit(1)
+      )
+      .limit(1)
 
-      if (rows.length === 0) {
-        throw new Error(`System entity definition not found: ${entityDefinitionId}`)
-      }
-
-      entityDef = rows[0]!
-    } else {
-      // Otherwise treat as UUID
-      const result = await getEntityDefinition({
-        id: entityDefinitionId,
-        organizationId: this.organizationId,
-      })
-      entityDef = unwrapResult(result)
+    if (rows.length === 0) {
+      throw new Error(`Entity definition not found: ${entityDefinitionId}`)
     }
 
-    // Cache by both the input ID and the resolved UUID
-    this.entityDefCache.set(entityDefinitionId, entityDef)
-    if (entityDef.id !== entityDefinitionId) {
-      this.entityDefCache.set(entityDef.id, entityDef)
-    }
-
-    return entityDef
+    return rows[0]!
   }
 
   /**
-   * Get custom fields for an entity definition (cached)
-   * Uses this.db directly to ensure visibility of fields in same transaction
+   * Get custom fields for an entity definition from org cache
    *
    * @param entityDefinitionId - Entity definition UUID
    */
   private async getCustomFieldsCached(entityDefinitionId: string) {
-    const cached = this.customFieldsCache.get(entityDefinitionId)
-    if (cached) return cached
-
-    // Query directly using handler's db instance to ensure visibility
-    // of fields created in the same transaction (e.g., during seeding)
-    const fields = await this.db
-      .select()
-      .from(schema.CustomField)
-      .where(
-        and(
-          eq(schema.CustomField.organizationId, this.organizationId),
-          eq(schema.CustomField.entityDefinitionId, entityDefinitionId)
-        )
-      )
-
-    this.customFieldsCache.set(entityDefinitionId, fields)
-    return fields
+    return getCachedCustomFields(this.organizationId, entityDefinitionId)
   }
 
   /**

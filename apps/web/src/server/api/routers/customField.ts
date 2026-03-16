@@ -1,8 +1,8 @@
 // ~/server/api/routers/customField.ts
 
 import { FieldType } from '@auxx/database/enums'
+import { getAllCachedCustomFields } from '@auxx/lib/cache'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
-import { getFieldsByIds } from '@auxx/services/custom-fields'
 import { fieldOptionsUnionSchema, relationshipOptionsSchema } from '@auxx/types/custom-field'
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
 import { z } from 'zod'
@@ -130,15 +130,7 @@ export const customFieldRouter = createTRPCRouter({
     .input(z.object({ fieldIds: z.array(fieldIdSchema) }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const result = await getFieldsByIds({
-        fieldIds: input.fieldIds,
-        organizationId,
-      })
-
-      if (result.isErr()) {
-        throw new Error(result.error.message)
-      }
-
-      return result.value
+      const allFields = await getAllCachedCustomFields(organizationId)
+      return allFields.filter((f) => input.fieldIds.includes(f.id))
     }),
 })

@@ -256,6 +256,20 @@ export class UserCacheService {
     }
   }
 
+  /**
+   * Invalidate org-scoped user cache keys for ALL members of an organization.
+   * Fetches the member list from org cache, then invalidates each member's keys.
+   * Call after org-level changes that affect user-scoped data (e.g. shared views, org settings).
+   */
+  async invalidateOrgUsersForKeys(orgId: string, keys: readonly UserCacheKeyName[]): Promise<void> {
+    const { getOrgCache } = await import('./index')
+    const members = await getOrgCache().get(orgId, 'members')
+
+    await Promise.all(
+      members.map((member) => this.invalidateAndRecompute(member.userId, keys, orgId))
+    )
+  }
+
   /** Flush org-scoped keys for a user in a specific org */
   async invalidateUserForOrg(userId: string, orgId: string): Promise<void> {
     const redis = await this.getRedis()

@@ -30,7 +30,7 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
       addViewToStore(newView as TableView)
 
       // Also invalidate for backward compatibility
-      utils.tableView.list.invalidate({ tableId })
+      utils.tableView.listAll.invalidate()
     },
     onError: (error) => {
       toastError({ title: 'Failed to create view', description: error.message })
@@ -43,7 +43,7 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
       toastSuccess({ title: 'View updated successfully' })
       // Update store with new metadata
       updateViewMeta(updatedView.id, { name: updatedView.name })
-      utils.tableView.list.invalidate({ tableId })
+      utils.tableView.listAll.invalidate()
     },
     onError: (error) => {
       toastError({ title: 'Failed to update view', description: error.message })
@@ -56,7 +56,7 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
       toastSuccess({ title: 'View deleted successfully' })
       // Remove from store immediately
       removeViewFromStore(variables.id, tableId)
-      utils.tableView.list.invalidate({ tableId })
+      utils.tableView.listAll.invalidate()
     },
     onError: (error) => {
       toastError({ title: 'Failed to delete view', description: error.message })
@@ -71,7 +71,7 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
       // Add to unified store - this initializes all slices at once
       addViewToStore(newView as TableView)
 
-      utils.tableView.list.invalidate({ tableId })
+      utils.tableView.listAll.invalidate()
     },
     onError: (error) => {
       toastError({ title: 'Failed to duplicate view', description: error.message })
@@ -81,13 +81,11 @@ export function useViewMutations(tableId: string, onViewSelect?: (viewId: string
   /** Set a view as default */
   const setDefaultView = api.tableView.setDefault.useMutation({
     onSuccess: async () => {
-      // Refetch to get updated isDefault flags and update store
-      const result = await utils.tableView.list.fetch({ tableId })
-      if (result) {
-        const views = result as TableView[]
-
-        // Update unified store - this updates all slices at once
-        setTableViews(tableId, views)
+      // Refetch all views to get updated isDefault flags and update store
+      const allViews = await utils.tableView.listAll.fetch()
+      if (allViews) {
+        const tableViews = (allViews as TableView[]).filter((v) => v.tableId === tableId)
+        setTableViews(tableId, tableViews)
       }
     },
     onError: (error) => {

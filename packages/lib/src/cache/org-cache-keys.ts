@@ -10,6 +10,7 @@ import type { Inbox } from '../inboxes/types'
 import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
 import type { Resource } from '../resources/registry/types'
+import type { SettingValue } from '../settings/types'
 
 /** Member info cached with joined user data */
 export interface OrgMemberInfo extends OrganizationMemberInfo {
@@ -37,6 +38,21 @@ export interface DehydratedOrgProfile {
   completedOnboarding: boolean
 }
 
+/** Dehydrated group instance for cache (JSON-serializable) */
+export interface CachedGroup {
+  id: string
+  displayName: string | null
+  secondaryDisplayValue: string | null
+  avatarUrl: string | null
+  metadata: {
+    memberCount?: number
+    visibility?: string
+    memberType?: string
+    color?: string
+    icon?: string
+  }
+}
+
 /** All org-scoped cache keys and their data types */
 export interface OrgCacheDataMap {
   // Near-immutable
@@ -55,13 +71,16 @@ export interface OrgCacheDataMap {
   orgProfile: DehydratedOrgProfile
   resources: Resource[]
   customFields: Record<string, CustomFieldEntity[]> // entityDefId → fields
+  groups: CachedGroup[] // all entity_group instances
   inboxes: Inbox[]
   overages: Overage[]
+  orgSettings: Record<string, SettingValue> // key → value (org defaults only)
 }
 
 export type OrgCacheKeyName = keyof OrgCacheDataMap
 
-const THIRTY_DAYS = 60 * 60 * 24 * 30
+const ONE_DAY = 60 * 60 * 24
+const THIRTY_DAYS = ONE_DAY * 30
 
 /** Key configuration: prefix for Redis keys, TTL, and local-only flag */
 export const ORG_CACHE_KEY_CONFIG: Record<
@@ -72,18 +91,20 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   entityDefs: { prefix: 'org:entity-defs', ttlSeconds: THIRTY_DAYS },
   entityDefSlugs: { prefix: 'org:entity-def-slugs', ttlSeconds: THIRTY_DAYS },
   systemUser: { prefix: 'org:system-user', ttlSeconds: THIRTY_DAYS },
-  integrationProviders: { prefix: 'org:int-providers', ttlSeconds: 86400 },
+  integrationProviders: { prefix: 'org:int-providers', ttlSeconds: THIRTY_DAYS },
 
-  // Membership & permissions (15m TTL)
-  members: { prefix: 'org:members', ttlSeconds: 900 },
-  memberRoleMap: { prefix: 'org:member-roles', ttlSeconds: 900 },
+  // Membership & permissions (24h TTL, invalidated on member events)
+  members: { prefix: 'org:members', ttlSeconds: ONE_DAY },
+  memberRoleMap: { prefix: 'org:member-roles', ttlSeconds: ONE_DAY },
 
-  // Business data
-  features: { prefix: 'org:features', ttlSeconds: 3600 },
-  subscription: { prefix: 'org:subscription', ttlSeconds: 3600 },
-  orgProfile: { prefix: 'org:profile', ttlSeconds: 3600 },
-  resources: { prefix: 'org:resources', ttlSeconds: 900 },
-  customFields: { prefix: 'org:custom-fields', ttlSeconds: 900 },
-  inboxes: { prefix: 'org:inboxes', ttlSeconds: 300 },
-  overages: { prefix: 'org:overages', ttlSeconds: 300 },
+  // Business data (24h TTL, all invalidated via cache events)
+  features: { prefix: 'org:features', ttlSeconds: THIRTY_DAYS },
+  subscription: { prefix: 'org:subscription', ttlSeconds: ONE_DAY },
+  orgProfile: { prefix: 'org:profile', ttlSeconds: ONE_DAY },
+  resources: { prefix: 'org:resources', ttlSeconds: ONE_DAY },
+  customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
+  groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
+  inboxes: { prefix: 'org:inboxes', ttlSeconds: ONE_DAY },
+  overages: { prefix: 'org:overages', ttlSeconds: 900 },
+  orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
 }

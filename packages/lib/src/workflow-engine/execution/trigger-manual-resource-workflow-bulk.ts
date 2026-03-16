@@ -6,8 +6,9 @@ import { getWorkflowApp } from '@auxx/services/workflows'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import { getCachedResource } from '../../cache'
 import { isCustomResourceId } from '../../resources/client'
-import { ResourceRegistryService } from '../../resources/registry'
+import { isSystemResourceId } from '../../resources/registry/types'
 import { executeResourceQuery, fetchResourceById } from '../../resources/resource-fetcher'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
 import { RedisWorkflowExecutionReporter } from '../execution-reporter'
@@ -151,8 +152,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
   }
 
   // 2. Batch fetch all resources
-  const registryService = new ResourceRegistryService(organizationId, db)
-  const resourcesMap = await fetchResourcesByIds(recordIds, organizationId, registryService)
+  const resourcesMap = await fetchResourcesByIds(recordIds, organizationId)
 
   logger.info('Resources fetched', {
     requested: recordIds.length,
@@ -283,8 +283,7 @@ export async function triggerManualResourceWorkflowBulk(params: {
  */
 async function fetchResourcesByIds(
   recordIds: RecordId[],
-  organizationId: string,
-  registryService: ResourceRegistryService
+  organizationId: string
 ): Promise<Map<string, any>> {
   const resourcesMap = new Map<string, any>()
 
@@ -323,14 +322,14 @@ async function fetchResourcesByIds(
   }
 
   // Handle system resources (contact, ticket, thread, message)
-  const resource = await registryService.getById(resourceType)
+  const resource = await getCachedResource(organizationId, resourceType)
   if (!resource) {
     logger.error('Invalid resource type', { resourceType })
     return resourcesMap
   }
 
   // Check if system resource (only system resources have direct DB tables)
-  if (!registryService.isSystemResource(resourceType)) {
+  if (!isSystemResourceId(resourceType)) {
     logger.warn('Bulk load only supports system resources', { resourceType })
     return resourcesMap
   }

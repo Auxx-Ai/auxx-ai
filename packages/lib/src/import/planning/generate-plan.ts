@@ -4,8 +4,9 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
+import { getCachedResource } from '../../cache'
 import type { ResourceField } from '../../resources'
-import { ResourceRegistryService } from '../../resources'
+import { getDefaultIdentifierField, getIdentifierFields } from '../../resources/registry'
 import type { ImportMappingProperty } from '../types/mapping'
 import type { ImportPlan, ImportPlanStrategy, PlanEstimates, StrategyType } from '../types/plan'
 import type { ValueResolution } from '../types/resolution'
@@ -89,9 +90,8 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
     strategyByType.set(strategy.strategy, strategy)
   }
 
-  // Get resource definition and identifier field
-  const registry = new ResourceRegistryService(organizationId, db)
-  const resource = await registry.getById(entityDefinitionId)
+  // Get resource definition and identifier field from org cache
+  const resource = await getCachedResource(organizationId, entityDefinitionId)
 
   logger.info('Planning: Resource lookup', {
     entityDefinitionId,
@@ -111,10 +111,10 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
     })
   } else if (resource) {
     // Auto-select default identifier if not specified
-    const identifierFields = registry.getIdentifierFields(resource)
-    identifierField = registry.getDefaultIdentifierField(resource)
+    const identifiers = getIdentifierFields(resource)
+    identifierField = getDefaultIdentifierField(resource)
     logger.info('Planning: Using default identifier field', {
-      availableIdentifiers: identifierFields.map((f) => ({ key: f.key, type: f.type })),
+      availableIdentifiers: identifiers.map((f) => ({ key: f.key, type: f.type })),
       selectedField: identifierField?.key,
       selectedType: identifierField?.type,
     })

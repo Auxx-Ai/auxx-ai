@@ -222,8 +222,10 @@ export { resolveEntityDefTypeId } from './entity-def-resolver'
 export { ENTITY_INSTANCE_FIELDS, getEntityInstanceFields } from './entity-instance-fields'
 // Re-export field utility functions
 export {
+  getDefaultIdentifierField,
   getDisplayFields,
   getFieldOperators,
+  getIdentifierFields,
   isComputedField,
   isSystemField,
   isValidOperatorForField,

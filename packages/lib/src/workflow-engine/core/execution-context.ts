@@ -4,7 +4,7 @@ import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { LRUCache } from 'lru-cache'
-import { ResourceRegistryService } from '../../resources/registry/resource-registry-service'
+import { getCachedResourceFields } from '../../cache'
 import {
   analyzePathForRelationships,
   fetchResourceWithRelationships,
@@ -64,8 +64,7 @@ export class ExecutionContextManager {
   })
   private loadingStack: Set<string> = new Set() // Circular reference detection
 
-  // Performance optimization: Cache ResourceRegistryService instance
-  private registryService: ResourceRegistryService | null = null
+  // Note: ResourceRegistryService removed — using org cache via getCachedResourceFields()
 
   // Performance optimization: Cache path analysis results
   // Key: `${resourceType}:${remainingPath}` → relationshipsNeeded[]
@@ -588,14 +587,13 @@ export class ExecutionContextManager {
         relationshipsNeeded,
       })
 
-      // Fetch resource with relationships - pass DB context and cached service for custom entity support
+      // Fetch resource with relationships from org cache
       const recordId = toRecordId(ref.resourceType, ref.resourceId)
       const resource = await fetchResourceWithRelationships(
         recordId,
         relationshipsNeeded,
         ref.organizationId ?? this.context.organizationId,
-        database,
-        this.getRegistryService()
+        database
       )
 
       if (!resource) {
@@ -649,18 +647,6 @@ export class ExecutionContextManager {
     this.lazyLoadCache.clear()
     this.loadingStack.clear()
     this.pathAnalysisCache.clear()
-    this.registryService = null
-  }
-
-  /**
-   * Get or create cached ResourceRegistryService instance.
-   * Avoids creating new instances per call for better performance.
-   */
-  private getRegistryService(): ResourceRegistryService {
-    if (!this.registryService) {
-      this.registryService = new ResourceRegistryService(this.context.organizationId, database)
-    }
-    return this.registryService
   }
 
   /**
@@ -680,9 +666,7 @@ export class ExecutionContextManager {
     const relationships = await analyzePathForRelationships(
       resourceType,
       remainingPath,
-      this.context.organizationId,
-      database,
-      this.getRegistryService()
+      this.context.organizationId
     )
 
     this.pathAnalysisCache.set(cacheKey, relationships)

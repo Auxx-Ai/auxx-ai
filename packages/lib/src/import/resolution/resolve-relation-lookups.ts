@@ -4,7 +4,7 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
-import { ResourceRegistryService } from '../../resources/registry/resource-registry-service'
+import { getCachedResource } from '../../cache'
 import type { CustomResource, Resource, SystemResource } from '../../resources/registry/types'
 import { BaseType } from '../../resources/types'
 
@@ -66,7 +66,6 @@ export async function resolveRelationLookups(
     tables: [...new Set(pendingLookups.map((l) => l.entityDefinitionId))],
   })
 
-  const registry = new ResourceRegistryService(organizationId, db)
   const results: RelationLookupResult[] = []
 
   // Group by entity definition for batch queries
@@ -82,7 +81,6 @@ export async function resolveRelationLookups(
     const tableResults = await resolveLookupsForTable(
       db,
       organizationId,
-      registry,
       entityDefinitionId,
       lookups
     )
@@ -104,12 +102,11 @@ export async function resolveRelationLookups(
 async function resolveLookupsForTable(
   db: Database,
   organizationId: string,
-  registry: ResourceRegistryService,
   targetTable: string,
   lookups: PendingRelationLookup[]
 ): Promise<RelationLookupResult[]> {
-  // Get resource definition (cached by ResourceRegistryService)
-  const resource = await registry.getById(targetTable)
+  // Get resource definition from org cache
+  const resource = await getCachedResource(organizationId, targetTable)
   if (!resource) {
     logger.warn('Target table not found', { targetTable })
     return lookups.map((l) => ({

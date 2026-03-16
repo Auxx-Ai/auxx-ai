@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/record.ts
 
 import { schema } from '@auxx/database'
+import { getCachedResource } from '@auxx/lib/cache'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
 import { getDescendantIds } from '@auxx/lib/field-values'
 import { RESOURCE_TABLE_REGISTRY, UnifiedCrudHandler } from '@auxx/lib/resources'
@@ -510,17 +511,11 @@ export const recordRouter = createTRPCRouter({
         const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId as RecordId)
         const { fieldId } = parseResourceFieldId(input.resourceFieldId)
 
-        // Get field to find the CustomField.id from the field key
-        const field = await ctx.db.query.CustomField.findFirst({
-          where: and(
-            eq(schema.CustomField.entityDefinitionId, entityDefinitionId),
-            eq(schema.CustomField.key, fieldId),
-            eq(schema.CustomField.organizationId, organizationId)
-          ),
-          columns: { id: true },
-        })
+        // Get field from org cache
+        const resource = await getCachedResource(organizationId, entityDefinitionId)
+        const field = resource?.fields.find((f) => f.key === fieldId || f.id === fieldId)
 
-        if (!field) return []
+        if (!field?.id) return []
 
         const descendantInstanceIds = await getDescendantIds(
           { db: ctx.db, organizationId },

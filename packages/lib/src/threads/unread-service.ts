@@ -524,34 +524,12 @@ export class UnreadService {
 
   /**
    * Gets all accessible mail view IDs for the current user.
-   * Includes both personal and shared views.
+   * Reads from UserCacheService (userMailViews) which already combines personal + shared views.
    */
   async getAccessibleViewIds(): Promise<string[]> {
-    const [userViews, sharedViews] = await Promise.all([
-      db
-        .select({ id: schema.MailView.id })
-        .from(schema.MailView)
-        .where(
-          and(
-            eq(schema.MailView.userId, this.userId),
-            eq(schema.MailView.organizationId, this.organizationId)
-          )
-        ),
-      db
-        .select({ id: schema.MailView.id })
-        .from(schema.MailView)
-        .where(
-          and(
-            eq(schema.MailView.isShared, true),
-            eq(schema.MailView.organizationId, this.organizationId)
-          )
-        ),
-    ])
-
-    // Combine and deduplicate
-    const allIds = new Set([...userViews.map((v) => v.id), ...sharedViews.map((v) => v.id)])
-
-    return Array.from(allIds)
+    const { getUserCache } = await import('../cache')
+    const views = await getUserCache().get(this.userId, 'userMailViews', this.organizationId)
+    return views.map((v) => v.id)
   }
 
   /**

@@ -1,13 +1,13 @@
 // apps/web/src/server/api/routers/tableView.ts
 
 import { schema } from '@auxx/database'
+import { getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import {
   type FieldViewConfig,
   fieldViewConfigSchema,
   type ViewConfig,
   viewConfigSchema,
   viewContextTypeSchema,
-  viewContextTypes,
 } from '@auxx/lib/conditions'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
 import { isAdminOrOwner } from '@auxx/lib/members'
@@ -17,8 +17,6 @@ import {
   deleteView,
   duplicateView,
   getView,
-  listAllViews,
-  listViews,
   setDefaultView,
   updateView,
 } from '@auxx/services/table-view'
@@ -48,41 +46,19 @@ function mapErrorToTRPC(error: { code: string; message: string }): never {
  */
 export const tableViewRouter = createTRPCRouter({
   /**
-   * Get all views for a specific table
-   */
-  list: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string(),
-        contextType: viewContextTypeSchema.optional(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const result = await listViews({
-        tableId: input.tableId,
-        userId: ctx.session.userId,
-        organizationId: ctx.session.organizationId,
-        contextType: input.contextType,
-      })
-
-      if (result.isErr()) mapErrorToTRPC(result.error)
-      return result.value.map((v) => ({ ...v, config: v.config as ViewConfig }))
-    }),
-
-  /**
-   * Get all views across all tables for the user's organization
+   * Get all views across all tables for the user's organization.
    * Used to populate the app-wide view store on initialization.
-   * Includes all context types: table, kanban, panel, dialog_create, dialog_edit
+   * Includes all context types: table, kanban, panel, dialog_create, dialog_edit.
+   * Served from user cache (Redis + local).
    */
   listAll: protectedProcedure.query(async ({ ctx }) => {
-    const result = await listAllViews({
-      userId: ctx.session.userId,
-      organizationId: ctx.session.organizationId,
-      contextType: [...viewContextTypes],
-    })
-
-    if (result.isErr()) mapErrorToTRPC(result.error)
-    return result.value.map((v) => ({ ...v, config: v.config as ViewConfig | FieldViewConfig }))
+    const userCache = getUserCache()
+    const views = await userCache.get(
+      ctx.session.userId,
+      'userTableViews',
+      ctx.session.organizationId
+    )
+    return views as ((typeof views)[number] & { config: ViewConfig | FieldViewConfig })[]
   }),
 
   /**
@@ -179,6 +155,13 @@ export const tableViewRouter = createTRPCRouter({
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)
+
+      await onCacheEvent('table-view.created', {
+        orgId: organizationId,
+        userId,
+        broadcastUserKeys: input.isShared,
+      })
+
       return { ...result.value, config: result.value.config as ViewConfig }
     }),
 
@@ -212,6 +195,13 @@ export const tableViewRouter = createTRPCRouter({
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)
+
+      await onCacheEvent('table-view.updated', {
+        orgId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        broadcastUserKeys: result.value.isShared,
+      })
+
       return { ...result.value, config: result.value.config as ViewConfig | FieldViewConfig }
     }),
 
@@ -229,6 +219,12 @@ export const tableViewRouter = createTRPCRouter({
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)
+
+      await onCacheEvent('table-view.created', {
+        orgId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+      })
+
       return { ...result.value, config: result.value.config as ViewConfig }
     }),
 
@@ -245,6 +241,13 @@ export const tableViewRouter = createTRPCRouter({
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)
+
+      await onCacheEvent('table-view.deleted', {
+        orgId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        broadcastUserKeys: true,
+      })
+
       return result.value
     }),
 
@@ -261,6 +264,12 @@ export const tableViewRouter = createTRPCRouter({
       })
 
       if (result.isErr()) mapErrorToTRPC(result.error)
+
+      await onCacheEvent('table-view.default-changed', {
+        orgId: ctx.session.organizationId,
+        broadcastUserKeys: true,
+      })
+
       return { ...result.value, config: result.value.config as ViewConfig }
     }),
 })

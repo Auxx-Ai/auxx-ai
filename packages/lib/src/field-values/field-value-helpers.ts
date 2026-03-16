@@ -14,7 +14,7 @@ import {
 import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq, sql } from 'drizzle-orm'
-import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { getCachedResource } from '../cache'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
@@ -726,7 +726,7 @@ const MAX_PATH_DEPTH = 5
  * Throws descriptive errors for invalid paths.
  */
 export async function validateFieldReferences(
-  registryService: ResourceRegistryService,
+  organizationId: string,
   fieldReferences: FieldReference[]
 ): Promise<void> {
   for (const ref of fieldReferences) {
@@ -739,7 +739,7 @@ export async function validateFieldReferences(
 
     for (let i = 0; i < path.length; i++) {
       const { entityDefinitionId, fieldId } = parseResourceFieldId(path[i])
-      const resource = await registryService.getById(entityDefinitionId)
+      const resource = await getCachedResource(organizationId, entityDefinitionId)
 
       if (!resource) {
         throw new Error(`Entity "${entityDefinitionId}" not found`)
@@ -761,14 +761,14 @@ export async function validateFieldReferences(
 }
 
 /**
- * Get field type from registry for a specific field.
+ * Get field type from org cache for a specific field.
  */
 export async function getFieldTypeFromRegistry(
-  registryService: ResourceRegistryService,
+  organizationId: string,
   entityDefinitionId: string,
   fieldId: string
 ): Promise<FieldType> {
-  const resource = await registryService.getById(entityDefinitionId)
+  const resource = await getCachedResource(organizationId, entityDefinitionId)
   if (!resource) {
     throw new Error(`Entity "${entityDefinitionId}" not found`)
   }
