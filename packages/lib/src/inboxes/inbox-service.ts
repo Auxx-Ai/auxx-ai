@@ -11,7 +11,7 @@ import {
   setInstanceAccess,
 } from '../resource-access/resource-access-service'
 import type { ResourceAccessContext } from '../resource-access/types'
-import { UnifiedCrudHandler } from '../resources/crud'
+import { listAll, UnifiedCrudHandler } from '../resources/crud'
 import type {
   CreateInboxInput,
   Inbox,
@@ -174,22 +174,33 @@ export class InboxService {
    * Get all inboxes for the organization
    */
   async getInboxes(): Promise<Inbox[]> {
-    const { items } = await this.crudHandler.list('inbox')
-    return Promise.all(items.map((i) => this.resolveInbox(toRecordId('inbox', i.id))))
+    const result = await listAll(
+      { db: this.db, organizationId: this.organizationId, userId: this.userId ?? '' },
+      { entityDefinitionId: 'inbox' }
+    )
+    return result.items.map((item) => this.transformToInbox(item))
   }
 
   /**
    * Get all inboxes accessible to a user
    */
   async getInboxesForUser(userId: string): Promise<Inbox[]> {
-    const result = await getUserAccessibleInstances(this.ctx, userId, 'inbox')
+    const access = await getUserAccessibleInstances(this.ctx, userId, 'inbox')
 
     // If user has type-level access, return all inboxes
-    if (result.hasTypeAccess) {
+    if (access.hasTypeAccess) {
       return this.getInboxes()
     }
 
-    return Promise.all(result.instances.map((i) => this.resolveInbox(i.recordId)))
+    const accessibleRecordIds = new Set(access.instances.map((i) => i.recordId))
+    const result = await listAll(
+      { db: this.db, organizationId: this.organizationId, userId: this.userId ?? '' },
+      { entityDefinitionId: 'inbox' }
+    )
+
+    return result.items
+      .filter((item) => accessibleRecordIds.has(item.recordId))
+      .map((item) => this.transformToInbox(item))
   }
 
   /**
@@ -412,6 +423,36 @@ export class InboxService {
   // ═══════════════════════════════════════════════════════════════════════════
   // HELPERS
   // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Transform a listAll result item to Inbox type (no extra queries)
+   */
+  private transformToInbox(item: {
+    id: string
+    recordId: RecordId
+    fieldValues: Record<string, unknown>
+    displayName?: string | null
+    organizationId: string
+    createdAt: Date
+    updatedAt: Date
+    createdById: string | null
+  }): Inbox {
+    return {
+      id: item.id,
+      recordId: item.recordId,
+      name: item.displayName ?? '',
+      description: (item.fieldValues.inbox_description as string) ?? null,
+      color: (item.fieldValues.inbox_color as string) ?? 'indigo',
+      status: ((item.fieldValues.inbox_status as string) ?? 'ACTIVE') as Inbox['status'],
+      visibility: ((item.fieldValues.inbox_visibility as string) ??
+        'org_members') as Inbox['visibility'],
+      settings: (item.fieldValues.inbox_settings as Record<string, unknown>) ?? {},
+      organizationId: item.organizationId,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      createdById: item.createdById,
+    }
+  }
 
   /**
    * Resolve EntityInstance + FieldValues to Inbox type
