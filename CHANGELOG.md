@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.89](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.88...auxx-v0.1.89) (2026-03-16)
+
+
+### Features
+
+* remove slash command component and integrate slash command functionality ([#281](https://github.com/Auxx-Ai/auxx-ai/issues/281)) ([07edcfa](https://github.com/Auxx-Ai/auxx-ai/commit/07edcfafb41a1578dc6af5a9c5f79eb1d3104adb))
+
 ## [0.1.88](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.87...auxx-v0.1.88) (2026-03-16)
 
 
