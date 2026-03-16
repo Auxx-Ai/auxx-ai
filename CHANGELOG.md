@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.88](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.87...auxx-v0.1.88) (2026-03-16)
+
+
+### Features
+
+* enhance cache invalidation and workflow limits ([#279](https://github.com/Auxx-Ai/auxx-ai/issues/279)) ([f0e424f](https://github.com/Auxx-Ai/auxx-ai/commit/f0e424f26053f7d4d54421e345ba7de7f9802c73))
+
 ## [0.1.87](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.86...auxx-v0.1.87) (2026-03-16)
 
 
