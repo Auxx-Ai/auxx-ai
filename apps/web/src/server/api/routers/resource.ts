@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/resource.ts
 
-import { ResourceRegistryService } from '@auxx/lib/resources'
+import { getOrgCache } from '@auxx/lib/cache'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
@@ -20,9 +20,7 @@ export const resourceRouter = createTRPCRouter({
     const { organizationId } = ctx.session
 
     try {
-      const service = new ResourceRegistryService(organizationId, ctx.db)
-      const resources = await service.getAll()
-      return resources
+      return await getOrgCache().from(organizationId, 'resources').all()
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       throw new TRPCError({
@@ -40,8 +38,7 @@ export const resourceRouter = createTRPCRouter({
     const { organizationId } = ctx.session
 
     try {
-      const service = new ResourceRegistryService(organizationId, ctx.db)
-      const resource = await service.getById(input.id)
+      const resource = await getOrgCache().from(organizationId, 'resources').byId(input.id)
 
       if (!resource) {
         throw new TRPCError({

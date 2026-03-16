@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/workflow-templates.ts
 
+import { getAppCache } from '@auxx/lib/cache'
 import { getAllTemplates, getTemplateById } from '@auxx/services/workflow-templates'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -10,7 +11,8 @@ import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
  */
 export const workflowTemplatesRouter = createTRPCRouter({
   /**
-   * Get public workflow templates with filtering
+   * Get public workflow templates with filtering.
+   * Uses app-wide cache for unfiltered requests; falls back to DB for search/category queries.
    */
   getPublic: protectedProcedure
     .input(
@@ -21,16 +23,23 @@ export const workflowTemplatesRouter = createTRPCRouter({
       })
     )
     .query(async ({ input }) => {
-      const result = await getAllTemplates({
-        ...input,
-        status: 'public', // IMPORTANT: Only return public templates
-      })
+      const hasFilters = input.search || (input.categories && input.categories.length > 0)
 
-      if (result.isErr()) {
-        throw new Error(result.error.message)
+      // Filtered queries hit DB directly for accurate search/category matching
+      if (hasFilters) {
+        const result = await getAllTemplates({
+          ...input,
+          status: 'public',
+        })
+        if (result.isErr()) {
+          throw new Error(result.error.message)
+        }
+        return result.value
       }
 
-      return result.value
+      // Unfiltered listing served from cache
+      const templates = await getAppCache().get('workflowTemplates')
+      return templates.slice(0, input.limit)
     }),
 
   /**

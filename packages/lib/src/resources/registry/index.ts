@@ -231,7 +231,8 @@ export {
   setResourceVariables,
   sortFieldsForDisplay,
 } from './field-utils'
-// Re-export resource registry service and types
+// Re-export resource computation and service
+export { computeAllResources } from './resource-registry-compute'
 export { ResourceRegistryService } from './resource-registry-service'
 export type {
   CustomResource,

@@ -4,7 +4,7 @@ import { AdminBillingService, PlanAdminService, PlanService } from '@auxx/billin
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { invalidatePlans, onCacheEvent } from '@auxx/lib/cache'
 import { FeatureKey, FeaturePermissionService, handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createUsageGuard, type UsageMetric, type UsageStatus } from '@auxx/lib/usage'
 import { and, eq, ilike, or, sql } from 'drizzle-orm'
@@ -932,7 +932,9 @@ export const adminRouter = createTRPCRouter({
       )
       .mutation(async ({ ctx, input }) => {
         const service = new PlanAdminService(ctx.db)
-        return service.createPlan(input)
+        const result = await service.createPlan(input)
+        await invalidatePlans()
+        return result
       }),
 
     /**
@@ -969,7 +971,9 @@ export const adminRouter = createTRPCRouter({
       .mutation(async ({ ctx, input }) => {
         const service = new PlanAdminService(ctx.db)
         const { id, ...data } = input
-        return service.updatePlan(id, data)
+        const result = await service.updatePlan(id, data)
+        await invalidatePlans()
+        return result
       }),
 
     /**
@@ -986,7 +990,9 @@ export const adminRouter = createTRPCRouter({
       .mutation(async ({ ctx, input }) => {
         const service = new PlanAdminService(ctx.db)
         const { id, ...pricing } = input
-        return service.updatePricing(id, pricing)
+        const result = await service.updatePricing(id, pricing)
+        await invalidatePlans()
+        return result
       }),
 
     /**
@@ -996,7 +1002,9 @@ export const adminRouter = createTRPCRouter({
       .input(z.object({ id: z.string() }))
       .mutation(async ({ ctx, input }) => {
         const service = new PlanAdminService(ctx.db)
-        return service.markAsLegacy(input.id)
+        const result = await service.markAsLegacy(input.id)
+        await invalidatePlans()
+        return result
       }),
 
     /**
@@ -1006,7 +1014,9 @@ export const adminRouter = createTRPCRouter({
       .input(z.object({ id: z.string() }))
       .mutation(async ({ ctx, input }) => {
         const service = new PlanAdminService(ctx.db)
-        return service.restoreLegacyPlan(input.id)
+        const result = await service.restoreLegacyPlan(input.id)
+        await invalidatePlans()
+        return result
       }),
 
     /**
@@ -1065,6 +1075,7 @@ export const adminRouter = createTRPCRouter({
 
       const billingDomain = new BillingDomain(scenario, context, { plansOnly: false })
       const plansCreated = await billingDomain.insertDirectly(ctx.db)
+      await invalidatePlans()
 
       return {
         success: true,
@@ -1097,6 +1108,7 @@ export const adminRouter = createTRPCRouter({
 
       const billingDomain = new BillingDomain(scenario, context)
       const plansUpdated = await billingDomain.updateFeatureLimitsOnly(ctx.db)
+      await invalidatePlans()
 
       return {
         success: true,

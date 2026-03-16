@@ -4,6 +4,8 @@ import { type Database, database as ddb } from '@auxx/database'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
 import { randomUUID } from 'crypto'
 import { createScopedLogger } from '../logger'
+import type { OrgCacheAccessorMap } from './accessor-map'
+import { ArrayAccessor, NestedRecordAccessor, RecordAccessor, ScalarAccessor } from './accessors'
 import { LocalCache } from './local-cache'
 import type { OrgCacheDataMap, OrgCacheKeyName } from './org-cache-keys'
 import { ORG_CACHE_KEY_CONFIG } from './org-cache-keys'
@@ -105,6 +107,40 @@ export class OrganizationCacheService {
   /** Convenience: single key fetch */
   async get<K extends OrgCacheKeyName>(orgId: string, key: K): Promise<OrgCacheDataMap[K]> {
     return this.getSingle(orgId, key)
+  }
+
+  /** Fluent accessor for a single cache key */
+  from<K extends OrgCacheKeyName>(orgId: string, key: K): OrgCacheAccessorMap[K] {
+    const dataFn = () => this.get(orgId, key)
+    const provider = this.providers.get(key)
+
+    if (provider?.createAccessor) {
+      return provider.createAccessor(dataFn) as OrgCacheAccessorMap[K]
+    }
+
+    return this.createDefaultAccessor(key, dataFn) as OrgCacheAccessorMap[K]
+  }
+
+  /** Infer accessor type from cache key when provider doesn't define createAccessor */
+  private createDefaultAccessor<K extends OrgCacheKeyName>(
+    key: K,
+    dataFn: () => Promise<OrgCacheDataMap[K]>
+  ): unknown {
+    const ARRAY_KEYS: OrgCacheKeyName[] = ['resources', 'members', 'inboxes', 'overages']
+    const NESTED_RECORD_KEYS: OrgCacheKeyName[] = ['customFields']
+    const SCALAR_KEYS: OrgCacheKeyName[] = ['systemUser', 'subscription', 'orgProfile', 'features']
+
+    if (ARRAY_KEYS.includes(key)) {
+      return new ArrayAccessor(dataFn as () => Promise<any[]>)
+    }
+    if (NESTED_RECORD_KEYS.includes(key)) {
+      return new NestedRecordAccessor(dataFn as () => Promise<Record<string, any[]>>)
+    }
+    if (SCALAR_KEYS.includes(key)) {
+      return new ScalarAccessor(dataFn)
+    }
+    // Default: RecordAccessor
+    return new RecordAccessor(dataFn as () => Promise<Record<string, any>>)
   }
 
   /**
