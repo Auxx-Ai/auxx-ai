@@ -14,6 +14,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'
 import { and, asc, count, eq, gt, ilike, sql } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
 import { publisher } from '../events'
 import { enqueueEmailJob } from '../jobs/email'
 import { FeaturePermissionService } from '../permissions/feature-permission-service'
@@ -95,24 +96,23 @@ export class MemberService {
   /**
    * Static version: Checks if a user is a member of the specified organization.
    */
-  static async isMember(
-    userId: string,
-    organizationId: string,
-    db: Database = database
-  ): Promise<boolean> {
-    const membership = await MemberService.getMembership(userId, organizationId, db)
-    if (!membership) {
-      return false
+  static async isMember(userId: string, organizationId: string, db?: Database): Promise<boolean> {
+    // If a specific db instance is passed (e.g. inside a transaction), query directly
+    if (db && db !== database) {
+      const membership = await MemberService.getMembership(userId, organizationId, db)
+      if (!membership) return false
+      const [user] = await db
+        .select({ userType: schema.User.userType })
+        .from(schema.User)
+        .where(eq(schema.User.id, userId))
+        .limit(1)
+      return user?.userType === 'USER'
     }
 
-    // Additional check for user type - need to query user table
-    const [user] = await db
-      .select({ userType: schema.User.userType })
-      .from(schema.User)
-      .where(eq(schema.User.id, userId))
-      .limit(1)
-
-    return user?.userType === 'USER'
+    // Use org cache — zero DB queries
+    const { members } = await getOrgCache().getOrRecompute(organizationId, ['members'])
+    const member = members.find((m) => m.userId === userId)
+    return !!member && member.user?.userType === 'USER'
   }
 
   // --- Core Member Operations ---
@@ -826,8 +826,8 @@ export class MemberService {
 
     // 5. Cache Invalidation
     try {
-      await featureService.invalidateCache(organizationId)
-      // Invalidate other relevant caches (e.g., member lists) if necessary
+      const { onCacheEvent } = await import('../cache')
+      await onCacheEvent('member.removed', { orgId: organizationId })
       logger.info('Helper: Relevant caches invalidated.', { organizationId })
     } catch (cacheError) {
       logger.warn('Helper: Failed to invalidate cache.', { organizationId, error: cacheError })

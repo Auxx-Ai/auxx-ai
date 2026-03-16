@@ -58,6 +58,12 @@
       "import": "./dist/bom/index.mjs",
       "default": "./src/bom/index.ts"
     },
+    "./cache": {
+      "types": "./src/cache/index.ts",
+      "source": "./src/cache/index.ts",
+      "import": "./dist/cache/index.mjs",
+      "default": "./src/cache/index.ts"
+    },
     "./chat": {
       "types": "./src/chat/index.ts",
       "source": "./src/chat/index.ts",

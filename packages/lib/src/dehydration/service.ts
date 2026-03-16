@@ -2,24 +2,11 @@
 
 import { API_URL, DEV_PORTAL_URL, DOCS_URL, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
 import { configService } from '@auxx/credentials'
-import { type Database, database as ddb, schema } from '@auxx/database'
 import { getDeploymentMode } from '@auxx/deployment'
 import { execSync } from 'child_process'
-import { count, eq } from 'drizzle-orm'
-import { PromiseMemoizer } from '../cache/promise-memoizer'
-import { MediaAssetService } from '../files'
-import { createScopedLogger } from '../logger'
-import { FeaturePermissionService, OverageDetectionService } from '../permissions'
-import { SETTINGS_CATALOG, SettingsService } from '../settings'
-import { DehydrationCacheService } from './cache'
-import type {
-  DehydratedEnvironment,
-  DehydratedOrganization,
-  DehydratedState,
-  DehydratedUser,
-} from './types'
-
-const logger = createScopedLogger('DehydrationService', { color: 'blue' })
+import { getOrgCache, getUserCache } from '../cache'
+import { SETTINGS_CATALOG } from '../settings'
+import type { DehydratedEnvironment, DehydratedOrganization, DehydratedState } from './types'
 
 /** Cached local git info so we only shell out once per process */
 let cachedGitInfo: { sha: string; branch: string } | null = null
@@ -83,286 +70,81 @@ export function buildEnvironment(): DehydratedEnvironment {
 }
 
 /**
- * Service for generating dehydrated state on the server
- * Aggregates user, organization, subscription, and feature data
+ * Service for generating dehydrated state on the server.
+ * Now assembles state from individual org/user cache reads instead of
+ * a monolithic fetch-everything approach.
  */
 export class DehydrationService {
-  private cache: DehydrationCacheService
-  private db: Database
-  private memoizer = new PromiseMemoizer<DehydratedState>()
-
-  constructor(db?: unknown) {
-    this.db = db && typeof (db as any).select === 'function' ? (db as Database) : (ddb as Database)
-    this.cache = new DehydrationCacheService()
-  }
+  private orgCache = getOrgCache()
+  private userCache = getUserCache()
 
   /**
-   * Get complete dehydrated state for a user
-   * Uses cache with fallback to database.
-   * Concurrent requests for the same user share a single in-flight fetch.
-   * @param userId - User ID
-   * @returns Complete dehydrated state
+   * Get complete dehydrated state for a user.
+   * Reads from individual caches — no direct DB queries.
    */
   async getState(userId: string): Promise<DehydratedState> {
-    return this.memoizer.memoize(`user:${userId}`, async () => {
-      // Try cache first
-      const cached = await this.cache.getState(userId)
-      if (cached) {
-        logger.debug(`Cache hit for user ${userId}`)
-        return cached
-      }
-
-      logger.debug(`Cache miss for user ${userId}, fetching fresh data`)
-
-      // Fetch fresh data
-      const state = await this.fetchState(userId)
-
-      // Cache it
-      await this.cache.setState(userId, state)
-
-      return state
-    })
-  }
-
-  /**
-   * Fetch fresh state from database
-   * @private
-   */
-  private async fetchState(userId: string): Promise<DehydratedState> {
     // Ensure ConfigService is initialized (SST Resource + DB cache)
     await configService.init()
 
-    // Fetch user with memberships
-    const user = await this.fetchUser(userId)
+    // 1. Fetch user-level data (single call, multi-key)
+    const { userProfile, userMemberships } = await this.userCache.getOrRecompute(userId, [
+      'userProfile',
+      'userMemberships',
+    ])
 
-    // Fetch all organizations user is member of
-    const organizations = await this.fetchOrganizations(userId)
+    // 2. Fetch per-org data in parallel
+    const orgIds = userMemberships.map((m) => m.organizationId)
+    const organizations = await Promise.all(
+      orgIds.map((orgId) => this.assembleOrganization(userId, orgId))
+    )
 
-    // Build environment config
-    const environment = this.buildEnvironment()
-
+    // 3. Assemble (pure function, no DB calls)
     return {
-      user,
-      organizationId: user.defaultOrganizationId,
+      user: userProfile,
+      organizationId: userProfile.defaultOrganizationId,
       organizations,
       settingsCatalog: SETTINGS_CATALOG,
-      environment,
+      environment: buildEnvironment(),
       timestamp: Date.now(),
     }
   }
 
   /**
-   * Fetch user data with memberships and avatar
-   * @private
+   * Assemble a single organization's dehydrated state from cache reads.
    */
-  private async fetchUser(userId: string): Promise<DehydratedUser> {
-    // Fetch user
-    const [user] = await this.db
-      .select()
-      .from(schema.User)
-      .where(eq(schema.User.id, userId))
-      .limit(1)
-
-    if (!user) {
-      throw new Error(`User not found: ${userId}`)
-    }
-
-    // Fetch memberships
-    const memberships = await this.db
-      .select({
-        id: schema.OrganizationMember.id,
-        userId: schema.OrganizationMember.userId,
-        organizationId: schema.OrganizationMember.organizationId,
-        role: schema.OrganizationMember.role,
-        status: schema.OrganizationMember.status,
-      })
-      .from(schema.OrganizationMember)
-      .where(eq(schema.OrganizationMember.userId, userId))
-
-    // Fetch avatar URL if available
-    let avatarUrl: string | null = null
-    if (user.avatarAssetId && user.defaultOrganizationId) {
-      const mediaAssetService = new MediaAssetService(user.defaultOrganizationId, userId, this.db)
-      try {
-        avatarUrl = await mediaAssetService.getDownloadUrl(user.avatarAssetId)
-      } catch (error) {
-        logger.warn(`Failed to fetch avatar URL for user ${userId}`, {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    // Fetch user's authentication providers (same logic as customSession)
-    const accounts = await this.db
-      .select({ providerId: schema.account.providerId })
-      .from(schema.account)
-      .where(eq(schema.account.userId, userId))
-
-    const providerIds = accounts.map((a) => a.providerId)
-    const hasPassword = providerIds.includes('credential')
-    const oauthProviders = providerIds.filter((p) => p !== 'credential')
-
-    // Determine registration method
-    const authMethodCount =
-      (hasPassword ? 1 : 0) +
-      (oauthProviders.length > 0 ? 1 : 0) +
-      (user.phoneNumberVerified ? 1 : 0)
-
-    let registrationMethod: 'oauth' | 'email' | 'phone' | 'mixed' = 'oauth'
-
-    if (authMethodCount > 1) {
-      registrationMethod = 'mixed'
-    } else if (hasPassword) {
-      registrationMethod = 'email'
-    } else if (user.phoneNumberVerified) {
-      registrationMethod = 'phone'
-    }
-
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      emailVerified: user.emailVerified,
-      image: avatarUrl,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      phoneNumber: user.phoneNumber,
-      phoneNumberVerified: user.phoneNumberVerified,
-      completedOnboarding: user.completedOnboarding,
-      defaultOrganizationId: user.defaultOrganizationId,
-      lastLoginAt: user.lastLoginAt,
-      preferredTimezone: user.preferredTimezone,
-      providers: oauthProviders,
-      hasPassword,
-      isSuperAdmin: user.isSuperAdmin,
-      registrationMethod,
-      memberships: memberships.map((m) => ({
-        id: m.id,
-        userId: m.userId,
-        organizationId: m.organizationId,
-        role: m.role,
-        status: m.status,
-      })),
-    }
-  }
-
-  /**
-   * Fetch all organizations for a user with subscriptions, features, and settings
-   * @private
-   */
-  private async fetchOrganizations(userId: string): Promise<DehydratedOrganization[]> {
-    // Get all organization IDs from memberships
-    const memberships = await this.db
-      .select({ organizationId: schema.OrganizationMember.organizationId })
-      .from(schema.OrganizationMember)
-      .where(eq(schema.OrganizationMember.userId, userId))
-
-    const organizationIds = memberships.map((m) => m.organizationId)
-
-    // Fetch each organization with all its data
-    const organizations = await Promise.all(
-      organizationIds.map((orgId) => this.fetchOrganization(userId, orgId))
-    )
-
-    return organizations
-  }
-
-  /**
-   * Fetch a single organization with all related data
-   * @private
-   */
-  private async fetchOrganization(
+  private async assembleOrganization(
     userId: string,
-    organizationId: string
+    orgId: string
   ): Promise<DehydratedOrganization> {
-    // Fetch organization
-    const [org] = await this.db
-      .select()
-      .from(schema.Organization)
-      .where(eq(schema.Organization.id, organizationId))
-      .limit(1)
+    const [orgData, userData] = await Promise.all([
+      // Org-scoped: features, subscription, profile, overages, integrationProviders
+      this.orgCache.getOrRecompute(orgId, [
+        'features',
+        'subscription',
+        'orgProfile',
+        'overages',
+        'integrationProviders',
+      ]),
+      // User+org-scoped: settings
+      this.userCache.getOrRecompute(userId, ['userSettings'], orgId),
+    ])
 
-    if (!org) {
-      throw new Error(`Organization not found: ${organizationId}`)
-    }
-
-    // Fetch subscription
-    const [subscription] = await this.db
-      .select()
-      .from(schema.PlanSubscription)
-      .where(eq(schema.PlanSubscription.organizationId, organizationId))
-      .limit(1)
-
-    // Fetch features
-    const featureService = new FeaturePermissionService(this.db)
-    const features = (await featureService.getOrganizationFeaturesMap(organizationId)) || {}
-
-    // Fetch user settings for this org
-    const settingsService = new SettingsService(this.db)
-    const settings = await settingsService.getAllUserSettings({ userId, organizationId })
-
-    // Check for integrations
-    const [{ integrationCount }] = await this.db
-      .select({ integrationCount: count() })
-      .from(schema.Integration)
-      .where(eq(schema.Integration.organizationId, organizationId))
-    const hasIntegrations = integrationCount > 0
-
-    // Detect overages against current plan (only for cloud with active subscriptions)
-    let overages: Array<{
-      key: string
-      label: string
-      current: number
-      limit: number
-      excess: number
-    }> = []
-    if (subscription?.planId) {
-      try {
-        const overageService = new OverageDetectionService(this.db)
-        overages = await overageService.detectCurrentOverages(organizationId)
-      } catch (error) {
-        logger.warn('Failed to detect overages for dehydration', {
-          organizationId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
+    const { features, subscription, orgProfile, overages, integrationProviders } = orgData
+    const hasIntegrations = Object.keys(integrationProviders).length > 0
 
     return {
-      id: org.id,
-      name: org.name,
-      website: org.website,
-      emailDomain: org.emailDomain,
-      handle: org.handle,
-      about: org.about,
-      createdAt: org.createdAt.toISOString(),
-      completedOnboarding: org.completedOnboarding ?? false,
-      subscription: subscription
-        ? {
-            id: subscription.id,
-            status: subscription.status,
-            plan: subscription.plan,
-            planId: subscription.planId,
-            seats: subscription.seats,
-            billingCycle: subscription.billingCycle,
-            periodStart: subscription.periodStart?.toISOString() ?? null,
-            periodEnd: subscription.periodEnd?.toISOString() ?? null,
-            cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-            canceledAt: subscription.canceledAt?.toISOString() ?? null,
-            trialStart: subscription.trialStart?.toISOString() ?? null,
-            trialEnd: subscription.trialEnd?.toISOString() ?? null,
-            hasTrialEnded: subscription.hasTrialEnded,
-            isEligibleForTrial: subscription.isEligibleForTrial,
-            scheduledPlanId: subscription.scheduledPlanId,
-            scheduledPlan: subscription.scheduledPlan,
-            scheduledBillingCycle: subscription.scheduledBillingCycle,
-            scheduledSeats: subscription.scheduledSeats,
-            scheduledChangeAt: subscription.scheduledChangeAt?.toISOString() ?? null,
-          }
-        : null,
-      features,
+      id: orgProfile.id,
+      name: orgProfile.name,
+      website: orgProfile.website,
+      emailDomain: orgProfile.emailDomain,
+      handle: orgProfile.handle,
+      about: orgProfile.about,
+      createdAt: orgProfile.createdAt,
+      completedOnboarding: orgProfile.completedOnboarding,
+      subscription,
+      features: features ?? {},
       overages,
-      settings,
+      settings: userData.userSettings,
       hasIntegrations,
     }
   }
@@ -379,68 +161,41 @@ export class DehydrationService {
       organizationId: null,
       organizations: [],
       settingsCatalog: {},
-      environment: this.buildEnvironment(),
+      environment: buildEnvironment(),
       timestamp: Date.now(),
     }
   }
 
   /**
-   * Build environment configuration from env vars and build info
-   * @private — delegates to the standalone buildEnvironment() function
+   * Temporary compat — invalidate + eager recompute for a single user.
+   * Callers should eventually use specific onCacheEvent() calls.
    */
-  private buildEnvironment(): DehydratedEnvironment {
-    return buildEnvironment()
-  }
-
-  /**
-   * Invalidate cache for a specific user
-   */
-  async invalidateUser(userId: string): Promise<void> {
-    await this.cache.invalidateUser(userId)
-  }
-
-  /**
-   * Invalidate cache for all users in an organization
-   */
-  async invalidateOrganization(organizationId: string): Promise<void> {
-    await this.cache.invalidateOrganization(organizationId)
-  }
-
-  /**
-   * Invalidate all members of an organization
-   */
-  async invalidateOrganizationMembers(organizationId: string): Promise<void> {
-    const members = await this.db
-      .select({ userId: schema.OrganizationMember.userId })
-      .from(schema.OrganizationMember)
-      .where(eq(schema.OrganizationMember.organizationId, organizationId))
-
-    await Promise.all(members.map((m) => this.cache.invalidateUser(m.userId)))
-  }
-
-  /**
-   * RULE: Any tRPC mutation that modifies data returned by fetchState() MUST
-   * call refreshUser() or refreshOrganization() before returning.
-   *
-   * Dehydrated state includes: User (profile, auth, memberships), Organization
-   * (name, handle, website, completedOnboarding), PlanSubscription (all fields),
-   * feature permissions, user settings, Integration count (hasIntegrations).
-   */
-
-  /** Invalidate + eager recompute for a single user */
   async refreshUser(userId: string): Promise<void> {
-    await this.cache.invalidateUser(userId)
-    try {
-      const state = await this.fetchState(userId)
-      await this.cache.setState(userId, state)
-    } catch {
-      // Eager recompute failed — next read will rebuild from DB
-    }
+    await this.userCache.invalidateUser(userId)
   }
 
-  /** Invalidate all members of an org (org-visible data changed) */
+  /**
+   * Temporary compat — invalidate all org keys.
+   * Callers should eventually use specific onCacheEvent() calls.
+   */
   async refreshOrganization(organizationId: string): Promise<void> {
-    await this.cache.invalidateOrganization(organizationId)
-    // Eager recompute is per-user; just invalidate. Next read per user rebuilds.
+    await this.orgCache.flush(organizationId)
+  }
+
+  /** @deprecated Use onCacheEvent() instead */
+  async invalidateUser(userId: string): Promise<void> {
+    await this.userCache.invalidateUser(userId)
+  }
+
+  /** @deprecated Use onCacheEvent() instead */
+  async invalidateOrganization(organizationId: string): Promise<void> {
+    await this.orgCache.flush(organizationId)
+  }
+
+  /** @deprecated Use onCacheEvent() with member events instead */
+  async invalidateOrganizationMembers(organizationId: string): Promise<void> {
+    // Fetch members from cache and invalidate each user
+    const { members } = await this.orgCache.getOrRecompute(organizationId, ['members'])
+    await Promise.all(members.map((m) => this.userCache.invalidateUser(m.userId)))
   }
 }

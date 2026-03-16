@@ -5,6 +5,7 @@ import { schema } from '@auxx/database'
 import { OrganizationRole } from '@auxx/database/enums'
 import { TRPCError } from '@trpc/server'
 import { and, eq, inArray, placeholder } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
 import { createScopedLogger } from '../logger'
 import { SystemUserService } from '../users/system-user-service'
 
@@ -164,11 +165,11 @@ export class PermissionService {
   }
 
   async isAdmin(): Promise<boolean> {
-    const membership = await this.statements.isAdminStatement.execute({
-      userId: this.userId,
-      organizationId: this.organizationId,
-    })
-    return !!membership
+    const { memberRoleMap } = await getOrgCache().getOrRecompute(this.organizationId, [
+      'memberRoleMap',
+    ])
+    const role = memberRoleMap[this.userId]
+    return role === 'OWNER' || role === 'ADMIN'
   }
   /**
    * Check if user can access an entity (ticket, thread, contact, etc.)

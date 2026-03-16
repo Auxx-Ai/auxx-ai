@@ -3,40 +3,46 @@
 import { type Database, database as defaultDb, schema } from '@auxx/database'
 import type { OrganizationMemberInfo } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
 
-/** Find membership for a user within an organization */
+/** Find membership for a user within an organization (uses org cache) */
 export async function findMemberByUser(
   organizationId: string,
   userId: string,
-  db: Database = defaultDb
+  db?: Database
 ): Promise<OrganizationMemberInfo | null> {
-  const [row] = await db
-    .select({
-      id: schema.OrganizationMember.id,
-      userId: schema.OrganizationMember.userId,
-      organizationId: schema.OrganizationMember.organizationId,
-      role: schema.OrganizationMember.role,
-      status: schema.OrganizationMember.status,
-    })
-    .from(schema.OrganizationMember)
-    .where(
-      and(
-        eq(schema.OrganizationMember.organizationId, organizationId),
-        eq(schema.OrganizationMember.userId, userId)
-      )
-    )
-    .limit(1)
-  return (row as OrganizationMemberInfo) ?? null
+  // If a specific db instance is passed (e.g. inside a transaction), query directly
+  if (db && db !== defaultDb) {
+    return findMemberByUserDirect(organizationId, userId, db)
+  }
+
+  const { members } = await getOrgCache().getOrRecompute(organizationId, ['members'])
+  const member = members.find((m) => m.userId === userId)
+  if (!member) return null
+  return {
+    id: member.id,
+    userId: member.userId,
+    organizationId: member.organizationId,
+    role: member.role,
+    status: member.status,
+  }
 }
 
-/** Check if a user is OWNER or ADMIN within an organization */
+/** Check if a user is OWNER or ADMIN within an organization (uses org cache) */
 export async function isAdminOrOwner(
   organizationId: string,
   userId: string,
-  db: Database = defaultDb
+  db?: Database
 ): Promise<boolean> {
-  const member = await findMemberByUser(organizationId, userId, db)
-  return member?.role === 'OWNER' || member?.role === 'ADMIN'
+  // If a specific db instance is passed (e.g. inside a transaction), query directly
+  if (db && db !== defaultDb) {
+    const member = await findMemberByUserDirect(organizationId, userId, db)
+    return member?.role === 'OWNER' || member?.role === 'ADMIN'
+  }
+
+  const { memberRoleMap } = await getOrgCache().getOrRecompute(organizationId, ['memberRoleMap'])
+  const role = memberRoleMap[userId]
+  return role === 'OWNER' || role === 'ADMIN'
 }
 
 /** List members with basic user info, optionally filtered by name/email */
@@ -81,4 +87,29 @@ export async function listMembersWithUser(
       (r.user?.name || '').toLowerCase().includes(needle) ||
       (r.user?.email || '').toLowerCase().includes(needle)
   ) as any
+}
+
+/** Direct DB query — used inside transactions where cache reads are unsafe */
+async function findMemberByUserDirect(
+  organizationId: string,
+  userId: string,
+  db: Database
+): Promise<OrganizationMemberInfo | null> {
+  const [row] = await db
+    .select({
+      id: schema.OrganizationMember.id,
+      userId: schema.OrganizationMember.userId,
+      organizationId: schema.OrganizationMember.organizationId,
+      role: schema.OrganizationMember.role,
+      status: schema.OrganizationMember.status,
+    })
+    .from(schema.OrganizationMember)
+    .where(
+      and(
+        eq(schema.OrganizationMember.organizationId, organizationId),
+        eq(schema.OrganizationMember.userId, userId)
+      )
+    )
+    .limit(1)
+  return (row as OrganizationMemberInfo) ?? null
 }

@@ -4,7 +4,7 @@ import { BillingPortalService, SubscriptionService, stripeClient } from '@auxx/b
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
-import { DehydrationService } from '@auxx/lib/dehydration'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -306,8 +306,7 @@ export const billingRouter = createTRPCRouter({
         returnUrl: '', // No longer needed
       })
 
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshOrganization(organizationId)
+      await onCacheEvent('plan.canceled', { orgId: organizationId })
 
       return { success: true }
     } catch (error: unknown) {
@@ -333,8 +332,7 @@ export const billingRouter = createTRPCRouter({
 
       await subscriptionService.restoreSubscription({ organizationId })
 
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshOrganization(organizationId)
+      await onCacheEvent('plan.changed', { orgId: organizationId })
 
       return { success: true }
     } catch (error: unknown) {
@@ -646,9 +644,7 @@ export const billingRouter = createTRPCRouter({
           ...input,
         })
 
-        // Invalidate dehydration cache so app-layout-wrapper gets fresh subscription data
-        const dehydrationService = new DehydrationService(ctx.db)
-        await dehydrationService.refreshOrganization(organizationId)
+        await onCacheEvent('plan.changed', { orgId: organizationId })
 
         return result
       } catch (error: unknown) {
@@ -721,8 +717,7 @@ export const billingRouter = createTRPCRouter({
         }
       }
 
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshOrganization(organizationId)
+      await onCacheEvent('plan.changed', { orgId: organizationId })
 
       return { success: true }
     } catch (error: unknown) {

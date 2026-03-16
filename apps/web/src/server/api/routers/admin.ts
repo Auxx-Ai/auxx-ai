@@ -4,7 +4,7 @@ import { AdminBillingService, PlanAdminService, PlanService } from '@auxx/billin
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
-import { DehydrationService } from '@auxx/lib/dehydration'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { FeatureKey, FeaturePermissionService, handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createUsageGuard, type UsageMetric, type UsageStatus } from '@auxx/lib/usage'
 import { and, eq, ilike, or, sql } from 'drizzle-orm'
@@ -268,14 +268,8 @@ export const adminRouter = createTRPCRouter({
         .set(updateData)
         .where(eq(schema.PlanSubscription.organizationId, input.organizationId))
 
-      // Invalidate cached feature permissions so new plan limits take effect immediately
-      const featureService = new FeaturePermissionService(ctx.db)
-      await featureService.invalidateCache(input.organizationId)
-
-      // Invalidate dehydrated state cache so org members see new features on next load
-      const { DehydrationCacheService } = await import('@auxx/lib/dehydration')
-      const dehydrationCache = new DehydrationCacheService()
-      await dehydrationCache.invalidateOrganization(input.organizationId)
+      // Invalidate cached feature permissions and dehydrated state
+      await onCacheEvent('plan.changed', { orgId: input.organizationId })
 
       return { success: true }
     }),
@@ -587,10 +581,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
-        const featureService = new FeaturePermissionService(ctx.db)
-        await featureService.invalidateCache(input.organizationId)
-        const dehydrationService = new DehydrationService(ctx.db)
-        await dehydrationService.refreshOrganization(input.organizationId)
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 
@@ -605,10 +596,7 @@ export const adminRouter = createTRPCRouter({
           ...input,
           adminUserId: ctx.session.user.id,
         })
-        const featureService = new FeaturePermissionService(ctx.db)
-        await featureService.invalidateCache(input.organizationId)
-        const dehydrationService = new DehydrationService(ctx.db)
-        await dehydrationService.refreshOrganization(input.organizationId)
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 

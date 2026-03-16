@@ -2,10 +2,9 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
-import { DehydrationCacheService } from '../dehydration/cache'
+import { onCacheEvent } from '../cache'
 import { createScopedLogger } from '../logger'
 import { NotificationService } from '../notifications/notification-service'
-import { FeaturePermissionService } from './feature-permission-service'
 import { type Overage, OverageDetectionService } from './overage-detection-service'
 
 const logger = createScopedLogger('overage-handler')
@@ -37,7 +36,7 @@ export async function handlePlanDowngrade(
     // Send notifications to all admins/owners in parallel with cache invalidation
     await Promise.all([
       sendOverageNotifications(db, organizationId, overages),
-      invalidateCaches(db, organizationId),
+      onCacheEvent('plan.changed', { orgId: organizationId }),
     ])
   } catch (error) {
     // Don't let overage detection failures break the plan change flow
@@ -102,15 +101,4 @@ async function sendOverageNotifications(
         })
     )
   )
-}
-
-/**
- * Invalidate both dehydration and feature permission caches.
- */
-async function invalidateCaches(db: Database, organizationId: string): Promise<void> {
-  const dehydrationCache = new DehydrationCacheService()
-  await dehydrationCache.invalidateOrganization(organizationId)
-
-  const featureService = new FeaturePermissionService(db)
-  await featureService.invalidateCache(organizationId)
 }

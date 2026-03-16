@@ -2,8 +2,8 @@
 
 import { CredentialService } from '@auxx/credentials'
 import { type Database, schema } from '@auxx/database'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { ChatWidgetService } from '@auxx/lib/chat'
-import { DehydrationService } from '@auxx/lib/dehydration'
 import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
 import { SyncMessages } from '@auxx/lib/messages'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
@@ -148,8 +148,7 @@ export const channelRouter = createTRPCRouter({
       const service = new IntegrationService(ctx.db, organizationId, userId)
       const result = await service.disconnect(input.integrationId)
 
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshOrganization(organizationId)
+      await onCacheEvent('integration.disconnected', { orgId: organizationId })
 
       return result
     }),
@@ -225,8 +224,7 @@ export const channelRouter = createTRPCRouter({
       const service = new IntegrationService(ctx.db, organizationId, userId)
       const result = await service.addOpenPhoneIntegration(input)
 
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshOrganization(organizationId)
+      await onCacheEvent('integration.connected', { orgId: organizationId })
 
       return result
     }),
@@ -265,8 +263,7 @@ export const channelRouter = createTRPCRouter({
       const service = new ChatWidgetService(ctx.db, organizationId)
       const result = await service.addChatWidgetIntegration(input)
 
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.refreshOrganization(organizationId)
+      await onCacheEvent('integration.connected', { orgId: organizationId })
 
       return result
     }),
