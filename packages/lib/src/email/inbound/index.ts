@@ -4,6 +4,7 @@ export { InboundAttachmentAccessService } from './attachment-access.service'
 export { InboundAttachmentIngestService } from './attachment-ingest.service'
 export { InboundBodyAccessService } from './body-access.service'
 export { InboundBodyIngestService } from './body-ingest.service'
+export { InboundChannelResolver } from './channel-resolver'
 export { PermanentProcessingError } from './errors'
 export { InboundEmailProcessor } from './inbound-email-processor'
 export type {
@@ -15,7 +16,6 @@ export type {
   StoredAttachmentMeta,
 } from './ingest-types'
 export { isRetriableIngestError } from './ingest-types'
-export { InboundIntegrationResolver } from './integration-resolver'
 export {
   buildInboundAttachmentKey,
   buildInboundHtmlBodyKey,

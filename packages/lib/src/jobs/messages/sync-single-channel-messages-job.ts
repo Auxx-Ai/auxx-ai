@@ -1,11 +1,11 @@
-// File: packages/lib/src/jobs/messages/sync-single-integration-messages-job.ts
+// packages/lib/src/jobs/messages/sync-single-channel-messages-job.ts
 
 import { type Database, database as db, schema } from '@auxx/database'
 import { SYNC_STATUS } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
-import { type IntegrationProviderType, MessageService } from '../../email/message-service'
+import { type ChannelProviderType, MessageService } from '../../email/message-service'
 import { publisher } from '../../events/publisher'
 import type { MessageSyncProcessingEvent } from '../../events/types'
 
@@ -14,7 +14,7 @@ const MAX_THROTTLE_BACKOFF_MS = 3_600_000
 /** Base backoff for sync throttle: 30 seconds */
 const BASE_THROTTLE_BACKOFF_MS = 30_000
 
-const logger = createScopedLogger('job:sync-single-integration-messages')
+const logger = createScopedLogger('job:sync-single-channel-messages')
 
 /**
  * Check if sync job has been cancelled
@@ -34,18 +34,16 @@ async function checkIfCancelled(
 }
 
 // Define the job data type
-export type SyncSingleIntegrationMessagesJobData = {
+export type SyncSingleChannelMessagesJobData = {
   syncJobId: string // Link back to the parent SyncJob run (used for logging/monitor)
   organizationId: string
   userId: string
   integrationId: string
-  integrationType: IntegrationProviderType
+  integrationType: ChannelProviderType
   since?: string
 }
 
-export const syncSingleIntegrationMessagesJob = async (
-  job: Job<SyncSingleIntegrationMessagesJobData>
-) => {
+export const syncSingleChannelMessagesJob = async (job: Job<SyncSingleChannelMessagesJobData>) => {
   const {
     syncJobId,
     organizationId,
@@ -56,7 +54,7 @@ export const syncSingleIntegrationMessagesJob = async (
   } = job.data // Use syncJobId
   const since = sinceString ? new Date(sinceString) : undefined
 
-  logger.info(`Starting syncSingleIntegrationMessagesJob`, {
+  logger.info(`Starting syncSingleChannelMessagesJob`, {
     jobName: job.name,
     bullmqJobId: job.id,
     syncJobId,
@@ -143,7 +141,7 @@ export const syncSingleIntegrationMessagesJob = async (
         and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
       )
 
-    logger.info(`Completed syncSingleIntegrationMessagesJob successfully`, {
+    logger.info(`Completed syncSingleChannelMessagesJob successfully`, {
       bullmqJobId: job.id,
       syncJobId,
       integrationId,
@@ -164,7 +162,7 @@ export const syncSingleIntegrationMessagesJob = async (
       return
     }
 
-    logger.error(`SyncSingleIntegrationMessagesJob failed for integration ${integrationId}`, {
+    logger.error(`SyncSingleChannelMessagesJob failed for channel ${integrationId}`, {
       bullmqJobId: job.id,
       syncJobId,
       integrationId,
@@ -227,7 +225,7 @@ export const syncSingleIntegrationMessagesJob = async (
         and(eq(schema.SyncJob.id, syncJobId), eq(schema.SyncJob.organizationId, organizationId))
       )
 
-    logger.info(`Applied sync throttle to integration ${integrationId}`, {
+    logger.info(`Applied sync throttle to channel ${integrationId}`, {
       throttleFailureCount: newCount,
       retryAfterMs: backoffMs,
     })

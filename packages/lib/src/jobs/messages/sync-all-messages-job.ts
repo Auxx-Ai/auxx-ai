@@ -4,7 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, eq, inArray } from 'drizzle-orm'
-import type { IntegrationProviderType } from '../../email/message-service'
+import type { ChannelProviderType } from '../../email/message-service'
 import { publisher } from '../../events/publisher'
 import type {
   MessageSyncCompleteEvent, // Need this for 0 integrations case
@@ -13,7 +13,7 @@ import type {
 } from '../../events/types'
 import { getQueue, Queues } from '../queues'
 import type { MonitorMessageSyncJobData } from './monitor-message-sync-job'
-import type { SyncSingleIntegrationMessagesJobData } from './sync-single-integration-messages-job'
+import type { SyncSingleChannelMessagesJobData } from './sync-single-channel-messages-job'
 
 const logger = createScopedLogger('job:message-sync-orchestrator')
 
@@ -152,12 +152,12 @@ export const startMessageSyncJob = async (job: Job<StartMessageSyncJobData>) => 
     // 3. Enqueue a single integration sync job for each syncable integration
     const integrationJobIds: string[] = []
     const jobPromises = syncableIntegrations.map(async (integration) => {
-      const jobData: SyncSingleIntegrationMessagesJobData = {
+      const jobData: SyncSingleChannelMessagesJobData = {
         syncJobId: syncJobId, // Pass the parent SyncJob ID
         organizationId,
         userId,
         integrationId: integration.id,
-        integrationType: integration.provider as IntegrationProviderType,
+        integrationType: integration.provider as ChannelProviderType,
         since: sinceString,
       }
 

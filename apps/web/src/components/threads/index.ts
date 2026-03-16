@@ -39,6 +39,7 @@ export {
 // Stores
 export {
   type ActorId,
+  type ChannelProvider,
   type ContextPagination,
   createAssignedThreadsSelector,
   // Selector utilities
@@ -52,7 +53,6 @@ export {
   getParticipantStoreState,
   getThreadSelectionState,
   getThreadStoreState,
-  type IntegrationProvider,
   type MessageMeta,
   type ParticipantIdentifierType,
   type ParticipantMeta,

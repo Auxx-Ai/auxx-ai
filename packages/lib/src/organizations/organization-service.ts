@@ -9,11 +9,12 @@ import { TRPCError } from '@trpc/server'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { DehydrationService } from '../dehydration'
 import type { ForwardingIntegrationMetadata } from '../email/inbound'
-import { type IntegrationProviderType, MessageService } from '../email/message-service'
+import { MessageService } from '../email/message-service'
 import { clearImportCache } from '../email/polling-import-cache'
 import { InboxService } from '../inboxes'
 import { enqueueStorageCleanupJob } from '../jobs/maintenance/storage-cleanup-job'
 import { MemberService } from '../members/member-service'
+import type { ChannelProviderType } from '../providers/types'
 import { OrganizationSeeder } from '../seed/organization-seeder'
 import { SystemUserService } from '../users/system-user-service'
 
@@ -347,7 +348,7 @@ export class OrganizationService {
             // Use static method for unregistering
             await MessageService.unregisterWebhooks(
               organizationId,
-              integration.provider as IntegrationProviderType, // Cast needed, ensure type exists
+              integration.provider as ChannelProviderType, // Cast needed, ensure type exists
               integration.id
             )
             logger.info(

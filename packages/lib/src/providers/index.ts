@@ -1,23 +1,21 @@
+// Channel cache - cached provider lookup for batch operations
+export { getOrgChannelProviderMap, invalidateOrgChannelProviderMap } from './channel-cache'
+export {
+  DEFAULT_IMPORT_BATCH_SIZE,
+  PROVIDER_IMPORT_BATCH_SIZE,
+} from './channel-provider.interface'
+export { ChannelService } from './channel-service'
+export type { ChannelTokens } from './channel-token-accessor'
+export { ChannelTokenAccessor } from './channel-token-accessor'
 export { EmailForwardingProvider } from './email'
-
 export type { FacebookIntegrationMetadata } from './facebook/facebook-oauth'
 export { FacebookOAuthService } from './facebook/facebook-oauth'
-
 export { GoogleOAuthService } from './google/google-oauth'
 export type { ImapCredentialData, LdapUserInfo } from './imap'
 // IMAP/SMTP/LDAP provider
 export { ImapClientProvider, ImapProvider, ImapSmtpSendService, LdapAuthService } from './imap'
 export type { InstagramIntegrationMetadata } from './instagram/instagram-oauth'
 export { InstagramOAuthService } from './instagram/instagram-oauth'
-// Integration cache - cached provider lookup for batch operations
-export { getOrgProviderMap, invalidateOrgProviderMap } from './integration-cache'
-export {
-  DEFAULT_IMPORT_BATCH_SIZE,
-  PROVIDER_IMPORT_BATCH_SIZE,
-} from './integration-provider.interface'
-export { IntegrationService } from './integration-service'
-export type { IntegrationTokens } from './integration-token-accessor'
-export { IntegrationTokenAccessor } from './integration-token-accessor'
 export type { OutlookErrorCode } from './outlook/outlook-errors'
 export { OutlookProviderError, parseGraphApiError, parseMsalError } from './outlook/outlook-errors'
 export { OutlookOAuthService } from './outlook/outlook-oauth'

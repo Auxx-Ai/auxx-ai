@@ -3,7 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { gmail_v1 } from 'googleapis'
 import type { UniversalThrottler } from '../../../utils/rate-limiter'
-import { MessageStatus } from '../../integration-provider.interface'
+import { MessageStatus } from '../../channel-provider.interface'
 import { handleGmailError } from '../shared/error-handler'
 import { modifyWithThrottling } from '../shared/utils'
 

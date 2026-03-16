@@ -29,7 +29,7 @@ import {
 } from '../mail-query/draft-condition-builder'
 import { MailViewService } from '../mail-views/mail-view-service'
 import type {
-  IntegrationProvider,
+  ChannelProvider,
   ListThreadIdsInput,
   PaginatedIdsResult,
   ThreadMeta,
@@ -818,7 +818,7 @@ export class ThreadQueryService {
           messageCount: t.messageCount,
           participantCount: t.participantCount,
           integrationId: t.integrationId,
-          integrationProvider: (t.integration?.provider as IntegrationProvider) ?? null,
+          integrationProvider: (t.integration?.provider as ChannelProvider) ?? null,
           assigneeId: t.assigneeId ? toActorId('user', t.assigneeId) : null,
           latestMessageId: t.latestMessageId ?? null,
           latestCommentId: t.latestCommentId ?? null,

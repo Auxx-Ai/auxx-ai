@@ -3,7 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { createTransport, type Transporter } from 'nodemailer'
 import { BadRequestError } from '../../errors'
-import type { SendMessageOptions } from '../integration-provider.interface'
+import type { SendMessageOptions } from '../channel-provider.interface'
 import {
   SMTP_CONNECTION_TIMEOUT_MS,
   SMTP_GREETING_TIMEOUT_MS,

@@ -1,8 +1,8 @@
 export { MessageService } from './message-service'
 
-import { IntegrationProviderType } from '../providers/types'
+import { ChannelProviderType } from '../providers/types'
 
-export { IntegrationProviderType }
+export { ChannelProviderType }
 
 export type { MessageData, ParticipantInputData } from './email-storage'
 // Email storage: services, enums, and types

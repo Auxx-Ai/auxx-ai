@@ -54,10 +54,10 @@ export interface ProviderCapabilities {
 }
 
 /**
- * Integration Provider Types Enum
+ * Channel Provider Types Enum
  * These correspond to the provider strings stored in the database
  */
-export enum IntegrationProviderType {
+export enum ChannelProviderType {
   google = 'google',
   outlook = 'outlook',
   facebook = 'facebook',
@@ -90,19 +90,19 @@ export enum MessageType {
  * Provider to Message Type Mapping
  * Defines what message types each provider can handle
  */
-export const PROVIDER_MESSAGE_TYPE_MAP: Record<IntegrationProviderType, MessageType[]> = {
-  [IntegrationProviderType.google]: [MessageType.EMAIL],
-  [IntegrationProviderType.outlook]: [MessageType.EMAIL],
-  [IntegrationProviderType.mailgun]: [MessageType.EMAIL],
-  [IntegrationProviderType.facebook]: [MessageType.FACEBOOK],
-  [IntegrationProviderType.instagram]: [MessageType.INSTAGRAM],
-  [IntegrationProviderType.openphone]: [MessageType.SMS, MessageType.CALL],
-  [IntegrationProviderType.whatsapp]: [MessageType.WHATSAPP],
-  [IntegrationProviderType.sms]: [MessageType.SMS],
-  [IntegrationProviderType.chat]: [MessageType.CHAT],
-  [IntegrationProviderType.email]: [MessageType.EMAIL],
-  [IntegrationProviderType.shopify]: [], // Shopify is a data provider, not messaging
-  [IntegrationProviderType.imap]: [MessageType.EMAIL],
+export const PROVIDER_MESSAGE_TYPE_MAP: Record<ChannelProviderType, MessageType[]> = {
+  [ChannelProviderType.google]: [MessageType.EMAIL],
+  [ChannelProviderType.outlook]: [MessageType.EMAIL],
+  [ChannelProviderType.mailgun]: [MessageType.EMAIL],
+  [ChannelProviderType.facebook]: [MessageType.FACEBOOK],
+  [ChannelProviderType.instagram]: [MessageType.INSTAGRAM],
+  [ChannelProviderType.openphone]: [MessageType.SMS, MessageType.CALL],
+  [ChannelProviderType.whatsapp]: [MessageType.WHATSAPP],
+  [ChannelProviderType.sms]: [MessageType.SMS],
+  [ChannelProviderType.chat]: [MessageType.CHAT],
+  [ChannelProviderType.email]: [MessageType.EMAIL],
+  [ChannelProviderType.shopify]: [], // Shopify is a data provider, not messaging
+  [ChannelProviderType.imap]: [MessageType.EMAIL],
 }
 
 /**
@@ -110,24 +110,24 @@ export const PROVIDER_MESSAGE_TYPE_MAP: Record<IntegrationProviderType, MessageT
  * Providers that can actually send/receive messages
  */
 export const MESSAGING_PROVIDERS = [
-  IntegrationProviderType.google,
-  IntegrationProviderType.outlook,
-  IntegrationProviderType.mailgun,
-  IntegrationProviderType.facebook,
-  IntegrationProviderType.instagram,
-  IntegrationProviderType.openphone,
-  IntegrationProviderType.whatsapp,
-  IntegrationProviderType.sms,
-  IntegrationProviderType.chat,
-  IntegrationProviderType.email,
-  IntegrationProviderType.imap,
+  ChannelProviderType.google,
+  ChannelProviderType.outlook,
+  ChannelProviderType.mailgun,
+  ChannelProviderType.facebook,
+  ChannelProviderType.instagram,
+  ChannelProviderType.openphone,
+  ChannelProviderType.whatsapp,
+  ChannelProviderType.sms,
+  ChannelProviderType.chat,
+  ChannelProviderType.email,
+  ChannelProviderType.imap,
 ] as const
 
 /**
  * Data Providers
  * Providers that provide data but don't handle messaging
  */
-export const DATA_PROVIDERS = [IntegrationProviderType.shopify] as const
+export const DATA_PROVIDERS = [ChannelProviderType.shopify] as const
 
 /**
  * All Provider Types
@@ -138,45 +138,45 @@ export const ALL_PROVIDERS = [...MESSAGING_PROVIDERS, ...DATA_PROVIDERS] as cons
 /**
  * Type guard to check if a string is a valid provider type
  */
-export function isValidProviderType(provider: string): provider is IntegrationProviderType {
-  return Object.values(IntegrationProviderType).includes(provider as IntegrationProviderType)
+export function isValidProviderType(provider: string): provider is ChannelProviderType {
+  return Object.values(ChannelProviderType).includes(provider as ChannelProviderType)
 }
 
 /**
  * Type guard to check if a provider is a messaging provider
  */
-export function isMessagingProvider(provider: IntegrationProviderType): boolean {
+export function isMessagingProvider(provider: ChannelProviderType): boolean {
   return MESSAGING_PROVIDERS.includes(provider as any)
 }
 
 /**
  * Type guard to check if a provider is a data provider
  */
-export function isDataProvider(provider: IntegrationProviderType): boolean {
+export function isDataProvider(provider: ChannelProviderType): boolean {
   return DATA_PROVIDERS.includes(provider as any)
 }
 
 /**
  * Get message types supported by a provider
  */
-export function getProviderMessageTypes(provider: IntegrationProviderType): MessageType[] {
+export function getProviderMessageTypes(provider: ChannelProviderType): MessageType[] {
   return PROVIDER_MESSAGE_TYPE_MAP[provider] || []
 }
 
 /**
  * Get providers that support a specific message type
  */
-export function getProvidersForMessageType(messageType: MessageType): IntegrationProviderType[] {
+export function getProvidersForMessageType(messageType: MessageType): ChannelProviderType[] {
   return Object.entries(PROVIDER_MESSAGE_TYPE_MAP)
     .filter(([_, types]) => types.includes(messageType))
-    .map(([provider]) => provider as IntegrationProviderType)
+    .map(([provider]) => provider as ChannelProviderType)
 }
 
 /**
  * Legacy type alias for backward compatibility
- * @deprecated Use IntegrationProviderType enum instead
+ * @deprecated Use ChannelProviderType enum instead
  */
-export type IntegrationProviderTypeString =
+export type ChannelProviderTypeString =
   | 'google'
   | 'outlook'
   | 'facebook'

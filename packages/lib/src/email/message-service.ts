@@ -3,31 +3,28 @@
 import { createScopedLogger } from '@auxx/logger'
 import { MessageSenderService } from '../messages/message-sender.service'
 import { MessageSyncService } from '../messages/message-sync-service'
-import type {
-  IntegrationProvider,
-  SendMessageOptions,
-} from '../providers/integration-provider.interface'
+import type { ChannelProvider, SendMessageOptions } from '../providers/channel-provider.interface'
 import { ProviderRegistryService } from '../providers/provider-registry-service'
 import { WebhookManagerService } from '../providers/webhook-manager-service'
 
 const logger = createScopedLogger('message-service')
 
 // Import centralized provider types
-import { IntegrationProviderType, MessageType } from '../providers/types'
+import { ChannelProviderType, MessageType } from '../providers/types'
 
 // Re-export for backward compatibility
-export { IntegrationProviderType, MessageType }
+export { ChannelProviderType, MessageType }
 
 export interface ActiveIntegration {
-  type: IntegrationProviderType
+  type: ChannelProviderType
   id: string
   details: { identifier?: string; provider: string }
   metadata?: { email?: string; phoneNumber?: string; pageId?: string } | null
 }
 
 export interface ProviderInstance {
-  provider: IntegrationProvider
-  type: IntegrationProviderType
+  provider: ChannelProvider
+  type: ChannelProviderType
   integrationId: string
   details: { identifier?: string; provider: string }
   metadata?: { email?: string; phoneNumber?: string; pageId?: string } | null
@@ -71,7 +68,7 @@ export class MessageService {
 
   static async registerWebhooks(
     organizationId: string,
-    integrationType: IntegrationProviderType,
+    integrationType: ChannelProviderType,
     integrationId?: string
   ): Promise<void> {
     const webhookManager = new WebhookManagerService(
@@ -83,7 +80,7 @@ export class MessageService {
 
   static async unregisterWebhooks(
     organizationId: string,
-    integrationType: IntegrationProviderType,
+    integrationType: ChannelProviderType,
     integrationId?: string
   ): Promise<void> {
     const webhookManager = new WebhookManagerService(
@@ -99,16 +96,13 @@ export class MessageService {
     return this.providerRegistry.initializeAll()
   }
 
-  async getProvider(
-    type: IntegrationProviderType,
-    integrationId: string
-  ): Promise<IntegrationProvider> {
+  async getProvider(type: ChannelProviderType, integrationId: string): Promise<ChannelProvider> {
     return this.providerRegistry.getProvider(integrationId)
   }
 
   async sendMessage(
     options: SendMessageOptions & {
-      providerType?: IntegrationProviderType
+      providerType?: ChannelProviderType
       integrationId?: string
     }
   ): Promise<{ id?: string; success: boolean; threadId?: string }> {
@@ -134,19 +128,19 @@ export class MessageService {
   }
 
   async setupWebhook(
-    type: IntegrationProviderType,
+    type: ChannelProviderType,
     integrationId: string,
     callbackUrl: string
   ): Promise<void> {
     return this.webhookManager.setupWebhook(type, integrationId, callbackUrl)
   }
 
-  async removeWebhook(type: IntegrationProviderType, integrationId: string): Promise<void> {
+  async removeWebhook(type: ChannelProviderType, integrationId: string): Promise<void> {
     return this.webhookManager.removeWebhook(type, integrationId)
   }
 
   async syncMessages(
-    type: IntegrationProviderType,
+    type: ChannelProviderType,
     integrationId: string,
     since?: Date
   ): Promise<void> {

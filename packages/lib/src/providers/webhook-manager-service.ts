@@ -3,9 +3,9 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
-import type { IntegrationProviderType } from '../email/message-service'
 import type { ProviderRegistryService } from './provider-registry-service'
 import { resolveEffectiveSyncMode } from './sync-mode-resolver'
+import type { ChannelProviderType } from './types'
 
 const logger = createScopedLogger('webhook-manager-service')
 
@@ -34,10 +34,7 @@ export class WebhookManagerService {
    * Register webhooks for a specific integration type or ID
    * Extracted from MessageService.registerWebhooks
    */
-  async setupWebhooks(
-    integrationType: IntegrationProviderType,
-    integrationId?: string
-  ): Promise<void> {
+  async setupWebhooks(integrationType: ChannelProviderType, integrationId?: string): Promise<void> {
     try {
       // Build callback URL based on environment and provider type
       const baseUrl = WEBAPP_URL
@@ -116,7 +113,7 @@ export class WebhookManagerService {
    * Extracted from MessageService.unregisterWebhooks
    */
   async removeWebhooks(
-    integrationType: IntegrationProviderType,
+    integrationType: ChannelProviderType,
     integrationId?: string
   ): Promise<void> {
     try {
@@ -190,7 +187,7 @@ export class WebhookManagerService {
    * Extracted from MessageService.setupWebhook
    */
   async setupWebhook(
-    type: IntegrationProviderType,
+    type: ChannelProviderType,
     integrationId: string,
     callbackUrl: string
   ): Promise<void> {
@@ -243,7 +240,7 @@ export class WebhookManagerService {
    * Remove webhook for a specific provider instance
    * Extracted from MessageService.removeWebhook
    */
-  async removeWebhook(type: IntegrationProviderType, integrationId: string): Promise<void> {
+  async removeWebhook(type: ChannelProviderType, integrationId: string): Promise<void> {
     try {
       const provider = await this.providerRegistry.getProvider(integrationId)
 
@@ -270,7 +267,7 @@ export class WebhookManagerService {
   /**
    * Build callback URL for a specific provider type
    */
-  private buildCallbackUrl(providerType: IntegrationProviderType): string {
+  private buildCallbackUrl(providerType: ChannelProviderType): string {
     const baseUrl = WEBAPP_URL
     return `${baseUrl}/api/${providerType}/webhook`
   }
@@ -290,7 +287,7 @@ export class WebhookManagerService {
   /**
    * Setup webhooks for all provider types with a single call
    */
-  async setupAllWebhooks(integrationTypes?: IntegrationProviderType[]): Promise<void> {
+  async setupAllWebhooks(integrationTypes?: ChannelProviderType[]): Promise<void> {
     const types = integrationTypes || ['google', 'outlook', 'facebook', 'instagram', 'openphone']
 
     logger.info('Setting up webhooks for all provider types', {
@@ -322,7 +319,7 @@ export class WebhookManagerService {
   /**
    * Remove webhooks for all provider types
    */
-  async removeAllWebhooks(integrationTypes?: IntegrationProviderType[]): Promise<void> {
+  async removeAllWebhooks(integrationTypes?: ChannelProviderType[]): Promise<void> {
     const types = integrationTypes || ['google', 'outlook', 'facebook', 'instagram', 'openphone']
 
     logger.info('Removing webhooks for all provider types', {

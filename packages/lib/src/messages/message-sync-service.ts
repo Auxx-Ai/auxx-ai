@@ -2,9 +2,9 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull, lt, or } from 'drizzle-orm'
-import type { IntegrationProviderType } from '../email/message-service'
 import { AuthErrorHandler } from '../providers/auth-error-handler'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
+import type { ChannelProviderType } from '../providers/types'
 
 const logger = createScopedLogger('message-sync-service')
 
@@ -34,7 +34,7 @@ export class MessageSyncService {
    * Extracted from MessageService.syncMessages
    */
   async syncMessages(
-    type: IntegrationProviderType,
+    type: ChannelProviderType,
     integrationId: string,
     since?: Date
   ): Promise<void> {
@@ -134,7 +134,7 @@ export class MessageSyncService {
   /**
    * Sync messages for specific provider types only
    */
-  async syncMessagesByType(providerTypes: IntegrationProviderType[], since?: Date): Promise<void> {
+  async syncMessagesByType(providerTypes: ChannelProviderType[], since?: Date): Promise<void> {
     logger.info('Starting selective sync by provider types', {
       providerTypes,
       since: since?.toISOString(),
@@ -280,7 +280,7 @@ export class MessageSyncService {
     })
 
     const syncPromises = staleIntegrations.map((integration) =>
-      this.syncMessages(integration.provider as IntegrationProviderType, integration.id).catch(
+      this.syncMessages(integration.provider as ChannelProviderType, integration.id).catch(
         (error) => {
           logger.error('Failed to sync stale integration', {
             error,
@@ -306,7 +306,7 @@ export class MessageSyncService {
    */
   private async processSyncResults(
     results: PromiseSettledResult<any>[],
-    providerInstances: Array<{ type: IntegrationProviderType; integrationId: string }>
+    providerInstances: Array<{ type: ChannelProviderType; integrationId: string }>
   ): Promise<void> {
     const successCount = results.filter((r) => r.status === 'fulfilled').length
     const failureCount = results.filter((r) => r.status === 'rejected').length

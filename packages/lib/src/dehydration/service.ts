@@ -118,20 +118,20 @@ export class DehydrationService {
     orgId: string
   ): Promise<DehydratedOrganization> {
     const [orgData, userData] = await Promise.all([
-      // Org-scoped: features, subscription, profile, overages, integrationProviders
+      // Org-scoped: features, subscription, profile, overages, channelProviders
       this.orgCache.getOrRecompute(orgId, [
         'features',
         'subscription',
         'orgProfile',
         'overages',
-        'integrationProviders',
+        'channelProviders',
       ]),
       // User+org-scoped: settings
       this.userCache.getOrRecompute(userId, ['userSettings'], orgId),
     ])
 
-    const { features, subscription, orgProfile, overages, integrationProviders } = orgData
-    const hasIntegrations = Object.keys(integrationProviders).length > 0
+    const { features, subscription, orgProfile, overages, channelProviders } = orgData
+    const hasIntegrations = Object.keys(channelProviders).length > 0
 
     return {
       id: orgProfile.id,

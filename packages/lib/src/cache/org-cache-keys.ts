@@ -141,7 +141,7 @@ export interface OrgCacheDataMap {
   entityDefs: Record<string, string> // entityType → entityDefId
   entityDefSlugs: Record<string, string> // apiSlug → entityDefId
   systemUser: string // system user ID
-  integrationProviders: Record<string, string> // integrationId → provider
+  channelProviders: Record<string, string> // channelId → provider
 
   // Membership & permissions
   members: OrgMemberInfo[]
@@ -175,7 +175,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   entityDefs: { prefix: 'org:entity-defs', ttlSeconds: THIRTY_DAYS },
   entityDefSlugs: { prefix: 'org:entity-def-slugs', ttlSeconds: THIRTY_DAYS },
   systemUser: { prefix: 'org:system-user', ttlSeconds: THIRTY_DAYS },
-  integrationProviders: { prefix: 'org:int-providers', ttlSeconds: THIRTY_DAYS },
+  channelProviders: { prefix: 'org:int-providers', ttlSeconds: THIRTY_DAYS },
 
   // Membership & permissions (24h TTL, invalidated on member events)
   members: { prefix: 'org:members', ttlSeconds: ONE_DAY },

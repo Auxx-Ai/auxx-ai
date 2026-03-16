@@ -1,4 +1,4 @@
-// packages/lib/src/jobs/maintenance/integration-token-refresh-scanner-job.ts
+// packages/lib/src/jobs/maintenance/channel-token-refresh-scanner-job.ts
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -7,10 +7,10 @@ import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { resolveEffectiveSyncMode } from '../../providers/sync-mode-resolver'
 import { getQueue, Queues } from '../queues'
 
-const logger = createScopedLogger('integration-token-refresh-scanner')
+const logger = createScopedLogger('channel-token-refresh-scanner')
 
 /** Scanner job payload */
-export interface IntegrationTokenRefreshScannerJobData {
+export interface ChannelTokenRefreshScannerJobData {
   dryRun?: boolean
 }
 
@@ -26,7 +26,7 @@ interface ScannerStats {
 }
 
 /** Integration metadata structure for type safety */
-interface IntegrationMetadata {
+interface ChannelMetadata {
   watchExpiration?: number | string
   subscriptionExpiration?: number | string
   [key: string]: unknown
@@ -48,21 +48,21 @@ const OAUTH_PROVIDERS = ['google', 'outlook'] as const
 const UNRECOVERABLE_AUTH_STATUSES = ['INVALID_GRANT', 'REVOKED_ACCESS', 'INSUFFICIENT_SCOPE']
 
 /**
- * Integration Token Refresh Scanner Job:
+ * Channel Token Refresh Scanner Job:
  *
- * Scans enabled email integrations and enqueues refresh jobs for:
+ * Scans enabled email channels and enqueues refresh jobs for:
  * 1. Access tokens nearing expiration
  * 2. Gmail watches nearing expiration
  * 3. Outlook subscriptions nearing expiration
  *
  * Runs every 15 minutes via cron.
  */
-export const integrationTokenRefreshScannerJob = async (
-  job: Job<IntegrationTokenRefreshScannerJobData>
+export const channelTokenRefreshScannerJob = async (
+  job: Job<ChannelTokenRefreshScannerJobData>
 ) => {
   const { dryRun = false } = job.data
 
-  logger.info('Starting integration token refresh scanner', {
+  logger.info('Starting channel token refresh scanner', {
     dryRun,
     jobId: job.id,
   })
@@ -114,7 +114,7 @@ export const integrationTokenRefreshScannerJob = async (
         )
       )
 
-    logger.info('Found integrations needing token refresh', {
+    logger.info('Found channels needing token refresh', {
       count: integrations.length,
     })
 
@@ -156,7 +156,7 @@ export const integrationTokenRefreshScannerJob = async (
     for (const integration of integrationsForWebhookCheck) {
       if (!allIntegrationIds.has(integration.id)) {
         // Check if webhook renewal is needed
-        const metadata = integration.metadata as IntegrationMetadata | null
+        const metadata = integration.metadata as ChannelMetadata | null
         const needsWebhookRenewal = checkWebhookRenewalNeeded(
           integration.provider as 'google' | 'outlook',
           metadata,
@@ -181,17 +181,17 @@ export const integrationTokenRefreshScannerJob = async (
           continue
         }
 
-        // Skip integrations with unrecoverable auth errors (user needs to re-authenticate)
+        // Skip channels with unrecoverable auth errors (user needs to re-authenticate)
         if (UNRECOVERABLE_AUTH_STATUSES.includes(integration.authStatus ?? '')) {
           stats.skippedAuthError++
-          logger.debug('Skipping integration with auth error', {
+          logger.debug('Skipping channel with auth error', {
             integrationId: integration.id,
             authStatus: integration.authStatus,
           })
           continue
         }
 
-        const metadata = integration.metadata as IntegrationMetadata | null
+        const metadata = integration.metadata as ChannelMetadata | null
 
         // Check if token refresh is needed
         let shouldRefreshToken = false
@@ -203,7 +203,7 @@ export const integrationTokenRefreshScannerJob = async (
           shouldRefreshToken = true
         }
 
-        // Check if webhook renewal is needed (skip for polling-mode integrations)
+        // Check if webhook renewal is needed (skip for polling-mode channels)
         const effectiveMode = resolveEffectiveSyncMode({
           syncMode: integration.syncMode,
           provider: integration.provider,
@@ -267,7 +267,7 @@ export const integrationTokenRefreshScannerJob = async (
         }
       } catch (error) {
         stats.errors++
-        logger.error('Error processing integration', {
+        logger.error('Error processing channel', {
           integrationId: integration.id,
           error: error instanceof Error ? error.message : String(error),
         })
@@ -276,7 +276,7 @@ export const integrationTokenRefreshScannerJob = async (
 
     await job.updateProgress(100)
 
-    logger.info('Integration token refresh scanner completed', {
+    logger.info('Channel token refresh scanner completed', {
       stats,
       dryRun,
       jobId: job.id,
@@ -284,7 +284,7 @@ export const integrationTokenRefreshScannerJob = async (
 
     return { success: true, stats, dryRun }
   } catch (error) {
-    logger.error('Integration token refresh scanner failed', {
+    logger.error('Channel token refresh scanner failed', {
       error: error instanceof Error ? error.message : String(error),
       stats,
       jobId: job.id,
@@ -294,11 +294,11 @@ export const integrationTokenRefreshScannerJob = async (
 }
 
 /**
- * Check if webhook/watch renewal is needed for an integration
+ * Check if webhook/watch renewal is needed for a channel
  */
 function checkWebhookRenewalNeeded(
   provider: 'google' | 'outlook',
-  metadata: IntegrationMetadata | null,
+  metadata: ChannelMetadata | null,
   now: Date
 ): boolean {
   if (!metadata) return true // No metadata = needs setup

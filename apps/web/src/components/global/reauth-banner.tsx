@@ -38,7 +38,7 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
   const [confirm, ConfirmDialog] = useConfirm()
 
   // Mutation to trigger re-authentication
-  const reauthMutation = api.integrationReauth.initiateReauth.useMutation({
+  const reauthMutation = api.channelReauth.initiateReauth.useMutation({
     onSuccess: (data) => {
       if (data.authUrl) {
         // Redirect to OAuth provider

@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Client } from '@microsoft/microsoft-graph-client'
 import { eq } from 'drizzle-orm'
-import { IntegrationTokenAccessor } from '../../providers/integration-token-accessor'
+import { ChannelTokenAccessor } from '../../providers/channel-token-accessor'
 import {
   type OutlookIntegrationMetadata,
   OutlookOAuthService,
@@ -40,7 +40,7 @@ export class OutlookLabelProvider implements LabelProvider {
       }
 
       // Get tokens from encrypted credentials
-      const tokens = await IntegrationTokenAccessor.getTokens(this.integrationId)
+      const tokens = await ChannelTokenAccessor.getTokens(this.integrationId)
       if (!tokens.refreshToken) {
         throw new Error('Missing refresh token for Outlook integration')
       }

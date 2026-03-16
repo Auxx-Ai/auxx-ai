@@ -10,11 +10,11 @@ import {
   MessageStorageService,
 } from '../../email/email-storage' // Adjust path
 import type {
-  IntegrationProvider,
+  ChannelProvider,
   MessageStatus, // Note: Most statuses don't map directly to OpenPhone
   SendMessageOptions,
-} from '../integration-provider.interface' // Adjust path
-import { IntegrationTokenAccessor } from '../integration-token-accessor'
+} from '../channel-provider.interface' // Adjust path
+import { ChannelTokenAccessor } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import type {
@@ -31,7 +31,7 @@ const logger = createScopedLogger('openphone-provider')
 const OPENPHONE_API_BASE = 'https://api.openphone.co/v3' // Use v3
 export class OpenPhoneProvider
   extends BaseMessageProvider
-  implements IntegrationProvider, MessageProvider
+  implements ChannelProvider, MessageProvider
 {
   private metadata: OpenPhoneIntegrationMetadata | null = null
   private apiKey: string | null = null // The actual API key
@@ -76,7 +76,7 @@ export class OpenPhoneProvider
       )
     }
     // Get API key from encrypted credentials
-    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
     if (!tokens.accessToken) {
       this.resetState()
       throw new Error(`Missing API key for OpenPhone integration ID: ${integrationId}`)

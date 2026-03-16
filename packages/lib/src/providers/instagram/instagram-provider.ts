@@ -12,11 +12,11 @@ import {
   type ParticipantInputData, // Structure for participant info from provider
 } from '../../email/email-storage' // Adjust path
 import type {
-  IntegrationProvider,
+  ChannelProvider,
   MessageStatus,
   SendMessageOptions,
-} from '../integration-provider.interface' // Adjust path based on final structure
-import { IntegrationTokenAccessor } from '../integration-token-accessor'
+} from '../channel-provider.interface' // Adjust path based on final structure
+import { ChannelTokenAccessor } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import { type InstagramIntegrationMetadata, InstagramOAuthService } from './instagram-oauth'
@@ -54,7 +54,7 @@ interface InstagramGraphParticipant {
 // --- End Interfaces ---
 export class InstagramProvider
   extends BaseMessageProvider
-  implements IntegrationProvider, MessageProvider
+  implements ChannelProvider, MessageProvider
 {
   private inboxId: string | undefined = undefined // Store inbox ID
   private metadata: InstagramIntegrationMetadata | null = null
@@ -119,7 +119,7 @@ export class InstagramProvider
       )
     }
     // Get tokens from encrypted credentials
-    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
     // Safely extract and validate metadata and token
     try {
       this.metadata = integration.metadata as unknown as InstagramIntegrationMetadata

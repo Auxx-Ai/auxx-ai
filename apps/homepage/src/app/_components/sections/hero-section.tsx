@@ -65,7 +65,9 @@ export default function HeroSection() {
                 Terms of Service
               </Link>{' '}
               and{' '}
-              <Link href='/privacy-policy' className='underline hover:text-foreground'>
+              <Link
+                href='https://auxx.ai/privacy-policy'
+                className='underline hover:text-foreground'>
                 Privacy Policy
               </Link>
               .

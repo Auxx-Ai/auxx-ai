@@ -1,4 +1,4 @@
-// ~/server/api/routers/integration-reauth.ts
+// ~/server/api/routers/channel-reauth.ts
 
 import { schema } from '@auxx/database'
 import {
@@ -16,10 +16,10 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 /**
- * Integration re-authentication router
+ * Channel re-authentication router
  * Handles OAuth re-authentication flows and banner management
  */
-export const integrationReauthRouter = createTRPCRouter({
+export const channelReauthRouter = createTRPCRouter({
   /**
    * Initiate re-authentication for an integration
    * Uses existing OAuth services for consistent URL generation

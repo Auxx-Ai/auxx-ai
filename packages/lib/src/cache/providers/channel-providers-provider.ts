@@ -1,13 +1,13 @@
-// packages/lib/src/cache/providers/integration-providers-provider.ts
+// packages/lib/src/cache/providers/channel-providers-provider.ts
 
 import { schema } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { CacheProvider } from '../org-cache-provider'
 
-/** Computes integrationId → provider type map for an organization */
-export const integrationProvidersProvider: CacheProvider<Record<string, string>> = {
+/** Computes channelId → provider type map for an organization */
+export const channelProvidersProvider: CacheProvider<Record<string, string>> = {
   async compute(orgId, db) {
-    const integrations = await db
+    const channels = await db
       .select({
         id: schema.Integration.id,
         provider: schema.Integration.provider,
@@ -18,7 +18,7 @@ export const integrationProvidersProvider: CacheProvider<Record<string, string>>
       )
 
     const map: Record<string, string> = {}
-    for (const i of integrations) {
+    for (const i of channels) {
       map[i.id] = i.provider
     }
     return map

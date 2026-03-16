@@ -6,7 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { and, eq } from 'drizzle-orm'
 import { InboxService } from '../../inboxes/inbox-service'
-import { IntegrationTokenAccessor } from '../integration-token-accessor'
+import { ChannelTokenAccessor } from '../channel-token-accessor'
 
 const logger = createScopedLogger('instagram-oauth')
 const DEFAULT_API_VERSION = 'v19.0'
@@ -242,7 +242,7 @@ export class InstagramOAuthService {
           .returning()
         integration = updatedIntegration
 
-        await IntegrationTokenAccessor.setTokens(
+        await ChannelTokenAccessor.setTokens(
           existingIntegration.id,
           {
             refreshToken: longLivedUserToken || 'N/A',
@@ -264,7 +264,7 @@ export class InstagramOAuthService {
           .returning()
         integration = newIntegration
 
-        await IntegrationTokenAccessor.setTokens(
+        await ChannelTokenAccessor.setTokens(
           integration.id,
           {
             refreshToken: longLivedUserToken || 'N/A',
@@ -456,7 +456,7 @@ export class InstagramOAuthService {
       }
 
       const metadata = integration.metadata as unknown as InstagramIntegrationMetadata
-      const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+      const tokens = await ChannelTokenAccessor.getTokens(integrationId)
       const pageAccessToken = tokens.accessToken
       const userAccessToken = tokens.refreshToken
       const pageId = metadata.pageId
@@ -495,7 +495,7 @@ export class InstagramOAuthService {
         logger.warn('Missing FB User ID or UAT, cannot revoke app permissions.', { integrationId })
       }
 
-      await IntegrationTokenAccessor.deleteTokens(integrationId)
+      await ChannelTokenAccessor.deleteTokens(integrationId)
       await db
         .update(schema.Integration)
         .set({
@@ -518,7 +518,7 @@ export class InstagramOAuthService {
       `'refreshTokens' called for Instagram integration ${integrationId}. Checking token validity.`
     )
 
-    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
     if (!tokens.accessToken) {
       throw new Error('Integration or Page Access Token not found for validity check.')
     }
@@ -579,7 +579,7 @@ export class InstagramOAuthService {
       return null
     }
 
-    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
     return tokens.accessToken
   }
 

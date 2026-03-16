@@ -9,9 +9,9 @@ import { SyncMessages } from '@auxx/lib/messages'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import type { ImapCredentialData } from '@auxx/lib/providers'
 import {
+  ChannelService,
   ImapClientProvider,
   ImapSmtpSendService,
-  IntegrationService,
   LdapAuthService,
 } from '@auxx/lib/providers'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
@@ -101,7 +101,7 @@ export const channelRouter = createTRPCRouter({
 
       await checkChannelLimit(ctx.db, organizationId)
 
-      const service = new IntegrationService(ctx.db, organizationId, userId)
+      const service = new ChannelService(ctx.db, organizationId, userId)
       const result = await service.getAuthUrl(input.provider as any, input.redirectPath)
 
       // Set CSRF token as httpOnly cookie for callback verification
@@ -122,8 +122,8 @@ export const channelRouter = createTRPCRouter({
    */
   list: protectedProcedure.query(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
-    const service = new IntegrationService(ctx.db, organizationId)
-    return service.getAllIntegrations()
+    const service = new ChannelService(ctx.db, organizationId)
+    return service.getAllChannels()
   }),
 
   /**
@@ -131,7 +131,7 @@ export const channelRouter = createTRPCRouter({
    */
   getEmailClients: protectedProcedure.query(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
-    const service = new IntegrationService(ctx.db, organizationId)
+    const service = new ChannelService(ctx.db, organizationId)
     return service.getEmailClients()
   }),
 
@@ -145,10 +145,10 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new IntegrationService(ctx.db, organizationId, userId)
+      const service = new ChannelService(ctx.db, organizationId, userId)
       const result = await service.disconnect(input.integrationId)
 
-      await onCacheEvent('integration.disconnected', { orgId: organizationId })
+      await onCacheEvent('channel.disconnected', { orgId: organizationId })
 
       return result
     }),
@@ -163,7 +163,7 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new IntegrationService(ctx.db, organizationId, userId)
+      const service = new ChannelService(ctx.db, organizationId, userId)
       return service.toggle(input.integrationId, input.enabled)
     }),
 
@@ -182,7 +182,7 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new IntegrationService(ctx.db, organizationId, userId)
+      const service = new ChannelService(ctx.db, organizationId, userId)
       return service.syncMessages(input.integrationId, input.days)
     }),
 
@@ -201,7 +201,7 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new IntegrationService(ctx.db, organizationId, userId)
+      const service = new ChannelService(ctx.db, organizationId, userId)
       return service.syncAllMessages(input.days)
     }),
 
@@ -221,10 +221,10 @@ export const channelRouter = createTRPCRouter({
 
       await checkChannelLimit(ctx.db, organizationId)
 
-      const service = new IntegrationService(ctx.db, organizationId, userId)
-      const result = await service.addOpenPhoneIntegration(input)
+      const service = new ChannelService(ctx.db, organizationId, userId)
+      const result = await service.addOpenPhoneChannel(input)
 
-      await onCacheEvent('integration.connected', { orgId: organizationId })
+      await onCacheEvent('channel.connected', { orgId: organizationId })
 
       return result
     }),
@@ -263,7 +263,7 @@ export const channelRouter = createTRPCRouter({
       const service = new ChatWidgetService(ctx.db, organizationId)
       const result = await service.addChatWidgetIntegration(input)
 
-      await onCacheEvent('integration.connected', { orgId: organizationId })
+      await onCacheEvent('channel.connected', { orgId: organizationId })
 
       return result
     }),
@@ -329,7 +329,7 @@ export const channelRouter = createTRPCRouter({
     .input(z.object({ integrationId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
-      const service = new IntegrationService(ctx.db, organizationId)
+      const service = new ChannelService(ctx.db, organizationId)
       return service.getProviderType(input.integrationId)
     }),
 
@@ -355,7 +355,7 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new IntegrationService(ctx.db, organizationId, userId)
+      const service = new ChannelService(ctx.db, organizationId, userId)
       return service.updateSettings(input.integrationId, input.settings)
     }),
   /**
@@ -373,7 +373,7 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new IntegrationService(ctx.db, organizationId, userId)
+      const service = new ChannelService(ctx.db, organizationId, userId)
       return service.updateAllowedSenders(input.integrationId, input.allowedSenders)
     }),
 
@@ -382,7 +382,7 @@ export const channelRouter = createTRPCRouter({
    */
   getAllEmailStats: protectedProcedure.query(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
-    return IntegrationService.getAllStats(ctx.db, organizationId)
+    return ChannelService.getAllStats(ctx.db, organizationId)
   }),
 
   startSync: protectedProcedure

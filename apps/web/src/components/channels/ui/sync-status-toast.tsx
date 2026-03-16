@@ -162,7 +162,7 @@ function SyncChannelItem({ channel }: { channel: Channel }) {
 
 /** Individual channel auth-error item in the expanded view */
 function ReauthChannelItem({ channel }: { channel: Channel }) {
-  const reauthMutation = api.integrationReauth.initiateReauth.useMutation({
+  const reauthMutation = api.channelReauth.initiateReauth.useMutation({
     onSuccess: (data) => {
       if (data.authUrl) window.location.href = data.authUrl
     },

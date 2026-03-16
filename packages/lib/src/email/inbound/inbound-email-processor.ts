@@ -5,8 +5,8 @@ import type { MessageData, ParticipantInputData } from '../email-storage'
 import { MessageStorageService } from '../email-storage'
 import { InboundAttachmentIngestService } from './attachment-ingest.service'
 import { InboundBodyIngestService } from './body-ingest.service'
+import { InboundChannelResolver } from './channel-resolver'
 import { PermanentProcessingError } from './errors'
-import { InboundIntegrationResolver } from './integration-resolver'
 import { RawEmailParser } from './raw-email-parser'
 import { S3RawEmailStore } from './s3-raw-email'
 import { assertSenderAllowed } from './sender-allowlist-guard'
@@ -82,9 +82,9 @@ export class InboundEmailProcessor {
   private inboundSource: InboundEmailSource
 
   /**
-   * integrationResolver maps forwarded recipients to org integrations.
+   * channelResolver maps forwarded recipients to org channels.
    */
-  private integrationResolver = new InboundIntegrationResolver()
+  private channelResolver = new InboundChannelResolver()
 
   /**
    * bodyIngestService uploads HTML bodies to object storage.
@@ -118,7 +118,7 @@ export class InboundEmailProcessor {
       )
     }
 
-    const resolvedIntegration = await this.integrationResolver.resolve(message.recipients)
+    const resolvedIntegration = await this.channelResolver.resolve(message.recipients)
     assertSenderAllowed(parsedEmail.from.address, resolvedIntegration.allowedSenders)
 
     const organizationId = resolvedIntegration.organizationId

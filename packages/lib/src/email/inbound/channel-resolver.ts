@@ -1,4 +1,4 @@
-// packages/lib/src/email/inbound/integration-resolver.ts
+// packages/lib/src/email/inbound/channel-resolver.ts
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -6,7 +6,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { PermanentProcessingError } from './errors'
 import type { ForwardingIntegrationMetadata, ResolvedInboundIntegration } from './types'
 
-const logger = createScopedLogger('inbound-integration-resolver')
+const logger = createScopedLogger('inbound-channel-resolver')
 
 /**
  * normalizeRecipient normalizes inbound recipient email addresses for matching.
@@ -16,7 +16,7 @@ function normalizeRecipient(recipient: string): string {
 }
 
 /**
- * getAllowedSenders extracts the forwarding allowlist from integration metadata.
+ * getAllowedSenders extracts the forwarding allowlist from channel metadata.
  */
 function getAllowedSenders(metadata: ForwardingIntegrationMetadata | null | undefined): string[] {
   if (!metadata || !Array.isArray(metadata.allowedSenders)) return []
@@ -27,11 +27,11 @@ function getAllowedSenders(metadata: ForwardingIntegrationMetadata | null | unde
 }
 
 /**
- * InboundIntegrationResolver resolves a forwarded inbound recipient to an integration target.
+ * InboundChannelResolver resolves a forwarded inbound recipient to a channel target.
  */
-export class InboundIntegrationResolver {
+export class InboundChannelResolver {
   /**
-   * resolve finds the first active forwarding integration for the provided recipients.
+   * resolve finds the first active forwarding channel for the provided recipients.
    */
   async resolve(recipients: string[]): Promise<ResolvedInboundIntegration> {
     const normalizedRecipients = recipients.map(normalizeRecipient).filter(Boolean)
@@ -100,7 +100,7 @@ export class InboundIntegrationResolver {
     }
 
     throw new PermanentProcessingError(
-      `No active forwarding integration found for recipients: ${normalizedRecipients.join(', ')}`,
+      `No active forwarding channel found for recipients: ${normalizedRecipients.join(', ')}`,
       'integration_not_found'
     )
   }

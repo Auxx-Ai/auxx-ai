@@ -8,11 +8,11 @@ import { and, eq } from 'drizzle-orm'
 import { MessageStorageService } from '../../email/email-storage'
 import { NotFoundError } from '../../errors'
 import type {
-  IntegrationProvider,
+  ChannelProvider,
   MessageListResult,
   MessageStatus,
   SendMessageOptions,
-} from '../integration-provider.interface'
+} from '../channel-provider.interface'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import { ImapClientProvider } from './imap-client-provider'
@@ -25,10 +25,7 @@ import type { ImapCredentialData } from './types'
 
 const logger = createScopedLogger('imap-provider')
 
-export class ImapProvider
-  extends BaseMessageProvider
-  implements IntegrationProvider, MessageProvider
-{
+export class ImapProvider extends BaseMessageProvider implements ChannelProvider, MessageProvider {
   private integration:
     | (typeof schema.Integration.$inferSelect & { inboxIntegration?: any })
     | null = null
@@ -92,7 +89,7 @@ export class ImapProvider
 
     this.integration = integration
 
-    // Decrypt full credential data (NOT IntegrationTokenAccessor — that only returns OAuth tokens)
+    // Decrypt full credential data (NOT ChannelTokenAccessor — that only returns OAuth tokens)
     if (!integration.credentialId) {
       throw new Error(`IMAP integration ${integrationId} has no linked credentials`)
     }

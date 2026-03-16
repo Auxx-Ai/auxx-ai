@@ -7,7 +7,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
 import { type Common, google } from 'googleapis'
 import { InboxService } from '../../inboxes/inbox-service'
-import { IntegrationTokenAccessor, type IntegrationTokens } from '../integration-token-accessor'
+import { ChannelTokenAccessor, type ChannelTokens } from '../channel-token-accessor'
 
 type GaxiosError = Common.GaxiosError
 
@@ -53,7 +53,7 @@ export class GoogleOAuthService {
   /**
    * Creates an authenticated OAuth2 client using decrypted tokens.
    */
-  public getAuthenticatedClient(tokens: IntegrationTokens): any {
+  public getAuthenticatedClient(tokens: ChannelTokens): any {
     const oauth2Client = this.getOAuthClient()
     oauth2Client.setCredentials({
       refresh_token: tokens.refreshToken || undefined,
@@ -67,7 +67,7 @@ export class GoogleOAuthService {
    * Finds an integration by ID and returns an authenticated OAuth client.
    */
   public async getClientFromIntegrationId(integrationId: string): Promise<any> {
-    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
     if (!tokens.refreshToken) {
       throw new Error('Integration not found or missing refresh token')
     }
@@ -95,7 +95,7 @@ export class GoogleOAuthService {
       throw new Error('No active Google integration found for this organization')
     }
 
-    const tokens = await IntegrationTokenAccessor.getTokens(integration.id)
+    const tokens = await ChannelTokenAccessor.getTokens(integration.id)
     if (!tokens.refreshToken) {
       throw new Error('No active Google integration found for this organization')
     }
@@ -207,7 +207,7 @@ export class GoogleOAuthService {
       if (isReauth && integrationId) {
         logger.info('Processing re-authentication for existing integration', { integrationId })
 
-        await IntegrationTokenAccessor.setTokens(
+        await ChannelTokenAccessor.setTokens(
           integrationId,
           {
             refreshToken: tokens.refresh_token!,
@@ -277,7 +277,7 @@ export class GoogleOAuthService {
           .where(eq(schema.Integration.id, existingIntegration.id))
           .returning()
 
-        await IntegrationTokenAccessor.setTokens(
+        await ChannelTokenAccessor.setTokens(
           existingIntegration.id,
           {
             refreshToken: tokens.refresh_token!,
@@ -299,7 +299,7 @@ export class GoogleOAuthService {
           })
           .returning()
 
-        await IntegrationTokenAccessor.setTokens(
+        await ChannelTokenAccessor.setTokens(
           integration!.id,
           {
             refreshToken: tokens.refresh_token!,
@@ -369,7 +369,7 @@ export class GoogleOAuthService {
    */
   public async refreshTokens(integrationId: string): Promise<any> {
     try {
-      const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+      const tokens = await ChannelTokenAccessor.getTokens(integrationId)
       if (!tokens.refreshToken) {
         throw new Error('Integration not found or missing refresh token')
       }
@@ -379,7 +379,7 @@ export class GoogleOAuthService {
 
       const { credentials } = await oauth2Client.refreshAccessToken()
 
-      const tokenUpdate: Parameters<typeof IntegrationTokenAccessor.setTokens>[1] = {
+      const tokenUpdate: Parameters<typeof ChannelTokenAccessor.setTokens>[1] = {
         accessToken: credentials.access_token ?? null,
         expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
       }
@@ -389,7 +389,7 @@ export class GoogleOAuthService {
         tokenUpdate.refreshToken = credentials.refresh_token
       }
 
-      await IntegrationTokenAccessor.setTokens(integrationId, tokenUpdate)
+      await ChannelTokenAccessor.setTokens(integrationId, tokenUpdate)
 
       const [updatedIntegration] = await db
         .select()
@@ -430,7 +430,7 @@ export class GoogleOAuthService {
    */
   public async revokeAccess(integrationId: string): Promise<boolean> {
     try {
-      const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+      const tokens = await ChannelTokenAccessor.getTokens(integrationId)
 
       // Disable inbox watching first
       if (tokens.refreshToken) {
@@ -462,7 +462,7 @@ export class GoogleOAuthService {
       }
 
       // Delete encrypted credentials and disable integration
-      await IntegrationTokenAccessor.deleteTokens(integrationId)
+      await ChannelTokenAccessor.deleteTokens(integrationId)
       await db
         .update(schema.Integration)
         .set({ enabled: false, updatedAt: new Date() })
@@ -515,7 +515,7 @@ export class GoogleOAuthService {
    */
   private async disablePushNotifications(
     integrationId: string,
-    tokens?: IntegrationTokens
+    tokens?: ChannelTokens
   ): Promise<void> {
     try {
       let oauth2Client: any
