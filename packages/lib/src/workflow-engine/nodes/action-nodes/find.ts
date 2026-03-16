@@ -2,6 +2,7 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import type { SQL } from 'drizzle-orm'
+import { getCachedResource, getCachedResourceFields } from '../../../cache'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
 import {
   getFieldOperators,
@@ -12,7 +13,6 @@ import {
   RESOURCE_FIELD_REGISTRY,
 } from '../../../resources/registry'
 import type { TableId } from '../../../resources/registry/field-registry'
-import { ResourceRegistryService } from '../../../resources/registry/resource-registry-service'
 import { executeResourceQuery } from '../../../resources/resource-fetcher'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
@@ -53,17 +53,6 @@ type BuiltQuery = {
  */
 export class FindProcessor extends BaseNodeProcessor {
   readonly type = WorkflowNodeType.FIND
-  private resourceService: ResourceRegistryService | null = null
-
-  /**
-   * Get or create ResourceRegistryService instance
-   */
-  private getResourceService(organizationId: string, db: Database): ResourceRegistryService {
-    if (!this.resourceService) {
-      this.resourceService = new ResourceRegistryService(organizationId, db)
-    }
-    return this.resourceService
-  }
 
   /**
    * Validate condition values against registry (especially enums and operators)
@@ -434,15 +423,11 @@ export class FindProcessor extends BaseNodeProcessor {
       const organizationId = context.organizationId
       const db = database
 
-      // Resolve resource from registry (system or custom)
-      const resourceService = this.getResourceService(organizationId, db)
-      const resource = await resourceService.getById(resourceType)
+      // Resolve resource from org cache (system or custom)
+      const resource = await getCachedResource(organizationId, resourceType)
       if (!resource) {
         throw new Error(`Unknown resource type: ${resourceType}`)
       }
-
-      // Get fields for validation (used by entity condition builder)
-      await resourceService.getFieldsForResource(resourceType)
 
       // Validate conditions using dynamic fields
       const flatConditionErrors = this.validateConditionValues(resourceType, conditions)
@@ -477,10 +462,10 @@ export class FindProcessor extends BaseNodeProcessor {
         findMode,
         resourceType,
         organizationId,
-        isCustomResource: resourceService.isCustomResource(resourceType),
+        isCustomResource: isCustomResourceId(resourceType),
       })
 
-      if (resourceService.isCustomResource(resourceType)) {
+      if (isCustomResourceId(resourceType)) {
         // Handle custom entity query
         const queryResult = await this.executeCustomEntityQuery(
           resourceType,
@@ -703,23 +688,14 @@ export class FindProcessor extends BaseNodeProcessor {
     // resourceType is now EntityDefinitionId (UUID) directly
     const entityDefinitionId = resourceType
 
-    // Get entity definition
-    const entityDef = await db.query.EntityDefinition.findFirst({
-      where: (defs, { eq, and, isNull }) =>
-        and(
-          eq(defs.id, entityDefinitionId),
-          eq(defs.organizationId, organizationId),
-          isNull(defs.archivedAt)
-        ),
-    })
-
-    if (!entityDef) {
+    // Validate entity definition exists via org cache
+    const cachedResource = await getCachedResource(organizationId, entityDefinitionId)
+    if (!cachedResource) {
       throw new Error(`Entity definition not found: ${entityDefinitionId}`)
     }
 
-    // Get fields for this entity to build proper query context
-    const resourceService = this.getResourceService(organizationId, db)
-    const fields = await resourceService.getFieldsForResource(resourceType)
+    // Get fields for this entity from org cache
+    const fields = await getCachedResourceFields(organizationId, resourceType)
 
     // Import EntityConditionBuilder
     const { entityConditionBuilder } = await import('../../query-builder/entity-condition-builder')

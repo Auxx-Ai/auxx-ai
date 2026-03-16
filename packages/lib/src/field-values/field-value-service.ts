@@ -4,7 +4,7 @@ import { type Database, database } from '@auxx/database'
 import type { FieldWithDefinition } from '@auxx/services'
 import type { TypedFieldValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
-import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { getCachedResourceFields } from '../cache'
 import { createFieldValueContext, type FieldValueContext } from './field-value-helpers'
 import * as mutations from './field-value-mutations'
 import * as queries from './field-value-queries'
@@ -37,17 +37,12 @@ export class FieldValueService {
   /** Internal context shared across mutations and queries */
   private ctx: FieldValueContext
 
-  /** Resource registry for batch field type lookups */
-  private registryService: ResourceRegistryService
-
   constructor(
     private readonly organizationId: string,
     private readonly userId?: string,
-    db: Database = database,
-    registryService?: ResourceRegistryService
+    db: Database = database
   ) {
     this.ctx = createFieldValueContext(organizationId, userId, db)
-    this.registryService = registryService ?? new ResourceRegistryService(organizationId, db)
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -248,6 +243,6 @@ export class FieldValueService {
    * });
    */
   batchGetValues(params: BatchGetValuesInput): Promise<BatchFieldValueResult> {
-    return queries.batchGetValues(this.ctx, this.registryService, params)
+    return queries.batchGetValues(this.ctx, params)
   }
 }

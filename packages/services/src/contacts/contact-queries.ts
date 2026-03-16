@@ -201,31 +201,6 @@ export async function getContactsByIds(input: { contactIds: string[] } & Contact
 }
 
 /**
- * Get custom fields for organization contacts
- */
-export async function getCustomFieldsForContacts(organizationId: string) {
-  // First resolve the contact EntityDefinition ID
-  const entityDefResult = await getContactEntityDefinitionId(organizationId)
-  if (entityDefResult.isErr()) return entityDefResult
-  const contactDefId = entityDefResult.value
-
-  return fromDatabase(
-    database
-      .select()
-      .from(schema.CustomField)
-      .where(
-        and(
-          eq(schema.CustomField.organizationId, organizationId),
-          eq(schema.CustomField.entityDefinitionId, contactDefId),
-          eq(schema.CustomField.active, true)
-        )
-      )
-      .orderBy(asc(schema.CustomField.sortOrder)),
-    'get-custom-fields'
-  )
-}
-
-/**
  * Get custom field values for contacts using FieldValue table
  */
 export async function getCustomFieldValuesForContacts(contactIds: string[], fieldIds: string[]) {

@@ -4,13 +4,15 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, asc, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
+import { getCachedEntityDefId, getCachedResource } from '../../cache'
 import {
   type CustomResource,
   isCustomResource,
+  isCustomResourceId,
+  isSystemResourceId,
   RESOURCE_DISPLAY_CONFIG,
   RESOURCE_TABLE_MAP,
   type ResourceDisplayConfig,
-  ResourceRegistryService,
   type TableId,
 } from '../registry'
 import { parseRecordId, toRecordId } from '../resource-id'
@@ -36,14 +38,12 @@ export class RecordPickerService {
   private organizationId: string
   private userId?: string
   private cache: RecordPickerCacheService
-  private registryService: ResourceRegistryService
 
   constructor(organizationId: string, userId: string | undefined, db: Database) {
     this.db = db
     this.organizationId = organizationId
     this.userId = userId
     this.cache = new RecordPickerCacheService()
-    this.registryService = new ResourceRegistryService(organizationId, db)
   }
 
   /**
@@ -54,8 +54,8 @@ export class RecordPickerService {
     const { entityDefinitionId, limit, cursor, search, filters, skipCache } = input
 
     // Check if it's a custom entity (UUID-based entityDefinitionId)
-    if (this.registryService.isCustomResource(entityDefinitionId)) {
-      const resource = await this.registryService.getById(entityDefinitionId)
+    if (isCustomResourceId(entityDefinitionId)) {
+      const resource = await getCachedResource(this.organizationId, entityDefinitionId)
       if (!resource || !isCustomResource(resource)) {
         throw new Error(`Unknown resource: ${entityDefinitionId}`)
       }
@@ -107,8 +107,8 @@ export class RecordPickerService {
     const { entityDefinitionId, id } = input
 
     // Check if it's a custom entity (UUID-based entityDefinitionId)
-    if (this.registryService.isCustomResource(entityDefinitionId)) {
-      const resource = await this.registryService.getById(entityDefinitionId)
+    if (isCustomResourceId(entityDefinitionId)) {
+      const resource = await getCachedResource(this.organizationId, entityDefinitionId)
       if (!resource || !isCustomResource(resource)) {
         return null
       }
@@ -616,16 +616,10 @@ export class RecordPickerService {
     const resolvedGrouped = new Map<string, { ids: string[]; originalKey: string }>()
     for (const [entityDefinitionId, ids] of grouped) {
       if (isEntityDefinitionType(entityDefinitionId)) {
-        // Resolve type name to actual EntityDefinition UUID
-        const entityDef = await this.db.query.EntityDefinition.findFirst({
-          where: (defs, { eq, and }) =>
-            and(
-              eq(defs.entityType, entityDefinitionId),
-              eq(defs.organizationId, this.organizationId)
-            ),
-        })
-        if (entityDef) {
-          resolvedGrouped.set(entityDef.id, { ids, originalKey: entityDefinitionId })
+        // Resolve type name to actual EntityDefinition UUID via cache
+        const resolvedId = await getCachedEntityDefId(this.organizationId, entityDefinitionId)
+        if (resolvedId) {
+          resolvedGrouped.set(resolvedId, { ids, originalKey: entityDefinitionId })
         }
       } else {
         resolvedGrouped.set(entityDefinitionId, { ids, originalKey: entityDefinitionId })
@@ -635,9 +629,9 @@ export class RecordPickerService {
     // Fetch each group in parallel
     await Promise.all(
       Array.from(resolvedGrouped.entries()).map(async ([resolvedId, { ids, originalKey }]) => {
-        if (this.registryService.isCustomResource(resolvedId)) {
+        if (isCustomResourceId(resolvedId)) {
           // Custom entity - fetch EntityInstances by IDs
-          const resource = await this.registryService.getById(resolvedId)
+          const resource = await getCachedResource(this.organizationId, resolvedId)
           if (!resource) return
           const fetched = await this.fetchEntityInstancesByIds(resource, ids)
           for (const item of fetched) {

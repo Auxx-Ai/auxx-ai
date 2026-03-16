@@ -6,7 +6,6 @@ import type { DisplayOptions, FileOptions, SelectOption } from '@auxx/services/c
 import {
   createCustomField,
   deleteCustomField,
-  getCustomFields,
   getRelationshipPair,
   type RelationshipOptions,
   updateCustomField,
@@ -34,22 +33,14 @@ export class CustomFieldService {
   }
 
   /**
-   * Get all custom fields for the organization by entity definition ID
+   * Get all custom fields for the organization by entity definition ID.
+   * Now served from org cache (15m TTL).
    *
    * @param entityDefinitionId - Entity definition ID (e.g., 'contact', 'ticket', or custom entity ID)
    */
   async getAllFields(entityDefinitionId: string) {
-    const result = await getCustomFields({
-      organizationId: this.organizationId,
-      entityDefinitionId,
-    })
-
-    if (result.isErr()) {
-      // Preserve the cause for better error debugging
-      throw new Error(result.error.message, { cause: result.error.cause })
-    }
-
-    return result.value
+    const { getCachedCustomFields } = await import('../cache')
+    return getCachedCustomFields(this.organizationId, entityDefinitionId)
   }
 
   /**

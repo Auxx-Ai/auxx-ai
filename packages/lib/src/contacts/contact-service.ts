@@ -179,12 +179,12 @@ export class ContactService {
   ): Promise<PaginatedContactsWithFieldsResult> {
     const result = await this.getAllContacts(input)
 
-    const customFieldsResult = await contactDb.getCustomFieldsForContacts(this.organizationId)
-    if (customFieldsResult.isErr()) {
-      throw new Error(`Database error fetching custom fields: ${customFieldsResult.error.message}`)
-    }
-
-    const customFields = customFieldsResult.value
+    // Get custom fields for contacts from org cache
+    const { getCachedEntityDefId, getCachedCustomFields } = await import('../cache')
+    const contactDefId = await getCachedEntityDefId(this.organizationId, 'contact')
+    const customFields = contactDefId
+      ? await getCachedCustomFields(this.organizationId, contactDefId)
+      : []
     if (customFields.length === 0) {
       return {
         items: result.items as ContactWithCustomFields[],

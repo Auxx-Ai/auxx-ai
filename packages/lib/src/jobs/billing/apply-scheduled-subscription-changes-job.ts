@@ -4,6 +4,7 @@ import { stripeClient } from '@auxx/billing'
 import { database as db, schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
+import { getAppCache } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { handlePlanDowngrade } from '../../permissions/overage-handler'
 import type { JobContext } from '../types'
@@ -95,10 +96,9 @@ async function validateScheduledChange(
     return { valid: false, reason: 'Missing scheduled change fields' }
   }
 
-  // 3. Check scheduled plan exists
-  const scheduledPlan = await db.query.Plan.findFirst({
-    where: eq(schema.Plan.id, subscription.scheduledPlanId),
-  })
+  // 3. Check scheduled plan exists (via cache)
+  const planMap = await getAppCache().get('planMap')
+  const scheduledPlan = planMap[subscription.scheduledPlanId]
 
   if (!scheduledPlan) {
     return { valid: false, reason: 'Scheduled plan not found' }
@@ -178,10 +178,9 @@ async function applyScheduledChange(
   }
 
   try {
-    // 1. Get the scheduled plan details
-    const targetPlan = await db.query.Plan.findFirst({
-      where: eq(schema.Plan.id, scheduledPlanId!),
-    })
+    // 1. Get the scheduled plan details from cache
+    const cachedPlanMap = await getAppCache().get('planMap')
+    const targetPlan = cachedPlanMap[scheduledPlanId!]
 
     if (!targetPlan) {
       throw new Error('Target plan not found')
@@ -246,12 +245,9 @@ async function applyScheduledChange(
     // Check for overages if this is a downgrade
     if (scheduledPlanId && subscription.plan) {
       const currentPlan = subscription.plan // The plan object from the joined query
-      const targetPlan = await db.query.Plan.findFirst({
-        where: eq(schema.Plan.id, scheduledPlanId),
-        columns: { hierarchyLevel: true },
-      })
+      const downgradePlan = cachedPlanMap[scheduledPlanId]
 
-      if (targetPlan && targetPlan.hierarchyLevel < currentPlan.hierarchyLevel) {
+      if (downgradePlan && downgradePlan.hierarchyLevel < currentPlan.hierarchyLevel) {
         await handlePlanDowngrade(db, organizationId, scheduledPlanId)
       }
     }

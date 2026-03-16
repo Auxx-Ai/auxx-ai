@@ -39,6 +39,11 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'integration.connected': ['integrationProviders', 'inboxes'],
   'integration.disconnected': ['integrationProviders', 'inboxes'],
 
+  'group.created': ['groups'],
+  'group.updated': ['groups'],
+  'group.deleted': ['groups'],
+  'group.members.changed': ['groups'],
+
   'inbox.created': ['inboxes'],
   'inbox.updated': ['inboxes'],
   'inbox.deleted': ['inboxes'],
@@ -57,10 +62,19 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
     org: ['members', 'memberRoleMap'],
   },
 
+  // ── Settings events ──
+  'org.settings.changed': { org: ['orgSettings'], user: ['userSettings'] },
+
   // ── User-scoped events ──
   'user.updated': { user: ['userProfile'] },
   'user.settings.changed': { user: ['userSettings'] },
   'mail-view.changed': { user: ['userMailViews'] },
+
+  // ── Table view events ──
+  'table-view.created': { user: ['userTableViews'] },
+  'table-view.updated': { user: ['userTableViews'] },
+  'table-view.deleted': { user: ['userTableViews'] },
+  'table-view.default-changed': { user: ['userTableViews'] },
 }
 
 export type CacheEvent = keyof typeof INVALIDATION_GRAPH

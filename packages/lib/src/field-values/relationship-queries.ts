@@ -5,7 +5,7 @@
 import { type Database, schema } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNotNull, type SQL, sql } from 'drizzle-orm'
-import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import { getAllCachedCustomFields, requireCachedEntityDefId } from '../cache'
 
 /**
  * Build subquery to check if a thread has any tags.
@@ -197,19 +197,12 @@ export async function batchGetThreadTagIds(
     return new Map()
   }
 
-  const registryService = new ResourceRegistryService(organizationId, db)
+  // Get tag entityDefinitionId from org cache
+  const tagEntityDefId = await requireCachedEntityDefId(organizationId, 'tag')
 
-  // Get tag entityDefinitionId (cached) for normalizing legacy raw IDs
-  const tagEntityDefId = await registryService.resolveEntityDefId('tag')
-
-  // Get the thread_tags field ID for this organization
-  const threadTagsField = await db.query.CustomField.findFirst({
-    where: and(
-      eq(schema.CustomField.systemAttribute, 'thread_tags'),
-      eq(schema.CustomField.organizationId, organizationId)
-    ),
-    columns: { id: true },
-  })
+  // Get the thread_tags field ID from org cache
+  const allFields = await getAllCachedCustomFields(organizationId)
+  const threadTagsField = allFields.find((f) => f.systemAttribute === 'thread_tags')
   if (!threadTagsField) {
     return new Map()
   }

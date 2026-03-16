@@ -12,6 +12,12 @@ import {
   toResourceFieldId,
 } from '@auxx/types/field'
 import { and, eq, isNull } from 'drizzle-orm'
+import {
+  findCachedResource,
+  getCachedEntityDefId,
+  getCachedResourceFields,
+  getOrgCache,
+} from '../../cache'
 import type { ConditionGroup } from '../../conditions'
 import { FieldValueService, formatToRawValue } from '../../field-values'
 import {
@@ -20,8 +26,9 @@ import {
   systemConditionBuilder,
 } from '../../workflow-engine'
 import type { ResourceField } from '../registry'
-import { RESOURCE_TABLE_MAP, RESOURCE_TABLE_REGISTRY, ResourceRegistryService } from '../registry'
+import { RESOURCE_TABLE_MAP, RESOURCE_TABLE_REGISTRY } from '../registry'
 import type { TableId } from '../registry/field-registry'
+import type { ResourceRegistryService } from '../registry/resource-registry-service'
 import { type RecordId, toRecordId } from '../resource-id'
 
 const logger = createScopedLogger('unified-handler-queries')
@@ -129,9 +136,8 @@ export async function queryEntityInstanceIds(params: {
     `Querying entity instances for entityDefinitionId: ${entityDefinitionId}, filters: ${JSON.stringify(filters)}`
   )
 
-  // Get fields for this entity via ResourceRegistryService
-  const registryService = new ResourceRegistryService(organizationId, db)
-  const fields = await registryService.getFieldsForResource(entityDefinitionId)
+  // Get fields for this entity from org cache
+  const fields = await getCachedResourceFields(organizationId, entityDefinitionId)
 
   // Detect required related entities from filters
   const requiredRelatedEntities = extractRequiredRelatedEntities(filters, fields)
@@ -139,11 +145,11 @@ export async function queryEntityInstanceIds(params: {
     `Detected ${requiredRelatedEntities.size} required related entities: ${Array.from(requiredRelatedEntities).join(', ')}`
   )
 
-  // Build relatedEntityFields map
+  // Build relatedEntityFields map from org cache
   const relatedEntityFields: Record<string, ResourceField[]> = {}
   for (const relatedEntityId of requiredRelatedEntities) {
     logger.debug(`Fetching fields for related entity: ${relatedEntityId}`)
-    const relatedFields = await registryService.getFieldsForResource(relatedEntityId)
+    const relatedFields = await getCachedResourceFields(organizationId, relatedEntityId)
     relatedEntityFields[relatedEntityId] = relatedFields
     logger.debug(`Loaded ${relatedFields.length} fields for entity '${relatedEntityId}'`)
   }
@@ -321,14 +327,48 @@ export interface ListAllResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Resolve entityDefinitionId or apiSlug to actual entityDefinitionId UUID.
+ * Resolve entityDefinitionId or apiSlug to actual entityDefinitionId UUID using org cache.
  *
- * @param registryService - Resource registry service
+ * @param organizationId - Organization ID for cache lookup
  * @param params - Must provide either entityDefinitionId or apiSlug
- * @param params.entityDefinitionId - Can be UUID or entity type ('tag', 'contact')
- * @param params.apiSlug - API slug ('tags', 'contacts', 'products')
  * @returns Resolved entityDefinitionId UUID
  * @throws Error if neither provided or not found
+ */
+export async function resolveEntityIdFromCache(
+  organizationId: string,
+  params: { entityDefinitionId?: string; apiSlug?: string }
+): Promise<string> {
+  const { entityDefinitionId, apiSlug } = params
+
+  const key = apiSlug ?? entityDefinitionId
+  if (!key) {
+    throw new Error('Must provide entityDefinitionId or apiSlug')
+  }
+
+  // Try finding as a resource (handles entityType, apiSlug, and UUID)
+  const resource = await findCachedResource(organizationId, key)
+  if (resource) {
+    return resource.entityDefinitionId ?? resource.id
+  }
+
+  // If it looks like a UUID/CUID (not a short type name), return as-is
+  if (key.length >= 20) {
+    return key
+  }
+
+  // Try entityDefs cache for entity types
+  const resolved = await getCachedEntityDefId(organizationId, key)
+  if (resolved) return resolved
+
+  // Try entityDefSlugs cache for apiSlugs
+  const slugs = await getOrgCache().get(organizationId, 'entityDefSlugs')
+  if (slugs[key]) return slugs[key]
+
+  throw new Error(`Entity not found for key: ${key}`)
+}
+
+/**
+ * @deprecated Use resolveEntityIdFromCache instead
  */
 export async function resolveEntityId(
   registryService: ResourceRegistryService,
@@ -372,11 +412,10 @@ export async function listAll(
   const { db, organizationId, userId } = ctx
 
   // Create services
-  const registryService = new ResourceRegistryService(organizationId, db)
-  const fieldValueService = new FieldValueService(organizationId, userId, db, registryService)
+  const fieldValueService = new FieldValueService(organizationId, userId, db)
 
   // Resolve to actual entityDefinitionId UUID
-  const entityDefId = await resolveEntityId(registryService, {
+  const entityDefId = await resolveEntityIdFromCache(organizationId, {
     entityDefinitionId: params.entityDefinitionId,
     apiSlug: params.apiSlug,
   })
@@ -397,8 +436,8 @@ export async function listAll(
     limit: 1000,
   })
 
-  // Get all fields for this entity (needed for both field values and response)
-  const fields = await registryService.getFieldsForResource(entityDefId)
+  // Get all fields for this entity from org cache
+  const fields = await getCachedResourceFields(organizationId, entityDefId)
 
   // Build fields map (key → { id, key, type })
   const fieldsMap: Record<string, ListAllFieldInfo> = {}

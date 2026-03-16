@@ -19,10 +19,9 @@ export type {
 } from './errors'
 export { type FindByUniqueValueInput, findByUniqueValue } from './find-by-unique-value'
 // Field queries
-export { type GetFieldByIdInput, getFieldByIdQuery } from './get-field-by-id'
+// export { type GetFieldByIdInput, getFieldByIdQuery } from './get-field-by-id'
 // Field CRUD operations
-export { type GetCustomFieldsInput, getCustomFields } from './get-fields'
-export { type GetFieldsByIdsInput, getFieldsByIds } from './get-fields-by-ids'
+// Note: getCustomFields and getFieldsByIds removed — use org cache via @auxx/lib/cache
 // Relationship helper
 export { type GetRelationshipPairInput, getRelationshipPair } from './get-relationship-pair'
 // Relationship types

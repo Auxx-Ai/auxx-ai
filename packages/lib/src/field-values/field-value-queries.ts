@@ -10,11 +10,11 @@ import {
   type FieldReference,
   isFieldPath,
   parseResourceFieldId,
+  type ResourceFieldId,
 } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { NameFieldOptions } from '../custom-fields/field-options'
-import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import {
   type FieldValueContext,
@@ -183,7 +183,6 @@ export async function getValues(
  */
 export async function batchGetValues(
   ctx: FieldValueContext,
-  registryService: ResourceRegistryService,
   params: BatchGetValuesInput
 ): Promise<BatchFieldValueResult> {
   const { recordIds, fieldReferences } = params
@@ -193,13 +192,122 @@ export async function batchGetValues(
   }
 
   // Validate all field references upfront (fail-fast)
-  await validateFieldReferences(registryService, fieldReferences)
+  await validateFieldReferences(ctx.organizationId, fieldReferences)
 
+  // Fast path: if all refs are direct fields (not multi-hop paths), batch into a single query
+  const allDirect = fieldReferences.every((ref) => !isFieldPath(ref))
+
+  if (allDirect) {
+    return batchGetAllDirectFieldValues(ctx, recordIds, fieldReferences as ResourceFieldId[])
+  }
+
+  // Slow path: sequential per-field resolution (handles relationship traversals)
   const results: TypedFieldValueResult[] = []
 
   for (const ref of fieldReferences) {
-    const refResults = await resolveFieldReference(ctx, registryService, recordIds, ref)
+    const refResults = await resolveFieldReference(ctx, recordIds, ref)
     results.push(...refResults)
+  }
+
+  return { values: results }
+}
+
+/**
+ * Batch fetch all direct field values in a single query.
+ * Replaces N per-field queries with 1 query using fieldId IN (...allFieldIds).
+ */
+async function batchGetAllDirectFieldValues(
+  ctx: FieldValueContext,
+  recordIds: RecordId[],
+  fieldRefs: ResourceFieldId[]
+): Promise<BatchFieldValueResult> {
+  const entityInstanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
+
+  // Build lookup: instanceId → full RecordId
+  const instanceToRecordId = new Map<string, RecordId>()
+  for (const rid of recordIds) {
+    const { entityInstanceId } = parseRecordId(rid)
+    instanceToRecordId.set(entityInstanceId, rid)
+  }
+
+  // Parse all field refs to get fieldIds and build ref lookup
+  const fieldIdToRef = new Map<string, ResourceFieldId>()
+  const allFieldIds: string[] = []
+  for (const ref of fieldRefs) {
+    const { fieldId } = parseResourceFieldId(ref)
+    fieldIdToRef.set(fieldId, ref)
+    allFieldIds.push(fieldId)
+  }
+
+  // Resolve field types from registry (all direct refs share the same entity definition)
+  const fieldTypeMap = new Map<string, FieldType>()
+  for (const ref of fieldRefs) {
+    const { entityDefinitionId, fieldId } = parseResourceFieldId(ref)
+    const fieldType = await getFieldTypeFromRegistry(
+      ctx.organizationId,
+      entityDefinitionId,
+      fieldId
+    )
+    fieldTypeMap.set(fieldId, fieldType)
+  }
+
+  // Check for NAME fields — they need special resolution
+  const nameFieldIds = allFieldIds.filter((fid) => fieldTypeMap.get(fid) === FieldTypeEnum.NAME)
+  const directFieldIds = allFieldIds.filter((fid) => fieldTypeMap.get(fid) !== FieldTypeEnum.NAME)
+
+  const results: TypedFieldValueResult[] = []
+
+  // Fetch all non-NAME field values in a single query
+  if (directFieldIds.length > 0) {
+    const rows = await ctx.db
+      .select()
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, ctx.organizationId),
+          inArray(schema.FieldValue.fieldId, directFieldIds),
+          inArray(schema.FieldValue.entityId, entityInstanceIds)
+        )
+      )
+      .orderBy(asc(schema.FieldValue.sortKey))
+
+    // Group by (entityId, fieldId)
+    const grouped = new Map<string, (typeof rows)[number][]>()
+    for (const row of rows) {
+      const key = `${row.entityId}:${row.fieldId}`
+      const existing = grouped.get(key) ?? []
+      existing.push(row)
+      grouped.set(key, existing)
+    }
+
+    // Convert grouped rows to typed results
+    for (const [, fieldRows] of grouped) {
+      const entityId = fieldRows[0]!.entityId
+      const fieldId = fieldRows[0]!.fieldId
+      const recordId = instanceToRecordId.get(entityId)
+      const fieldRef = fieldIdToRef.get(fieldId)
+      const fieldType = fieldTypeMap.get(fieldId)
+
+      if (!recordId || !fieldRef || !fieldType) continue
+
+      const isMulti = isArrayReturnFieldType(fieldType)
+      const typedValues = fieldRows.map((row) =>
+        rowToTypedValue(row as unknown as FieldValueRow, fieldType)
+      )
+      const value = isMulti ? typedValues : typedValues[0]!
+
+      results.push({ recordId, fieldRef, value })
+    }
+  }
+
+  // Handle NAME fields via existing resolveNameFieldValues
+  for (const nameFieldId of nameFieldIds) {
+    const nameValues = await resolveNameFieldValues(ctx, recordIds, nameFieldId)
+    const ref = fieldIdToRef.get(nameFieldId)!
+
+    for (const [recordId, value] of nameValues) {
+      results.push({ recordId, fieldRef: ref, value })
+    }
   }
 
   return { values: results }
@@ -217,7 +325,6 @@ export async function batchGetValues(
  */
 async function resolveFieldReference(
   ctx: FieldValueContext,
-  registryService: ResourceRegistryService,
   sourceRecordIds: RecordId[],
   ref: FieldReference
 ): Promise<TypedFieldValueResult[]> {
@@ -265,7 +372,7 @@ async function resolveFieldReference(
 
   // Get field type for the terminal field
   const terminalFieldType = await getFieldTypeFromRegistry(
-    registryService,
+    ctx.organizationId,
     terminalEntityId,
     terminalFieldId
   )

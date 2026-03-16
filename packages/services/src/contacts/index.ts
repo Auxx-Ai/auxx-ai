@@ -6,7 +6,6 @@ export {
   getAllContacts,
   getContactById,
   getContactsByIds,
-  getCustomFieldsForContacts,
   getCustomFieldValuesForContacts,
   searchContacts,
 } from './contact-queries'

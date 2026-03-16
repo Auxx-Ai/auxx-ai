@@ -1,4 +1,4 @@
-// ~/server/api/routers/billing.ts
+// apps/web/src/server/api/routers/billing.ts
 
 import { BillingPortalService, SubscriptionService, stripeClient } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
@@ -26,7 +26,7 @@ const cloudOnlyProcedure = protectedProcedure.use(async ({ next }) => {
 })
 
 export const billingRouter = createTRPCRouter({
-  // Get all available plans (cached, filtered to non-legacy)
+  // Get all available plans (cached, non-legacy, ordered by hierarchy)
   getPlans: cloudOnlyProcedure.query(async () => {
     return getAppCache().get('plans')
   }),

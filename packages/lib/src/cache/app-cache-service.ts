@@ -4,8 +4,8 @@ import { type Database, database as ddb } from '@auxx/database'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
 import { randomUUID } from 'crypto'
 import { createScopedLogger } from '../logger'
-import type { APP_CACHE_KEY_CONFIG, AppCacheDataMap, AppCacheKeyName } from './app-cache-keys'
-import { APP_CACHE_KEY_CONFIG as keyConfig } from './app-cache-keys'
+import type { AppCacheDataMap, AppCacheKeyName } from './app-cache-keys'
+import { APP_CACHE_KEY_CONFIG } from './app-cache-keys'
 import type { AppCacheProvider } from './app-cache-provider'
 import { LocalCache } from './local-cache'
 import { PromiseMemoizer } from './promise-memoizer'
@@ -63,17 +63,17 @@ export class AppCacheService {
 
   /** Redis key for the cached data */
   private dataKey(keyName: AppCacheKeyName): string {
-    return `${keyConfig[keyName].prefix}:data`
+    return `${APP_CACHE_KEY_CONFIG[keyName].prefix}:data`
   }
 
   /** Redis key for the hash (used for cross-process invalidation detection) */
   private hashKey(keyName: AppCacheKeyName): string {
-    return `${keyConfig[keyName].prefix}:hash`
+    return `${APP_CACHE_KEY_CONFIG[keyName].prefix}:hash`
   }
 
   /** Local cache key */
   private localKey(keyName: AppCacheKeyName): string {
-    return keyConfig[keyName].prefix
+    return APP_CACHE_KEY_CONFIG[keyName].prefix
   }
 
   /** Convenience: single key fetch */
@@ -167,7 +167,7 @@ export class AppCacheService {
     value: AppCacheDataMap[K]
   ): Promise<void> {
     const hash = randomUUID()
-    const config = keyConfig[keyName]
+    const config = APP_CACHE_KEY_CONFIG[keyName]
     const lk = this.localKey(keyName)
 
     // Write to local cache
@@ -234,7 +234,7 @@ export class AppCacheService {
    * Does NOT recompute — next read will trigger recompute.
    */
   async flush(keys?: readonly AppCacheKeyName[]): Promise<void> {
-    const keysToFlush = keys ?? (Object.keys(keyConfig) as AppCacheKeyName[])
+    const keysToFlush = keys ?? (Object.keys(APP_CACHE_KEY_CONFIG) as AppCacheKeyName[])
     const redis = await this.getRedis()
 
     for (const keyName of keysToFlush) {

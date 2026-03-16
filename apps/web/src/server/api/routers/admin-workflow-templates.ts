@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/admin-workflow-templates.ts
 
-import { invalidateWorkflowTemplates } from '@auxx/lib/cache'
+import { getAppCache } from '@auxx/lib/cache'
 import {
   createTemplate,
   deleteTemplate,
@@ -88,7 +88,7 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
-      await invalidateWorkflowTemplates()
+      await getAppCache().invalidateAndRecompute(['workflowTemplates'])
       return result.value
     }),
 
@@ -127,7 +127,7 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
-      await invalidateWorkflowTemplates()
+      await getAppCache().invalidateAndRecompute(['workflowTemplates'])
       return result.value
     }),
 
@@ -145,7 +145,7 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
-      await invalidateWorkflowTemplates()
+      await getAppCache().invalidateAndRecompute(['workflowTemplates'])
       return { success: true }
     }),
 
@@ -163,7 +163,7 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
-      await invalidateWorkflowTemplates()
+      await getAppCache().invalidateAndRecompute(['workflowTemplates'])
       return result.value
     }),
 })

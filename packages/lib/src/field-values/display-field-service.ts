@@ -5,8 +5,8 @@ import { batchUpdateDisplayValues, clearDisplayValues } from '@auxx/services/ent
 import type { TypedFieldValue } from '@auxx/types'
 import { toResourceFieldId } from '@auxx/types/field'
 import { and, eq, sql } from 'drizzle-orm'
+import { getCachedResource } from '../cache'
 import type { ResourceField } from '../resources/registry/field-types'
-import { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import type { CustomResource } from '../resources/registry/types'
 import { getInstanceId, toRecordIds } from '../resources/resource-id'
 import {
@@ -26,7 +26,6 @@ const BATCH_SIZE = 100
  */
 export class DisplayFieldService {
   private db: Database
-  private registryService: ResourceRegistryService
   private fieldValueService: FieldValueService
 
   constructor(
@@ -34,13 +33,7 @@ export class DisplayFieldService {
     db: Database = database
   ) {
     this.db = db
-    this.registryService = new ResourceRegistryService(organizationId, db)
-    this.fieldValueService = new FieldValueService(
-      organizationId,
-      undefined,
-      db,
-      this.registryService
-    )
+    this.fieldValueService = new FieldValueService(organizationId, undefined, db)
   }
 
   /**
@@ -53,8 +46,8 @@ export class DisplayFieldService {
   ): Promise<RecalculateDisplayFieldResult> {
     const config = DISPLAY_FIELD_CONFIG[displayFieldType]
 
-    // 1. Get full resource with fields from registry
-    const resource = await this.registryService.getById(entityDefinitionId)
+    // 1. Get full resource with fields from org cache
+    const resource = await getCachedResource(this.organizationId, entityDefinitionId)
 
     if (!resource || resource.type !== 'custom') {
       throw new Error(`Entity definition not found: ${entityDefinitionId}`)

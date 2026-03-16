@@ -1,9 +1,14 @@
 // packages/lib/src/actors/actor-service.ts
 
-import { schema } from '@auxx/database'
 import type { Actor, ActorContext, ActorId, GroupActor, UserActor } from '@auxx/types/actor'
 import { parseActorId, toActorId } from '@auxx/types/actor'
-import { and, eq, inArray, like } from 'drizzle-orm'
+import {
+  type CachedGroup,
+  getCachedGroups,
+  getCachedMembers,
+  getCachedMembersByUserIds,
+  type OrgMemberInfo,
+} from '../cache'
 
 // ============================================================================
 // Service Options Types
@@ -156,35 +161,16 @@ export class ActorService {
   // ─────────────────────────────────────────────────────────────────
 
   private async listUsers(roles?: ('OWNER' | 'ADMIN' | 'USER')[]): Promise<UserActor[]> {
-    const db = this.db as any
-    const conditions = [
-      eq(schema.OrganizationMember.organizationId, this.organizationId),
-      eq(schema.OrganizationMember.status, 'ACTIVE'),
-    ]
-
-    if (roles?.length) {
-      conditions.push(inArray(schema.OrganizationMember.role, roles))
-    }
-
-    const members = await db.query.OrganizationMember.findMany({
-      where: and(...conditions),
-      with: { user: true },
+    const members = await getCachedMembers(this.organizationId, {
+      status: 'ACTIVE',
+      roles: roles?.length ? roles : undefined,
     })
-
-    return members.map((m: any) => this.toUserActor(m))
+    return members.filter((m) => m.user).map((m) => this.toUserActorFromCache(m))
   }
 
   private async fetchUsers(userIds: string[]): Promise<UserActor[]> {
-    const db = this.db as any
-    const members = await db.query.OrganizationMember.findMany({
-      where: and(
-        eq(schema.OrganizationMember.organizationId, this.organizationId),
-        inArray(schema.OrganizationMember.userId, userIds)
-      ),
-      with: { user: true },
-    })
-
-    return members.map((m: any) => this.toUserActor(m))
+    const members = await getCachedMembersByUserIds(this.organizationId, userIds)
+    return members.filter((m) => m.user).map((m) => this.toUserActorFromCache(m))
   }
 
   private async searchUsers(
@@ -192,44 +178,30 @@ export class ActorService {
     roles?: ('OWNER' | 'ADMIN' | 'USER')[],
     limit?: number
   ): Promise<UserActor[]> {
-    const db = this.db as any
-    const conditions = [
-      eq(schema.OrganizationMember.organizationId, this.organizationId),
-      eq(schema.OrganizationMember.status, 'ACTIVE'),
-    ]
-
-    if (roles?.length) {
-      conditions.push(inArray(schema.OrganizationMember.role, roles))
-    }
-
-    const members = await db.query.OrganizationMember.findMany({
-      where: and(...conditions),
-      with: { user: true },
-      limit: limit ?? 50,
+    const members = await getCachedMembers(this.organizationId, {
+      status: 'ACTIVE',
+      roles: roles?.length ? roles : undefined,
     })
 
-    // Filter by search pattern (on user name/email)
     const searchTerm = pattern.replace(/%/g, '').toLowerCase()
     return members
       .filter(
-        (m: any) =>
-          m.user.name?.toLowerCase().includes(searchTerm) ||
-          m.user.email?.toLowerCase().includes(searchTerm)
+        (m) =>
+          m.user &&
+          (m.user.name?.toLowerCase().includes(searchTerm) ||
+            m.user.email?.toLowerCase().includes(searchTerm))
       )
-      .map((m: any) => this.toUserActor(m))
+      .map((m) => this.toUserActorFromCache(m))
+      .slice(0, limit ?? 50)
   }
 
-  private toUserActor(member: {
-    userId: string
-    role: string
-    user: { name: string | null; email: string; image: string | null }
-  }): UserActor {
+  private toUserActorFromCache(member: OrgMemberInfo): UserActor {
     return {
       actorId: toActorId('user', member.userId),
       type: 'user',
-      name: member.user.name ?? member.user.email,
-      email: member.user.email,
-      avatarUrl: member.user.image,
+      name: member.user?.name ?? member.user?.email ?? 'Unknown',
+      email: member.user?.email ?? '',
+      avatarUrl: member.user?.image ?? null,
       role: member.role as 'OWNER' | 'ADMIN' | 'USER',
     }
   }
@@ -239,10 +211,6 @@ export class ActorService {
   // ─────────────────────────────────────────────────────────────────
 
   private async listGroups(options: ListActorsOptions): Promise<GroupActor[]> {
-    // Get entity_group definition
-    const groupDef = await this.getGroupDefinition()
-    if (!groupDef) return []
-
     // Use existing listAccessibleGroups for permission filtering
     if (options.accessibleGroupsOnly !== false) {
       const { listAccessibleGroups } = await import('../groups/group-functions')
@@ -260,29 +228,19 @@ export class ActorService {
       return groups.map((g) => this.toGroupActor(g))
     }
 
-    // Direct query (admin use case)
-    const db = this.db as any
-    const groups = await db.query.EntityInstance.findMany({
-      where: and(
-        eq(schema.EntityInstance.entityDefinitionId, groupDef.id),
-        eq(schema.EntityInstance.organizationId, this.organizationId)
-      ),
-      limit: 100,
-    })
+    // Admin/direct path: use cache
+    const cachedGroups = await getCachedGroups(this.organizationId)
+    const filtered = options.groupIds?.length
+      ? cachedGroups.filter((g) => options.groupIds!.includes(g.id))
+      : cachedGroups
 
-    return groups.map((g: any) => this.toGroupActor(g))
+    return filtered.map((g) => this.toGroupActorFromCache(g))
   }
 
   private async fetchGroups(groupIds: string[]): Promise<GroupActor[]> {
-    const db = this.db as any
-    const groups = await db.query.EntityInstance.findMany({
-      where: and(
-        inArray(schema.EntityInstance.id, groupIds),
-        eq(schema.EntityInstance.organizationId, this.organizationId)
-      ),
-    })
-
-    return groups.map((g: any) => this.toGroupActor(g))
+    const cachedGroups = await getCachedGroups(this.organizationId)
+    const idSet = new Set(groupIds)
+    return cachedGroups.filter((g) => idSet.has(g.id)).map((g) => this.toGroupActorFromCache(g))
   }
 
   private async searchGroups(
@@ -290,27 +248,16 @@ export class ActorService {
     options: ListActorsOptions,
     limit: number
   ): Promise<GroupActor[]> {
-    const groupDef = await this.getGroupDefinition()
-    if (!groupDef) return []
+    const cachedGroups = await getCachedGroups(this.organizationId)
+    const searchTerm = pattern.replace(/%/g, '').toLowerCase()
 
-    const db = this.db as any
-    const groups = await db.query.EntityInstance.findMany({
-      where: and(
-        eq(schema.EntityInstance.entityDefinitionId, groupDef.id),
-        eq(schema.EntityInstance.organizationId, this.organizationId),
-        like(schema.EntityInstance.displayName, pattern)
-      ),
-      limit,
-    })
+    let filtered = cachedGroups.filter((g) => g.displayName?.toLowerCase().includes(searchTerm))
 
-    // Filter by groupIds if specified
     if (options.groupIds?.length) {
-      return groups
-        .filter((g: any) => options.groupIds!.includes(g.id))
-        .map((g: any) => this.toGroupActor(g))
+      filtered = filtered.filter((g) => options.groupIds!.includes(g.id))
     }
 
-    return groups.map((g: any) => this.toGroupActor(g))
+    return filtered.slice(0, limit).map((g) => this.toGroupActorFromCache(g))
   }
 
   private toGroupActor(group: {
@@ -336,14 +283,15 @@ export class ActorService {
     }
   }
 
-  private async getGroupDefinition(): Promise<{ id: string } | null> {
-    const db = this.db as any
-    return db.query.EntityDefinition.findFirst({
-      where: and(
-        eq(schema.EntityDefinition.entityType, 'entity_group'),
-        eq(schema.EntityDefinition.organizationId, this.organizationId)
-      ),
-      columns: { id: true },
-    })
+  private toGroupActorFromCache(group: CachedGroup): GroupActor {
+    return {
+      actorId: toActorId('group', group.id),
+      type: 'group',
+      name: group.displayName ?? 'Unnamed Group',
+      description: group.secondaryDisplayValue ?? null,
+      avatarUrl: group.avatarUrl ?? null,
+      memberCount: group.metadata.memberCount ?? 0,
+      visibility: (group.metadata.visibility as 'public' | 'private') ?? 'private',
+    }
   }
 }

@@ -1,5 +1,7 @@
-import { DehydrationService } from '@auxx/lib/dehydration'
-import { findMemberByUser, isAdminOrOwner } from '@auxx/lib/members'
+// apps/web/src/server/api/routers/setting.ts
+
+import { getOrgCache, getUserCache, onCacheEvent } from '@auxx/lib/cache'
+import { isAdminOrOwner } from '@auxx/lib/members'
 import { SETTINGS_CATALOG, SettingsService } from '@auxx/lib/settings'
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
@@ -10,7 +12,6 @@ const logger = createScopedLogger('api-settings')
 // Input validation schema for getting user settings
 const getUserSettingSchema = z.object({
   key: z.string(),
-  // organizationId: z.string(),
 })
 
 // Input validation schema for updating an organization setting
@@ -18,31 +19,26 @@ const updateOrgSettingSchema = z.object({
   key: z.string(),
   value: z.any(),
   allowUserOverride: z.boolean(),
-  // organizationId: z.string(),
 })
 
 // Input validation schema for updating a user setting
 const updateUserSettingSchema = z.object({
   key: z.string(),
   value: z.any(),
-  // organizationId: z.string(),
 })
 
 // Input validation schema for resetting a user setting
 const resetUserSettingSchema = z.object({
   key: z.string(),
-  // organizationId: z.string(),
 })
 
 // Input validation schema for getting settings by scope
 const getScopeSettingsSchema = z.object({
   scope: z.string().optional(),
-  // organizationId: z.string(),
 })
 
 // Input validation schema for batch updating organization settings
 const batchUpdateOrgSettingsSchema = z.object({
-  // organizationId: z.string(),
   settings: z.array(z.object({ key: z.string(), value: z.any(), allowUserOverride: z.boolean() })),
 })
 
@@ -57,8 +53,14 @@ export const settingsRouter = createTRPCRouter({
     const { key } = input
     const { organizationId, userId } = ctx.session
 
-    const settingsService = new SettingsService(ctx.db)
-    return await settingsService.getUserSetting({ userId, organizationId, key })
+    // Preserve existing contract: unknown keys return null
+    if (!SETTINGS_CATALOG[key]) {
+      logger.warn(`Unknown setting requested: ${key}`)
+      return null
+    }
+
+    const allSettings = await getUserCache().get(userId, 'userSettings', organizationId)
+    return allSettings[key] ?? SETTINGS_CATALOG[key]?.defaultValue ?? null
   }),
 
   // Get all user settings, optionally filtered by scope
@@ -66,9 +68,18 @@ export const settingsRouter = createTRPCRouter({
     .input(getScopeSettingsSchema)
     .query(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const { scope } = input
-      const settingsService = new SettingsService(ctx.db)
-      return await settingsService.getAllUserSettings({ userId, organizationId, scope })
+      const allSettings = await getUserCache().get(userId, 'userSettings', organizationId)
+
+      if (!input.scope) return allSettings
+
+      // Filter by scope using the catalog
+      const result: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(allSettings)) {
+        if (SETTINGS_CATALOG[key]?.scope === input.scope) {
+          result[key] = value
+        }
+      }
+      return result
     }),
 
   // Update an organization setting
@@ -90,9 +101,7 @@ export const settingsRouter = createTRPCRouter({
         allowUserOverride,
       })
 
-      // Invalidate cache for all members of the organization
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.invalidateOrganizationMembers(organizationId)
+      await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
 
       return { success: true }
     }),
@@ -103,18 +112,11 @@ export const settingsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { key, value } = input
-      // First check if user is a member of the organization
-      const member = await findMemberByUser(organizationId, userId)
-      if (!member) {
-        throw new Error('You are not a member of this organization')
-      }
-      logger.info('Updating user setting', { userId, organizationId, key, value })
+
       const settingsService = new SettingsService(ctx.db)
       await settingsService.updateUserSetting({ userId, organizationId, key, value })
 
-      // Invalidate cache for the user
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.invalidateUser(userId)
+      await onCacheEvent('user.settings.changed', { orgId: organizationId, userId })
 
       return { success: true }
     }),
@@ -128,27 +130,28 @@ export const settingsRouter = createTRPCRouter({
       const settingsService = new SettingsService(ctx.db)
       await settingsService.resetUserSetting({ userId, organizationId, key })
 
-      // Invalidate cache for the user
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.invalidateUser(userId)
+      await onCacheEvent('user.settings.changed', { orgId: organizationId, userId })
 
       return { success: true }
     }),
 
-  // Get all organization settings with metadata
+  // Get all organization settings with metadata (cache + catalog composition)
   getOrganizationSettingsWithMetadata: protectedProcedure
     .input(getScopeSettingsSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
+      const { organizationId } = ctx.session
       const { scope } = input
-      // First check if user has permission to view org settings
-      const member = await findMemberByUser(organizationId, userId)
-      if (!member) {
-        throw new Error('You are not a member of this organization')
-      }
 
-      const settingsService = new SettingsService(ctx.db)
-      return await settingsService.getOrganizationSettingsWithMetadata({ organizationId, scope })
+      const orgSettings = await getOrgCache().get(organizationId, 'orgSettings')
+
+      return Object.entries(SETTINGS_CATALOG)
+        .filter(([_, config]) => !scope || config.scope === scope)
+        .map(([key, metadata]) => ({
+          key,
+          value: orgSettings[key] ?? metadata.defaultValue,
+          allowUserOverride: !metadata.organizationOnly,
+          metadata,
+        }))
     }),
 
   // Batch update organization settings
@@ -165,9 +168,7 @@ export const settingsRouter = createTRPCRouter({
       const settingsService = new SettingsService(ctx.db)
       await settingsService.batchUpdateOrganizationSettings({ organizationId, settings })
 
-      // Invalidate cache for all members of the organization
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.invalidateOrganizationMembers(organizationId)
+      await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
 
       return { success: true }
     }),

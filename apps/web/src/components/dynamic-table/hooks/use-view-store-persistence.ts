@@ -63,7 +63,7 @@ export function useViewStorePersistence(viewId: string | null, tableId: string) 
       lastSavedRef.current = JSON.stringify(result.config)
 
       // Invalidate React Query cache (for components that still use it)
-      utils.tableView.list.invalidate({ tableId })
+      utils.tableView.listAll.invalidate()
     } catch (error) {
       toastError({
         title: 'Failed to save view',

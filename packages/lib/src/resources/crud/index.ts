@@ -34,6 +34,7 @@ export {
   queryEntityInstanceIds,
   querySystemResourceIds,
   resolveEntityId,
+  resolveEntityIdFromCache,
 } from './unified-handler-queries'
 
 // Utilities

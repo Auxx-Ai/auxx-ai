@@ -3,16 +3,15 @@
 import { type ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import type { GrantPermissionInput, GroupContext, GroupPermissionInfo } from '@auxx/types/groups'
 import { toRecordId } from '@auxx/types/resource'
+import { requireCachedEntityDefId } from '../cache'
 import { getInstanceAccess, grantInstanceAccess, revokeInstanceAccess } from '../resource-access'
-import { ResourceRegistryService } from '../resources/registry'
 import { requireGroupPermission } from './permissions'
 
 /**
- * Get the entity_group entityDefinitionId using efficient cached resolution
+ * Get the entity_group entityDefinitionId using org cache (30-day TTL)
  */
 async function getGroupEntityDefId(ctx: GroupContext): Promise<string> {
-  const registry = new ResourceRegistryService(ctx.organizationId, ctx.db)
-  return registry.resolveEntityDefId('entity_group')
+  return requireCachedEntityDefId(ctx.organizationId, 'entity_group')
 }
 
 /**
