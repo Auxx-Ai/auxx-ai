@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.86](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.85...auxx-v0.1.86) (2026-03-16)
+
+
+### Features
+
+* cache permissions and member queries to utilize organization cache ([#272](https://github.com/Auxx-Ai/auxx-ai/issues/272)) ([cd56921](https://github.com/Auxx-Ai/auxx-ai/commit/cd56921546e55f19bfbac6597fb065c76fc81656))
+* implement app-wide caching for plans and workflow templates ([#273](https://github.com/Auxx-Ai/auxx-ai/issues/273)) ([9a874c5](https://github.com/Auxx-Ai/auxx-ai/commit/9a874c575b07f60669bedafb712fdff3eb8bbb30))
+* refactor inbox retrieval methods to use listAll and improve transformation logic ([#270](https://github.com/Auxx-Ai/auxx-ai/issues/270)) ([1895a80](https://github.com/Auxx-Ai/auxx-ai/commit/1895a800041de9610d16ecd13e9d7e65fc2aa8f0))
+* resource fetching and caching mechanisms ([#274](https://github.com/Auxx-Ai/auxx-ai/issues/274)) ([4cc4f60](https://github.com/Auxx-Ai/auxx-ai/commit/4cc4f6004dd7d40c24f1947da132d9f9249ed1aa))
+
 ## [0.1.85](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.84...auxx-v0.1.85) (2026-03-15)
 
 
