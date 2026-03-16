@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
 import type { FeatureDefinition, FeatureLimit, FeatureMapObject } from '../../permissions/types'
 import { DEFAULT_FREE_PLAN_FEATURES, FeatureKey } from '../../permissions/types'
+import { getAppCache } from '../index'
 import type { CacheProvider } from '../org-cache-provider'
 
 const logger = createScopedLogger('features-provider')
@@ -37,14 +38,9 @@ export const featuresProvider: CacheProvider<FeatureMapObject> = {
     let featureDefinitions: FeatureDefinition[] = DEFAULT_FREE_PLAN_FEATURES
 
     if (subscription?.planId) {
-      const [plan] = await db
-        .select({
-          featureLimits: schema.Plan.featureLimits,
-          trialFeatureLimits: schema.Plan.trialFeatureLimits,
-        })
-        .from(schema.Plan)
-        .where(eq(schema.Plan.id, subscription.planId))
-        .limit(1)
+      // Use planMap from appCache instead of querying Plan table directly
+      const { planMap } = await getAppCache().getOrRecompute(['planMap'])
+      const plan = planMap[subscription.planId]
 
       if (subscription.status === 'trialing' && !subscription.hasTrialEnded) {
         const trialSource = plan?.trialFeatureLimits ?? plan?.featureLimits

@@ -4,7 +4,7 @@ import { BillingPortalService, SubscriptionService, stripeClient } from '@auxx/b
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { getAppCache, onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -26,26 +26,9 @@ const cloudOnlyProcedure = protectedProcedure.use(async ({ next }) => {
 })
 
 export const billingRouter = createTRPCRouter({
-  // Get all available plans
-  getPlans: cloudOnlyProcedure.query(async ({ ctx }) => {
-    try {
-      return await ctx.db.query.Plan.findMany({
-        orderBy: (plans, { asc }) => [asc(plans.hierarchyLevel)],
-      })
-
-      // return await ctx.db.query.Plan.findMany(
-      //   orderBy: (customers, { asc, desc }) => [
-      //   ]
-      //   .orderBy(schema.Plan.hierarchyLevel.asc())
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : ''
-
-      logger.error('Error fetching plans', { error: message })
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: `Error fetching plans: ${message}`,
-      })
-    }
+  // Get all available plans (cached, filtered to non-legacy)
+  getPlans: cloudOnlyProcedure.query(async () => {
+    return getAppCache().get('plans')
   }),
 
   // Get current subscription

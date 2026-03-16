@@ -1,6 +1,6 @@
 // packages/lib/src/cache/invalidate.ts
 
-import { getOrgCache, getUserCache } from './index'
+import { getAppCache, getOrgCache, getUserCache } from './index'
 import type { CacheEvent } from './invalidation-graph'
 import { INVALIDATION_GRAPH, isMixedMapping, isOrgOnlyMapping } from './invalidation-graph'
 
@@ -46,4 +46,14 @@ export async function onCacheEvent(
 /** Flush everything for an org (e.g. org deletion) */
 export async function flushOrganization(orgId: string): Promise<void> {
   await getOrgCache().flush(orgId)
+}
+
+/** Invalidate and recompute cached plans (call after plan admin mutations) */
+export async function invalidatePlans(): Promise<void> {
+  await getAppCache().invalidateAndRecompute(['plans', 'planMap'])
+}
+
+/** Invalidate and recompute cached workflow templates (call after template admin mutations) */
+export async function invalidateWorkflowTemplates(): Promise<void> {
+  await getAppCache().invalidateAndRecompute(['workflowTemplates'])
 }
