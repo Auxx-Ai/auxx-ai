@@ -2,6 +2,7 @@
 
 import type { AppCacheService } from './app-cache-service'
 import type { OrganizationCacheService } from './org-cache-service'
+import { channelProvidersProvider } from './providers/channel-providers-provider'
 import { customFieldsProvider } from './providers/custom-fields-provider'
 import { entityDefSlugsProvider } from './providers/entity-def-slugs-provider'
 import { entityDefsProvider } from './providers/entity-defs-provider'
@@ -9,7 +10,6 @@ import { featuresProvider } from './providers/features-provider'
 import { groupsProvider } from './providers/groups-provider'
 import { inboxesProvider } from './providers/inboxes-provider'
 import { installedAppsProvider } from './providers/installed-apps-provider'
-import { integrationProvidersProvider } from './providers/integration-providers-provider'
 import { memberRoleMapProvider, membersProvider } from './providers/members-provider'
 import { orgProfileProvider } from './providers/org-profile-provider'
 import { orgSettingsProvider } from './providers/org-settings-provider'
@@ -38,7 +38,7 @@ export function registerAllProviders(
   orgCache.register('entityDefs', entityDefsProvider)
   orgCache.register('entityDefSlugs', entityDefSlugsProvider)
   orgCache.register('systemUser', systemUserProvider)
-  orgCache.register('integrationProviders', integrationProvidersProvider)
+  orgCache.register('channelProviders', channelProvidersProvider)
 
   // Org-scoped: membership & permissions
   orgCache.register('members', membersProvider)

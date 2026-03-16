@@ -74,7 +74,7 @@ export interface PaginatedIdsResult {
 export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
 
 /** Integration provider enum type. */
-export type IntegrationProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'
+export type ChannelProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'
 
 /**
  * Core thread metadata for batch fetching.
@@ -91,7 +91,7 @@ export interface ThreadMeta {
 
   // Foreign keys (IDs only - frontend resolves via separate stores)
   integrationId: string
-  integrationProvider: IntegrationProvider | null
+  integrationProvider: ChannelProvider | null
 
   /**
    * Assignee as branded ActorId string (e.g., "user:abc123").

@@ -18,7 +18,7 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (channelsQuery.data) {
-      getChannelStoreState().setChannels(channelsQuery.data.integrations)
+      getChannelStoreState().setChannels(channelsQuery.data.channels)
     }
   }, [channelsQuery.data])
 

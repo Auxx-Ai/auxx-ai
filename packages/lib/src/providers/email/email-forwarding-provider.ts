@@ -7,10 +7,10 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { NotFoundError } from '../../errors'
 import type {
-  IntegrationProvider,
+  ChannelProvider,
   MessageStatus,
   SendMessageOptions,
-} from '../integration-provider.interface'
+} from '../channel-provider.interface'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 
@@ -24,7 +24,7 @@ const logger = createScopedLogger('email-forwarding-provider')
  */
 export class EmailForwardingProvider
   extends BaseMessageProvider
-  implements IntegrationProvider, MessageProvider
+  implements ChannelProvider, MessageProvider
 {
   private fromAddress = ''
   private displayName = ''

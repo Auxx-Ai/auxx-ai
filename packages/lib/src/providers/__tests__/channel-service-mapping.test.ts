@@ -1,4 +1,4 @@
-// packages/lib/src/providers/__tests__/integration-service-mapping.test.ts
+// packages/lib/src/providers/__tests__/channel-service-mapping.test.ts
 
 import { describe, expect, it, vi } from 'vitest'
 
@@ -12,7 +12,7 @@ vi.mock('../../logger', () => ({
   }),
 }))
 
-// Mock dependencies that integration-service imports
+// Mock dependencies that channel-service imports
 vi.mock('../../email/errors-handlers', () => ({
   withAuthErrorHandling: vi.fn(),
 }))
@@ -21,7 +21,7 @@ vi.mock('../../email/message-service', () => ({
   MessageService: {
     registerWebhooks: vi.fn(),
     unregisterWebhooks: vi.fn(),
-    getAllIntegrations: vi.fn(),
+    getAllChannels: vi.fn(),
   },
 }))
 
@@ -98,10 +98,10 @@ vi.mock('drizzle-orm', () => ({
 }))
 
 /**
- * Tests that getAllIntegrations() returns the expected shape with direct column fields.
+ * Tests that getAllChannels() returns the expected shape with direct column fields.
  * We mock the Drizzle query chain to return a known row and verify the mapping.
  */
-describe('IntegrationService.getAllIntegrations mapping', () => {
+describe('ChannelService.getAllChannels mapping', () => {
   const mockRow = {
     id: 'int_1',
     provider: 'google',
@@ -141,11 +141,11 @@ describe('IntegrationService.getAllIntegrations mapping', () => {
   }
 
   it('returns syncStatus, syncStage, syncStageStartedAt from database columns', async () => {
-    const { IntegrationService } = await import('../integration-service')
+    const { ChannelService } = await import('../channel-service')
     const db = buildMockDb([mockRow])
-    const svc = new IntegrationService(db, 'org_1')
-    const result = await svc.getAllIntegrations()
-    const int = result.integrations[0]
+    const svc = new ChannelService(db, 'org_1')
+    const result = await svc.getAllChannels()
+    const int = result.channels[0]
 
     expect(int.syncStatus).toBe('SYNCING')
     expect(int.syncStage).toBe('MESSAGES_IMPORT')
@@ -153,32 +153,32 @@ describe('IntegrationService.getAllIntegrations mapping', () => {
   })
 
   it('returns requiresReauth from direct column, not metadata', async () => {
-    const { IntegrationService } = await import('../integration-service')
+    const { ChannelService } = await import('../channel-service')
     const db = buildMockDb([mockRow])
-    const svc = new IntegrationService(db, 'org_1')
-    const result = await svc.getAllIntegrations()
-    const int = result.integrations[0]
+    const svc = new ChannelService(db, 'org_1')
+    const result = await svc.getAllChannels()
+    const int = result.channels[0]
 
     expect(int.requiresReauth).toBe(true)
   })
 
   it('returns lastAuthError from direct column, not metadata', async () => {
-    const { IntegrationService } = await import('../integration-service')
+    const { ChannelService } = await import('../channel-service')
     const db = buildMockDb([mockRow])
-    const svc = new IntegrationService(db, 'org_1')
-    const result = await svc.getAllIntegrations()
-    const int = result.integrations[0]
+    const svc = new ChannelService(db, 'org_1')
+    const result = await svc.getAllChannels()
+    const int = result.channels[0]
 
     expect(int.lastAuthError).toBe('invalid_grant')
     expect(int.lastAuthErrorAt).toEqual(new Date('2025-01-02'))
   })
 
   it('returns throttleRetryAfter from database column', async () => {
-    const { IntegrationService } = await import('../integration-service')
+    const { ChannelService } = await import('../channel-service')
     const db = buildMockDb([mockRow])
-    const svc = new IntegrationService(db, 'org_1')
-    const result = await svc.getAllIntegrations()
-    const int = result.integrations[0]
+    const svc = new ChannelService(db, 'org_1')
+    const result = await svc.getAllChannels()
+    const int = result.channels[0]
 
     expect(int.throttleFailureCount).toBe(3)
     expect(int.throttleRetryAfter).toEqual(new Date('2025-01-04'))

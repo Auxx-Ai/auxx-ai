@@ -23,7 +23,7 @@ const MAX_BATCH_SIZE = 100
 export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
 
 /** Integration provider enum */
-export type IntegrationProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'
+export type ChannelProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'
 
 /** Actor ID with type discriminator (matches backend) */
 
@@ -42,7 +42,7 @@ export interface ThreadMeta {
 
   // Foreign keys (IDs only - frontend resolves via separate stores)
   integrationId: string
-  integrationProvider: IntegrationProvider | null
+  integrationProvider: ChannelProvider | null
   assigneeId: ActorId | null
 
   // Denormalized for performance (avoid extra fetches for list display)

@@ -4,7 +4,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Mail, Plus } from 'lucide-react'
 import { useThread } from '~/components/threads/hooks'
 import { useFirstSelectedThreadId, useHasMultipleSelected } from '~/components/threads/store'
-import type { IntegrationProvider } from '~/components/threads/store/thread-store'
+import type { ChannelProvider } from '~/components/threads/store/thread-store'
 import { EmptyState } from '../global/empty-state'
 import ChatInterface from '../mail-views/chat-interface'
 import BulkActionToolbar from './bulk-action-toolbar'
@@ -14,10 +14,10 @@ import ThreadDetails from './thread-details'
 import { ThreadProvider } from './thread-provider'
 
 /** Chat providers that use ChatInterface instead of ThreadDetails */
-const CHAT_PROVIDERS: IntegrationProvider[] = ['FACEBOOK', 'INSTAGRAM', 'OPENPHONE']
+const CHAT_PROVIDERS: ChannelProvider[] = ['FACEBOOK', 'INSTAGRAM', 'OPENPHONE']
 
 /** Check if thread should use chat interface based on integration provider */
-function isChatThread(provider: IntegrationProvider | null): boolean {
+function isChatThread(provider: ChannelProvider | null): boolean {
   return provider !== null && CHAT_PROVIDERS.includes(provider)
 }
 

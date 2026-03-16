@@ -10,11 +10,11 @@ import {
   getImportCacheSize,
   recoverProcessingBatch,
 } from '../../email/polling-import-cache'
-import type { ImapFolderCheckpoint, ImapImportBatchJobData } from '../../providers/imap/types'
 import {
   DEFAULT_IMPORT_BATCH_SIZE,
   PROVIDER_IMPORT_BATCH_SIZE,
-} from '../../providers/integration-provider.interface'
+} from '../../providers/channel-provider.interface'
+import type { ImapFolderCheckpoint, ImapImportBatchJobData } from '../../providers/imap/types'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'

@@ -30,7 +30,7 @@ export interface OrgCacheAccessorMap {
   entityDefs: RecordAccessor<string>
   entityDefSlugs: RecordAccessor<string>
   memberRoleMap: RecordAccessor<OrganizationRole>
-  integrationProviders: RecordAccessor<string>
+  channelProviders: RecordAccessor<string>
   features: ScalarAccessor<FeatureMapObject>
 
   // Nested record

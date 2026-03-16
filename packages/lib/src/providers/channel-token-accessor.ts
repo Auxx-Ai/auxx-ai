@@ -1,27 +1,27 @@
-// packages/lib/src/providers/integration-token-accessor.ts
+// packages/lib/src/providers/channel-token-accessor.ts
 
 import { CredentialService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
 
-const logger = createScopedLogger('integration-token-accessor')
+const logger = createScopedLogger('channel-token-accessor')
 
-export interface IntegrationTokens {
+export interface ChannelTokens {
   accessToken: string | null
   refreshToken: string | null
   expiresAt: Date | null
 }
 
 /**
- * Centralized utility for reading/writing encrypted integration tokens.
+ * Centralized utility for reading/writing encrypted channel tokens.
  * All OAuth code should use this instead of accessing token fields directly.
  */
-export class IntegrationTokenAccessor {
+export class ChannelTokenAccessor {
   /**
    * Read tokens from linked WorkflowCredentials (decrypted).
    */
-  static async getTokens(integrationId: string): Promise<IntegrationTokens> {
+  static async getTokens(integrationId: string): Promise<ChannelTokens> {
     const [row] = await db
       .select({
         credentialId: schema.Integration.credentialId,
@@ -38,7 +38,7 @@ export class IntegrationTokenAccessor {
       .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
       .limit(1)
 
-    if (!row) throw new Error(`Integration ${integrationId} not found`)
+    if (!row) throw new Error(`Channel ${integrationId} not found`)
 
     if (!row.credentialId || !row.encryptedData) {
       return { accessToken: null, refreshToken: null, expiresAt: row.expiresAt }
@@ -46,7 +46,7 @@ export class IntegrationTokenAccessor {
 
     if (row.credentialOrgId && row.credentialOrgId !== row.organizationId) {
       logger.error('Cross-org credential link detected', { integrationId })
-      throw new Error(`Cross-org credential link blocked for integration ${integrationId}`)
+      throw new Error(`Cross-org credential link blocked for channel ${integrationId}`)
     }
 
     const data = CredentialService.decrypt(row.encryptedData)
@@ -67,7 +67,7 @@ export class IntegrationTokenAccessor {
     meta?: { createdById?: string }
   ): Promise<void> {
     await db.transaction(async (tx) => {
-      const [integration] = await tx
+      const [channel] = await tx
         .select({
           id: schema.Integration.id,
           credentialId: schema.Integration.credentialId,
@@ -79,9 +79,9 @@ export class IntegrationTokenAccessor {
         .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
         .limit(1)
 
-      if (!integration) throw new Error(`Integration ${integrationId} not found`)
+      if (!channel) throw new Error(`Channel ${integrationId} not found`)
 
-      let credentialId = integration.credentialId
+      let credentialId = channel.credentialId
 
       if (credentialId) {
         // Update existing credential
@@ -96,10 +96,10 @@ export class IntegrationTokenAccessor {
           .limit(1)
 
         if (!existing) {
-          throw new Error(`Credential ${credentialId} not found for integration ${integrationId}`)
+          throw new Error(`Credential ${credentialId} not found for channel ${integrationId}`)
         }
-        if (existing.organizationId !== integration.organizationId) {
-          throw new Error(`Cross-org credential link blocked for integration ${integrationId}`)
+        if (existing.organizationId !== channel.organizationId) {
+          throw new Error(`Cross-org credential link blocked for channel ${integrationId}`)
         }
 
         const currentData = CredentialService.decrypt(existing.encryptedData) as Record<
@@ -130,9 +130,9 @@ export class IntegrationTokenAccessor {
         const [credential] = await tx
           .insert(schema.WorkflowCredentials)
           .values({
-            organizationId: integration.organizationId,
+            organizationId: channel.organizationId,
             createdById: meta?.createdById ?? null,
-            name: `${integration.provider} - ${integration.email ?? 'integration'}`,
+            name: `${channel.provider} - ${channel.email ?? 'channel'}`,
             type: 'integration',
             encryptedData: encrypted,
             expiresAt: tokens.expiresAt ?? null,
@@ -149,7 +149,7 @@ export class IntegrationTokenAccessor {
           .where(
             and(
               eq(schema.Integration.id, integrationId),
-              eq(schema.Integration.organizationId, integration.organizationId)
+              eq(schema.Integration.organizationId, channel.organizationId)
             )
           )
       }
@@ -169,7 +169,7 @@ export class IntegrationTokenAccessor {
    */
   static async deleteTokens(integrationId: string): Promise<void> {
     await db.transaction(async (tx) => {
-      const [integration] = await tx
+      const [channel] = await tx
         .select({
           credentialId: schema.Integration.credentialId,
           organizationId: schema.Integration.organizationId,
@@ -178,7 +178,7 @@ export class IntegrationTokenAccessor {
         .where(eq(schema.Integration.id, integrationId))
         .limit(1)
 
-      if (!integration?.credentialId) return
+      if (!channel?.credentialId) return
 
       await tx
         .update(schema.Integration)
@@ -189,8 +189,8 @@ export class IntegrationTokenAccessor {
         .delete(schema.WorkflowCredentials)
         .where(
           and(
-            eq(schema.WorkflowCredentials.id, integration.credentialId),
-            eq(schema.WorkflowCredentials.organizationId, integration.organizationId)
+            eq(schema.WorkflowCredentials.id, channel.credentialId),
+            eq(schema.WorkflowCredentials.organizationId, channel.organizationId)
           )
         )
     })

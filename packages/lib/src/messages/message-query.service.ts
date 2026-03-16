@@ -4,9 +4,9 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type ParticipantId, toParticipantId } from '@auxx/types'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { getOrgProviderMap } from '../providers/integration-cache'
+import { getOrgChannelProviderMap } from '../providers/channel-cache'
 import { getMessageTypeFromProvider } from '../providers/type-utils'
-import { IntegrationProviderType } from '../providers/types'
+import { ChannelProviderType } from '../providers/types'
 import type {
   AttachmentMeta,
   ListMessagesByThreadResult,
@@ -44,7 +44,7 @@ export class MessageQueryService {
       threadId,
     })
 
-    const providerMap = await getOrgProviderMap(this.organizationId, this.db)
+    const providerMap = await getOrgChannelProviderMap(this.organizationId, this.db)
 
     // All messages in Message table are sent messages (drafts are in Draft table)
     const rows = await this.db.query.Message.findMany({
@@ -90,7 +90,7 @@ export class MessageQueryService {
       const participantData = participantsByMessage.get(m.id)
       const participants = this.buildParticipantIds(m, participantData)
 
-      const provider = providerMap.get(m.integrationId) ?? IntegrationProviderType.google
+      const provider = providerMap.get(m.integrationId) ?? ChannelProviderType.google
       const messageType = getMessageTypeFromProvider(provider)
 
       const hasObjectBackedHtml = !!m.htmlBodyStorageLocationId
@@ -138,7 +138,7 @@ export class MessageQueryService {
     })
 
     // Get cached provider map for this organization
-    const providerMap = await getOrgProviderMap(this.organizationId, this.db)
+    const providerMap = await getOrgChannelProviderMap(this.organizationId, this.db)
 
     // Fetch messages
     const messages = await this.db.query.Message.findMany({
@@ -182,7 +182,7 @@ export class MessageQueryService {
         const participants = this.buildParticipantIds(m, participantData)
 
         // Derive messageType from integration provider
-        const provider = providerMap.get(m.integrationId) ?? IntegrationProviderType.google
+        const provider = providerMap.get(m.integrationId) ?? ChannelProviderType.google
         const messageType = getMessageTypeFromProvider(provider)
 
         const hasObjectBackedHtml = !!m.htmlBodyStorageLocationId

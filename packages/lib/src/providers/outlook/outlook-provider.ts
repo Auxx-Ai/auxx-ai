@@ -20,12 +20,12 @@ import {
   type ParticipantInputData, // Use this for participant info
 } from '../../email/email-storage' // Adjust path
 import {
-  type IntegrationProvider,
+  type ChannelProvider,
   type MessageListResult,
   MessageStatus,
   type SendMessageOptions,
-} from '../integration-provider.interface' // Adjust path
-import { IntegrationTokenAccessor } from '../integration-token-accessor'
+} from '../channel-provider.interface' // Adjust path
+import { ChannelTokenAccessor } from '../channel-token-accessor'
 import {
   type AttachmentFile,
   BaseMessageProvider,
@@ -104,7 +104,7 @@ const outlookStatusMap: Record<
 */
 export class OutlookProvider
   extends BaseMessageProvider
-  implements IntegrationProvider, MessageProvider
+  implements ChannelProvider, MessageProvider
 {
   private client: Client | null = null
   private inboxId: string | undefined = undefined // Optional: Store inbox ID if needed
@@ -163,7 +163,7 @@ export class OutlookProvider
     this.integration = dbIntegration
 
     // Get tokens from encrypted credentials
-    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
     if (!tokens.refreshToken) {
       this.resetState()
       throw new Error(`Missing refresh token for Outlook integration ID: ${integrationId}`)

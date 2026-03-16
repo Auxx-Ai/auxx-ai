@@ -13,6 +13,7 @@ import { authRouter } from './routers/auth'
 import { billingRouter } from './routers/billing'
 import { bomRouter } from './routers/bom'
 import { channelRouter } from './routers/channel'
+import { channelReauthRouter } from './routers/channel-reauth'
 import { chatRouter } from './routers/chat'
 import { commentRouter } from './routers/comment'
 import { configVariableRouter } from './routers/config-variable'
@@ -33,7 +34,6 @@ import { fieldValueRouter } from './routers/fieldValue'
 import { fileRouter } from './routers/file'
 import { folderRouter } from './routers/folder'
 import { inboxRouter } from './routers/inbox'
-import { integrationReauthRouter } from './routers/integration-reauth'
 import { inventoryRouter } from './routers/inventory'
 import { knowledgeBaseRouter } from './routers/kb'
 import { labelRouter } from './routers/label'
@@ -114,7 +114,7 @@ export const appRouter = createTRPCRouter({
   featurePermission: featurePermissionsRouter,
   inbox: inboxRouter,
   channel: channelRouter,
-  integrationReauth: integrationReauthRouter,
+  channelReauth: channelReauthRouter,
   inventory: inventoryRouter,
   kb: knowledgeBaseRouter,
   label: labelRouter,

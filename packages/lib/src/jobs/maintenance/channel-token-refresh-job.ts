@@ -1,4 +1,4 @@
-// packages/lib/src/jobs/maintenance/integration-token-refresh-job.ts
+// packages/lib/src/jobs/maintenance/channel-token-refresh-job.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
@@ -9,10 +9,10 @@ import { GoogleOAuthService } from '../../providers/google/google-oauth'
 import { OutlookOAuthService } from '../../providers/outlook/outlook-oauth'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
 
-const logger = createScopedLogger('integration-token-refresh-job')
+const logger = createScopedLogger('channel-token-refresh-job')
 
 /** Refresh job payload */
-export interface IntegrationTokenRefreshJobData {
+export interface ChannelTokenRefreshJobData {
   integrationId: string
   organizationId: string
   provider: 'google' | 'outlook'
@@ -29,16 +29,16 @@ interface RefreshJobResult {
 }
 
 /**
- * Integration Token Refresh Job
+ * Channel Token Refresh Job
  *
- * Refreshes OAuth tokens and/or renews webhooks for a single integration.
+ * Refreshes OAuth tokens and/or renews webhooks for a single channel.
  */
-export const integrationTokenRefreshJob = async (
-  job: Job<IntegrationTokenRefreshJobData>
+export const channelTokenRefreshJob = async (
+  job: Job<ChannelTokenRefreshJobData>
 ): Promise<RefreshJobResult> => {
   const { integrationId, organizationId, provider, refreshToken, renewWebhook } = job.data
 
-  logger.info('Starting integration token refresh', {
+  logger.info('Starting channel token refresh', {
     integrationId,
     provider,
     refreshToken,
@@ -54,7 +54,7 @@ export const integrationTokenRefreshJob = async (
   }
 
   try {
-    // Verify integration still exists and is enabled
+    // Verify channel still exists and is enabled
     const [integration] = await db
       .select()
       .from(schema.Integration)
@@ -62,13 +62,13 @@ export const integrationTokenRefreshJob = async (
       .limit(1)
 
     if (!integration) {
-      logger.warn('Integration not found', { integrationId })
-      return { ...result, errors: ['Integration not found'] }
+      logger.warn('Channel not found', { integrationId })
+      return { ...result, errors: ['Channel not found'] }
     }
 
     if (!integration.enabled) {
-      logger.warn('Integration is disabled, skipping refresh', { integrationId })
-      return { ...result, errors: ['Integration disabled'] }
+      logger.warn('Channel is disabled, skipping refresh', { integrationId })
+      return { ...result, errors: ['Channel disabled'] }
     }
 
     // Refresh access token
@@ -138,7 +138,7 @@ export const integrationTokenRefreshJob = async (
 
     result.success = result.errors.length === 0
 
-    logger.info('Integration token refresh completed', {
+    logger.info('Channel token refresh completed', {
       integrationId,
       result,
       jobId: job.id,
@@ -146,7 +146,7 @@ export const integrationTokenRefreshJob = async (
 
     return result
   } catch (error) {
-    logger.error('Integration token refresh job failed', {
+    logger.error('Channel token refresh job failed', {
       integrationId,
       error: error instanceof Error ? error.message : String(error),
       jobId: job.id,

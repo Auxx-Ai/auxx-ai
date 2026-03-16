@@ -1,7 +1,7 @@
 import {
   monitorMessageSyncJob,
   startMessageSyncJob,
-  syncSingleIntegrationMessagesJob,
+  syncSingleChannelMessagesJob,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
@@ -11,7 +11,7 @@ const logger = createScopedLogger('worker:message-sync')
 
 const messageSyncJobMappings = {
   startMessageSyncJob,
-  syncSingleIntegrationMessagesJob,
+  syncSingleIntegrationMessagesJob: syncSingleChannelMessagesJob,
   monitorMessageSyncJob,
 }
 

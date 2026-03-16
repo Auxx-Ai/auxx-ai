@@ -5,8 +5,8 @@ export { ThreadMutationService } from './thread-mutation.service'
 export { ThreadQueryService } from './thread-query.service'
 
 export type {
+  ChannelProvider,
   FullCountsResponse,
-  IntegrationProvider,
   ListThreadIdsInput,
   PaginatedIdsResult,
   ThreadDetail,

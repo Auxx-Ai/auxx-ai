@@ -43,6 +43,14 @@ export { type ResolveValuesJobProps, resolveValuesJob } from './import/resolve-v
 // Maintenance
 export { orphanedAppBundleCleanupJob } from './maintenance/app-bundle-cleanup-job'
 export {
+  type ChannelTokenRefreshJobData,
+  channelTokenRefreshJob,
+} from './maintenance/channel-token-refresh-job'
+export {
+  type ChannelTokenRefreshScannerJobData,
+  channelTokenRefreshScannerJob,
+} from './maintenance/channel-token-refresh-scanner-job'
+export {
   type CleanupStats,
   expiredTrialAccountCleanupJob,
   type OrganizationToDelete,
@@ -52,14 +60,6 @@ export {
   type GettingStartedStats,
   sendGettingStartedEmailsJob,
 } from './maintenance/getting-started-job'
-export {
-  type IntegrationTokenRefreshJobData,
-  integrationTokenRefreshJob,
-} from './maintenance/integration-token-refresh-job'
-export {
-  type IntegrationTokenRefreshScannerJobData,
-  integrationTokenRefreshScannerJob,
-} from './maintenance/integration-token-refresh-scanner-job'
 export {
   cleanupExpiredMediaAssetsJob,
   getMediaAssetCleanupStats,
@@ -89,9 +89,9 @@ export {
   startMessageSyncJob,
 } from './messages/sync-all-messages-job'
 export {
-  type SyncSingleIntegrationMessagesJobData,
-  syncSingleIntegrationMessagesJob,
-} from './messages/sync-single-integration-messages-job'
+  type SyncSingleChannelMessagesJobData,
+  syncSingleChannelMessagesJob,
+} from './messages/sync-single-channel-messages-job'
 // OAuth2
 export { oauth2TokenRefreshJob } from './oauth2-refresh'
 // Polling

@@ -31,11 +31,11 @@ vi.mock('../raw-email-parser', () => {
   return { RawEmailParser }
 })
 
-vi.mock('../integration-resolver', () => {
+vi.mock('../channel-resolver', () => {
   /**
-   * InboundIntegrationResolver is the mocked integration resolver used by these tests.
+   * InboundChannelResolver is the mocked channel resolver used by these tests.
    */
-  class InboundIntegrationResolver {
+  class InboundChannelResolver {
     /**
      * resolve delegates to the hoisted resolver spy.
      */
@@ -44,7 +44,7 @@ vi.mock('../integration-resolver', () => {
     }
   }
 
-  return { InboundIntegrationResolver }
+  return { InboundChannelResolver }
 })
 
 vi.mock('../../email-storage', () => {

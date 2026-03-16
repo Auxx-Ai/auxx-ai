@@ -12,12 +12,12 @@ import {
   type UniversalThrottler,
 } from '../../utils/rate-limiter'
 import type {
-  IntegrationProvider,
+  ChannelProvider,
   MessageListResult,
   MessageStatus,
   SendMessageOptions,
-} from '../integration-provider.interface'
-import { IntegrationTokenAccessor } from '../integration-token-accessor'
+} from '../channel-provider.interface'
+import { ChannelTokenAccessor } from '../channel-token-accessor'
 import {
   BaseMessageProvider,
   type MessageProvider,
@@ -48,7 +48,7 @@ const logger = createScopedLogger('google-provider')
 
 export class GoogleProvider
   extends BaseMessageProvider
-  implements IntegrationProvider, MessageProvider
+  implements ChannelProvider, MessageProvider
 {
   private client: any // Should be google.auth.OAuth2
   private gmail: GmailV1.Gmail | null = null
@@ -112,7 +112,7 @@ export class GoogleProvider
       throw new Error(`Active Google integration not found or not enabled for ID: ${integrationId}`)
     }
     // Get tokens from encrypted credentials
-    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
     if (!tokens.refreshToken) {
       this.resetState()
       throw new Error(`Missing refresh token for Google integration ID: ${integrationId}`)
@@ -284,7 +284,7 @@ export class GoogleProvider
       const integrationId = this.integrationId
       logger.info('Google OAuth tokens refreshed.', { integrationId })
 
-      const tokenUpdate: Parameters<typeof IntegrationTokenAccessor.setTokens>[1] = {
+      const tokenUpdate: Parameters<typeof ChannelTokenAccessor.setTokens>[1] = {
         accessToken: tokens.access_token ?? null,
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
       }
@@ -299,7 +299,7 @@ export class GoogleProvider
       }
 
       // Persist encrypted tokens asynchronously
-      IntegrationTokenAccessor.setTokens(integrationId, tokenUpdate)
+      ChannelTokenAccessor.setTokens(integrationId, tokenUpdate)
         .then(() => logger.debug('Successfully updated Google tokens.', { integrationId }))
         .catch((err) =>
           logger.error('Failed to update Google tokens', { integrationId, error: err })

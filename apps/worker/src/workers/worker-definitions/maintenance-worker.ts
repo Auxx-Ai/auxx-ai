@@ -6,10 +6,10 @@ import {
 } from '@auxx/lib/files'
 import {
   applyScheduledSubscriptionChangesJob,
+  channelTokenRefreshJob,
+  channelTokenRefreshScannerJob,
   cleanupExpiredMediaAssetsJob,
   expiredTrialAccountCleanupJob,
-  integrationTokenRefreshJob,
-  integrationTokenRefreshScannerJob,
   type JobHandler,
   oauth2TokenRefreshScannerJob,
   orphanedAppBundleCleanupJob,
@@ -65,8 +65,8 @@ const jobMappings = {
   oauth2TokenRefreshScannerJob,
 
   // Integration OAuth2 token refresh (for Integration table)
-  integrationTokenRefreshScannerJob,
-  integrationTokenRefreshJob,
+  integrationTokenRefreshScannerJob: channelTokenRefreshScannerJob,
+  integrationTokenRefreshJob: channelTokenRefreshJob,
 
   // App bundle cleanup
   orphanedAppBundleCleanupJob,

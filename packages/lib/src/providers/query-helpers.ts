@@ -7,7 +7,7 @@
 
 import { schema } from '@auxx/database'
 import { and, eq, exists, inArray, isNull, type SQL } from 'drizzle-orm'
-import type { IntegrationProviderType, MessageType } from './types'
+import type { ChannelProviderType, MessageType } from './types'
 
 /**
  * Filter threads by provider type.
@@ -31,9 +31,7 @@ import type { IntegrationProviderType, MessageType } from './types'
  * })
  * ```
  */
-export function whereThreadProvider(
-  provider: IntegrationProviderType | IntegrationProviderType[]
-): SQL {
+export function whereThreadProvider(provider: ChannelProviderType | ChannelProviderType[]): SQL {
   const providers = Array.isArray(provider) ? provider : [provider]
 
   return exists(
@@ -62,9 +60,7 @@ export function whereThreadProvider(
  * })
  * ```
  */
-export function whereMessageProvider(
-  provider: IntegrationProviderType | IntegrationProviderType[]
-): SQL {
+export function whereMessageProvider(provider: ChannelProviderType | ChannelProviderType[]): SQL {
   const providers = Array.isArray(provider) ? provider : [provider]
 
   return exists(
@@ -104,7 +100,7 @@ export function whereThreadMessageType(messageType: MessageType | MessageType[])
   const types = Array.isArray(messageType) ? messageType : [messageType]
 
   // Map message types to providers
-  const providers: IntegrationProviderType[] = []
+  const providers: ChannelProviderType[] = []
 
   for (const type of types) {
     switch (type) {
@@ -165,7 +161,7 @@ export function whereMessageMessageType(messageType: MessageType | MessageType[]
   const types = Array.isArray(messageType) ? messageType : [messageType]
 
   // Map message types to providers
-  const providers: IntegrationProviderType[] = []
+  const providers: ChannelProviderType[] = []
 
   for (const type of types) {
     switch (type) {
@@ -221,7 +217,7 @@ export function whereMessageMessageType(messageType: MessageType | MessageType[]
  * })
  * ```
  */
-export function getEmailProviders(): IntegrationProviderType[] {
+export function getEmailProviders(): ChannelProviderType[] {
   return ['google', 'outlook', 'mailgun', 'email']
 }
 
@@ -240,7 +236,7 @@ export function getEmailProviders(): IntegrationProviderType[] {
  * })
  * ```
  */
-export function getSocialProviders(): IntegrationProviderType[] {
+export function getSocialProviders(): ChannelProviderType[] {
   return ['facebook', 'instagram']
 }
 
@@ -250,6 +246,6 @@ export function getSocialProviders(): IntegrationProviderType[] {
  *
  * @returns Array of SMS provider types
  */
-export function getSmsProviders(): IntegrationProviderType[] {
+export function getSmsProviders(): ChannelProviderType[] {
   return ['openphone', 'sms']
 }

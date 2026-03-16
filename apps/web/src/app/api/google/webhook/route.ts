@@ -3,7 +3,7 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
-import { type IntegrationProviderType, MessageService } from '@auxx/lib/email' // Renamed imports
+import { type ChannelProviderType, MessageService } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import jwt from 'jsonwebtoken'
@@ -179,7 +179,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // The provider's syncMessages method will use the current lastHistoryId as startHistoryId
       // and update it to the latest after successful processing
       try {
-        await messageService.syncMessages('google' as IntegrationProviderType, integration.id)
+        await messageService.syncMessages('google' as ChannelProviderType, integration.id)
         logger.info('Sync initiated successfully via webhook.', { integrationId: integration.id })
       } catch (syncError) {
         logger.error('Error during sync initiated by webhook:', {

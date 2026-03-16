@@ -11,11 +11,11 @@ import {
   type ParticipantInputData, // Structure for participant info from provider
 } from '../../email/email-storage' // Adjust path
 import type {
-  IntegrationProvider,
+  ChannelProvider,
   MessageStatus,
   SendMessageOptions,
-} from '../integration-provider.interface' // Adjust path based on final structure
-import { IntegrationTokenAccessor } from '../integration-token-accessor'
+} from '../channel-provider.interface' // Adjust path based on final structure
+import { ChannelTokenAccessor } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import { type FacebookIntegrationMetadata, FacebookOAuthService } from './facebook-oauth'
@@ -60,7 +60,7 @@ interface FacebookGraphParticipant {
 // --- End Interfaces ---
 export class FacebookProvider
   extends BaseMessageProvider
-  implements IntegrationProvider, MessageProvider
+  implements ChannelProvider, MessageProvider
 {
   private inboxId: string | undefined = undefined
   private metadata: FacebookIntegrationMetadata | null = null
@@ -129,7 +129,7 @@ export class FacebookProvider
       )
     }
     // Get tokens from encrypted credentials
-    const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
     // Safely cast and extract metadata
     try {
       this.metadata = integration.metadata as unknown as FacebookIntegrationMetadata

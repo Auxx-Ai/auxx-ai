@@ -9,7 +9,7 @@ import { ConfidentialClientApplication, LogLevel } from '@azure/msal-node'
 import { Client } from '@microsoft/microsoft-graph-client'
 import { eq } from 'drizzle-orm'
 import { InboxService } from '../../inboxes/inbox-service'
-import { IntegrationTokenAccessor } from '../integration-token-accessor'
+import { ChannelTokenAccessor } from '../channel-token-accessor'
 import { parseMsalError } from './outlook-errors'
 
 const logger = createScopedLogger('outlook-oauth')
@@ -208,7 +208,7 @@ export class OutlookOAuthService {
           integrationId,
         })
 
-        await IntegrationTokenAccessor.setTokens(
+        await ChannelTokenAccessor.setTokens(
           integrationId as string,
           {
             refreshToken: refreshToken,
@@ -263,7 +263,7 @@ export class OutlookOAuthService {
           .returning()
         integration = updated
 
-        await IntegrationTokenAccessor.setTokens(
+        await ChannelTokenAccessor.setTokens(
           existingIntegration.id,
           {
             refreshToken: refreshToken,
@@ -285,7 +285,7 @@ export class OutlookOAuthService {
           .returning()
         integration = created
 
-        await IntegrationTokenAccessor.setTokens(
+        await ChannelTokenAccessor.setTokens(
           integration.id,
           {
             refreshToken: refreshToken,
@@ -417,7 +417,7 @@ export class OutlookOAuthService {
         throw new Error('Integration not found')
       }
 
-      const tokens = await IntegrationTokenAccessor.getTokens(integrationId)
+      const tokens = await ChannelTokenAccessor.getTokens(integrationId)
       if (!tokens.refreshToken) {
         throw new Error('Integration missing refresh token')
       }
@@ -441,7 +441,7 @@ export class OutlookOAuthService {
 
       const newRefreshToken = this.extractRefreshTokenFromCache()
 
-      const tokenUpdate: Parameters<typeof IntegrationTokenAccessor.setTokens>[1] = {
+      const tokenUpdate: Parameters<typeof ChannelTokenAccessor.setTokens>[1] = {
         accessToken: response.accessToken,
         expiresAt: expiresOn,
       }
@@ -449,7 +449,7 @@ export class OutlookOAuthService {
         tokenUpdate.refreshToken = newRefreshToken
       }
 
-      await IntegrationTokenAccessor.setTokens(integrationId, tokenUpdate)
+      await ChannelTokenAccessor.setTokens(integrationId, tokenUpdate)
 
       const [updatedIntegration] = await db
         .select()
@@ -496,7 +496,7 @@ export class OutlookOAuthService {
         integrationId,
       })
 
-      await IntegrationTokenAccessor.deleteTokens(integrationId)
+      await ChannelTokenAccessor.deleteTokens(integrationId)
 
       await db
         .update(schema.Integration)
@@ -556,14 +556,14 @@ export class OutlookOAuthService {
 
           // Update encrypted tokens in background
           const newRefreshToken = this.extractRefreshTokenFromCache()
-          const tokenUpdate: Parameters<typeof IntegrationTokenAccessor.setTokens>[1] = {
+          const tokenUpdate: Parameters<typeof ChannelTokenAccessor.setTokens>[1] = {
             accessToken: response.accessToken,
             expiresAt: currentExpiresAt,
           }
           if (newRefreshToken && newRefreshToken !== refreshToken) {
             tokenUpdate.refreshToken = newRefreshToken
           }
-          IntegrationTokenAccessor.setTokens(integrationId, tokenUpdate).catch((err: unknown) =>
+          ChannelTokenAccessor.setTokens(integrationId, tokenUpdate).catch((err: unknown) =>
             logger.error('Background token update failed in authProvider', { err })
           )
 

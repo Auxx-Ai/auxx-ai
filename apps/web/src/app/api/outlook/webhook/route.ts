@@ -1,7 +1,7 @@
 // apps/web/src/app/api/outlook/webhook/route.ts
 
 import { database as db, schema } from '@auxx/database'
-import { type IntegrationProviderType, MessageService } from '@auxx/lib/email'
+import { type ChannelProviderType, MessageService } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -185,7 +185,7 @@ async function processNotification(notification: GraphWebhookNotification): Prom
     const messageService = new MessageService(integration.organizationId)
 
     try {
-      await messageService.syncMessages('outlook' as IntegrationProviderType, integration.id)
+      await messageService.syncMessages('outlook' as ChannelProviderType, integration.id)
       logger.info('Outlook sync initiated successfully via webhook', {
         integrationId: integration.id,
       })

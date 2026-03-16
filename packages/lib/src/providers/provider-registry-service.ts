@@ -11,12 +11,12 @@ import type {
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
+import type { ChannelProvider } from './channel-provider.interface'
 import { EmailForwardingProvider } from './email/email-forwarding-provider'
 import { FacebookProvider } from './facebook/facebook-provider'
 import { GoogleProvider } from './google/google-provider'
 import { ImapProvider } from './imap/imap-provider'
 import { InstagramProvider } from './instagram/instagram-provider'
-import type { IntegrationProvider } from './integration-provider.interface'
 import { OpenPhoneProvider } from './openphone/openphone-provider'
 import { OutlookProvider } from './outlook/outlook-provider'
 import { getProviderCapabilities, type ProviderCapabilities } from './provider-capabilities'
@@ -177,13 +177,13 @@ export class ProviderRegistryService {
       provider: string
     },
     metadata?: any
-  ): Promise<IntegrationProvider> {
+  ): Promise<ChannelProvider> {
     const key = `${integrationId}`
     if (this.providers.has(key)) {
       return this.providers.get(key)!.provider
     }
     try {
-      let provider: IntegrationProvider
+      let provider: ChannelProvider
       switch (type) {
         case IntegrationProviderEnum.google:
           provider = new GoogleProvider(this.organizationId)
@@ -236,7 +236,7 @@ export class ProviderRegistryService {
   async getProvider(
     // type: IntegrationProviderType,
     integrationId: string
-  ): Promise<IntegrationProvider> {
+  ): Promise<ChannelProvider> {
     const key = `${integrationId}`
     console.log('Getting provider for integration:', key, this.organizationId)
     if (!this.providers.has(key)) {
@@ -346,13 +346,13 @@ export class ProviderRegistryService {
     {
       type: IntegrationProviderType
       integrationId: string
-      provider: IntegrationProvider
+      provider: ChannelProvider
     }[]
   > {
     const supportingProviders: {
       type: IntegrationProviderType
       integrationId: string
-      provider: IntegrationProvider
+      provider: ChannelProvider
     }[] = []
     for (const [key, instance] of this.providers) {
       if (this.providerSupportsCapability(instance.type, capability)) {

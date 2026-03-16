@@ -42,9 +42,9 @@ export {
   sortThreads,
 } from './thread-selectors'
 export {
+  type ChannelProvider,
   type ContextPagination,
   getThreadStoreState,
-  type IntegrationProvider,
   type ThreadFilter,
   type ThreadMeta,
   type ThreadSort,

@@ -107,7 +107,7 @@ function ReplyComposeEditorComponent({
       thread,
       sourceMessage,
       draft: initialDraft,
-      defaultIntegrationId: integrations?.integrations?.[0]?.id,
+      defaultIntegrationId: integrations?.channels?.[0]?.id,
       presetValues,
     })
     return derived
@@ -148,7 +148,7 @@ function ReplyComposeEditorComponent({
         thread,
         sourceMessage,
         draft: initialDraft,
-        defaultIntegrationId: integrations?.integrations?.[0]?.id,
+        defaultIntegrationId: integrations?.channels?.[0]?.id,
         presetValues,
       })
 

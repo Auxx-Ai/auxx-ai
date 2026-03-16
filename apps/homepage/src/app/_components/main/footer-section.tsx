@@ -39,7 +39,7 @@ const links = [
       },
       {
         title: 'Privacy',
-        href: '/privacy-policy',
+        href: 'https://auxx.ai/privacy-policy',
       },
       {
         title: 'Imprint',

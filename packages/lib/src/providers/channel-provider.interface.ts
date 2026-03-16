@@ -18,7 +18,7 @@ export interface MessageListResult {
   deletedMessageIds: string[]
   previousCursor: string | null
   nextCursor: string
-  /** undefined = integration-level cursor (Gmail), set = per-label cursor (Outlook/IMAP) */
+  /** undefined = channel-level cursor (Gmail), set = per-label cursor (Outlook/IMAP) */
   labelId: string | undefined
 }
 
@@ -76,10 +76,10 @@ export enum MessageStatus {
   TRASH = 'TRASH',
 }
 
-// Renamed from EmailProvider to IntegrationProvider
-export interface IntegrationProvider {
+// Renamed from EmailProvider to ChannelProvider
+export interface ChannelProvider {
   /**
-   * Initializes the provider for a specific integration instance.
+   * Initializes the provider for a specific channel instance.
    * @param integrationId The ID of the integration record in the database.
    */
   initialize(integrationId: string): Promise<void>
@@ -241,7 +241,7 @@ export interface IntegrationProvider {
   /**
    * Discover message IDs that need to be imported (list-fetch phase).
    * Returns an array of results — one per label/folder for Outlook/IMAP,
-   * or a single result with labelId=undefined for Gmail (integration-level cursor).
+   * or a single result with labelId=undefined for Gmail (channel-level cursor).
    * Optional — providers that don't implement this use syncMessages() directly.
    */
   fetchMessageIds?(since?: Date): Promise<MessageListResult[]>

@@ -1,10 +1,10 @@
-// packages/lib/src/providers/integration-service.ts
+// packages/lib/src/providers/channel-service.ts
 
 import { type Database, schema } from '@auxx/database'
 import crypto from 'crypto'
 import { and, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { withAuthErrorHandling } from '../email/errors-handlers'
-import { type IntegrationProviderType, MessageService } from '../email/message-service'
+import { MessageService } from '../email/message-service'
 import { clearImportCache, getImportCacheSize } from '../email/polling-import-cache'
 import { enqueueStorageCleanupJob } from '../jobs/maintenance/storage-cleanup-job'
 import { createScopedLogger } from '../logger'
@@ -15,13 +15,14 @@ import { InstagramOAuthService } from './instagram/instagram-oauth'
 import { OpenPhoneService } from './openphone/openphone-service'
 import { OutlookOAuthService } from './outlook/outlook-oauth'
 import { getEmailProviders, whereThreadMessageType } from './query-helpers'
+import type { ChannelProviderType } from './types'
 
-const logger = createScopedLogger('integration-service')
+const logger = createScopedLogger('channel-service')
 
 /**
- * Interface for integration settings
+ * Interface for channel settings
  */
-interface IntegrationSettings {
+interface ChannelSettings {
   recordCreation?: {
     mode: 'all' | 'selective' | 'none'
   }
@@ -29,7 +30,7 @@ interface IntegrationSettings {
 }
 
 /**
- * Interface for OpenPhone integration input
+ * Interface for OpenPhone channel input
  */
 interface OpenPhoneInput {
   apiKey: string
@@ -39,23 +40,23 @@ interface OpenPhoneInput {
 }
 
 /**
- * Custom error class for integration-related errors
+ * Custom error class for channel-related errors
  */
-class IntegrationError extends Error {
+class ChannelError extends Error {
   constructor(
     message: string,
     public code: string,
     public cause?: unknown
   ) {
     super(message)
-    this.name = 'IntegrationError'
+    this.name = 'ChannelError'
   }
 }
 
 /**
- * Service for managing integrations
+ * Service for managing channels
  */
-export class IntegrationService {
+export class ChannelService {
   private db: Database
   private organizationId: string
   private userId?: string
@@ -67,76 +68,73 @@ export class IntegrationService {
   }
 
   /**
-   * Helper to safely extract identifier from integration
+   * Helper to safely extract identifier from channel
    */
   private getIdentifier(
-    integration:
+    channel:
       | (typeof schema.Integration.$inferSelect & {
           chatWidget?: typeof schema.ChatWidget.$inferSelect | null
         })
       | null
   ): string | undefined {
-    if (!integration) return undefined
-    if (integration.provider === 'chat' && integration.chatWidget) {
-      return integration.chatWidget.name
+    if (!channel) return undefined
+    if (channel.provider === 'chat' && channel.chatWidget) {
+      return channel.chatWidget.name
     }
-    // Forwarding integrations store the alias in Integration.email
-    if (integration.email) return integration.email
-    const metadata = integration.metadata
+    // Forwarding channels store the alias in Integration.email
+    if (channel.email) return channel.email
+    const metadata = channel.metadata
     if (metadata && typeof metadata === 'object') {
       if ('email' in metadata && typeof metadata.email === 'string') return metadata.email
       if ('phoneNumber' in metadata && typeof metadata.phoneNumber === 'string')
         return metadata.phoneNumber
     }
-    return integration.name || undefined
+    return channel.name || undefined
   }
 
   /**
-   * Validate that an integration belongs to the organization
+   * Validate that a channel belongs to the organization
    */
-  private async validateIntegrationOwnership(integrationId: string) {
-    const [integration] = await this.db
+  private async validateChannelOwnership(channelId: string) {
+    const [channel] = await this.db
       .select()
       .from(schema.Integration)
       .leftJoin(schema.ChatWidget, eq(schema.ChatWidget.integrationId, schema.Integration.id))
-      .where(and(eq(schema.Integration.id, integrationId), isNull(schema.Integration.deletedAt)))
+      .where(and(eq(schema.Integration.id, channelId), isNull(schema.Integration.deletedAt)))
       .limit(1)
 
-    if (
-      !integration?.Integration ||
-      integration.Integration.organizationId !== this.organizationId
-    ) {
-      throw new IntegrationError('Integration not found or access denied', 'INTEGRATION_NOT_FOUND')
+    if (!channel?.Integration || channel.Integration.organizationId !== this.organizationId) {
+      throw new ChannelError('Channel not found or access denied', 'CHANNEL_NOT_FOUND')
     }
 
     return {
-      ...integration.Integration,
-      chatWidget: integration.ChatWidget,
+      ...channel.Integration,
+      chatWidget: channel.ChatWidget,
     }
   }
 
   /**
-   * Delete threads and messages associated with an integration,
+   * Delete threads and messages associated with a channel,
    * cleaning up MediaAssets and marking StorageLocations for async S3 deletion.
    */
-  private async deleteIntegrationData(tx: typeof this.db, integrationId: string, provider: string) {
-    logger.warn(`Deleting data for integration: ${integrationId} (${provider})`)
+  private async deleteChannelData(tx: typeof this.db, channelId: string, provider: string) {
+    logger.warn(`Deleting data for channel: ${channelId} (${provider})`)
 
     if (provider === 'chat') {
       await tx
         .delete(schema.Thread)
-        .where(and(eq(schema.Thread.integrationId, integrationId), whereThreadMessageType('CHAT')))
-      logger.info(`Deleted CHAT threads for integration ${integrationId}`)
+        .where(and(eq(schema.Thread.integrationId, channelId), whereThreadMessageType('CHAT')))
+      logger.info(`Deleted CHAT threads for channel ${channelId}`)
       return
     }
 
-    // 1. Collect all messageIds for this integration
+    // 1. Collect all messageIds for this channel
     const messageRows = await tx
       .select({ id: schema.Message.id })
       .from(schema.Message)
-      .where(eq(schema.Message.integrationId, integrationId))
+      .where(eq(schema.Message.integrationId, channelId))
     const messageIds = messageRows.map((r) => r.id)
-    logger.info(`Found ${messageIds.length} messages for integration ${integrationId}`)
+    logger.info(`Found ${messageIds.length} messages for channel ${channelId}`)
 
     if (messageIds.length > 0) {
       // 2. Collect MediaAsset IDs via Attachment (polymorphic entityType='MESSAGE')
@@ -151,7 +149,7 @@ export class IntegrationService {
           )
         )
       const mediaAssetIds = assetRows.map((r) => r.assetId).filter(Boolean) as string[]
-      logger.info(`Found ${mediaAssetIds.length} MediaAssets for integration ${integrationId}`)
+      logger.info(`Found ${mediaAssetIds.length} MediaAssets for channel ${channelId}`)
 
       // 3. Mark email body StorageLocations as deleted
       await tx
@@ -161,7 +159,7 @@ export class IntegrationService {
           sql`${schema.StorageLocation.id} IN (
             SELECT ${schema.Message.htmlBodyStorageLocationId}
             FROM ${schema.Message}
-            WHERE ${schema.Message.integrationId} = ${integrationId}
+            WHERE ${schema.Message.integrationId} = ${channelId}
             AND ${schema.Message.htmlBodyStorageLocationId} IS NOT NULL
           )`
         )
@@ -185,33 +183,33 @@ export class IntegrationService {
 
         // 5. Delete MediaAssets (cascades to Attachment + MediaAssetVersion via FK)
         await tx.delete(schema.MediaAsset).where(inArray(schema.MediaAsset.id, mediaAssetIds))
-        logger.info(`Deleted ${mediaAssetIds.length} MediaAssets for integration ${integrationId}`)
+        logger.info(`Deleted ${mediaAssetIds.length} MediaAssets for channel ${channelId}`)
       }
     }
 
     // 6. Delete Messages
-    await tx.delete(schema.Message).where(eq(schema.Message.integrationId, integrationId))
-    logger.info(`Deleted messages for integration ${integrationId}`)
+    await tx.delete(schema.Message).where(eq(schema.Message.integrationId, channelId))
+    logger.info(`Deleted messages for channel ${channelId}`)
 
     // 7. Delete Threads
-    await tx.delete(schema.Thread).where(eq(schema.Thread.integrationId, integrationId))
-    logger.info(`Deleted threads for integration ${integrationId}`)
+    await tx.delete(schema.Thread).where(eq(schema.Thread.integrationId, channelId))
+    logger.info(`Deleted threads for channel ${channelId}`)
   }
 
   /**
    * Get OAuth URL for provider authentication
    */
-  async getAuthUrl(provider: IntegrationProviderType, redirectPath?: string) {
+  async getAuthUrl(provider: ChannelProviderType, redirectPath?: string) {
     try {
       if (provider === 'chat') {
-        throw new IntegrationError(
+        throw new ChannelError(
           'OAuth authentication is not applicable for chat widgets',
           'INVALID_PROVIDER'
         )
       }
 
       if (!this.userId) {
-        throw new IntegrationError('User ID required for OAuth authentication', 'USER_ID_REQUIRED')
+        throw new ChannelError('User ID required for OAuth authentication', 'USER_ID_REQUIRED')
       }
 
       let authUrl: string | null = null
@@ -251,7 +249,7 @@ export class IntegrationService {
           break
         }
         default:
-          throw new IntegrationError(`Unsupported provider: ${provider}`, 'UNSUPPORTED_PROVIDER')
+          throw new ChannelError(`Unsupported provider: ${provider}`, 'UNSUPPORTED_PROVIDER')
       }
 
       return { authUrl, csrfToken }
@@ -261,11 +259,11 @@ export class IntegrationService {
         provider,
       })
 
-      if (error instanceof IntegrationError) {
+      if (error instanceof ChannelError) {
         throw error
       }
 
-      throw new IntegrationError(
+      throw new ChannelError(
         `Failed to generate authorization URL for ${provider}`,
         'AUTH_URL_FAILED',
         error
@@ -274,11 +272,11 @@ export class IntegrationService {
   }
 
   /**
-   * Get all integrations for the organization
+   * Get all channels for the organization
    */
-  async getAllIntegrations() {
+  async getAllChannels() {
     try {
-      const integrationsData = await this.db
+      const channelsData = await this.db
         .select({
           id: schema.Integration.id,
           provider: schema.Integration.provider,
@@ -315,9 +313,9 @@ export class IntegrationService {
         )
         .orderBy(schema.Integration.provider, desc(schema.Integration.createdAt))
 
-      const integrations = integrationsData
+      const channels = channelsData
 
-      const formattedIntegrations = integrations.map((int) => {
+      const formattedChannels = channels.map((int) => {
         return {
           id: int.id,
           provider: int.provider,
@@ -343,12 +341,12 @@ export class IntegrationService {
           // Throttling
           throttleFailureCount: int.throttleFailureCount,
           throttleRetryAfter: int.throttleRetryAfter,
-          settings: ((int.metadata as any)?.settings as IntegrationSettings) || {},
+          settings: ((int.metadata as any)?.settings as ChannelSettings) || {},
         }
       })
 
-      // Enrich syncing integrations with pending import counts from Redis
-      const syncingIds = formattedIntegrations
+      // Enrich syncing channels with pending import counts from Redis
+      const syncingIds = formattedChannels
         .filter((int) => int.syncStatus === 'SYNCING')
         .map((int) => int.id)
 
@@ -357,27 +355,27 @@ export class IntegrationService {
       )
       const countMap = new Map(importCounts.map((c) => [c.id, c.count]))
 
-      const enriched = formattedIntegrations.map((int) => ({
+      const enriched = formattedChannels.map((int) => ({
         ...int,
         pendingImportCount: countMap.get(int.id) ?? 0,
       }))
 
-      return { integrations: enriched }
+      return { channels: enriched }
     } catch (error: any) {
-      logger.error('Error getting integrations:', {
+      logger.error('Error getting channels:', {
         error: error.message,
         organizationId: this.organizationId,
       })
-      throw new IntegrationError('Failed to get integrations', 'GET_INTEGRATIONS_FAILED', error)
+      throw new ChannelError('Failed to get channels', 'GET_CHANNELS_FAILED', error)
     }
   }
 
   /**
-   * Get email client integrations
+   * Get email client channels
    */
   async getEmailClients() {
     try {
-      const integrations = await this.db
+      const channels = await this.db
         .select({
           id: schema.Integration.id,
           provider: schema.Integration.provider,
@@ -399,8 +397,8 @@ export class IntegrationService {
           )
         )
 
-      const emailClients = integrations.map((int) => {
-        // Prefer Integration.email (used by forwarding integrations), fall back to metadata.email
+      const emailClients = channels.map((int) => {
+        // Prefer Integration.email (used by forwarding channels), fall back to metadata.email
         let email: string | undefined = int.email ?? undefined
         if (!email && int.metadata && typeof int.metadata === 'object' && 'email' in int.metadata) {
           // @ts-expect-error: dynamic metadata shape
@@ -411,7 +409,7 @@ export class IntegrationService {
           provider: int.provider,
           name: int.name,
           email,
-          settings: ((int.metadata as any)?.settings as IntegrationSettings) || {},
+          settings: ((int.metadata as any)?.settings as ChannelSettings) || {},
           inboxId: int.inboxId,
         }
       })
@@ -421,20 +419,20 @@ export class IntegrationService {
         error: error.message,
         organizationId: this.organizationId,
       })
-      throw new IntegrationError('Failed to get email clients', 'GET_EMAIL_CLIENTS_FAILED', error)
+      throw new ChannelError('Failed to get email clients', 'GET_EMAIL_CLIENTS_FAILED', error)
     }
   }
 
   /**
-   * Disconnect an integration
+   * Disconnect a channel
    */
-  async disconnect(integrationId: string) {
+  async disconnect(channelId: string) {
     try {
-      const integration = await this.validateIntegrationOwnership(integrationId)
+      const channel = await this.validateChannelOwnership(channelId)
 
       // Revoke external access if applicable
       let oauthService
-      switch (integration.provider) {
+      switch (channel.provider) {
         case 'google':
           oauthService = GoogleOAuthService.getInstance()
           break
@@ -451,14 +449,14 @@ export class IntegrationService {
 
       if (oauthService) {
         try {
-          await oauthService.revokeAccess(integrationId)
+          await oauthService.revokeAccess(channelId)
           logger.info(
-            `Successfully revoked access for integration ${integrationId} via ${integration.provider} service.`
+            `Successfully revoked access for channel ${channelId} via ${channel.provider} service.`
           )
         } catch (revokeError: any) {
           logger.error(
-            `Failed to revoke access via ${integration.provider} service, continuing deletion:`,
-            { error: revokeError.message, integrationId }
+            `Failed to revoke access via ${channel.provider} service, continuing deletion:`,
+            { error: revokeError.message, channelId }
           )
         }
       }
@@ -467,26 +465,24 @@ export class IntegrationService {
       const affectedInboxRows = await this.db
         .selectDistinct({ inboxId: schema.Thread.inboxId })
         .from(schema.Thread)
-        .where(
-          and(eq(schema.Thread.integrationId, integrationId), isNotNull(schema.Thread.inboxId))
-        )
+        .where(and(eq(schema.Thread.integrationId, channelId), isNotNull(schema.Thread.inboxId)))
       const affectedInboxIds = affectedInboxRows.map((r) => r.inboxId).filter(Boolean) as string[]
 
       // Perform database cleanup within a transaction
       await this.db.transaction(async (tx) => {
         // Clean up MediaAssets, mark StorageLocations, delete Messages/Threads
-        await this.deleteIntegrationData(tx, integrationId, integration.provider)
+        await this.deleteChannelData(tx, channelId, channel.provider)
 
         // Soft-delete Integration (partial unique index allows reconnect)
         await tx
           .update(schema.Integration)
           .set({ deletedAt: new Date(), enabled: false })
-          .where(eq(schema.Integration.id, integrationId))
-        logger.info(`Soft-deleted integration record ${integrationId} (${integration.provider}).`)
+          .where(eq(schema.Integration.id, channelId))
+        logger.info(`Soft-deleted channel record ${channelId} (${channel.provider}).`)
       })
 
       // Clear Redis polling cache inline (fast DEL operation)
-      await clearImportCache(integrationId)
+      await clearImportCache(channelId)
 
       // Delete stale cached inbox counts for affected inboxes
       if (affectedInboxIds.length > 0) {
@@ -502,114 +498,105 @@ export class IntegrationService {
       await enqueueStorageCleanupJob({
         type: 'integration',
         organizationId: this.organizationId,
-        integrationId,
+        integrationId: channelId,
       })
 
       return {
         success: true,
-        message: `Integration ${integration.provider} disconnected successfully.`,
+        message: `Channel ${channel.provider} disconnected successfully.`,
       }
     } catch (error: any) {
-      if (error instanceof IntegrationError) throw error
-      logger.error('Error disconnecting integration:', { error: error.message, integrationId })
-      throw new IntegrationError(`Failed to disconnect integration`, 'DISCONNECT_FAILED', error)
+      if (error instanceof ChannelError) throw error
+      logger.error('Error disconnecting channel:', { error: error.message, channelId })
+      throw new ChannelError(`Failed to disconnect channel`, 'DISCONNECT_FAILED', error)
     }
   }
 
   /**
-   * Toggle integration enabled status
+   * Toggle channel enabled status
    */
-  async toggle(integrationId: string, enabled: boolean) {
+  async toggle(channelId: string, enabled: boolean) {
     try {
-      const integration = await this.validateIntegrationOwnership(integrationId)
+      const channel = await this.validateChannelOwnership(channelId)
 
-      if (integration.enabled === enabled) {
-        logger.info(`Integration ${integrationId} is already ${enabled ? 'enabled' : 'disabled'}.`)
+      if (channel.enabled === enabled) {
+        logger.info(`Channel ${channelId} is already ${enabled ? 'enabled' : 'disabled'}.`)
         return {
           success: true,
-          message: `Integration already ${enabled ? 'enabled' : 'disabled'}.`,
+          message: `Channel already ${enabled ? 'enabled' : 'disabled'}.`,
         }
       }
 
-      const providerType = integration.provider as IntegrationProviderType | 'chat'
+      const providerType = channel.provider as ChannelProviderType | 'chat'
 
       // Handle webhook registration/unregistration for non-chat providers
       if (providerType !== 'chat' && providerType !== 'openphone') {
         if (enabled) {
-          logger.info(
-            `Enabling integration ${integrationId} (${providerType}). Registering webhooks.`
-          )
+          logger.info(`Enabling channel ${channelId} (${providerType}). Registering webhooks.`)
           await withAuthErrorHandling(
             () =>
               MessageService.registerWebhooks(
                 this.organizationId,
-                providerType as IntegrationProviderType,
-                integrationId
+                providerType as ChannelProviderType,
+                channelId
               ),
-            { provider: providerType as IntegrationProviderType, integrationId }
+            { provider: providerType as ChannelProviderType, integrationId: channelId }
           ).catch((err) =>
             logger.error('Webhook registration failed during enable, proceeding.', {
               err,
-              integrationId,
+              channelId,
             })
           )
         } else {
-          logger.info(
-            `Disabling integration ${integrationId} (${providerType}). Unregistering webhooks.`
-          )
+          logger.info(`Disabling channel ${channelId} (${providerType}). Unregistering webhooks.`)
           await MessageService.unregisterWebhooks(
             this.organizationId,
-            providerType as IntegrationProviderType,
-            integrationId
+            providerType as ChannelProviderType,
+            channelId
           ).catch((err) =>
             logger.error('Webhook unregistration failed during disable, proceeding.', {
               err,
-              integrationId,
+              channelId,
             })
           )
         }
       } else {
         logger.info(
-          `${enabled ? 'Enabling' : 'Disabling'} integration ${integrationId} (${providerType}). No webhook action needed.`
+          `${enabled ? 'Enabling' : 'Disabling'} channel ${channelId} (${providerType}). No webhook action needed.`
         )
       }
 
       await this.db
         .update(schema.Integration)
         .set({ enabled })
-        .where(eq(schema.Integration.id, integrationId))
-      logger.info(`Integration ${integrationId} status updated to ${enabled}.`)
+        .where(eq(schema.Integration.id, channelId))
+      logger.info(`Channel ${channelId} status updated to ${enabled}.`)
 
       return {
         success: true,
-        message: `Integration successfully ${enabled ? 'enabled' : 'disabled'}.`,
+        message: `Channel successfully ${enabled ? 'enabled' : 'disabled'}.`,
       }
     } catch (error: any) {
-      if (error instanceof IntegrationError) throw error
-      logger.error(`Error toggling integration ${integrationId}:`, { error: error.message })
-      throw new IntegrationError(`Failed to update integration status`, 'TOGGLE_FAILED', error)
+      if (error instanceof ChannelError) throw error
+      logger.error(`Error toggling channel ${channelId}:`, { error: error.message })
+      throw new ChannelError(`Failed to update channel status`, 'TOGGLE_FAILED', error)
     }
   }
 
   /**
-   * Sync messages for a specific integration
+   * Sync messages for a specific channel
    */
-  async syncMessages(integrationId: string, days: number) {
+  async syncMessages(channelId: string, days: number) {
     try {
-      const integration = await this.validateIntegrationOwnership(integrationId)
+      const channel = await this.validateChannelOwnership(channelId)
 
-      if (!integration.enabled) {
-        throw new IntegrationError(
-          'Cannot sync messages for disabled integration',
-          'INTEGRATION_DISABLED'
-        )
+      if (!channel.enabled) {
+        throw new ChannelError('Cannot sync messages for disabled channel', 'CHANNEL_DISABLED')
       }
 
-      if (integration.provider === 'chat') {
-        logger.warn(
-          `SyncMessages called for chat integration ${integrationId}. Sync is not applicable.`
-        )
-        throw new IntegrationError(
+      if (channel.provider === 'chat') {
+        logger.warn(`SyncMessages called for chat channel ${channelId}. Sync is not applicable.`)
+        throw new ChannelError(
           'Message synchronization is not applicable for chat widgets',
           'INVALID_PROVIDER'
         )
@@ -617,7 +604,7 @@ export class IntegrationService {
 
       // Use incremental History API when available (lastHistoryId exists),
       // only fall back to date-based sync for first-time syncs
-      const since = integration.lastHistoryId
+      const since = channel.lastHistoryId
         ? undefined
         : (() => {
             const d = new Date()
@@ -625,154 +612,137 @@ export class IntegrationService {
             return d
           })()
 
-      logger.info(
-        `Starting manual sync for integration ${integrationId} (${integration.provider})`,
-        {
-          mode: since ? 'message-list' : 'history-api',
-          since: since?.toISOString(),
-          lastHistoryId: integration.lastHistoryId,
-        }
-      )
+      logger.info(`Starting manual sync for channel ${channelId} (${channel.provider})`, {
+        mode: since ? 'message-list' : 'history-api',
+        since: since?.toISOString(),
+        lastHistoryId: channel.lastHistoryId,
+      })
 
       if (!this.userId) {
-        throw new IntegrationError(
-          'User ID required for message synchronization',
-          'USER_ID_REQUIRED'
-        )
+        throw new ChannelError('User ID required for message synchronization', 'USER_ID_REQUIRED')
       }
 
       const syncer = new SyncMessages(this.db, this.organizationId, this.userId)
-      return await syncer.sync({ integrationId, since })
+      return await syncer.sync({ integrationId: channelId, since })
     } catch (error: any) {
-      if (error instanceof IntegrationError) throw error
-      logger.error(`Error triggering manual sync for integration ${integrationId}:`, {
+      if (error instanceof ChannelError) throw error
+      logger.error(`Error triggering manual sync for channel ${channelId}:`, {
         error: error.message,
       })
-      throw new IntegrationError(`Failed to start message sync`, 'SYNC_FAILED', error)
+      throw new ChannelError(`Failed to start message sync`, 'SYNC_FAILED', error)
     }
   }
 
   /**
-   * Sync messages for all enabled integrations
+   * Sync messages for all enabled channels
    */
   async syncAllMessages(days: number) {
     try {
       const since = new Date()
       since.setDate(since.getDate() - days)
-      logger.info(
-        `Starting manual sync for ALL enabled integrations since ${since.toISOString()}`,
-        { organizationId: this.organizationId }
-      )
+      logger.info(`Starting manual sync for ALL enabled channels since ${since.toISOString()}`, {
+        organizationId: this.organizationId,
+      })
 
       if (!this.userId) {
-        throw new IntegrationError(
-          'User ID required for message synchronization',
-          'USER_ID_REQUIRED'
-        )
+        throw new ChannelError('User ID required for message synchronization', 'USER_ID_REQUIRED')
       }
 
       const syncer = new SyncMessages(this.db, this.organizationId, this.userId)
       return await syncer.sync({ since })
     } catch (error: any) {
-      if (error instanceof IntegrationError) throw error
+      if (error instanceof ChannelError) throw error
       logger.error('Error syncing messages from all providers:', {
         error: error.message,
         organizationId: this.organizationId,
       })
-      throw new IntegrationError(`Failed to sync all messages`, 'SYNC_ALL_FAILED', error)
+      throw new ChannelError(`Failed to sync all messages`, 'SYNC_ALL_FAILED', error)
     }
   }
 
   /**
-   * Add OpenPhone integration
+   * Add OpenPhone channel
    */
-  async addOpenPhoneIntegration(input: OpenPhoneInput) {
+  async addOpenPhoneChannel(input: OpenPhoneInput) {
     try {
-      logger.info('Attempting to add OpenPhone integration', {
+      logger.info('Attempting to add OpenPhone channel', {
         organizationId: this.organizationId,
         phoneNumber: input.phoneNumber,
       })
 
       if (!this.userId) {
-        throw new IntegrationError(
-          'User ID required for adding OpenPhone integration',
-          'USER_ID_REQUIRED'
-        )
+        throw new ChannelError('User ID required for adding OpenPhone channel', 'USER_ID_REQUIRED')
       }
 
       const openPhoneService = new OpenPhoneService(this.db, this.organizationId, this.userId)
       return await openPhoneService.addIntegration(input)
     } catch (error: any) {
-      logger.error('Error adding OpenPhone integration:', {
+      logger.error('Error adding OpenPhone channel:', {
         error: error.message,
         organizationId: this.organizationId,
       })
-      throw new IntegrationError(
-        'Failed to add OpenPhone integration',
-        'ADD_OPENPHONE_FAILED',
-        error
-      )
+      throw new ChannelError('Failed to add OpenPhone channel', 'ADD_OPENPHONE_FAILED', error)
     }
   }
 
   /**
-   * Get provider type for an integration
+   * Get provider type for a channel
    */
-  async getProviderType(integrationId: string) {
+  async getProviderType(channelId: string) {
     try {
-      const [integration] = await this.db
+      const [row] = await this.db
         .select({ provider: schema.Integration.provider })
         .from(schema.Integration)
         .where(
           and(
-            eq(schema.Integration.id, integrationId),
+            eq(schema.Integration.id, channelId),
             eq(schema.Integration.organizationId, this.organizationId),
             isNull(schema.Integration.deletedAt)
           )
         )
         .limit(1)
 
-      if (!integration) {
-        throw new IntegrationError('Integration not found', 'INTEGRATION_NOT_FOUND')
+      if (!row) {
+        throw new ChannelError('Channel not found', 'CHANNEL_NOT_FOUND')
       }
 
-      return { provider: integration.provider }
+      return { provider: row.provider }
     } catch (error: any) {
-      if (error instanceof IntegrationError) throw error
+      if (error instanceof ChannelError) throw error
       logger.error('Error getting provider type:', {
         error: error.message,
-        integrationId,
+        channelId,
       })
-      throw new IntegrationError('Failed to get provider type', 'GET_PROVIDER_TYPE_FAILED', error)
+      throw new ChannelError('Failed to get provider type', 'GET_PROVIDER_TYPE_FAILED', error)
     }
   }
 
   /**
-   * Update integration settings
+   * Update channel settings
    */
-  async updateSettings(integrationId: string, settings: IntegrationSettings) {
+  async updateSettings(channelId: string, settings: ChannelSettings) {
     try {
-      await this.validateIntegrationOwnership(integrationId)
+      await this.validateChannelOwnership(channelId)
 
       // Get current metadata
-      const [integration] = await this.db
+      const [row] = await this.db
         .select({ metadata: schema.Integration.metadata })
         .from(schema.Integration)
         .where(
           and(
-            eq(schema.Integration.id, integrationId),
+            eq(schema.Integration.id, channelId),
             eq(schema.Integration.organizationId, this.organizationId)
           )
         )
         .limit(1)
 
-      if (!integration) {
-        throw new IntegrationError('Integration not found', 'INTEGRATION_NOT_FOUND')
+      if (!row) {
+        throw new ChannelError('Channel not found', 'CHANNEL_NOT_FOUND')
       }
 
       // Merge new settings into metadata.settings
-      const currentMetadata = (integration.metadata as any) || {}
-      const currentSettings = (currentMetadata.settings as IntegrationSettings) || {}
+      const currentMetadata = (row.metadata as any) || {}
+      const currentSettings = (currentMetadata.settings as ChannelSettings) || {}
       const updatedSettings = {
         ...currentSettings,
         ...settings,
@@ -783,15 +753,15 @@ export class IntegrationService {
         settings: updatedSettings,
       }
 
-      // Update the integration with new metadata
+      // Update the channel with new metadata
       const [updated] = await this.db
         .update(schema.Integration)
         .set({ metadata: updatedMetadata })
-        .where(eq(schema.Integration.id, integrationId))
+        .where(eq(schema.Integration.id, channelId))
         .returning({ metadata: schema.Integration.metadata })
 
-      logger.info('Updated integration settings', {
-        integrationId,
+      logger.info('Updated channel settings', {
+        channelId,
         settings,
         organizationId: this.organizationId,
       })
@@ -802,42 +772,42 @@ export class IntegrationService {
         settings: (updated?.metadata as any)?.settings || updatedSettings,
       }
     } catch (error: any) {
-      if (error instanceof IntegrationError) throw error
-      logger.error('Error updating integration settings:', {
+      if (error instanceof ChannelError) throw error
+      logger.error('Error updating channel settings:', {
         error: error.message,
-        integrationId,
+        channelId,
       })
-      throw new IntegrationError('Failed to update settings', 'UPDATE_SETTINGS_FAILED', error)
+      throw new ChannelError('Failed to update settings', 'UPDATE_SETTINGS_FAILED', error)
     }
   }
 
   /**
-   * Update allowed senders for a forwarding integration.
+   * Update allowed senders for a forwarding channel.
    */
-  async updateAllowedSenders(integrationId: string, allowedSenders: string[]) {
+  async updateAllowedSenders(channelId: string, allowedSenders: string[]) {
     try {
-      await this.validateIntegrationOwnership(integrationId)
+      await this.validateChannelOwnership(channelId)
 
-      const [integration] = await this.db
+      const [row] = await this.db
         .select({ metadata: schema.Integration.metadata })
         .from(schema.Integration)
         .where(
           and(
-            eq(schema.Integration.id, integrationId),
+            eq(schema.Integration.id, channelId),
             eq(schema.Integration.organizationId, this.organizationId)
           )
         )
         .limit(1)
 
-      if (!integration) {
-        throw new IntegrationError('Integration not found', 'INTEGRATION_NOT_FOUND')
+      if (!row) {
+        throw new ChannelError('Channel not found', 'CHANNEL_NOT_FOUND')
       }
 
-      const currentMetadata = (integration.metadata as any) || {}
+      const currentMetadata = (row.metadata as any) || {}
       if (currentMetadata.channelType !== 'forwarding-address') {
-        throw new IntegrationError(
-          'Only forwarding integrations support allowed senders',
-          'INVALID_INTEGRATION_TYPE'
+        throw new ChannelError(
+          'Only forwarding channels support allowed senders',
+          'INVALID_CHANNEL_TYPE'
         )
       }
 
@@ -853,22 +823,22 @@ export class IntegrationService {
       await this.db
         .update(schema.Integration)
         .set({ metadata: updatedMetadata })
-        .where(eq(schema.Integration.id, integrationId))
+        .where(eq(schema.Integration.id, channelId))
 
       logger.info('Updated allowed senders', {
-        integrationId,
+        channelId,
         count: normalized.length,
         organizationId: this.organizationId,
       })
 
       return { allowedSenders: normalized }
     } catch (error: any) {
-      if (error instanceof IntegrationError) throw error
+      if (error instanceof ChannelError) throw error
       logger.error('Error updating allowed senders:', {
         error: error.message,
-        integrationId,
+        channelId,
       })
-      throw new IntegrationError(
+      throw new ChannelError(
         'Failed to update allowed senders',
         'UPDATE_ALLOWED_SENDERS_FAILED',
         error
@@ -881,10 +851,10 @@ export class IntegrationService {
    */
   static async getAllStats(db: Database, organizationId: string) {
     try {
-      const integrations = await MessageService.getAllIntegrations(organizationId)
+      const channels = await MessageService.getAllIntegrations(organizationId)
 
-      if (!integrations || integrations.length === 0) {
-        logger.info('No active integrations found, returning empty stats.', { organizationId })
+      if (!channels || channels.length === 0) {
+        logger.info('No active channels found, returning empty stats.', { organizationId })
         return { providers: {}, total: { total: 0, inbox: 0, sent: 0, draft: 0, other: 0 } }
       }
 
@@ -897,16 +867,16 @@ export class IntegrationService {
         total_other: 0,
       }
 
-      for (const integration of integrations) {
-        logger.debug(`Fetching stats for integration ${integration.id} (${integration.type})`)
+      for (const channel of channels) {
+        logger.debug(`Fetching stats for channel ${channel.id} (${channel.type})`)
 
-        // Get total message count for this integration
+        // Get total message count for this channel
         const [messageCountResult] = await db
           .select({ count: count() })
           .from(schema.Message)
           .where(
             and(
-              eq(schema.Message.integrationId, integration.id),
+              eq(schema.Message.integrationId, channel.id),
               eq(schema.Message.organizationId, organizationId)
             )
           )
@@ -918,15 +888,15 @@ export class IntegrationService {
           sent: 0, // emailLabel removed - no longer tracked
           draft: 0, // emailLabel removed - no longer tracked
           total_other: 0,
-          lastSyncedAt: (integration as any).lastSyncedAt ?? null,
-          providerType: integration.type,
-          integrationId: integration.id,
-          identifier: integration.details.identifier,
+          lastSyncedAt: (channel as any).lastSyncedAt ?? null,
+          providerType: channel.type,
+          channelId: channel.id,
+          identifier: channel.details.identifier,
         }
 
         totalStats.total_email += totalMessages
 
-        const key = `${integration.type}-${integration.id}`
+        const key = `${channel.type}-${channel.id}`
         providerStats[key] = stats
         logger.debug(`Stats calculated for ${key}`, { stats })
       }
@@ -935,7 +905,7 @@ export class IntegrationService {
       return { providers: providerStats, total: totalStats }
     } catch (error: any) {
       logger.error('Error getting message statistics:', { error: error.message, organizationId })
-      throw new IntegrationError('Failed to get message statistics', 'GET_STATS_FAILED', error)
+      throw new ChannelError('Failed to get message statistics', 'GET_STATS_FAILED', error)
     }
   }
 }

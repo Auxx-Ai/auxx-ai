@@ -3,7 +3,6 @@ import { SYNC_STATUS } from '@auxx/database/enums'
 import type { SYNC_STATUS as SyncStatus } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
-import type { IntegrationProviderType } from '../email/message-service'
 import { type MessageSyncFailedEvent, type MessageSyncPendingEvent, publisher } from '../events'
 import {
   MONITOR_INITIAL_DELAY_MS,
@@ -12,6 +11,7 @@ import {
   type SyncSingleIntegrationMessagesJobData,
 } from '../jobs'
 import { getQueue, Queues } from '../jobs/queues'
+import type { ChannelProviderType } from '../providers/types'
 
 const logger = createScopedLogger('lib:messages:sync-messages')
 type SyncInputProps = {
@@ -221,7 +221,7 @@ export class SyncMessages {
         organizationId,
         userId,
         integrationId: integrationToSync.id,
-        integrationType: integrationToSync.provider as IntegrationProviderType, // Cast type
+        integrationType: integrationToSync.provider as ChannelProviderType, // Cast type
         since: since ? since.toISOString() : undefined, // Pass date string
       }
       // Generate a unique BullMQ job ID for this single integration sync job
