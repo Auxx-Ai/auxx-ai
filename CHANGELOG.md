@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.85](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.84...auxx-v0.1.85) (2026-03-15)
+
+
+### Features
+
+* enhance condition badge and search functionality ([#269](https://github.com/Auxx-Ai/auxx-ai/issues/269)) ([d2a4bf7](https://github.com/Auxx-Ai/auxx-ai/commit/d2a4bf74aee7bf384cf9d2c77f5e8db9e5a7953d))
+* enhance mail search functionality; add search scope condition and improve participant display ([#268](https://github.com/Auxx-Ai/auxx-ai/issues/268)) ([a13ea7f](https://github.com/Auxx-Ai/auxx-ai/commit/a13ea7f826b872ff351c9ec19624043f5491f3f3))
+* update billing and subscription handling; integrate plan downgrade logic ([#266](https://github.com/Auxx-Ai/auxx-ai/issues/266)) ([e1caae5](https://github.com/Auxx-Ai/auxx-ai/commit/e1caae5feb8208981f4fa323910b0f7d1d096fa1))
+
 ## [0.1.84](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.83...auxx-v0.1.84) (2026-03-15)
 
 
