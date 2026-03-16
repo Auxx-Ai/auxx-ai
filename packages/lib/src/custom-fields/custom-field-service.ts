@@ -12,6 +12,7 @@ import {
 } from '@auxx/services/custom-fields'
 import type { CurrencyOptions } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
+import { onCacheEvent } from '../cache/invalidate'
 
 /**
  * Service for managing custom fields and their values across different models
@@ -77,6 +78,7 @@ export class CustomFieldService {
       throw new Error(result.error.message, { cause: { code: result.error.code } })
     }
 
+    await onCacheEvent('custom-field.created', { orgId: this.organizationId })
     return result.value
   }
 
@@ -114,6 +116,7 @@ export class CustomFieldService {
       throw new Error(result.error.message, { cause: result.error.cause })
     }
 
+    await onCacheEvent('custom-field.updated', { orgId: this.organizationId })
     return result.value
   }
 
@@ -133,6 +136,7 @@ export class CustomFieldService {
       throw new Error(result.error.message, { cause: result.error.cause })
     }
 
+    await onCacheEvent('custom-field.deleted', { orgId: this.organizationId })
     return result.value
   }
 

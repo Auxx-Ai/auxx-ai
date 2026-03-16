@@ -2,8 +2,8 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getWorkflowApp } from '@auxx/services/workflows'
 import type { Job } from 'bullmq'
+import { getCachedWorkflowApp } from '../../cache'
 import { SystemUserService } from '../../users/system-user-service'
 import { RedisWorkflowExecutionReporter } from '../../workflow-engine'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
@@ -39,33 +39,36 @@ export async function executeResourceTrigger(job: Job<ResourceTriggerJobData>) {
   })
 
   try {
-    // 1. Fetch workflow app using service method
-    const workflowAppResult = await getWorkflowApp({ workflowAppId, organizationId })
+    // 1. Fetch workflow app from cache
+    const workflowApp = await getCachedWorkflowApp(workflowAppId, organizationId)
 
-    if (workflowAppResult.isErr()) {
-      const error = workflowAppResult.error
-
-      // Log and skip if workflow not found/disabled (expected scenarios)
-      if (error.code === 'WORKFLOW_APP_NOT_FOUND' || error.code === 'WORKFLOW_NOT_PUBLISHED') {
-        logger.warn('Workflow not found or disabled, skipping', {
-          error: error.code,
-          message: error.message,
-          workflowAppId,
-          organizationId,
-          jobId: job.id,
-        })
-        return {
-          skipped: true,
-          reason: error.message,
-          workflowAppId,
-        }
+    if (!workflowApp) {
+      logger.warn('Workflow not found or disabled, skipping', {
+        workflowAppId,
+        organizationId,
+        jobId: job.id,
+      })
+      return {
+        skipped: true,
+        reason: `Workflow app ${workflowAppId} not found or not enabled`,
+        workflowAppId,
       }
-
-      // Throw for database errors (will retry)
-      throw new Error(`Failed to fetch workflow app: ${error.message}`)
     }
 
-    const { publishedWorkflow, organization } = workflowAppResult.value
+    const publishedWorkflow = workflowApp.publishedWorkflow
+
+    if (!publishedWorkflow) {
+      logger.warn('Workflow not published, skipping', {
+        workflowAppId,
+        organizationId,
+        jobId: job.id,
+      })
+      return {
+        skipped: true,
+        reason: `Workflow app ${workflowAppId} does not have a published workflow`,
+        workflowAppId,
+      }
+    }
 
     // 2. Create workflow run
     const executionService = new WorkflowExecutionService(db)

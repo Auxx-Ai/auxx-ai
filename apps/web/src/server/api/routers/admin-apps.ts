@@ -2,6 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
+import { invalidateOrgsByAppId, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
 import {
   adminApproveDeployment,
   adminDeleteDeployment,
@@ -155,6 +156,8 @@ export const adminAppsRouter = createTRPCRouter({
         await invalidateBuildCacheForDeveloperAccount(deployment.app.developerAccountId)
       }
 
+      await invalidateOrgsByDeploymentId(input.deploymentId, database)
+
       return { success: true }
     }),
 
@@ -189,6 +192,8 @@ export const adminAppsRouter = createTRPCRouter({
         await invalidateBuildCacheForDeveloperAccount(deployment.app.developerAccountId)
       }
 
+      await invalidateOrgsByDeploymentId(input.deploymentId, database)
+
       return { success: true }
     }),
 
@@ -221,6 +226,8 @@ export const adminAppsRouter = createTRPCRouter({
         await invalidateBuildCacheForDeveloperAccount(deployment.app.developerAccountId)
       }
 
+      await invalidateOrgsByDeploymentId(input.deploymentId, database)
+
       return { success: true }
     }),
 
@@ -234,6 +241,14 @@ export const adminAppsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Query affected orgs BEFORE delete — the fan-out helper queries
+      // AppInstallation.currentDeploymentId which won't match after the deployment is gone
+      const affectedOrgs = await database.query.AppInstallation.findMany({
+        where: (t, { eq, and, isNull }) =>
+          and(eq(t.currentDeploymentId, input.deploymentId), isNull(t.uninstalledAt)),
+        columns: { organizationId: true },
+      })
+
       const result = await adminDeleteDeployment({
         deploymentId: input.deploymentId,
         adminUserId: ctx.session.user.id,
@@ -242,6 +257,10 @@ export const adminAppsRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
+
+      // Fan-out invalidation using the pre-queried org IDs
+      const orgIds = [...new Set(affectedOrgs.map((a) => a.organizationId))]
+      await Promise.all(orgIds.map((orgId) => onCacheEvent('app.deployment.changed', { orgId })))
 
       return { success: true }
     }),
@@ -323,11 +342,28 @@ export const adminAppsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
-      return adminService.importApps(input.exportData, ctx.session.user.id, {
+      const result = await adminService.importApps(input.exportData, ctx.session.user.id, {
         targetDeveloperAccountId: input.targetDeveloperAccountId,
         selectedSlugs: input.selectedSlugs,
         slugOverrides: input.slugOverrides,
       })
+
+      // Invalidate installedApps for all orgs that have any imported app installed
+      // (connection definitions may have changed during import)
+      for (const app of result.apps) {
+        if (app.connectionDefinitions.length > 0) {
+          // Look up the appId by slug to fan-out invalidation
+          const appRow = await database.query.App.findFirst({
+            where: (t, { eq }) => eq(t.slug, app.slug),
+            columns: { id: true },
+          })
+          if (appRow) {
+            await invalidateOrgsByAppId(appRow.id, database)
+          }
+        }
+      }
+
+      return result
     }),
 
   /**

@@ -23,8 +23,8 @@ import { FieldValueService, formatToRawValue } from '../../field-values'
 import {
   type EntityQueryContext,
   entityConditionBuilder,
-  systemConditionBuilder,
-} from '../../workflow-engine'
+} from '../../workflow-engine/query-builder/entity-condition-builder'
+import { systemConditionBuilder } from '../../workflow-engine/query-builder/system-condition-builder'
 import type { ResourceField } from '../registry'
 import { RESOURCE_TABLE_MAP, RESOURCE_TABLE_REGISTRY } from '../registry'
 import type { TableId } from '../registry/field-registry'

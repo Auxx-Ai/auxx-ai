@@ -3,6 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
+import { onCacheEvent } from '../cache/invalidate'
 import { PollingTriggerService } from './polling-trigger-service'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
 import { WorkflowTriggerType, type WorkflowVersion } from './types'
@@ -147,6 +148,8 @@ export class WorkflowVersionService {
         })
         // Don't fail the publish operation if scheduling fails
       }
+
+      await onCacheEvent('workflow.published', { orgId: organizationId })
 
       return {
         id: newVersion.id,

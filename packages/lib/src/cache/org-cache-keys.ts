@@ -11,6 +11,7 @@ import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
 import type { Resource } from '../resources/registry/types'
 import type { SettingValue } from '../settings/types'
+import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
 
 /** Member info cached with joined user data */
 export interface OrgMemberInfo extends OrganizationMemberInfo {
@@ -23,8 +24,56 @@ export interface OrgMemberInfo extends OrganizationMemberInfo {
   } | null
 }
 
-/** Dehydrated subscription shape (serializable) */
+/** Dehydrated subscription shape (client-safe, serializable) */
 export type DehydratedSubscription = NonNullable<DehydratedOrganization['subscription']>
+
+/** Full cached subscription shape (server-only, JSON-serializable) */
+export interface CachedSubscription {
+  id: string
+  organizationId: string
+  status: string
+  plan: string
+  planId: string | null
+  seats: number
+  billingCycle: 'MONTHLY' | 'ANNUAL'
+  periodStart: string | null
+  periodEnd: string | null
+  endDate: string | null
+  cancelAtPeriodEnd: boolean
+  canceledAt: string | null
+  creditsBalance: number
+
+  // Stripe identifiers (server-only — never send to client)
+  stripeCustomerId: string | null
+  stripeSubscriptionId: string | null
+
+  // Trial
+  trialStart: string | null
+  trialEnd: string | null
+  hasTrialEnded: boolean
+  trialConversionStatus: string | null
+  isEligibleForTrial: boolean
+  trialEligibilityReason: string | null
+
+  // Scheduled changes
+  scheduledPlanId: string | null
+  scheduledPlan: string | null
+  scheduledBillingCycle: 'MONTHLY' | 'ANNUAL' | null
+  scheduledSeats: number | null
+  scheduledChangeAt: string | null
+
+  // Deletion
+  lastDeletionNotificationSent: string | null
+  lastDeletionNotificationDate: string | null
+  deletionScheduledDate: string | null
+  deletionReason: string | null
+
+  // Custom/enterprise
+  customFeatureLimits: unknown | null
+  customPricingMonthly: number | null
+  customPricingAnnual: number | null
+  customPricingNotes: string | null
+}
 
 /** Dehydrated org profile (serializable) */
 export interface DehydratedOrgProfile {
@@ -53,6 +102,39 @@ export interface CachedGroup {
   }
 }
 
+/** Cached installed app shape (JSON-serializable) */
+export interface CachedInstalledApp {
+  installationId: string
+  installationType: 'development' | 'production'
+  installedAt: string // ISO string — rehydrate to Date before returning
+
+  app: {
+    id: string
+    slug: string
+    title: string
+    description: string | null
+    avatarUrl: string | null
+    category: string | null
+  }
+
+  currentDeployment: {
+    id: string
+    version: string | null
+    deploymentType: string
+    status: string
+    clientBundleSha: string
+    createdAt: string // ISO string — rehydrate to Date before returning
+  } | null
+
+  /** Full ConnectionDefinitionSummary shape including oauth2Features */
+  connectionDefinition?: {
+    label: string | null
+    global: boolean | null
+    connectionType: string
+    oauth2Features: Record<string, unknown> | null
+  }
+}
+
 /** All org-scoped cache keys and their data types */
 export interface OrgCacheDataMap {
   // Near-immutable
@@ -67,7 +149,7 @@ export interface OrgCacheDataMap {
 
   // Business data
   features: FeatureMapObject
-  subscription: DehydratedSubscription | null
+  subscription: CachedSubscription | null
   orgProfile: DehydratedOrgProfile
   resources: Resource[]
   customFields: Record<string, CustomFieldEntity[]> // entityDefId → fields
@@ -75,6 +157,8 @@ export interface OrgCacheDataMap {
   inboxes: Inbox[]
   overages: Overage[]
   orgSettings: Record<string, SettingValue> // key → value (org defaults only)
+  installedApps: CachedInstalledApp[]
+  workflowApps: CachedWorkflowApp[]
 }
 
 export type OrgCacheKeyName = keyof OrgCacheDataMap
@@ -107,4 +191,6 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   inboxes: { prefix: 'org:inboxes', ttlSeconds: ONE_DAY },
   overages: { prefix: 'org:overages', ttlSeconds: 900 },
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
+  installedApps: { prefix: 'org:installed-apps', ttlSeconds: 900 },
+  workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY },
 }

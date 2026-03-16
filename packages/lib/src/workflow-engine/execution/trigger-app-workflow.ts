@@ -2,8 +2,8 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getWorkflowApp } from '@auxx/services/workflows'
 import { err, ok } from 'neverthrow'
+import { getCachedWorkflowApp } from '../../cache'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
 import { RedisWorkflowExecutionReporter } from '../execution-reporter'
 
@@ -36,22 +36,24 @@ export async function executeAppTriggeredWorkflow(params: {
     eventId,
   })
 
-  // 1. Fetch and validate workflow
-  const workflowResult = await getWorkflowApp({
-    workflowAppId,
-    organizationId,
-  })
+  // 1. Fetch and validate workflow from cache
+  const workflowApp = await getCachedWorkflowApp(workflowAppId, organizationId)
 
-  if (workflowResult.isErr()) {
-    return err(workflowResult.error)
+  if (!workflowApp) {
+    return err({
+      code: 'WORKFLOW_APP_NOT_FOUND' as const,
+      message: `Workflow app ${workflowAppId} not found or not enabled in organization ${organizationId}`,
+      workflowAppId,
+      organizationId,
+    })
   }
 
-  const { workflowApp, publishedWorkflow } = workflowResult.value
+  const publishedWorkflow = workflowApp.publishedWorkflow
 
-  if (!workflowApp.enabled) {
+  if (!publishedWorkflow) {
     return err({
-      code: 'WORKFLOW_NOT_ENABLED' as const,
-      message: `Workflow ${workflowAppId} is not enabled`,
+      code: 'WORKFLOW_NOT_PUBLISHED' as const,
+      message: `Workflow app ${workflowAppId} does not have a published workflow`,
       workflowAppId,
     })
   }

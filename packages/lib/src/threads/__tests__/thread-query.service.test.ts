@@ -11,46 +11,18 @@ vi.mock('@auxx/redis', () => ({
   getRedisClient: vi.fn(),
 }))
 
-// No longer need to mock config since feature flag is removed
-
-vi.mock('@auxx/database', () => ({
-  database: {},
-  schema: {
-    Thread: {
-      id: 'id',
-      lastMessageAt: 'lastMessageAt',
-      organizationId: 'organizationId',
-    },
-    Message: {
-      threadId: 'threadId',
-      id: 'id',
-      subject: 'subject',
-      sentAt: 'sentAt',
-      snippet: 'snippet',
-      isInbound: 'isInbound',
-      fromId: 'fromId',
-      createdById: 'createdById',
-      isFirstInThread: 'isFirstInThread',
-    },
-    ThreadReadStatus: {
-      threadId: 'threadId',
-      userId: 'userId',
-    },
-  },
-}))
-
 vi.mock('../../mail-views/mail-view-service', () => ({
   MailViewService: class {
     getMailView = vi.fn().mockResolvedValue(null)
   },
 }))
 
-vi.mock('@auxx/database/enums', () => ({
-  ModelTypeValues: ['contact', 'ticket', 'thread', 'user', 'inbox', 'message'],
-  ModelTypeMeta: {},
-  FieldType: {},
-  ThreadStatus: { OPEN: 'OPEN', ARCHIVED: 'ARCHIVED', SPAM: 'SPAM', TRASH: 'TRASH' },
-}))
+vi.mock('@auxx/database/enums', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@auxx/database/enums')>()
+  return {
+    ...actual,
+  }
+})
 
 vi.mock('@auxx/database/models', () => ({
   Thread: {},
@@ -76,13 +48,21 @@ vi.mock('../../resources/registry/resource-registry-service', () => ({
   },
 }))
 
-vi.mock('@auxx/types/actor', () => ({
-  toActorId: vi.fn((type: string, id: string) => `${type}:${id}`),
-}))
+vi.mock('@auxx/types/actor', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@auxx/types/actor')>()
+  return {
+    ...actual,
+    toActorId: vi.fn((type: string, id: string) => `${type}:${id}`),
+  }
+})
 
-vi.mock('@auxx/types/resource', () => ({
-  toRecordId: vi.fn((type: string, id: string) => `${type}:${id}`),
-}))
+vi.mock('@auxx/types/resource', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@auxx/types/resource')>()
+  return {
+    ...actual,
+    toRecordId: vi.fn((type: string, id: string) => `${type}:${id}`),
+  }
+})
 
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({

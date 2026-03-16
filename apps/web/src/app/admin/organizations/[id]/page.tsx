@@ -642,7 +642,15 @@ export default function OrganizationDetailsPage() {
                         </Table>
                       </div>
                     ) : (
-                      <div className='text-muted-foreground'>No subscription</div>
+                      <div className='text-muted-foreground'>
+                        No subscription.{' '}
+                        <button
+                          type='button'
+                          className='text-primary underline underline-offset-4 hover:text-primary/80'
+                          onClick={() => setActiveTab('billing')}>
+                          Create one
+                        </button>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -697,21 +705,23 @@ export default function OrganizationDetailsPage() {
 
               {/* Subscription & Enterprise Management - Side by Side */}
               <div className='grid gap-4 md:grid-cols-2'>
-                {org.subscription && (
-                  <SubscriptionManagementSection
-                    organizationId={org.id}
-                    organizationName={org.name}
-                    subscription={{
-                      id: org.subscription.id,
-                      status: org.subscription.status,
-                      plan: org.subscription.plan,
-                      canceledAt: org.subscription.canceledAt,
-                      cancelAtPeriodEnd: org.subscription.cancelAtPeriodEnd,
-                      periodEnd: org.subscription.periodEnd,
-                      creditsBalance: org.subscription.creditsBalance,
-                    }}
-                  />
-                )}
+                <SubscriptionManagementSection
+                  organizationId={org.id}
+                  organizationName={org.name}
+                  subscription={
+                    org.subscription
+                      ? {
+                          id: org.subscription.id,
+                          status: org.subscription.status,
+                          plan: org.subscription.plan,
+                          canceledAt: org.subscription.canceledAt,
+                          cancelAtPeriodEnd: org.subscription.cancelAtPeriodEnd,
+                          periodEnd: org.subscription.periodEnd,
+                          creditsBalance: org.subscription.creditsBalance,
+                        }
+                      : null
+                  }
+                />
 
                 {org.subscription && (
                   <EnterpriseManagementSection

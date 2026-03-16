@@ -4,6 +4,7 @@ import { database, schema } from '@auxx/database'
 import { createCustomField } from '@auxx/services/custom-fields'
 import { checkSlugExists, createEntityDefinition } from '@auxx/services/entity-definitions'
 import { eq } from 'drizzle-orm'
+import { onCacheEvent } from '../cache/invalidate'
 import { getTemplatesByIds } from './template-registry'
 import type { EntityTemplateField } from './types'
 import { isSymbolicRef, parseSymbolicRef } from './types'
@@ -311,6 +312,7 @@ export async function installTemplates(
     }
   }
 
+  await onCacheEvent('entity-def.created', { orgId: organizationId })
   return { created, linked, skippedRelationships }
 }
 

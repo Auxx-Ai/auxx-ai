@@ -5,6 +5,7 @@ import { configService } from '@auxx/credentials'
 import { getDeploymentMode } from '@auxx/deployment'
 import { execSync } from 'child_process'
 import { getOrgCache, getUserCache } from '../cache'
+import type { CachedSubscription } from '../cache/org-cache-keys'
 import { SETTINGS_CATALOG } from '../settings'
 import type { DehydratedEnvironment, DehydratedOrganization, DehydratedState } from './types'
 
@@ -141,7 +142,7 @@ export class DehydrationService {
       about: orgProfile.about,
       createdAt: orgProfile.createdAt,
       completedOnboarding: orgProfile.completedOnboarding,
-      subscription,
+      subscription: toClientSubscription(subscription),
       features: features ?? {},
       overages,
       settings: userData.userSettings,
@@ -197,5 +198,33 @@ export class DehydrationService {
     // Fetch members from cache and invalidate each user
     const { members } = await this.orgCache.getOrRecompute(organizationId, ['members'])
     await Promise.all(members.map((m) => this.userCache.invalidateUser(m.userId)))
+  }
+}
+
+/** Strip server-only fields from CachedSubscription for client delivery */
+function toClientSubscription(
+  sub: CachedSubscription | null
+): DehydratedOrganization['subscription'] {
+  if (!sub) return null
+  return {
+    id: sub.id,
+    status: sub.status,
+    plan: sub.plan,
+    planId: sub.planId,
+    seats: sub.seats,
+    billingCycle: sub.billingCycle,
+    periodStart: sub.periodStart,
+    periodEnd: sub.periodEnd,
+    cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+    canceledAt: sub.canceledAt,
+    trialStart: sub.trialStart,
+    trialEnd: sub.trialEnd,
+    hasTrialEnded: sub.hasTrialEnded,
+    isEligibleForTrial: sub.isEligibleForTrial,
+    scheduledPlanId: sub.scheduledPlanId,
+    scheduledPlan: sub.scheduledPlan,
+    scheduledBillingCycle: sub.scheduledBillingCycle,
+    scheduledSeats: sub.scheduledSeats,
+    scheduledChangeAt: sub.scheduledChangeAt,
   }
 }

@@ -1,5 +1,6 @@
 // apps/build/src/server/api/routers/versions.ts
 
+import { invalidateOrgsByDeploymentId } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import {
   calculateNextVersion,
@@ -100,6 +101,8 @@ export const versionsRouter = createTRPCRouter({
           deploymentWithApp.app.developerAccountId
         )
       }
+
+      await invalidateOrgsByDeploymentId(input.deploymentId, ctx.db)
 
       return result.value
     }),

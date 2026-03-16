@@ -2,6 +2,7 @@
 // Deployment management routes
 
 import { database, schema } from '@auxx/database'
+import { invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
 import { calculateNextVersion } from '@auxx/services/app-versions'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
 import { and, eq } from 'drizzle-orm'
@@ -166,6 +167,9 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
       return deployment
     })
 
+    // Invalidate: auto-install + deployment switch for this org
+    await onCacheEvent('app.installed', { orgId: targetOrganizationId })
+
     return c.json({ deploymentId: result.id, version: result.version })
   }
 
@@ -290,6 +294,8 @@ deployments.patch(
       .set({ status })
       .where(eq(schema.AppDeployment.id, deploymentId))
       .returning()
+
+    await invalidateOrgsByDeploymentId(deploymentId, database)
 
     return c.json({ deployment: updated })
   }

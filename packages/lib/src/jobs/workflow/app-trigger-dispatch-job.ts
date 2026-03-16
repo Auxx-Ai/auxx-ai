@@ -1,9 +1,8 @@
 // packages/lib/src/jobs/workflow/app-trigger-dispatch-job.ts
 
-import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import type { Job } from 'bullmq'
-import { and, eq, inArray } from 'drizzle-orm'
+import { getOrgCache } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { executeAppTriggeredWorkflow } from '../../workflow-engine/execution/trigger-app-workflow'
 
@@ -23,7 +22,7 @@ export type AppTriggerDispatchJobData = {
  * BullMQ job handler: dispatch an app trigger to all matching workflows.
  *
  * 1. Dedup check via Redis NX key (5-minute TTL)
- * 2. Query all published + enabled workflows matching the app trigger
+ * 2. Query all published + enabled workflows matching the app trigger (via cache)
  * 3. Execute each matching workflow with the trigger data
  */
 export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
@@ -68,33 +67,16 @@ export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
     })
   }
 
-  // 2. Query matching workflows
-  // Find all published, enabled workflows that match the specific app + trigger + installation
+  // 2. Query matching workflows via cache
   try {
-    // Build query conditions — match by connectionId when provided
-    const conditions = [
-      eq(schema.Workflow.organizationId, organizationId),
-      inArray(schema.Workflow.triggerType, ['app-trigger', 'app-polling-trigger']),
-      eq(schema.Workflow.triggerAppId, appId),
-      eq(schema.Workflow.triggerTriggerId, triggerId),
-      eq(schema.Workflow.triggerInstallationId, appInstallationId),
-      eq(schema.WorkflowApp.enabled, true),
-    ]
+    const matchingApps = await getOrgCache().from(organizationId, 'workflowApps').byAppTrigger({
+      appId,
+      triggerId,
+      installationId: appInstallationId,
+      connectionId,
+    })
 
-    if (connectionId) {
-      conditions.push(eq(schema.Workflow.triggerConnectionId, connectionId))
-    }
-
-    const matchingWorkflows = await db
-      .select({
-        workflowAppId: schema.WorkflowApp.id,
-        workflowId: schema.WorkflowApp.workflowId,
-      })
-      .from(schema.Workflow)
-      .innerJoin(schema.WorkflowApp, eq(schema.WorkflowApp.workflowId, schema.Workflow.id))
-      .where(and(...conditions))
-
-    if (matchingWorkflows.length === 0) {
+    if (matchingApps.length === 0) {
       logger.info('No matching workflows found for app trigger', {
         appId,
         triggerId,
@@ -105,7 +87,7 @@ export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
     }
 
     logger.info('Found matching workflows for app trigger', {
-      count: matchingWorkflows.length,
+      count: matchingApps.length,
       appId,
       triggerId,
       appInstallationId,
@@ -114,16 +96,16 @@ export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
     // 3. Execute each matching workflow
     const workflowRunIds: string[] = []
 
-    for (const workflow of matchingWorkflows) {
-      if (!workflow.workflowId) {
+    for (const app of matchingApps) {
+      if (!app.workflowId) {
         logger.warn('Workflow has no published version, skipping', {
-          workflowAppId: workflow.workflowAppId,
+          workflowAppId: app.id,
         })
         continue
       }
 
       const result = await executeAppTriggeredWorkflow({
-        workflowAppId: workflow.workflowAppId,
+        workflowAppId: app.id,
         organizationId,
         triggerData,
         appId,
@@ -136,7 +118,7 @@ export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
         workflowRunIds.push(result.value.workflowRunId)
       } else {
         logger.error('Failed to execute app-triggered workflow', {
-          workflowAppId: workflow.workflowAppId,
+          workflowAppId: app.id,
           error: result.error,
         })
       }
@@ -144,7 +126,7 @@ export async function dispatchAppTrigger(job: Job<AppTriggerDispatchJobData>) {
 
     logger.info('App trigger dispatch complete', {
       triggeredWorkflows: workflowRunIds.length,
-      totalMatching: matchingWorkflows.length,
+      totalMatching: matchingApps.length,
       appId,
       triggerId,
       eventId,
