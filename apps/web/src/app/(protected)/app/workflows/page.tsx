@@ -1,6 +1,7 @@
 // apps/web/src/app/(protected)/app/workflows/page.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -9,9 +10,11 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { Key, Workflow } from 'lucide-react'
+import { Key, Lock, Workflow } from 'lucide-react'
 import { useQueryState } from 'nuqs'
+import { EmptyState } from '~/components/global/empty-state'
 import { CredentialsProvider } from '~/components/workflow/credentials/credentials-provider'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { CreateWorkflowButton } from './_components/buttons/create-workflow-button'
 import { WorkflowsFilterBar } from './_components/filters/workflows-filter-bar'
 import { WorkflowsList } from './_components/lists/workflows-list'
@@ -84,6 +87,28 @@ function WorkflowsPageContent() {
 }
 
 export default function WorkflowsPage() {
+  const { hasAccess } = useFeatureFlags()
+
+  if (!hasAccess(FeatureKey.workflows)) {
+    return (
+      <MainPage>
+        <MainPageHeader>
+          <MainPageBreadcrumb>
+            <MainPageBreadcrumbItem title='Automation' href='/app/workflows' />
+          </MainPageBreadcrumb>
+        </MainPageHeader>
+        <MainPageContent>
+          <EmptyState
+            icon={Lock}
+            title='Workflows Not Available'
+            description='Upgrade your plan to use workflows.'
+            button={<div className='h-12' />}
+          />
+        </MainPageContent>
+      </MainPage>
+    )
+  }
+
   return (
     <WorkflowsProvider>
       <CredentialsProvider>

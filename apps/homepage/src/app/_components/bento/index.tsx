@@ -71,7 +71,7 @@ export default function BentoOne() {
                 <Card className='@xl:col-span-2 @3xl:col-span-4 grid grid-rows-[auto_1fr] gap-8 overflow-hidden rounded-2xl p-8'>
                   <div>
                     <h3 className='text-foreground font-semibold'>Collaborative Analysis</h3>
-                    <p className='mt-3'>
+                    <p className='text-muted-foreground mt-3'>
                       Add comments, share insights, and work together with your team to extract
                       maximum.
                     </p>

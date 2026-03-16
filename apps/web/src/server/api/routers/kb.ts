@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { KBService } from '@auxx/lib/kb'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
@@ -121,7 +122,9 @@ export const knowledgeBaseRouter = createTRPCRouter({
     )
 
     const kbService = getKBService(ctx)
-    return await kbService.createKnowledgeBase(input, ctx.session.user.id)
+    const result = await kbService.createKnowledgeBase(input, ctx.session.user.id)
+    await onCacheEvent('kb.created', { orgId: organizationId })
+    return result
   }),
   /**
    * Update a knowledge base
@@ -139,7 +142,10 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const kbService = getKBService(ctx)
-      return await kbService.deleteKnowledgeBase(input.id)
+      const result = await kbService.deleteKnowledgeBase(input.id)
+      const organizationId = getUserOrganizationId(ctx.session)
+      await onCacheEvent('kb.deleted', { orgId: organizationId })
+      return result
     }),
   /**
    * Get all articles for a knowledge base
@@ -243,7 +249,11 @@ export const knowledgeBaseRouter = createTRPCRouter({
         }
       }
       const kbService = getKBService(ctx)
-      return await kbService.togglePublishArticle(input.id, input.isPublished)
+      const result = await kbService.togglePublishArticle(input.id, input.isPublished)
+      await onCacheEvent(input.isPublished ? 'article.published' : 'article.unpublished', {
+        orgId: organizationId,
+      })
+      return result
     }),
   /**
    * Update multiple articles in batch (for reordering, structure changes)
@@ -292,7 +302,10 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const kbService = getKBService(ctx)
-      return await kbService.deleteArticle(input.id, input.knowledgeBaseId)
+      const result = await kbService.deleteArticle(input.id, input.knowledgeBaseId)
+      const organizationId = getUserOrganizationId(ctx.session)
+      await onCacheEvent('article.deleted', { orgId: organizationId })
+      return result
     }),
   /**
    * Get article revision history

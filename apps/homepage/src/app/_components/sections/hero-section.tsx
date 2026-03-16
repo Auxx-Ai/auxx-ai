@@ -192,8 +192,14 @@ export default function HeroSection() {
       {/* Video Modal */}
       {showVideo && (
         <div
+          role='dialog'
+          aria-label='Demo video'
+          aria-modal='true'
           className='fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4'
-          onClick={() => setShowVideo(false)}>
+          onClick={() => setShowVideo(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowVideo(false)
+          }}>
           <div
             className='bg-card rounded-lg shadow-xl max-w-4xl w-full aspect-video'
             onClick={(e) => e.stopPropagation()}>

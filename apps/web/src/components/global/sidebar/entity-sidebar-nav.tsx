@@ -1,6 +1,7 @@
 // apps/web/src/components/global/sidebar/entity-sidebar-nav.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { CustomResource } from '@auxx/lib/resources/client'
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
@@ -41,8 +42,10 @@ import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-def
 import { EntityTemplateDialog } from '~/components/custom-fields/ui/entity-template-dialog'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { useEntityDefinitionMutations, useResources } from '~/components/resources/hooks'
+import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import { type ProcessedEntity, useEntitySidebar } from '~/hooks/use-entity-sidebar'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { EditableSidebarItem } from './editable-sidebar-item'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarStateContext } from './sidebar-state-context'
@@ -60,11 +63,17 @@ export function EntitySidebarNav() {
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const [editingEntityId, setEditingEntityId] = useState<EntityDefinitionId | null>(null)
   const [confirm, ConfirmDialog] = useConfirm()
   const { archiveEntity } = useEntityDefinitionMutations()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
   const isOpen = getGroupOpen('records')
+  const { isAtLimit, getLimit } = useFeatureFlags()
+  const { customResources } = useResources()
+  const userCreatedEntityCount = customResources?.filter((r) => !r.entityType).length ?? 0
+  const atEntityLimit = isAtLimit(FeatureKey.entities, userCreatedEntityCount)
+  const entityLimit = getLimit(FeatureKey.entities)
 
   // Use the entity sidebar hook for edit mode, visibility, and ordering
   const {
@@ -77,9 +86,6 @@ export function EntitySidebarNav() {
     isGroupVisible,
     toggleGroupVisibility,
   } = useEntitySidebar()
-
-  // Get custom resources for entity actions (edit/archive)
-  const { customResources } = useResources()
 
   // DnD sensors setup
   const sensors = useSensors(
@@ -279,6 +285,27 @@ export function EntitySidebarNav() {
     })
   }
 
+  /** Handle create entity click — show limit dialog or open entity dialog */
+  function handleCreateFromBlank(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (atEntityLimit) {
+      setLimitDialogOpen(true)
+    } else {
+      setEditingEntityId(null)
+      setDialogOpen(true)
+    }
+  }
+
+  /** Handle create from template click — show limit dialog or open template dialog */
+  function handleCreateFromTemplate(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (atEntityLimit) {
+      setLimitDialogOpen(true)
+    } else {
+      setTemplateDialogOpen(true)
+    }
+  }
+
   return (
     <>
       <SidebarGroup className='group'>
@@ -301,19 +328,11 @@ export function EntitySidebarNav() {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Create Entity</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setEditingEntityId(null)
-                  setDialogOpen(true)
-                }}>
+              <DropdownMenuItem onClick={handleCreateFromBlank}>
                 <Plus /> From Blank
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setTemplateDialogOpen(true)
-                }}
+                onClick={handleCreateFromTemplate}
                 className='data-highlighted:bg-[#ffaa40]/10'>
                 <LayoutTemplate className='text-[#ffaa40]' />{' '}
                 <AnimatedGradientText>From Template</AnimatedGradientText>
@@ -373,6 +392,14 @@ export function EntitySidebarNav() {
       <ConfirmDialog />
 
       <EntityTemplateDialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen} />
+
+      <LimitReachedDialog
+        open={limitDialogOpen}
+        onOpenChange={setLimitDialogOpen}
+        icon={Plus}
+        title='Entity Limit Reached'
+        description={`You've reached the maximum of ${entityLimit} custom entities on your current plan.`}
+      />
     </>
   )
 }

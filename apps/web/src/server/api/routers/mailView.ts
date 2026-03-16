@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/mailView.ts
 
 import { schema } from '@auxx/database'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
 import { MailViewService } from '@auxx/lib/mail-views'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
@@ -66,7 +67,9 @@ export const mailViewRouter = createTRPCRouter({
     }
 
     const mailViewService = new MailViewService(organizationId, ctx.db)
-    return await mailViewService.createMailView(userId, input)
+    const result = await mailViewService.createMailView(userId, input)
+    await onCacheEvent('mail-view.changed', { orgId: organizationId, userId })
+    return result
   }),
 
   // Get a mail view by ID
@@ -138,7 +141,9 @@ export const mailViewRouter = createTRPCRouter({
       })
     }
 
-    return await mailViewService.updateMailView(input.id, input.data)
+    const result = await mailViewService.updateMailView(input.id, input.data)
+    await onCacheEvent('mail-view.changed', { orgId: organizationId, userId: ctx.session.user.id })
+    return result
   }),
 
   // Delete a mail view
@@ -163,7 +168,12 @@ export const mailViewRouter = createTRPCRouter({
         })
       }
 
-      return await mailViewService.deleteMailView(input.id)
+      const result = await mailViewService.deleteMailView(input.id)
+      await onCacheEvent('mail-view.changed', {
+        orgId: organizationId,
+        userId: ctx.session.user.id,
+      })
+      return result
     }),
 
   // Set a mail view as default

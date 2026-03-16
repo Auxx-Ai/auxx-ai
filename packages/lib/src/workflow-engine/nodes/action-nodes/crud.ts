@@ -27,6 +27,7 @@ import {
   getField,
   getFieldOptionsForResource,
   isCustomResourceId,
+  isEntityDefinitionType,
   isSystemResourceId,
   isValidFieldOptionValue,
   setEntityVariables,
@@ -407,26 +408,26 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       errors.push('Resource ID is required for update and delete operations')
     }
 
-    // Validate that resourceType is either a system resource or custom entity
+    // Validate that resourceType is a system resource, entity definition type, or custom entity
     const isSystemResource = isSystemResourceId(config.resourceType)
+    const isEntityDef = isEntityDefinitionType(config.resourceType)
     const isCustomEntity = isCustomResourceId(config.resourceType)
 
-    if (config.resourceType && !isSystemResource && !isCustomEntity) {
+    if (config.resourceType && !isSystemResource && !isEntityDef && !isCustomEntity) {
       errors.push(
-        `Unknown resource type: ${config.resourceType}. Must be a system resource (contact, ticket, etc.) or custom entity UUID.`
+        `Unknown resource type: ${config.resourceType}. Must be a system resource, entity definition type, or custom entity UUID.`
       )
       return { valid: false, errors, warnings }
     }
 
-    // Only do static validation for system resources
-    // Custom entities will be validated at runtime with actual entity definition
+    // Static field validation for system resources with CRUD configs
+    // Entity definition types (contact, ticket, etc.) and custom entities are validated at runtime
     if (isSystemResource) {
       const crudConfig = CRUD_RESOURCE_CONFIGS[config.resourceType as TableId]
 
       if (!crudConfig) {
-        // This shouldn't happen if isSystemResourceId() works correctly
-        errors.push(`Unknown system resource type: ${config.resourceType}`)
-        return { valid: false, errors, warnings }
+        // No static config available — skip static validation, runtime will handle it
+        return { valid: errors.length === 0, errors, warnings }
       }
 
       // Validate required fields for create using registry (system resources only)

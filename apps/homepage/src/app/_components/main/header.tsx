@@ -3,6 +3,7 @@ import {
   BookOpen,
   Bot,
   Cloud,
+  Code,
   GitBranch,
   Headset,
   Menu,
@@ -99,28 +100,17 @@ const useCases: FeatureLink[] = [
   },
 ]
 
-const contentLinks: FeatureLink[] = [
+const getResourceLinks = (docsUrl: string): FeatureLink[] => [
   {
     name: 'Documentation',
-    href: '/docs',
+    href: docsUrl,
     icon: <BookOpen className='stroke-foreground fill-purple-500/15' />,
   },
-  // {
-  //   name: 'Customers',
-  //   href: '/solutions/customers',
-  //   icon: <BookOpen className="stroke-foreground fill-purple-500/15" />,
-  // },
-
-  // {
-  //   name: 'Case Studies',
-  //   href: '/case-studies',
-  //   icon: <Croissant className="stroke-foreground fill-red-500/15" />,
-  // },
-  // {
-  //   name: 'Blog',
-  //   href: '/blog',
-  //   icon: <Notebook className="stroke-foreground fill-zinc-500/15" />,
-  // },
+  {
+    name: 'Developer Docs',
+    href: `${docsUrl}/developer`,
+    icon: <Code className='stroke-foreground fill-blue-500/15' />,
+  },
 ]
 
 const moreFeatures: FeatureLink[] = [
@@ -222,11 +212,15 @@ export default function Header() {
 
             {isLarge && (
               <div className='absolute inset-0 m-auto size-fit'>
-                <NavMenu />
+                <NavMenu docsUrl={urls.docs} />
               </div>
             )}
             {!isLarge && isMobileMenuOpen && (
-              <MobileMenu closeMenu={() => setIsMobileMenuOpen(false)} signupUrl={urls.signup} />
+              <MobileMenu
+                closeMenu={() => setIsMobileMenuOpen(false)}
+                signupUrl={urls.signup}
+                docsUrl={urls.docs}
+              />
             )}
 
             <div className='max-lg:in-data-[state=active]:mt-6 in-data-[state=active]:flex mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:shadow-none dark:lg:bg-transparent'>
@@ -250,7 +244,15 @@ export default function Header() {
   )
 }
 
-const MobileMenu = ({ closeMenu, signupUrl }: { closeMenu: () => void; signupUrl: string }) => {
+const MobileMenu = ({
+  closeMenu,
+  signupUrl,
+  docsUrl,
+}: {
+  closeMenu: () => void
+  signupUrl: string
+  docsUrl: string
+}) => {
   const mobileLinks: MobileLink[] = [
     {
       groupName: 'Platform',
@@ -262,10 +264,10 @@ const MobileMenu = ({ closeMenu, signupUrl }: { closeMenu: () => void; signupUrl
     },
     {
       groupName: 'Resources',
-      links: contentLinks,
+      links: getResourceLinks(docsUrl),
     },
     { name: 'Platform', href: '/platform/messaging' },
-    { name: 'Solutions', href: '/solutions' },
+    { name: 'Solutions', href: '/solutions/shopify-stores' },
     { name: 'Pricing', href: '/pricing' },
     { name: 'Company', href: '/company' },
     { name: 'Get Started', href: signupUrl },
@@ -328,7 +330,8 @@ const MobileMenu = ({ closeMenu, signupUrl }: { closeMenu: () => void; signupUrl
   )
 }
 
-const NavMenu = () => {
+const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
+  const resourceLinks = getResourceLinks(docsUrl)
   return (
     <NavigationMenu className='**:data-[slot=navigation-menu-viewport]:bg-[color-mix(in_oklch,var(--color-muted)_25%,var(--color-background))] **:data-[slot=navigation-menu-viewport]:shadow-lg **:data-[slot=navigation-menu-viewport]:rounded-2xl **:data-[slot=navigation-menu-viewport]:top-4 [--color-muted:color-mix(in_oklch,var(--color-foreground)_5%,transparent)]  max-lg:hidden'>
       <NavigationMenuList className=''>
@@ -391,7 +394,7 @@ const NavMenu = () => {
         </NavigationMenuItem>
         <NavigationMenuItem value='solutions'>
           <NavigationMenuTrigger>
-            <Link href='solutions'>Solutions</Link>
+            <Link href='/solutions/shopify-stores'>Solutions</Link>
           </NavigationMenuTrigger>
           <NavigationMenuContent className='origin-top pb-1.5 pl-1 pr-4 pt-1 backdrop-blur '>
             <div className='min-w-2xl w-full grid grid-cols-2 gap-1'>
@@ -410,9 +413,9 @@ const NavMenu = () => {
                 </ul>
               </div>
               <div className='row-span-2 grid grid-rows-subgrid gap-1 p-1 pt-3'>
-                <span className='text-muted-foreground ml-2 text-xs'>Content</span>
+                <span className='text-muted-foreground ml-2 text-xs'>Resources</span>
                 <ul>
-                  {contentLinks.map((content, index) => (
+                  {resourceLinks.map((content, index) => (
                     <NavigationMenuLink key={index} asChild>
                       <Link
                         href={content.href}

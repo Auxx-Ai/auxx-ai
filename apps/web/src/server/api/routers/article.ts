@@ -1,5 +1,6 @@
 import { database as db, schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -363,12 +364,8 @@ export const articleRouter = createTRPCRouter({
       await db
         .delete(schema.Article)
         .where(and(eq(schema.Article.id, id), eq(schema.Article.organizationId, organizationId)))
-      // const file = await ctx.db.article.update({
-      //   where: { id: input.id, userId },
-      //   data: { deletedAt: new Date(), deletedById: userId },
-      // })
+      await onCacheEvent('article.deleted', { orgId: organizationId })
       return { success: true }
-      // return { file }
     }),
   publish: protectedProcedure
     .input(z.object({ id: z.string(), status: z.enum(ArticleStatus) }))
@@ -385,6 +382,11 @@ export const articleRouter = createTRPCRouter({
         .set({ status })
         .where(and(eq(schema.Article.id, id), eq(schema.Article.organizationId, organizationId)))
         .returning()
+      if (status === 'PUBLISHED') {
+        await onCacheEvent('article.published', { orgId: organizationId })
+      } else {
+        await onCacheEvent('article.unpublished', { orgId: organizationId })
+      }
       return { article }
     }),
 })

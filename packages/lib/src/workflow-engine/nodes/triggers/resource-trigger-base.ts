@@ -3,6 +3,7 @@
 import { RESOURCE_CONFIGS, RESOURCE_OPERATIONS } from '../../../resources/definitions'
 import {
   isCustomResourceId,
+  isEntityDefinitionType,
   setEntityVariables,
   setResourceVariables,
 } from '../../../resources/registry'
@@ -44,9 +45,10 @@ export class ResourceTriggerBase extends BaseNodeProcessor {
       throw new Error(`Invalid operation: "${operation}"`)
     }
 
-    // Validate resource type - custom entities skip static config validation
+    // Validate resource type - entity definition types and custom entities skip static config validation
+    const isEntityDef = isEntityDefinitionType(resourceType)
     const isCustomEntity = isCustomResourceId(resourceType)
-    if (!isCustomEntity && !RESOURCE_CONFIGS[resourceType as TableId]) {
+    if (!isEntityDef && !isCustomEntity && !RESOURCE_CONFIGS[resourceType as TableId]) {
       throw new Error(`Invalid resource type: "${resourceType}"`)
     }
 
@@ -169,9 +171,13 @@ export class ResourceTriggerBase extends BaseNodeProcessor {
       errors.push('Resource type is required in node data')
     } else {
       const resourceType = node.data.resourceType as string
-      // Custom entities (UUID/CUID format) skip static config validation
+      // Entity definition types (contact, ticket, etc.) and custom entities skip static config validation
       // They will be validated at runtime when we have database access
-      if (!isCustomResourceId(resourceType) && !RESOURCE_CONFIGS[resourceType as TableId]) {
+      if (
+        !isEntityDefinitionType(resourceType) &&
+        !isCustomResourceId(resourceType) &&
+        !RESOURCE_CONFIGS[resourceType as TableId]
+      ) {
         errors.push(`Invalid resource type: "${resourceType}"`)
       }
     }

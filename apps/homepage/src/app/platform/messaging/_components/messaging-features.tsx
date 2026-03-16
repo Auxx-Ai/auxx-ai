@@ -50,9 +50,9 @@ const MessagingFeatures = () => {
         <div className='border-x'>
           <div className='relative z-10 lg:pt-30 pt-12 mx-auto grid max-w-5xl items-end gap-4 px-6 md:grid-cols-2'>
             <div>
-              <h1 className='text-balance text-5xl font-semibold'>
+              <h2 className='text-balance text-5xl font-semibold'>
                 Deliver top-tier support across all your channels
-              </h1>
+              </h2>
             </div>
             <div className='max-w-sm'>
               <p className='text-muted-foreground mb-6 text-balance text-lg lg:text-xl'>
@@ -71,6 +71,7 @@ const MessagingFeatures = () => {
                     {previews.map((preview) => (
                       <button
                         key={preview.name}
+                        aria-label={preview.label}
                         onClick={() => setActive(preview.name)}
                         className='group flex cursor-pointer items-center justify-center px-2'>
                         <div

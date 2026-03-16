@@ -6,6 +6,7 @@ import {
   DatasetStatusValues,
   VectorDbTypeValues,
 } from '@auxx/database/enums'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { DatasetService } from '@auxx/lib/datasets'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
@@ -105,6 +106,7 @@ export const datasetRouter = createTRPCRouter({
     const datasetService = new DatasetService(ctx.db)
     const dataset = await datasetService.create(organizationId, userId, input)
     logger.info('Dataset created successfully', { datasetId: dataset.id })
+    await onCacheEvent('dataset.created', { orgId: organizationId })
     return dataset
   }),
   /**
@@ -214,6 +216,7 @@ export const datasetRouter = createTRPCRouter({
       const datasetService = new DatasetService(ctx.db)
       await datasetService.delete(input.id, organizationId)
       logger.info('Dataset deleted', { datasetId: input.id, organizationId })
+      await onCacheEvent('dataset.deleted', { orgId: organizationId })
       return { success: true }
     }),
   /**

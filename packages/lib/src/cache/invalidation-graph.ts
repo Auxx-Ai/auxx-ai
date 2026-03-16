@@ -32,12 +32,12 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'custom-field.deleted': ['resources', 'customFields'],
 
   // entityDefs/entityDefSlugs are near-immutable — only invalidate on create/delete
-  'entity-def.created': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields'],
+  'entity-def.created': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields', 'overages'],
   'entity-def.updated': ['resources'], // slug/type don't change
-  'entity-def.deleted': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields'],
+  'entity-def.deleted': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields', 'overages'],
 
-  'channel.connected': ['channelProviders', 'inboxes'],
-  'channel.disconnected': ['channelProviders', 'inboxes'],
+  'channel.connected': ['channelProviders', 'inboxes', 'overages'],
+  'channel.disconnected': ['channelProviders', 'inboxes', 'overages'],
 
   'group.created': ['groups'],
   'group.updated': ['groups'],
@@ -51,8 +51,8 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // Workflow lifecycle events
   'workflow.published': ['workflowApps'],
   'workflow.enabled': ['workflowApps'],
-  'workflow.created': ['workflowApps'],
-  'workflow.deleted': ['workflowApps'],
+  'workflow.created': ['workflowApps', 'overages'],
+  'workflow.deleted': ['workflowApps', 'overages'],
 
   // App lifecycle events
   'app.installed': ['installedApps'],
@@ -80,13 +80,24 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // ── User-scoped events ──
   'user.updated': { user: ['userProfile'] },
   'user.settings.changed': { user: ['userSettings'] },
-  'mail-view.changed': { user: ['userMailViews'] },
+  'mail-view.changed': { user: ['userMailViews'], org: ['overages'] },
 
   // ── Table view events ──
-  'table-view.created': { user: ['userTableViews'] },
+  'table-view.created': { user: ['userTableViews'], org: ['overages'] },
   'table-view.updated': { user: ['userTableViews'] },
-  'table-view.deleted': { user: ['userTableViews'] },
+  'table-view.deleted': { user: ['userTableViews'], org: ['overages'] },
   'table-view.default-changed': { user: ['userTableViews'] },
+
+  // ── KB & article events (affects overages for knowledgeBases / kbPublishedArticles) ──
+  'kb.created': ['overages'],
+  'kb.deleted': ['overages'],
+  'article.published': ['overages'],
+  'article.unpublished': ['overages'],
+  'article.deleted': ['overages'],
+
+  // ── Dataset events (affects overages for datasetsLimit) ──
+  'dataset.created': ['overages'],
+  'dataset.deleted': ['overages'],
 }
 
 export type CacheEvent = keyof typeof INVALIDATION_GRAPH

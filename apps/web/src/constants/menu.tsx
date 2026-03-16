@@ -65,20 +65,7 @@ export const SHOPIFY_MENU: SidebarProps[] = [
   { id: 'shopify-orders', label: 'Orders', slug: 'orders', icon: <ShoppingBag /> },
   { id: 'shopify-products', label: 'Products', slug: 'products', icon: <Package /> },
 ]
-export const MAIL_MENU: SidebarProps[] = [
-  // {
-  //   id: 'rules',
-  //   label: 'Rules & Automation',
-  //   slug: 'rules',
-  //   icon: <Zap />,
-  //   items: [
-  //     { id: 'rules-list', label: 'Rules', slug: '', icon: <Bot /> },
-  //     { id: 'rules-history', label: 'History', slug: 'history', icon: <History /> },
-  //     { id: 'rules-analytics', label: 'Analytics', slug: 'analytics', icon: <ChartLine /> },
-  //     { id: 'rules-testing', label: 'Testing', slug: 'testing', icon: <FlaskConical /> },
-  //   ],
-  // },
-]
+export const MAIL_MENU: SidebarProps[] = []
 
 export const SIDEBAR_MENU: SidebarProps[] = [
   {

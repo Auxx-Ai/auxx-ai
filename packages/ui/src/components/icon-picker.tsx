@@ -7,7 +7,7 @@ import { Input } from '@auxx/ui/components/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { Circle, Search, X } from 'lucide-react'
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_COLOR,
   getIcon,
@@ -102,6 +102,13 @@ export function IconPicker({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedColor, setSelectedColor] = useState(value?.color ?? DEFAULT_COLOR)
   const [hoveredIconId, setHoveredIconId] = useState<string | null>(null)
+
+  // Sync internal color state when value prop changes externally
+  useEffect(() => {
+    if (value?.color) {
+      setSelectedColor(value.color)
+    }
+  }, [value?.color])
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Determine if component is in controlled or uncontrolled mode

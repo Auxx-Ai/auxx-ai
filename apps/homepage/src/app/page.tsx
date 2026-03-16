@@ -27,7 +27,7 @@ export default function MainPage() {
       <LogoCloudTwo />
       <WorkflowAnimationSection />
       <WorkflowContent />
-      <CrmHero />
+      <CrmHero as='h2' />
       <TicketingFeature />
       {/* <ProblemSolutionSection /> */}
       <IntegrationSection />
