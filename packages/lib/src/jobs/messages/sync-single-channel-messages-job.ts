@@ -43,7 +43,11 @@ export type SyncSingleChannelMessagesJobData = {
   since?: string
 }
 
-export const syncSingleChannelMessagesJob = async (job: Job<SyncSingleChannelMessagesJobData>) => {
+export const syncSingleChannelMessagesJob = async (
+  jobOrCtx: Job<SyncSingleChannelMessagesJobData>
+) => {
+  // createJobHandler passes a JobContext; extract the real BullMQ Job
+  const job: Job<SyncSingleChannelMessagesJobData> = (jobOrCtx as any).job ?? jobOrCtx
   const {
     syncJobId,
     organizationId,
@@ -51,7 +55,7 @@ export const syncSingleChannelMessagesJob = async (job: Job<SyncSingleChannelMes
     integrationId,
     integrationType,
     since: sinceString,
-  } = job.data // Use syncJobId
+  } = job.data
   const since = sinceString ? new Date(sinceString) : undefined
 
   logger.info(`Starting syncSingleChannelMessagesJob`, {

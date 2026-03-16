@@ -1,17 +1,16 @@
 // ~/server/api/routers/channel-reauth.ts
 
 import { schema } from '@auxx/database'
+import { storeOAuthCsrfToken } from '@auxx/lib/cache'
 import {
   FacebookOAuthService,
   GoogleOAuthService,
   InstagramOAuthService,
   OutlookOAuthService,
 } from '@auxx/lib/providers'
-import { OAUTH_CSRF_COOKIE, OAUTH_CSRF_MAX_AGE } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -116,15 +115,8 @@ export const channelReauthRouter = createTRPCRouter({
         })
       }
 
-      // Set CSRF token as httpOnly cookie for callback verification
-      const cookieStore = await cookies()
-      cookieStore.set(OAUTH_CSRF_COOKIE, csrfToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: OAUTH_CSRF_MAX_AGE,
-        path: '/',
-      })
+      // Store CSRF token in Redis for callback verification
+      await storeOAuthCsrfToken(userId, csrfToken)
 
       return {
         success: true,

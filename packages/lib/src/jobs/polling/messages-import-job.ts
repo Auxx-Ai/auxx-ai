@@ -37,14 +37,15 @@ export interface MessagesImportJobData {
  * Phase 2: Fetch message content by external IDs from Redis cache.
  * Claims a batch (two-phase), imports via provider, then acknowledges.
  */
-export const messagesImportJob = async (job: Job<MessagesImportJobData>) => {
+export const messagesImportJob = async (jobOrCtx: Job<MessagesImportJobData>) => {
+  // createJobHandler passes a JobContext; extract the real BullMQ Job
+  const job: Job<MessagesImportJobData> = (jobOrCtx as any).job ?? jobOrCtx
+  const signal = (jobOrCtx as any).signal as AbortSignal | undefined
+
   const { integrationId, organizationId, provider } = job.data
   const batchSize =
     job.data.batchSize ?? PROVIDER_IMPORT_BATCH_SIZE[provider] ?? DEFAULT_IMPORT_BATCH_SIZE
   const now = new Date()
-
-  // Extract signal from JobContext (passed via createJobHandler)
-  const signal = (job as any).signal as AbortSignal | undefined
 
   logger.info('Starting messages import', { integrationId, organizationId, batchSize })
 
@@ -222,7 +223,9 @@ export const messagesImportJob = async (job: Job<MessagesImportJobData>) => {
  * (not from Redis cache). Updates the folder checkpoint on completion.
  * When all batches for the active window complete, triggers the next list fetch.
  */
-export const imapImportBatchJob = async (job: Job<ImapImportBatchJobData>) => {
+export const imapImportBatchJob = async (jobOrCtx: Job<ImapImportBatchJobData>) => {
+  // createJobHandler passes a JobContext; extract the real BullMQ Job
+  const job: Job<ImapImportBatchJobData> = (jobOrCtx as any).job ?? jobOrCtx
   const { runId, integrationId, organizationId, labelId, folderPath, externalIds } = job.data
   const now = new Date()
 

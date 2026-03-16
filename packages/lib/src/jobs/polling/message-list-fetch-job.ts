@@ -38,12 +38,13 @@ export interface MessageListFetchJobData {
  * For IMAP full sync: uses windowed UID scanning with checkpoints and
  * enqueues self-contained import batches instead of Redis cache.
  */
-export const messageListFetchJob = async (job: Job<MessageListFetchJobData>) => {
+export const messageListFetchJob = async (jobOrCtx: Job<MessageListFetchJobData>) => {
+  // createJobHandler passes a JobContext; extract the real BullMQ Job
+  const job: Job<MessageListFetchJobData> = (jobOrCtx as any).job ?? jobOrCtx
+  const signal = (jobOrCtx as any).signal as AbortSignal | undefined
+
   const { integrationId, organizationId, provider } = job.data
   const now = new Date()
-
-  // Extract signal from JobContext (passed via createJobHandler)
-  const signal = (job as any).signal as AbortSignal | undefined
 
   logger.info('Starting message list fetch', { integrationId, organizationId, provider })
 

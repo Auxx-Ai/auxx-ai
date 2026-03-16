@@ -1,12 +1,13 @@
 // src/app/api/instagram/oauth2/callback/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
+import { consumeOAuthCsrfToken } from '@auxx/lib/cache'
 import { publisher } from '@auxx/lib/events'
 import type { InstagramIntegrationMetadata } from '@auxx/lib/providers'
 import { InstagramOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
-import { OAUTH_CSRF_COOKIE, validateRedirectPath } from '@auxx/utils'
-import { cookies, headers } from 'next/headers'
+import { validateRedirectPath } from '@auxx/utils'
+import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
 
@@ -72,10 +73,9 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // --- CSRF cookie verification ---
-  const cookieStore = await cookies()
-  const csrfCookie = cookieStore.get(OAUTH_CSRF_COOKIE)?.value
-  if (!csrfCookie || csrfCookie !== parsedState?.csrfToken) {
+  // --- CSRF token verification (Redis-based) ---
+  const storedToken = await consumeOAuthCsrfToken(session.user.id)
+  if (!storedToken || storedToken !== parsedState?.csrfToken) {
     logger.error('CSRF token mismatch in Instagram OAuth callback')
     return NextResponse.redirect(
       new URL(
@@ -84,8 +84,6 @@ export async function GET(req: NextRequest) {
       )
     )
   }
-  // Clear the CSRF cookie after verification
-  cookieStore.delete(OAUTH_CSRF_COOKIE)
 
   // --- Handle OAuth Errors ---
   if (error) {
