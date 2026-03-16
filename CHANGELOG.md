@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.87](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.86...auxx-v0.1.87) (2026-03-16)
+
+
+### Features
+
+* add installed apps and workflow apps providers to cache ([#275](https://github.com/Auxx-Ai/auxx-ai/issues/275)) ([f6a8573](https://github.com/Auxx-Ai/auxx-ai/commit/f6a8573dcdf01c330fe84765490cf7bf4d2a38be))
+
 ## [0.1.86](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.85...auxx-v0.1.86) (2026-03-16)
 
 
