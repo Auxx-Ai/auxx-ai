@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.90](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.89...auxx-v0.1.90) (2026-03-16)
+
+
+### Features
+
+* add sharp package to serverExternalPackages and update dependencies in pnpm workspace ([#283](https://github.com/Auxx-Ai/auxx-ai/issues/283)) ([b9cebe4](https://github.com/Auxx-Ai/auxx-ai/commit/b9cebe4828db02129d42706ca528def1c0eeea79))
+
 ## [0.1.89](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.88...auxx-v0.1.89) (2026-03-16)
 
 
