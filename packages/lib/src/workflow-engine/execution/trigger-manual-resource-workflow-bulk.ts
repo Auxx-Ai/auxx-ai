@@ -2,11 +2,10 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getWorkflowApp } from '@auxx/services/workflows'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { getCachedResource } from '../../cache'
+import { getCachedResource, getCachedWorkflowApp } from '../../cache'
 import { isCustomResourceId } from '../../resources/client'
 import { isSystemResourceId } from '../../resources/registry/types'
 import { executeResourceQuery, fetchResourceById } from '../../resources/resource-fetcher'
@@ -116,22 +115,23 @@ export async function triggerManualResourceWorkflowBulk(params: {
     createdBy,
   })
 
-  // 1. Validate workflow (shared validation for all resources)
-  const workflowResult = await getWorkflowApp({
-    workflowAppId,
-    organizationId,
-  })
+  // 1. Validate workflow (shared validation for all resources) — from cache
+  const workflowApp = await getCachedWorkflowApp(workflowAppId, organizationId)
 
-  if (workflowResult.isErr()) {
-    return err(workflowResult.error)
+  if (!workflowApp) {
+    return err({
+      code: 'WORKFLOW_APP_NOT_FOUND',
+      message: `Workflow app ${workflowAppId} not found or not enabled in organization ${organizationId}`,
+      workflowAppId,
+    })
   }
 
-  const { workflowApp, publishedWorkflow } = workflowResult.value
+  const publishedWorkflow = workflowApp.publishedWorkflow
 
-  if (!workflowApp.enabled) {
+  if (!publishedWorkflow) {
     return err({
-      code: 'WORKFLOW_NOT_ENABLED',
-      message: `Workflow ${workflowAppId} is not enabled`,
+      code: 'WORKFLOW_NOT_PUBLISHED',
+      message: `Workflow app ${workflowAppId} does not have a published workflow`,
       workflowAppId,
     })
   }

@@ -12,7 +12,8 @@ import type {
   RecordAccessor,
   ScalarAccessor,
 } from './accessors'
-import type { DehydratedOrgProfile, DehydratedSubscription, OrgMemberInfo } from './org-cache-keys'
+import type { CachedSubscription, DehydratedOrgProfile, OrgMemberInfo } from './org-cache-keys'
+import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
 
 /**
  * Maps each cache key to its accessor type.
@@ -37,8 +38,11 @@ export interface OrgCacheAccessorMap {
 
   // Scalar
   systemUser: ScalarAccessor<string>
-  subscription: ScalarAccessor<DehydratedSubscription | null>
+  subscription: ScalarAccessor<CachedSubscription | null>
   orgProfile: ScalarAccessor<DehydratedOrgProfile>
+
+  // Custom accessor (provider-defined)
+  workflowApps: WorkflowAppsAccessor
 }
 
 /** Resource accessor — ArrayAccessor + custom sugar methods */
@@ -62,4 +66,19 @@ export interface CustomFieldAccessor extends NestedRecordAccessor<CustomFieldEnt
 export interface CustomFieldGroupAccessor extends ArrayAccessor<CustomFieldEntity> {
   /** Find field by systemAttribute within this entity */
   bySystemAttribute(attr: string): Promise<CustomFieldEntity | null>
+}
+
+/** WorkflowApps accessor — ArrayAccessor + trigger matching sugar methods */
+export interface WorkflowAppsAccessor extends ArrayAccessor<CachedWorkflowApp> {
+  /** Find enabled apps matching trigger criteria */
+  byTrigger(triggerType: string, entityDefinitionId?: string): Promise<CachedWorkflowApp[]>
+  /** Find enabled app by ID */
+  byAppId(workflowAppId: string): Promise<CachedWorkflowApp | null>
+  /** Find enabled apps matching app trigger fields */
+  byAppTrigger(params: {
+    appId: string
+    triggerId: string
+    installationId: string
+    connectionId?: string
+  }): Promise<CachedWorkflowApp[]>
 }

@@ -2,6 +2,7 @@
 // Connections tRPC router
 
 import { App, ConnectionDefinition, DeveloperAccountMember } from '@auxx/database'
+import { invalidateOrgsByAppId } from '@auxx/lib/cache'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -214,6 +215,7 @@ export const connectionsRouter = createTRPCRouter({
         createdById: ctx.session.userId,
       }
 
+      let result
       if (existing) {
         // Update existing connection
         const [updated] = await ctx.db
@@ -225,12 +227,16 @@ export const connectionsRouter = createTRPCRouter({
           .where(eq(ConnectionDefinition.id, existing.id))
           .returning()
 
-        return updated
+        result = updated
       } else {
         // Create new connection
         const [created] = await ctx.db.insert(ConnectionDefinition).values(data).returning()
 
-        return created
+        result = created
       }
+
+      await invalidateOrgsByAppId(input.appId, ctx.db)
+
+      return result
     }),
 })

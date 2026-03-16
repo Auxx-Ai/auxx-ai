@@ -306,31 +306,13 @@ export const auth = betterAuth({
       //   avatarUrl = await mediaAssetService.getDownloadUrl(extendedUser.avatarAssetId)
       // }
 
-      // Get user's authentication providers
-      const accounts = await database
-        .select({ providerId: schema.account.providerId })
-        .from(schema.account)
-        .where(eq(schema.account.userId, extendedUser.id))
+      // Get user's authentication providers from cache (avoids 12+ redundant DB queries per page load)
+      const { getUserCache } = await import('@auxx/lib/cache')
+      const userProfile = await getUserCache().get(extendedUser.id, 'userProfile')
 
-      const providers = accounts.map((account) => account.providerId)
-      const hasPassword = providers.includes('credential')
-      const oauthProviders = providers.filter((p) => p !== 'credential')
-
-      // Determine registration method
-      const authMethodCount =
-        (hasPassword ? 1 : 0) +
-        (oauthProviders.length > 0 ? 1 : 0) +
-        (extendedUser.phoneNumberVerified ? 1 : 0)
-
-      let registrationMethod: 'oauth' | 'email' | 'phone' | 'mixed' = 'oauth'
-
-      if (authMethodCount > 1) {
-        registrationMethod = 'mixed'
-      } else if (hasPassword) {
-        registrationMethod = 'email'
-      } else if (extendedUser.phoneNumberVerified) {
-        registrationMethod = 'phone'
-      }
+      const oauthProviders = userProfile?.providers ?? []
+      const hasPassword = userProfile?.hasPassword ?? false
+      const registrationMethod = userProfile?.registrationMethod ?? 'oauth'
 
       return {
         ...session,

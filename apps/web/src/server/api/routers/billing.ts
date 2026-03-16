@@ -4,7 +4,7 @@ import { BillingPortalService, SubscriptionService, stripeClient } from '@auxx/b
 import { WEBAPP_URL } from '@auxx/config/server'
 import { schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
-import { getAppCache, onCacheEvent } from '@auxx/lib/cache'
+import { getAppCache, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -25,13 +25,18 @@ const cloudOnlyProcedure = protectedProcedure.use(async ({ next }) => {
   return next()
 })
 
+/** Read the cached subscription for the current org, or null */
+async function getCachedSubscription(orgId: string) {
+  return getOrgCache().from(orgId, 'subscription').value()
+}
+
 export const billingRouter = createTRPCRouter({
   // Get all available plans (cached, non-legacy, ordered by hierarchy)
   getPlans: cloudOnlyProcedure.query(async () => {
     return getAppCache().get('plans')
   }),
 
-  // Get current subscription
+  // Get current subscription (cached subscription + plan from app cache)
   getCurrentSubscription: cloudOnlyProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -39,15 +44,14 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      // Use Drizzle query API with relations
-      const subscription = await ctx.db.query.PlanSubscription.findFirst({
-        where: (planSubscription, { eq }) => eq(planSubscription.organizationId, organizationId),
-        with: {
-          plan: true,
-        },
-      })
+      const subscription = await getCachedSubscription(organizationId)
+      if (!subscription) return null
 
-      return subscription || null
+      // Enrich with plan data from app cache
+      const planMap = await getAppCache().get('planMap')
+      const plan = subscription.planId ? (planMap[subscription.planId] ?? null) : null
+
+      return { ...subscription, plan }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : ''
 
@@ -113,7 +117,7 @@ export const billingRouter = createTRPCRouter({
       }
     }),
 
-  // Check trial status
+  // Check trial status (cached)
   checkTrialStatus: cloudOnlyProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -121,13 +125,7 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      // Use Drizzle query API with relations
-      const subscription = await ctx.db.query.PlanSubscription.findFirst({
-        where: (planSubscription, { eq }) => eq(planSubscription.organizationId, organizationId),
-        with: {
-          plan: true,
-        },
-      })
+      const subscription = await getCachedSubscription(organizationId)
 
       // If no subscription or not in trial state, return null
       if (!subscription || subscription.status !== 'trialing') {
@@ -136,12 +134,10 @@ export const billingRouter = createTRPCRouter({
 
       // Calculate if trial has expired
       const now = new Date()
-      const hasExpired = subscription.trialEnd ? subscription.trialEnd < now : true
-      const daysRemaining = subscription.trialEnd
-        ? Math.max(
-            0,
-            Math.ceil((subscription.trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-          )
+      const trialEnd = subscription.trialEnd ? new Date(subscription.trialEnd) : null
+      const hasExpired = trialEnd ? trialEnd < now : true
+      const daysRemaining = trialEnd
+        ? Math.max(0, Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
         : 0
 
       return {
@@ -160,7 +156,7 @@ export const billingRouter = createTRPCRouter({
     }
   }),
 
-  // Check trial eligibility
+  // Check trial eligibility (cached)
   checkTrialEligibility: cloudOnlyProcedure
     .input(z.object({ planId: z.string() }))
     .query(async ({ ctx }) => {
@@ -170,12 +166,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        // Get subscription
-        const [subscription] = await ctx.db
-          .select()
-          .from(schema.PlanSubscription)
-          .where(eq(schema.PlanSubscription.organizationId, organizationId))
-          .limit(1)
+        const subscription = await getCachedSubscription(organizationId)
 
         // If no subscription, they're eligible
         if (!subscription) {
@@ -361,7 +352,7 @@ export const billingRouter = createTRPCRouter({
       }
     }),
 
-  // Get billing details from Stripe customer
+  // Get billing details from Stripe customer (cached stripeCustomerId)
   getBillingDetails: cloudOnlyProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -369,9 +360,7 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      const subscription = await ctx.db.query.PlanSubscription.findFirst({
-        where: (planSubscription, { eq }) => eq(planSubscription.organizationId, organizationId),
-      })
+      const subscription = await getCachedSubscription(organizationId)
 
       if (!subscription?.stripeCustomerId) {
         return null
@@ -400,7 +389,7 @@ export const billingRouter = createTRPCRouter({
     }
   }),
 
-  // Update billing address in Stripe
+  // Update billing address in Stripe (cached stripeCustomerId)
   updateBillingAddress: cloudOnlyProcedure
     .input(
       z.object({
@@ -423,9 +412,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscription = await ctx.db.query.PlanSubscription.findFirst({
-          where: (planSubscription, { eq }) => eq(planSubscription.organizationId, organizationId),
-        })
+        const subscription = await getCachedSubscription(organizationId)
 
         if (!subscription?.stripeCustomerId) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No Stripe customer found' })
@@ -457,7 +444,7 @@ export const billingRouter = createTRPCRouter({
       }
     }),
 
-  // Get payment methods from Stripe
+  // Get payment methods from Stripe (cached stripeCustomerId)
   getPaymentMethods: cloudOnlyProcedure.query(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -465,9 +452,7 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      const subscription = await ctx.db.query.PlanSubscription.findFirst({
-        where: (planSubscription, { eq }) => eq(planSubscription.organizationId, organizationId),
-      })
+      const subscription = await getCachedSubscription(organizationId)
 
       if (!subscription?.stripeCustomerId) {
         return []
@@ -505,7 +490,7 @@ export const billingRouter = createTRPCRouter({
     }
   }),
 
-  // Create setup intent for adding payment method
+  // Create setup intent for adding payment method (cached stripeCustomerId)
   createSetupIntent: cloudOnlyProcedure.mutation(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -513,9 +498,7 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      const subscription = await ctx.db.query.PlanSubscription.findFirst({
-        where: (planSubscription, { eq }) => eq(planSubscription.organizationId, organizationId),
-      })
+      const subscription = await getCachedSubscription(organizationId)
 
       if (!subscription?.stripeCustomerId) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'No Stripe customer found' })
@@ -539,7 +522,7 @@ export const billingRouter = createTRPCRouter({
     }
   }),
 
-  // Set default payment method
+  // Set default payment method (cached stripeCustomerId)
   setDefaultPaymentMethod: cloudOnlyProcedure
     .input(z.object({ paymentMethodId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -549,9 +532,7 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscription = await ctx.db.query.PlanSubscription.findFirst({
-          where: (planSubscription, { eq }) => eq(planSubscription.organizationId, organizationId),
-        })
+        const subscription = await getCachedSubscription(organizationId)
 
         if (!subscription?.stripeCustomerId) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'No Stripe customer found' })
@@ -641,7 +622,7 @@ export const billingRouter = createTRPCRouter({
       }
     }),
 
-  // Cancel scheduled plan change
+  // Cancel scheduled plan change (cached read, DB write)
   cancelScheduledChange: cloudOnlyProcedure.mutation(async ({ ctx }) => {
     try {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -649,19 +630,16 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      const subscription = await ctx.db.query.PlanSubscription.findFirst({
-        where: (sub, { eq }) => eq(sub.organizationId, organizationId),
-        with: { plan: true },
-      })
+      const cachedSub = await getCachedSubscription(organizationId)
 
-      if (!subscription?.scheduledPlanId) {
+      if (!cachedSub?.scheduledPlanId) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'No scheduled change found',
         })
       }
 
-      // Clear scheduled change
+      // Clear scheduled change in DB
       await ctx.db
         .update(schema.PlanSubscription)
         .set({
@@ -672,31 +650,36 @@ export const billingRouter = createTRPCRouter({
           scheduledChangeAt: null,
           updatedAt: new Date(),
         })
-        .where(eq(schema.PlanSubscription.id, subscription.id))
+        .where(eq(schema.PlanSubscription.id, cachedSub.id))
 
       // Revert Stripe subscription to current plan
-      if (subscription.plan && subscription.stripeSubscriptionId) {
-        const priceId =
-          subscription.billingCycle === 'ANNUAL'
-            ? subscription.plan.stripePriceIdAnnual
-            : subscription.plan.stripePriceIdMonthly
+      if (cachedSub.planId && cachedSub.stripeSubscriptionId) {
+        const planMap = await getAppCache().get('planMap')
+        const plan = planMap[cachedSub.planId]
 
-        if (priceId) {
-          const stripe = stripeClient.getClient()
-          const stripeSubscription = await stripe.subscriptions.retrieve(
-            subscription.stripeSubscriptionId
-          )
+        if (plan) {
+          const priceId =
+            cachedSub.billingCycle === 'ANNUAL'
+              ? plan.stripePriceIdAnnual
+              : plan.stripePriceIdMonthly
 
-          await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-            items: [
-              {
-                id: stripeSubscription.items.data[0]!.id,
-                price: priceId,
-                quantity: subscription.seats,
-              },
-            ],
-            proration_behavior: 'none',
-          })
+          if (priceId) {
+            const stripe = stripeClient.getClient()
+            const stripeSubscription = await stripe.subscriptions.retrieve(
+              cachedSub.stripeSubscriptionId
+            )
+
+            await stripe.subscriptions.update(cachedSub.stripeSubscriptionId, {
+              items: [
+                {
+                  id: stripeSubscription.items.data[0]!.id,
+                  price: priceId,
+                  quantity: cachedSub.seats,
+                },
+              ],
+              proration_behavior: 'none',
+            })
+          }
         }
       }
 

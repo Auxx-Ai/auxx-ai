@@ -3,6 +3,7 @@
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { schema } from '@auxx/database'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import {
   checkAppSlugExists,
@@ -756,6 +757,8 @@ export const appsRouter = createTRPCRouter({
         },
       })
 
+      await onCacheEvent('app.installed', { orgId: input.organizationId })
+
       return { installation }
     }),
 
@@ -803,6 +806,8 @@ export const appsRouter = createTRPCRouter({
           message: 'No active development installation found for this organization',
         })
       }
+
+      await onCacheEvent('app.uninstalled', { orgId: input.organizationId })
 
       return { success: true }
     }),

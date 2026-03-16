@@ -48,6 +48,18 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'inbox.updated': ['inboxes'],
   'inbox.deleted': ['inboxes'],
 
+  // Workflow lifecycle events
+  'workflow.published': ['workflowApps'],
+  'workflow.enabled': ['workflowApps'],
+  'workflow.created': ['workflowApps'],
+  'workflow.deleted': ['workflowApps'],
+
+  // App lifecycle events
+  'app.installed': ['installedApps'],
+  'app.uninstalled': ['installedApps'],
+  'app.deployment.changed': ['installedApps'],
+  'app.connection-def.changed': ['installedApps'],
+
   // ── Mixed events (org + user keys) ──
   'member.added': {
     user: ['userMemberships'],

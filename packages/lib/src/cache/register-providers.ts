@@ -8,6 +8,7 @@ import { entityDefsProvider } from './providers/entity-defs-provider'
 import { featuresProvider } from './providers/features-provider'
 import { groupsProvider } from './providers/groups-provider'
 import { inboxesProvider } from './providers/inboxes-provider'
+import { installedAppsProvider } from './providers/installed-apps-provider'
 import { integrationProvidersProvider } from './providers/integration-providers-provider'
 import { memberRoleMapProvider, membersProvider } from './providers/members-provider'
 import { orgProfileProvider } from './providers/org-profile-provider'
@@ -23,6 +24,7 @@ import { userMembershipsProvider } from './providers/user-memberships-provider'
 import { userProfileProvider } from './providers/user-profile-provider'
 import { userSettingsProvider } from './providers/user-settings-provider'
 import { userTableViewsProvider } from './providers/user-table-views-provider'
+import { workflowAppsProvider } from './providers/workflow-apps-provider'
 import { workflowTemplatesProvider } from './providers/workflow-templates-provider'
 import type { UserCacheService } from './user-cache-service'
 
@@ -52,6 +54,8 @@ export function registerAllProviders(
   orgCache.register('inboxes', inboxesProvider)
   orgCache.register('overages', overagesProvider)
   orgCache.register('orgSettings', orgSettingsProvider)
+  orgCache.register('installedApps', installedAppsProvider)
+  orgCache.register('workflowApps', workflowAppsProvider)
 
   // User-scoped
   userCache.register('userProfile', userProfileProvider)

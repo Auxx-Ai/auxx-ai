@@ -19,7 +19,11 @@ const { ticketSelectRowsRef, createSelectBuilder, selectMock } = vi.hoisted(() =
     const builder: Record<string, any> = {}
     builder.from = vi.fn().mockReturnValue(builder)
     builder.where = vi.fn().mockReturnValue(builder)
-    builder.limit = vi.fn().mockImplementation(async () => ticketSelectRowsRef.value)
+    builder.limit = vi.fn().mockReturnValue(builder)
+    builder.prepare = vi.fn().mockReturnValue({
+      execute: vi.fn().mockResolvedValue(ticketSelectRowsRef.value),
+    })
+    builder.then = vi.fn().mockImplementation((resolve: any) => resolve(ticketSelectRowsRef.value))
     return builder
   }
 

@@ -3,6 +3,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, desc, eq, ilike, inArray, or, type SQL } from 'drizzle-orm'
+import { onCacheEvent } from '../cache/invalidate'
 import { getQueue, Queues } from '../jobs/queues'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { PollingTriggerService } from './polling-trigger-service'
@@ -310,6 +311,8 @@ export class WorkflowService {
         organizationId,
       })
 
+      await onCacheEvent('workflow.created', { orgId: organizationId })
+
       if (result) {
         // Transform to match expected structure
         // Use draft workflow for editing
@@ -562,6 +565,8 @@ export class WorkflowService {
           })
           // Don't fail the update operation if scheduling fails
         }
+
+        await onCacheEvent('workflow.enabled', { orgId: organizationId })
       }
 
       if (result) {
@@ -800,6 +805,8 @@ export class WorkflowService {
 
       logger.info('Workflow app deleted successfully', { workflowAppId: id, organizationId })
 
+      await onCacheEvent('workflow.deleted', { orgId: organizationId })
+
       // 6. Cancel BullMQ jobs (fire-and-forget, non-blocking)
       // Jobs are idempotent - they check DB first and no-op if records don't exist
       this.cancelWorkflowJobs(id, workflowRunIds).catch((error) => {
@@ -907,6 +914,8 @@ export class WorkflowService {
         newId: result?.id,
         organizationId,
       })
+
+      await onCacheEvent('workflow.created', { orgId: organizationId })
 
       return result
     } catch (error) {

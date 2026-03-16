@@ -21,7 +21,7 @@ import {
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
-import { AlertCircle, Ban, DollarSign, RefreshCw } from 'lucide-react'
+import { AlertCircle, Ban, DollarSign, Plus, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -186,13 +186,92 @@ export function SubscriptionManagementSection({
     }
   }
 
+  const [selectedPlan, setSelectedPlan] = useState('')
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY')
+
+  const plansQuery = api.admin.getPlans.useQuery(undefined, { enabled: !subscription })
+
+  const createSubscription = api.admin.billing.createSubscription.useMutation({
+    onSuccess: () => {
+      utils.admin.getOrganization.invalidate({ id: organizationId })
+    },
+    onError: (error) =>
+      toastError({ title: 'Failed to create subscription', description: error.message }),
+  })
+
+  const handleCreateSubscription = async () => {
+    if (!selectedPlan) {
+      toastError({ title: 'Missing plan', description: 'Please select a plan' })
+      return
+    }
+
+    const confirmed = await confirm({
+      title: 'Create Subscription?',
+      description: `This will create a new ${selectedBillingCycle.toLowerCase()} subscription on the "${selectedPlan}" plan for "${organizationName}".`,
+      confirmText: 'Create Subscription',
+      cancelText: 'Cancel',
+    })
+
+    if (confirmed) {
+      createSubscription.mutate({
+        organizationId,
+        planName: selectedPlan,
+        billingCycle: selectedBillingCycle,
+      })
+    }
+  }
+
   if (!subscription) {
     return (
-      <Card>
-        <CardContent className='py-8 text-center text-muted-foreground'>
-          No subscription found
-        </CardContent>
-      </Card>
+      <>
+        <ConfirmDialog />
+        <Card>
+          <CardHeader>
+            <CardTitle>Create Subscription</CardTitle>
+            <CardDescription>
+              This organization has no subscription. Create one to enable plan features.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className='space-y-4'>
+            <div>
+              <Label htmlFor='create-plan'>Plan</Label>
+              <Select value={selectedPlan} onValueChange={setSelectedPlan}>
+                <SelectTrigger>
+                  <SelectValue placeholder='Select a plan' />
+                </SelectTrigger>
+                <SelectContent>
+                  {plansQuery.data?.map((plan) => (
+                    <SelectItem key={plan.id} value={plan.name}>
+                      {plan.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor='create-billing-cycle'>Billing Cycle</Label>
+              <Select
+                value={selectedBillingCycle}
+                onValueChange={(v) => setSelectedBillingCycle(v as 'MONTHLY' | 'ANNUAL')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='MONTHLY'>Monthly</SelectItem>
+                  <SelectItem value='ANNUAL'>Annual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              onClick={handleCreateSubscription}
+              loading={createSubscription.isPending}
+              disabled={!selectedPlan}>
+              <Plus />
+              Create Subscription
+            </Button>
+          </CardContent>
+        </Card>
+      </>
     )
   }
 

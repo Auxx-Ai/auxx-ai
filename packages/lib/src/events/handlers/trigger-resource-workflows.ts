@@ -1,8 +1,8 @@
 // packages/lib/src/events/handlers/trigger-resource-workflows.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
 import { toRecordId } from '@auxx/types/resource'
+import { getCachedWorkflowAppsByTrigger } from '../../cache'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import {
@@ -44,24 +44,19 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
 
   const { triggerType, entityDefinitionId } = mapping
 
-  // 2. Query workflows using NEW service signature
-  const workflowAppsResult = await getWorkflowAppsByTrigger({
+  // 2. Query workflows via org cache
+  const matchingApps = await getCachedWorkflowAppsByTrigger({
     organizationId: event.data.organizationId,
     triggerType,
     entityDefinitionId,
   })
 
-  if (workflowAppsResult.isErr()) {
-    logger.error('Failed to query workflow apps', {
-      error: workflowAppsResult.error.message,
-      triggerType,
-      entityDefinitionId,
-      eventType: event.type,
-    })
-    throw new Error(`Database error: ${workflowAppsResult.error.message}`)
-  }
-
-  const matchingWorkflows = workflowAppsResult.value
+  const matchingWorkflows = matchingApps
+    .filter((app) => app.publishedWorkflow)
+    .map((app) => ({
+      workflowApp: app,
+      publishedWorkflow: app.publishedWorkflow!,
+    }))
 
   if (matchingWorkflows.length === 0) {
     logger.debug('No enabled workflows found', { triggerType, entityDefinitionId })

@@ -3,6 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
+import { onCacheEvent } from '../../cache/invalidate'
 import { createScopedLogger } from '../../logger'
 import { PollingTriggerService } from '../../workflows/polling-trigger-service'
 import { WorkflowRunStatus } from '../../workflows/types'
@@ -307,6 +308,8 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
         .where(eq(schema.WorkflowApp.id, workflowAppId))
 
       await cancelInvalidPollingScheduler(workflowAppId, `Unrecoverable error: ${errorCode}`)
+
+      await onCacheEvent('workflow.enabled', { orgId: organizationId })
 
       logger.warn('Auto-paused workflow due to unrecoverable error', {
         workflowAppId,

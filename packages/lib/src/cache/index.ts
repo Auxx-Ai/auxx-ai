@@ -6,6 +6,7 @@ export type {
   CustomFieldGroupAccessor,
   OrgCacheAccessorMap,
   ResourceAccessor,
+  WorkflowAppsAccessor,
 } from './accessor-map'
 export { ArrayAccessor, NestedRecordAccessor, RecordAccessor, ScalarAccessor } from './accessors'
 // ── App Cache Service ──
@@ -17,6 +18,8 @@ export type {
 } from './app-cache-keys'
 export type { AppCacheProvider } from './app-cache-provider'
 export { AppCacheService } from './app-cache-service'
+// ── Organization Cache Service ──
+export { invalidateOrgsByAppId, invalidateOrgsByDeploymentId } from './app-invalidation-helpers'
 export type { CacheEntry, CacheOptions } from './base-cache-service'
 export { BaseCacheService } from './base-cache-service'
 export {
@@ -40,13 +43,25 @@ export {
   getCachedResources,
   requireCachedEntityDefId,
 } from './org-cache-helpers'
-// ── Organization Cache Service ──
-export type { CachedGroup, OrgCacheDataMap, OrgCacheKeyName, OrgMemberInfo } from './org-cache-keys'
+export type {
+  CachedGroup,
+  CachedInstalledApp,
+  CachedSubscription,
+  OrgCacheDataMap,
+  OrgCacheKeyName,
+  OrgMemberInfo,
+} from './org-cache-keys'
 export type { CacheProvider } from './org-cache-provider'
 export { OrganizationCacheService } from './org-cache-service'
 export { PromiseMemoizer } from './promise-memoizer'
+export type { CachedPublishedWorkflow, CachedWorkflowApp } from './providers/workflow-apps-provider'
 export type { CachedTableView, UserCacheDataMap, UserCacheKeyName } from './user-cache-keys'
 export { UserCacheService } from './user-cache-service'
+export {
+  getCachedWorkflowApp,
+  getCachedWorkflowAppsByAppTrigger,
+  getCachedWorkflowAppsByTrigger,
+} from './workflow-app-queries'
 
 import { AppCacheService } from './app-cache-service'
 import { OrganizationCacheService } from './org-cache-service'

@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/apps.ts
 
+import { getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import {
   deleteAppConnection,
@@ -7,7 +8,6 @@ import {
   renameAppConnection,
   saveAppConnection,
 } from '@auxx/services/app-connections'
-import { getInstalledApps } from '@auxx/services/app-installations'
 import { getAppSettings, saveAppSettings, schemaToZod } from '@auxx/services/app-settings'
 import {
   getAppDeployments,
@@ -66,29 +66,30 @@ export const appsRouter = createTRPCRouter({
   }),
 
   /**
-   * List installed apps for the organization
+   * List installed apps for the organization (cached)
    */
   listInstalled: protectedProcedure
     .input(listInstalledAppsQuerySchema)
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+      const orgCache = getOrgCache()
+      const { installedApps } = await orgCache.getOrRecompute(organizationId, ['installedApps'])
 
-      const result = await getInstalledApps({
-        organizationId,
-        filters: input.type ? { installationType: input.type } : undefined,
-      })
+      // Apply type filter if provided
+      const filtered = input.type
+        ? installedApps.filter((a) => a.installationType === input.type)
+        : installedApps
 
-      if (result.isErr()) {
-        const error = result.error
-        logger.error('Failed to get installed apps', { error, organizationId })
+      // Rehydrate dates for SuperJSON compatibility
+      const installations = filtered.map((app) => ({
+        ...app,
+        installedAt: new Date(app.installedAt),
+        currentDeployment: app.currentDeployment
+          ? { ...app.currentDeployment, createdAt: new Date(app.currentDeployment.createdAt) }
+          : null,
+      }))
 
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: error.message,
-        })
-      }
-
-      return result.value
+      return { installations }
     }),
 
   /**
@@ -156,6 +157,8 @@ export const appsRouter = createTRPCRouter({
         })
       }
 
+      await onCacheEvent('app.installed', { orgId: organizationId })
+
       return result.value
     }),
 
@@ -190,6 +193,8 @@ export const appsRouter = createTRPCRouter({
           message: error.message,
         })
       }
+
+      await onCacheEvent('app.uninstalled', { orgId: organizationId })
 
       return result.value
     }),

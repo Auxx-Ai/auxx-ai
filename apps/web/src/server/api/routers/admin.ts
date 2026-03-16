@@ -491,6 +491,66 @@ export const adminRouter = createTRPCRouter({
     // ========== Subscription Management ==========
 
     /**
+     * Create subscription for an organization that doesn't have one
+     */
+    createSubscription: superAdminProcedure
+      .input(
+        z.object({
+          organizationId: z.string(),
+          planName: z.string(),
+          billingCycle: z.enum(['MONTHLY', 'ANNUAL']).default('MONTHLY'),
+          status: z.string().default('active'),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        // Verify org exists
+        const org = await ctx.db
+          .select({ id: schema.Organization.id })
+          .from(schema.Organization)
+          .where(eq(schema.Organization.id, input.organizationId))
+          .then((rows) => rows[0])
+
+        if (!org) {
+          throw new Error('Organization not found')
+        }
+
+        // Check no subscription already exists
+        const existing = await ctx.db
+          .select({ id: schema.PlanSubscription.id })
+          .from(schema.PlanSubscription)
+          .where(eq(schema.PlanSubscription.organizationId, input.organizationId))
+          .then((rows) => rows[0])
+
+        if (existing) {
+          throw new Error('Organization already has a subscription')
+        }
+
+        // Resolve plan
+        const planService = new PlanService(ctx.db)
+        const plans = await planService.getPlans()
+        const plan = plans.find((p) => p.name === input.planName.toLowerCase())
+
+        if (!plan) {
+          throw new Error(`Plan ${input.planName} not found`)
+        }
+
+        // Insert subscription
+        await ctx.db.insert(schema.PlanSubscription).values({
+          organizationId: input.organizationId,
+          planId: plan.id,
+          plan: input.planName,
+          status: input.status,
+          billingCycle: input.billingCycle,
+          seats: 1,
+          periodStart: new Date(),
+        })
+
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
+
+        return { success: true }
+      }),
+
+    /**
      * Cancel subscription immediately
      */
     cancelImmediately: superAdminProcedure

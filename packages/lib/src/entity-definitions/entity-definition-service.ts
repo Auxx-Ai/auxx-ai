@@ -9,6 +9,7 @@ import {
   updateEntityDefinition,
 } from '@auxx/services/entity-definitions'
 import type { Result } from 'neverthrow'
+import { onCacheEvent } from '../cache/invalidate'
 import { DisplayFieldService, type DisplayFieldType } from '../field-values'
 import type { CreateEntityDefinitionInput, UpdateEntityDefinitionInput } from './types'
 
@@ -98,7 +99,9 @@ export class EntityDefinitionService {
       entityType: input.entityType ?? null,
       standardType: input.standardType ?? null,
     })
-    return unwrapResult(result)
+    const value = unwrapResult(result)
+    await onCacheEvent('entity-def.created', { orgId: this.organizationId })
+    return value
   }
 
   /**
@@ -159,6 +162,7 @@ export class EntityDefinitionService {
       }
     }
 
+    await onCacheEvent('entity-def.updated', { orgId: this.organizationId })
     return result.value
   }
 
@@ -187,6 +191,8 @@ export class EntityDefinitionService {
       id,
       organizationId: this.organizationId,
     })
-    return unwrapResult(result)
+    const value = unwrapResult(result)
+    await onCacheEvent('entity-def.deleted', { orgId: this.organizationId })
+    return value
   }
 }
