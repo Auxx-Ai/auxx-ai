@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.91](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.90...auxx-v0.1.91) (2026-03-17)
+
+
+### Features
+
+* implement country selection component and integrate into forms ([#285](https://github.com/Auxx-Ai/auxx-ai/issues/285)) ([e4bbb65](https://github.com/Auxx-Ai/auxx-ai/commit/e4bbb65ff0c7bcf1ffeddec1a0f203c50c902f5d))
+* refactor subscription handling and introduce recovery for past_due status ([#287](https://github.com/Auxx-Ai/auxx-ai/issues/287)) ([2857af9](https://github.com/Auxx-Ai/auxx-ai/commit/2857af905483f2fbc3ae518d3ed05f24698183c7))
+
 ## [0.1.90](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.89...auxx-v0.1.90) (2026-03-16)
 
 
