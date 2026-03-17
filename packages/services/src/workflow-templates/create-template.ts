@@ -20,6 +20,7 @@ export async function createTemplate(input: CreateWorkflowTemplateInput) {
         description: input.description,
         categories: input.categories,
         imgUrl: input.imgUrl,
+        icon: input.icon ?? null,
         graph: input.graph,
         version: input.version ?? 1,
         status: input.status ?? 'private',

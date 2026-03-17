@@ -57,6 +57,7 @@ const EntityTemplateDialog = dynamic(
   { ssr: false }
 )
 
+import { useResources } from '~/components/resources/hooks'
 import type { WorkflowViewerData } from '~/components/workflow/viewer/hooks/use-workflow-viewer'
 import { WorkflowViewer } from '~/components/workflow/viewer/workflow-viewer'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
@@ -133,33 +134,10 @@ export function WorkflowTemplateDialog({
       { enabled: !!selectedTemplate?.id && viewMode === 'detail' }
     )
 
-  // Check entity readiness when template has requiredEntities
+  // Entity requirements — resolved client-side via useResources()
   const selectedRequiredEntities = templateDetail?.requiredEntities ?? []
   const hasEntityRequirements = selectedRequiredEntities.length > 0
-
-  const {
-    data: entityReadiness,
-    isLoading: isCheckingEntities,
-    refetch: refetchEntityReadiness,
-  } = api.workflow.templates.checkEntityReadiness.useQuery(
-    { requiredEntities: selectedRequiredEntities },
-    { enabled: hasEntityRequirements && viewMode === 'detail' && !!templateDetail }
-  )
-
-  // Build entity name map for display (from requiredEntities templateIds)
-  const entityNames = useMemo(() => {
-    const names: Record<string, string> = {}
-    for (const req of selectedRequiredEntities) {
-      if (req.entityTemplateId.startsWith('__system:')) {
-        const type = req.entityTemplateId.replace('__system:', '')
-        names[req.entityTemplateId] = type.charAt(0).toUpperCase() + type.slice(1)
-      } else {
-        // Use entityTemplateId as fallback display name
-        names[req.entityTemplateId] = req.entityTemplateId
-      }
-    }
-    return names
-  }, [selectedRequiredEntities])
+  const { getResourceById } = useResources()
 
   // Transform template detail into WorkflowViewerData format
   const workflowViewerData: WorkflowViewerData | null = useMemo(() => {
@@ -273,15 +251,11 @@ export function WorkflowTemplateDialog({
   }, [])
 
   /** Handle completion of entity installation */
-  const handleEntityInstallComplete = useCallback(
-    (_result: EntityTemplateInstallResult) => {
-      setShowEntityInstallDialog(false)
-      setEntityInstallTemplateIds([])
-      // Re-check entity readiness after installation
-      refetchEntityReadiness()
-    },
-    [refetchEntityReadiness]
-  )
+  const handleEntityInstallComplete = useCallback((_result: EntityTemplateInstallResult) => {
+    setShowEntityInstallDialog(false)
+    setEntityInstallTemplateIds([])
+    // Resource store auto-updates → EntityRequirementsStep re-evaluates via useResources()
+  }, [])
 
   /**
    * Reset state when dialog closes
@@ -307,7 +281,13 @@ export function WorkflowTemplateDialog({
     [selectedRequiredApps, appInstallations]
   )
   const missingRequiredCount = appStatuses.filter((a) => a.required && !a.installed).length
-  const missingEntityCount = entityReadiness?.missingEntities.length ?? 0
+  const missingEntityCount = useMemo(() => {
+    if (!hasEntityRequirements) return 0
+    return selectedRequiredEntities.filter((req) => {
+      if (req.entityTemplateId.startsWith('__system:')) return false
+      return !getResourceById(req.apiSlug)
+    }).length
+  }, [selectedRequiredEntities, getResourceById, hasEntityRequirements])
 
   return (
     <>
@@ -585,11 +565,9 @@ export function WorkflowTemplateDialog({
                         )}
 
                         {/* Entity Requirements Section */}
-                        {hasEntityRequirements && entityReadiness && (
+                        {hasEntityRequirements && (
                           <EntityRequirementsStep
                             requiredEntities={selectedRequiredEntities}
-                            readiness={entityReadiness}
-                            entityNames={entityNames}
                             onInstallEntities={handleInstallEntities}
                             onSkip={() => {
                               /* user wants to skip — just proceed to create */

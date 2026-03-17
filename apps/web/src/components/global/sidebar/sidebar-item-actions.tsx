@@ -1,8 +1,9 @@
 // components/global/sidebar/sidebar-item-actions.tsx
 'use client'
 
+import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
-import { FileText, Workflow } from 'lucide-react'
+import { LayoutTemplate, Workflow } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
@@ -34,14 +35,16 @@ export function useSidebarItemActions(): SidebarItemActionsResult {
               e.stopPropagation()
               setCreateDialogOpen(true)
             }}>
-            <Workflow /> Create Blank
+            <Workflow /> Create blank
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={(e) => {
               e.stopPropagation()
               setTemplateDialogOpen(true)
-            }}>
-            <FileText /> Use Template
+            }}
+            className='data-highlighted:bg-[#ffaa40]/10'>
+            <LayoutTemplate className='text-[#ffaa40]' />{' '}
+            <AnimatedGradientText>Create from template</AnimatedGradientText>
           </DropdownMenuItem>
         </>
       ),

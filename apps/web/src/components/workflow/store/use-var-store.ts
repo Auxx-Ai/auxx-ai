@@ -207,6 +207,9 @@ export const useVarStore = create<VarStore>()(
               required: true,
             })
 
+            // Clear stale env vars from previous workflow before loading new ones
+            state.environmentVariables.clear()
+
             // Load environment variables if provided
             if (workflowData?.environmentVariables) {
               workflowData.environmentVariables.forEach((envVar: EnvVar) => {

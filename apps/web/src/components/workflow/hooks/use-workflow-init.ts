@@ -109,7 +109,7 @@ export const useWorkflowInit = (options?: UseWorkflowInitOptions): UseWorkflowIn
         // Initialize the var store with workflow data including environment variables
         varStore.actions.initializeStore({
           environmentVariables: workflow.envVars.map((envVar: any) => ({
-            id: envVar.id || `env_${envVar.name}`,
+            id: envVar.id || `env.${envVar.name}`,
             name: envVar.name,
             value: envVar.value,
             type: envVar.type || 'string',

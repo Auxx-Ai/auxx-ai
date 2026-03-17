@@ -177,7 +177,9 @@ const VariableTag = ({
   // If variable not found in store, show error
   if (!variable) {
     return (
-      <div className='inline-flex shrink-0 h-5 max-w-full items-center rounded-md border-[0.5px] border-border bg-background px-1.5 text-xs shadow-xs cursor-pointer group-aria-selected/var:bg-destructive'>
+      <div
+        title={variableId}
+        className='inline-flex shrink-0 h-5 max-w-full items-center rounded-md border-[0.5px] border-border bg-background px-1.5 text-xs shadow-xs cursor-pointer group-aria-selected/var:bg-destructive'>
         <AlertTriangle className='mr-0.5 size-3 text-destructive group-aria-selected/var:text-white/90' />
         <span className='text-destructive group-aria-selected/var:text-white/90'>Unknown Var</span>
       </div>

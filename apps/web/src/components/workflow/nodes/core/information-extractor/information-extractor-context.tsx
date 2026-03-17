@@ -5,9 +5,9 @@
 import type React from 'react'
 import { createContext, useCallback, useContext, useMemo } from 'react'
 import { useAvailableVariables } from '~/components/workflow/hooks'
-import { schemaToOutputVars } from '~/components/workflow/ui/structured-output-generator/schema-to-vars'
 import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
 import type { UnifiedVariable } from '../if-else'
+import { informationExtractorDefinition } from './schema'
 import type {
   InformationExtractorContextValue,
   InformationExtractorModel,
@@ -106,27 +106,11 @@ export const InformationExtractorProvider: React.FC<InformationExtractorProvider
     [data, onChange]
   )
 
-  // Get output variables from schema
-  const getOutputVariables = useCallback((): UnifiedVariable[] => {
-    if (!data.structured_output?.schema || !data.structured_output.enabled) return []
-
-    // Use the schemaToOutputVars utility from StructuredOutputGenerator
-    const outputVars = schemaToOutputVars(data.structured_output.schema)
-
-    // Convert OutputVariable to UnifiedVariable format
-    return outputVars.map((outputVar) => ({
-      id: `${nodeId}_${outputVar.name}`,
-      name: outputVar.name,
-      type: outputVar.type,
-      // nodeId: nodeId,
-      // path: outputVar.name,
-      // fullPath: `${nodeId}.${outputVar.name}`,
-      label: outputVar.name,
-      category: 'output' as const,
-      description: outputVar.description,
-      ...(outputVar.subItems && { subItems: outputVar.subItems }),
-    }))
-  }, [data.structured_output, nodeId])
+  // Get output variables from the node definition (single source of truth)
+  const getOutputVariables = useCallback(
+    (): UnifiedVariable[] => informationExtractorDefinition.outputVariables(data, nodeId),
+    [data, nodeId]
+  )
 
   // Create context value
   const contextValue = useMemo<InformationExtractorContextValue>(

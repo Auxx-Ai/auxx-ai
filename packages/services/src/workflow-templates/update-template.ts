@@ -21,6 +21,7 @@ export async function updateTemplate(input: UpdateWorkflowTemplateInput) {
   if (input.description !== undefined) updateData.description = input.description
   if (input.categories !== undefined) updateData.categories = input.categories
   if (input.imgUrl !== undefined) updateData.imgUrl = input.imgUrl
+  if (input.icon !== undefined) updateData.icon = input.icon
   if (input.graph !== undefined) updateData.graph = input.graph
   if (input.version !== undefined) updateData.version = input.version
   if (input.status !== undefined) updateData.status = input.status

@@ -29,6 +29,9 @@ export const WorkflowTemplate = pgTable(
     /** Preview image URL for the template */
     imgUrl: text(),
 
+    /** Default icon for workflows created from this template */
+    icon: jsonb().$type<{ iconId: string; color: string }>(),
+
     /** The complete workflow graph structure (nodes, edges, etc.) */
     graph: jsonb().notNull().default(sql`'{}'::jsonb`),
 

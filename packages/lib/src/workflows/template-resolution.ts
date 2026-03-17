@@ -87,6 +87,15 @@ export interface RequiredEntity {
   companionTemplateIds?: string[]
   /** If false, workflow can function without this entity (degraded mode) */
   required: boolean
+  // ── Display info (stored on template, used client-side) ──
+  /** Display name (e.g., "Order", "Company"). For system entities: "Contact", "Ticket" */
+  name: string
+  /** Entity apiSlug for client-side existence check (e.g., "orders", "companies") */
+  apiSlug: string
+  /** Entity icon ID from template registry (e.g., "shopping-cart") */
+  icon?: string
+  /** Entity icon color from template registry (e.g., "green", "blue") */
+  color?: string
 }
 
 /** Result of checking entity readiness for a workflow template */
@@ -334,10 +343,22 @@ export function extractRequiredEntities(graph: WorkflowGraph): Partial<RequiredE
     entityMap.set(slug, fieldRefs)
   }
 
-  return Array.from(entityMap.entries()).map(([slug, fieldRefs]) => ({
-    entityTemplateId: slug.startsWith('__system:') ? slug : '',
-    fieldMapping: Object.fromEntries(Array.from(fieldRefs).map((ref) => [ref, ref])),
-    requiredFields: Array.from(fieldRefs),
-    required: true,
-  }))
+  return Array.from(entityMap.entries()).map(([slug, fieldRefs]) => {
+    const isSystem = slug.startsWith('__system:')
+    const systemType = isSystem ? slug.replace('__system:', '') : undefined
+    const template = isSystem ? undefined : getEntityTemplateById(slug)
+
+    return {
+      entityTemplateId: isSystem ? slug : '',
+      name: isSystem
+        ? systemType!.charAt(0).toUpperCase() + systemType!.slice(1)
+        : (template?.name ?? slug),
+      apiSlug: isSystem ? systemType! : (template?.entity.apiSlug ?? slug),
+      icon: template?.entity.icon,
+      color: template?.entity.color,
+      fieldMapping: Object.fromEntries(Array.from(fieldRefs).map((ref) => [ref, ref])),
+      requiredFields: Array.from(fieldRefs),
+      required: true,
+    }
+  })
 }

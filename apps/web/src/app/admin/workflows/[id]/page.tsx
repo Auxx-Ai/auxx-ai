@@ -3,6 +3,7 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import {
@@ -38,6 +39,10 @@ interface RequiredApp {
 
 interface RequiredEntityConfig {
   entityTemplateId: string
+  name: string
+  apiSlug: string
+  icon?: string
+  color?: string
   fieldMapping: Record<string, string>
   requiredFields: string[]
   companionTemplateIds?: string[]
@@ -75,6 +80,10 @@ function extractRequiredApps(graph: any): RequiredApp[] {
 
 /**
  * Extract required entities from a template graph by scanning for @entity: and @field: refs.
+ *
+ * Note: entityTemplateId cannot be auto-determined from the graph alone (the graph uses apiSlug,
+ * not the template ID). Set it manually in the JSON editor after scanning.
+ * For system entities (contact, ticket, etc.) set entityTemplateId to "__system:<slug>".
  */
 function extractRequiredEntitiesFromGraph(graph: any): RequiredEntityConfig[] {
   if (!graph?.nodes || !Array.isArray(graph.nodes)) return []
@@ -90,6 +99,7 @@ function extractRequiredEntitiesFromGraph(graph: any): RequiredEntityConfig[] {
     const slug = resourceType.replace('@entity:', '')
     const fieldRefs = entityMap.get(slug) ?? new Set<string>()
 
+    // CRUD nodes: field refs are keys in node.data.data
     if (node.data.data) {
       for (const key of Object.keys(node.data.data)) {
         if (key.startsWith('@field:')) {
@@ -98,11 +108,28 @@ function extractRequiredEntitiesFromGraph(graph: any): RequiredEntityConfig[] {
       }
     }
 
+    // Find nodes: field refs are in conditionGroups[].conditions[].fieldId
+    if (node.data.conditionGroups && Array.isArray(node.data.conditionGroups)) {
+      for (const group of node.data.conditionGroups) {
+        if (!Array.isArray(group.conditions)) continue
+        for (const condition of group.conditions) {
+          if (typeof condition.fieldId === 'string' && condition.fieldId.startsWith('@field:')) {
+            fieldRefs.add(condition.fieldId.replace('@field:', ''))
+          }
+        }
+      }
+    }
+
     entityMap.set(slug, fieldRefs)
   }
 
   return Array.from(entityMap.entries()).map(([slug, fieldRefs]) => ({
-    entityTemplateId: slug.startsWith('__system:') ? slug : '',
+    // entityTemplateId must be set manually:
+    // - system entities: "__system:<slug>" (e.g. "__system:contact")
+    // - custom entities: template registry ID (e.g. "order", not "orders")
+    entityTemplateId: '',
+    name: slug.charAt(0).toUpperCase() + slug.slice(1),
+    apiSlug: slug,
     fieldMapping: Object.fromEntries(Array.from(fieldRefs).map((ref) => [ref, ref])),
     requiredFields: Array.from(fieldRefs),
     required: true,
@@ -126,6 +153,7 @@ export default function WorkflowTemplateEditorPage({
   const [description, setDescription] = useState('')
   const [categories, setCategories] = useState('')
   const [imgUrl, setImgUrl] = useState('')
+  const [iconValue, setIconValue] = useState<IconPickerValue>({ icon: 'zap', color: 'blue' })
   const [status, setStatus] = useState<'public' | 'private'>('private')
   const [popularity, setPopularity] = useState(0)
   const [graphJson, setGraphJson] = useState('{}')
@@ -134,6 +162,8 @@ export default function WorkflowTemplateEditorPage({
   const [requiredEntities, setRequiredEntities] = useState<RequiredEntityConfig[]>([])
   const [requiredEntitiesJson, setRequiredEntitiesJson] = useState('[]')
   const [entitiesJsonError, setEntitiesJsonError] = useState<string | null>(null)
+  const [envVarsJson, setEnvVarsJson] = useState('[]')
+  const [envVarsError, setEnvVarsError] = useState<string | null>(null)
 
   const { data: template, isLoading } = api.admin.workflowTemplates.getById.useQuery(
     { id },
@@ -177,6 +207,12 @@ export default function WorkflowTemplateEditorPage({
       setDescription(template.description)
       setCategories((template.categories as string[]).join(', '))
       setImgUrl(template.imgUrl || '')
+      if ((template as any).icon) {
+        setIconValue({
+          icon: (template as any).icon.iconId,
+          color: (template as any).icon.color,
+        })
+      }
       setStatus(template.status as 'public' | 'private')
       setPopularity(template.popularity)
       setGraphJson(JSON.stringify(template.graph, null, 2))
@@ -184,11 +220,21 @@ export default function WorkflowTemplateEditorPage({
       const entities = (template as any).requiredEntities ?? []
       setRequiredEntities(entities)
       setRequiredEntitiesJson(JSON.stringify(entities, null, 2))
+      const envVars = (template as any).envVars ?? []
+      setEnvVarsJson(JSON.stringify(envVars, null, 2))
     }
   }, [template])
 
   /** Known metadata keys that can be auto-filled from pasted JSON */
-  const METADATA_KEYS = ['name', 'description', 'categories', 'status', 'popularity', 'imgUrl']
+  const METADATA_KEYS = [
+    'name',
+    'description',
+    'categories',
+    'status',
+    'popularity',
+    'imgUrl',
+    'icon',
+  ]
 
   /**
    * Try to extract template metadata from JSON and auto-fill form fields.
@@ -208,8 +254,21 @@ export default function WorkflowTemplateEditorPage({
       )
     }
     if (parsed.imgUrl) setImgUrl(parsed.imgUrl)
+    if (parsed.icon?.iconId && parsed.icon?.color) {
+      setIconValue({ icon: parsed.icon.iconId, color: parsed.icon.color })
+    }
     if (parsed.status === 'public' || parsed.status === 'private') setStatus(parsed.status)
     if (parsed.popularity !== undefined) setPopularity(Number(parsed.popularity) || 0)
+    if (parsed.requiredApps && Array.isArray(parsed.requiredApps)) {
+      setRequiredApps(parsed.requiredApps)
+    }
+    if (parsed.requiredEntities && Array.isArray(parsed.requiredEntities)) {
+      setRequiredEntities(parsed.requiredEntities)
+      setRequiredEntitiesJson(JSON.stringify(parsed.requiredEntities, null, 2))
+    }
+    if (parsed.envVars && Array.isArray(parsed.envVars)) {
+      setEnvVarsJson(JSON.stringify(parsed.envVars, null, 2))
+    }
 
     // Strip metadata, keep only the graph
     const graph = parsed.graph ?? {
@@ -277,8 +336,34 @@ export default function WorkflowTemplateEditorPage({
         })
         return
       }
-      setRequiredEntities(scanned)
-      setRequiredEntitiesJson(JSON.stringify(scanned, null, 2))
+      // Merge with existing entries: the scan discovers which field refs exist in the graph
+      // but cannot determine correct mapped values, required subsets, or metadata.
+      // For any apiSlug already in the existing config, preserve all manually-set fields
+      // and only add newly-discovered field refs (with 1:1 placeholder values).
+      const existingBySlug = new Map(requiredEntities.map((e) => [e.apiSlug, e]))
+      const merged = scanned.map((entry) => {
+        const existing = existingBySlug.get(entry.apiSlug)
+        if (!existing) return entry
+
+        // fieldMapping: start with scanned (new refs as 1:1 placeholder),
+        // then overlay existing (preserves correct templateFieldId/systemAttribute values
+        // and retains any existing refs not referenced in the current graph)
+        const mergedFieldMapping = { ...entry.fieldMapping, ...existing.fieldMapping }
+
+        return {
+          ...entry,
+          entityTemplateId: existing.entityTemplateId || entry.entityTemplateId,
+          name: existing.name || entry.name,
+          icon: existing.icon ?? entry.icon,
+          color: existing.color ?? entry.color,
+          companionTemplateIds: existing.companionTemplateIds ?? entry.companionTemplateIds,
+          required: existing.required,
+          fieldMapping: mergedFieldMapping,
+          requiredFields: existing.requiredFields,
+        }
+      })
+      setRequiredEntities(merged)
+      setRequiredEntitiesJson(JSON.stringify(merged, null, 2))
       setEntitiesJsonError(null)
     } catch {
       toastError({
@@ -301,6 +386,21 @@ export default function WorkflowTemplateEditorPage({
       setEntitiesJsonError(null)
     } catch {
       setEntitiesJsonError('Invalid JSON')
+    }
+  }
+
+  /** Handle envVars JSON editor change */
+  const handleEnvVarsJsonChange = (value: string) => {
+    setEnvVarsJson(value)
+    try {
+      const parsed = JSON.parse(value)
+      if (!Array.isArray(parsed)) {
+        setEnvVarsError('Must be an array')
+        return
+      }
+      setEnvVarsError(null)
+    } catch {
+      setEnvVarsError('Invalid JSON')
     }
   }
 
@@ -336,17 +436,32 @@ export default function WorkflowTemplateEditorPage({
       return
     }
 
+    const iconData = { iconId: iconValue.icon, color: iconValue.color }
+
+    let parsedEnvVars: any[] = []
+    try {
+      parsedEnvVars = JSON.parse(envVarsJson)
+    } catch {
+      toastError({
+        title: 'Invalid JSON',
+        description: 'Please fix the envVars JSON before saving',
+      })
+      return
+    }
+
     if (isNew) {
       await createTemplate.mutateAsync({
         name,
         description,
         categories: categoriesArray,
         imgUrl: imgUrl || undefined,
+        icon: iconData,
         status,
         popularity,
         graph: parsedGraph,
         requiredApps,
         requiredEntities: requiredEntities.length > 0 ? requiredEntities : undefined,
+        envVars: parsedEnvVars.length > 0 ? parsedEnvVars : undefined,
       })
     } else {
       await updateTemplate.mutateAsync({
@@ -355,17 +470,20 @@ export default function WorkflowTemplateEditorPage({
         description,
         categories: categoriesArray,
         imgUrl: imgUrl || undefined,
+        icon: iconData,
         status,
         popularity,
         graph: parsedGraph,
         requiredApps,
         requiredEntities: requiredEntities.length > 0 ? requiredEntities : undefined,
+        envVars: parsedEnvVars,
       })
     }
   }
 
   const isSaving = createTemplate.isPending || updateTemplate.isPending
-  const canSave = name.trim() && description.trim() && !jsonError && !entitiesJsonError
+  const canSave =
+    name.trim() && description.trim() && !jsonError && !entitiesJsonError && !envVarsError
 
   if (isLoading) {
     return (
@@ -419,15 +537,19 @@ export default function WorkflowTemplateEditorPage({
           <div className='grid grid-cols-2 flex-1 '>
             {/* Left Column - Form Fields */}
             <div className='space-y-6 overflow-y-auto p-6'>
-              {/* Name */}
+              {/* Name & Icon */}
               <div className='space-y-2'>
                 <Label htmlFor='name'>Template Name</Label>
-                <Input
-                  id='name'
-                  placeholder='e.g., Order Status Inquiry Handler'
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
+                <div className='flex items-center gap-2'>
+                  <IconPicker value={iconValue} onChange={setIconValue} className='size-8' />
+                  <Input
+                    id='name'
+                    className='flex-1'
+                    placeholder='e.g., Order Status Inquiry Handler'
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
               </div>
 
               {/* Description */}
@@ -561,12 +683,20 @@ export default function WorkflowTemplateEditorPage({
                     <div className='space-y-1'>
                       {requiredEntities.map((entity, index) => (
                         <div
-                          key={entity.entityTemplateId || index}
+                          key={entity.apiSlug || entity.entityTemplateId || index}
                           className='flex items-center justify-between rounded-lg border p-2'>
                           <div className='flex items-center gap-2'>
                             <span className='text-sm font-medium'>
-                              {entity.entityTemplateId || '(unset)'}
+                              {entity.name ||
+                                entity.apiSlug ||
+                                entity.entityTemplateId ||
+                                '(unset)'}
                             </span>
+                            {entity.apiSlug && (
+                              <span className='text-xs text-muted-foreground font-mono'>
+                                {entity.entityTemplateId || '⚠ no templateId'}
+                              </span>
+                            )}
                             <Badge variant='secondary' className='text-xs'>
                               {Object.keys(entity.fieldMapping).length} field
                               {Object.keys(entity.fieldMapping).length !== 1 ? 's' : ''}
@@ -598,6 +728,26 @@ export default function WorkflowTemplateEditorPage({
                     in CRUD/Find nodes.
                   </p>
                 )}
+              </div>
+
+              {/* Environment Variables */}
+              <div className='space-y-2'>
+                <Label>Environment Variables</Label>
+                <p className='text-xs text-muted-foreground'>
+                  Declare env vars copied to the workflow on creation. Use{' '}
+                  <code className='font-mono'>{'{{env.VAR_NAME}}'}</code> to reference them in
+                  nodes. IDs must be <code className='font-mono'>env.VAR_NAME</code>. Set{' '}
+                  <code className='font-mono'>value: ""</code> for secrets.
+                </p>
+                <CodeEditor
+                  value={envVarsJson}
+                  onChange={handleEnvVarsJsonChange}
+                  language={CodeLanguage.json}
+                  title='envVars JSON'
+                  minHeight={150}
+                  enableWorkflowCompletions={false}
+                />
+                {envVarsError && <span className='text-xs text-destructive'>{envVarsError}</span>}
               </div>
             </div>
 

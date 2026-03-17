@@ -98,7 +98,7 @@ export function SidebarGroupHeader({
               <span className='sr-only'>Options</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className='w-40' align='start'>
+          <DropdownMenuContent className='w-50' align='start'>
             <DropdownMenuGroup>
               {additionalOptions}
               {!hideEditOption && (
