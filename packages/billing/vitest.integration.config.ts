@@ -1,4 +1,4 @@
-// packages/billing/vitest.config.ts
+// packages/billing/vitest.integration.config.ts
 
 import path from 'path'
 import tsconfigPaths from 'vite-tsconfig-paths'
@@ -8,20 +8,17 @@ export default defineConfig({
   root: __dirname,
   plugins: [tsconfigPaths()],
   test: {
-    name: 'billing',
+    name: 'billing-integration',
     globals: true,
     environment: 'node',
-    setupFiles: ['./src/test/setup.ts'],
-    include: [
-      'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}',
-      'src/**/__tests__/**/*.{js,mjs,cjs,ts,mts,cts}',
-    ],
-    exclude: ['node_modules/**', 'dist/**', '**/*.config.*', 'src/__integration__/**'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html'],
-      exclude: ['node_modules/', 'dist/', '**/*.test.*', '**/*.config.*', '**/index.ts'],
-    },
+    include: ['src/__integration__/**/*.integration.test.ts'],
+    exclude: ['node_modules/**', 'dist/**'],
+    testTimeout: 180_000, // 3 min — clock advances + webhook delivery + polling
+    hookTimeout: 120_000, // 2 min — setup creates Stripe resources + seeds DB
+    pool: 'forks',
+    maxForks: 1, // Sequential — shared Stripe account + DB
+    setupFiles: ['src/__integration__/setup.ts'],
+    bail: 1, // Stop on first failure — tests in a suite are sequential/dependent
   },
   resolve: {
     alias: {
@@ -30,6 +27,7 @@ export default defineConfig({
       '@auxx/database': path.resolve(__dirname, '../database/src'),
       '@auxx/logger': path.resolve(__dirname, '../logger/src'),
       '@auxx/lib': path.resolve(__dirname, '../lib/src'),
+      '@auxx/types': path.resolve(__dirname, '../types'),
       '~/': path.resolve(__dirname, './src/'),
     },
   },
