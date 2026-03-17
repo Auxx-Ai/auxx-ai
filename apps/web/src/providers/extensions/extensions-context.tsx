@@ -8,6 +8,8 @@ import type { RouterOutputs } from '~/trpc/react'
 export type AppInstallation = Expand<
   NonNullable<RouterOutputs['apps']['listInstalled']['installations']>[number]
 >
+
+export type AppConnection = NonNullable<RouterOutputs['apps']['listConnections']>[number]
 /**
  * Represents an installed extension in the current organization.
  * Based on the actual API response from packages/services/src/app-installations/get-installed-apps.ts
@@ -38,10 +40,11 @@ export type AppInstallation = Expand<
 // }
 
 /**
- * Extensions context value containing list of installed apps with loading state
+ * Extensions context value containing list of installed apps and connections with loading state
  */
 interface ExtensionsContextValue {
   appInstallations: AppInstallation[]
+  appConnections: AppConnection[]
   isLoading: boolean
   isError: boolean
 }
@@ -57,17 +60,19 @@ const ExtensionsContext = createContext<ExtensionsContextValue | null>(null)
  */
 export function ExtensionsContextProvider({
   appInstallations,
+  appConnections,
   isLoading,
   isError,
   children,
 }: {
   appInstallations: AppInstallation[]
+  appConnections: AppConnection[]
   isLoading: boolean
   isError: boolean
   children: ReactNode
 }) {
   return (
-    <ExtensionsContext.Provider value={{ appInstallations, isLoading, isError }}>
+    <ExtensionsContext.Provider value={{ appInstallations, appConnections, isLoading, isError }}>
       {children}
     </ExtensionsContext.Provider>
   )

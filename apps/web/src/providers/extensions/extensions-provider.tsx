@@ -2,6 +2,7 @@
 'use client'
 
 import { toastError } from '@auxx/ui/components/toast'
+import { usePathname } from 'next/navigation'
 import { Fragment, type ReactNode, Suspense, useEffect, useState } from 'react'
 import { ConnectionExpiredDialog } from '~/components/apps/connection-expired-dialog'
 import { AssetsDataHandler } from '~/components/extensions/data-handlers/assets-data-handler'
@@ -47,6 +48,7 @@ interface ExtensionsProviderProps {
  */
 export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
   const organizationId = useDehydratedOrganizationId()
+  const pathname = usePathname()
 
   // Fetch installed apps for this organization
   // Note: organizationId is retrieved from session in the tRPC procedure
@@ -60,6 +62,9 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
 
   // Always provide installations (empty during loading)
   const installations = result?.installations || []
+
+  const { data: connectionsResult } = api.apps.listConnections.useQuery()
+  const connections = connectionsResult ?? []
 
   // Show error toast if loading failed
   if (error) {
@@ -100,6 +105,7 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
     <InternalAppsContextProvider>
       <ExtensionsContextProvider
         appInstallations={installations}
+        appConnections={connections}
         isLoading={isLoading}
         isError={!!error}>
         {/* Set up infrastructure for each extension - only when loaded */}
@@ -183,6 +189,7 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
             connectionType={expiredConnection.connectionType}
             connectionLabel={expiredConnection.connectionLabel}
             reason={expiredConnection.reason}
+            returnTo={pathname}
             onReconnected={() => {
               // Close dialog - user can manually retry the operation
               setExpiredConnection(null)

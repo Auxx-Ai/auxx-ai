@@ -5,7 +5,6 @@
 import type { SettingsSchemaField } from '@auxx/services/app-settings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   Dialog,
   DialogContent,
@@ -17,10 +16,10 @@ import { Item, ItemContent, ItemGroup, ItemHeader } from '@auxx/ui/components/it
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { Code, Globe, LucideGitGraph, Mail } from 'lucide-react'
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, Suspense, useMemo, useState } from 'react'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api } from '~/trpc/react'
-import { AppConnectionStatus } from './app-connection-status'
+import AppConnections from './app-connections'
 import { SettingsFormRenderer } from './settings-form-renderer'
 
 interface AppSettingsDialogProps {
@@ -103,7 +102,7 @@ export function AppSettingsDialog({
 
             {hasConnectionDefinition && (
               <TabsContent value='connections' className='mt-0'>
-                <ConnectionsTab installation={installation} returnTo={returnTo} />
+                <ConnectionsTab appSlug={appSlug} returnTo={returnTo} />
               </TabsContent>
             )}
 
@@ -233,80 +232,23 @@ function AboutTab({ appSlug }: { appSlug: string }) {
 }
 
 /**
- * Connections tab — shows connection status using existing AppConnectionStatus
+ * Connections tab — uses the same AppConnections component as the installed apps settings page
  */
-function ConnectionsTab({ installation, returnTo }: { installation: any; returnTo?: string }) {
-  const { data: connectionsResult, refetch: refetchConnections } =
-    api.apps.listConnections.useQuery()
+function ConnectionsTab({ appSlug, returnTo }: { appSlug: string; returnTo?: string }) {
+  const { data: app, isLoading } = api.apps.getBySlug.useQuery({ appSlug })
 
-  const connections = connectionsResult ?? []
-  const connectionDefinition = installation.connectionDefinition
+  if (isLoading) {
+    return <div className='p-6 text-sm text-muted-foreground'>Loading connections...</div>
+  }
 
-  // Find active connection for this app
-  const activeConnection = connections.find((conn: any) => conn.appId === installation.app.id)
-
-  const connectionStatus: 'connected' | 'not_connected' | 'expired' = activeConnection
-    ? activeConnection.connectionStatus
-    : 'not_connected'
-
-  const connectionType = connectionDefinition.global ? 'organization' : 'user'
+  if (!app) {
+    return <div className='p-6 text-sm text-muted-foreground'>App not found.</div>
+  }
 
   return (
-    <div className='p-6'>
-      <Card>
-        <CardHeader>
-          <CardTitle className='text-base'>App Connection</CardTitle>
-          <CardDescription>
-            This {connectionType} connection is{' '}
-            {connectionDefinition.global
-              ? 'shared across your organization'
-              : 'specific to your user account'}
-            .
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className='space-y-4'>
-            <div>
-              <div className='text-sm font-medium mb-2'>Connection Type</div>
-              <div className='text-sm text-muted-foreground capitalize'>
-                {connectionDefinition.connectionType === 'oauth2-code'
-                  ? 'OAuth 2.0'
-                  : connectionDefinition.connectionType}
-              </div>
-            </div>
-            <div>
-              <div className='text-sm font-medium mb-2'>Status</div>
-              <AppConnectionStatus
-                appId={installation.app.id}
-                appSlug={installation.app.slug}
-                installationId={installation.installationId}
-                connectionStatus={connectionStatus}
-                connectionLabel={connectionDefinition.label}
-                connectionType={connectionType}
-                credentialId={activeConnection?.id}
-                connectionDefinition={connectionDefinition}
-                onConnectionSaved={refetchConnections}
-                returnTo={returnTo}
-              />
-            </div>
-            {activeConnection?.connectedBy && (
-              <div>
-                <div className='text-sm font-medium mb-2'>Connected By</div>
-                <div className='text-sm text-muted-foreground'>{activeConnection.connectedBy}</div>
-              </div>
-            )}
-            {activeConnection?.connectedAt && (
-              <div>
-                <div className='text-sm font-medium mb-2'>Connected At</div>
-                <div className='text-sm text-muted-foreground'>
-                  {new Date(activeConnection.connectedAt).toLocaleString()}
-                </div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <Suspense fallback={<div className='p-6 text-sm text-muted-foreground'>Loading...</div>}>
+      <AppConnections app={app} returnTo={returnTo} />
+    </Suspense>
   )
 }
 

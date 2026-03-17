@@ -19,6 +19,7 @@ export * from './workflow-store'
 
 import { useCanvasStore } from './canvas-store'
 import { usePanelStore } from './panel-store'
+import { useRunStore } from './run-store'
 import { useSelectionStore } from './selection-store'
 // Import stores for internal use
 // import { useEdgeStore } from './edge-store'
@@ -109,11 +110,12 @@ export function resetStores() {
     return
   }
 
-  stores.nodeStore.clearNodes()
   // stores.edgeStore.clearEdges()
   // Variables are cleared by var store initialization
   stores.selectionStore.deselectAll()
   stores.canvasStore.resetView()
   stores.panelStore.closePanel()
   stores.panelStore.closeModal()
+  stores.panelStore.closeRunPanel()
+  useRunStore.getState().clearRun()
 }

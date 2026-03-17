@@ -9,7 +9,12 @@ import type React from 'react'
 import { createContext, useCallback, useContext, useMemo } from 'react'
 import { useEdgeInteractions } from '~/components/workflow/hooks'
 import { DEFAULT_CATEGORY_PREFIX } from './constants'
-import type { Category, ModelConfig, TextClassifierNodeData } from './types'
+import type {
+  Category,
+  ModelConfig,
+  TextClassifierNodeData,
+  TextClassifierOutputMode,
+} from './types'
 
 /**
  * Context value interface for text classifier
@@ -33,6 +38,7 @@ interface TextClassifierContextValue {
   // Advanced settings
   updateVision: (enabled: boolean) => void
   updateInstruction: (enabled: boolean, text?: string) => void
+  updateOutputMode: (mode: TextClassifierOutputMode) => void
 
   // Utilities
   // preprocessPrompt: (editorContent: string) => { text: string; variables: string[] }
@@ -65,12 +71,20 @@ export const TextClassifierProvider: React.FC<TextClassifierProviderProps> = ({
   const { handleEdgeDeleteByDeleteBranch } = useEdgeInteractions()
   const updateNodeInternals = useUpdateNodeInternals()
 
-  // Helper function to update _targetBranches based on categories
+  // Helper function to update _targetBranches based on categories and outputMode
   const updateTargetBranches = (draft: TextClassifierNodeData) => {
-    draft._targetBranches = [
-      ...draft.categories.map((cat) => ({ id: cat.id, name: cat.name, type: 'default' as const })),
-      { id: 'unmatched', name: 'Unmatched', type: 'default' as const },
-    ]
+    if (draft.outputMode === 'variable') {
+      draft._targetBranches = [{ id: 'source', name: '', type: 'default' as const }]
+    } else {
+      draft._targetBranches = [
+        ...draft.categories.map((cat) => ({
+          id: cat.id,
+          name: cat.name,
+          type: 'default' as const,
+        })),
+        { id: 'unmatched', name: 'Unmatched', type: 'default' as const },
+      ]
+    }
   }
 
   // Single update function using Immer for all updates
@@ -196,6 +210,32 @@ export const TextClassifierProvider: React.FC<TextClassifierProviderProps> = ({
     [updateConfig]
   )
 
+  // Update output mode
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateTargetBranches is a local helper, not a reactive dependency
+  const updateOutputMode = useCallback(
+    (mode: TextClassifierOutputMode) => {
+      updateConfig((draft) => {
+        draft.outputMode = mode
+        if (mode === 'variable') {
+          draft._targetBranches = [{ id: 'source', name: '', type: 'default' as const }]
+        } else {
+          updateTargetBranches(draft)
+        }
+      })
+
+      if (mode === 'variable') {
+        const currentCategories = data.categories
+        currentCategories.forEach((cat) => {
+          handleEdgeDeleteByDeleteBranch(nodeId, cat.id)
+        })
+        handleEdgeDeleteByDeleteBranch(nodeId, 'unmatched')
+      }
+
+      updateNodeInternals(nodeId)
+    },
+    [updateConfig, data, nodeId, handleEdgeDeleteByDeleteBranch, updateNodeInternals]
+  )
+
   // Memoized context value
   const contextValue = useMemo<TextClassifierContextValue>(
     () => ({
@@ -212,6 +252,7 @@ export const TextClassifierProvider: React.FC<TextClassifierProviderProps> = ({
       deleteCategory,
       updateVision,
       updateInstruction,
+      updateOutputMode,
     }),
     [
       nodeId,
@@ -227,6 +268,7 @@ export const TextClassifierProvider: React.FC<TextClassifierProviderProps> = ({
       deleteCategory,
       updateVision,
       updateInstruction,
+      updateOutputMode,
     ]
   )
 

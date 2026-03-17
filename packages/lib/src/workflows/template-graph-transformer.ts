@@ -198,6 +198,9 @@ export class TemplateGraphTransformer {
     const errors: string[] = []
     for (const node of graph.nodes) {
       if (node.data.type === 'text-classifier') {
+        // Variable mode uses 'source' handle — no category ID validation needed
+        if (node.data.outputMode === 'variable') continue
+
         const categoryIds = (node.data.categories ?? []).map((c: any) => c.id)
         const outEdges = graph.edges.filter((e) => e.source === node.id)
         for (const edge of outEdges) {

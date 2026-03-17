@@ -519,13 +519,17 @@ export class WorkflowGraphBuilder {
         break
 
       case 'text-classifier': {
-        // Dynamic handles based on categories
-        const categories = node.data.categories || []
-        for (const category of categories) {
-          outputHandles.set(category.id, WorkflowGraphBuilder.createEmptyOutputInfo(category.id))
+        if (node.data.outputMode === 'variable') {
+          // Variable mode: single source handle, no branching
+          outputHandles.set('source', WorkflowGraphBuilder.createEmptyOutputInfo('source'))
+        } else {
+          // Branches mode (default): per-category handles + unmatched
+          const categories = node.data.categories || []
+          for (const category of categories) {
+            outputHandles.set(category.id, WorkflowGraphBuilder.createEmptyOutputInfo(category.id))
+          }
+          outputHandles.set('unmatched', WorkflowGraphBuilder.createEmptyOutputInfo('unmatched'))
         }
-        // Always has unmatched handle
-        outputHandles.set('unmatched', WorkflowGraphBuilder.createEmptyOutputInfo('unmatched'))
         break
       }
 

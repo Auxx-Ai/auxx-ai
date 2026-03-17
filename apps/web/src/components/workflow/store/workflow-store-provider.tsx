@@ -5,7 +5,7 @@ import type React from 'react'
 import { createContext, useContext, useEffect, useMemo } from 'react'
 import { useCanvasStore } from './canvas-store'
 import { historyManager } from './history-manager'
-import { getWorkflowStores, initializeStores, type WorkflowStores } from './index'
+import { getWorkflowStores, initializeStores, resetStores, type WorkflowStores } from './index'
 
 interface WorkflowStoreContextValue {
   stores: WorkflowStores
@@ -64,7 +64,7 @@ export const WorkflowStoreProvider: React.FC<WorkflowStoreProviderProps> = ({
       console.log('Cleaning up workflow:', workflowKey)
 
       // Reset stores when switching workflows
-      // resetStores()
+      resetStores()
       historyManager.clear()
     }
   }, [workflowId])
