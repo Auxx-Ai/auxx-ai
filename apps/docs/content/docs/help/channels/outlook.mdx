@@ -1,0 +1,153 @@
+---
+title: Outlook
+description: Connect your Outlook inbox to Auxx.ai using Microsoft OAuth, including how to set up your own credentials.
+---
+
+Outlook is one of the primary email channels in Auxx.ai. Once connected, incoming messages sync into your shared inbox and you can reply directly from the platform. Auxx.ai supports both platform-managed credentials and bring-your-own-credentials (BYOC) for Microsoft OAuth.
+
+## Connect Outlook
+
+The quickest way to connect is through the standard OAuth flow using Auxx.ai's platform credentials.
+
+<Tabs items={['During onboarding', 'From settings']}>
+  <Tab value="During onboarding">
+    1. On the **Connect an inbox** onboarding step, click **Connect Outlook**.
+    2. Sign in to your Microsoft account if prompted.
+    3. Review the permissions Auxx.ai is requesting and click **Accept**.
+    4. You'll be redirected back to the onboarding flow. A checkmark confirms the connection.
+  </Tab>
+  <Tab value="From settings">
+    1. Go to **Settings > Channels**.
+    2. Click **New Channel**.
+    3. Select **Outlook**.
+    4. Sign in to your Microsoft account if prompted.
+    5. Review the permissions and click **Accept**.
+    6. You'll be redirected to a confirmation page showing the connected email address.
+  </Tab>
+</Tabs>
+
+For detailed steps on linking your channel to a shared inbox and configuring settings, see [Connect your first inbox](/help/getting-started/connect-inbox).
+
+### Permissions requested
+
+| Permission | Why it's needed |
+|-----------|----------------|
+| Read and write emails (Mail.ReadWrite) | Sync messages and update their status |
+| Send emails (Mail.Send) | Send replies from Auxx.ai on your behalf |
+| Read your profile (User.Read) | Identify your email address and any aliases |
+
+## Set up your own Microsoft credentials (BYOC)
+
+<Callout type="info">
+  This section is only needed if Auxx.ai's platform credentials are not yet available for your account. When platform credentials are approved, you can skip this and use the standard Connect flow above.
+</Callout>
+
+### Prerequisites
+
+- Access to the [Azure Portal](https://portal.azure.com/)
+- An Azure AD tenant (personal or organizational)
+
+### Step-by-step
+
+1. **Register an app in Azure Portal**
+   - Go to [Azure Portal](https://portal.azure.com/) > **Azure Active Directory > App registrations**
+   - Click **New registration**
+   - Fill in the details:
+     - **Name**: e.g., "Auxx Mail Integration"
+     - **Supported account types**: select based on your needs — "Accounts in any organizational directory and personal Microsoft accounts" for broadest access
+     - **Redirect URI**: select **Web** and enter:
+       ```
+       https://app.auxx.ai/api/outlook/oauth2/callback
+       ```
+   - Click **Register**
+
+2. **Add API permissions**
+   - Go to **API permissions > Add a permission > Microsoft Graph**
+   - Select **Delegated permissions** and add:
+     - `Mail.ReadWrite`
+     - `Mail.Send`
+     - `User.Read`
+   - If you have admin access, click **Grant admin consent for [your tenant]**
+
+3. **Create a client secret**
+   - Go to **Certificates & secrets > New client secret**
+   - Enter a description (e.g., "Auxx.ai integration")
+   - Set expiration (recommended: 24 months)
+   - Click **Add**
+   - Copy the **Value** immediately — it's only shown once
+
+<Callout type="warn" title="Copy the secret now">
+  The client secret value is only displayed once. If you navigate away without copying it, you'll need to create a new one.
+</Callout>
+
+4. **Copy the Application (client) ID**
+   - On the app's **Overview** page, copy the **Application (client) ID**
+
+5. **Enter credentials in Auxx.ai**
+   - Go to **Settings > Channels > New Channel > Outlook**
+   - You'll see the BYOC credential form
+   - Paste your **Client ID** and **Client Secret**
+   - Confirm you've added the redirect URI shown in the form
+   - Click **Save & Connect**
+   - Complete the Microsoft OAuth consent flow
+
+### Troubleshooting BYOC
+
+<Accordions type="single">
+  <Accordion title="AADSTS error codes">
+    Most `AADSTS` errors relate to the redirect URI not matching. Verify the redirect URI in your app registration is exactly `https://app.auxx.ai/api/outlook/oauth2/callback` — check for typos, missing `https`, or a trailing slash.
+  </Accordion>
+  <Accordion title="'Insufficient privileges' or 'Need admin approval'">
+    The required API permissions haven't been granted. Go to **API permissions** in your app registration and check that all three permissions are listed and have a green checkmark under **Status**. If they show "Not granted", click **Grant admin consent**.
+  </Accordion>
+  <Accordion title="Client secret expired">
+    Azure client secrets expire based on the duration you chose. Create a new secret in **Certificates & secrets**, update it in Auxx.ai's channel settings, and reconnect the channel.
+  </Accordion>
+  <Accordion title="'Application not found in tenant'">
+    Make sure you selected the correct supported account types during registration. If you chose "Single tenant" but are signing in with a personal Microsoft account, the auth will fail.
+  </Accordion>
+</Accordions>
+
+## Features
+
+### Sync
+
+Outlook channels use webhook-based real-time sync for both platform and custom credentials. Microsoft Graph subscriptions notify Auxx.ai of new messages as they arrive.
+
+### Email aliases
+
+If your Microsoft account has email aliases configured, Auxx.ai automatically discovers them during the connection process. You can send replies from any of your verified aliases.
+
+### Batch operations
+
+The Microsoft Graph API supports batch requests, which Auxx.ai uses for efficient bulk operations like syncing large numbers of messages or updating multiple items at once.
+
+## Re-authentication
+
+Your Outlook connection may need to be re-authenticated if:
+
+- Your Microsoft refresh token expires or is revoked
+- You change your Microsoft account password
+- You remove Auxx.ai's access from your [Microsoft account app permissions](https://account.live.com/consent/Manage)
+- Your Azure client secret expires
+- You rotate your BYOC Client ID or Client Secret
+
+When re-authentication is needed, Auxx.ai shows a banner prompting you to reconnect. Click the banner and complete the OAuth flow again — your existing settings and inbox links are preserved.
+
+<Callout type="info">
+  If you're using BYOC credentials and your Azure client secret expires, you'll need to create a new one in Azure Portal, update it in Auxx.ai, and reconnect each channel that uses those credentials.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Gmail channel" href="/help/channels/gmail">
+    Connect your Gmail inbox to Auxx.ai.
+  </Card>
+  <Card title="Connect Shopify" href="/help/getting-started/connect-shopify">
+    Sync customer, order, and product data from your store.
+  </Card>
+  <Card title="Troubleshooting email sync" href="/help/troubleshooting/email-sync">
+    Fix common email sync issues.
+  </Card>
+</Cards>

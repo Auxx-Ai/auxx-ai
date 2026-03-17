@@ -19,6 +19,8 @@ export { InstagramOAuthService } from './instagram/instagram-oauth'
 export type { OutlookErrorCode } from './outlook/outlook-errors'
 export { OutlookProviderError, parseGraphApiError, parseMsalError } from './outlook/outlook-errors'
 export { OutlookOAuthService } from './outlook/outlook-oauth'
+export type { BYOCProvider } from './provider-credentials-config'
+export { PROVIDER_CREDENTIAL_CONFIG } from './provider-credentials-config'
 export { ProviderRegistryService } from './provider-registry-service'
 // Query helpers - replace removed integrationType/messageType columns
 export {

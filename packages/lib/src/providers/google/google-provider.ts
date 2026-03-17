@@ -56,14 +56,12 @@ export class GoogleProvider
   private integration:
     | (typeof schema.Integration.$inferSelect & { inboxIntegration?: any })
     | null = null
-  private oauthService: GoogleOAuthService
   private storageService: MessageStorageService
   private userEmails: string[] = []
   private throttler: UniversalThrottler | null = null
 
   constructor(organizationId: string) {
     super(IntegrationProviderType.google, '', organizationId)
-    this.oauthService = GoogleOAuthService.getInstance()
     this.storageService = new MessageStorageService(organizationId)
   }
   /**
@@ -131,7 +129,11 @@ export class GoogleProvider
       }
     }
     // Get authenticated client from OAuth service using decrypted tokens
-    this.client = this.oauthService.getAuthenticatedClient(tokens)
+    const { client: authClient } = await GoogleOAuthService.getAuthenticatedClientForOrg(
+      this.organizationId,
+      tokens
+    )
+    this.client = authClient
     this.setupTokenListener() // Set up listener for token updates
     // Initialize Gmail API client
     this.gmail = google.gmail({ version: 'v1', auth: this.client })

@@ -114,11 +114,9 @@ export class OutlookProvider
         inboxIntegration?: any
       })
     | null = null
-  private oauthService: OutlookOAuthService
   private storageService: MessageStorageService
   constructor(organizationId: string) {
     super(IntegrationProviderType.outlook, '', organizationId)
-    this.oauthService = OutlookOAuthService.getInstance()
     this.storageService = new MessageStorageService(organizationId)
   }
   /**
@@ -173,13 +171,14 @@ export class OutlookProvider
 
     const clientCtx: OutlookClientContext = {
       integrationId: dbIntegration.id,
+      organizationId: this.organizationId,
       refreshToken: tokens.refreshToken,
       accessToken: tokens.accessToken,
       expiresAt: tokens.expiresAt,
       homeAccountId: metadata?.homeAccountId,
       email: metadata?.email || '',
     }
-    this.client = this.oauthService.getAuthenticatedClient(clientCtx)
+    this.client = await OutlookOAuthService.getAuthenticatedClient(clientCtx)
     logger.info(`OutlookProvider initialized successfully for integration: ${integrationId}`)
   }
   /** Resets internal state */

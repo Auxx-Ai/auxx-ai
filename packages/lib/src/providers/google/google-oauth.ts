@@ -1,83 +1,98 @@
-// src/lib/email/providers/google-oauth.ts
+// packages/lib/src/providers/google/google-oauth.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
-import { configService } from '@auxx/credentials'
+import { ConfigStorage, configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
 import { type Common, google } from 'googleapis'
 import { InboxService } from '../../inboxes/inbox-service'
 import { ChannelTokenAccessor, type ChannelTokens } from '../channel-token-accessor'
+import { PROVIDER_CREDENTIAL_CONFIG } from '../provider-credentials-config'
 
 type GaxiosError = Common.GaxiosError
 
 const logger = createScopedLogger('google-oauth')
 
 export class GoogleOAuthService {
-  private static instance: GoogleOAuthService
-  private clientId: string
-  private clientSecret: string
-  private redirectUri: string
-
   /**
-   * Private constructor for the Google OAuth provider.
+   * Resolve OAuth credentials for a specific organization.
+   * Checks org-level overrides first, falls back to platform credentials.
    */
-  private constructor() {
-    this.clientId = configService.get<string>('GOOGLE_CLIENT_ID') || ''
-    this.clientSecret = configService.get<string>('GOOGLE_CLIENT_SECRET') || ''
-    this.redirectUri = `${WEBAPP_URL}/api/google/oauth2/callback` // env.GOOGLE_REDIRECT_URI || ''
+  public static async resolveCredentials(organizationId: string): Promise<{
+    clientId: string
+    clientSecret: string
+    redirectUri: string
+    isCustom: boolean
+  }> {
+    const config = PROVIDER_CREDENTIAL_CONFIG.google
+    const clientId = await configService.getForOrg<string>(organizationId, config.clientIdKey)
+    const clientSecret = await configService.getForOrg<string>(
+      organizationId,
+      config.clientSecretKey
+    )
 
-    if (!this.clientId || !this.clientSecret || !this.redirectUri) {
-      throw new Error('Google OAuth credentials not properly configured')
+    const orgOverrides = await new ConfigStorage().getAllForOrg(organizationId)
+    const hasOrgOverride = orgOverrides.some((o) => o.key === config.clientIdKey)
+
+    return {
+      clientId: clientId || '',
+      clientSecret: clientSecret || '',
+      redirectUri: `${WEBAPP_URL}${config.callbackPath}`,
+      isCustom: hasOrgOverride,
     }
   }
 
   /**
-   * Gets the singleton instance of the GoogleOAuthService.
+   * Create an OAuth2 client for a specific organization.
    */
-  public static getInstance(): GoogleOAuthService {
-    if (!GoogleOAuthService.instance) {
-      GoogleOAuthService.instance = new GoogleOAuthService()
+  public static async getOAuthClientForOrg(organizationId: string) {
+    const creds = await GoogleOAuthService.resolveCredentials(organizationId)
+    if (!creds.clientId || !creds.clientSecret) {
+      throw new Error('Google OAuth credentials not configured for this organization')
     }
-    return GoogleOAuthService.instance
+    return {
+      client: new google.auth.OAuth2(creds.clientId, creds.clientSecret, creds.redirectUri),
+      isCustom: creds.isCustom,
+    }
   }
 
   /**
-   * Creates and returns an OAuth2 client instance for Google authentication.
+   * Creates an authenticated OAuth2 client using decrypted tokens for a specific org.
    */
-  public getOAuthClient(): any {
-    // Type should be google.auth.OAuth2
-    return new google.auth.OAuth2(this.clientId, this.clientSecret, this.redirectUri)
-  }
-
-  /**
-   * Creates an authenticated OAuth2 client using decrypted tokens.
-   */
-  public getAuthenticatedClient(tokens: ChannelTokens): any {
-    const oauth2Client = this.getOAuthClient()
-    oauth2Client.setCredentials({
+  public static async getAuthenticatedClientForOrg(organizationId: string, tokens: ChannelTokens) {
+    const { client, isCustom } = await GoogleOAuthService.getOAuthClientForOrg(organizationId)
+    client.setCredentials({
       refresh_token: tokens.refreshToken || undefined,
       access_token: tokens.accessToken || undefined,
       expiry_date: tokens.expiresAt ? tokens.expiresAt.getTime() : undefined,
     })
-    return oauth2Client
+    return { client, isCustom }
   }
 
   /**
-   * Finds an integration by ID and returns an authenticated OAuth client.
+   * Finds an integration by ID, resolves the org's credentials, and returns
+   * an authenticated client.
    */
-  public async getClientFromIntegrationId(integrationId: string): Promise<any> {
+  public static async getClientFromIntegrationId(integrationId: string) {
+    const [integration] = await db
+      .select({ organizationId: schema.Integration.organizationId })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
+
+    if (!integration) throw new Error('Integration not found')
+
     const tokens = await ChannelTokenAccessor.getTokens(integrationId)
-    if (!tokens.refreshToken) {
-      throw new Error('Integration not found or missing refresh token')
-    }
-    return this.getAuthenticatedClient(tokens)
+    if (!tokens.refreshToken) throw new Error('Missing refresh token')
+
+    return GoogleOAuthService.getAuthenticatedClientForOrg(integration.organizationId, tokens)
   }
 
   /**
    * Finds the active Google integration for an organization and returns an authenticated client.
    */
-  public async getClientForOrganization(organizationId: string): Promise<any> {
+  public static async getClientForOrganization(organizationId: string) {
     const [integration] = await db
       .select({ id: schema.Integration.id })
       .from(schema.Integration)
@@ -99,41 +114,39 @@ export class GoogleOAuthService {
     if (!tokens.refreshToken) {
       throw new Error('No active Google integration found for this organization')
     }
-    return this.getAuthenticatedClient(tokens)
+    const { client } = await GoogleOAuthService.getAuthenticatedClientForOrg(organizationId, tokens)
+    return client
   }
 
   /**
    * Generates a Google OAuth URL for authorizing access to Gmail APIs.
    * Enhanced to support both initial authentication and re-authentication flows.
    */
-  public getAuthUrl(
+  public static async getAuthUrl(
     organizationId: string,
     userId: string,
     options: {
       redirectPath?: string
-      integrationId?: string // For re-auth context
-      isReauth?: boolean // Force consent for re-auth
-      type?: 'initial' | 'reauth' // Auth type for callback handling
-      csrfToken?: string // Externally provided CSRF token (for cookie-based verification)
+      integrationId?: string
+      isReauth?: boolean
+      type?: 'initial' | 'reauth'
+      csrfToken?: string
     } = {}
-  ): string {
-    const oauth2Client = this.getOAuthClient()
+  ): Promise<string> {
+    const { client } = await GoogleOAuthService.getOAuthClientForOrg(organizationId)
     const stateWithContext = {
       orgId: organizationId,
       userId: userId,
       timestamp: Date.now(),
       redirectPath: options.redirectPath,
-      // Add re-auth specific context
       ...(options.integrationId && { integrationId: options.integrationId }),
       ...(options.isReauth && { type: 'reauth' }),
       ...(options.type && { type: options.type }),
       ...(options.csrfToken && { csrfToken: options.csrfToken }),
     }
 
-    const url = oauth2Client.generateAuthUrl({
+    const url = client.generateAuthUrl({
       access_type: 'offline',
-      // Always force consent to ensure we receive a refresh token
-      // Google only returns refresh_token on first auth or when prompt=consent
       prompt: 'consent',
       scope: [
         'https://www.googleapis.com/auth/gmail.readonly',
@@ -141,10 +154,10 @@ export class GoogleOAuthService {
         'https://www.googleapis.com/auth/gmail.labels',
         'https://www.googleapis.com/auth/gmail.modify',
         'https://www.googleapis.com/auth/pubsub',
-        'https://www.googleapis.com/auth/userinfo.email', // Request email scope
+        'https://www.googleapis.com/auth/userinfo.email',
       ],
       state: JSON.stringify(stateWithContext),
-      include_granted_scopes: true, // Ensure we get fresh permissions
+      include_granted_scopes: true,
     })
 
     logger.info('Generated Google OAuth URL', {
@@ -160,7 +173,7 @@ export class GoogleOAuthService {
   /**
    * Handles the OAuth callback from Google.
    */
-  public async handleCallback(
+  public static async handleCallback(
     code: string,
     stateString: string
   ): Promise<{ success: boolean; integration: any; isReauth?: boolean }> {
@@ -181,7 +194,8 @@ export class GoogleOAuthService {
       const isReauth = type === 'reauth'
       logger.info('Handling Google OAuth callback', { orgId, userId, isReauth, integrationId })
 
-      const oauth2Client = this.getOAuthClient()
+      const { client: oauth2Client, isCustom } =
+        await GoogleOAuthService.getOAuthClientForOrg(orgId)
       const { tokens } = await oauth2Client.getToken(code)
 
       if (!tokens.refresh_token) {
@@ -200,8 +214,15 @@ export class GoogleOAuthService {
         throw new Error('Could not retrieve email address from Google')
       }
 
-      // Prepare metadata including the email address
-      const integrationMetadata = { email: email } // Store email in metadata
+      // Resolve the current client ID to store as credential snapshot
+      const creds = await GoogleOAuthService.resolveCredentials(orgId)
+
+      // Prepare metadata including the email address and credential snapshot
+      const integrationMetadata = {
+        email,
+        isCustomCredentials: isCustom,
+        credentialClientId: creds.clientId,
+      }
 
       // Handle re-authentication flow
       if (isReauth && integrationId) {
@@ -236,13 +257,15 @@ export class GoogleOAuthService {
         logger.info('Re-authentication successful', { integrationId, email })
 
         // Set up Gmail webhooks (push notifications) - may have expired
-        try {
-          await this.setupPushNotifications(integrationId)
-        } catch (webhookError) {
-          logger.warn('Failed to setup webhooks during re-auth', {
-            integrationId,
-            error: (webhookError as Error).message,
-          })
+        if (!isCustom) {
+          try {
+            await GoogleOAuthService.setupPushNotifications(integrationId)
+          } catch (webhookError) {
+            logger.warn('Failed to setup webhooks during re-auth', {
+              integrationId,
+              error: (webhookError as Error).message,
+            })
+          }
         }
 
         return {
@@ -313,15 +336,23 @@ export class GoogleOAuthService {
       const inboxService = new InboxService(db, orgId, userId)
       await inboxService.addIntegrationToDefaultInbox(integration!.id)
 
+      // Force polling for custom credentials (PubSub won't work with custom OAuth apps)
+      if (isCustom) {
+        await db
+          .update(schema.Integration)
+          .set({ syncMode: 'polling', updatedAt: new Date() })
+          .where(eq(schema.Integration.id, integration!.id))
+      }
+
       // Set up Gmail webhooks (push notifications) or kick off polling
       const { resolveEffectiveSyncMode } = await import('../sync-mode-resolver')
       const effectiveMode = resolveEffectiveSyncMode({
-        syncMode: integration!.syncMode ?? 'auto',
+        syncMode: isCustom ? 'polling' : (integration!.syncMode ?? 'auto'),
         provider: 'google',
       })
 
       if (effectiveMode === 'webhook') {
-        await this.setupPushNotifications(integration!.id)
+        await GoogleOAuthService.setupPushNotifications(integration!.id)
       } else {
         // Kick off polling pipeline immediately for new integrations
         const { getQueue, Queues } = await import('../../jobs/queues')
@@ -367,14 +398,46 @@ export class GoogleOAuthService {
   /**
    * Refreshes OAuth tokens for a Google integration.
    */
-  public async refreshTokens(integrationId: string): Promise<any> {
+  public static async refreshTokens(integrationId: string): Promise<any> {
     try {
+      // Look up the org from the integration
+      const [integration] = await db
+        .select({
+          organizationId: schema.Integration.organizationId,
+          metadata: schema.Integration.metadata,
+        })
+        .from(schema.Integration)
+        .where(eq(schema.Integration.id, integrationId))
+        .limit(1)
+
+      if (!integration) throw new Error('Integration not found')
+
+      // Check for credential rotation
+      const { clientId } = await GoogleOAuthService.resolveCredentials(integration.organizationId)
+      const metadata = integration.metadata as any
+      if (metadata?.credentialClientId && metadata.credentialClientId !== clientId) {
+        // Credentials were rotated — token can't be refreshed with new client
+        await db
+          .update(schema.Integration)
+          .set({
+            authStatus: 'AUTH_ERROR',
+            requiresReauth: true,
+            lastAuthError: 'OAuth credentials were changed. Please reconnect this channel.',
+            lastAuthErrorAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.Integration.id, integrationId))
+        throw new Error('OAuth credentials were rotated. Channel requires reconnection.')
+      }
+
       const tokens = await ChannelTokenAccessor.getTokens(integrationId)
       if (!tokens.refreshToken) {
         throw new Error('Integration not found or missing refresh token')
       }
 
-      const oauth2Client = this.getOAuthClient()
+      const { client: oauth2Client } = await GoogleOAuthService.getOAuthClientForOrg(
+        integration.organizationId
+      )
       oauth2Client.setCredentials({ refresh_token: tokens.refreshToken })
 
       const { credentials } = await oauth2Client.refreshAccessToken()
@@ -428,17 +491,27 @@ export class GoogleOAuthService {
   /**
    * Revokes access to a Google OAuth integration.
    */
-  public async revokeAccess(integrationId: string): Promise<boolean> {
+  public static async revokeAccess(integrationId: string): Promise<boolean> {
     try {
+      const [integration] = await db
+        .select({ organizationId: schema.Integration.organizationId })
+        .from(schema.Integration)
+        .where(eq(schema.Integration.id, integrationId))
+        .limit(1)
+
+      if (!integration) throw new Error('Integration not found')
+
       const tokens = await ChannelTokenAccessor.getTokens(integrationId)
 
       // Disable inbox watching first
       if (tokens.refreshToken) {
-        await this.disablePushNotifications(integrationId, tokens)
+        await GoogleOAuthService.disablePushNotifications(integrationId, tokens)
       }
 
       // Revoke tokens with Google's API
-      const oauth2Client = this.getOAuthClient()
+      const { client: oauth2Client } = await GoogleOAuthService.getOAuthClientForOrg(
+        integration.organizationId
+      )
       const tokensToRevoke = [tokens.accessToken, tokens.refreshToken].filter(Boolean)
 
       for (const token of tokensToRevoke) {
@@ -478,11 +551,10 @@ export class GoogleOAuthService {
   /**
    * Sets up Gmail push notifications for a specific integration.
    */
-  private async setupPushNotifications(integrationId: string): Promise<void> {
+  private static async setupPushNotifications(integrationId: string): Promise<void> {
     try {
-      // Get client using the integration ID, which handles fetching/auth
-      const oauth2Client = await this.getClientFromIntegrationId(integrationId)
-      const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
+      const { client } = await GoogleOAuthService.getClientFromIntegrationId(integrationId)
+      const gmail = google.gmail({ version: 'v1', auth: client })
 
       const topicName = `projects/${configService.get<string>('GOOGLE_PROJECT_ID')}/topics/${configService.get<string>('GOOGLE_PUBSUB_TOPIC')}`
 
@@ -503,9 +575,6 @@ export class GoogleOAuthService {
         data: gaxiosError.response?.data,
         integrationId,
       })
-      // Don't throw from private helper during callback, but log severity.
-      // Throwing here would fail the initial OAuth connection.
-      // Maybe re-throw if called explicitly later?
       throw new Error(`Failed to set up Gmail push notifications: ${gaxiosError.message}`)
     }
   }
@@ -513,16 +582,32 @@ export class GoogleOAuthService {
   /**
    * Disables Gmail push notifications for a given integration.
    */
-  private async disablePushNotifications(
+  private static async disablePushNotifications(
     integrationId: string,
     tokens?: ChannelTokens
   ): Promise<void> {
     try {
       let oauth2Client: any
       if (tokens?.refreshToken) {
-        oauth2Client = this.getAuthenticatedClient(tokens)
-      } else {
-        oauth2Client = await this.getClientFromIntegrationId(integrationId)
+        // Look up org for this integration to resolve credentials
+        const [integration] = await db
+          .select({ organizationId: schema.Integration.organizationId })
+          .from(schema.Integration)
+          .where(eq(schema.Integration.id, integrationId))
+          .limit(1)
+
+        if (integration) {
+          const result = await GoogleOAuthService.getAuthenticatedClientForOrg(
+            integration.organizationId,
+            tokens
+          )
+          oauth2Client = result.client
+        }
+      }
+
+      if (!oauth2Client) {
+        const result = await GoogleOAuthService.getClientFromIntegrationId(integrationId)
+        oauth2Client = result.client
       }
 
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
@@ -532,16 +617,13 @@ export class GoogleOAuthService {
       logger.info('Gmail push notifications (watch) disabled successfully', { integrationId })
     } catch (error: any) {
       const gaxiosError = error as GaxiosError
-      // Common errors: 401 (invalid_grant/expired token), 404 (no watch active)
       if (gaxiosError.response?.status === 404) {
         logger.warn('No active Gmail watch found to disable.', { integrationId })
-        // Not an error in this context.
       } else if (gaxiosError.response?.data?.error === 'invalid_grant') {
         logger.warn(
           'Invalid grant while trying to disable push notifications (token likely expired/revoked).',
           { integrationId }
         )
-        // Cannot disable if token is bad, but proceed with cleanup.
       } else {
         logger.error('Error disabling Gmail push notifications:', {
           message: gaxiosError.message,
@@ -549,7 +631,6 @@ export class GoogleOAuthService {
           data: gaxiosError.response?.data,
           integrationId,
         })
-        // Log warning, don't throw during cleanup like revokeAccess
         logger.warn('Continuing cleanup despite push notification disabling error.', {
           integrationId,
         })

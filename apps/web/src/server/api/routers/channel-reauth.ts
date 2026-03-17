@@ -59,8 +59,7 @@ export const channelReauthRouter = createTRPCRouter({
       try {
         switch (integration.provider) {
           case 'google': {
-            const googleOAuthService = GoogleOAuthService.getInstance()
-            authUrl = googleOAuthService.getAuthUrl(organizationId, userId, {
+            authUrl = await GoogleOAuthService.getAuthUrl(organizationId, userId, {
               integrationId: integration.id,
               isReauth: true,
               type: 'reauth',
@@ -70,8 +69,7 @@ export const channelReauthRouter = createTRPCRouter({
           }
 
           case 'outlook': {
-            const outlookOAuthService = OutlookOAuthService.getInstance()
-            authUrl = await outlookOAuthService.getAuthUrl(organizationId, userId, {
+            authUrl = await OutlookOAuthService.getAuthUrl(organizationId, userId, {
               integrationId: integration.id,
               isReauth: true,
               type: 'reauth',

@@ -1,7 +1,7 @@
-// src/lib/providers/outlook/outlook-oauth.ts
+// packages/lib/src/providers/outlook/outlook-oauth.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
-import { configService } from '@auxx/credentials'
+import { ConfigStorage, configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import type { IntegrationEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
@@ -10,6 +10,7 @@ import { Client } from '@microsoft/microsoft-graph-client'
 import { eq } from 'drizzle-orm'
 import { InboxService } from '../../inboxes/inbox-service'
 import { ChannelTokenAccessor } from '../channel-token-accessor'
+import { PROVIDER_CREDENTIAL_CONFIG } from '../provider-credentials-config'
 import { parseMsalError } from './outlook-errors'
 
 const logger = createScopedLogger('outlook-oauth')
@@ -19,54 +20,82 @@ export interface OutlookIntegrationMetadata {
   email: string
   homeAccountId: string
   emailAliases?: string[]
+  isCustomCredentials?: boolean
+  credentialClientId?: string
 }
 
 /** Context needed to create an authenticated Graph client */
 export interface OutlookClientContext {
   integrationId: string
+  organizationId: string
   refreshToken: string
   accessToken?: string | null
   expiresAt?: Date | null
   homeAccountId?: string
   email?: string
 }
+
 export class OutlookOAuthService {
-  private static instance: OutlookOAuthService | null = null
-  private clientId: string
-  private clientSecret: string
-  private redirectUri: string
-  private msalClient: ConfidentialClientApplication
-  private initialized: boolean = false
   static scopes = [
     'https://graph.microsoft.com/Mail.ReadWrite',
     'https://graph.microsoft.com/Mail.Send',
-    'offline_access', // For refresh tokens
-    'User.Read', // To get user profile (email)
+    'offline_access',
+    'User.Read',
   ]
-  private constructor() {
-    this.clientId = configService.get<string>('OUTLOOK_CLIENT_ID') || ''
-    this.clientSecret = configService.get<string>('OUTLOOK_CLIENT_SECRET') || ''
-    this.redirectUri = `${WEBAPP_URL}/api/outlook/oauth2/callback`
-    if (!this.clientId || !this.clientSecret || !this.redirectUri) {
-      throw new Error('Outlook OAuth credentials not properly configured')
+
+  /**
+   * Resolve OAuth credentials for a specific organization.
+   */
+  public static async resolveCredentials(organizationId: string): Promise<{
+    clientId: string
+    clientSecret: string
+    redirectUri: string
+    isCustom: boolean
+  }> {
+    const config = PROVIDER_CREDENTIAL_CONFIG.outlook
+    const clientId = await configService.getForOrg<string>(organizationId, config.clientIdKey)
+    const clientSecret = await configService.getForOrg<string>(
+      organizationId,
+      config.clientSecretKey
+    )
+
+    const orgOverrides = await new ConfigStorage().getAllForOrg(organizationId)
+    const hasOrgOverride = orgOverrides.some((o) => o.key === config.clientIdKey)
+
+    return {
+      clientId: clientId || '',
+      clientSecret: clientSecret || '',
+      redirectUri: `${WEBAPP_URL}${config.callbackPath}`,
+      isCustom: hasOrgOverride,
     }
+  }
+
+  /**
+   * Create an MSAL ConfidentialClientApplication for a specific organization.
+   * A new MSAL instance is created per call — no caching, since different orgs
+   * may have different credentials.
+   */
+  public static async getMsalClientForOrg(organizationId: string) {
+    const creds = await OutlookOAuthService.resolveCredentials(organizationId)
+    if (!creds.clientId || !creds.clientSecret) {
+      throw new Error('Outlook OAuth credentials not configured for this organization')
+    }
+
     if (
       configService.get<string>('NODE_ENV') === 'production' &&
-      !this.redirectUri.startsWith('https')
+      !creds.redirectUri.startsWith('https')
     ) {
       logger.error('Outlook OAuth redirect URI MUST be HTTPS in production.')
     }
-    const msalConfig = {
+
+    const msalClient = new ConfidentialClientApplication({
       auth: {
-        clientId: this.clientId,
-        clientSecret: this.clientSecret,
+        clientId: creds.clientId,
+        clientSecret: creds.clientSecret,
         authority: 'https://login.microsoftonline.com/common',
       },
       system: {
-        // Increase the offset to handle potential time differences
-        // This triggers token renewal 10 minutes before expiration instead of the default 5
         tokenRenewalOffsetSeconds: 600,
-        // Add logging level if needed for debugging
         loggerOptions: {
           logLevel:
             configService.get<string>('NODE_ENV') === 'development'
@@ -75,67 +104,72 @@ export class OutlookOAuthService {
           piiLoggingEnabled: false,
         },
       },
+    })
+
+    return {
+      client: msalClient,
+      redirectUri: creds.redirectUri,
+      isCustom: creds.isCustom,
     }
-    this.msalClient = new ConfidentialClientApplication(msalConfig)
-    this.initialized = true
   }
-  public static getInstance(): OutlookOAuthService {
-    if (!OutlookOAuthService.instance) {
-      OutlookOAuthService.instance = new OutlookOAuthService()
-    }
-    return OutlookOAuthService.instance
-  }
+
   /**
-   * Generates the OAuth authorization URL
-   * Enhanced to support both initial authentication and re-authentication flows.
+   * Generates the OAuth authorization URL.
    */
-  public async getAuthUrl(
+  public static async getAuthUrl(
     organizationId: string,
     userId: string,
     options: {
       redirectPath?: string
-      integrationId?: string // For re-auth context
-      isReauth?: boolean // Force consent for re-auth
-      type?: 'initial' | 'reauth' // Auth type for callback handling
-      csrfToken?: string // Externally provided CSRF token (for cookie-based verification)
+      integrationId?: string
+      isReauth?: boolean
+      type?: 'initial' | 'reauth'
+      csrfToken?: string
     } = {}
   ): Promise<string> {
+    const { client: msalClient, redirectUri } =
+      await OutlookOAuthService.getMsalClientForOrg(organizationId)
+
     const stateWithContext = {
       orgId: organizationId,
       userId: userId,
       timestamp: Date.now(),
       redirectPath: options.redirectPath,
-      // Add re-auth specific context
       ...(options.integrationId && { integrationId: options.integrationId }),
       ...(options.isReauth && { type: 'reauth' }),
       ...(options.type && { type: options.type }),
       ...(options.csrfToken && { csrfToken: options.csrfToken }),
     }
+
     const authCodeUrlParameters = {
       scopes: OutlookOAuthService.scopes,
-      redirectUri: this.redirectUri,
+      redirectUri,
       state: JSON.stringify(stateWithContext),
-      prompt: 'consent', // Always force consent to ensure refresh token
+      prompt: 'consent',
     }
+
     logger.info('Generated Outlook OAuth URL', {
       organizationId,
       userId,
       isReauth: options.isReauth,
       integrationId: options.integrationId,
     })
-    return this.msalClient.getAuthCodeUrl(authCodeUrlParameters)
+
+    return msalClient.getAuthCodeUrl(authCodeUrlParameters)
   }
+
   /** Handles the OAuth callback from Microsoft */
-  public async handleCallback(
+  public static async handleCallback(
     code: string,
     stateString: string
   ): Promise<{
     success: boolean
     integration: IntegrationEntity
+    isReauth?: boolean
   }> {
     let state: Record<string, unknown>
     try {
-      state = JSON.parse(stateString) // Should contain orgId, userId
+      state = JSON.parse(stateString)
     } catch (e: unknown) {
       logger.error('Invalid state parameter in Outlook callback:', { stateString, error: e })
       throw new Error('Invalid state parameter.')
@@ -146,20 +180,31 @@ export class OutlookOAuthService {
     }
     const isReauth = type === 'reauth'
     logger.info('Handling Outlook OAuth callback', { orgId, userId, isReauth, integrationId })
+
     try {
+      const {
+        client: msalClient,
+        redirectUri,
+        isCustom,
+      } = await OutlookOAuthService.getMsalClientForOrg(orgId as string)
+
       // 1. Exchange authorization code for tokens
       const tokenRequest = {
         code: code,
         scopes: OutlookOAuthService.scopes,
-        redirectUri: this.redirectUri,
+        redirectUri,
       }
-      const response = await this.msalClient.acquireTokenByCode(tokenRequest)
+      const response = await msalClient.acquireTokenByCode(tokenRequest)
       if (!response || !response.accessToken || !response.account?.homeAccountId) {
         logger.error('Failed to acquire token or essential account info missing.', { response })
         throw new Error('Outlook token acquisition failed: Missing token or account details.')
       }
+
       // 2. Extract Refresh Token
-      const refreshToken = this.extractRefreshToken(response.account.homeAccountId)
+      const refreshToken = OutlookOAuthService.extractRefreshToken(
+        msalClient,
+        response.account.homeAccountId
+      )
       if (!refreshToken) {
         logger.error('Could not extract refresh token from MSAL cache after code acquisition.', {
           homeAccountId: response.account.homeAccountId,
@@ -168,14 +213,16 @@ export class OutlookOAuthService {
           'Refresh token not obtained from Microsoft. Ensure offline_access scope was granted.'
         )
       }
+
       // 3. Get User's Email via Graph API
-      const graphClient = this.createTemporaryGraphClient(response.accessToken)
+      const graphClient = OutlookOAuthService.createTemporaryGraphClient(response.accessToken)
       const userProfile = await graphClient.api('/me').select('mail,userPrincipalName').get()
       const email = userProfile.mail || userProfile.userPrincipalName
       if (!email) {
         throw new Error('Could not retrieve email address from Microsoft Graph.')
       }
       logger.info('Successfully retrieved user email', { email })
+
       // 3b. Discover email aliases
       let emailAliases: string[] = []
       try {
@@ -193,15 +240,22 @@ export class OutlookOAuthService {
           error: aliasError.message,
         })
       }
+
+      // Resolve the current client ID to store as credential snapshot
+      const creds = await OutlookOAuthService.resolveCredentials(orgId as string)
+
       // 4. Prepare Metadata
       const integrationMetadata: OutlookIntegrationMetadata = {
         email: email,
         homeAccountId: response.account.homeAccountId,
         emailAliases,
+        isCustomCredentials: isCustom,
+        credentialClientId: creds.clientId,
       }
       const expiresOn = response.expiresOn
         ? new Date(response.expiresOn)
         : new Date(Date.now() + 3600 * 1000)
+
       // Handle re-authentication flow
       if (isReauth && integrationId) {
         logger.info('Processing re-authentication for existing Outlook integration', {
@@ -364,10 +418,14 @@ export class OutlookOAuthService {
       throw new Error(`Outlook OAuth callback failed: ${err.message || err.errorCode}`)
     }
   }
+
   /** Extract refresh token from cache by homeAccountId (used during OAuth callback) */
-  private extractRefreshToken(homeAccountId: string): string | undefined {
+  private static extractRefreshToken(
+    msalClient: ConfidentialClientApplication,
+    homeAccountId: string
+  ): string | undefined {
     try {
-      const tokenCache = this.msalClient.getTokenCache().serialize()
+      const tokenCache = msalClient.getTokenCache().serialize()
       const parsedCache = JSON.parse(tokenCache)
       if (parsedCache.RefreshToken) {
         const keys = Object.keys(parsedCache.RefreshToken)
@@ -384,10 +442,13 @@ export class OutlookOAuthService {
       return undefined
     }
   }
+
   /** Extract the most recent refresh token from the MSAL cache (used after acquireTokenByRefreshToken) */
-  private extractRefreshTokenFromCache(): string | undefined {
+  private static extractRefreshTokenFromCache(
+    msalClient: ConfidentialClientApplication
+  ): string | undefined {
     try {
-      const tokenCache = JSON.parse(this.msalClient.getTokenCache().serialize())
+      const tokenCache = JSON.parse(msalClient.getTokenCache().serialize())
       const refreshTokens = tokenCache.RefreshToken
       if (!refreshTokens) return undefined
       const firstKey = Object.keys(refreshTokens)[0]
@@ -397,16 +458,18 @@ export class OutlookOAuthService {
       return undefined
     }
   }
+
   /** Helper to create a temporary Graph client with a specific token */
-  private createTemporaryGraphClient(accessToken: string): Client {
+  private static createTemporaryGraphClient(accessToken: string): Client {
     return Client.init({
       authProvider: (done) => {
         done(null, accessToken)
       },
     })
   }
-  /** Refreshes the access token using acquireTokenByRefreshToken (no cache injection needed) */
-  public async refreshTokens(integrationId: string): Promise<IntegrationEntity> {
+
+  /** Refreshes the access token using acquireTokenByRefreshToken */
+  public static async refreshTokens(integrationId: string): Promise<IntegrationEntity> {
     try {
       const [integration] = await db
         .select()
@@ -417,14 +480,35 @@ export class OutlookOAuthService {
         throw new Error('Integration not found')
       }
 
+      // Check for credential rotation
+      const { clientId } = await OutlookOAuthService.resolveCredentials(integration.organizationId)
+      const metadata = integration.metadata as any
+      if (metadata?.credentialClientId && metadata.credentialClientId !== clientId) {
+        await db
+          .update(schema.Integration)
+          .set({
+            authStatus: 'AUTH_ERROR',
+            requiresReauth: true,
+            lastAuthError: 'OAuth credentials were changed. Please reconnect this channel.',
+            lastAuthErrorAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.Integration.id, integrationId))
+        throw new Error('OAuth credentials were rotated. Channel requires reconnection.')
+      }
+
       const tokens = await ChannelTokenAccessor.getTokens(integrationId)
       if (!tokens.refreshToken) {
         throw new Error('Integration missing refresh token')
       }
 
+      const { client: msalClient } = await OutlookOAuthService.getMsalClientForOrg(
+        integration.organizationId
+      )
+
       logger.debug('Attempting token refresh via acquireTokenByRefreshToken', { integrationId })
 
-      const response = await this.msalClient.acquireTokenByRefreshToken({
+      const response = await msalClient.acquireTokenByRefreshToken({
         refreshToken: tokens.refreshToken,
         scopes: OutlookOAuthService.scopes,
         forceCache: true,
@@ -439,7 +523,7 @@ export class OutlookOAuthService {
         ? new Date(response.expiresOn)
         : new Date(Date.now() + 3600 * 1000)
 
-      const newRefreshToken = this.extractRefreshTokenFromCache()
+      const newRefreshToken = OutlookOAuthService.extractRefreshTokenFromCache(msalClient)
 
       const tokenUpdate: Parameters<typeof ChannelTokenAccessor.setTokens>[1] = {
         accessToken: response.accessToken,
@@ -489,8 +573,9 @@ export class OutlookOAuthService {
       throw parsed
     }
   }
+
   /** Revokes access (clears encrypted tokens and disables). */
-  public async revokeAccess(integrationId: string): Promise<boolean> {
+  public static async revokeAccess(integrationId: string): Promise<boolean> {
     try {
       logger.warn('Attempting to revoke Outlook access (clearing tokens & disabling)', {
         integrationId,
@@ -517,11 +602,17 @@ export class OutlookOAuthService {
       throw new Error(`Failed to revoke Outlook access: ${err.message}`)
     }
   }
-  public getAuthenticatedClient(ctx: OutlookClientContext): Client {
+
+  /**
+   * Creates an authenticated Graph client for a given context.
+   * The MSAL client is created per-call to use the correct org credentials.
+   */
+  public static async getAuthenticatedClient(ctx: OutlookClientContext): Promise<Client> {
     if (!ctx.integrationId || !ctx.refreshToken) {
       throw new Error('Cannot create authenticated client: Missing integrationId or refreshToken.')
     }
 
+    const { client: msalClient } = await OutlookOAuthService.getMsalClientForOrg(ctx.organizationId)
     const { integrationId, refreshToken } = ctx
     let currentAccessToken = ctx.accessToken || ''
     let currentExpiresAt = ctx.expiresAt
@@ -539,7 +630,7 @@ export class OutlookOAuthService {
           }
 
           // Refresh via acquireTokenByRefreshToken
-          const response = await this.msalClient.acquireTokenByRefreshToken({
+          const response = await msalClient.acquireTokenByRefreshToken({
             refreshToken,
             scopes: OutlookOAuthService.scopes,
             forceCache: true,
@@ -555,7 +646,7 @@ export class OutlookOAuthService {
             : new Date(Date.now() + 3600 * 1000)
 
           // Update encrypted tokens in background
-          const newRefreshToken = this.extractRefreshTokenFromCache()
+          const newRefreshToken = OutlookOAuthService.extractRefreshTokenFromCache(msalClient)
           const tokenUpdate: Parameters<typeof ChannelTokenAccessor.setTokens>[1] = {
             accessToken: response.accessToken,
             expiresAt: currentExpiresAt,
@@ -598,9 +689,5 @@ export class OutlookOAuthService {
       },
     })
     return client
-  }
-  /** Returns the configured MSAL client instance */
-  public getMSALClient(): ConfidentialClientApplication {
-    return this.msalClient
   }
 }

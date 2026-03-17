@@ -91,8 +91,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const oauthService = OutlookOAuthService.getInstance()
-    const result = await oauthService.handleCallback(code, state)
+    const result = await OutlookOAuthService.handleCallback(code, state)
 
     // Extract identifier (email) from metadata for the redirect URL
     let identifier = 'unknown'

@@ -75,13 +75,11 @@ export const channelTokenRefreshJob = async (
     if (refreshToken) {
       try {
         if (provider === 'google') {
-          const googleOAuth = GoogleOAuthService.getInstance()
-          await googleOAuth.refreshTokens(integrationId)
+          await GoogleOAuthService.refreshTokens(integrationId)
           result.tokenRefreshed = true
           logger.info('Successfully refreshed Google token', { integrationId })
         } else if (provider === 'outlook') {
-          const outlookOAuth = OutlookOAuthService.getInstance()
-          await outlookOAuth.refreshTokens(integrationId)
+          await OutlookOAuthService.refreshTokens(integrationId)
           result.tokenRefreshed = true
           logger.info('Successfully refreshed Outlook token', { integrationId })
         }

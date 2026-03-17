@@ -217,16 +217,14 @@ export class ChannelService {
 
       switch (provider) {
         case 'google': {
-          const googleOAuthService = GoogleOAuthService.getInstance()
-          authUrl = googleOAuthService.getAuthUrl(this.organizationId, this.userId, {
+          authUrl = await GoogleOAuthService.getAuthUrl(this.organizationId, this.userId, {
             redirectPath,
             csrfToken,
           })
           break
         }
         case 'outlook': {
-          const outlookOAuthService = OutlookOAuthService.getInstance()
-          authUrl = await outlookOAuthService.getAuthUrl(this.organizationId, this.userId, {
+          authUrl = await OutlookOAuthService.getAuthUrl(this.organizationId, this.userId, {
             redirectPath,
             csrfToken,
           })
@@ -431,25 +429,22 @@ export class ChannelService {
       const channel = await this.validateChannelOwnership(channelId)
 
       // Revoke external access if applicable
-      let oauthService
-      switch (channel.provider) {
-        case 'google':
-          oauthService = GoogleOAuthService.getInstance()
-          break
-        case 'outlook':
-          oauthService = OutlookOAuthService.getInstance()
-          break
-        case 'facebook':
-          oauthService = FacebookOAuthService.getInstance()
-          break
-        case 'instagram':
-          oauthService = InstagramOAuthService.getInstance()
-          break
-      }
-
-      if (oauthService) {
+      if (channel.provider) {
         try {
-          await oauthService.revokeAccess(channelId)
+          switch (channel.provider) {
+            case 'google':
+              await GoogleOAuthService.revokeAccess(channelId)
+              break
+            case 'outlook':
+              await OutlookOAuthService.revokeAccess(channelId)
+              break
+            case 'facebook':
+              await FacebookOAuthService.getInstance().revokeAccess(channelId)
+              break
+            case 'instagram':
+              await InstagramOAuthService.getInstance().revokeAccess(channelId)
+              break
+          }
           logger.info(
             `Successfully revoked access for channel ${channelId} via ${channel.provider} service.`
           )
