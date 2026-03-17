@@ -16,7 +16,9 @@
     "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
     "dev": "pnpm exec dotenv -e ../../.env -e .env -- bash -lc 'echo \"NGROK_URL=$NGROK_URL\" && ngrok http --url=$NGROK_URL 3000'",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:integration": "pnpm exec dotenv -e ../../.env -e .env -- vitest run --config vitest.integration.config.ts",
+    "test:integration:watch": "pnpm exec dotenv -e ../../.env -e .env -- vitest --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@auxx/credentials": "workspace:*",

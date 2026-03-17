@@ -4,17 +4,17 @@ import { stripeClient } from '@auxx/billing/services/stripe-client'
 import type { Database } from '@auxx/database'
 import type Stripe from 'stripe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WebhookHandlers } from '../../types/webhook'
+import type { WebhookEventContext, WebhookHandlers } from '../../types/webhook'
 import { WebhookService } from '../webhook-service'
 
-// Mock all hook handlers
+// Mock all hook handlers — each returns { organizationId } to match real signatures
 vi.mock('../../hooks', () => ({
-  handleCheckoutSessionCompleted: vi.fn().mockResolvedValue(undefined),
-  handleSubscriptionUpdated: vi.fn().mockResolvedValue(undefined),
-  handleSubscriptionCreated: vi.fn().mockResolvedValue(undefined),
-  handleSubscriptionDeleted: vi.fn().mockResolvedValue(undefined),
-  handleInvoicePaid: vi.fn().mockResolvedValue(undefined),
-  handleInvoicePaymentFailed: vi.fn().mockResolvedValue(undefined),
+  handleCheckoutSessionCompleted: vi.fn().mockResolvedValue({ organizationId: 'org_123' }),
+  handleSubscriptionUpdated: vi.fn().mockResolvedValue({ organizationId: 'org_123' }),
+  handleSubscriptionCreated: vi.fn().mockResolvedValue({ organizationId: 'org_123' }),
+  handleSubscriptionDeleted: vi.fn().mockResolvedValue({ organizationId: 'org_123' }),
+  handleInvoicePaid: vi.fn().mockResolvedValue({ organizationId: 'org_123' }),
+  handleInvoicePaymentFailed: vi.fn().mockResolvedValue({ organizationId: 'org_123' }),
 }))
 
 const constructEventAsyncMock = vi.fn()
@@ -58,7 +58,7 @@ describe('WebhookService', () => {
     expect(result).toEqual({ success: true })
     const { handleCheckoutSessionCompleted } = await import('../../hooks')
     expect(handleCheckoutSessionCompleted).toHaveBeenCalledWith(db, event)
-    expect(customHandler).toHaveBeenCalledWith(event)
+    expect(customHandler).toHaveBeenCalledWith(event, { organizationId: 'org_123' })
   })
 
   it('routes customer.subscription.updated to handler + custom handler', async () => {
@@ -71,7 +71,7 @@ describe('WebhookService', () => {
 
     const { handleSubscriptionUpdated } = await import('../../hooks')
     expect(handleSubscriptionUpdated).toHaveBeenCalledWith(db, event, undefined)
-    expect(customHandler).toHaveBeenCalledWith(event)
+    expect(customHandler).toHaveBeenCalledWith(event, { organizationId: 'org_123' })
   })
 
   it('routes customer.subscription.created to handler + custom handler', async () => {
@@ -84,7 +84,7 @@ describe('WebhookService', () => {
 
     const { handleSubscriptionCreated } = await import('../../hooks')
     expect(handleSubscriptionCreated).toHaveBeenCalledWith(db, event, undefined)
-    expect(customHandler).toHaveBeenCalledWith(event)
+    expect(customHandler).toHaveBeenCalledWith(event, { organizationId: 'org_123' })
   })
 
   it('routes customer.subscription.deleted to handler + custom handler', async () => {
@@ -97,7 +97,7 @@ describe('WebhookService', () => {
 
     const { handleSubscriptionDeleted } = await import('../../hooks')
     expect(handleSubscriptionDeleted).toHaveBeenCalledWith(db, event)
-    expect(customHandler).toHaveBeenCalledWith(event)
+    expect(customHandler).toHaveBeenCalledWith(event, { organizationId: 'org_123' })
   })
 
   it('routes invoice.paid to handler + custom handler', async () => {
@@ -110,7 +110,7 @@ describe('WebhookService', () => {
 
     const { handleInvoicePaid } = await import('../../hooks')
     expect(handleInvoicePaid).toHaveBeenCalledWith(db, event)
-    expect(customHandler).toHaveBeenCalledWith(event)
+    expect(customHandler).toHaveBeenCalledWith(event, { organizationId: 'org_123' })
   })
 
   it('routes invoice.payment_failed to handler + custom handler', async () => {
@@ -125,7 +125,7 @@ describe('WebhookService', () => {
 
     const { handleInvoicePaymentFailed } = await import('../../hooks')
     expect(handleInvoicePaymentFailed).toHaveBeenCalledWith(db, event)
-    expect(customHandler).toHaveBeenCalledWith(event)
+    expect(customHandler).toHaveBeenCalledWith(event, { organizationId: 'org_123' })
   })
 
   it('logs unhandled event types without throwing', async () => {

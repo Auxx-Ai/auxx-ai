@@ -97,16 +97,54 @@ export default function WorkflowTemplateEditorPage({
     }
   }, [template])
 
+  /** Known metadata keys that can be auto-filled from pasted JSON */
+  const METADATA_KEYS = ['name', 'description', 'categories', 'status', 'popularity', 'imgUrl']
+
   /**
-   * Handle graph JSON change with validation
+   * Try to extract template metadata from JSON and auto-fill form fields.
+   * Returns the graph-only JSON string if metadata was found, or null otherwise.
+   */
+  const tryExtractMetadata = (parsed: any): string | null => {
+    if (typeof parsed !== 'object' || parsed === null) return null
+    if (!('graph' in parsed) && !('nodes' in parsed)) return null
+    if (!METADATA_KEYS.some((key) => key in parsed && parsed[key] !== undefined)) return null
+
+    // Auto-fill form fields from metadata
+    if (parsed.name) setName(parsed.name)
+    if (parsed.description) setDescription(parsed.description)
+    if (parsed.categories) {
+      setCategories(
+        Array.isArray(parsed.categories) ? parsed.categories.join(', ') : String(parsed.categories)
+      )
+    }
+    if (parsed.imgUrl) setImgUrl(parsed.imgUrl)
+    if (parsed.status === 'public' || parsed.status === 'private') setStatus(parsed.status)
+    if (parsed.popularity !== undefined) setPopularity(Number(parsed.popularity) || 0)
+
+    // Strip metadata, keep only the graph
+    const graph = parsed.graph ?? {
+      nodes: parsed.nodes,
+      edges: parsed.edges,
+      viewport: parsed.viewport,
+    }
+    return JSON.stringify(graph, null, 2)
+  }
+
+  /**
+   * Handle graph JSON change with validation.
+   * If the pasted JSON contains template metadata (name, description, etc.)
+   * it auto-fills the form fields and strips the metadata, keeping only the graph.
    */
   const handleGraphChange = (value: string) => {
-    setGraphJson(value)
     try {
-      JSON.parse(value)
+      const parsed = JSON.parse(value)
       setJsonError(null)
-    } catch (error) {
+
+      const strippedGraph = tryExtractMetadata(parsed)
+      setGraphJson(strippedGraph ?? value)
+    } catch {
       setJsonError('Invalid JSON')
+      setGraphJson(value)
     }
   }
 
