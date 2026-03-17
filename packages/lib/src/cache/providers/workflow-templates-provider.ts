@@ -18,6 +18,7 @@ export const workflowTemplatesProvider: AppCacheProvider<CachedWorkflowTemplate[
         version: schema.WorkflowTemplate.version,
         status: schema.WorkflowTemplate.status,
         triggerType: schema.WorkflowTemplate.triggerType,
+        requiredApps: schema.WorkflowTemplate.requiredApps,
         popularity: schema.WorkflowTemplate.popularity,
         createdAt: schema.WorkflowTemplate.createdAt,
         updatedAt: schema.WorkflowTemplate.updatedAt,
@@ -29,6 +30,7 @@ export const workflowTemplatesProvider: AppCacheProvider<CachedWorkflowTemplate[
     return templates.map((t) => ({
       ...t,
       categories: (t.categories ?? []) as string[],
+      requiredApps: (t.requiredApps ?? []) as CachedWorkflowTemplate['requiredApps'],
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
     }))

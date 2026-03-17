@@ -53,6 +53,7 @@ export async function getAllTemplates(input: GetWorkflowTemplatesInput = {}) {
         version: schema.WorkflowTemplate.version,
         status: schema.WorkflowTemplate.status,
         triggerType: schema.WorkflowTemplate.triggerType,
+        requiredApps: schema.WorkflowTemplate.requiredApps,
         popularity: schema.WorkflowTemplate.popularity,
         createdAt: schema.WorkflowTemplate.createdAt,
         updatedAt: schema.WorkflowTemplate.updatedAt,

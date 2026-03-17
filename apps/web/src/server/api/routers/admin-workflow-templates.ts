@@ -80,6 +80,18 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
           )
           .optional(),
         variables: z.array(z.any()).optional(),
+        requiredApps: z
+          .array(
+            z.object({
+              appSlug: z.string(),
+              appTitle: z.string(),
+              blockIds: z.array(z.string()),
+              triggerIds: z.array(z.string()),
+              required: z.boolean(),
+            })
+          )
+          .optional(),
+        requiredEntities: z.array(z.any()).optional(),
         popularity: z.number().optional(),
       })
     )
@@ -119,6 +131,18 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
           )
           .optional(),
         variables: z.array(z.any()).optional(),
+        requiredApps: z
+          .array(
+            z.object({
+              appSlug: z.string(),
+              appTitle: z.string(),
+              blockIds: z.array(z.string()),
+              triggerIds: z.array(z.string()),
+              required: z.boolean(),
+            })
+          )
+          .optional(),
+        requiredEntities: z.array(z.any()).optional(),
         popularity: z.number().optional(),
       })
     )

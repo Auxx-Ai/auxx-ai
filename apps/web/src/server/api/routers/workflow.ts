@@ -12,6 +12,10 @@ import {
   WorkflowNodeType,
 } from '@auxx/lib/workflow-engine'
 import {
+  checkEntityReadiness,
+  type RequiredEntity,
+  resolveAllAppSlugs,
+  resolveEntityRefsInGraph,
   TemplateGraphTransformer,
   WORKFLOW_TRIGGER_TYPE_VALUES,
   type WorkflowExecutionError,
@@ -351,10 +355,33 @@ export const workflowRouter = createTRPCRouter({
         const transformed = transformer.transformTemplate({
           graph: template.graph as any,
           triggerType: template.triggerType ?? undefined,
-          entityDefinitionId: template.entityDefinitionId ?? undefined,
+          entityDefinitionId: (template as any).entityDefinitionId ?? undefined,
           envVars: template.envVars ?? undefined,
           variables: template.variables ?? undefined,
         })
+
+        // Resolve app slugs (@slug:blockId → realAppId:blockId) using caches
+        const requiredApps = (template as any).requiredApps as
+          | Array<{ appSlug: string }>
+          | undefined
+        if (requiredApps?.length) {
+          const appSlugs = requiredApps.map((a) => a.appSlug)
+          const resolvedApps = await resolveAllAppSlugs(ctx.session.organizationId, appSlugs)
+          transformer.resolveAppNodes(transformed.graph, resolvedApps)
+        }
+
+        // Resolve entity refs (@entity:slug, @field:X) using org caches
+        const requiredEntities = (template as any).requiredEntities as RequiredEntity[] | undefined
+        if (requiredEntities?.length) {
+          const readiness = await checkEntityReadiness(ctx.session.organizationId, requiredEntities)
+          // Only resolve what's available — unresolved refs stay as-is for user to fix
+          resolveEntityRefsInGraph(
+            transformed.graph,
+            requiredEntities,
+            readiness.entityIdMap,
+            readiness.fieldIdMap
+          )
+        }
 
         templateData = {
           graph: transformed.graph,

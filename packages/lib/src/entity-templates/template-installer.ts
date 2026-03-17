@@ -23,6 +23,8 @@ export interface InstallTemplatesResult {
     name: string
   }>
   skippedRelationships: string[]
+  /** Maps "templateId:templateFieldId" → created customFieldId. Serialized as Record for tRPC. */
+  fieldIdMap: Record<string, string>
 }
 
 /**
@@ -313,7 +315,7 @@ export async function installTemplates(
   }
 
   await onCacheEvent('entity-def.created', { orgId: organizationId })
-  return { created, linked, skippedRelationships }
+  return { created, linked, skippedRelationships, fieldIdMap: Object.fromEntries(fieldIdMap) }
 }
 
 /** Helper: Create a single field from template field definition */

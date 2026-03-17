@@ -4,7 +4,6 @@
 import { TRIGGER_NAME_MAP, type WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +18,7 @@ import { Copy, Edit, MoreVertical, Pause, Play, TestTube, Trash } from 'lucide-r
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { TooltipExplanation } from '~/components/global/tooltip'
+import { Tooltip } from '~/components/global/tooltip'
 import { DuplicateWorkflowDialog } from '~/components/workflow/dialogs/duplicate-workflow-dialog'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
@@ -96,29 +95,16 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
     setDuplicateDialogOpen(true)
   }
 
-  const getStatusColor = (executions: any[]) => {
-    if (!executions || executions.length === 0) return 'gray'
-    const latest = executions[0]
-    switch (latest.status) {
-      case 'SUCCEEDED':
-        return 'green'
-      case 'FAILED':
-        return 'red'
-      case 'RUNNING':
-        return 'blue'
-      default:
-        return 'gray'
-    }
-  }
   return (
     <>
       <ConfirmDialog />
-      <Card
-        className='group/workflow-card hover:shadow-md  transition-shadow cursor-pointer relative'
+      <div
+        className='rounded-2xl bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-50 flex flex-col p-3 gap-2 border cursor-pointer group/workflow-card relative'
         onClick={handleCardClick}>
-        <CardHeader>
-          <div className='flex items-start justify-between'>
-            <div className='relative'>
+        {/* Top row: Icon + Title + Badge */}
+        <div className='flex flex-row items-start gap-2 w-full'>
+          <div className='relative shrink-0'>
+            <div className='size-8 rounded-xl border flex items-center justify-center overflow-hidden'>
               {workflow.icon ? (
                 <EntityIcon
                   iconId={workflow.icon.iconId}
@@ -126,107 +112,89 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
                   size='default'
                 />
               ) : (
-                <div
-                  className={`p-2 rounded-lg ${workflow.enabled ? 'bg-good-100 text-good-500' : 'bg-primary-100 text-primary-500'}`}>
-                  {unifiedNodeRegistry.getNodeIcon(workflow.triggerType, 'size-4')}
-                </div>
+                unifiedNodeRegistry.getNodeIcon(workflow.triggerType, 'size-4')
               )}
-              <div className='absolute -top-1 -right-1'>
-                {workflow.executions && workflow.executions.length > 0 && (
-                  <div className='flex items-center gap-2'>
-                    <div
-                      className={`size-2.5 rounded-full bg-${getStatusColor(workflow.executions)}-500 flex-shrink-0`}
-                    />
-                    {/* <LastUpdated timestamp={workflow.executions[0].createdAt} className="text-xs" /> */}
-                  </div>
-                )}
-              </div>
             </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  className='opacity-0 group-hover/workflow-card:opacity-100 duration-300 data-[state=open]:opacity-100! data-[state=open]:bg-muted! transition-opacity rounded-full absolute top-0.5 right-0.5'
-                  variant='ghost'
-                  size='icon-xs'
-                  onClick={handleDropdownClick}>
-                  <MoreVertical />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                <DropdownMenuItem onClick={handleEditClick}>
-                  <Edit />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href={`/app/workflows/${workflow.id}/test`}>
-                    <TestTube />
-                    Test
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDuplicateClick}>
-                  <Copy />
-                  Duplicate
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleToggleEnabled} disabled={updateWorkflow.isPending}>
-                  {workflow.enabled ? (
-                    <>
-                      <Pause />
-                      Disable
-                    </>
-                  ) : (
-                    <>
-                      <Play />
-                      Enable
-                    </>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleDelete} variant='destructive'>
-                  <Trash />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Tooltip content={workflow.enabled ? 'Enabled' : 'Disabled'}>
+              <div
+                className={`absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2 border-primary-50 ${workflow.enabled ? 'bg-good-500' : 'bg-muted-foreground/40'}`}
+              />
+            </Tooltip>
           </div>
 
-          <CardTitle className='text-sm'>
-            <div className='flex justify-between items-center'>
-              <span className='group-hover/workflow-card:text-info flex flex-row gap-1 truncate'>
+          <div className='flex flex-col flex-1 min-w-0'>
+            <div className='flex flex-row justify-between items-start gap-1'>
+              <p className='text-sm font-semibold line-clamp-2 group-hover/workflow-card:text-info'>
                 {workflow.name}
-                {workflow.description && (
-                  <TooltipExplanation text={workflow.description}></TooltipExplanation>
-                )}
-              </span>
-              <Badge variant='pill' size='sm'>
+              </p>
+              <Badge variant='pill' size='sm' className='shrink-0 mt-0.5'>
                 {TRIGGER_NAME_MAP[workflow.triggerType as WorkflowTriggerType] || 'Unknown'}
               </Badge>
             </div>
-          </CardTitle>
-        </CardHeader>
+            <LastUpdated
+              timestamp={workflow.updatedAt}
+              prefix=''
+              includeSeconds={true}
+              className='text-xs text-muted-foreground'
+            />
+          </div>
+        </div>
 
-        <CardContent>
-          {/* Trigger and Status */}
-          <div className='flex items-center justify-between'></div>
-
-          {/* Stats */}
-          <div className='flex items-center justify-between text-xs text-muted-foreground'>
-            <div className='flex items-center gap-3'>
-              {workflow._count?.workflows > 1 && <span>{workflow._count.workflows} versions</span>}
-              <span>{workflow._count?.executions || 0} executions</span>
-            </div>
+        {/* Bottom row: Executions + Dropdown */}
+        <div className='flex items-center justify-between'>
+          <div className='flex items-center gap-3 text-xs text-muted-foreground'>
+            {workflow._count?.workflows > 1 && <span>{workflow._count.workflows} versions</span>}
+            <span>{workflow._count?.executions || 0} executions</span>
           </div>
 
-          {/* Last Updated */}
-          <LastUpdated
-            timestamp={workflow.updatedAt}
-            prefix='Last updated'
-            includeSeconds={true}
-            className='text-xs text-muted-foreground'
-          />
-        </CardContent>
-      </Card>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className='opacity-0 group-hover/workflow-card:opacity-100 duration-300 data-[state=open]:opacity-100! data-[state=open]:bg-muted! transition-opacity rounded-lg'
+                variant='ghost'
+                size='icon-xs'
+                onClick={handleDropdownClick}>
+                <MoreVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuItem onClick={handleEditClick}>
+                <Edit />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={`/app/workflows/${workflow.id}/test`}>
+                  <TestTube />
+                  Test
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleDuplicateClick}>
+                <Copy />
+                Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleToggleEnabled} disabled={updateWorkflow.isPending}>
+                {workflow.enabled ? (
+                  <>
+                    <Pause />
+                    Disable
+                  </>
+                ) : (
+                  <>
+                    <Play />
+                    Enable
+                  </>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleDelete} variant='destructive'>
+                <Trash />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
       <WorkflowFormDialog
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}

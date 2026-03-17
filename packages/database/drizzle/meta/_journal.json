@@ -708,6 +708,13 @@
       "when": 1773546149036,
       "tag": "0100_add-trial-feature-limits",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1773766190152,
+      "tag": "0101_add_template_app_support_columns",
+      "breakpoints": true
     }
   ]
 }

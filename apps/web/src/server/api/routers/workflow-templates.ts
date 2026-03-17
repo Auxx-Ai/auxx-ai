@@ -1,9 +1,19 @@
 // apps/web/src/server/api/routers/workflow-templates.ts
 
 import { getAppCache } from '@auxx/lib/cache'
+import { checkEntityReadiness, type RequiredEntity } from '@auxx/lib/workflows'
 import { getAllTemplates, getTemplateById } from '@auxx/services/workflow-templates'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+
+/** Zod schema for RequiredEntity */
+const requiredEntitySchema = z.object({
+  entityTemplateId: z.string(),
+  fieldMapping: z.record(z.string(), z.string()),
+  requiredFields: z.array(z.string()),
+  companionTemplateIds: z.array(z.string()).optional(),
+  required: z.boolean(),
+})
 
 /**
  * Public workflow templates router for users
@@ -54,4 +64,21 @@ export const workflowTemplatesRouter = createTRPCRouter({
 
     return result.value
   }),
+
+  /**
+   * Check entity readiness for a workflow template.
+   * Entity caches are server-side only, so this must be a tRPC query.
+   */
+  checkEntityReadiness: protectedProcedure
+    .input(
+      z.object({
+        requiredEntities: z.array(requiredEntitySchema),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      return checkEntityReadiness(
+        ctx.session.organizationId,
+        input.requiredEntities as RequiredEntity[]
+      )
+    }),
 })

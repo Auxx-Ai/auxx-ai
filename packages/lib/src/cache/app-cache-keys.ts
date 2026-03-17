@@ -24,6 +24,15 @@ export interface CachedPlan {
   selfServed: boolean
 }
 
+/** Required app declaration for a template (portable slug-based references) */
+export interface CachedRequiredApp {
+  appSlug: string
+  appTitle: string
+  blockIds: string[]
+  triggerIds: string[]
+  required: boolean
+}
+
 /** Serializable workflow template list item (no graph blob) */
 export interface CachedWorkflowTemplate {
   id: string
@@ -34,6 +43,7 @@ export interface CachedWorkflowTemplate {
   version: number
   status: string
   triggerType: string | null
+  requiredApps: CachedRequiredApp[]
   popularity: number
   createdAt: string
   updatedAt: string
