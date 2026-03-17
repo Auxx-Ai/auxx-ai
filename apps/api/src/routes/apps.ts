@@ -1,6 +1,7 @@
 // apps/api/src/routes/apps.ts
 
 import { database } from '@auxx/database'
+import { getCachedAppBySlug } from '@auxx/lib/cache'
 import { Hono } from 'hono'
 import { errorResponse, successResponse } from '../lib/response'
 import { authMiddleware } from '../middleware/auth'
@@ -50,9 +51,16 @@ apps.get('/by-slug/:slug', requireScope(['developer', 'apps:read']), async (c) =
   const slug = c.req.param('slug')
   const userId = c.get('userId')
 
-  // Get app with developer account member check
+  // Resolve slug from cache first
+  const cachedApp = await getCachedAppBySlug(slug)
+
+  if (!cachedApp) {
+    return c.json(errorResponse('NOT_FOUND', `App with slug "${slug}" not found`), 404)
+  }
+
+  // Verify developer account membership (still needs DB)
   const app = await database.query.App.findFirst({
-    where: (apps, { eq }) => eq(apps.slug, slug),
+    where: (apps, { eq }) => eq(apps.id, cachedApp.id),
     with: {
       developerAccount: {
         with: {

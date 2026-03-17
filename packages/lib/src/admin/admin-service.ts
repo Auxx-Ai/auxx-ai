@@ -3,6 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { invalidateAppCatalog, invalidateAppSlugMap } from '../cache/invalidate'
 import { OrganizationService } from '../organizations/organization-service'
 import type { ExportData } from './import-apps'
 
@@ -1080,6 +1081,8 @@ export class AdminService {
     // Delete app
     await this.db.delete(schema.App).where(eq(schema.App.id, appId))
 
+    await invalidateAppCatalog()
+
     logger.info(`Successfully deleted app ${appId}`)
   }
 
@@ -1105,6 +1108,8 @@ export class AdminService {
     if (!app) {
       throw new Error('App not found')
     }
+
+    await invalidateAppSlugMap()
 
     logger.info(`Successfully toggled auto-approve for app ${appId}`)
     return app
@@ -1132,6 +1137,8 @@ export class AdminService {
     if (!app) {
       throw new Error('App not found')
     }
+
+    await invalidateAppCatalog()
 
     logger.info(`Successfully toggled verified for app ${appId}`)
     return app

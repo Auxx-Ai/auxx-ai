@@ -3,6 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
+import { getCachedAppBySlug } from '../cache/app-cache-helpers'
 
 const logger = createScopedLogger('admin-import')
 
@@ -112,9 +113,7 @@ export async function validateImport(
   // Check each app slug against the target developer account
   const apps = await Promise.all(
     exportData.apps.map(async (app) => {
-      const existingApp = await db.query.App.findFirst({
-        where: (a, { eq }) => eq(a.slug, app.slug),
-      })
+      const existingApp = await getCachedAppBySlug(app.slug)
 
       let status: 'new' | 'update' | 'conflict'
       if (!existingApp) {

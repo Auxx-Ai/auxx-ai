@@ -2,7 +2,7 @@
 // Deployment management routes
 
 import { database, schema } from '@auxx/database'
-import { invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
+import { invalidateAppCatalog, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
 import { calculateNextVersion } from '@auxx/services/app-versions'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
 import { and, eq } from 'drizzle-orm'
@@ -296,6 +296,7 @@ deployments.patch(
       .returning()
 
     await invalidateOrgsByDeploymentId(deploymentId, database)
+    await invalidateAppCatalog()
 
     return c.json({ deployment: updated })
   }

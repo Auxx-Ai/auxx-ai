@@ -36,13 +36,13 @@ export interface InstallAppOutput {
  * @returns Result with installation details
  */
 export async function installApp(input: InstallAppInput) {
-  const { appSlug, organizationId, deploymentId, installedById } = input
+  const { appId, organizationId, deploymentId, installedById } = input
   let { installationType } = input
 
   // Query app with deployments
   const appResult = await fromDatabase(
     database.query.App.findFirst({
-      where: (apps, { eq }) => eq(apps.slug, appSlug),
+      where: (apps, { eq }) => eq(apps.id, appId),
       with: {
         deployments: {
           where: (deployments, { or, and, eq }) =>
@@ -74,8 +74,8 @@ export async function installApp(input: InstallAppInput) {
   if (!app) {
     return err({
       code: 'APP_NOT_FOUND' as const,
-      message: `App "${appSlug}" not found`,
-      appSlug,
+      message: `App "${appId}" not found`,
+      appId,
     })
   }
 
@@ -88,8 +88,8 @@ export async function installApp(input: InstallAppInput) {
   if (!isPublished && !hasDevDeployments) {
     return err({
       code: 'APP_ACCESS_DENIED' as const,
-      message: `You do not have access to app "${appSlug}"`,
-      appSlug,
+      message: `You do not have access to app "${app.slug}"`,
+      appId,
       organizationId,
     })
   }
@@ -152,7 +152,7 @@ export async function installApp(input: InstallAppInput) {
     if (!selectedDeployment) {
       return err({
         code: 'NO_DEPLOYMENTS_AVAILABLE' as const,
-        message: `No installable ${targetType} deployments available for app "${appSlug}"`,
+        message: `No installable ${targetType} deployments available for app "${app.slug}"`,
         appId: app.id,
         deploymentType: targetType,
       })
@@ -186,8 +186,8 @@ export async function installApp(input: InstallAppInput) {
   if (existingInstallation) {
     return err({
       code: 'APP_ALREADY_INSTALLED' as const,
-      message: `App "${appSlug}" is already installed as ${installationType}`,
-      appSlug,
+      message: `App "${app.slug}" is already installed as ${installationType}`,
+      appId,
       organizationId,
       installationType,
     })

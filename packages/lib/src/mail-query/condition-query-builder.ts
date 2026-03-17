@@ -713,13 +713,13 @@ function buildSentQuery(operator: Operator, value: any): SQL<unknown> | null {
   const { Message } = schema
   const isSent = value === true || value === 'true'
 
-  // Sent messages have direction = 'OUTBOUND'
+  // Sent messages are outbound (isInbound = false)
   if (isSent) {
     return exists(
       db
         .select({ id: sql`1` })
         .from(Message)
-        .where(and(eq(Message.threadId, Thread.id), eq(Message.direction, 'OUTBOUND')))
+        .where(and(eq(Message.threadId, Thread.id), eq(Message.isInbound, false)))
     )
   } else {
     return not(
@@ -727,7 +727,7 @@ function buildSentQuery(operator: Operator, value: any): SQL<unknown> | null {
         db
           .select({ id: sql`1` })
           .from(Message)
-          .where(and(eq(Message.threadId, Thread.id), eq(Message.direction, 'OUTBOUND')))
+          .where(and(eq(Message.threadId, Thread.id), eq(Message.isInbound, false)))
       )
     )
   }

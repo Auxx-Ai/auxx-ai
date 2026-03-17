@@ -52,6 +52,12 @@
       "import": "./dist/ai/providers/types.mjs",
       "default": "./src/ai/providers/types.ts"
     },
+    "./apps": {
+      "types": "./src/apps/index.ts",
+      "source": "./src/apps/index.ts",
+      "import": "./dist/apps/index.mjs",
+      "default": "./src/apps/index.ts"
+    },
     "./bom": {
       "types": "./src/bom/index.ts",
       "source": "./src/bom/index.ts",

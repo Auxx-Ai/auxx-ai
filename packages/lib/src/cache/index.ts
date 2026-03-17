@@ -9,11 +9,14 @@ export type {
   WorkflowAppsAccessor,
 } from './accessor-map'
 export { ArrayAccessor, NestedRecordAccessor, RecordAccessor, ScalarAccessor } from './accessors'
+export { getCachedAppBySlug, getCachedPublishedApps, resolveAppSlug } from './app-cache-helpers'
 // ── App Cache Service ──
 export type {
   AppCacheDataMap,
   AppCacheKeyName,
+  CachedApp,
   CachedPlan,
+  CachedPublishedApp,
   CachedWorkflowTemplate,
 } from './app-cache-keys'
 export type { AppCacheProvider } from './app-cache-provider'
@@ -25,6 +28,8 @@ export { BaseCacheService } from './base-cache-service'
 export { consumeOAuthCsrfToken, storeOAuthCsrfToken } from './csrf'
 export {
   flushOrganization,
+  invalidateAppCatalog,
+  invalidateAppSlugMap,
   invalidatePlans,
   invalidateWorkflowTemplates,
   onCacheEvent,
@@ -56,6 +61,8 @@ export type { CacheProvider } from './org-cache-provider'
 export { OrganizationCacheService } from './org-cache-service'
 export { PromiseMemoizer } from './promise-memoizer'
 export type { CachedPublishedWorkflow, CachedWorkflowApp } from './providers/workflow-apps-provider'
+// ── Singletons ──
+export { getAppCache, getOrgCache, getTokenCache, getUserCache } from './singletons'
 export { TokenCacheService } from './token-cache-service'
 export type { CachedTableView, UserCacheDataMap, UserCacheKeyName } from './user-cache-keys'
 export { UserCacheService } from './user-cache-service'
@@ -64,46 +71,3 @@ export {
   getCachedWorkflowAppsByAppTrigger,
   getCachedWorkflowAppsByTrigger,
 } from './workflow-app-queries'
-
-import { AppCacheService } from './app-cache-service'
-import { OrganizationCacheService } from './org-cache-service'
-import { registerAllProviders } from './register-providers'
-import { TokenCacheService } from './token-cache-service'
-import { UserCacheService } from './user-cache-service'
-
-let appCacheInstance: AppCacheService | undefined
-let orgCacheInstance: OrganizationCacheService | undefined
-let tokenCacheInstance: TokenCacheService | undefined
-let userCacheInstance: UserCacheService | undefined
-
-/** Initialize all cache services (lazily called on first access) */
-function initCaches(): void {
-  orgCacheInstance = new OrganizationCacheService()
-  userCacheInstance = new UserCacheService()
-  appCacheInstance = new AppCacheService()
-  registerAllProviders(orgCacheInstance, userCacheInstance, appCacheInstance)
-}
-
-/** Get the singleton app-wide cache service (lazily initialized with all providers) */
-export function getAppCache(): AppCacheService {
-  if (!appCacheInstance) initCaches()
-  return appCacheInstance!
-}
-
-/** Get the singleton org cache service (lazily initialized with all providers) */
-export function getOrgCache(): OrganizationCacheService {
-  if (!orgCacheInstance) initCaches()
-  return orgCacheInstance!
-}
-
-/** Get the singleton token cache service for short-lived, one-time-use tokens */
-export function getTokenCache(): TokenCacheService {
-  if (!tokenCacheInstance) tokenCacheInstance = new TokenCacheService()
-  return tokenCacheInstance
-}
-
-/** Get the singleton user cache service (lazily initialized with all providers) */
-export function getUserCache(): UserCacheService {
-  if (!userCacheInstance) initCaches()
-  return userCacheInstance!
-}

@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/apps.ts
 
-import { getOrgCache, onCacheEvent } from '@auxx/lib/cache'
+import { getAppDeployments, getAppWithInstallationStatus, getAvailableApps } from '@auxx/lib/apps'
+import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import {
   deleteAppConnection,
@@ -10,9 +11,6 @@ import {
 } from '@auxx/services/app-connections'
 import { getAppSettings, saveAppSettings, schemaToZod } from '@auxx/services/app-settings'
 import {
-  getAppDeployments,
-  getAppWithInstallationStatus,
-  getAvailableApps,
   installApp,
   installAppRequestSchema,
   listAppsQuerySchema,
@@ -40,8 +38,9 @@ export const appsRouter = createTRPCRouter({
     const { organizationId } = ctx.session
     const { category, search, limit, offset } = input
 
-    const result = await getAvailableApps({
+    return getAvailableApps({
       organizationId,
+      db: ctx.db,
       filters: {
         category,
         searchQuery: search,
@@ -51,18 +50,6 @@ export const appsRouter = createTRPCRouter({
         offset,
       },
     })
-
-    if (result.isErr()) {
-      const error = result.error
-      logger.error('Failed to get available apps', { error, organizationId })
-
-      throw new TRPCError({
-        code: error.code === 'DATABASE_ERROR' ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR',
-        message: error.message,
-      })
-    }
-
-    return result.value
   }),
 
   /**
@@ -104,9 +91,10 @@ export const appsRouter = createTRPCRouter({
       const result = await getAppWithInstallationStatus({
         appSlug,
         organizationId,
+        db: ctx.db,
       })
 
-      if (result.isErr()) {
+      if (!result.ok) {
         const error = result.error
         logger.error('Failed to get app details', { error, appSlug, organizationId })
 
@@ -134,8 +122,14 @@ export const appsRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       const { appSlug, type, deploymentId } = input
 
+      // Resolve slug from cache
+      const cachedApp = await getCachedAppBySlug(appSlug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: `App "${appSlug}" not found` })
+      }
+
       const result = await installApp({
-        appSlug,
+        appId: cachedApp.id,
         organizationId,
         installationType: type!,
         deploymentId,
@@ -177,8 +171,14 @@ export const appsRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       const { appSlug, type } = input
 
+      // Resolve slug from cache
+      const cachedApp = await getCachedAppBySlug(appSlug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: `App "${appSlug}" not found` })
+      }
+
       const result = await uninstallApp({
-        appSlug,
+        appId: cachedApp.id,
         organizationId,
         uninstalledById: userId,
         installationType: type,
@@ -217,13 +217,14 @@ export const appsRouter = createTRPCRouter({
       const result = await getAppDeployments({
         appSlug,
         organizationId,
+        db: ctx.db,
         filters: {
           deploymentType,
           status,
         },
       })
 
-      if (result.isErr()) {
+      if (!result.ok) {
         const error = result.error
         logger.error('Failed to get app deployments', { error, appSlug, organizationId })
 
@@ -391,9 +392,10 @@ export const appsRouter = createTRPCRouter({
       const appResult = await getAppWithInstallationStatus({
         appSlug,
         organizationId,
+        db: ctx.db,
       })
 
-      if (appResult.isErr()) {
+      if (!appResult.ok) {
         logger.error('Failed to get app for schema', {
           error: appResult.error,
           appSlug,
@@ -459,9 +461,10 @@ export const appsRouter = createTRPCRouter({
       const appResult = await getAppWithInstallationStatus({
         appSlug,
         organizationId,
+        db: ctx.db,
       })
 
-      if (appResult.isErr()) {
+      if (!appResult.ok) {
         logger.error('Failed to get app for settings', {
           error: appResult.error,
           appSlug,
@@ -546,9 +549,10 @@ export const appsRouter = createTRPCRouter({
       const appResult = await getAppWithInstallationStatus({
         appSlug,
         organizationId,
+        db: ctx.db,
       })
 
-      if (appResult.isErr()) {
+      if (!appResult.ok) {
         logger.error('Failed to get app for saving settings', {
           error: appResult.error,
           appSlug,
