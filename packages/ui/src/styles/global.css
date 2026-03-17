@@ -277,6 +277,7 @@
   --secondary: oklch(97.02% 0 0);
   --secondary-foreground: oklch(20.46% 0 0);
   --muted: oklch(98.81% 0 0);
+  --muted-50: color-mix(in oklab, var(--muted) 50%, rgb(var(--primary-100)));
   --muted-foreground: oklch(55.55% 0 0);
 
   --accent: oklch(97.02% 0 0);
@@ -407,7 +408,9 @@
 
   --secondary: oklch(26.86% 0 0);
   --secondary-foreground: oklch(98.51% 0 0);
-  --muted: oklch(20.76% 0.0092 255.62);
+  --muted-old: oklch(20.76% 0.0092 255.62);
+  --muted: #1e2227;
+  --muted-50: color-mix(in oklab, var(--muted-old) 50%, rgb(var(--primary-100)));
   --muted-foreground: oklch(71.55% 0 0);
   --accent: #1e2227; /* oklch(26.86% 0 0);*/
   --accent-foreground: #abb2bf; /* oklch(98.51% 0 0);*/
@@ -563,6 +566,7 @@
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
+  --color-muted-50: var(--muted-50);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);

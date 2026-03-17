@@ -4,6 +4,7 @@
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { CountrySelect } from '@auxx/ui/components/country-select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -14,7 +15,7 @@ import { CardElement, Elements, useElements, useStripe } from '@stripe/react-str
 import { Building2, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { getStripePromise } from '~/lib/stripe'
 import { api } from '~/trpc/react'
@@ -169,6 +170,7 @@ function PlanChangeSummaryContent({
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
     reset,
   } = useForm<BillingAddressFormData>({
@@ -531,9 +533,13 @@ function PlanChangeSummaryContent({
                 </div>
               </div>
 
-              <Input
-                {...register('country', { required: 'Country is required' })}
-                placeholder='Country'
+              <Controller
+                name='country'
+                control={control}
+                rules={{ required: 'Country is required' }}
+                render={({ field }) => (
+                  <CountrySelect value={field.value} onChange={field.onChange} />
+                )}
               />
               {errors.country && (
                 <p className='text-xs text-destructive mt-1'>{errors.country.message}</p>

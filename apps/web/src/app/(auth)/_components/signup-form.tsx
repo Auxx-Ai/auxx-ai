@@ -19,6 +19,7 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Turnstile } from '@marsidev/react-turnstile'
 import { Mail, Smartphone } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useState } from 'react'
@@ -531,6 +532,12 @@ export function SignUpForm() {
           </CardContent>
         </Card>
       </div>
+      <p className='text-center text-sm text-muted-foreground'>
+        Already have an account?{' '}
+        <Button variant='link' className='h-auto p-0' asChild>
+          <Link href='/login'>Log in</Link>
+        </Button>
+      </p>
       {turnstileSiteKey && (
         <div className='min-h-[75px]'>
           <Turnstile

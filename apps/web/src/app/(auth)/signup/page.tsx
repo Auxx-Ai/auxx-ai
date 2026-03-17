@@ -1,7 +1,7 @@
 // src/app/(auth)/signup/page.tsx
 
-import { Button } from '@auxx/ui/components/button'
-import Link from 'next/link'
+// import { Button } from '@auxx/ui/components/button'
+// import Link from 'next/link'
 import { Logo } from '~/components/global/login/logo'
 import { SignUpForm } from '../_components/signup-form'
 
@@ -12,12 +12,6 @@ export default function SignUpPage() {
         <Logo />
         {/* <h2 className="text-center text-xl font-semibold">Create your account</h2> */}
         <SignUpForm />
-        <p className='text-center text-sm text-muted-foreground'>
-          Already have an account?{' '}
-          <Button variant='link' className='h-auto p-0' asChild>
-            <Link href='/login'>Log in</Link>
-          </Button>
-        </p>
       </div>
     </div>
   )

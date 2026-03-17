@@ -2,6 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { CountrySelect } from '@auxx/ui/components/country-select'
 import {
   Dialog,
   DialogContent,
@@ -13,7 +14,7 @@ import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import { toastError } from '@auxx/ui/components/toast'
 import { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { api } from '~/trpc/react'
 
 /** Props for billing address dialog */
@@ -66,6 +67,7 @@ export function BillingAddressDialog({
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
     reset,
   } = useForm<BillingAddressFormData>({
@@ -207,10 +209,13 @@ export function BillingAddressDialog({
               <Label htmlFor='country'>
                 Country <span className='text-red-500'>*</span>
               </Label>
-              <Input
-                id='country'
-                {...register('country', { required: 'Country is required' })}
-                placeholder='US'
+              <Controller
+                name='country'
+                control={control}
+                rules={{ required: 'Country is required' }}
+                render={({ field }) => (
+                  <CountrySelect value={field.value} onChange={field.onChange} />
+                )}
               />
               {errors.country && (
                 <p className='text-sm text-destructive'>{errors.country.message}</p>

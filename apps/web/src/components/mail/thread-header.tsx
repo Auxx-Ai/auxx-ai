@@ -201,7 +201,7 @@ export function ThreadHeader() {
   return (
     <>
       <ConfirmDialog />
-      <div className='flex items-center px-4 py-2 sticky inset-x-0 top-0 z-1 bg-secondary dark:bg-primary-100 pb-3 mask-b-from-80% mask-b-to-100% w-full'>
+      <div className='flex items-center px-4 py-2 sticky inset-x-0 top-0 z-1 bg-secondary dark:bg-muted-50 pb-3 mask-b-from-80% mask-b-to-100% w-full'>
         <div className='flex  w-full justify-between shrink-0 overflow-x-auto no-scrollbar '>
           <div className='flex shrink-0 items-start pt-0.5 ps-0.5'>
             <InboxPicker
