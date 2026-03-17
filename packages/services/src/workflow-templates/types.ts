@@ -19,6 +19,7 @@ export interface CreateWorkflowTemplateInput {
   description: string
   categories: string[]
   imgUrl?: string
+  icon?: { iconId: string; color: string }
   graph: any
   version?: number
   status?: 'public' | 'private'
@@ -45,6 +46,7 @@ export interface UpdateWorkflowTemplateInput {
   description?: string
   categories?: string[]
   imgUrl?: string
+  icon?: { iconId: string; color: string } | null
   graph?: any
   version?: number
   status?: 'public' | 'private'
@@ -71,6 +73,7 @@ export interface WorkflowTemplateListItem {
   description: string
   categories: string[]
   imgUrl: string | null
+  icon: { iconId: string; color: string } | null
   version: number
   status: string
   triggerType: string | null
@@ -98,6 +101,7 @@ export interface WorkflowTemplateDetail {
   description: string
   categories: string[]
   imgUrl: string | null
+  icon: { iconId: string; color: string } | null
   graph: any
   version: number
   status: string

@@ -390,6 +390,11 @@ export const workflowRouter = createTRPCRouter({
           envVars: transformed.envVars,
           variables: transformed.variables,
         }
+
+        // Use template icon as fallback if user didn't pick one
+        if (!input.icon && (template as any).icon) {
+          templateData.icon = (template as any).icon
+        }
       }
 
       // Create the workflow with optional template data

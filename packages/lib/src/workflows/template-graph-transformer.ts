@@ -131,7 +131,7 @@ export class TemplateGraphTransformer {
 
     return templateEnvVars.map((envVar) => ({
       ...envVar,
-      id: generateId(),
+      id: `env.${envVar.name}`,
       // Clear secret values for security
       value: envVar.type === 'secret' ? '' : envVar.value,
     }))

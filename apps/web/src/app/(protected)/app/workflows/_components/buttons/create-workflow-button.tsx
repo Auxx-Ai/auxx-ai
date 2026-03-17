@@ -2,6 +2,7 @@
 'use client'
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -9,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { FileText, Plus, Workflow } from 'lucide-react'
+import { LayoutTemplate, Plus, Workflow } from 'lucide-react'
 import { useState } from 'react'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
@@ -55,14 +56,16 @@ export function CreateWorkflowButton() {
             Create Workflow
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='end'>
+        <DropdownMenuContent align='end' className='w-50'>
           <DropdownMenuItem onClick={() => setCreateDialogOpen(true)}>
             <Workflow />
             Create from scratch
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTemplateDialogOpen(true)}>
-            <FileText />
-            Use template
+          <DropdownMenuItem
+            onClick={() => setTemplateDialogOpen(true)}
+            className='data-highlighted:bg-[#ffaa40]/10'>
+            <LayoutTemplate className='text-[#ffaa40]' />{' '}
+            <AnimatedGradientText>Create from template</AnimatedGradientText>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

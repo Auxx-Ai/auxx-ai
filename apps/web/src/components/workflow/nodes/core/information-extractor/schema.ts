@@ -10,6 +10,7 @@ import {
 import { NodeType } from '~/components/workflow/types/node-types'
 import { BaseType, type UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
+import { schemaToUnifiedVariable } from '~/components/workflow/utils/schema-to-variable'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import type { InformationExtractorNodeData } from './types'
 
@@ -223,129 +224,38 @@ export function extractInformationExtractorVariables(data: InformationExtractorN
 
 /**
  * Define output variables for information extractor node
+ * Follows the same pattern as the AI node's getAiOutputVariables
  */
 const getInformationExtractorOutputVariables = (
   data: InformationExtractorNodeData,
   nodeId: string
-): any[] => {
+): UnifiedVariable[] => {
   const outputs: UnifiedVariable[] = []
 
   // Always include raw extraction result
   outputs.push(
     createUnifiedOutputVariable({
       nodeId,
-      path: 'raw_extraction', // Changed from 'name' to 'path'
+      path: 'raw_extraction',
       type: BaseType.STRING,
       description: 'Raw extraction result as text',
     })
   )
 
-  // Generate typed output based on extraction schema
+  // Add extracted_data if structured output is enabled and schema is defined
   if (data.structured_output.enabled && data.structured_output.schema) {
-    // Convert schema to UnifiedVariable with nested structure
-    const properties: Record<string, UnifiedVariable> = {}
-
-    if (data.structured_output.schema.properties) {
-      for (const [key, field] of Object.entries(data.structured_output.schema.properties)) {
-        properties[key] = schemaFieldToUnifiedVariable(field as any, key, nodeId)
-      }
-    }
-
-    const extractedData: UnifiedVariable = {
-      id: `${nodeId}_extracted_data`,
+    const extractedData = schemaToUnifiedVariable(
+      data.structured_output.schema,
       nodeId,
-      // path: 'extracted_data',
-      // fullPath: `${nodeId}.extracted_data`,
-      label: 'Extracted Data',
-      type: BaseType.OBJECT,
-      description: 'Structured data extracted from the input',
-      category: 'node',
-      properties,
-      required: true,
-    }
+      'extracted_data'
+    )
+    extractedData.label = 'Extracted Data'
+    extractedData.description = 'Structured data extracted from the input'
 
     outputs.push(extractedData)
-
-    // Also create individual outputs for each top-level field
-    Object.values(properties).forEach((prop) => {
-      outputs.push(prop)
-    })
   }
 
   return outputs
-}
-
-/**
- * Helper to convert schema field to UnifiedVariable
- */
-function schemaFieldToUnifiedVariable(field: any, key: string, nodeId: string): UnifiedVariable {
-  if (!field || typeof field !== 'object') {
-    return createUnifiedOutputVariable({
-      nodeId,
-      path: key, // Changed from 'name' to 'path'
-      type: BaseType.STRING,
-      description: `Field ${key}`,
-    })
-  }
-
-  const fieldType = field.type || 'string'
-  let baseType: BaseType = BaseType.STRING
-  let properties: Record<string, UnifiedVariable> | undefined
-  let items: UnifiedVariable | undefined
-
-  // Validate field type against allowed types
-  if (!AI_NODE_CONSTANTS.INFO_EXTRACTOR.FIELD_TYPES.includes(fieldType as any)) {
-    // Default to string for unsupported types
-    baseType = BaseType.STRING
-  } else {
-    switch (fieldType) {
-      case 'string':
-        baseType = BaseType.STRING
-        break
-
-      case 'number':
-        baseType = BaseType.NUMBER
-        break
-
-      case 'boolean':
-        baseType = BaseType.BOOLEAN
-        break
-
-      case 'array':
-        baseType = BaseType.ARRAY
-        if (field.items) {
-          items = schemaFieldToUnifiedVariable(field.items, `${key}[*]`, nodeId)
-        }
-        break
-
-      case 'object':
-        baseType = BaseType.OBJECT
-        if (field.properties) {
-          properties = {}
-          for (const [propKey, prop] of Object.entries(field.properties)) {
-            properties[propKey] = schemaFieldToUnifiedVariable(prop, propKey, nodeId)
-          }
-        }
-        break
-    }
-  }
-
-  const variable: UnifiedVariable = {
-    id: `${nodeId}_${key}`,
-    nodeId,
-    path: key,
-    fullPath: `${nodeId}.${key}`,
-    label: field.title || key,
-    type: baseType,
-    description: field.description || `Extracted ${key}`,
-    category: 'node',
-    enum: field.enum,
-    properties,
-    items,
-    required: field.required !== false,
-  }
-
-  return variable
 }
 
 /**
@@ -363,5 +273,5 @@ export const informationExtractorDefinition: NodeDefinition<InformationExtractor
   canRunSingle: true,
   validator: validateInformationExtractor,
   extractVariables: extractInformationExtractorVariables,
-  outputVariables: getInformationExtractorOutputVariables as any,
+  outputVariables: getInformationExtractorOutputVariables,
 }

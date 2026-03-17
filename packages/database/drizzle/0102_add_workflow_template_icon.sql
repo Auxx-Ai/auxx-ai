@@ -1,0 +1,1 @@
+ALTER TABLE "WorkflowTemplate" ADD COLUMN "icon" jsonb;

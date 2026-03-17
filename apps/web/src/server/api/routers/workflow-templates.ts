@@ -13,6 +13,10 @@ const requiredEntitySchema = z.object({
   requiredFields: z.array(z.string()),
   companionTemplateIds: z.array(z.string()).optional(),
   required: z.boolean(),
+  name: z.string(),
+  apiSlug: z.string(),
+  icon: z.string().optional(),
+  color: z.string().optional(),
 })
 
 /**

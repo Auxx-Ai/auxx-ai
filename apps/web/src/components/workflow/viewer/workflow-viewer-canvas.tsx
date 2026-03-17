@@ -122,6 +122,9 @@ export const WorkflowViewerCanvas = React.memo<WorkflowViewerCanvasProps>(
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          onError={(code) => {
+            if (code !== '008') console.warn('[ReactFlow] error', code)
+          }}
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onPaneClick={handlePaneClick}
