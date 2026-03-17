@@ -129,6 +129,10 @@ type CountrySelectProps = {
   className?: string
   /** Ref to the container element for measuring popover width */
   containerRef?: React.RefObject<HTMLDivElement | null>
+  /** Custom trigger element. Receives current value and selected country label. */
+  trigger?: (props: { value: RPNInput.Country; label: string | undefined }) => React.ReactNode
+  /** Whether to show calling codes in the dropdown list */
+  showCallingCodes?: boolean
 }
 
 /** Searchable country select using a combobox */
@@ -139,6 +143,8 @@ const CountrySelect = ({
   options,
   className,
   containerRef,
+  trigger,
+  showCallingCodes = true,
 }: CountrySelectProps) => {
   const [open, setOpen] = useState(false)
   const [popoverWidth, setPopoverWidth] = useState<number | undefined>(undefined)
@@ -172,20 +178,26 @@ const CountrySelect = ({
   return (
     <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type='button'
-          data-slot='country-select'
-          disabled={disabled}
-          aria-label='Select country'
-          className={cn(
-            'border-input bg-background text-muted-foreground hover:bg-accent hover:text-foreground relative inline-flex items-center self-stretch rounded-s-xl py-2 ps-0.5 pe-2 transition-[color,box-shadow] outline-hidden disabled:pointer-events-none disabled:opacity-50',
-            className
-          )}>
-          <div className='inline-flex items-center gap-1'>
-            <FlagComponent country={value} countryName={value} />
-            {/* <ChevronDownIcon className="size-3 text-muted-foreground/80" aria-hidden="true" /> */}
-          </div>
-        </button>
+        {trigger ? (
+          trigger({
+            value,
+            label: countryOptions.find((o) => o.value === value)?.label,
+          })
+        ) : (
+          <button
+            type='button'
+            data-slot='country-select'
+            disabled={disabled}
+            aria-label='Select country'
+            className={cn(
+              'border-input bg-background text-muted-foreground hover:bg-accent hover:text-foreground relative inline-flex items-center self-stretch rounded-s-xl py-2 ps-0.5 pe-2 transition-[color,box-shadow] outline-hidden disabled:pointer-events-none disabled:opacity-50',
+              className
+            )}>
+            <div className='inline-flex items-center gap-1'>
+              <FlagComponent country={value} countryName={value} />
+            </div>
+          </button>
+        )}
       </PopoverTrigger>
       <PopoverContent
         align='start'
@@ -208,7 +220,11 @@ const CountrySelect = ({
                         onSelect={() => handleSelect(option.value)}>
                         <FlagComponent country={option.value} countryName={option.label} />
                         <span className='flex-1 truncate'>{option.label}</span>
-                        <span className='text-muted-foreground text-xs'>{option.callingCode}</span>
+                        {showCallingCodes && (
+                          <span className='text-muted-foreground text-xs'>
+                            {option.callingCode}
+                          </span>
+                        )}
                         <Check className='ml-auto size-4' />
                       </CommandItem>
                     ))}
@@ -229,7 +245,11 @@ const CountrySelect = ({
                         onSelect={() => handleSelect(option.value)}>
                         <FlagComponent country={option.value} countryName={option.label} />
                         <span className='flex-1 truncate'>{option.label}</span>
-                        <span className='text-muted-foreground text-xs'>{option.callingCode}</span>
+                        {showCallingCodes && (
+                          <span className='text-muted-foreground text-xs'>
+                            {option.callingCode}
+                          </span>
+                        )}
                       </CommandItem>
                     ))}
                 </CommandGroup>
@@ -247,7 +267,9 @@ const CountrySelect = ({
                     onSelect={() => handleSelect(option.value)}>
                     <FlagComponent country={option.value} countryName={option.label} />
                     <span className='flex-1 truncate'>{option.label}</span>
-                    <span className='text-muted-foreground text-xs'>{option.callingCode}</span>
+                    {showCallingCodes && (
+                      <span className='text-muted-foreground text-xs'>{option.callingCode}</span>
+                    )}
                   </CommandItem>
                 ))}
             </CommandGroup>
@@ -268,4 +290,6 @@ const FlagComponent = ({ country, countryName }: RPNInput.FlagProps) => {
   )
 }
 
+export { CountrySelect }
+export type { CountrySelectProps }
 export default PhoneInputWithFlag

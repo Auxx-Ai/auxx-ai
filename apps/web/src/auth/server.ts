@@ -9,6 +9,7 @@ import {
 } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database' // Drizzle database for services
+import { onCacheEvent } from '@auxx/lib/cache'
 import { enqueueEmailJob } from '@auxx/lib/jobs'
 import { seedNewUserDatabase } from '@auxx/lib/seed'
 import { getUserById } from '@auxx/lib/users'
@@ -72,6 +73,25 @@ export const auth = betterAuth({
         after: async (user) => {
           logger.info('User created', { userId: user.id })
           await seedNewUserDatabase(user)
+        },
+      },
+    },
+    account: {
+      create: {
+        after: async (account) => {
+          // Invalidate user profile cache when a new OAuth provider is linked
+          // so the session reflects the updated providers list immediately
+          logger.info('Account linked', {
+            userId: account.userId,
+            provider: account.providerId,
+          })
+          const user = await getUserById(account.userId)
+          if (user?.defaultOrganizationId) {
+            await onCacheEvent('user.updated', {
+              orgId: user.defaultOrganizationId,
+              userId: account.userId,
+            })
+          }
         },
       },
     },

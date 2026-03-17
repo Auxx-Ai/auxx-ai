@@ -135,7 +135,8 @@ export default function LoginForm({
   useEffect(() => {
     // Check if passkey conditional UI is available
     if (
-      !PublicKeyCredential?.isConditionalMediationAvailable ||
+      typeof PublicKeyCredential === 'undefined' ||
+      !PublicKeyCredential.isConditionalMediationAvailable ||
       !PublicKeyCredential.isConditionalMediationAvailable()
     ) {
       return

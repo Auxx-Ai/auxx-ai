@@ -4,6 +4,7 @@
 import { Alert, AlertDescription, AlertIcon, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { CountrySelect } from '@auxx/ui/components/country-select'
 import { Input } from '@auxx/ui/components/input'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
@@ -12,7 +13,7 @@ import { Building } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { getStripePromise } from '~/lib/stripe'
 import { api } from '~/trpc/react'
 import { useConvert } from '../_components/convert-provider'
@@ -70,6 +71,7 @@ function SummaryContent() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
     reset,
   } = useForm<BillingAddressFormData>({
@@ -380,10 +382,17 @@ function SummaryContent() {
                   </div>
                 </div>
 
-                <Input
-                  {...register('country', { required: 'Country is required' })}
-                  placeholder='Country'
-                  disabled={isLoadingData}
+                <Controller
+                  name='country'
+                  control={control}
+                  rules={{ required: 'Country is required' }}
+                  render={({ field }) => (
+                    <CountrySelect
+                      value={field.value}
+                      onChange={field.onChange}
+                      disabled={isLoadingData}
+                    />
+                  )}
                 />
                 {errors.country && (
                   <p className='text-xs text-destructive mt-1'>{errors.country.message}</p>

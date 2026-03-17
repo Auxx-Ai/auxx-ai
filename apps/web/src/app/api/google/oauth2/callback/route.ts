@@ -1,5 +1,6 @@
 // /api/google/oauth2/callback/route.ts
 
+import { WEBAPP_URL } from '@auxx/config/urls'
 import { consumeOAuthCsrfToken } from '@auxx/lib/cache'
 import { requireAdminAccess } from '@auxx/lib/email'
 import { publisher } from '@auxx/lib/events'
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     if (!session || !session.user) {
       return NextResponse.redirect(
-        new URL(`/login?callbackUrl=${encodeURIComponent(request.url)}`, request.url)
+        new URL(`/login?callbackUrl=${encodeURIComponent(request.url)}`, WEBAPP_URL)
       )
     }
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(
         new URL(
           `${defaultRedirectPath}?success=false&error=${encodeURIComponent(error)}`,
-          request.url
+          WEBAPP_URL
         )
       )
     }
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     if (!code || !stateString) {
       logger.error('Missing required parameters')
       return NextResponse.redirect(
-        new URL(`${defaultRedirectPath}?success=false&error=missing_parameters`, request.url)
+        new URL(`${defaultRedirectPath}?success=false&error=missing_parameters`, WEBAPP_URL)
       )
     }
 
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
     } catch (e) {
       logger.error('Invalid state parameter:', { error: e })
       return NextResponse.redirect(
-        new URL(`${defaultRedirectPath}?success=false&error=invalid_state`, request.url)
+        new URL(`${defaultRedirectPath}?success=false&error=invalid_state`, WEBAPP_URL)
       )
     }
 
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
     if (session.user.id !== state.userId) {
       logger.error('User authentication failed or mismatch')
       return NextResponse.redirect(
-        new URL(`/login?callbackUrl=${encodeURIComponent(request.url)}`, request.url)
+        new URL(`/login?callbackUrl=${encodeURIComponent(request.url)}`, WEBAPP_URL)
       )
     }
 
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       logger.error('User is not an admin:', { error })
       return NextResponse.redirect(
-        new URL(`${defaultRedirectPath}?success=false&error=insufficient_permissions`, request.url)
+        new URL(`${defaultRedirectPath}?success=false&error=insufficient_permissions`, WEBAPP_URL)
       )
     }
 
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
     if (!storedToken || storedToken !== state.csrfToken) {
       logger.error('CSRF token mismatch in Google OAuth callback')
       return NextResponse.redirect(
-        new URL(`${defaultRedirectPath}?success=false&error=csrf_mismatch`, request.url)
+        new URL(`${defaultRedirectPath}?success=false&error=csrf_mismatch`, WEBAPP_URL)
       )
     }
 
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
 
     // Redirect to the specified path or default (validated against open redirect)
     const redirectPath = validateRedirectPath(state.redirectPath, defaultRedirectPath)
-    return NextResponse.redirect(new URL(`${redirectPath}?success=true`, request.url))
+    return NextResponse.redirect(new URL(`${redirectPath}?success=true`, WEBAPP_URL))
   } catch (error: any) {
     logger.error('OAuth callback error:', { error })
 
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.redirect(
-      new URL(`${defaultRedirectPath}?success=false&error=connection_failed`, request.url)
+      new URL(`${defaultRedirectPath}?success=false&error=connection_failed`, WEBAPP_URL)
     )
   }
 }

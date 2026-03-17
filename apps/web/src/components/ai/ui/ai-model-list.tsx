@@ -126,7 +126,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
         />
       ) : (
         <div className='flex-1 h-full shrink-0 flex flex-col @container'>
-          <div className='h-12 shrink-0 flex items-center justify-end border-b px-2 gap-2 bg-primary-200/50 sticky top-[67px] z-10 backdrop-blur'>
+          <div className='h-12 shrink-0 flex items-center justify-end border-b px-2 gap-2 bg-primary-200/50 dark:bg-primary-100/50 sticky top-[67px] z-10 backdrop-blur'>
             <AiUsageDialog
               trigger={
                 <Button variant='outline' size='sm'>
