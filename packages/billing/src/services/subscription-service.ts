@@ -6,6 +6,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { isUsableSubscriptionStatus } from '@auxx/types/billing'
 import { eq } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import type {
@@ -933,6 +934,12 @@ export class SubscriptionService {
         stripeSubscriptionId: currentSubscription.stripeSubscriptionId,
       })
 
+      // Capture past_due + trial state BEFORE any recovery or mutation.
+      // After recovery, status will be 'active' and isTrialing will be false,
+      // so this must be checked upfront.
+      const isPastDue = currentSubscription.status === 'past_due'
+      const isPastDueFromTrial = isPastDue && currentSubscription.hasTrialEnded
+
       // Determine change type
       const currentPlanLevel = currentSubscription.plan.hierarchyLevel
       const targetPlanLevel = targetPlan.hierarchyLevel
@@ -964,6 +971,21 @@ export class SubscriptionService {
       if (isUpgrade || isMonthlyToAnnual || (isBillingCycleChange && isTrialing)) {
         // UPGRADE, MONTHLY→ANNUAL, or TRIAL BILLING CYCLE CHANGE: Bill immediately with proration
         logger.info('Processing as upgrade - billing immediately')
+
+        // Recover from past_due before applying upgrade
+        if (isPastDue) {
+          if (!input.paymentMethodId) {
+            throw new Error('A payment method is required to recover a past_due subscription.')
+          }
+          await this.recoverPastDueSubscription(
+            stripe,
+            currentSubscription.stripeSubscriptionId,
+            currentSubscription.stripeCustomerId,
+            input.paymentMethodId,
+            input.organizationId,
+            currentSubscription.id
+          )
+        }
 
         // If subscription was canceled, restore it first
         if (currentSubscription.cancelAtPeriodEnd) {
@@ -1002,7 +1024,7 @@ export class SubscriptionService {
         // Determine if this is a trial→paid conversion
         const wasTrialing = isTrialing
         const isNowActive = updatedStripeSubscription.status === 'active'
-        const isTrialConversion = wasTrialing && isNowActive
+        const isTrialConversion = isNowActive && (wasTrialing || isPastDueFromTrial)
 
         // Update database with actual status from Stripe
         await this.db
@@ -1018,7 +1040,7 @@ export class SubscriptionService {
             updatedAt: new Date(),
             cancelAtPeriodEnd: updatedStripeSubscription.cancel_at_period_end,
             canceledAt: null,
-            // Handle trial→paid conversion
+            // Handle trial→paid conversion (including past_due from trial)
             ...(isTrialConversion
               ? {
                   hasTrialEnded: true,
@@ -1027,6 +1049,7 @@ export class SubscriptionService {
                   trialEligibilityReason: 'Already converted from trial',
                 }
               : {}),
+            ...this.buildConversionFields(isPastDueFromTrial, updatedStripeSubscription.status),
           })
           .where(eq(schema.PlanSubscription.id, currentSubscription.id))
 
@@ -1062,6 +1085,21 @@ export class SubscriptionService {
           scheduledFor: currentSubscription.periodEnd,
         })
 
+        // Recover from past_due before scheduling downgrade
+        if (isPastDue) {
+          if (!input.paymentMethodId) {
+            throw new Error('A payment method is required to recover a past_due subscription.')
+          }
+          await this.recoverPastDueSubscription(
+            stripe,
+            currentSubscription.stripeSubscriptionId,
+            currentSubscription.stripeCustomerId,
+            input.paymentMethodId,
+            input.organizationId,
+            currentSubscription.id
+          )
+        }
+
         // If subscription was canceled, restore it first since downgrade means continuing service
         if (currentSubscription.cancelAtPeriodEnd) {
           logger.info('Restoring canceled subscription before scheduling downgrade')
@@ -1076,6 +1114,7 @@ export class SubscriptionService {
           {
             items: [{ id: subscriptionItemId, price: priceId, quantity: input.seats }],
             proration_behavior: 'none',
+            ...(input.paymentMethodId ? { default_payment_method: input.paymentMethodId } : {}),
             ...(isBillingCycleChange ? {} : { billing_cycle_anchor: 'unchanged' }),
           }
         )
@@ -1091,6 +1130,10 @@ export class SubscriptionService {
           input.paymentMethodId
         )
 
+        // Determine if recovery made this a trial conversion
+        const isNowActive = updatedStripeSubscription.status === 'active'
+        const isTrialConversion = isNowActive && isPastDueFromTrial
+
         // Store the scheduled change in database and update status from Stripe
         await this.db
           .update(schema.PlanSubscription)
@@ -1104,6 +1147,7 @@ export class SubscriptionService {
             updatedAt: new Date(),
             cancelAtPeriodEnd: updatedStripeSubscription.cancel_at_period_end,
             canceledAt: null,
+            ...this.buildConversionFields(isPastDueFromTrial, updatedStripeSubscription.status),
           })
           .where(eq(schema.PlanSubscription.id, currentSubscription.id))
 
@@ -1112,7 +1156,7 @@ export class SubscriptionService {
           subscriptionId: currentSubscription.id,
           organizationId: input.organizationId,
           userId: input.userId,
-          changeType: 'downgrade',
+          changeType: isTrialConversion ? 'trial_conversion' : 'downgrade',
           fromPlan: currentSubscription.plan?.name,
           toPlan: targetPlan.name,
           fromBillingCycle: currentSubscription.billingCycle,
@@ -1123,7 +1167,10 @@ export class SubscriptionService {
           scheduledFor: currentSubscription.periodEnd ?? undefined,
         })
 
-        logger.info('Downgrade scheduled successfully')
+        logger.info('Downgrade scheduled successfully', {
+          isTrialConversion,
+          newStatus: updatedStripeSubscription.status,
+        })
 
         return {
           success: true,
@@ -1132,14 +1179,85 @@ export class SubscriptionService {
           scheduledFor: currentSubscription.periodEnd ?? undefined,
         }
       } else {
-        // Same plan, just seat or billing cycle change (or trial conversion on same plan)
+        // Same plan — seat change, billing cycle change, or past_due recovery
+        const hasActualChanges =
+          input.seats !== currentSubscription.seats ||
+          input.billingCycle !== currentSubscription.billingCycle
+
+        // Guard: past_due requires a payment method — fail fast if missing
+        if (isPastDue && !input.paymentMethodId) {
+          throw new Error('A payment method is required to recover a past_due subscription.')
+        }
+
+        // Phase 1: Recover from past_due (if applicable)
+        let recoveredSubscription: Stripe.Subscription | null = null
+        if (isPastDue && input.paymentMethodId) {
+          recoveredSubscription = await this.recoverPastDueSubscription(
+            stripe,
+            currentSubscription.stripeSubscriptionId,
+            currentSubscription.stripeCustomerId,
+            input.paymentMethodId,
+            input.organizationId,
+            currentSubscription.id
+          )
+        }
+
+        // Pure recovery (no actual changes) — write DB and return early
+        if (recoveredSubscription && !hasActualChanges) {
+          const firstItem = recoveredSubscription.items.data[0]!
+          const isSuccessfulConversion =
+            isPastDueFromTrial && recoveredSubscription.status === 'active'
+
+          await this.db
+            .update(schema.PlanSubscription)
+            .set({
+              status: recoveredSubscription.status,
+              periodStart: new Date(firstItem.current_period_start * 1000),
+              periodEnd: new Date(firstItem.current_period_end * 1000),
+              cancelAtPeriodEnd: recoveredSubscription.cancel_at_period_end,
+              updatedAt: new Date(),
+              ...this.buildConversionFields(isPastDueFromTrial, recoveredSubscription.status),
+            })
+            .where(eq(schema.PlanSubscription.id, currentSubscription.id))
+
+          await this.detachPreviousPaymentMethod(
+            stripe,
+            input.previousPaymentMethodId,
+            input.paymentMethodId
+          )
+
+          await this.recordSubscriptionChange({
+            subscriptionId: currentSubscription.id,
+            organizationId: input.organizationId,
+            userId: input.userId,
+            changeType: isSuccessfulConversion ? 'trial_conversion' : 'reactivation',
+            fromPlan: currentSubscription.plan?.name,
+            toPlan: currentSubscription.plan?.name,
+            fromBillingCycle: currentSubscription.billingCycle,
+            toBillingCycle: input.billingCycle,
+            fromSeats: currentSubscription.seats,
+            toSeats: input.seats,
+            immediate: true,
+          })
+
+          return {
+            success: true,
+            subscriptionId: currentSubscription.id,
+            immediate: true,
+          }
+        }
+
+        // Phase 2: Apply seat/billing-cycle changes (normal path)
+        // This runs for:
+        // - Non-past-due subscriptions (normal seat/billing changes)
+        // - Recovered subscriptions that also have seat/billing changes
         logger.info('Processing same-plan change', {
           isTrialing,
+          isPastDueFromTrial,
           seats: input.seats,
           billingCycle: input.billingCycle,
         })
 
-        // If trialing, end the trial immediately to trigger first payment
         const updatedStripeSubscription = await stripe.subscriptions.update(
           currentSubscription.stripeSubscriptionId,
           {
@@ -1161,22 +1279,23 @@ export class SubscriptionService {
           input.paymentMethodId
         )
 
-        // Get period info from Stripe response
         const firstItem = updatedStripeSubscription.items.data[0]!
 
-        // Determine if this is a trial→paid conversion
+        // Determine if this is a trial→paid conversion.
+        // Both conditions require the post-mutation status to be 'active' —
+        // if the mutation results in past_due/incomplete/etc., it's NOT a successful conversion.
         const wasTrialing = isTrialing
         const isNowActive = updatedStripeSubscription.status === 'active'
-        const isTrialConversion = wasTrialing && isNowActive
+        const isTrialConversion = isNowActive && (wasTrialing || isPastDueFromTrial)
 
         logger.info('Stripe subscription updated (same-plan path)', {
           stripeStatus: updatedStripeSubscription.status,
           wasTrialing,
+          isPastDueFromTrial,
           isNowActive,
           isTrialConversion,
         })
 
-        // Determine change type for history
         const isSeatChange = input.seats !== currentSubscription.seats
         const changeType = isTrialConversion
           ? 'trial_conversion'
@@ -1196,19 +1315,10 @@ export class SubscriptionService {
             periodEnd: new Date(firstItem.current_period_end * 1000),
             cancelAtPeriodEnd: updatedStripeSubscription.cancel_at_period_end,
             updatedAt: new Date(),
-            // Handle trial→paid conversion
-            ...(isTrialConversion
-              ? {
-                  hasTrialEnded: true,
-                  trialConversionStatus: 'CONVERTED_TO_PAID' as const,
-                  isEligibleForTrial: false,
-                  trialEligibilityReason: 'Already converted from trial',
-                }
-              : {}),
+            ...this.buildConversionFields(isPastDueFromTrial, updatedStripeSubscription.status),
           })
           .where(eq(schema.PlanSubscription.id, currentSubscription.id))
 
-        // Record subscription history
         await this.recordSubscriptionChange({
           subscriptionId: currentSubscription.id,
           organizationId: input.organizationId,
@@ -1232,6 +1342,175 @@ export class SubscriptionService {
     }
 
     throw new BillingError(ErrorCode.SUBSCRIPTION_NOT_FOUND)
+  }
+
+  /**
+   * Attempts to recover a past_due subscription by paying outstanding invoices.
+   * Pays invoices oldest-first, stopping as soon as the subscription reaches a usable status.
+   *
+   * @returns The refreshed Stripe subscription in a usable state.
+   * @throws If payment fails or subscription does not reach a usable state.
+   */
+  private async recoverPastDueSubscription(
+    stripe: Stripe,
+    stripeSubscriptionId: string,
+    stripeCustomerId: string | null,
+    paymentMethodId: string,
+    organizationId: string,
+    localSubscriptionId: string
+  ): Promise<Stripe.Subscription> {
+    logger.info('Attempting past_due recovery', {
+      organizationId,
+      stripeSubscriptionId,
+    })
+
+    // 1. Attach payment method to customer + subscription
+    await this.setCustomerDefaultPaymentMethod(stripe, stripeCustomerId, paymentMethodId)
+    await stripe.subscriptions.update(stripeSubscriptionId, {
+      default_payment_method: paymentMethodId,
+    })
+
+    // 2. Find open invoices for this subscription
+    const openInvoices = await stripe.invoices.list({
+      subscription: stripeSubscriptionId,
+      status: 'open',
+      limit: 10,
+    })
+
+    // 3. Pay oldest first (Stripe returns newest-first), stop when subscription is usable
+    const sortedOldestFirst = [...openInvoices.data].reverse()
+
+    for (const invoice of sortedOldestFirst) {
+      const paidInvoice = await stripe.invoices.pay(invoice.id, {
+        payment_method: paymentMethodId,
+      })
+
+      logger.info('Paid outstanding invoice', {
+        invoiceId: invoice.id,
+        amount: invoice.amount_due,
+        billingReason: invoice.billing_reason,
+      })
+
+      // Persist invoice locally so the UI reflects it immediately
+      // (webhook may arrive later or not at all in dev)
+      await this.syncPaidInvoice(paidInvoice, organizationId, localSubscriptionId)
+
+      // Check if subscription has recovered — stop when it reaches a usable status
+      const refreshed = await stripe.subscriptions.retrieve(stripeSubscriptionId)
+      if (isUsableSubscriptionStatus(refreshed.status)) {
+        logger.info('Subscription recovered', {
+          organizationId,
+          newStatus: refreshed.status,
+        })
+        return refreshed
+      }
+    }
+
+    // 4. All invoices paid but subscription is still in a blocked status — abort
+    const finalState = await stripe.subscriptions.retrieve(stripeSubscriptionId)
+    if (!isUsableSubscriptionStatus(finalState.status)) {
+      logger.error('Subscription still blocked after paying all open invoices', {
+        organizationId,
+        stripeSubscriptionId,
+        finalStatus: finalState.status,
+      })
+      throw new Error(
+        `Subscription could not be recovered. Status is '${finalState.status}' after paying all outstanding invoices.`
+      )
+    }
+
+    return finalState
+  }
+
+  /**
+   * Persists a paid Stripe invoice to the local database.
+   * Idempotent — if the invoice already exists (e.g. from a webhook), it updates it.
+   */
+  private async syncPaidInvoice(
+    invoice: Stripe.Invoice,
+    organizationId: string,
+    subscriptionId: string
+  ): Promise<void> {
+    const stripeInvoiceId = invoice.id!
+
+    try {
+      const existing = await this.db.query.Invoice.findFirst({
+        where: (inv, { eq }) => eq(inv.stripeInvoiceId, stripeInvoiceId),
+      })
+
+      if (existing) {
+        await this.db
+          .update(schema.Invoice)
+          .set({
+            status: 'PAID',
+            paidDate: new Date(),
+            pdfUrl: invoice.invoice_pdf ?? undefined,
+            amount: invoice.amount_paid,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.Invoice.id, existing.id))
+
+        logger.info('Invoice updated during recovery', {
+          invoiceId: existing.id,
+          stripeInvoiceId,
+        })
+      } else {
+        await this.db.insert(schema.Invoice).values({
+          organizationId,
+          subscriptionId,
+          stripeInvoiceId,
+          invoiceNumber: invoice.number ?? `INV-${stripeInvoiceId}`,
+          amount: invoice.amount_paid,
+          status: 'PAID',
+          invoiceDate: new Date(invoice.created * 1000),
+          dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : new Date(),
+          paidDate: new Date(),
+          currency: invoice.currency.toUpperCase(),
+          billingReason: invoice.billing_reason ?? undefined,
+          pdfUrl: invoice.invoice_pdf ?? undefined,
+          updatedAt: new Date(),
+        })
+
+        logger.info('Invoice created during recovery', {
+          stripeInvoiceId,
+          organizationId,
+        })
+      }
+    } catch (error) {
+      // Don't fail recovery if invoice sync fails
+      logger.error('Failed to sync invoice during recovery', {
+        stripeInvoiceId,
+        organizationId,
+        error,
+      })
+    }
+  }
+
+  /**
+   * Builds DB fields for trial→paid conversion bookkeeping.
+   * Only sets `CONVERTED_TO_PAID` when the final Stripe status is `active` —
+   * recovery reaching a usable but non-active status (e.g., `incomplete`, `paused`)
+   * is NOT a successful paid conversion.
+   */
+  private buildConversionFields(
+    isPastDueFromTrial: boolean,
+    finalStatus: string
+  ): Record<string, unknown> {
+    if (isPastDueFromTrial && finalStatus === 'active') {
+      return {
+        hasTrialEnded: true,
+        trialConversionStatus: 'CONVERTED_TO_PAID' as const,
+        isEligibleForTrial: false,
+        trialEligibilityReason: 'Already converted from trial',
+      }
+    }
+    // Trial ended but NOT successfully converted (recovered to incomplete, paused, etc.)
+    if (isPastDueFromTrial) {
+      return {
+        hasTrialEnded: true,
+      }
+    }
+    return {}
   }
 
   /**

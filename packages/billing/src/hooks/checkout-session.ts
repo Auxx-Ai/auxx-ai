@@ -15,13 +15,13 @@ const logger = createScopedLogger('webhook:checkout-session')
 export async function handleCheckoutSessionCompleted(
   db: Database,
   event: Stripe.Event
-): Promise<void> {
+): Promise<{ organizationId: string | null }> {
   try {
     const checkoutSession = event.data.object as Stripe.Checkout.Session
 
     // Skip setup mode sessions
     if (checkoutSession.mode === 'setup') {
-      return
+      return { organizationId: null }
     }
 
     // if (!checkoutSession.subscription) {
@@ -58,7 +58,7 @@ export async function handleCheckoutSessionCompleted(
         subscriptionMetadata: subscription.metadata,
         sessionMetadata: checkoutSession.metadata,
       })
-      return
+      return { organizationId: null }
     }
 
     // Get price and plan info from subscription
@@ -165,6 +165,8 @@ export async function handleCheckoutSessionCompleted(
       plan: plan?.name,
       status: subscription.status,
     })
+
+    return { organizationId: referenceId }
   } catch (error: any) {
     logger.error('Stripe webhook failed in checkout session', { error: error.message })
     throw error

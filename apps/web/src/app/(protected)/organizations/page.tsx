@@ -2,6 +2,7 @@
 'use client'
 
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
+import { BLOCKED_SUBSCRIPTION_STATUSES } from '@auxx/types/billing'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
@@ -29,8 +30,9 @@ function getSubscriptionStatus(org: DehydratedOrganization) {
     return { label: 'No Subscription', isActive: false }
   }
 
-  const expiredStatuses = ['canceled', 'unpaid', 'past_due', 'incomplete_expired']
-  const isExpired = expiredStatuses.includes(org.subscription.status.toLowerCase())
+  const isExpired = (BLOCKED_SUBSCRIPTION_STATUSES as readonly string[]).includes(
+    org.subscription.status.toLowerCase()
+  )
   const isTrialEnded = org.subscription.hasTrialEnded
 
   if (isExpired) {

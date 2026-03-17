@@ -2,6 +2,7 @@
 'use client'
 
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
+import { BLOCKED_SUBSCRIPTION_STATUSES } from '@auxx/types/billing'
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import type { ReactNode } from 'react'
 import { ChannelProvider } from '~/components/channels/providers/channel-provider'
@@ -26,8 +27,9 @@ interface AppLayoutWrapperProps {
 /** Helper function to check if subscription is expired */
 function isSubscriptionExpired(subscription: DehydratedOrganization['subscription']): boolean {
   if (!subscription) return false
-  const expiredStatuses = ['canceled', 'unpaid', 'past_due', 'incomplete_expired']
-  return expiredStatuses.includes(subscription.status.toLowerCase())
+  return (BLOCKED_SUBSCRIPTION_STATUSES as readonly string[]).includes(
+    subscription.status.toLowerCase()
+  )
 }
 
 /** Helper function to check if trial is expired */

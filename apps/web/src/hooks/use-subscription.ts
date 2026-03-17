@@ -1,5 +1,6 @@
 // apps/web/src/hooks/use-subscription.ts
 
+import { BLOCKED_SUBSCRIPTION_STATUSES } from '@auxx/types/billing'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import {
   useDehydratedOrganization,
@@ -42,9 +43,9 @@ export function useIsSubscriptionExpired(): boolean {
   if (selfHosted) return false // Never expired for self-hosted
   if (!subscription) return false
 
-  // Expired/inactive statuses
-  const expiredStatuses = ['canceled', 'unpaid', 'past_due', 'incomplete_expired']
-  return expiredStatuses.includes(subscription.status.toLowerCase())
+  return (BLOCKED_SUBSCRIPTION_STATUSES as readonly string[]).includes(
+    subscription.status.toLowerCase()
+  )
 }
 
 /**

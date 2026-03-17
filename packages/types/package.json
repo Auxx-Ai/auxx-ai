@@ -75,6 +75,12 @@
       "source": "./config/index.ts",
       "import": "./dist/config/index.mjs",
       "default": "./config/index.ts"
+    },
+    "./billing": {
+      "types": "./billing/index.ts",
+      "source": "./billing/index.ts",
+      "import": "./dist/billing/index.mjs",
+      "default": "./billing/index.ts"
     }
   },
   "scripts": {

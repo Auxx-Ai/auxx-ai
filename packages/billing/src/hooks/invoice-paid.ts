@@ -23,7 +23,10 @@ const logger = createScopedLogger('webhook:invoice-paid')
  * @param event Stripe webhook event carrying the paid invoice payload.
  * @throws Error Re-throws any underlying error to allow upstream retry or alerting flows.
  */
-export async function handleInvoicePaid(db: Database, event: Stripe.Event): Promise<void> {
+export async function handleInvoicePaid(
+  db: Database,
+  event: Stripe.Event
+): Promise<{ organizationId: string | null }> {
   try {
     const invoice = event.data.object as Stripe.Invoice
     const stripeInvoiceId = invoice.id!
@@ -35,7 +38,7 @@ export async function handleInvoicePaid(db: Database, event: Stripe.Event): Prom
       logger.warn('Invoice not associated with subscription', {
         stripeInvoiceId,
       })
-      return
+      return { organizationId: null }
     }
 
     // Extract subscription ID (can be string or object)
@@ -52,7 +55,7 @@ export async function handleInvoicePaid(db: Database, event: Stripe.Event): Prom
         stripeSubscriptionId,
         stripeInvoiceId,
       })
-      return
+      return { organizationId: null }
     }
 
     // Check if invoice already exists
@@ -100,6 +103,8 @@ export async function handleInvoicePaid(db: Database, event: Stripe.Event): Prom
         organizationId: localSub.organizationId,
       })
     }
+
+    return { organizationId: localSub.organizationId }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : ''
     logger.error('Stripe webhook failed in invoice paid', { error: message })

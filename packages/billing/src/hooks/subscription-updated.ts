@@ -33,7 +33,7 @@ async function syncStripeSubscription(
   stripeSubscription: Stripe.Subscription,
   eventType: string,
   onPlanChange?: PlanChangeHandler
-): Promise<void> {
+): Promise<{ organizationId: string | null }> {
   const firstItem = stripeSubscription.items.data.at(0)
   const priceId = firstItem?.price.id ?? null
   const priceLookupKey = firstItem?.price.lookup_key ?? null
@@ -107,7 +107,7 @@ async function syncStripeSubscription(
             foundOrgIds: subs.map((s) => s.organizationId),
           })
           // Don't fall back to wrong org - return early
-          return
+          return { organizationId: null }
         }
       } else {
         const preferred = subs.find((s) => s.status === 'active' || s.status === 'trialing')
@@ -145,7 +145,7 @@ async function syncStripeSubscription(
       organizationId,
       subscriptionId,
     })
-    return
+    return { organizationId: null }
   }
 
   const periodStart = firstItem?.current_period_start
@@ -306,6 +306,8 @@ async function syncStripeSubscription(
       }
     }
   }
+
+  return { organizationId: localSubscription.organizationId }
 }
 
 /**
@@ -325,10 +327,10 @@ async function processSubscriptionWebhook(
   event: Stripe.Event,
   eventType: 'customer.subscription.updated' | 'customer.subscription.created',
   onPlanChange?: PlanChangeHandler
-): Promise<void> {
+): Promise<{ organizationId: string | null }> {
   try {
     const stripeSubscription = event.data.object as Stripe.Subscription
-    await syncStripeSubscription(db, stripeSubscription, eventType, onPlanChange)
+    return await syncStripeSubscription(db, stripeSubscription, eventType, onPlanChange)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : ''
     logger.error('Stripe webhook subscription sync failed', {
@@ -341,30 +343,22 @@ async function processSubscriptionWebhook(
 
 /**
  * Public webhook entry point for handling `customer.subscription.updated` events emitted by Stripe.
- *
- * @param db Database client used to synchronize the subscription with the local data store
- * @param event Stripe webhook event that encapsulates the updated subscription payload
- * @returns Promise that resolves once the subscription has been brought up to date locally
  */
 export async function handleSubscriptionUpdated(
   db: Database,
   event: Stripe.Event,
   onPlanChange?: PlanChangeHandler
-): Promise<void> {
-  await processSubscriptionWebhook(db, event, 'customer.subscription.updated', onPlanChange)
+): Promise<{ organizationId: string | null }> {
+  return await processSubscriptionWebhook(db, event, 'customer.subscription.updated', onPlanChange)
 }
 
 /**
  * Public webhook entry point for handling `customer.subscription.created` events emitted by Stripe.
- *
- * @param db Database client used to synchronize the subscription with the local data store
- * @param event Stripe webhook event that encapsulates the newly created subscription payload
- * @returns Promise that resolves once the subscription creation has been mirrored locally
  */
 export async function handleSubscriptionCreated(
   db: Database,
   event: Stripe.Event,
   onPlanChange?: PlanChangeHandler
-): Promise<void> {
-  await processSubscriptionWebhook(db, event, 'customer.subscription.created', onPlanChange)
+): Promise<{ organizationId: string | null }> {
+  return await processSubscriptionWebhook(db, event, 'customer.subscription.created', onPlanChange)
 }

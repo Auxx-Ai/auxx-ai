@@ -45,10 +45,6 @@ export class WebhookService {
   /**
    * Validates the Stripe webhook signature and dispatches the event to first-party and custom handlers.
    *
-   * Successful processing returns a confirmation payload; failures log detailed diagnostics and rethrow so the
-   * integration layer can respond appropriately (e.g., HTTP 500). Unsupported event types are acknowledged via
-   * informational logging without raising errors.
-   *
    * @param body Raw request body as received from Stripe.
    * @param signature `Stripe-Signature` header string used for signature verification.
    * @returns Object indicating the webhook event was processed successfully.
@@ -69,39 +65,57 @@ export class WebhookService {
     // Process event
     try {
       switch (event.type) {
-        case 'checkout.session.completed':
-          await handleCheckoutSessionCompleted(this.db, event)
-          await this.customHandlers?.onCheckoutSessionCompleted?.(event)
+        case 'checkout.session.completed': {
+          const result = await handleCheckoutSessionCompleted(this.db, event)
+          await this.customHandlers?.onCheckoutSessionCompleted?.(event, {
+            organizationId: result?.organizationId ?? null,
+          })
           break
+        }
 
-        case 'customer.subscription.updated':
-          await handleSubscriptionUpdated(this.db, event, this.onPlanChange)
-          await this.customHandlers?.onSubscriptionUpdated?.(event)
+        case 'customer.subscription.updated': {
+          const result = await handleSubscriptionUpdated(this.db, event, this.onPlanChange)
+          await this.customHandlers?.onSubscriptionUpdated?.(event, {
+            organizationId: result?.organizationId ?? null,
+          })
           break
+        }
 
-        case 'customer.subscription.created':
-          await handleSubscriptionCreated(this.db, event, this.onPlanChange)
-          await this.customHandlers?.onSubscriptionCreated?.(event)
+        case 'customer.subscription.created': {
+          const result = await handleSubscriptionCreated(this.db, event, this.onPlanChange)
+          await this.customHandlers?.onSubscriptionCreated?.(event, {
+            organizationId: result?.organizationId ?? null,
+          })
           break
+        }
 
-        case 'customer.subscription.deleted':
-          await handleSubscriptionDeleted(this.db, event)
-          await this.customHandlers?.onSubscriptionDeleted?.(event)
+        case 'customer.subscription.deleted': {
+          const result = await handleSubscriptionDeleted(this.db, event)
+          await this.customHandlers?.onSubscriptionDeleted?.(event, {
+            organizationId: result?.organizationId ?? null,
+          })
           break
+        }
 
         case 'customer.created':
           await this.customHandlers?.onCustomerCreated?.(event)
           break
 
-        case 'invoice.paid':
-          await handleInvoicePaid(this.db, event)
-          await this.customHandlers?.onInvoicePaid?.(event)
+        case 'invoice.paid': {
+          const result = await handleInvoicePaid(this.db, event)
+          await this.customHandlers?.onInvoicePaid?.(event, {
+            organizationId: result?.organizationId ?? null,
+          })
           break
+        }
 
-        case 'invoice.payment_failed':
-          await handleInvoicePaymentFailed(this.db, event)
-          await this.customHandlers?.onInvoicePaymentFailed?.(event)
+        case 'invoice.payment_failed': {
+          const result = await handleInvoicePaymentFailed(this.db, event)
+          await this.customHandlers?.onInvoicePaymentFailed?.(event, {
+            organizationId: result?.organizationId ?? null,
+          })
           break
+        }
 
         default:
           logger.info('Unhandled webhook event', { type: event.type })
