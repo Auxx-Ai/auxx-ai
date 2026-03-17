@@ -105,7 +105,7 @@ export const useChecklist = (): UseChecklistReturn => {
         const hasMultipleSources = incomingEdges.length > 1
         const isBranchingNode =
           nodeType === NodeType.IF_ELSE ||
-          nodeType === NodeType.TEXT_CLASSIFIER ||
+          (nodeType === NodeType.TEXT_CLASSIFIER && node.data?.outputMode !== 'variable') ||
           outgoingEdges.length > 1
 
         if (hasMultipleSources || isBranchingNode) {

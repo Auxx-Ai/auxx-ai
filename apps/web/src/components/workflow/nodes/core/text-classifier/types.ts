@@ -3,6 +3,8 @@
 import type { TargetBranch } from '~/components/workflow/types'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 
+export type TextClassifierOutputMode = 'branches' | 'variable'
+
 /**
  * Text Classifier node data interface - flattened structure
  */
@@ -12,6 +14,7 @@ export interface TextClassifierNodeData extends BaseNodeData {
   categories: Category[]
   vision: VisionConfig
   instruction: InstructionConfig
+  outputMode?: TextClassifierOutputMode
   _targetBranches?: TargetBranch[]
 }
 

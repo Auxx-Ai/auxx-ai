@@ -64,6 +64,7 @@ import NextStep from '~/components/workflow/ui/next-step'
 import { ReplaceTrigger } from '~/components/workflow/ui/replace-trigger'
 import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
+import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { unifiedNodeRegistry } from '../../unified-registry'
 import { SingleRunInputTab } from '../single-run-input-tab'
 import { SingleRunResultTab } from '../single-run-result-tab'
@@ -90,6 +91,42 @@ interface BasePanelProps {
 const KeyboardShortcut = ({ shortcut }: { shortcut: string }) => (
   <span className='ml-auto pl-2 text-xs text-muted-foreground'>{shortcut}</span>
 )
+
+function AppSettingsTrigger({
+  appId,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof Button> & {
+  appId: string
+}) {
+  const { appInstallations, appConnections } = useExtensionsContext()
+
+  const installation = appInstallations.find((i) => i.app.id === appId)
+  const hasConnectionDef = !!installation?.connectionDefinition
+
+  const connection = appConnections.find((c) => c.appId === appId)
+  const status = connection?.connectionStatus ?? 'not_connected'
+
+  const dotColor = !hasConnectionDef
+    ? null
+    : status === 'connected'
+      ? 'bg-green-500'
+      : status === 'expired'
+        ? 'bg-amber-400'
+        : 'bg-red-500'
+
+  return (
+    <div className='relative'>
+      <Button variant='ghost' size='xs' {...props}>
+        <Settings2 /> App Settings
+      </Button>
+      {dotColor && (
+        <span
+          className={`absolute top-0 right-0 size-2 rounded-full ${dotColor} ring-1 ring-background`}
+        />
+      )}
+    </div>
+  )
+}
 
 /**
  * Base panel component that provides common structure for node nodeDatauration panels
@@ -457,11 +494,7 @@ export const BasePanel = memo<BasePanelProps>(
                     appSlug={appContext.appSlug}
                     installationType={appContext.installationType}
                     returnTo={pathname}
-                    trigger={
-                      <Button variant='ghost' size='xs'>
-                        <Settings2 /> App Settings
-                      </Button>
-                    }
+                    trigger={<AppSettingsTrigger appId={appContext.appId} />}
                   />
                 </div>
               )}

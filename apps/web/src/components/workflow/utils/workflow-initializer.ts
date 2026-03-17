@@ -32,7 +32,10 @@ export const calculateTargetBranches = (
 
     case NodeType.TEXT_CLASSIFIER: {
       const classifierData = nodeData as TextClassifierNodeData
-      // Generate branches from categories + unmatched
+      if (classifierData.outputMode === 'variable') {
+        return [{ id: 'source', name: '', type: 'default' }]
+      }
+      // Branches mode (default): categories + unmatched
       if (classifierData.categories) {
         return [
           ...classifierData.categories.map((cat) => ({

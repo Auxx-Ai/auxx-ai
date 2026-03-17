@@ -90,6 +90,7 @@ export const textClassifierSchema = z.object({
   categories: z.array(categorySchema).min(1),
   vision: visionSchema,
   instruction: instructionSchema,
+  outputMode: z.enum(['branches', 'variable']).default('branches'),
 })
 
 /**
@@ -118,6 +119,7 @@ export const createTextClassifierDefaultData = (): Partial<TextClassifierNodeDat
   ],
   vision: { enabled: false },
   instruction: { enabled: false, text: '' },
+  outputMode: 'branches' as const,
 })
 
 /**
@@ -250,8 +252,8 @@ const getTextClassifierOutputVariables = (data: TextClassifierNodeData, nodeId: 
   return [
     createUnifiedOutputVariable({
       nodeId,
-      path: 'category', // Changed from 'name' to 'path'
-      type: BaseType.STRING,
+      path: 'category',
+      type: categoryNames.length > 0 ? BaseType.ENUM : BaseType.STRING,
       description: 'The matched category name',
       enum: categoryNames.length > 0 ? categoryNames : undefined,
     }),

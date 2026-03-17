@@ -3,6 +3,13 @@
 'use client'
 
 import { Label } from '@auxx/ui/components/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 import { Switch } from '@auxx/ui/components/switch'
 import type React from 'react'
 import { memo } from 'react'
@@ -15,7 +22,7 @@ import { BasePanel } from '../../shared/base/base-panel'
 import { CategoriesList } from './components/categories-list'
 import { textClassifierDefinition } from './schema'
 import { TextClassifierProvider, useTextClassifierContext } from './text-classifier-context'
-import type { TextClassifierNodeData } from './types'
+import type { TextClassifierNodeData, TextClassifierOutputMode } from './types'
 
 /**
  * Props for TextClassifierPanel
@@ -29,7 +36,7 @@ interface TextClassifierPanelProps {
  * Internal panel component that uses the context
  */
 const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, nodeId }) => {
-  const { isReadOnly, updateModel, updateText, updateVision, updateInstruction } =
+  const { isReadOnly, updateModel, updateText, updateVision, updateInstruction, updateOutputMode } =
     useTextClassifierContext()
 
   // Handle text change from editor - no callback needed
@@ -93,6 +100,37 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
 
       {/* Categories Section */}
       <CategoriesList />
+
+      {/* Output Mode Section */}
+      <Section
+        title='Output Mode'
+        description='How the classification result is surfaced to downstream nodes.'
+        actions={
+          <Select
+            value={data.outputMode ?? 'branches'}
+            onValueChange={(v) => updateOutputMode(v as TextClassifierOutputMode)}
+            disabled={isReadOnly}>
+            <SelectTrigger variant='ghost' size='xs'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='branches'>Branches</SelectItem>
+              <SelectItem value='variable'>Variable Only</SelectItem>
+            </SelectContent>
+          </Select>
+        }>
+        {data.outputMode === 'variable' ? (
+          <p className='text-xs text-muted-foreground'>
+            Classification routes through a single output. The matched category name is available as
+            the <code className='font-mono'>category</code> output variable.
+          </p>
+        ) : (
+          <p className='text-xs text-muted-foreground'>
+            Each category gets its own output handle. Connect downstream nodes to the matching
+            branch, plus an <code className='font-mono'>Unmatched</code> fallback.
+          </p>
+        )}
+      </Section>
 
       {/* Advanced Settings Section */}
       <Section

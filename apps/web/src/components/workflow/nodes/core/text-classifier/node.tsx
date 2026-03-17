@@ -15,9 +15,11 @@ import { generatePreviewElements } from './utils/preview-text'
 export const TextClassifierNode = memo<TextClassifierNodeType>(
   ({ id, data, selected, width, height }) => {
     const categories = data?.categories || []
+    const outputMode = data?.outputMode ?? 'branches'
+    const isVariableMode = outputMode === 'variable'
 
-    // Total source handles: categories + unmatched
-    const totalSourceHandles = categories.length + 1
+    // Total source handles depends on mode
+    const totalSourceHandles = isVariableMode ? 1 : categories.length + 1
 
     // Augment data with handle count for collapsed height calculation
     const augmentedData = { ...data, _sourceHandleCount: totalSourceHandles }
@@ -41,39 +43,56 @@ export const TextClassifierNode = memo<TextClassifierNodeType>(
               </div>
             )}
 
-            {/* Category connections */}
-            {categories.map((category, index) => (
-              <div
-                key={category.id}
-                className='relative flex items-center justify-between h-6 rounded-md bg-muted'>
-                <div className='text-xs font-medium text-primary-500 truncate ms-auto mr-2'>
-                  {category.name}
+            {/* Category connections or variable mode single handle */}
+            {isVariableMode ? (
+              <div className='relative flex items-center justify-between h-6 rounded-md bg-muted'>
+                <div className='text-xs font-medium text-primary-500 truncate ms-2'>category</div>
+                <div className='text-xs text-muted-foreground mr-6'>
+                  <span className='bg-primary-100 text-primary-600 rounded px-1'>var</span>
                 </div>
                 <NodeSourceHandle
                   id={id}
                   data={{ ...augmentedData, selected }}
-                  handleId={category.id}
+                  handleId='source'
                   handleClassName='!top-1/2 !-right-[12px]'
-                  handleIndex={index}
-                  handleTotal={totalSourceHandles}
+                  handleIndex={0}
+                  handleTotal={1}
                 />
               </div>
-            ))}
-
-            {/* Unmatched connection */}
-            <div className='relative flex items-center justify-end p-1 bg-bad-50 rounded-md'>
-              <div className='text-xs rounded-md px-1 font-semibold uppercase bg-bad-100 text-bad-500 whitespace-pre-line'>
-                Unmatched
-              </div>
-              <NodeSourceHandle
-                id={id}
-                data={{ ...augmentedData, selected }}
-                handleId='unmatched'
-                handleClassName='!top-1/2 !-right-[12px]'
-                handleIndex={categories.length}
-                handleTotal={totalSourceHandles}
-              />
-            </div>
+            ) : (
+              <>
+                {categories.map((category, index) => (
+                  <div
+                    key={category.id}
+                    className='relative flex items-center justify-between h-6 rounded-md bg-muted'>
+                    <div className='text-xs font-medium text-primary-500 truncate ms-auto mr-2'>
+                      {category.name}
+                    </div>
+                    <NodeSourceHandle
+                      id={id}
+                      data={{ ...augmentedData, selected }}
+                      handleId={category.id}
+                      handleClassName='!top-1/2 !-right-[12px]'
+                      handleIndex={index}
+                      handleTotal={totalSourceHandles}
+                    />
+                  </div>
+                ))}
+                <div className='relative flex items-center justify-end p-1 bg-bad-50 rounded-md'>
+                  <div className='text-xs rounded-md px-1 font-semibold uppercase bg-bad-100 text-bad-500 whitespace-pre-line'>
+                    Unmatched
+                  </div>
+                  <NodeSourceHandle
+                    id={id}
+                    data={{ ...augmentedData, selected }}
+                    handleId='unmatched'
+                    handleClassName='!top-1/2 !-right-[12px]'
+                    handleIndex={categories.length}
+                    handleTotal={totalSourceHandles}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
       </BaseNode>

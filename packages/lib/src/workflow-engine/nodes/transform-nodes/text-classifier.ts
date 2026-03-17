@@ -33,6 +33,7 @@ interface TextClassifierConfig {
     text: string // Preprocessed text
     editorContent?: string // Tiptap JSON
   }
+  outputMode?: 'branches' | 'variable'
 }
 
 /**
@@ -112,8 +113,11 @@ export class TextClassifierProcessor extends BaseAiNodeProcessor {
       confidence: classification.confidence,
     })
 
-    // Determine output handle based on category using utility
-    const outputHandle = getOutputHandleForCategory(config.categories, classification.category)
+    // In variable mode, always route to single 'source' handle
+    const outputHandle =
+      config.outputMode === 'variable'
+        ? 'source'
+        : getOutputHandleForCategory(config.categories, classification.category)
 
     return {
       status: NodeRunningStatus.Succeeded,

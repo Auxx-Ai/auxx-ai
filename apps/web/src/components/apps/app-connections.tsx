@@ -47,9 +47,10 @@ import { api } from '~/trpc/react'
 
 type Props = {
   app: RouterOutputs['apps']['getBySlug']
+  returnTo?: string
 }
 
-function AppConnections({ app }: Props) {
+function AppConnections({ app, returnTo }: Props) {
   const searchParams = useSearchParams()
   const success = searchParams.get('success') || searchParams.get('oauth_success')
   const utils = api.useUtils()
@@ -158,7 +159,8 @@ function AppConnections({ app }: Props) {
       setVariableValues({})
       setVariableDialogOpen(true)
     } else {
-      window.location.href = `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${connectionType}&connectionId=${connectionId}`
+      const returnToParam = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''
+      window.location.href = `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${connectionType}&connectionId=${connectionId}${returnToParam}`
     }
   }
 
@@ -180,6 +182,7 @@ function AppConnections({ app }: Props) {
     if (reconnectConnectionId) {
       params.set('connectionId', reconnectConnectionId)
     }
+    if (returnTo) params.set('returnTo', returnTo)
     for (const [key, value] of Object.entries(variableValues)) {
       if (value) params.set(`var_${key}`, value)
     }
@@ -226,8 +229,9 @@ function AppConnections({ app }: Props) {
   }
 
   // Build "Add Connection" URL (new flow — no connectionId)
+  const returnToParam = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''
   const addConnectionUrl = isOAuth
-    ? `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${connectionType}`
+    ? `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${connectionType}${returnToParam}`
     : null
 
   const StatusIcon = ({ status }: { status: string }) => {
