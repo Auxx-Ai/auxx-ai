@@ -3,10 +3,7 @@
  * Subscription-related types for billing package.
  */
 
-import type { PlanSubscription } from '@auxx/database'
-
-/** Inferred type from PlanSubscription table */
-type PlanSubscriptionType = typeof PlanSubscription.$inferSelect
+// SubscriptionWithPlan is now exported from @auxx/types/billing
 
 /** Subscription creation input */
 export interface CreateSubscriptionInput {
@@ -69,13 +66,4 @@ export interface UpdateSubscriptionDirectResult {
   clientSecret?: string
   immediate?: boolean
   scheduledFor?: Date
-}
-
-/** Subscription with plan details */
-export interface SubscriptionWithPlan extends PlanSubscriptionType {
-  planDetails?: {
-    name: string
-    limits?: Record<string, number>
-    priceId?: string
-  }
 }

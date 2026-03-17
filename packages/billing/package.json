@@ -21,6 +21,7 @@
   "dependencies": {
     "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
+    "@auxx/types": "workspace:*",
     "@auxx/deployment": "workspace:*",
     "@auxx/logger": "workspace:*",
     "drizzle-orm": "catalog:",

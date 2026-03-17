@@ -7,6 +7,7 @@ import { WebhookService } from '@auxx/billing'
 import { configService } from '@auxx/credentials'
 import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -41,17 +42,41 @@ export async function POST(req: NextRequest) {
       database,
       configService.get<string>('STRIPE_WEBHOOK_SECRET')!,
       {
-        /**
-         * Logs successful invoice payments for observability.
-         */
-        onInvoicePaid: async (event) => {
-          logger.info('Invoice paid event processed', { eventId: event.id })
+        onCheckoutSessionCompleted: async (event, ctx) => {
+          if (ctx.organizationId) {
+            await onCacheEvent('plan.subscribed', { orgId: ctx.organizationId })
+          }
+          logger.info('Checkout session completed, cache invalidated', { eventId: event.id })
         },
-        /**
-         * Warns about failed invoice payments so they can be retried manually.
-         */
-        onInvoicePaymentFailed: async (event) => {
-          logger.warn('Invoice payment failed', { eventId: event.id })
+        onSubscriptionCreated: async (event, ctx) => {
+          if (ctx.organizationId) {
+            await onCacheEvent('plan.subscribed', { orgId: ctx.organizationId })
+          }
+          logger.info('Subscription created, cache invalidated', { eventId: event.id })
+        },
+        onSubscriptionUpdated: async (event, ctx) => {
+          if (ctx.organizationId) {
+            await onCacheEvent('plan.changed', { orgId: ctx.organizationId })
+          }
+          logger.info('Subscription updated, cache invalidated', { eventId: event.id })
+        },
+        onSubscriptionDeleted: async (event, ctx) => {
+          if (ctx.organizationId) {
+            await onCacheEvent('plan.canceled', { orgId: ctx.organizationId })
+          }
+          logger.info('Subscription deleted, cache invalidated', { eventId: event.id })
+        },
+        onInvoicePaid: async (event, ctx) => {
+          if (ctx.organizationId) {
+            await onCacheEvent('plan.changed', { orgId: ctx.organizationId })
+          }
+          logger.info('Invoice paid, cache invalidated', { eventId: event.id })
+        },
+        onInvoicePaymentFailed: async (event, ctx) => {
+          if (ctx.organizationId) {
+            await onCacheEvent('plan.changed', { orgId: ctx.organizationId })
+          }
+          logger.warn('Invoice payment failed, cache invalidated', { eventId: event.id })
         },
       },
       handlePlanDowngrade

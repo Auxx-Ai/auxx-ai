@@ -23,7 +23,10 @@ const logger = createScopedLogger('webhook:subscription-deleted')
  * @returns Promise that resolves once the local subscription (if found) is marked as canceled.
  * @throws Error when database interactions or input parsing fails, allowing the caller to handle retries.
  */
-export async function handleSubscriptionDeleted(db: Database, event: Stripe.Event): Promise<void> {
+export async function handleSubscriptionDeleted(
+  db: Database,
+  event: Stripe.Event
+): Promise<{ organizationId: string | null }> {
   try {
     const subscriptionDeleted = event.data.object as Stripe.Subscription
     const subscriptionId = subscriptionDeleted.id
@@ -37,7 +40,7 @@ export async function handleSubscriptionDeleted(db: Database, event: Stripe.Even
       logger.warn('Subscription not found in database', {
         stripeSubscriptionId: subscriptionId,
       })
-      return
+      return { organizationId: null }
     }
 
     // Mark as canceled
@@ -53,6 +56,8 @@ export async function handleSubscriptionDeleted(db: Database, event: Stripe.Even
     logger.info('Subscription deleted', {
       subscriptionId: subscription.id,
     })
+
+    return { organizationId: subscription.organizationId }
   } catch (error: any) {
     logger.error('Stripe webhook failed in subscription deletion', { error: error.message })
     throw error

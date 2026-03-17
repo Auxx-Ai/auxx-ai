@@ -23,7 +23,10 @@ const logger = createScopedLogger('webhook:invoice-payment-failed')
  * @param event Stripe webhook event carrying the failed invoice payload.
  * @throws Error Propagates any thrown error so upstream handlers can manage retries.
  */
-export async function handleInvoicePaymentFailed(db: Database, event: Stripe.Event): Promise<void> {
+export async function handleInvoicePaymentFailed(
+  db: Database,
+  event: Stripe.Event
+): Promise<{ organizationId: string | null }> {
   try {
     const invoice = event.data.object as Stripe.Invoice
     const stripeInvoiceId = invoice.id!
@@ -35,7 +38,7 @@ export async function handleInvoicePaymentFailed(db: Database, event: Stripe.Eve
       logger.warn('Invoice not associated with subscription', {
         stripeInvoiceId,
       })
-      return
+      return { organizationId: null }
     }
 
     // Extract subscription ID (can be string or object)
@@ -52,7 +55,7 @@ export async function handleInvoicePaymentFailed(db: Database, event: Stripe.Eve
         stripeSubscriptionId,
         stripeInvoiceId,
       })
-      return
+      return { organizationId: null }
     }
 
     // Check if invoice exists
@@ -103,6 +106,8 @@ export async function handleInvoicePaymentFailed(db: Database, event: Stripe.Eve
       invoiceId: stripeInvoiceId,
       attemptCount: invoice.attempt_count,
     })
+
+    return { organizationId: localSub.organizationId }
   } catch (error: any) {
     logger.error('Stripe webhook failed in invoice payment failed', { error: error.message })
     throw error
