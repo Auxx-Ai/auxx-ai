@@ -1,6 +1,6 @@
 // packages/lib/src/cache/csrf.ts
 
-import { getTokenCache } from './index'
+import { getTokenCache } from './singletons'
 
 const CSRF_KEY_PREFIX = 'oauth_csrf'
 

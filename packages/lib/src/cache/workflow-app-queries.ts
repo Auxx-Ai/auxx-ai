@@ -1,7 +1,7 @@
 // packages/lib/src/cache/workflow-app-queries.ts
 
-import { getOrgCache } from '.'
 import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
+import { getOrgCache } from './singletons'
 
 /**
  * Get a single enabled workflow app by ID from cache.

@@ -1,10 +1,11 @@
 // apps/api/src/routes/organizations/apps.ts
 
+import { database } from '@auxx/database'
+import { getAppWithInstallationStatus, getAvailableApps } from '@auxx/lib/apps'
+import { getCachedAppBySlug, resolveAppSlug } from '@auxx/lib/cache'
 import { getInstalledApps } from '@auxx/services/app-installations'
 import { listDeployments } from '@auxx/services/app-versions'
 import {
-  getAppWithInstallationStatus,
-  getAvailableApps,
   installApp,
   installAppRequestSchema,
   listAppEventLogs,
@@ -148,9 +149,10 @@ apps.get('/', async (c) => {
 
   const { category, search, limit, offset } = queryResult.data
 
-  // Get available apps
+  // Get available apps (uses global published apps cache)
   const result = await getAvailableApps({
     organizationId,
+    db: database,
     filters: {
       category,
       searchQuery: search,
@@ -161,13 +163,7 @@ apps.get('/', async (c) => {
     },
   })
 
-  if (result.isErr()) {
-    const error = result.error
-    const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
-    return c.json(errorResponse(error.code, error.message, error), statusCode)
-  }
-
-  return c.json(successResponse(result.value))
+  return c.json(successResponse(result))
 })
 
 /**
@@ -212,13 +208,14 @@ apps.get('/:appSlug', async (c) => {
   const appSlug = c.req.param('appSlug')
   const organizationId = c.get('organizationId')
 
-  // Get app details with installation status
+  // Get app details with installation status (uses global app slug cache)
   const result = await getAppWithInstallationStatus({
     appSlug,
     organizationId,
+    db: database,
   })
 
-  if (result.isErr()) {
+  if (!result.ok) {
     const error = result.error
     const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
     return c.json(errorResponse(error.code, error.message, error), statusCode)
@@ -249,12 +246,18 @@ apps.post('/:appSlug/install', requireOrganizationRole(['ADMIN', 'OWNER']), asyn
 
   const { type, versionId } = bodyResult.data
 
+  // Resolve slug from cache
+  const cachedApp = await getCachedAppBySlug(appSlug)
+  if (!cachedApp) {
+    return c.json(errorResponse('APP_NOT_FOUND', `App "${appSlug}" not found`), 404)
+  }
+
   // Install app
   const result = await installApp({
-    appSlug,
+    appId: cachedApp.id,
     organizationId,
     installationType: type!,
-    versionId,
+    deploymentId: versionId,
     installedById: userId,
   })
 
@@ -288,9 +291,15 @@ apps.delete('/:appSlug/uninstall', requireOrganizationRole(['ADMIN', 'OWNER']), 
 
   const { type: installationType } = queryResult.data
 
+  // Resolve slug from cache
+  const cachedAppForUninstall = await getCachedAppBySlug(appSlug)
+  if (!cachedAppForUninstall) {
+    return c.json(errorResponse('APP_NOT_FOUND', `App "${appSlug}" not found`), 404)
+  }
+
   // Uninstall app
   const result = await uninstallApp({
-    appSlug,
+    appId: cachedAppForUninstall.id,
     organizationId,
     uninstalledById: userId,
     installationType,
@@ -311,23 +320,17 @@ apps.delete('/:appSlug/uninstall', requireOrganizationRole(['ADMIN', 'OWNER']), 
  */
 apps.get('/:appSlug/deployments', async (c) => {
   const appSlug = c.req.param('appSlug')
-  const organizationId = c.get('organizationId')
   const deploymentType = c.req.query('type') as 'development' | 'production' | undefined
 
-  // First, resolve app slug to app ID
-  const appResult = await getAppWithInstallationStatus({
-    appSlug,
-    organizationId,
-  })
+  // Resolve app slug from cache
+  const appId = await resolveAppSlug(appSlug)
 
-  if (appResult.isErr()) {
-    const error = appResult.error
-    const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
-    return c.json(errorResponse(error.code, error.message, error), statusCode)
+  if (!appId) {
+    return c.json(errorResponse('APP_NOT_FOUND', `App "${appSlug}" not found`), 404)
   }
 
   const result = await listDeployments({
-    appId: appResult.value.app.id,
+    appId,
     deploymentType,
   })
 
@@ -380,7 +383,6 @@ apps.get('/:appSlug/deployments', async (c) => {
  */
 apps.get('/:appSlug/logs', async (c) => {
   const appSlug = c.req.param('appSlug')
-  const organizationId = c.get('organizationId')
   const organizationHandle = c.req.param('handle')
 
   // Parse and validate query parameters
@@ -395,19 +397,14 @@ apps.get('/:appSlug/logs', async (c) => {
 
   const { cursor, limit = 100 } = queryResult.data
 
-  // First, get app to verify it exists and get appId
-  const appResult = await getAppWithInstallationStatus({
-    appSlug,
-    organizationId,
-  })
+  // Resolve app slug from cache
+  const appId = await resolveAppSlug(appSlug)
 
-  if (appResult.isErr()) {
-    const error = appResult.error
-    const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
-    return c.json(errorResponse(error.code, error.message, error), statusCode)
+  if (!appId) {
+    return c.json(errorResponse('APP_NOT_FOUND', `App "${appSlug}" not found`), 404)
   }
 
-  const app = appResult.value.app
+  const app = { id: appId }
 
   // Get app event logs using existing service
   // If cursor is provided, use it as startTimestamp to get newer logs (for streaming)

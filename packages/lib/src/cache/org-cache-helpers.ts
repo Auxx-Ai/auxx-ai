@@ -3,8 +3,8 @@
 import type { CustomFieldEntity } from '@auxx/database/types'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { Resource } from '../resources/registry/types'
-import { getOrgCache } from './index'
 import type { CachedGroup, OrgMemberInfo } from './org-cache-keys'
+import { getOrgCache } from './singletons'
 
 /**
  * Get a cached resource by ID (system TableId or custom entity UUID).

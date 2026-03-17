@@ -74,7 +74,7 @@ export type AvailableAppsResponse = z.infer<typeof availableAppsResponseSchema>
  * Install app input schema
  */
 export const installAppInputSchema = z.object({
-  appSlug: z.string().min(1),
+  appId: z.string().min(1),
   organizationId: z.string().min(1),
   installationType: z.enum(['development', 'production']).default('development'),
   deploymentId: z.string().optional(),

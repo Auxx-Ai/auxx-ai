@@ -1,8 +1,8 @@
 // packages/lib/src/cache/invalidate.ts
 
-import { getAppCache, getOrgCache, getUserCache } from './index'
 import type { CacheEvent } from './invalidation-graph'
 import { INVALIDATION_GRAPH, isMixedMapping, isOrgOnlyMapping } from './invalidation-graph'
+import { getAppCache, getOrgCache, getUserCache } from './singletons'
 
 /**
  * Declarative cache invalidation helper.
@@ -62,4 +62,14 @@ export async function invalidatePlans(): Promise<void> {
 /** Invalidate and recompute cached workflow templates (call after template admin mutations) */
 export async function invalidateWorkflowTemplates(): Promise<void> {
   await getAppCache().invalidateAndRecompute(['workflowTemplates'])
+}
+
+/** Invalidate and recompute global app catalog caches (slug map + published apps) */
+export async function invalidateAppCatalog(): Promise<void> {
+  await getAppCache().invalidateAndRecompute(['appSlugMap', 'publishedApps'])
+}
+
+/** Invalidate only the slug map (for mutations that don't affect published state) */
+export async function invalidateAppSlugMap(): Promise<void> {
+  await getAppCache().invalidateAndRecompute(['appSlugMap'])
 }

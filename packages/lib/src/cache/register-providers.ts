@@ -2,6 +2,7 @@
 
 import type { AppCacheService } from './app-cache-service'
 import type { OrganizationCacheService } from './org-cache-service'
+import { appSlugMapProvider } from './providers/app-slug-map-provider'
 import { channelProvidersProvider } from './providers/channel-providers-provider'
 import { customFieldsProvider } from './providers/custom-fields-provider'
 import { entityDefSlugsProvider } from './providers/entity-def-slugs-provider'
@@ -16,6 +17,7 @@ import { orgSettingsProvider } from './providers/org-settings-provider'
 import { overagesProvider } from './providers/overages-provider'
 import { planMapProvider } from './providers/plan-map-provider'
 import { plansProvider } from './providers/plans-provider'
+import { publishedAppsProvider } from './providers/published-apps-provider'
 import { resourcesProvider } from './providers/resources-provider'
 import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
@@ -68,4 +70,6 @@ export function registerAllProviders(
   appCache.register('plans', plansProvider)
   appCache.register('planMap', planMapProvider)
   appCache.register('workflowTemplates', workflowTemplatesProvider)
+  appCache.register('appSlugMap', appSlugMapProvider)
+  appCache.register('publishedApps', publishedAppsProvider)
 }

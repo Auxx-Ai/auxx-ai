@@ -9,7 +9,7 @@ import { fromDatabase } from '../shared/utils'
  * Input parameters for uninstallApp
  */
 export interface UninstallAppInput {
-  appSlug: string
+  appId: string
   organizationId: string
   uninstalledById: string
   installationType?: 'development' | 'production'
@@ -35,12 +35,12 @@ export interface UninstallAppOutput {
  * @returns Result with uninstall confirmation
  */
 export async function uninstallApp(input: UninstallAppInput) {
-  const { appSlug, organizationId, uninstalledById, installationType } = input
+  const { appId, organizationId, uninstalledById, installationType } = input
 
   // Find app
   const appResult = await fromDatabase(
     database.query.App.findFirst({
-      where: (apps, { eq }) => eq(apps.slug, appSlug),
+      where: (apps, { eq }) => eq(apps.id, appId),
     }),
     'get-app-for-uninstall'
   )
@@ -54,8 +54,8 @@ export async function uninstallApp(input: UninstallAppInput) {
   if (!app) {
     return err({
       code: 'APP_NOT_FOUND' as const,
-      message: `App "${appSlug}" not found`,
-      appSlug,
+      message: `App "${appId}" not found`,
+      appId,
     })
   }
 
@@ -90,9 +90,9 @@ export async function uninstallApp(input: UninstallAppInput) {
     return err({
       code: 'APP_NOT_FOUND' as const,
       message: installationType
-        ? `App "${appSlug}" is not installed as ${installationType}`
-        : `App "${appSlug}" is not installed`,
-      appSlug,
+        ? `App "${app.slug}" is not installed as ${installationType}`
+        : `App "${app.slug}" is not installed`,
+      appId,
     })
   }
 

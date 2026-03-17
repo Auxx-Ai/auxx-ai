@@ -6,8 +6,8 @@ import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
 import type { FeatureDefinition, FeatureLimit, FeatureMapObject } from '../../permissions/types'
 import { DEFAULT_FREE_PLAN_FEATURES, FeatureKey } from '../../permissions/types'
-import { getAppCache } from '../index'
 import type { CacheProvider } from '../org-cache-provider'
+import { getAppCache } from '../singletons'
 
 const logger = createScopedLogger('features-provider')
 

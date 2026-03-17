@@ -3,14 +3,19 @@
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { schema } from '@auxx/database'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { getDeveloperApp } from '@auxx/lib/apps'
+import {
+  getCachedAppBySlug,
+  invalidateAppCatalog,
+  invalidateAppSlugMap,
+  onCacheEvent,
+  resolveAppSlug,
+} from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import {
-  checkAppSlugExists,
   checkSlugInputSchema,
   createApp,
   generateClientSecret,
-  getDeveloperApp,
   registerAppAsOAuthClient,
   unregisterAppOAuthClient,
   updateApp,
@@ -34,19 +39,8 @@ export const appsRouter = createTRPCRouter({
    * Check if app slug exists
    */
   slugExists: protectedProcedure.input(checkSlugInputSchema).query(async ({ input }) => {
-    const result = await checkAppSlugExists({ slug: input.slug })
-
-    if (result.isErr()) {
-      const error = result.error
-      logger.error('Failed to check slug exists', { error, slug: input.slug })
-
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: error.message,
-      })
-    }
-
-    return result.value
+    const id = await resolveAppSlug(input.slug)
+    return { exists: !!id, id: id ?? null }
   }),
 
   /**
@@ -56,9 +50,10 @@ export const appsRouter = createTRPCRouter({
     const result = await getDeveloperApp({
       slug: input.slug,
       userId: ctx.session.userId,
+      db: ctx.db,
     })
 
-    if (result.isErr()) {
+    if (!result.ok) {
       const error = result.error
       logger.error('Failed to get developer app', { error, slug: input.slug })
 
@@ -119,6 +114,7 @@ export const appsRouter = createTRPCRouter({
       // Invalidate cache for all members of the developer account
       const dehydrationService = new BuildDehydrationService(ctx.db)
       await dehydrationService.invalidateDeveloperAccount(result.value.app.developerAccountId)
+      await invalidateAppCatalog()
 
       return result.value
     }),
@@ -196,6 +192,7 @@ export const appsRouter = createTRPCRouter({
       // Invalidate cache for all members of the developer account
       const dehydrationService = new BuildDehydrationService(ctx.db)
       await dehydrationService.invalidateDeveloperAccount(result.value.app.developerAccountId)
+      await invalidateAppCatalog()
 
       return result.value
     }),
@@ -249,6 +246,7 @@ export const appsRouter = createTRPCRouter({
       // Invalidate cache for all members of the developer account
       const dehydrationService = new BuildDehydrationService(ctx.db)
       await dehydrationService.invalidateDeveloperAccount(result.value.app.developerAccountId)
+      await invalidateAppCatalog()
 
       return result.value
     }),
@@ -259,8 +257,13 @@ export const appsRouter = createTRPCRouter({
   getOAuthCredentials: protectedProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {
+      const cachedApp = await getCachedAppBySlug(input.slug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'App not found' })
+      }
+
       const app = await ctx.db.query.App.findFirst({
-        where: (apps, { eq }) => eq(apps.slug, input.slug),
+        where: (apps, { eq }) => eq(apps.id, cachedApp.id),
         with: {
           oauthApplication: true,
         },
@@ -320,8 +323,13 @@ export const appsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const cachedApp = await getCachedAppBySlug(input.slug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'App not found' })
+      }
+
       const app = await ctx.db.query.App.findFirst({
-        where: (apps, { eq }) => eq(apps.slug, input.slug),
+        where: (apps, { eq }) => eq(apps.id, cachedApp.id),
       })
 
       if (!app) {
@@ -377,6 +385,7 @@ export const appsRouter = createTRPCRouter({
       // Invalidate cache
       const dehydrationService = new BuildDehydrationService(ctx.db)
       await dehydrationService.invalidateDeveloperAccount(app.developerAccountId)
+      await invalidateAppSlugMap()
 
       return result.value
     }),
@@ -387,8 +396,13 @@ export const appsRouter = createTRPCRouter({
   disableOAuth: protectedProcedure
     .input(z.object({ slug: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const cachedApp = await getCachedAppBySlug(input.slug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'App not found' })
+      }
+
       const app = await ctx.db.query.App.findFirst({
-        where: (apps, { eq }) => eq(apps.slug, input.slug),
+        where: (apps, { eq }) => eq(apps.id, cachedApp.id),
       })
 
       if (!app) {
@@ -437,6 +451,7 @@ export const appsRouter = createTRPCRouter({
       // Invalidate cache
       const dehydrationService = new BuildDehydrationService(ctx.db)
       await dehydrationService.invalidateDeveloperAccount(app.developerAccountId)
+      await invalidateAppSlugMap()
 
       return { success: true }
     }),
@@ -452,8 +467,13 @@ export const appsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const cachedApp = await getCachedAppBySlug(input.slug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'App not found' })
+      }
+
       const app = await ctx.db.query.App.findFirst({
-        where: (apps, { eq }) => eq(apps.slug, input.slug),
+        where: (apps, { eq }) => eq(apps.id, cachedApp.id),
       })
 
       if (!app) {
@@ -502,8 +522,13 @@ export const appsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const cachedApp = await getCachedAppBySlug(input.slug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'App not found' })
+      }
+
       const app = await ctx.db.query.App.findFirst({
-        where: (apps, { eq }) => eq(apps.slug, input.slug),
+        where: (apps, { eq }) => eq(apps.id, cachedApp.id),
       })
 
       if (!app) {
@@ -534,6 +559,7 @@ export const appsRouter = createTRPCRouter({
       // Invalidate cache
       const dehydrationService = new BuildDehydrationService(ctx.db)
       await dehydrationService.invalidateDeveloperAccount(app.developerAccountId)
+      await invalidateAppSlugMap()
 
       return { success: true }
     }),
@@ -544,8 +570,13 @@ export const appsRouter = createTRPCRouter({
   regenerateOAuthClientSecret: protectedProcedure
     .input(z.object({ slug: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const cachedApp = await getCachedAppBySlug(input.slug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'App not found' })
+      }
+
       const app = await ctx.db.query.App.findFirst({
-        where: (apps, { eq }) => eq(apps.slug, input.slug),
+        where: (apps, { eq }) => eq(apps.id, cachedApp.id),
       })
 
       if (!app) {

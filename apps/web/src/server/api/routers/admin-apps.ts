@@ -2,7 +2,13 @@
 
 import { database, schema } from '@auxx/database'
 import { AdminService } from '@auxx/lib/admin'
-import { invalidateOrgsByAppId, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
+import {
+  invalidateAppCatalog,
+  invalidateOrgsByAppId,
+  invalidateOrgsByDeploymentId,
+  onCacheEvent,
+  resolveAppSlug,
+} from '@auxx/lib/cache'
 import {
   adminApproveDeployment,
   adminDeleteDeployment,
@@ -157,6 +163,7 @@ export const adminAppsRouter = createTRPCRouter({
       }
 
       await invalidateOrgsByDeploymentId(input.deploymentId, database)
+      await invalidateAppCatalog()
 
       return { success: true }
     }),
@@ -193,6 +200,7 @@ export const adminAppsRouter = createTRPCRouter({
       }
 
       await invalidateOrgsByDeploymentId(input.deploymentId, database)
+      await invalidateAppCatalog()
 
       return { success: true }
     }),
@@ -227,6 +235,7 @@ export const adminAppsRouter = createTRPCRouter({
       }
 
       await invalidateOrgsByDeploymentId(input.deploymentId, database)
+      await invalidateAppCatalog()
 
       return { success: true }
     }),
@@ -261,6 +270,7 @@ export const adminAppsRouter = createTRPCRouter({
       // Fan-out invalidation using the pre-queried org IDs
       const orgIds = [...new Set(affectedOrgs.map((a) => a.organizationId))]
       await Promise.all(orgIds.map((orgId) => onCacheEvent('app.deployment.changed', { orgId })))
+      await invalidateAppCatalog()
 
       return { success: true }
     }),
@@ -348,17 +358,16 @@ export const adminAppsRouter = createTRPCRouter({
         slugOverrides: input.slugOverrides,
       })
 
+      // Invalidate app catalog first so cache is fresh for slug resolution below
+      await invalidateAppCatalog()
+
       // Invalidate installedApps for all orgs that have any imported app installed
       // (connection definitions may have changed during import)
       for (const app of result.apps) {
         if (app.connectionDefinitions.length > 0) {
-          // Look up the appId by slug to fan-out invalidation
-          const appRow = await database.query.App.findFirst({
-            where: (t, { eq }) => eq(t.slug, app.slug),
-            columns: { id: true },
-          })
-          if (appRow) {
-            await invalidateOrgsByAppId(appRow.id, database)
+          const appId = await resolveAppSlug(app.slug)
+          if (appId) {
+            await invalidateOrgsByAppId(appId, database)
           }
         }
       }
@@ -380,6 +389,8 @@ export const adminAppsRouter = createTRPCRouter({
         .update(schema.App)
         .set({ publicationStatus: 'unpublished', updatedAt: new Date() })
         .where(eq(schema.App.id, input.appId))
+
+      await invalidateAppCatalog()
 
       return { success: true }
     }),

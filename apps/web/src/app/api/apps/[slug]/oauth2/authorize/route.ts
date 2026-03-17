@@ -3,6 +3,7 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import type { OAuth2Features } from '@auxx/database'
 import { database as db } from '@auxx/database'
+import { resolveAppSlug } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -64,17 +65,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const isGlobal = connectionType === 'organization'
 
   try {
-    // Get app by slug first
-    const app = await db.query.App.findFirst({
-      where: (a, { eq }) => eq(a.slug, slug),
-      columns: { id: true, slug: true },
-    })
+    // Resolve app slug from cache
+    const appId = await resolveAppSlug(slug)
 
-    if (!app) {
+    if (!appId) {
       return NextResponse.json({ error: 'App not found' }, { status: 404 })
     }
-
-    const appId = app.id
 
     // Get installation to verify it exists and belongs to org
     const installation = await db.query.AppInstallation.findFirst({

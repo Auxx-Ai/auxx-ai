@@ -2,6 +2,7 @@
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
+import { resolveAppSlug } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields, saveAppConnection } from '@auxx/services/app-connections'
@@ -78,17 +79,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   try {
-    // Get app by slug to get appId
-    const app = await db.query.App.findFirst({
-      where: (a, { eq }) => eq(a.slug, slug),
-      columns: { id: true },
-    })
+    // Resolve app slug from cache
+    const appId = await resolveAppSlug(slug)
 
-    if (!app) {
+    if (!appId) {
       return new NextResponse('App not found', { status: 404 })
     }
-
-    const appId = app.id
 
     // Validate state and retrieve metadata
     const redis = await getRedisClient()
