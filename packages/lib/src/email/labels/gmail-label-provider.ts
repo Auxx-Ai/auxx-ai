@@ -16,12 +16,10 @@ export class GmailLabelProvider implements LabelProvider {
   private client: any
   private organizationId: string
   private integrationId: string
-  private oauthService: GoogleOAuthService
 
   constructor(organizationId: string, integrationId: string) {
     this.organizationId = organizationId
     this.integrationId = integrationId
-    this.oauthService = GoogleOAuthService.getInstance()
   }
 
   async initialize(): Promise<void> {
@@ -41,7 +39,11 @@ export class GmailLabelProvider implements LabelProvider {
       const tokens = await ChannelTokenAccessor.getTokens(this.integrationId)
 
       // Get authenticated client from the OAuth service
-      this.client = this.oauthService.getAuthenticatedClient(tokens)
+      const { client: authClient } = await GoogleOAuthService.getAuthenticatedClientForOrg(
+        this.organizationId,
+        tokens
+      )
+      this.client = authClient
 
       // Initialize Gmail API with the authenticated client
       this.gmail = google.gmail({ version: 'v1', auth: this.client })
@@ -53,7 +55,7 @@ export class GmailLabelProvider implements LabelProvider {
 
   async refreshAccessToken(): Promise<void> {
     try {
-      await this.oauthService.refreshTokens(this.integrationId)
+      await GoogleOAuthService.refreshTokens(this.integrationId)
 
       // Re-initialize with refreshed token
       await this.initialize()

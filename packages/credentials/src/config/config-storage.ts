@@ -1,7 +1,7 @@
 // packages/credentials/src/config/config-storage.ts
 
 import type { KeyValuePairEntity } from '@auxx/database'
-import { database as db, schema } from '@auxx/database'
+import { database as db, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { CredentialService } from '../service/credential-service'
 import { getConfigDefinition } from './config-registry'
@@ -106,6 +106,61 @@ export class ConfigStorage {
           eq(schema.KeyValuePair.key, key),
           eq(schema.KeyValuePair.type, CONFIG_TYPE),
           isNull(schema.KeyValuePair.organizationId),
+          isNull(schema.KeyValuePair.userId)
+        )
+      )
+  }
+
+  /**
+   * Set (upsert) an org-level config override.
+   * Uses unique index: (key, organizationId) WHERE userId IS NULL
+   */
+  async setForOrg(
+    organizationId: string,
+    key: string,
+    value: unknown,
+    updatedById?: string,
+    tx?: Transaction
+  ): Promise<void> {
+    const definition = getConfigDefinition(key)
+    const shouldEncrypt = definition?.isSensitive ?? false
+    const storedValue = shouldEncrypt ? CredentialService.encrypt({ value } as any) : value
+
+    await (tx ?? db)
+      .insert(schema.KeyValuePair)
+      .values({
+        key,
+        value: storedValue as any,
+        type: CONFIG_TYPE,
+        isEncrypted: shouldEncrypt ? 'true' : 'false',
+        organizationId,
+        userId: null,
+        updatedById,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [schema.KeyValuePair.key, schema.KeyValuePair.organizationId],
+        targetWhere: sql`"userId" IS NULL`,
+        set: {
+          value: storedValue as any,
+          isEncrypted: shouldEncrypt ? 'true' : 'false',
+          updatedById,
+          updatedAt: new Date(),
+        },
+      })
+  }
+
+  /**
+   * Delete an org-level config override (revert to system/env/default).
+   */
+  async deleteForOrg(organizationId: string, key: string, tx?: Transaction): Promise<void> {
+    await (tx ?? db)
+      .delete(schema.KeyValuePair)
+      .where(
+        and(
+          eq(schema.KeyValuePair.key, key),
+          eq(schema.KeyValuePair.type, CONFIG_TYPE),
+          eq(schema.KeyValuePair.organizationId, organizationId),
           isNull(schema.KeyValuePair.userId)
         )
       )

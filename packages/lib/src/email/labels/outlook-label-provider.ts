@@ -18,12 +18,10 @@ export class OutlookLabelProvider implements LabelProvider {
   private client: Client | null = null
   private organizationId: string
   private integrationId: string
-  private oauthService: OutlookOAuthService
 
   constructor(organizationId: string, integrationId: string) {
     this.organizationId = organizationId
     this.integrationId = integrationId
-    this.oauthService = OutlookOAuthService.getInstance()
   }
 
   async initialize(): Promise<void> {
@@ -50,8 +48,9 @@ export class OutlookLabelProvider implements LabelProvider {
         throw new Error('Missing homeAccountId in Outlook integration metadata')
       }
 
-      this.client = this.oauthService.getAuthenticatedClient({
+      this.client = await OutlookOAuthService.getAuthenticatedClient({
         integrationId: integration.id,
+        organizationId: this.organizationId,
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
         expiresAt: tokens.expiresAt,

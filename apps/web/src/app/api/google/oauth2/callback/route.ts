@@ -90,8 +90,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Handle the OAuth2 callback
-    const oauthService = GoogleOAuthService.getInstance()
-    const result = await oauthService.handleCallback(code, stateString)
+    const result = await GoogleOAuthService.handleCallback(code, stateString)
 
     await publisher.publishLater({
       type: 'integration:connected',

@@ -332,6 +332,15 @@ export const CONFIG_VARIABLES = {
     isSensitive: true,
     isEnvOnly: false,
   },
+  GOOGLE_PLATFORM_CREDENTIALS_APPROVED: {
+    key: 'GOOGLE_PLATFORM_CREDENTIALS_APPROVED',
+    description: 'Whether platform Google OAuth credentials are approved for Gmail scopes',
+    type: ConfigVariableType.BOOLEAN,
+    group: ConfigVariableGroup.GOOGLE_WORKSPACE,
+    isSensitive: false,
+    isEnvOnly: false,
+    defaultValue: false,
+  },
 
   // ── OUTLOOK ───────────────────────────────────────────────
   OUTLOOK_CLIENT_ID: {
@@ -357,6 +366,15 @@ export const CONFIG_VARIABLES = {
     group: ConfigVariableGroup.OUTLOOK,
     isSensitive: true,
     isEnvOnly: false,
+  },
+  OUTLOOK_PLATFORM_CREDENTIALS_APPROVED: {
+    key: 'OUTLOOK_PLATFORM_CREDENTIALS_APPROVED',
+    description: 'Whether platform Outlook OAuth credentials are approved for Mail scopes',
+    type: ConfigVariableType.BOOLEAN,
+    group: ConfigVariableGroup.OUTLOOK,
+    isSensitive: false,
+    isEnvOnly: false,
+    defaultValue: false,
   },
 
   // ── DROPBOX ──────────────────────────────────────────────

@@ -151,6 +151,33 @@ export class ConfigService {
   }
 
   /**
+   * Get a config value with org-level override priority.
+   * Resolution: org DB override → system DB override → env → SST → default → fallback
+   *
+   * Unlike get(), this is async because it queries the DB for org overrides
+   * (org overrides are NOT cached in-memory since they're per-org).
+   */
+  async getForOrg<T extends string | number | boolean | string[] = string>(
+    organizationId: string,
+    key: ConfigKey | (string & {}),
+    fallback?: T
+  ): Promise<T | undefined> {
+    const definition = getConfigDefinition(key)
+
+    // 1. Try org-level DB override
+    if (this.isDbEnabled && definition && !definition.isEnvOnly) {
+      const orgOverrides = await this.storage.getAllForOrg(organizationId)
+      const match = orgOverrides.find((o) => o.key === key)
+      if (match?.value !== undefined) {
+        return match.value as T
+      }
+    }
+
+    // 2. Fall through to existing resolution (system DB → env → SST → default)
+    return this.get<T>(key, fallback)
+  }
+
+  /**
    * Set a DB override for a config variable.
    * Validates against the registry definition.
    * Cache updates immediately — takes effect on next get() call.

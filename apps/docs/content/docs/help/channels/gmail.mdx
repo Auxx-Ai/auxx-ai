@@ -1,0 +1,166 @@
+---
+title: Gmail
+description: Connect your Gmail inbox to Auxx.ai using Google OAuth, including how to set up your own credentials.
+---
+
+Gmail is one of the primary email channels in Auxx.ai. Once connected, incoming messages sync into your shared inbox and you can reply directly from the platform. Auxx.ai supports both platform-managed credentials and bring-your-own-credentials (BYOC) for Google OAuth.
+
+## Connect Gmail
+
+The quickest way to connect is through the standard OAuth flow using Auxx.ai's platform credentials.
+
+<Tabs items={['During onboarding', 'From settings']}>
+  <Tab value="During onboarding">
+    1. On the **Connect an inbox** onboarding step, click **Connect Google**.
+    2. Sign in to your Google account if prompted.
+    3. Review the permissions Auxx.ai is requesting and click **Allow**.
+    4. You'll be redirected back to the onboarding flow. A checkmark confirms the connection.
+  </Tab>
+  <Tab value="From settings">
+    1. Go to **Settings > Channels**.
+    2. Click **New Channel**.
+    3. Select **Gmail**.
+    4. Sign in to your Google account if prompted.
+    5. Review the permissions and click **Allow**.
+    6. You'll be redirected to a confirmation page showing the connected email address.
+  </Tab>
+</Tabs>
+
+For detailed steps on linking your channel to a shared inbox and configuring settings, see [Connect your first inbox](/help/getting-started/connect-inbox).
+
+### Permissions requested
+
+Auxx.ai requests the following access to your Google account:
+
+| Permission | Why it's needed |
+|-----------|----------------|
+| Read emails | Sync incoming messages into your Auxx.ai inbox |
+| Send emails | Send replies from Auxx.ai on your behalf |
+| Manage labels | Organize synced messages with labels |
+| Modify emails | Mark messages as read, archive, etc. |
+
+### Offline access
+
+Auxx.ai requests offline access so it can continue syncing messages in the background using a refresh token, even when you're not actively signed in. This is how background sync and real-time notifications work.
+
+## Set up your own Google credentials (BYOC)
+
+<Callout type="info">
+  This section is only needed if Auxx.ai's platform credentials are not yet available for your account. When platform credentials are approved, you can skip this and use the standard Connect flow above.
+</Callout>
+
+### Prerequisites
+
+- A Google Cloud project (new or existing)
+- Access to the [Google Cloud Console](https://console.cloud.google.com/)
+
+### Step-by-step
+
+1. **Create a Google Cloud project** (or use an existing one)
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Click the project dropdown at the top and select **New Project**
+   - Give it a name (e.g., "Auxx Mail Integration") and click **Create**
+
+2. **Enable the Gmail API**
+   - In your project, go to **APIs & Services > Library**
+   - Search for "Gmail API" and click **Enable**
+
+3. **Configure the OAuth consent screen**
+   - Go to **APIs & Services > OAuth consent screen**
+   - Select **External** user type and click **Create**
+   - Fill in the required fields:
+     - **App name**: e.g., "Auxx Mail Integration"
+     - **User support email**: your email address
+     - **Developer contact information**: your email address
+   - On the **Scopes** step, click **Add or Remove Scopes** and add:
+     - `https://www.googleapis.com/auth/gmail.modify`
+     - `https://www.googleapis.com/auth/gmail.send`
+     - `https://www.googleapis.com/auth/gmail.labels`
+   - On the **Test users** step, click **Add users** and enter the Gmail address you'll be connecting
+   - Click **Save and Continue** through the remaining steps
+
+4. **Create OAuth credentials**
+   - Go to **APIs & Services > Credentials**
+   - Click **Create Credentials > OAuth client ID**
+   - Application type: **Web application**
+   - Under **Authorized redirect URIs**, click **Add URI** and enter:
+     ```
+     https://app.auxx.ai/api/google/oauth2/callback
+     ```
+   - Click **Create**
+   - Copy the **Client ID** and **Client Secret** from the confirmation dialog
+
+5. **Enter credentials in Auxx.ai**
+   - Go to **Settings > Channels > New Channel > Gmail**
+   - You'll see the BYOC credential form
+   - Paste your **Client ID** and **Client Secret**
+   - Confirm you've added the redirect URI shown in the form
+   - Click **Save & Connect**
+   - Complete the Google OAuth consent flow
+
+### Troubleshooting BYOC
+
+<Accordions type="single">
+  <Accordion title="'Access denied' or 'Error 403'">
+    Your Gmail address isn't listed as a test user. Go to the Google Cloud Console > **APIs & Services > OAuth consent screen > Test users** and add your Gmail address.
+  </Accordion>
+  <Accordion title="'Redirect URI mismatch'">
+    The redirect URI in your Google Cloud credentials doesn't match exactly. Verify it's `https://app.auxx.ai/api/google/oauth2/callback` — including `https` and the full path. No trailing slash.
+  </Accordion>
+  <Accordion title="'This app isn't verified' warning">
+    This is expected when your app is in **Testing** mode. Click **Advanced** > **Go to [app name] (unsafe)** to proceed. This warning goes away if you publish the app and complete Google's verification process.
+  </Accordion>
+  <Accordion title="'Gmail API has not been enabled'">
+    You forgot to enable the Gmail API in step 2. Go to **APIs & Services > Library**, search for "Gmail API", and click **Enable**.
+  </Accordion>
+</Accordions>
+
+## Features
+
+### Sync modes
+
+How messages sync depends on which credentials you're using:
+
+| Credential type | Sync mode | How it works |
+|----------------|-----------|--------------|
+| Platform credentials | Push notifications | Real-time delivery via Google Pub/Sub |
+| Custom credentials (BYOC) | Polling | Checks for new messages periodically |
+
+Push notifications deliver messages faster, but polling still keeps your inbox up to date within a short delay.
+
+### Labels
+
+Gmail labels are synced and available as filters in Auxx.ai. When a label is applied or removed in Gmail, the change is reflected in Auxx.ai and vice versa.
+
+### Email aliases
+
+If your Gmail account has send-as aliases configured, Auxx.ai detects them during the connection process. You can send replies from any of your verified aliases.
+
+## Re-authentication
+
+Your Gmail connection may need to be re-authenticated if:
+
+- Your Google refresh token expires or is revoked
+- You change your Google account password
+- You remove Auxx.ai's access from your [Google account permissions](https://myaccount.google.com/permissions)
+- You rotate your BYOC Client ID or Client Secret
+
+When re-authentication is needed, Auxx.ai shows a banner prompting you to reconnect. Click the banner and complete the OAuth flow again — your existing settings and inbox links are preserved.
+
+<Callout type="info">
+  If you're using BYOC credentials and rotate your Client ID or Secret in Google Cloud Console, you'll need to update them in Auxx.ai **and** reconnect each channel that uses those credentials.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Outlook channel" href="/help/channels/outlook">
+    Connect your Outlook inbox to Auxx.ai.
+  </Card>
+  <Card title="Connect Shopify" href="/help/getting-started/connect-shopify">
+    Sync customer, order, and product data from your store.
+  </Card>
+  <Card title="Troubleshooting email sync" href="/help/troubleshooting/email-sync">
+    Fix common email sync issues.
+  </Card>
+</Cards>
