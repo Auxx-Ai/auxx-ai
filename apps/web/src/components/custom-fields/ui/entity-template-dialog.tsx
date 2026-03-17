@@ -45,7 +45,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
@@ -64,9 +64,21 @@ const categoryIcons: Record<string, LucideIcon> = {
   Headphones,
 }
 
+/** Result returned to the caller after successful installation */
+export interface EntityTemplateInstallResult {
+  created: Array<{ templateId: string; entityDefinitionId: string; name: string; apiSlug: string }>
+  linked: Array<{ templateId: string; entityDefinitionId: string; name: string }>
+  skippedRelationships: string[]
+  fieldIdMap: Record<string, string>
+}
+
 interface EntityTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** When set, skip list view and pre-select these template IDs */
+  preSelectedTemplateIds?: string[]
+  /** Called after successful installation with the full result including fieldIdMap */
+  onComplete?: (result: EntityTemplateInstallResult) => void
 }
 
 type ViewMode = 'list' | 'detail'
@@ -75,7 +87,12 @@ type ViewMode = 'list' | 'detail'
  * Dialog for selecting and installing entity definition templates.
  * Mirrors the workflow-template-dialog pattern with category sidebar + template grid.
  */
-export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialogProps) {
+export function EntityTemplateDialog({
+  open,
+  onOpenChange,
+  preSelectedTemplateIds,
+  onComplete,
+}: EntityTemplateDialogProps) {
   const router = useRouter()
   const { resources, customResources, getResourceById } = useResources()
   const { getLimit } = useFeatureFlags()
@@ -93,6 +110,18 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
   const [conflictResolutions, setConflictResolutions] = useState<
     Record<string, ConflictResolution>
   >({})
+
+  // Auto-select when preSelectedTemplateIds is provided
+  useEffect(() => {
+    if (open && preSelectedTemplateIds?.length) {
+      const [primaryId, ...companionIds] = preSelectedTemplateIds
+      if (primaryId) {
+        setSelectedTemplateId(primaryId)
+        setCompanionSelections(new Set(companionIds))
+        setViewMode('detail')
+      }
+    }
+  }, [open, preSelectedTemplateIds])
 
   // Fetch all templates
   const { data: templates, isLoading } = api.entityDefinition.getTemplates.useQuery(
@@ -112,6 +141,13 @@ export function EntityTemplateDialog({ open, onOpenChange }: EntityTemplateDialo
     onSuccess: (result) => {
       utils.entityDefinition.getAll.invalidate()
       utils.resource.list.invalidate()
+
+      // If onComplete callback provided, pass the result and let the caller handle navigation
+      if (onComplete) {
+        onComplete(result as EntityTemplateInstallResult)
+        return
+      }
+
       onOpenChange(false)
       // Navigate to first created entity, if any were created
       if (result.created.length > 0) {

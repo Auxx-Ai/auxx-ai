@@ -28,7 +28,10 @@ import { Separator } from '@auxx/ui/components/separator'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import {
+  AlertTriangle,
+  Check,
   ChevronLeft,
+  Download,
   GitBranch,
   Headphones,
   Image as ImageIcon,
@@ -41,11 +44,24 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import type { EntityTemplateInstallResult } from '~/components/custom-fields/ui/entity-template-dialog'
+
+const EntityTemplateDialog = dynamic(
+  () =>
+    import('~/components/custom-fields/ui/entity-template-dialog').then(
+      (mod) => mod.EntityTemplateDialog
+    ),
+  { ssr: false }
+)
+
 import type { WorkflowViewerData } from '~/components/workflow/viewer/hooks/use-workflow-viewer'
 import { WorkflowViewer } from '~/components/workflow/viewer/workflow-viewer'
+import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api } from '~/trpc/react'
+import { EntityRequirementsStep } from './entity-requirements-step'
 
 export type WorkflowCategory = (typeof constants.workflowCategories)[number]['value']
 
@@ -61,6 +77,14 @@ const categoryIcons: Record<string, LucideIcon> = {
   GitBranch,
   Sparkles,
   TrendingUp,
+}
+
+interface RequiredApp {
+  appSlug: string
+  appTitle: string
+  blockIds: string[]
+  triggerIds: string[]
+  required: boolean
 }
 
 interface WorkflowTemplateDialogProps {
@@ -82,6 +106,7 @@ export function WorkflowTemplateDialog({
   organizationId,
 }: WorkflowTemplateDialogProps) {
   const router = useRouter()
+  const { appInstallations } = useExtensionsContext()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<WorkflowCategory>('all')
@@ -90,6 +115,10 @@ export function WorkflowTemplateDialog({
   // Form state for detail view
   const [workflowName, setWorkflowName] = useState('')
   const [workflowDescription, setWorkflowDescription] = useState('')
+
+  // Entity template dialog state
+  const [showEntityInstallDialog, setShowEntityInstallDialog] = useState(false)
+  const [entityInstallTemplateIds, setEntityInstallTemplateIds] = useState<string[]>([])
 
   // Fetch all public templates once
   const { data: templates, isLoading } = api.workflow.templates.getPublic.useQuery(
@@ -103,6 +132,34 @@ export function WorkflowTemplateDialog({
       { id: selectedTemplate?.id ?? '' },
       { enabled: !!selectedTemplate?.id && viewMode === 'detail' }
     )
+
+  // Check entity readiness when template has requiredEntities
+  const selectedRequiredEntities = templateDetail?.requiredEntities ?? []
+  const hasEntityRequirements = selectedRequiredEntities.length > 0
+
+  const {
+    data: entityReadiness,
+    isLoading: isCheckingEntities,
+    refetch: refetchEntityReadiness,
+  } = api.workflow.templates.checkEntityReadiness.useQuery(
+    { requiredEntities: selectedRequiredEntities },
+    { enabled: hasEntityRequirements && viewMode === 'detail' && !!templateDetail }
+  )
+
+  // Build entity name map for display (from requiredEntities templateIds)
+  const entityNames = useMemo(() => {
+    const names: Record<string, string> = {}
+    for (const req of selectedRequiredEntities) {
+      if (req.entityTemplateId.startsWith('__system:')) {
+        const type = req.entityTemplateId.replace('__system:', '')
+        names[req.entityTemplateId] = type.charAt(0).toUpperCase() + type.slice(1)
+      } else {
+        // Use entityTemplateId as fallback display name
+        names[req.entityTemplateId] = req.entityTemplateId
+      }
+    }
+    return names
+  }, [selectedRequiredEntities])
 
   // Transform template detail into WorkflowViewerData format
   const workflowViewerData: WorkflowViewerData | null = useMemo(() => {
@@ -134,6 +191,17 @@ export function WorkflowTemplateDialog({
       toastError({ title: 'Failed to create workflow', description: error.message })
     },
   })
+
+  /**
+   * Check install status of required apps (entirely client-side)
+   */
+  const getAppInstallStatus = (apps: RequiredApp[]) => {
+    return apps.map((app) => ({
+      ...app,
+      installed: appInstallations.some((inst) => inst.app.slug === app.appSlug),
+      avatarUrl: appInstallations.find((inst) => inst.app.slug === app.appSlug)?.app.avatarUrl,
+    }))
+  }
 
   // Filter templates client-side
   const filteredTemplates = useMemo(() => {
@@ -198,6 +266,23 @@ export function WorkflowTemplateDialog({
     })
   }
 
+  /** Handle entity install request from EntityRequirementsStep */
+  const handleInstallEntities = useCallback((templateIds: string[]) => {
+    setEntityInstallTemplateIds(templateIds)
+    setShowEntityInstallDialog(true)
+  }, [])
+
+  /** Handle completion of entity installation */
+  const handleEntityInstallComplete = useCallback(
+    (_result: EntityTemplateInstallResult) => {
+      setShowEntityInstallDialog(false)
+      setEntityInstallTemplateIds([])
+      // Re-check entity readiness after installation
+      refetchEntityReadiness()
+    },
+    [refetchEntityReadiness]
+  )
+
   /**
    * Reset state when dialog closes
    */
@@ -209,283 +294,385 @@ export function WorkflowTemplateDialog({
       setWorkflowDescription('')
       setSearchQuery('')
       setSelectedCategory('all')
+      setShowEntityInstallDialog(false)
+      setEntityInstallTemplateIds([])
     }
     onOpenChange(open)
   }
 
+  // Compute app install status for the selected template
+  const selectedRequiredApps: RequiredApp[] = selectedTemplate?.requiredApps ?? []
+  const appStatuses = useMemo(
+    () => getAppInstallStatus(selectedRequiredApps),
+    [selectedRequiredApps, appInstallations]
+  )
+  const missingRequiredCount = appStatuses.filter((a) => a.required && !a.installed).length
+  const missingEntityCount = entityReadiness?.missingEntities.length ?? 0
+
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className=' h-[550px]' innerClassName='p-0' position='tc' size='3xl'>
-        <div className='flex flex-col flex-1 min-h-0'>
-          {viewMode === 'list' ? (
-            <>
-              {/* LIST VIEW */}
-              <DialogHeader className='border-b px-3 h-10 flex flex-row items-center justify-start mb-0'>
-                <div>
-                  <Button variant='ghost' size='sm'>
-                    Template selector
-                  </Button>
-
-                  <DialogTitle className='sr-only'>Use Template</DialogTitle>
-                  <DialogDescription className='sr-only'>Template selector</DialogDescription>
-                </div>
-              </DialogHeader>
-
-              {/* Search Bar */}
-
-              {/* Main Content: Sidebar + Templates */}
-              <div className='flex flex-1 flex-row justify-start w-full min-h-0'>
-                {/* Sidebar */}
-                <div className='w-64 border-r bg-muted/30 flex flex-col rounded-bl-[16px]'>
-                  <ScrollArea>
-                    <h3 className='p-3 pb-0 text-sm font-semibold text-muted-foreground sticky top-0'>
-                      Categories
-                    </h3>
-                    <div className='p-3'>
-                      <RadioGroup
-                        value={selectedCategory}
-                        onValueChange={(value) => setSelectedCategory(value as WorkflowCategory)}>
-                        {constants.workflowCategories.map((category) => {
-                          const templateCount =
-                            category.value === 'all'
-                              ? (templates?.length ?? 0)
-                              : (templates?.filter((t) =>
-                                  (t.categories as string[])?.includes(category.value)
-                                ).length ?? 0)
-
-                          const Icon = categoryIcons[category.icon]
-
-                          return (
-                            <RadioGroupItemCard
-                              key={category.value}
-                              label={category.label}
-                              value={category.value}
-                              description={
-                                isLoading
-                                  ? 'Loading...'
-                                  : `${templateCount} template${templateCount !== 1 ? 's' : ''}`
-                              }
-                              icon={Icon ? <Icon /> : undefined}
-                            />
-                          )
-                        })}
-                      </RadioGroup>
-                    </div>
-                  </ScrollArea>
-                </div>
-
-                {/* Template List */}
-                <div className='flex-1 overflow-hidden flex flex-col'>
-                  <div className='py-3 px-6'>
-                    <InputSearch
-                      placeholder='Search templates by name or description...'
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onClear={() => setSearchQuery('')}
-                    />
-                  </div>
-
-                  {isLoading ? (
-                    <Empty>
-                      <EmptyHeader>
-                        <EmptyMedia variant='icon'>
-                          <Loader2 className='animate-spin' />
-                        </EmptyMedia>
-                        <EmptyTitle>Loading...</EmptyTitle>
-                        <EmptyDescription>Fetching workflow templates</EmptyDescription>
-                      </EmptyHeader>
-                    </Empty>
-                  ) : filteredTemplates.length > 0 ? (
-                    <ScrollArea className='flex-1'>
-                      <div className='p-6 space-y-2'>
-                        {filteredTemplates.map((template) => (
-                          <div
-                            key={template.id}
-                            onClick={() => handleSelectTemplate(template)}
-                            className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
-                            <div className='flex items-start gap-3 flex-1 min-w-0'>
-                              <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
-                                {template.imgUrl ? (
-                                  <img
-                                    src={template.imgUrl}
-                                    alt={template.name}
-                                    className='size-full object-cover'
-                                  />
-                                ) : (
-                                  <Sparkles className='size-4 text-primary-500' />
-                                )}
-                              </div>
-                              <div className='flex flex-col flex-1 min-w-0'>
-                                <div className='flex items-center gap-2'>
-                                  <span className='text-sm font-medium truncate'>
-                                    {template.name}
-                                  </span>
-                                  {template.popularity > 80 && (
-                                    <Badge variant='secondary' className='text-xs shrink-0'>
-                                      <TrendingUp className='size-3 mr-1' />
-                                      Popular
-                                    </Badge>
-                                  )}
-                                </div>
-                                <span className='text-xs text-muted-foreground line-clamp-1 mt-0.5 min-h-[50px]'>
-                                  {template.description}
-                                </span>
-                              </div>
-                            </div>
-                            {(template.categories as string[])?.length > 0 && (
-                              <div className='flex gap-1 shrink-0'>
-                                {(template.categories as string[]).slice(0, 2).map((cat) => (
-                                  <Badge key={cat} variant='outline' className='text-xs'>
-                                    {cat}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  ) : (
-                    <Empty>
-                      <EmptyHeader>
-                        <EmptyMedia variant='icon'>
-                          <Search />
-                        </EmptyMedia>
-                        <EmptyTitle>No templates found</EmptyTitle>
-                        <EmptyDescription>
-                          {searchQuery
-                            ? 'No templates match your search criteria. Try adjusting your search query or browse different categories.'
-                            : 'No templates available in this category yet. Try selecting a different category or check back later.'}
-                        </EmptyDescription>
-                      </EmptyHeader>
-                    </Empty>
-                  )}
-
-                  {!isLoading && filteredTemplates.length > 0 && (
-                    <div className='border-t px-6 py-3 bg-muted/30'>
-                      <p className='text-sm text-muted-foreground'>
-                        Showing {filteredTemplates.length} template
-                        {filteredTemplates.length !== 1 ? 's' : ''}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* DETAIL VIEW */}
-              <DialogHeader className='border-b px-3 py-2 mb-0 h-10 '>
-                <div className='flex items-center gap-1'>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    onClick={handleBackToList}
-                    disabled={createWorkflow.isPending}>
-                    <ChevronLeft />
-                    Back
-                  </Button>
-                  <Separator orientation='vertical' className='h-5' />
-                  <Button variant='ghost' size='sm'>
-                    {selectedTemplate.name}
-                  </Button>
-
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className=' h-[550px]' innerClassName='p-0' position='tc' size='3xl'>
+          <div className='flex flex-col flex-1 min-h-0'>
+            {viewMode === 'list' ? (
+              <>
+                {/* LIST VIEW */}
+                <DialogHeader className='border-b px-3 h-10 flex flex-row items-center justify-start mb-0'>
                   <div>
+                    <Button variant='ghost' size='sm'>
+                      Template selector
+                    </Button>
+
                     <DialogTitle className='sr-only'>Use Template</DialogTitle>
                     <DialogDescription className='sr-only'>Template selector</DialogDescription>
                   </div>
-                </div>
-              </DialogHeader>
+                </DialogHeader>
 
-              <div className='flex flex-1 overflow-hidden'>
-                {/* Left Column: Preview (2/3 width) */}
-                <div className='flex-[2] border-r bg-muted/30 flex flex-col overflow-hidden'>
-                  {isLoadingDetail ? (
-                    <div className='flex-1 flex items-center justify-center'>
-                      <Loader2 className='w-8 h-8 animate-spin text-muted-foreground' />
-                    </div>
-                  ) : workflowViewerData ? (
-                    <WorkflowViewer
-                      workflow={workflowViewerData}
-                      options={{
-                        showTitle: false,
-                        showMinimap: true,
-                        showNavigation: true,
-                        showBranding: false,
-                      }}
-                      className='h-full w-full'
-                    />
-                  ) : (
-                    <div className='flex-1 flex flex-col items-center justify-center text-muted-foreground'>
-                      <ImageIcon className='size-8 mb-4' />
-                      <p className='text-sm'>No preview available</p>
-                    </div>
-                  )}
-                </div>
+                {/* Search Bar */}
 
-                {/* Right Column: Form (1/3 width) */}
-                <div className='flex-1 flex flex-col'>
-                  <ScrollArea className='flex-1'>
-                    <div className='p-3 space-y-6'>
-                      {/* Template Info */}
-                      <div>
-                        <h3 className='text-sm font-semibold text-muted-foreground mb-2'>
-                          {selectedTemplate.name}
-                        </h3>
-                        <p className='text-sm'>{selectedTemplate?.description}</p>
-                        <div className='flex gap-1 flex-wrap mt-2'>
-                          {(selectedTemplate?.categories as string[])?.map((cat) => (
-                            <Badge key={cat} variant='outline' className='text-xs'>
-                              {cat}
-                            </Badge>
+                {/* Main Content: Sidebar + Templates */}
+                <div className='flex flex-1 flex-row justify-start w-full min-h-0'>
+                  {/* Sidebar */}
+                  <div className='w-64 border-r bg-muted/30 flex flex-col rounded-bl-[16px]'>
+                    <ScrollArea>
+                      <h3 className='p-3 pb-0 text-sm font-semibold text-muted-foreground sticky top-0'>
+                        Categories
+                      </h3>
+                      <div className='p-3'>
+                        <RadioGroup
+                          value={selectedCategory}
+                          onValueChange={(value) => setSelectedCategory(value as WorkflowCategory)}>
+                          {constants.workflowCategories.map((category) => {
+                            const templateCount =
+                              category.value === 'all'
+                                ? (templates?.length ?? 0)
+                                : (templates?.filter((t) =>
+                                    (t.categories as string[])?.includes(category.value)
+                                  ).length ?? 0)
+
+                            const Icon = categoryIcons[category.icon]
+
+                            return (
+                              <RadioGroupItemCard
+                                key={category.value}
+                                label={category.label}
+                                value={category.value}
+                                description={
+                                  isLoading
+                                    ? 'Loading...'
+                                    : `${templateCount} template${templateCount !== 1 ? 's' : ''}`
+                                }
+                                icon={Icon ? <Icon /> : undefined}
+                              />
+                            )
+                          })}
+                        </RadioGroup>
+                      </div>
+                    </ScrollArea>
+                  </div>
+
+                  {/* Template List */}
+                  <div className='flex-1 overflow-hidden flex flex-col'>
+                    <div className='py-3 px-6'>
+                      <InputSearch
+                        placeholder='Search templates by name or description...'
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onClear={() => setSearchQuery('')}
+                      />
+                    </div>
+
+                    {isLoading ? (
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia variant='icon'>
+                            <Loader2 className='animate-spin' />
+                          </EmptyMedia>
+                          <EmptyTitle>Loading...</EmptyTitle>
+                          <EmptyDescription>Fetching workflow templates</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    ) : filteredTemplates.length > 0 ? (
+                      <ScrollArea className='flex-1'>
+                        <div className='p-6 space-y-2'>
+                          {filteredTemplates.map((template) => (
+                            <div
+                              key={template.id}
+                              onClick={() => handleSelectTemplate(template)}
+                              className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
+                              <div className='flex items-start gap-3 flex-1 min-w-0'>
+                                <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
+                                  {template.imgUrl ? (
+                                    <img
+                                      src={template.imgUrl}
+                                      alt={template.name}
+                                      className='size-full object-cover'
+                                    />
+                                  ) : (
+                                    <Sparkles className='size-4 text-primary-500' />
+                                  )}
+                                </div>
+                                <div className='flex flex-col flex-1 min-w-0'>
+                                  <div className='flex items-center gap-2'>
+                                    <span className='text-sm font-medium truncate'>
+                                      {template.name}
+                                    </span>
+                                    {template.popularity > 80 && (
+                                      <Badge variant='secondary' className='text-xs shrink-0'>
+                                        <TrendingUp className='size-3 mr-1' />
+                                        Popular
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <span className='text-xs text-muted-foreground line-clamp-1 mt-0.5 min-h-[50px]'>
+                                    {template.description}
+                                  </span>
+                                </div>
+                              </div>
+                              {(template.categories as string[])?.length > 0 && (
+                                <div className='flex gap-1 shrink-0'>
+                                  {(template.categories as string[]).slice(0, 2).map((cat) => (
+                                    <Badge key={cat} variant='outline' className='text-xs'>
+                                      {cat}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           ))}
                         </div>
-                      </div>
+                      </ScrollArea>
+                    ) : (
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia variant='icon'>
+                            <Search />
+                          </EmptyMedia>
+                          <EmptyTitle>No templates found</EmptyTitle>
+                          <EmptyDescription>
+                            {searchQuery
+                              ? 'No templates match your search criteria. Try adjusting your search query or browse different categories.'
+                              : 'No templates available in this category yet. Try selecting a different category or check back later.'}
+                          </EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    )}
 
-                      {/* Workflow Name */}
-                      <div className='space-y-2'>
-                        <Label htmlFor='workflow-name'>Workflow Name *</Label>
-                        <Input
-                          id='workflow-name'
-                          value={workflowName}
-                          onChange={(e) => setWorkflowName(e.target.value)}
-                          placeholder='Enter workflow name'
-                          disabled={createWorkflow.isPending}
-                          required
-                        />
+                    {!isLoading && filteredTemplates.length > 0 && (
+                      <div className='border-t px-6 py-3 bg-muted/30'>
+                        <p className='text-sm text-muted-foreground'>
+                          Showing {filteredTemplates.length} template
+                          {filteredTemplates.length !== 1 ? 's' : ''}
+                        </p>
                       </div>
-
-                      {/* Workflow Description */}
-                      <div className='space-y-2 pb-6'>
-                        <Label htmlFor='workflow-description'>Description</Label>
-                        <Textarea
-                          id='workflow-description'
-                          value={workflowDescription}
-                          onChange={(e) => setWorkflowDescription(e.target.value)}
-                          placeholder='Enter workflow description (optional)'
-                          disabled={createWorkflow.isPending}
-                          rows={4}
-                        />
-                      </div>
-                    </div>
-                  </ScrollArea>
-
-                  {/* Footer */}
-                  <div className='border-t p-3'>
-                    <Button
-                      className='w-full'
-                      onClick={handleCreateFromTemplate}
-                      loading={createWorkflow.isPending}
-                      loadingText='Creating workflow...'>
-                      Use this template
-                    </Button>
+                    )}
                   </div>
                 </div>
-              </div>
-            </>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+              </>
+            ) : (
+              <>
+                {/* DETAIL VIEW */}
+                <DialogHeader className='border-b px-3 py-2 mb-0 h-10 '>
+                  <div className='flex items-center gap-1'>
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      onClick={handleBackToList}
+                      disabled={createWorkflow.isPending}>
+                      <ChevronLeft />
+                      Back
+                    </Button>
+                    <Separator orientation='vertical' className='h-5' />
+                    <Button variant='ghost' size='sm'>
+                      {selectedTemplate.name}
+                    </Button>
+
+                    <div>
+                      <DialogTitle className='sr-only'>Use Template</DialogTitle>
+                      <DialogDescription className='sr-only'>Template selector</DialogDescription>
+                    </div>
+                  </div>
+                </DialogHeader>
+
+                <div className='flex flex-1 overflow-hidden'>
+                  {/* Left Column: Preview (2/3 width) */}
+                  <div className='flex-[2] border-r bg-muted/30 flex flex-col overflow-hidden'>
+                    {isLoadingDetail ? (
+                      <div className='flex-1 flex items-center justify-center'>
+                        <Loader2 className='w-8 h-8 animate-spin text-muted-foreground' />
+                      </div>
+                    ) : workflowViewerData ? (
+                      <WorkflowViewer
+                        workflow={workflowViewerData}
+                        options={{
+                          showTitle: false,
+                          showMinimap: true,
+                          showNavigation: true,
+                          showBranding: false,
+                        }}
+                        className='h-full w-full'
+                      />
+                    ) : (
+                      <div className='flex-1 flex flex-col items-center justify-center text-muted-foreground'>
+                        <ImageIcon className='size-8 mb-4' />
+                        <p className='text-sm'>No preview available</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Form (1/3 width) */}
+                  <div className='flex-1 flex flex-col'>
+                    <ScrollArea className='flex-1'>
+                      <div className='p-3 space-y-6'>
+                        {/* Template Info */}
+                        <div>
+                          <h3 className='text-sm font-semibold text-muted-foreground mb-2'>
+                            {selectedTemplate.name}
+                          </h3>
+                          <p className='text-sm'>{selectedTemplate?.description}</p>
+                          <div className='flex gap-1 flex-wrap mt-2'>
+                            {(selectedTemplate?.categories as string[])?.map((cat) => (
+                              <Badge key={cat} variant='outline' className='text-xs'>
+                                {cat}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Required Apps Section */}
+                        {appStatuses.length > 0 && (
+                          <div>
+                            <h4 className='text-xs font-semibold text-muted-foreground mb-2'>
+                              Required Apps
+                            </h4>
+                            <div className='space-y-2'>
+                              {appStatuses.map((app) => (
+                                <div
+                                  key={app.appSlug}
+                                  className='flex items-center justify-between rounded-lg border p-2'>
+                                  <div className='flex items-center gap-2'>
+                                    {app.avatarUrl && (
+                                      <img
+                                        src={app.avatarUrl}
+                                        alt={app.appTitle}
+                                        className='size-5 rounded'
+                                      />
+                                    )}
+                                    <span className='text-sm'>{app.appTitle || app.appSlug}</span>
+                                  </div>
+                                  {app.installed ? (
+                                    <Badge variant='secondary' className='text-xs'>
+                                      <Check className='size-3 mr-1' />
+                                      Installed
+                                    </Badge>
+                                  ) : (
+                                    <Button
+                                      variant='outline'
+                                      size='sm'
+                                      className='h-6 text-xs'
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        window.open(`/app/settings/apps/${app.appSlug}`, '_blank')
+                                      }}>
+                                      <Download className='size-3' />
+                                      Install
+                                    </Button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Entity Requirements Section */}
+                        {hasEntityRequirements && entityReadiness && (
+                          <EntityRequirementsStep
+                            requiredEntities={selectedRequiredEntities}
+                            readiness={entityReadiness}
+                            entityNames={entityNames}
+                            onInstallEntities={handleInstallEntities}
+                            onSkip={() => {
+                              /* user wants to skip — just proceed to create */
+                            }}
+                            onContinue={() => {
+                              /* all resolved — proceed to create */
+                            }}
+                          />
+                        )}
+
+                        {/* Workflow Name */}
+                        <div className='space-y-2'>
+                          <Label htmlFor='workflow-name'>Workflow Name *</Label>
+                          <Input
+                            id='workflow-name'
+                            value={workflowName}
+                            onChange={(e) => setWorkflowName(e.target.value)}
+                            placeholder='Enter workflow name'
+                            disabled={createWorkflow.isPending}
+                            required
+                          />
+                        </div>
+
+                        {/* Workflow Description */}
+                        <div className='space-y-2 pb-6'>
+                          <Label htmlFor='workflow-description'>Description</Label>
+                          <Textarea
+                            id='workflow-description'
+                            value={workflowDescription}
+                            onChange={(e) => setWorkflowDescription(e.target.value)}
+                            placeholder='Enter workflow description (optional)'
+                            disabled={createWorkflow.isPending}
+                            rows={4}
+                          />
+                        </div>
+                      </div>
+                    </ScrollArea>
+
+                    {/* Footer */}
+                    <div className='border-t p-3'>
+                      {missingRequiredCount > 0 && (
+                        <div className='flex items-center gap-1.5 text-xs text-amber-600 mb-2'>
+                          <AlertTriangle className='size-3' />
+                          <span>
+                            {missingRequiredCount} required app
+                            {missingRequiredCount !== 1 ? 's' : ''} not installed
+                          </span>
+                        </div>
+                      )}
+                      {missingEntityCount > 0 && (
+                        <div className='flex items-center gap-1.5 text-xs text-amber-600 mb-2'>
+                          <AlertTriangle className='size-3' />
+                          <span>
+                            {missingEntityCount} required entit
+                            {missingEntityCount !== 1 ? 'ies' : 'y'} not found
+                          </span>
+                        </div>
+                      )}
+                      <Button
+                        className='w-full'
+                        onClick={handleCreateFromTemplate}
+                        loading={createWorkflow.isPending}
+                        loadingText='Creating workflow...'>
+                        Use this template
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Entity Template Install Dialog (shown when user clicks Install Entities) */}
+      {showEntityInstallDialog && entityInstallTemplateIds.length > 0 && (
+        <EntityTemplateDialog
+          open={showEntityInstallDialog}
+          onOpenChange={setShowEntityInstallDialog}
+          preSelectedTemplateIds={entityInstallTemplateIds}
+          onComplete={handleEntityInstallComplete}
+        />
+      )}
+    </>
   )
 }

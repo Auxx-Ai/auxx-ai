@@ -31,6 +31,8 @@ export interface CreateWorkflowTemplateInput {
     type: 'string' | 'number' | 'boolean' | 'array' | 'secret'
   }>
   variables?: any[]
+  requiredApps?: RequiredApp[]
+  requiredEntities?: any[]
   popularity?: number
 }
 
@@ -55,6 +57,8 @@ export interface UpdateWorkflowTemplateInput {
     type: 'string' | 'number' | 'boolean' | 'array' | 'secret'
   }>
   variables?: any[]
+  requiredApps?: RequiredApp[]
+  requiredEntities?: any[]
   popularity?: number
 }
 
@@ -70,6 +74,7 @@ export interface WorkflowTemplateListItem {
   version: number
   status: string
   triggerType: string | null
+  requiredApps: RequiredApp[]
   popularity: number
   createdAt: Date
   updatedAt: Date
@@ -78,6 +83,15 @@ export interface WorkflowTemplateListItem {
 /**
  * Workflow template detail (with complete graph data)
  */
+/** Required app declaration for a template */
+export interface RequiredApp {
+  appSlug: string
+  appTitle: string
+  blockIds: string[]
+  triggerIds: string[]
+  required: boolean
+}
+
 export interface WorkflowTemplateDetail {
   id: string
   name: string
@@ -96,6 +110,8 @@ export interface WorkflowTemplateDetail {
     type: 'string' | 'number' | 'boolean' | 'array' | 'secret'
   }> | null
   variables: any[] | null
+  requiredApps: RequiredApp[]
+  requiredEntities: any[]
   popularity: number
   createdAt: Date
   updatedAt: Date

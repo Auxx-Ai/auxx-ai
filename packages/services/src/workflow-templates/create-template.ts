@@ -27,6 +27,8 @@ export async function createTemplate(input: CreateWorkflowTemplateInput) {
         triggerConfig: input.triggerConfig,
         envVars: input.envVars,
         variables: input.variables,
+        requiredApps: input.requiredApps ?? [],
+        requiredEntities: input.requiredEntities ?? [],
         popularity: input.popularity ?? 0,
         updatedAt: new Date(),
       })

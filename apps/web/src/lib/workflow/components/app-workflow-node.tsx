@@ -2,6 +2,9 @@
 
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { Download } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks/use-node-data-update'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
@@ -21,6 +24,7 @@ interface AppWorkflowNodeProps {
     appId?: string
     installationId?: string
     blockId?: string
+    appSlug?: string
   }
   selected?: boolean
 }
@@ -80,6 +84,10 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
 
     return { appId, blockId, installationId }
   }, [data.appId, data.blockId, data.installationId, data.type, appInstallations])
+
+  // Detect "not installed" state: appSlug present but no installationId resolved
+  const appSlug = data.appSlug as string | undefined
+  const isNotInstalled = !isLoading && !!appId && !installationId && !!appSlug
 
   // Reactive message client — re-renders when client becomes available or errors
   const { messageClient, initError } = useOptionalMessageClient({
@@ -295,12 +303,29 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
 
   return (
     <BaseNode id={id} data={data} selected={selected}>
-      {/* Render fallback handles when there's an error */}
-      {displayError && renderFallbackHandles()}
+      {/* Render fallback handles when there's an error or app not installed */}
+      {(displayError || isNotInstalled) && renderFallbackHandles()}
 
       <div className='space-y-1 pb-2'>
         {isLoading ? (
           <div className='text-xs text-muted-foreground'>Loading extensions...</div>
+        ) : isNotInstalled ? (
+          <div className='flex flex-col items-center gap-2 p-3'>
+            <span className='text-sm font-medium'>{data.title || appSlug}</span>
+            <Badge variant='outline' className='text-xs text-amber-600 border-amber-300'>
+              App not installed
+            </Badge>
+            <Button
+              size='sm'
+              variant='outline'
+              onClick={(e) => {
+                e.stopPropagation()
+                window.open(`/app/settings/apps/${appSlug}`, '_blank')
+              }}>
+              <Download className='size-3' />
+              Install
+            </Button>
+          </div>
         ) : displayError ? (
           <div className='text-xs text-destructive'>Error: {displayError}</div>
         ) : (

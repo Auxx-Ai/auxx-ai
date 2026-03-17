@@ -58,6 +58,22 @@ export const WorkflowTemplate = pgTable(
     /** Variables template */
     variables: jsonb().$type<any[]>(),
 
+    /** Required apps for this template (portable slug-based references) */
+    requiredApps: jsonb()
+      .$type<
+        Array<{
+          appSlug: string
+          appTitle: string
+          blockIds: string[]
+          triggerIds: string[]
+          required: boolean
+        }>
+      >()
+      .default(sql`'[]'::jsonb`),
+
+    /** Required entities for this template (for CRUD/Find node resolution) */
+    requiredEntities: jsonb().$type<any[]>().default(sql`'[]'::jsonb`),
+
     /** How popular/recommended this template is (for sorting) */
     popularity: integer().default(0).notNull(),
 

@@ -2,6 +2,8 @@
 
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
+import { Download } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
 import { AppTriggerTestSection } from '~/components/workflow/nodes/core/app-trigger/app-trigger-test-section'
@@ -64,6 +66,10 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
         appName: inst.app.title,
       }
     }, [appId, installationId, appInstallations])
+
+    // Check for "not installed" state — appSlug present on node data but no installation found
+    const nodeAppSlug = propData?.appSlug as string | undefined
+    const isNotInstalled = !appContext && !!nodeAppSlug
 
     // Initialize with actual node data from props instead of empty object
     const { inputs: nodeData, setInputs } = useNodeCrud(nodeId, propData || {})
@@ -324,6 +330,25 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     // Derive display error from local error or init error
     const displayError =
       error || (initError ? `Extension failed to load: ${initError.message}` : null)
+
+    if (isNotInstalled) {
+      return (
+        <BasePanel title={propData?.title ?? 'App Node'} nodeId={nodeId} data={nodeData}>
+          <div className='space-y-4 p-4'>
+            <p className='text-sm text-muted-foreground'>
+              This node requires the <strong>{propData?.title ?? nodeAppSlug}</strong> app to
+              function.
+            </p>
+            <Button
+              variant='outline'
+              onClick={() => window.open(`/app/settings/apps/${nodeAppSlug}`, '_blank')}>
+              <Download className='size-3' />
+              Install App
+            </Button>
+          </div>
+        </BasePanel>
+      )
+    }
 
     return (
       <BasePanel title={block.label} nodeId={nodeId} data={nodeData} appContext={appContext}>

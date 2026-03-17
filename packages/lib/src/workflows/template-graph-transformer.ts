@@ -1,6 +1,7 @@
 // packages/lib/src/workflows/template-graph-transformer.ts
 
 import { generateId } from '@auxx/utils/generateId'
+import type { ResolvedApp } from './template-resolution'
 
 /**
  * Type definitions for workflow graph
@@ -28,14 +29,19 @@ export interface WorkflowGraph {
   viewport?: { x: number; y: number; zoom: number }
 }
 
+/** Escape special regex characters in a string */
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /**
  * Template graph transformer
  * Handles cloning and transforming template graphs for new workflows
  */
 export class TemplateGraphTransformer {
   /**
-   * Clone a template graph and generate new IDs for all nodes and edges
-   * This prevents ID conflicts when creating workflows from templates
+   * Clone a template graph and generate new IDs for all nodes and edges.
+   * Also rewrites variable references ({{oldNodeId.field}}) to use new IDs.
    */
   cloneGraph(templateGraph: WorkflowGraph): {
     graph: WorkflowGraph
@@ -50,9 +56,12 @@ export class TemplateGraphTransformer {
 
       return {
         ...node,
-        // id: newId,
+        id: newId,
         // Deep clone the data object to prevent reference issues
-        data: JSON.parse(JSON.stringify(node.data)),
+        data: {
+          ...JSON.parse(JSON.stringify(node.data)),
+          id: newId, // node.data.id must match node.id
+        },
         // Deep clone position
         position: { ...node.position },
       }
@@ -71,11 +80,30 @@ export class TemplateGraphTransformer {
 
       return {
         ...edge,
-        // id: generateId(),
-        // source: newSourceId,
-        // target: newTargetId,
+        id: generateId(),
+        source: newSourceId,
+        target: newTargetId,
       }
     })
+
+    // Third pass: Rewrite variable references ({{oldId.field}}) in all node data
+    for (const node of clonedNodes) {
+      const dataStr = JSON.stringify(node.data)
+      let updated = dataStr
+      for (const [oldId, newId] of idMapping) {
+        // Use regex: {{oldId. → {{newId.
+        // The {{ prefix + . suffix provide sufficient delimiters
+        const pattern = new RegExp(`\\{\\{${escapeRegExp(oldId)}\\.`, 'g')
+        updated = updated.replace(pattern, `{{${newId}.`)
+      }
+      if (updated !== dataStr) {
+        const parsed = JSON.parse(updated)
+        // Restore the new ID — the string replace above could have
+        // clobbered node.data.id if the old ID appeared as a substring
+        parsed.id = node.data.id
+        node.data = parsed
+      }
+    }
 
     return {
       graph: {
@@ -123,6 +151,72 @@ export class TemplateGraphTransformer {
   }
 
   /**
+   * Resolve app slugs to appIds for the target organization's environment.
+   * Called during workflow creation, NOT during template storage.
+   *
+   * MUTATES the graph in place (caller must deep-clone beforehand —
+   * cloneGraph already does this).
+   *
+   * Only modifies node.data fields (type, appId). Does NOT touch:
+   * - node.id (stays stable — edges reference it)
+   * - node.data.id (stays in sync with node.id)
+   * - installationId (resolved at runtime by AppWorkflowNode, not persisted)
+   */
+  resolveAppNodes(
+    graph: WorkflowGraph,
+    resolvedApps: Map<string, ResolvedApp>
+  ): { graph: WorkflowGraph; unresolved: string[] } {
+    const unresolved: string[] = []
+
+    for (const node of graph.nodes) {
+      // Only process nodes that have appSlug set (template-specific marker)
+      if (!node.data.appSlug || !node.data.blockId) continue
+
+      const resolved = resolvedApps.get(node.data.appSlug)
+      if (resolved) {
+        // Rewrite data.type from "@slug:blockId" → "realAppId:blockId"
+        node.data.type = `${resolved.appId}:${node.data.blockId}`
+        node.data.appId = resolved.appId
+        // installationId is NOT set here — AppWorkflowNode resolves it at runtime
+        // iconUrl is NOT stored — resolved at render time from appSlugMap cache
+      } else {
+        // Leave @slug:blockId as-is — AppWorkflowNode will show
+        // "not installed" placeholder since "@slug" won't match any appId
+        unresolved.push(node.data.appSlug)
+      }
+    }
+
+    // No edge updates needed — edges reference node.id which doesn't change
+
+    return { graph, unresolved }
+  }
+
+  /**
+   * Validate that text classifier edges reference valid category IDs.
+   */
+  validateClassifierEdges(graph: WorkflowGraph): string[] {
+    const errors: string[] = []
+    for (const node of graph.nodes) {
+      if (node.data.type === 'text-classifier') {
+        const categoryIds = (node.data.categories ?? []).map((c: any) => c.id)
+        const outEdges = graph.edges.filter((e) => e.source === node.id)
+        for (const edge of outEdges) {
+          if (
+            edge.sourceHandle &&
+            !categoryIds.includes(edge.sourceHandle) &&
+            edge.sourceHandle !== 'source'
+          ) {
+            errors.push(
+              `Edge ${edge.id}: sourceHandle "${edge.sourceHandle}" not in classifier categories`
+            )
+          }
+        }
+      }
+    }
+    return errors
+  }
+
+  /**
    * Complete template transformation
    * Transforms all aspects of a template into a new workflow
    */
@@ -130,6 +224,7 @@ export class TemplateGraphTransformer {
     graph: WorkflowGraph
     triggerType?: string
     triggerConfig?: Record<string, any>
+    entityDefinitionId?: string
     envVars?: any[]
     variables?: any[]
   }) {
@@ -141,6 +236,7 @@ export class TemplateGraphTransformer {
       triggerConfig: template.triggerConfig
         ? JSON.parse(JSON.stringify(template.triggerConfig))
         : undefined,
+      entityDefinitionId: template.entityDefinitionId,
       envVars: this.cloneEnvVars(template.envVars),
       variables: this.cloneVariables(template.variables),
       idMapping, // Return mapping in case caller needs it

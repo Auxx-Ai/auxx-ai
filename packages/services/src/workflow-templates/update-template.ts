@@ -28,6 +28,8 @@ export async function updateTemplate(input: UpdateWorkflowTemplateInput) {
   if (input.triggerConfig !== undefined) updateData.triggerConfig = input.triggerConfig
   if (input.envVars !== undefined) updateData.envVars = input.envVars
   if (input.variables !== undefined) updateData.variables = input.variables
+  if (input.requiredApps !== undefined) updateData.requiredApps = input.requiredApps
+  if (input.requiredEntities !== undefined) updateData.requiredEntities = input.requiredEntities
   if (input.popularity !== undefined) updateData.popularity = input.popularity
 
   const result = await fromDatabase(
