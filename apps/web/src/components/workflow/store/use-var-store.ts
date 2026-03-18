@@ -714,13 +714,17 @@ export const useVarStore = create<VarStoreState>()(
           set((state) => {
             state.resources.clear()
             for (const resource of resources) {
-              // Store by id, apiSlug, and entityType for flexible lookup
+              // Store by id, apiSlug, entityType, and entityDefinitionId for flexible lookup
               state.resources.set(resource.id, resource)
-              if ((resource as any).apiSlug) {
-                state.resources.set((resource as any).apiSlug, resource)
+              if (resource.apiSlug) {
+                state.resources.set(resource.apiSlug, resource)
               }
-              if ((resource as any).entityType) {
-                state.resources.set((resource as any).entityType, resource)
+              if (resource.entityType) {
+                state.resources.set(resource.entityType, resource)
+              }
+              // Index by entityDefinitionId if different from id
+              if (resource.entityDefinitionId && resource.entityDefinitionId !== resource.id) {
+                state.resources.set(resource.entityDefinitionId, resource)
               }
             }
             // Clear nodeOutputs so updateGraph recomputes all nodes

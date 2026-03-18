@@ -73,6 +73,36 @@ export function getLabelFromVariableId(variableId: string): string {
 }
 
 /**
+ * Build a human-readable label path for a variable ID.
+ * Resolves each path segment to its variable label via the variable store.
+ *
+ * Examples:
+ *   "trigger-1.contact.first_name" → "Contact.first_name" (or "Contact.First Name" if labels resolve)
+ *   "find-1.tickets" → "Tickets"
+ *
+ * @param variableId - Full variable ID (e.g., "trigger-1.contact.email")
+ * @param resolveVariable - Function to look up a variable by ID
+ * @returns Label path string with dot-separated labels
+ */
+export function buildVariableLabelPath(
+  variableId: string,
+  resolveVariable: (id: string) => UnifiedVariable | undefined
+): string {
+  const parts = variableId.split('.')
+  if (parts.length <= 1) return ''
+
+  const labels: string[] = []
+  // Skip first segment (node ID), resolve labels for remaining segments
+  for (let i = 1; i < parts.length; i++) {
+    const currentId = parts.slice(0, i + 1).join('.')
+    const variable = resolveVariable(currentId)
+    labels.push(variable?.label || parts[i])
+  }
+
+  return labels.join('.')
+}
+
+/**
  * Build a variable ID from nodeId and path
  * Examples:
  *   ("webhook-123", "body.email") → "webhook-123.body.email"
@@ -333,8 +363,28 @@ export function isVariableTypeCompatible(
 
   // Check if variable IS a resource type (direct match on resourceId)
   // This matches resource object variables like trigger.ticket, findNode.contact, etc.
-  if (variable.resourceId && relationshipTypes.includes(variable.resourceId)) {
-    return true
+  if (variable.resourceId && relationshipTypes.length > 0) {
+    // Direct match (fast path — works when both sides use the same format)
+    if (relationshipTypes.includes(variable.resourceId)) {
+      return true
+    }
+
+    // Cross-reference: resolve both sides via resource store
+    // Handles mixed formats (e.g., variable uses slug, allowedTypes has entityDefinitionId, or vice versa)
+    const resourceStore = useResourceStore.getState()
+    const varResource = resourceStore.resourceMap.get(variable.resourceId)
+    if (varResource) {
+      const varEntityId = varResource.entityDefinitionId ?? varResource.id
+      for (const relType of relationshipTypes) {
+        const relResource = resourceStore.resourceMap.get(relType)
+        const relEntityId = relResource
+          ? (relResource.entityDefinitionId ?? relResource.id)
+          : relType
+        if (varEntityId === relEntityId) {
+          return true
+        }
+      }
+    }
   }
 
   // Check relationship type match via fieldReference (for RELATION fields)

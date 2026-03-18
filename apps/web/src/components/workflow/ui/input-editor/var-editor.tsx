@@ -334,7 +334,7 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
       <div
         ref={containerRef}
         className={cn(
-          'group/editor input-editor-wrapper relative flex items-start gap-0.5 flex-1 shrink-0 items-stretch',
+          'group/editor input-editor-wrapper relative flex min-h-8 items-start gap-0.5 flex-1 shrink-0 items-stretch',
           showReadOnlyOverlay && 'opacity-50 cursor-not-allowed',
           className
         )}

@@ -1,10 +1,13 @@
 // apps/web/src/components/workflow/nodes/core/note/node.tsx
 
+import { Button } from '@auxx/ui/components/button'
+import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { cn } from '@auxx/ui/lib/utils'
 import { Handle, Position } from '@xyflow/react'
 import { produce } from 'immer'
+import { CheckIcon, CopyIcon } from 'lucide-react'
 import { memo, useCallback, useRef, useState } from 'react'
-import { useNodeCrud, useNodesInteractions } from '~/components/workflow/hooks'
+import { useNodeCrud, useNodesInteractions, useReadOnly } from '~/components/workflow/hooks'
 import { NodeResizer } from '~/components/workflow/ui/node-resizer'
 import { MIN_NOTE_HEIGHT, MIN_NOTE_WIDTH, THEME_MAP } from './constants'
 import { NoteEditor } from './editor/note-editor'
@@ -13,10 +16,12 @@ import type { NoteNodeData, NoteNode as NoteNodeType, NoteTheme } from './types'
 
 export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height }) => {
   const ref = useRef<HTMLDivElement | null>(null)
-  const [isEditorFocused, setIsEditorFocused] = useState(false)
+  const [_isEditorFocused, setIsEditorFocused] = useState(false)
   const [editor, setEditor] = useState<any>(null)
 
-  // Use new hooks for data management
+  const { isReadOnly } = useReadOnly()
+  // const isReadOnly = true
+  const { copied, copy } = useCopy({ toastMessage: 'Note copied to clipboard' })
   const { inputs, setInputs } = useNodeCrud<NoteNodeData>(id, data)
   const { handleDeleteNode, handleCopyNode, handleNodesPaste } = useNodesInteractions()
 
@@ -112,7 +117,7 @@ export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height 
       <div className={cn('h-2 shrink-0 rounded-t-md opacity-50', THEME_MAP[theme].title)} />
 
       {/* Toolbar - shown when selected */}
-      {selected && (
+      {selected && !isReadOnly && (
         <div className='absolute left-1/2 top-[-41px] -translate-x-1/2 z-10'>
           <NoteToolbar
             editor={editor}
@@ -128,16 +133,27 @@ export const NoteNode = memo<NoteNodeType>(({ id, data, selected, width, height 
           />
         </div>
       )}
+      {selected && isReadOnly && (
+        <div className='absolute right-0 top-0 z-10'>
+          <Button
+            variant='ghost'
+            className='opacity-50 hover:opacity-100 hover:bg-transparent'
+            size='icon-xs'
+            onClick={() => copy(editor?.getText() || '')}>
+            {copied ? <CheckIcon /> : <CopyIcon />}
+          </Button>
+        </div>
+      )}
 
       {/* Editor content */}
-      <div className='flex-1 overflow-hidden px-3 py-2.5'>
-        <div className={cn(selected && 'nodrag nopan nowheel cursor-text')}>
+      <div className='flex-1 overflow-hidden px-3 py-2.5 flex flex-col'>
+        <div className={cn('flex-1', selected && 'nodrag nopan nowheel cursor-text')}>
           <NoteEditor
             content={inputs?.text || ''}
             onChange={handleEditorChange}
             placeholder='Write your note...'
             fontSize={inputs?.fontSize || 14}
-            editable={true}
+            editable={!isReadOnly}
             theme={THEME_MAP[theme]}
             onEditorReady={setEditor}
             onFocus={() => setIsEditorFocused(true)}

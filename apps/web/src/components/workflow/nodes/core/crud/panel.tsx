@@ -428,7 +428,10 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
                       if (!showValidation) setShowValidation(true)
                     }}
                     varType={BaseType.RELATION}
-                    allowedTypes={[nodeData.resourceType as BaseType, BaseType.STRING]}
+                    allowedTypes={[
+                      (resource?.entityDefinitionId ?? nodeData.resourceType) as BaseType,
+                      BaseType.STRING,
+                    ]}
                     mode={VAR_MODE.PICKER}
                     placeholder={`Select ${resource?.label || 'resource'} or enter ID`}
                     allowConstant={false}

@@ -12,9 +12,11 @@ import type React from 'react'
 import { useCallback, useMemo } from 'react'
 import { useNodeTitle } from '~/components/workflow/hooks'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
+import { useVarStore } from '~/components/workflow/store/use-var-store'
 import { BaseType } from '~/components/workflow/types/unified-types'
 import { getVarTypeName, VarTypeIcon } from '~/components/workflow/utils'
 import {
+  buildVariableLabelPath,
   getNodeIdFromVariableId,
   getPathFromVariableId,
 } from '~/components/workflow/utils/variable-utils'
@@ -74,9 +76,12 @@ const VariableTag = ({
     if (!variable) return ''
     // For system variables, show the full ID (e.g., "sys.userId")
     if (isSystemVar) return variable.id
-    // For other variables, show the path without the node ID prefix
-    return getPathFromVariableId(variable.id)
-  }, [variable, isSystemVar])
+    // For env variables, show the path (e.g., "API_KEY")
+    if (isEnvVar) return getPathFromVariableId(variable.id)
+    // For node variables, build a label-based path (e.g., "Contact.first_name" instead of "cm1abc.first_name")
+    const resolveVar = useVarStore.getState().actions.getVariableById
+    return buildVariableLabelPath(variable.id, resolveVar) || getPathFromVariableId(variable.id)
+  }, [variable, isSystemVar, isEnvVar])
 
   // Calculate error message for invalid variables
   const errorMessage = useMemo(() => {

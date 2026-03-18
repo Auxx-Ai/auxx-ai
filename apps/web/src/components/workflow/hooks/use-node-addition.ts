@@ -2,6 +2,7 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { useStoreApi } from '@xyflow/react'
+import { produce } from 'immer'
 import { useCallback } from 'react'
 import type { FlowEdge, FlowNode } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types'
@@ -311,11 +312,47 @@ export const useNodeAddition = () => {
     [store, debouncedSave, saveStateToHistory]
   )
 
-  const selectNewNode = useCallback((nodeId: string) => {
-    setTimeout(() => {
-      storeEventBus.emit({ type: 'selection:changed', data: { nodes: [nodeId], edges: [] } })
-    }, 50)
-  }, [])
+  const selectNewNode = useCallback(
+    (nodeId: string) => {
+      // Small delay to ensure node is in ReactFlow state after addition
+      setTimeout(() => {
+        const { nodes, setNodes, edges, setEdges } = store.getState()
+
+        // 1. Set the new node as selected, deselect all others
+        const newNodes = produce(nodes, (draft) => {
+          for (const node of draft) {
+            node.selected = node.id === nodeId
+          }
+        })
+        setNodes(newNodes)
+
+        // 2. Highlight connected edges
+        const connectedEdgeIds = new Set<string>()
+        for (const edge of edges) {
+          if (edge.source === nodeId || edge.target === nodeId) {
+            connectedEdgeIds.add(edge.id)
+          }
+        }
+
+        const newEdges = produce(edges, (draft) => {
+          for (const edge of draft) {
+            edge.data = {
+              ...edge.data,
+              _connectedNodeIsSelected: connectedEdgeIds.has(edge.id),
+            }
+          }
+        })
+        setEdges(newEdges)
+
+        // 3. Emit event to trigger panel open + selection store sync
+        storeEventBus.emit({
+          type: 'selection:changed',
+          data: { nodes: [nodeId], edges: [] },
+        })
+      }, 50)
+    },
+    [store]
+  )
 
   const closeAllSelectors = useCallback(() => {
     window.dispatchEvent(new CustomEvent('workflow:closeAllSelectors'))
