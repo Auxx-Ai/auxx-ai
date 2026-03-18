@@ -23,7 +23,7 @@ const buttonVariants = cva(
           'border border-primary-150 bg-primary-100  hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 shadow-none hover:shadow-xs ',
         info: 'bg-info text-info-foreground shadow-xs hover:bg-info/80 dark:text-white',
         outline:
-          'shadow-xs bg-linear-to-t hover:to-muted to-background from-muted dark:from-muted/50 dark:border-border border border-zinc-300 shadow-zinc-950/10 duration-200 inset-shadow-2xs inset-shadow-white dark:inset-shadow-transparent',
+          'shadow-xs bg-linear-to-t hover:to-muted to-background from-muted dark:bg-none dark:bg-muted  dark:hover:bg-muted/80 dark:border-border border border-zinc-300 shadow-zinc-950/10 duration-200 inset-shadow-2xs inset-shadow-white dark:inset-shadow-transparent',
         // 'border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground focus-visible:ring-blue-500',
         secondary: 'bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
