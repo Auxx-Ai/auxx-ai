@@ -675,7 +675,7 @@ const VariableCommandItem: React.FC<VariableCommandItemProps> = ({
       value={item.id}
       onSelect={onSelect}
       className={cn(
-        'group flex h-7 items-start gap-3 px-0 py-0',
+        'group flex h-7 items-start gap-3 ps-0 pe-0 py-0',
         isSelectable ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
       )}>
       {/* Main Content */}

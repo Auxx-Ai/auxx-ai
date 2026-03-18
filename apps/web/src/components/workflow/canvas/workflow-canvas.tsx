@@ -320,6 +320,7 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
           // Selection settings
           selectionMode={SelectionMode.Partial}
           // Viewport
+          minZoom={0.1}
           defaultViewport={defaultViewport}
           // Styling
           attributionPosition='bottom-left'

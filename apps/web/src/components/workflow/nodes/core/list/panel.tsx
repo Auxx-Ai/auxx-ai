@@ -16,6 +16,7 @@ import { v4 as generateId } from 'uuid'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import { useVarStore } from '~/components/workflow/store/use-var-store'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
 import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
@@ -58,8 +59,11 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
   const outputVariables = useMemo(() => {
     if (!nodeData) return []
 
-    // Pass only the specific input variable we need
-    return computeListOutputVariables(nodeData, nodeId, inputArrayVariable)
+    return computeListOutputVariables(nodeData, nodeId, {
+      resource: undefined,
+      allResources: [],
+      resolveVariable: (id) => useVarStore.getState().actions.getVariableById(id),
+    })
   }, [
     nodeData?.operation,
     nodeData?.inputList,

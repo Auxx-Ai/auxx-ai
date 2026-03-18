@@ -2,6 +2,7 @@
 
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { generateResourceTriggerVariablesFromFields } from '@auxx/lib/workflow-engine/client'
+import type { OutputVariableContext } from '~/components/workflow/types/output-variables'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { ResourceTriggerData } from './types'
 
@@ -16,15 +17,15 @@ type ResourceWithFields = { id: string; label: string; plural: string; fields: R
  *
  * @param data - Resource trigger node data
  * @param nodeId - Node ID
- * @param resource - Current resource with fields
- * @param allResources - All available resources (for relationship drilling)
+ * @param context - Output variable context with resource access
  */
 export function getResourceTriggerOutputVariables(
   data: ResourceTriggerData,
   nodeId: string,
-  resource?: ResourceWithFields,
-  allResources?: ResourceWithFields[]
+  context: OutputVariableContext
 ): UnifiedVariable[] {
+  const resource = context.resource as ResourceWithFields | undefined
+  const allResources = context.allResources as ResourceWithFields[]
   // No resource selected yet - return empty (same as Find node)
   if (!resource) {
     return []

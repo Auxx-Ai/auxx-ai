@@ -5,18 +5,19 @@ import type React from 'react'
 import { useEffect, useRef } from 'react'
 import { useVarStoreSync } from '../hooks/use-var-store-sync'
 import { useVarStore } from '../store/use-var-store'
+import type { EdgeMeta, NodeMeta } from '../store/var-graph'
 
 interface VarStoreSyncProviderProps {
   children: React.ReactNode
 }
 
 /**
- * Provider component that sets up variable store synchronization with ReactFlow
- * This should be placed inside ReactFlowProvider but outside the main workflow components
+ * Provider component that sets up variable store synchronization with ReactFlow.
+ * Mounts the event-driven sync hook and performs initial graph sync.
  */
 export function VarStoreSyncProvider({ children }: VarStoreSyncProviderProps) {
   const initializeStore = useVarStore((state) => state.actions.initializeStore)
-  const syncWithReactFlow = useVarStore((state) => state.actions.syncWithReactFlow)
+  const updateGraph = useVarStore((state) => state.actions.updateGraph)
   const store = useStoreApi()
   const nodesInitialized = useNodesInitialized()
   const hasTriggeredInitialSync = useRef(false)
@@ -26,22 +27,31 @@ export function VarStoreSyncProvider({ children }: VarStoreSyncProviderProps) {
     initializeStore()
   }, [initializeStore])
 
-  // Trigger initial sync when nodes are initialized in React Flow
+  // Initial sync when nodes are initialized (review finding #3: explicit initial call)
   useEffect(() => {
     if (nodesInitialized && !hasTriggeredInitialSync.current) {
       const { nodes, edges } = store.getState()
       if (nodes.length > 0) {
-        console.log('Initial sync triggered - nodes initialized in ReactFlow', {
-          nodesCount: nodes.length,
-          edgesCount: edges.length,
-        })
-        syncWithReactFlow(nodes, edges)
+        const nodeMetas: NodeMeta[] = nodes.map((n) => ({
+          id: n.id,
+          type: n.data?.type || n.type || '',
+          data: n.data,
+          parentId: n.parentId,
+        }))
+        const edgeMetas: EdgeMeta[] = edges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle,
+          data: e.data,
+        }))
+        updateGraph(nodeMetas, edgeMetas)
         hasTriggeredInitialSync.current = true
       }
     }
-  }, [nodesInitialized, store, syncWithReactFlow])
+  }, [nodesInitialized, store, updateGraph])
 
-  // Set up the sync between ReactFlow and var store
+  // Set up event-driven sync
   useVarStoreSync()
 
   return <>{children}</>

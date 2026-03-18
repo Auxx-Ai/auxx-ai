@@ -307,7 +307,11 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
       </Section>
 
       <OutputVariablesDisplay
-        outputVariables={getFindNodeOutputVariables(nodeData, nodeId, resource, resources)}
+        outputVariables={getFindNodeOutputVariables(nodeData, nodeId, {
+          resource,
+          allResources: resources,
+          resolveVariable: () => undefined,
+        })}
         initialOpen={false}
       />
     </BasePanel>

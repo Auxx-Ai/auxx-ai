@@ -2,6 +2,7 @@
 
 import type { UnifiedVariable } from '~/components/workflow/types'
 import { BaseType } from '~/components/workflow/types'
+import type { OutputVariableContext } from '~/components/workflow/types/output-variables'
 import {
   assignVariableIds,
   cloneAndRewriteVariableIds,
@@ -24,18 +25,21 @@ function validateInputArrayVariable(inputVar?: UnifiedVariable): UnifiedVariable
  *
  * @param data - List node configuration data
  * @param nodeId - Node ID for generating variable IDs
- * @param inputArrayVariable - The specific input array variable for type inference (optional, falls back to generic types)
+ * @param context - Output variable context with resolveVariable for upstream variable lookup
  * @returns Array of output variables with inferred types
  *
- * NOTE: This function implements best-effort type inference. When inputArrayVariable is provided,
- * it performs intelligent type inference based on input array structure. When not provided,
- * it falls back to generic ARRAY types for compatibility.
+ * NOTE: This function implements best-effort type inference. When the input array variable
+ * can be resolved via context.resolveVariable, it performs intelligent type inference based
+ * on input array structure. Otherwise, it falls back to generic ARRAY types.
  */
 export function computeListOutputVariables(
   data: ListNodeData,
   nodeId: string,
-  inputArrayVariable?: UnifiedVariable
+  context: OutputVariableContext
 ): UnifiedVariable[] {
+  // Resolve the input array variable from upstream
+  const inputVariableId = data.inputList?.replace(/[{}]/g, '')
+  const inputArrayVariable = inputVariableId ? context.resolveVariable(inputVariableId) : undefined
   const operation = data.operation as ListOperation
   const outputs: UnifiedVariable[] = []
 

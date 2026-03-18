@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/hooks/use-available-variables-v2.ts
+// apps/web/src/components/workflow/hooks/use-available-variables.tsx
 
 import { useStore } from '@xyflow/react'
 import { Globe, Repeat, Settings } from 'lucide-react'
@@ -13,7 +13,7 @@ import type { LoopContext } from '../store/use-var-store'
 import { useVarStore } from '../store/use-var-store'
 import type { BaseType } from '../types/unified-types'
 import { getIcon } from '../utils/icon-helper'
-import { useNodeAvailableVariables } from './use-var-store-sync'
+import { useNodeAvailableVariables } from './use-variable'
 
 /** Stable empty array to avoid creating new references */
 const EMPTY_LOOP_CONTEXTS: LoopContext[] = []
@@ -27,7 +27,7 @@ interface UseAvailableVariablesOptions {
 }
 
 /**
- * Hook to get all available variables for a node using the new var store
+ * Hook to get all available variables for a node using the var store
  */
 export function useAvailableVariables({
   nodeId,
@@ -48,10 +48,9 @@ export function useAvailableVariables({
       [nodeId]
     )
   )
-  // Get loop contexts from var store (previously hardcoded to empty array)
-  // This enables loop variable visibility for nodes inside loops
-  // Use stable empty array to prevent re-renders when Map returns undefined
-  const contexts = useVarStore((state) => state.loopContexts.get(nodeId)) ?? EMPTY_LOOP_CONTEXTS
+
+  // Get loop contexts from loopAncestry map
+  const contexts = useVarStore((state) => state.loopAncestry.get(nodeId)) ?? EMPTY_LOOP_CONTEXTS
 
   // Get environment and system variables as arrays with memoization
   const envVariablesMap = useVarStore((state) => state.environmentVariables)
@@ -80,13 +79,11 @@ export function useAvailableVariables({
   }, [availableVariables, expectedTypes])
 
   // Cache for nodeTitlesMap to prevent re-renders during dragging
-  // Only recalculate when titles or types actually change, not positions
   const nodeTitlesMapRef = useRef<Record<string, { title: string; type: string }>>({})
   const nodeTitlesMapHashRef = useRef<string>('')
 
   const nodeTitlesMap = useStore(
     useCallback((state) => {
-      // Build new map
       const newMap = state.nodes.reduce(
         (acc, node) => {
           acc[node.id] = {
@@ -98,7 +95,6 @@ export function useAvailableVariables({
         {} as Record<string, { title: string; type: string }>
       )
 
-      // Create hash of titles/types to detect actual changes
       const newHash = state.nodes
         .map(
           (n) => `${n.id}:${n.data?.title || n.data?.label || n.id}:${n.data?.type || 'unknown'}`
@@ -106,7 +102,6 @@ export function useAvailableVariables({
         .sort()
         .join('|')
 
-      // Only update if hash changed (titles/types actually changed)
       if (newHash !== nodeTitlesMapHashRef.current) {
         nodeTitlesMapHashRef.current = newHash
         nodeTitlesMapRef.current = newMap
@@ -122,15 +117,12 @@ export function useAvailableVariables({
     const nodeGroups = new Map<string, UnifiedVariable[]>()
 
     // Group node variables by nodeId (derived from variable.id)
-    // Only include top-level variables in groups (exclude nested children)
     filteredVariables.forEach((variable) => {
       if (variable.category === 'node') {
         const variableNodeId = getNodeIdFromVariableId(variable.id)
         const variablePath = getPathFromVariableId(variable.id)
 
         // Only include top-level variables in groups
-        // Nested variables like "ticket.id" should be excluded (shown when navigating into parent)
-        // Array item templates like "contact[*]" should also be excluded (only accessible via parent array)
         const pathWithoutArrays = variablePath.replace(/\[\*\]/g, '')
         const isTopLevel = !pathWithoutArrays.includes('.') && !variablePath.includes('[*]')
 
@@ -145,7 +137,6 @@ export function useAvailableVariables({
     // Create groups for node variables
     let order = 0
     nodeGroups.forEach((variables, sourceNodeId) => {
-      // Get node info from memoized map
       const nodeInfo = nodeTitlesMap[sourceNodeId]
       const nodeTitle = nodeInfo?.title || sourceNodeId
       const nodeType = nodeInfo?.type || 'unknown'
@@ -154,7 +145,6 @@ export function useAvailableVariables({
 
       groups.push({
         id: `node-${sourceNodeId}`,
-        // nodeId: sourceNodeId,
         name: String(nodeTitle),
         type: 'node',
         nodeType,
@@ -171,18 +161,10 @@ export function useAvailableVariables({
         if (v.category !== 'node') return false
         const variableNodeId = getNodeIdFromVariableId(v.id)
 
-        // Check if this variable belongs to any of our loop contexts
         return contexts.some((ctx) => {
           if (ctx.loopNodeId !== variableNodeId) return false
 
           const variablePath = getPathFromVariableId(v.id)
-
-          // Loop variables use the same structure-based filtering as regular node variables.
-          // Any top-level variable (no dots in path) from a loop node is included in the
-          // "Loop Variables" group. This ensures:
-          // - No name-based assumptions (works with any variable names, even if Contact has "index" field)
-          // - Consistent with regular variable handling
-          // - Automatically includes new loop variables without code changes
           const pathWithoutArrays = variablePath.replace(/\[\*\]/g, '')
           const isTopLevel = !pathWithoutArrays.includes('.') && !variablePath.includes('[*]')
 
@@ -191,17 +173,15 @@ export function useAvailableVariables({
       })
 
       if (loopVars.length > 0) {
-        // For single loop, use simpler naming
         const contextName =
           contexts.length === 1 ? 'Loop Variables' : `Loop Variables (${contexts.length} levels)`
 
         groups.push({
           id: 'loop-context',
-          // nodeId: contexts[0]?.loopNodeId || '',
           name: contextName,
           type: 'loop',
           icon: <Repeat className='size-4' />,
-          order: -1, // Show at top
+          order: -1,
           variables: loopVars,
           color: '#8B5CF6',
         })
@@ -211,22 +191,19 @@ export function useAvailableVariables({
     // Add environment variables group
     if (includeEnvironment && envVariables.length > 0) {
       const envVars: UnifiedVariable[] = envVariables.map((env) => {
-        const envId = env.id || `env.${env.name}` // Use dot notation, not underscore
+        const envId = env.id || `env.${env.name}`
         return {
           id: envId,
-          // nodeId: 'env', // Derived from ID
-          path: getPathFromVariableId(envId), // Derived from ID
-          // fullPath: envId, // Same as ID
+          path: getPathFromVariableId(envId),
           label: env.name,
           type: (env.type || 'string') as BaseType,
           category: 'environment' as const,
-          description: '', // EnvVar doesn't have description field
+          description: '',
         }
       })
 
       groups.push({
         id: 'environment',
-        // nodeId: '',
         name: 'Environment Variables',
         type: 'environment',
         icon: <Settings className='size-4' />,
@@ -240,7 +217,6 @@ export function useAvailableVariables({
     if (includeSystem && sysVariables.length > 0) {
       groups.push({
         id: 'system',
-        // nodeId: '',
         name: 'System Variables',
         type: 'system',
         icon: <Globe className='size-4' />,
@@ -269,9 +245,6 @@ export function useAvailableVariables({
     return groupedVariables.flatMap((group) => group.variables)
   }, [groupedVariables])
 
-  // Create flattened list including all nested variables for searching
-  // filteredVariables is already flattened from store's availabilityCache
-  // No need to re-flatten by walking children arrays
   const allVariables = useMemo(() => {
     return filteredVariables
   }, [filteredVariables])

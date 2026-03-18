@@ -6,6 +6,7 @@ import { useNodesInitialized, useStoreApi } from '@xyflow/react'
 import type React from 'react'
 import { useEffect, useRef } from 'react'
 import { useVarStore } from '../../store/use-var-store'
+import type { EdgeMeta, NodeMeta } from '../../store/var-graph'
 
 /** Sanitized environment variable from public API */
 interface SanitizedEnvVar {
@@ -21,15 +22,15 @@ interface ViewerVarStoreSyncProviderProps {
 }
 
 /**
- * Read-only var store sync provider for the workflow viewer
- * Performs one-time initialization and sync, no ongoing subscriptions
+ * Read-only var store sync provider for the workflow viewer.
+ * Performs one-time initialization and sync, no ongoing subscriptions.
  */
 export function ViewerVarStoreSyncProvider({
   children,
   environmentVariables,
 }: ViewerVarStoreSyncProviderProps) {
   const initializeStore = useVarStore((state) => state.actions.initializeStore)
-  const syncWithReactFlow = useVarStore((state) => state.actions.syncWithReactFlow)
+  const updateGraph = useVarStore((state) => state.actions.updateGraph)
   const store = useStoreApi()
   const nodesInitialized = useNodesInitialized()
   const hasInitialized = useRef(false)
@@ -53,11 +54,24 @@ export function ViewerVarStoreSyncProvider({
     if (nodesInitialized && !hasInitialized.current) {
       const { nodes, edges } = store.getState()
       if (nodes.length > 0) {
-        syncWithReactFlow(nodes, edges)
+        const nodeMetas: NodeMeta[] = nodes.map((n) => ({
+          id: n.id,
+          type: n.data?.type || n.type || '',
+          data: n.data,
+          parentId: n.parentId,
+        }))
+        const edgeMetas: EdgeMeta[] = edges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle,
+          data: e.data,
+        }))
+        updateGraph(nodeMetas, edgeMetas)
         hasInitialized.current = true
       }
     }
-  }, [nodesInitialized, store, syncWithReactFlow])
+  }, [nodesInitialized, store, updateGraph])
 
   return <>{children}</>
 }
