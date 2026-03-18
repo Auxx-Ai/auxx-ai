@@ -19,7 +19,7 @@ const selectTriggerVariants = cva(
     variants: {
       variant: {
         default:
-          'border-primary-200 focus:border-primary-300 bg-primary-50 focus:ring-primary-400 placeholder:text-primary-500',
+          'border-primary-200 focus:border-primary-300 bg-primary-50 dark:bg-[#1e2227] dark:border-[#2c313a] focus:ring-primary-400 placeholder:text-primary-500',
         transparent:
           'border-none bg-transparent shadow-none focus:ring-0 focus-visible:ring-0 placeholder:text-muted-foreground',
         ghost: 'shadow-none border-none hover:bg-accent hover:text-accent-foreground',
