@@ -45,8 +45,8 @@ const WorkflowCompletionsBridge: React.FC<{
   contextRef.current = {
     getNodes: () => reactFlowInstance.getNodes(),
     getNodeVariables: (targetNodeId: string) => {
-      const nodeCache = varStore.nodeOutputCache.get(targetNodeId)
-      return nodeCache?.variables || []
+      const nodeOutput = varStore.nodeOutputs.get(targetNodeId)
+      return nodeOutput?.variables || []
     },
   }
 

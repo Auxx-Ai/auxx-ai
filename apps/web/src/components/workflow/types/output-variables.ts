@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/types/output-variables.ts
 
+import type { Resource } from '@auxx/lib/resources/client'
 import type { WorkflowBlockField } from '~/lib/workflow/types'
 import type { UnifiedVariable } from './variable-types'
 
@@ -30,16 +31,28 @@ export interface OutputVariable {
 }
 
 /**
- * New function type that returns UnifiedVariable[] for node outputs
+ * Context passed to outputVariables functions for resource access and upstream variable resolution
+ */
+export interface OutputVariableContext {
+  /** Resource for this node (if resourceType is set) */
+  resource?: Resource
+  /** All available resources */
+  allResources: Resource[]
+  /** Resolve any upstream variable by ID. Returns undefined if not yet computed. */
+  resolveVariable: (variableId: string) => UnifiedVariable | undefined
+}
+
+/**
+ * Function type that returns UnifiedVariable[] for node outputs
  *
  * @param config - Node configuration data
  * @param nodeId - Node ID
- * @param allVariables - Optional array of all available variables for type inference
+ * @param context - Output variable context with resource access and variable resolver
  */
 export type UnifiedOutputVariablesFunction<TConfig = any> = (
   config: TConfig,
   nodeId: string,
-  allVariables?: UnifiedVariable[]
+  context: OutputVariableContext
 ) => UnifiedVariable[]
 
 /**

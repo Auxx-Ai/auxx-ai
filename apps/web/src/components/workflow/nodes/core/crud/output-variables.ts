@@ -2,6 +2,7 @@
 
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { generateCrudNodeVariablesFromFields } from '@auxx/lib/workflow-engine/client'
+import type { OutputVariableContext } from '~/components/workflow/types/output-variables'
 import { BaseType } from '~/components/workflow/types/unified-types'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 import type { CrudNodeData } from './types'
@@ -143,15 +144,15 @@ function generateThreadActionVariables(nodeId: string): UnifiedVariable[] {
  *
  * @param nodeData - CRUD node data
  * @param nodeId - Node ID
- * @param resource - Current resource with fields
- * @param allResources - All available resources (for relationship drilling)
+ * @param context - Output variable context with resource access
  */
 export function getCrudNodeOutputVariables(
   nodeData: CrudNodeData,
   nodeId: string,
-  resource?: ResourceWithFields,
-  allResources?: ResourceWithFields[]
+  context: OutputVariableContext
 ): UnifiedVariable[] {
+  const resource = context.resource as ResourceWithFields | undefined
+  const allResources = context.allResources as ResourceWithFields[]
   // Thread resources have action-based output variables
   if (nodeData.resourceType === 'thread') {
     const variables = generateThreadActionVariables(nodeId)

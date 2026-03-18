@@ -70,6 +70,5 @@ export const findDefinition: NodeDefinition<FindNodeData> = {
   schema: findNodeDataSchema,
   extractVariables: extractFindVariables,
   validator: validateFindNodeConfig,
-  outputVariables: (data: FindNodeData, nodeId: string, resource, allResources) =>
-    getFindNodeOutputVariables(data, nodeId, resource, allResources),
+  outputVariables: getFindNodeOutputVariables,
 }

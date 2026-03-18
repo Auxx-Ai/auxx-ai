@@ -45,9 +45,9 @@ export function createResourceTriggerDefaultData(
   const operationConfig = RESOURCE_OPERATIONS[operation]
 
   return {
-    title: `Resource ${operationConfig?.label || operation}`,
-    desc: `Triggered when a resource is ${operation}`,
-    description: `Triggered when a resource is ${operation}`,
+    title: `Record ${operationConfig?.label || operation}`,
+    desc: `Triggered when a record is ${operation}`,
+    description: `Triggered when a record is ${operation}`,
     icon: getResourceTriggerIcon(resourceType, operation),
     variables: [],
     isValid: true,
@@ -103,8 +103,8 @@ export const validateResourceTriggerConfig = (data: ResourceTriggerData): Valida
 export const resourceTriggerDefinition: NodeDefinition<ResourceTriggerData> = {
   id: 'resource-trigger',
   category: NodeCategory.TRIGGER,
-  displayName: 'Resource',
-  description: 'Triggers when a resource event occurs (create, update, delete, or manual)',
+  displayName: 'Record',
+  description: 'Triggers when a record event occurs (create, update, delete, or manual)',
   icon: 'zap',
   color: '#10b981',
   defaultData: createResourceTriggerDefaultData('contact', 'created'),
@@ -112,10 +112,5 @@ export const resourceTriggerDefinition: NodeDefinition<ResourceTriggerData> = {
   validator: validateResourceTriggerConfig,
   triggerType: WorkflowTriggerType.RESOURCE_TRIGGER,
   // Pattern: Accepts resource context from var store for dynamic variable generation
-  outputVariables: (
-    data: ResourceTriggerData,
-    nodeId: string,
-    resource?: any,
-    allResources?: any[]
-  ) => getResourceTriggerOutputVariables(data, nodeId, resource, allResources),
+  outputVariables: getResourceTriggerOutputVariables,
 }

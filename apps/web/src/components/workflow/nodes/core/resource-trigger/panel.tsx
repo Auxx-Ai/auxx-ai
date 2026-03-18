@@ -143,12 +143,11 @@ const ResourceTriggerPanelComponent: React.FC<ResourceTriggerPanelProps> = ({ no
 
       {/* Output Variables Display - call with full context like Find node */}
       <OutputVariablesDisplay
-        outputVariables={getResourceTriggerOutputVariables(
-          nodeData,
-          nodeId,
-          resourceWithFields,
-          resources
-        )}
+        outputVariables={getResourceTriggerOutputVariables(nodeData, nodeId, {
+          resource: resourceWithFields,
+          allResources: resources,
+          resolveVariable: () => undefined,
+        })}
         initialOpen={false}
       />
 

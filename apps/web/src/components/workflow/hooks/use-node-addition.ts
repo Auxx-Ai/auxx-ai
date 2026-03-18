@@ -8,7 +8,7 @@ import { NodeType } from '~/components/workflow/types'
 import { LOOP_HANDLES } from '../nodes/core/loop/constants'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { storeEventBus } from '../store/event-bus'
-import { useVarStore } from '../store/use-var-store'
+
 import { useWorkflowStore } from '../store/workflow-store'
 import { LAYOUT_SPACING } from '../utils/layout-constants'
 import {
@@ -287,11 +287,7 @@ export const useNodeAddition = () => {
           })
         }
 
-        // Variables are automatically synced by VarStoreSyncProvider
-        // Trigger immediate sync if node was added to a loop for instant variable availability
-        if (position === 'inside' && parentNodeId) {
-          useVarStore.getState().actions.triggerSync()
-        }
+        // Variable sync is now handled automatically by ReactFlow subscription
 
         // Update workflow trigger type if we added a trigger node
         const newNodeDefinition = unifiedNodeRegistry.getDefinition(nodeType)

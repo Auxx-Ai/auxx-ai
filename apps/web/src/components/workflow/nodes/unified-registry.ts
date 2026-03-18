@@ -11,7 +11,7 @@ class UnifiedNodeRegistry {
   private definitions = new Map<string, NodeDefinition>()
   private categories = new Map<NodeCategory, string[]>()
   private isInitialized = false
-  private changeListeners = new Set<() => void>()
+  private changeListeners = new Set<(changedIds: string[]) => void>()
   private version = 0
 
   /**
@@ -30,7 +30,7 @@ class UnifiedNodeRegistry {
 
     this.definitions.set(definition.id, definition)
     this.updateCategoryIndex(definition)
-    this.notifyChange()
+    this.notifyChange([definition.id])
   }
 
   /**
@@ -57,19 +57,20 @@ class UnifiedNodeRegistry {
 
   /**
    * Subscribe to registry changes
+   * @param listener - Receives array of changed definition IDs
    * @returns Unsubscribe function
    */
-  subscribe(listener: () => void): () => void {
+  subscribe(listener: (changedIds: string[]) => void): () => void {
     this.changeListeners.add(listener)
     return () => this.changeListeners.delete(listener)
   }
 
   /**
-   * Notify all listeners of changes
+   * Notify all listeners of changes with the IDs that changed
    */
-  private notifyChange(): void {
+  private notifyChange(changedIds: string[]): void {
     this.version++
-    this.changeListeners.forEach((listener) => listener())
+    this.changeListeners.forEach((listener) => listener(changedIds))
   }
 
   /** Snapshot for useSyncExternalStore — returns version counter */
@@ -81,7 +82,23 @@ class UnifiedNodeRegistry {
    * Register multiple definitions
    */
   registerMany(definitions: NodeDefinition[]): void {
-    definitions.forEach((def) => this.register(def))
+    const changedIds: string[] = []
+    for (const def of definitions) {
+      const exists = this.definitions.has(def.id)
+      if (exists) {
+        console.warn(
+          `Node definition ${def.id} is already registered. ` +
+            `Use { allowUpdate: true } to update existing definition.`
+        )
+        continue
+      }
+      this.definitions.set(def.id, def)
+      this.updateCategoryIndex(def)
+      changedIds.push(def.id)
+    }
+    if (changedIds.length > 0) {
+      this.notifyChange(changedIds)
+    }
   }
 
   /**

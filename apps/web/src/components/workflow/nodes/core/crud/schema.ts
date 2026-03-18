@@ -60,6 +60,5 @@ export const crudDefinition: NodeDefinition<CrudNodeData> = {
   schema: crudNodeDataSchema,
   validator: validateCrudNodeConfig,
   extractVariables: extractCrudVariables,
-  outputVariables: (data: CrudNodeData, nodeId: string, resource, allResources) =>
-    getCrudNodeOutputVariables(data, nodeId, resource, allResources),
+  outputVariables: getCrudNodeOutputVariables,
 }

@@ -27,7 +27,7 @@ import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registr
 import { storeEventBus } from '~/components/workflow/store/event-bus'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import type { FlowNode } from '~/components/workflow/store/types'
-import { useVarStore } from '~/components/workflow/store/use-var-store'
+
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { NodeType } from '~/components/workflow/types/node-types'
 import { getNodesConnectedSourceOrTargetHandleIdsMap } from '~/components/workflow/utils'
@@ -741,10 +741,7 @@ export const useNodesInteractions = () => {
         // Just trigger save
         debouncedSave()
 
-        // If node was moved into/out of a loop, trigger sync for variable availability
-        if (node.parentId) {
-          useVarStore.getState().actions.triggerSync()
-        }
+        // Variable sync is now handled automatically by ReactFlow subscription
 
         // Note: No need to call updateNode directly since storeSyncCallbacks.syncNodeToStore already does it
 

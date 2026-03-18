@@ -528,7 +528,11 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
       </Section>
 
       <OutputVariablesDisplay
-        outputVariables={getCrudNodeOutputVariables(nodeData, nodeId, resource, resources)}
+        outputVariables={getCrudNodeOutputVariables(nodeData, nodeId, {
+          resource,
+          allResources: resources,
+          resolveVariable: () => undefined,
+        })}
         initialOpen={false}
       />
     </BasePanel>
