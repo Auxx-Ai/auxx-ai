@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'
 import { useRunStore } from '~/components/workflow/store/run-store'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 
 /**
  * Centralized hook for read-only state across the workflow editor
@@ -11,6 +12,9 @@ import { useRunStore } from '~/components/workflow/store/run-store'
 export function useReadOnly() {
   // Get read-only state from canvas store (used for version previews)
   const canvasReadOnly = useCanvasStore((state) => state.readOnly)
+
+  // Get viewer mode (set when rendering in WorkflowViewer — disables all saves)
+  const isViewerMode = useWorkflowStore((state) => state.isViewerMode)
 
   // Get run state to determine if we're in a mode that should disable editing
   const runViewMode = useRunStore((state) => state.runViewMode)
@@ -23,7 +27,7 @@ export function useReadOnly() {
   // Note: single-node mode is excluded - should still allow editing/saving
 
   // Combine all read-only conditions
-  const isReadOnly = canvasReadOnly || runStateReadOnly
+  const isReadOnly = canvasReadOnly || isViewerMode || runStateReadOnly
 
   // Memoize the return object to prevent unnecessary re-renders in consumers
   return useMemo(

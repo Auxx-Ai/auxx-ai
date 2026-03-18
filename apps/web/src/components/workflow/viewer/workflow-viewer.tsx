@@ -18,9 +18,6 @@ import { WorkflowViewerProvider } from './workflow-viewer-provider'
 // This ensures all node definitions are available before any rendering
 setupNodeRegistry()
 
-// Set viewer mode to disable save functionality
-useWorkflowStore.getState().setViewerMode(true)
-
 /**
  * Display options for the workflow viewer
  */
@@ -116,6 +113,14 @@ const defaultOptions: Required<WorkflowViewerOptions> = {
 export const WorkflowViewer = memo<WorkflowViewerProps>(
   ({ workflowId, workflow, className, theme, options, initialViewport, onLoad, onError }) => {
     const containerRef = useRef<HTMLDivElement>(null)
+
+    // Set viewer mode on mount, clear on unmount to disable save functionality
+    useEffect(() => {
+      useWorkflowStore.getState().setViewerMode(true)
+      return () => {
+        useWorkflowStore.getState().setViewerMode(false)
+      }
+    }, [])
 
     // Merge options with defaults, including theme prop
     const mergedOptions: Required<WorkflowViewerOptions> = {

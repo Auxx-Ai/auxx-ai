@@ -345,6 +345,7 @@ export const useWorkflowSave = () => {
   const syncWorkflowWhenPageClose = useCallback(() => {
     // Check read-only state
     const canvasReadOnly = useCanvasStore.getState().readOnly
+    const isViewerMode = useWorkflowStore.getState().isViewerMode
 
     // Also check run state for read-only conditions
     const { useRunStore } = require('../store/run-store')
@@ -353,7 +354,7 @@ export const useWorkflowSave = () => {
       runState.runViewMode === 'previous' || // Viewing history
       (runState.runViewMode === 'live' && runState.isRunning) // Live execution
 
-    if (canvasReadOnly || runStateReadOnly || isReadOnly) {
+    if (canvasReadOnly || isViewerMode || runStateReadOnly || isReadOnly) {
       return
     }
 

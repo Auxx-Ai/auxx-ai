@@ -3,29 +3,17 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { cn } from '@auxx/ui/lib/utils'
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Plus, Trash2 } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { ChevronDown, Plus, Trash2, X } from 'lucide-react'
 import type React from 'react'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { BaseType } from '~/components/workflow/types/unified-types'
 import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  containsVariableReference,
+  VARIABLE_PATTERN,
+} from '~/components/workflow/utils/variable-utils'
+import VariableTag from '../variables/variable-tag'
 
 /**
  * Props for VarEditorArray component
@@ -54,19 +42,79 @@ interface VarEditorArrayProps {
 }
 
 /**
- * Internal representation of an array item
+ * Extract variable ID from a value string like "{{nodeId.path}}"
  */
-interface ArrayItem {
-  id: string
-  value: string
-  mode: boolean
+function extractVariableId(value: string): string | null {
+  const match = value.trim().match(/^\{\{([^}]+)\}\}$/)
+  return match ? match[1]! : null
 }
 
 /**
- * Sortable wrapper for each array item
+ * Badge displaying a single array item value in the trigger area
  */
-function SortableArrayItem({
-  id,
+function ArrayItemBadge({
+  value,
+  isConstant,
+  nodeId,
+  disabled,
+  onRemove,
+}: {
+  value: string
+  isConstant: boolean
+  nodeId: string
+  disabled?: boolean
+  onRemove: () => void
+}) {
+  // For variable mode, check if this is a pure variable reference
+  const variableId = !isConstant ? extractVariableId(value) : null
+
+  // Display content
+  const displayContent = useMemo(() => {
+    if (variableId) {
+      return <VariableTag variableId={variableId} nodeId={nodeId} isShort />
+    }
+    if (isConstant && value) {
+      return <span className='truncate max-w-[120px] text-xs font-medium'>{value}</span>
+    }
+    // Mixed variable content or non-empty variable mode value
+    if (!isConstant && containsVariableReference(value)) {
+      // Extract first variable for display
+      VARIABLE_PATTERN.lastIndex = 0
+      const match = VARIABLE_PATTERN.exec(value)
+      if (match?.[1]) {
+        return <VariableTag variableId={match[1]} nodeId={nodeId} isShort />
+      }
+    }
+    // Fallback: show raw value truncated
+    return (
+      <span className='truncate max-w-[120px] text-xs text-muted-foreground'>
+        {value || '(empty)'}
+      </span>
+    )
+  }, [variableId, isConstant, value, nodeId])
+
+  return (
+    <div className='inline-flex items-center gap-0.5 rounded-md border border-border bg-background px-1 py-0.5 text-xs shadow-xs'>
+      {displayContent}
+      {!disabled && (
+        <button
+          type='button'
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove()
+          }}
+          className='ml-0.5 hover:text-destructive text-muted-foreground'>
+          <X className='size-3' />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A single array item row inside the popover
+ */
+function ArrayItemRow({
   value,
   mode,
   varType,
@@ -76,11 +124,9 @@ function SortableArrayItem({
   allowVariable,
   placeholder,
   placeholderConstant,
-  showHandle,
   onChange,
   onRemove,
 }: {
-  id: string
   value: string
   mode: boolean
   varType?: BaseType
@@ -90,35 +136,11 @@ function SortableArrayItem({
   allowVariable?: boolean
   placeholder?: string
   placeholderConstant?: string
-  showHandle: boolean
   onChange: (value: string, isConstant: boolean) => void
   onRemove: () => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-    disabled,
-  })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
-
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn('flex items-start gap-1.5 group border-b py-0.5', isDragging && 'opacity-50')}>
-      {showHandle && (
-        <button
-          {...attributes}
-          {...listeners}
-          className='mt-2 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity'
-          disabled={disabled}>
-          <GripVertical className='size-3' />
-        </button>
-      )}
-
+    <div className='flex items-start gap-1.5 group px-1'>
       <div className='flex-1'>
         <VarEditor
           value={value}
@@ -147,13 +169,13 @@ function SortableArrayItem({
 }
 
 /**
- * VarEditorArray - Manages an array of values with VarEditor
+ * VarEditorArray - Manages an array of values with VarEditor in a popover
  *
  * Features:
- * - Drag-and-drop reordering
- * - Add/remove items
+ * - Compact trigger showing value badges with inline remove
+ * - Popover for editing: add/remove items
  * - Each item has independent constant mode
- * - Type-specific inputs for all array items
+ * - Local state with commit-on-close
  */
 export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
   value,
@@ -167,120 +189,153 @@ export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
   placeholderConstant = 'Enter value',
   modes: externalModes,
 }) => {
-  // Initialize modes array (one per item)
+  const [open, setOpen] = useState(false)
+
+  // Compute resolved modes from external props
   // biome-ignore lint/correctness/useExhaustiveDependencies: value.map is stable; using value.length as trigger
-  const modes = useMemo(() => {
+  const resolvedModes = useMemo(() => {
     if (externalModes && externalModes.length === value.length) {
       return externalModes
     }
-    // Default: all items start in variable mode
     return value.map(() => false)
   }, [externalModes, value.length])
 
-  // Create items with unique IDs for drag-drop
-  const items: ArrayItem[] = useMemo(() => {
-    return value.map((val, index) => ({
-      id: `item-${index}`,
-      value: val,
-      mode: modes[index] ?? false,
-    }))
-  }, [value, modes])
+  // Local state for popover editing — decoupled from props, committed on close
+  const [localValues, setLocalValues] = useState<string[]>(value)
+  const [localModes, setLocalModes] = useState<boolean[]>(resolvedModes)
+  const localValuesRef = useRef(localValues)
+  const localModesRef = useRef(localModes)
+  localValuesRef.current = localValues
+  localModesRef.current = localModes
 
-  // Drag-drop sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
+  // Sync local state when props change externally (only while closed)
+  const prevValueRef = useRef(value)
+  const prevModesRef = useRef(resolvedModes)
+  if (!open) {
+    if (prevValueRef.current !== value) {
+      prevValueRef.current = value
+      setLocalValues(value)
+    }
+    if (prevModesRef.current !== resolvedModes) {
+      prevModesRef.current = resolvedModes
+      setLocalModes(resolvedModes)
+    }
+  }
+
+  // Handle popover open/close — commit on close
+  const handleOpenChange = useCallback(
+    (isOpen: boolean) => {
+      if (!isOpen) {
+        onChange(localValuesRef.current, localModesRef.current)
+      }
+      setOpen(isOpen)
+    },
+    [onChange]
+  )
+
+  // Handle item value change (local only)
+  const handleItemChange = useCallback((index: number, newValue: string, isConstant: boolean) => {
+    setLocalValues((prev) => {
+      const next = [...prev]
+      next[index] = newValue
+      return next
     })
-  )
+    setLocalModes((prev) => {
+      const next = [...prev]
+      next[index] = isConstant
+      return next
+    })
+  }, [])
 
-  // Handle item reordering
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event
-      if (!over || active.id === over.id) return
+  // Handle item removal inside popover (local only)
+  const handleRemoveItem = useCallback((index: number) => {
+    setLocalValues((prev) => prev.filter((_, i) => i !== index))
+    setLocalModes((prev) => prev.filter((_, i) => i !== index))
+  }, [])
 
-      const oldIndex = items.findIndex((item) => item.id === active.id)
-      const newIndex = items.findIndex((item) => item.id === over.id)
+  // Handle adding new item (local only)
+  const handleAddItem = useCallback(() => {
+    setLocalValues((prev) => [...prev, ''])
+    setLocalModes((prev) => [...prev, false])
+  }, [])
 
-      if (oldIndex === -1 || newIndex === -1) return
-
-      const newValue = [...value]
-      const newModes = [...modes]
-
-      // Swap items
-      const [movedValue] = newValue.splice(oldIndex, 1)
-      const [movedMode] = newModes.splice(oldIndex, 1)
-      newValue.splice(newIndex, 0, movedValue!)
-      newModes.splice(newIndex, 0, movedMode!)
-
-      onChange(newValue, newModes)
-    },
-    [items, value, modes, onChange]
-  )
-
-  // Handle item value change
-  const handleItemChange = useCallback(
-    (index: number, newValue: string, isConstant: boolean) => {
-      const newValues = [...value]
-      const newModes = [...modes]
-      newValues[index] = newValue
-      newModes[index] = isConstant
-      onChange(newValues, newModes)
-    },
-    [value, modes, onChange]
-  )
-
-  // Handle item removal
-  const handleRemoveItem = useCallback(
+  // Handle removing a badge from the trigger (immediate commit)
+  const handleTriggerRemove = useCallback(
     (index: number) => {
       const newValues = value.filter((_, i) => i !== index)
-      const newModes = modes.filter((_, i) => i !== index)
+      const newModes = resolvedModes.filter((_, i) => i !== index)
+      // Update local state too
+      setLocalValues(newValues)
+      setLocalModes(newModes)
+      // Commit immediately
       onChange(newValues, newModes)
     },
-    [value, modes, onChange]
+    [value, resolvedModes, onChange]
   )
 
-  // Handle adding new item
-  const handleAddItem = useCallback(() => {
-    onChange([...value, ''], [...modes, false])
-  }, [value, modes, onChange])
-
   return (
-    <div className='space-y-0 flex-1'>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-        modifiers={[restrictToVerticalAxis]}>
-        <SortableContext
-          items={items.map((item) => item.id)}
-          strategy={verticalListSortingStrategy}>
-          {items.map((item, index) => (
-            <SortableArrayItem
-              key={item.id}
-              id={item.id}
-              value={item.value}
-              mode={item.mode}
-              varType={varType}
-              nodeId={nodeId}
-              disabled={disabled}
-              allowConstant={allowConstant}
-              allowVariable={allowVariable}
-              placeholder={placeholder}
-              placeholderConstant={placeholderConstant}
-              showHandle={items.length > 1}
-              onChange={(val, isConstant) => handleItemChange(index, val, isConstant)}
-              onRemove={() => handleRemoveItem(index)}
-            />
-          ))}
-        </SortableContext>
-      </DndContext>
+    <div className='flex flex-col gap-1 flex-1'>
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <PopoverTrigger asChild disabled={disabled}>
+          <div className='cursor-pointer'>
+            {value.length > 0 ? (
+              <div className='min-h-7 flex flex-row flex-wrap items-center gap-1 py-1'>
+                {value.map((val, index) => (
+                  <ArrayItemBadge
+                    key={`badge-${index}`}
+                    value={val}
+                    isConstant={resolvedModes[index] ?? false}
+                    nodeId={nodeId}
+                    disabled={disabled}
+                    onRemove={() => handleTriggerRemove(index)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className='h-7 flex items-center justify-between pe-1'>
+                <span className='cursor-default text-sm text-primary-400 font-normal pt-0.5 truncate pointer-events-none'>
+                  {placeholder}
+                </span>
+                <ChevronDown className='size-4 text-foreground opacity-50' />
+              </div>
+            )}
+          </div>
+        </PopoverTrigger>
+        <PopoverContent className='p-0 w-[320px]' align='start'>
+          <div className='flex flex-col'>
+            {/* Header */}
+            <div className='flex items-center justify-between px-3 py-1.5 border-b'>
+              <span className='text-xs font-medium text-muted-foreground'>
+                Items ({localValues.length})
+              </span>
+              <Button size='xs' variant='ghost' onClick={handleAddItem} disabled={disabled}>
+                <Plus />
+                Add
+              </Button>
+            </div>
 
-      <Button className='' size='xs' variant='outline' onClick={handleAddItem} disabled={disabled}>
-        <Plus />
-        Add Item
-      </Button>
+            {/* Item list */}
+            <div className='max-h-[300px] overflow-y-auto divide-y'>
+              {localValues.map((val, index) => (
+                <ArrayItemRow
+                  key={`item-${index}`}
+                  value={val}
+                  mode={localModes[index] ?? false}
+                  varType={varType}
+                  nodeId={nodeId}
+                  disabled={disabled}
+                  allowConstant={allowConstant}
+                  allowVariable={allowVariable}
+                  placeholder={placeholder}
+                  placeholderConstant={placeholderConstant}
+                  onChange={(v, isConstant) => handleItemChange(index, v, isConstant)}
+                  onRemove={() => handleRemoveItem(index)}
+                />
+              ))}
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }

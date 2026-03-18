@@ -324,7 +324,7 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
           defaultViewport={defaultViewport}
           // Styling
           attributionPosition='bottom-left'
-          className={cn('bg-primary-50 dark:bg-primary-100', readOnly && 'opacity-95')}>
+          className={cn('bg-primary-50 ', readOnly && 'opacity-95')}>
           {/* <DevTools position="top-left" /> */}
           {/* Background */}
           {showGrid && (
@@ -332,7 +332,7 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
               variant={BackgroundVariant.Dots}
               gap={gridSize}
               size={1}
-              color={theme === 'dark' ? '#3f3f46' : '#d4d4d8'}
+              color={theme === 'dark' ? '#737881' : '#d4d4d8'}
             />
           )}
 

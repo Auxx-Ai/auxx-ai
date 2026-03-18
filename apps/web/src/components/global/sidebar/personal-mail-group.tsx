@@ -222,13 +222,16 @@ export function PersonalMailGroup({
           onToggleGroupVisibility={onToggleGroupVisibility}
         />
         <SidebarMenu className='gap-0'>
-          <div className='space-y-1 px-2'>
-            {Array(3)
-              .fill(0)
-              .map((_, i) => (
-                <Skeleton key={i} className='h-[26px] w-full' />
-              ))}
-          </div>
+          {Array(3)
+            .fill(0)
+            .map((_, i) => (
+              <SidebarMenuItem key={i}>
+                <div className='flex items-center space-x-2 px-2 py-1.5'>
+                  <Skeleton className='h-4 w-4 rounded-full' />
+                  <Skeleton className='h-4 w-24' />
+                </div>
+              </SidebarMenuItem>
+            ))}
         </SidebarMenu>
       </SidebarGroup>
     )

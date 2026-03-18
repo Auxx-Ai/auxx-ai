@@ -9,7 +9,8 @@ const textareaVariants = cva(
     variants: {
       variant: {
         default:
-          'h-24 border-primary-200 focus:border-primary-300 bg-primary-50 dark:bg-primary-100 focus:ring-primary-400 placeholder:text-primary-500',
+          // ' border-primary-200 focus:border-primary-300 bg-primary-50 dark:bg-primary-100 focus:ring-primary-400 placeholder:text-primary-500',
+          'h-24 border-primary-200 dark:border-[#2c313a] focus:border-primary-300 bg-primary-50 dark:bg-[#1e2227]',
         transparent: 'h-24 border-none bg-transparent',
       },
     },

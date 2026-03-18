@@ -30,8 +30,8 @@ export const ValidationErrorBadge: React.FC<ValidationErrorBadgeProps> = ({
         className={cn(
           'absolute right-2.5 -top-3 size-5 rounded-full flex items-center justify-center border',
           isError
-            ? 'bg-red-50 text-red-400 border-red-300'
-            : 'bg-yellow-50 text-yellow-400 border-yellow-300',
+            ? 'bg-red-50 text-red-400 border-red-300 dark:bg-red-500 dark:text-red-300 dark:border-red-500'
+            : 'bg-yellow-50 text-yellow-400 border-yellow-300 dark:bg-yellow-500 dark:text-yellow-300 dark:border-yellow-500',
           className
         )}>
         <AlertTriangle className='size-3' />

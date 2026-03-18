@@ -63,6 +63,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     }),
     [fieldDefinitions, isReadOnly]
   )
+  console.log('fieldDefinitions', fieldDefinitions)
 
   // Show hint if no array selected
   if (isEmpty) {

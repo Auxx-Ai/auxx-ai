@@ -86,15 +86,21 @@ export class TemplateGraphTransformer {
       }
     })
 
-    // Third pass: Rewrite variable references ({{oldId.field}}) in all node data
+    // Third pass: Rewrite variable references in all node data
+    // Two patterns need replacement:
+    //   1. {{oldId.field}} — template variable syntax in text/prompts
+    //   2. "oldId.field" — bare references like variableId in if-else conditions
     for (const node of clonedNodes) {
       const dataStr = JSON.stringify(node.data)
       let updated = dataStr
       for (const [oldId, newId] of idMapping) {
-        // Use regex: {{oldId. → {{newId.
-        // The {{ prefix + . suffix provide sufficient delimiters
-        const pattern = new RegExp(`\\{\\{${escapeRegExp(oldId)}\\.`, 'g')
-        updated = updated.replace(pattern, `{{${newId}.`)
+        const escaped = escapeRegExp(oldId)
+        // Pattern 1: {{oldId. → {{newId.
+        const templatePattern = new RegExp(`\\{\\{${escaped}\\.`, 'g')
+        updated = updated.replace(templatePattern, `{{${newId}.`)
+        // Pattern 2: "oldId. → "newId.  (bare node ID references in JSON values)
+        const barePattern = new RegExp(`"${escaped}\\.`, 'g')
+        updated = updated.replace(barePattern, `"${newId}.`)
       }
       if (updated !== dataStr) {
         const parsed = JSON.parse(updated)
