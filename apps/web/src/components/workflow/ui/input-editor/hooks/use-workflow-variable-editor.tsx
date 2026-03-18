@@ -301,14 +301,20 @@ export function useWorkflowVariableEditor({
     return editor ? tiptapToString(editor.getJSON()) : ''
   }, [editor])
 
-  // Set content programmatically
+  // Set content programmatically (skips echoed values from our own onChange)
   const setContent = useCallback(
     (content: string) => {
-      if (editor) {
-        const tiptapContent = stringToTiptap(content)
-        editor.commands.setContent(tiptapContent)
-        contentRef.current = content
-      }
+      if (!editor) return
+
+      // If the incoming content matches what we last sent to the parent via
+      // onContentChange, this is just an echo of our own edit bouncing back
+      // through the parent's state. Replacing the editor content would destroy
+      // the cursor position and close the variable picker.
+      if (content === contentRef.current) return
+
+      const tiptapContent = stringToTiptap(content)
+      editor.commands.setContent(tiptapContent)
+      contentRef.current = content
     },
     [editor]
   )

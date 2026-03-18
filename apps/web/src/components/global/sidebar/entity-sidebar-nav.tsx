@@ -5,11 +5,7 @@ import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { CustomResource } from '@auxx/lib/resources/client'
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from '@auxx/ui/components/dropdown-menu'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   SidebarGroup,

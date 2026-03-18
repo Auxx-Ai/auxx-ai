@@ -102,7 +102,7 @@ const VariableInput = React.memo<VariableInputProps>(
           {selectedVariable ? (
             <VariableTag variableId={variableId} nodeId={nodeId} isShort />
           ) : (
-            <span className='text-muted-foreground'>{placeholder}</span>
+            <span className='text-muted-foreground text-xs'>{placeholder}</span>
           )}
           <Variable className='h-4 w-4 text-muted-foreground' />
         </div>
