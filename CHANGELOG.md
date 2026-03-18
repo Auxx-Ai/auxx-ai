@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.92](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.91...auxx-v0.1.92) (2026-03-18)
+
+
+### Features
+
+* add icon support to workflow templates ([#292](https://github.com/Auxx-Ai/auxx-ai/issues/292)) ([5bfc876](https://github.com/Auxx-Ai/auxx-ai/commit/5bfc8764b6852967fcfa06fd7c7389ea75551dfe))
+* add integration tests for billing plan changes and trials ([#288](https://github.com/Auxx-Ai/auxx-ai/issues/288)) ([28c3052](https://github.com/Auxx-Ai/auxx-ai/commit/28c30528a62d40004574a197f7ca05b87d93826d))
+* add support for required apps and entities in workflow templates ([#291](https://github.com/Auxx-Ai/auxx-ai/issues/291)) ([80f6f0c](https://github.com/Auxx-Ai/auxx-ai/commit/80f6f0c01771cf9311da83bf5eaf53ea8e49f8da))
+* add variable availability and graph computation modules ([#295](https://github.com/Auxx-Ai/auxx-ai/issues/295)) ([17cc47a](https://github.com/Auxx-Ai/auxx-ai/commit/17cc47aefc3846dcf0f59104390257ce11a2b43d))
+* app cache providers and implement new app slug and published apps providers ([#290](https://github.com/Auxx-Ai/auxx-ai/issues/290)) ([8e968bd](https://github.com/Auxx-Ai/auxx-ai/commit/8e968bd9a51b3d9fa7b49a97befccd88e34407ea))
+* enhance  entityDefinitionId support and improving var label resolution in workflow ([#296](https://github.com/Auxx-Ai/auxx-ai/issues/296)) ([c9e50d5](https://github.com/Auxx-Ai/auxx-ai/commit/c9e50d56c432a6cf94f9f7406ebc3ab770c1439c))
+* implement org-level config management for Google and Outlook integrations ([#294](https://github.com/Auxx-Ai/auxx-ai/issues/294)) ([b40b2bc](https://github.com/Auxx-Ai/auxx-ai/commit/b40b2bc96a8e055c27c228aa7a212ab50c222a3d))
+* refactor variable editor array component for improved usability and performance ([#297](https://github.com/Auxx-Ai/auxx-ai/issues/297)) ([1f32e1d](https://github.com/Auxx-Ai/auxx-ai/commit/1f32e1d3be7250116d61cecad32ce35e6f2319a1))
+* update  textarea comp for impr. dark mode support and styling consistency ([#298](https://github.com/Auxx-Ai/auxx-ai/issues/298)) ([cedbc30](https://github.com/Auxx-Ai/auxx-ai/commit/cedbc30a148dc8b2364fa183852faf3e201e14bc))
+* update text classifier to support variable output mode and enhance app connections ([#293](https://github.com/Auxx-Ai/auxx-ai/issues/293)) ([5494123](https://github.com/Auxx-Ai/auxx-ai/commit/549412322399bbf313cb765dc43e42a037af4e3a))
+
 ## [0.1.91](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.90...auxx-v0.1.91) (2026-03-17)
 
 
