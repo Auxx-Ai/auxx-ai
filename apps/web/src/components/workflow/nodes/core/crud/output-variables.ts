@@ -8,7 +8,13 @@ import type { UnifiedVariable } from '~/components/workflow/types/variable-types
 import type { CrudNodeData } from './types'
 
 /** Resource shape for variable generation */
-type ResourceWithFields = { id: string; label: string; plural: string; fields: ResourceField[] }
+type ResourceWithFields = {
+  id: string
+  label: string
+  plural: string
+  fields: ResourceField[]
+  entityDefinitionId?: string
+}
 
 /**
  * Generate thread-specific output variables for action results
@@ -190,7 +196,11 @@ export function getCrudNodeOutputVariables(
 
   const baseVariables = generateCrudNodeVariablesFromFields(
     resource.fields,
-    { id: resource.id, label: resource.label, plural: resource.plural },
+    {
+      id: resource.entityDefinitionId ?? resource.id,
+      label: resource.label,
+      plural: resource.plural,
+    },
     nodeId,
     nodeData.mode,
     { resourcesMap, maxDepth: 2 }

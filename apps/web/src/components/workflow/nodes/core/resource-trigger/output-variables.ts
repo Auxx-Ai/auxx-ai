@@ -7,7 +7,13 @@ import type { UnifiedVariable } from '~/components/workflow/types/variable-types
 import type { ResourceTriggerData } from './types'
 
 /** Resource shape for variable generation (matches Find node) */
-type ResourceWithFields = { id: string; label: string; plural: string; fields: ResourceField[] }
+type ResourceWithFields = {
+  id: string
+  label: string
+  plural: string
+  fields: ResourceField[]
+  entityDefinitionId?: string
+}
 
 /**
  * Get output variables for a resource trigger node
@@ -36,7 +42,11 @@ export function getResourceTriggerOutputVariables(
 
   return generateResourceTriggerVariablesFromFields(
     resource.fields,
-    { id: resource.id, label: resource.label, plural: resource.plural },
+    {
+      id: resource.entityDefinitionId ?? resource.id,
+      label: resource.label,
+      plural: resource.plural,
+    },
     nodeId,
     data.operation,
     { resourcesMap, maxDepth: 2 }
