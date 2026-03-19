@@ -1,0 +1,1 @@
+ALTER TABLE "Organization" ADD COLUMN "demo_expires_at" timestamp (3);

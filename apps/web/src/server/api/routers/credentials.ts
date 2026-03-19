@@ -6,7 +6,7 @@ import { OAuth2WorkflowService } from '@auxx/lib/workflows'
 import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 // Singleton registry instance
 const credentialRegistry = new CredentialTypeRegistry()
@@ -23,6 +23,7 @@ export const credentialsRouter = createTRPCRouter({
         data: z.record(z.string(), z.any()).describe('Credential data (API keys, tokens, etc.)'),
       })
     )
+    .use(notDemo('create credentials'))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session.user.defaultOrganizationId) {
         throw new TRPCError({
@@ -176,6 +177,7 @@ export const credentialsRouter = createTRPCRouter({
         data: z.record(z.string(), z.any()).optional(),
       })
     )
+    .use(notDemo('update credentials'))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session.user.defaultOrganizationId) {
         throw new TRPCError({
@@ -220,6 +222,7 @@ export const credentialsRouter = createTRPCRouter({
         id: z.string().min(1, 'Credential ID is required'),
       })
     )
+    .use(notDemo('delete credentials'))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session.user.defaultOrganizationId) {
         throw new TRPCError({
@@ -320,6 +323,7 @@ export const credentialsRouter = createTRPCRouter({
         credentialName: z.string().min(1, 'Credential name is required'),
       })
     )
+    .use(notDemo('connect OAuth credentials'))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session.user.defaultOrganizationId) {
         throw new TRPCError({
@@ -370,6 +374,7 @@ export const credentialsRouter = createTRPCRouter({
         state: z.string().min(1, 'State parameter is required'),
       })
     )
+    .use(notDemo('complete OAuth connection'))
     .mutation(async ({ input }) => {
       try {
         const oauth2Service = OAuth2WorkflowService.getInstance()
@@ -402,6 +407,7 @@ export const credentialsRouter = createTRPCRouter({
         credentialId: z.string().min(1, 'Credential ID is required'),
       })
     )
+    .use(notDemo('refresh OAuth tokens'))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session.user.defaultOrganizationId) {
         throw new TRPCError({

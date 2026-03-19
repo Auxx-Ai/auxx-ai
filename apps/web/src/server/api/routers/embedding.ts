@@ -6,7 +6,7 @@ import { processNextPendingJob } from '@auxx/lib/embeddings'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api/embedding')
 
@@ -87,6 +87,7 @@ export const embeddingRouter = createTRPCRouter({
         collection: z.string().optional(),
       })
     )
+    .use(notDemo('regenerate embeddings'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
@@ -230,30 +231,32 @@ export const embeddingRouter = createTRPCRouter({
     }),
 
   // Process the next pending embedding job
-  processNextJob: protectedProcedure.mutation(async ({ ctx }) => {
-    // const userId = ctx.session.user.id
-    const { userId } = ctx.session
+  processNextJob: protectedProcedure
+    .use(notDemo('process embedding jobs'))
+    .mutation(async ({ ctx }) => {
+      // const userId = ctx.session.user.id
+      const { userId } = ctx.session
 
-    // Only allow admins or system users to process jobs
-    const [user] = await ctx.db
-      .select({ isSuperAdmin: schema.User.isSuperAdmin })
-      .from(schema.User)
-      .where(eq(schema.User.id, userId))
-      .limit(1)
+      // Only allow admins or system users to process jobs
+      const [user] = await ctx.db
+        .select({ isSuperAdmin: schema.User.isSuperAdmin })
+        .from(schema.User)
+        .where(eq(schema.User.id, userId))
+        .limit(1)
 
-    if (!user?.isSuperAdmin) {
-      throw new Error('Unauthorized to process embedding jobs')
-    }
+      if (!user?.isSuperAdmin) {
+        throw new Error('Unauthorized to process embedding jobs')
+      }
 
-    // Use the BullMQ helper to process the next job
-    const jobId = await processNextPendingJob()
+      // Use the BullMQ helper to process the next job
+      const jobId = await processNextPendingJob()
 
-    if (!jobId) {
-      return { message: 'No pending jobs found' }
-    }
+      if (!jobId) {
+        return { message: 'No pending jobs found' }
+      }
 
-    return { message: 'Job processing started', jobId }
-  }),
+      return { message: 'Job processing started', jobId }
+    }),
 
   // Delete embeddings for a document
   deleteEmbeddings: protectedProcedure
@@ -281,6 +284,7 @@ export const embeddingRouter = createTRPCRouter({
   // Directly regenerate article embeddings
   regenerateArticleEmbeddings: protectedProcedure
     .input(z.object({ articleId: z.string() }))
+    .use(notDemo('regenerate article embeddings'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 

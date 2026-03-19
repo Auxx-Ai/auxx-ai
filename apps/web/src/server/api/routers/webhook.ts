@@ -4,7 +4,7 @@ import { WebhookService } from '@auxx/lib/webhooks'
 import { WEBHOOK_EVENT_TYPES } from '@auxx/lib/webhooks/types'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
 // Create a zod schema for validating event types
 const eventTypeSchema = z.enum([...(Object.values(WEBHOOK_EVENT_TYPES) as [string, ...string[]])])
@@ -38,6 +38,7 @@ export const webhookRouters = createTRPCRouter({
         isActive: z.boolean().default(true),
       })
     )
+    .use(notDemo('create webhooks'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 

@@ -27,6 +27,7 @@ export const orgProfileProvider: CacheProvider<DehydratedOrgProfile> = {
       about: org.about,
       createdAt: org.createdAt.toISOString(),
       completedOnboarding: org.completedOnboarding ?? false,
+      demoExpiresAt: org.demoExpiresAt?.toISOString() ?? null,
     }
   },
 }

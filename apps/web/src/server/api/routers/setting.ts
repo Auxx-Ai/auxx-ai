@@ -5,7 +5,7 @@ import { isAdminOrOwner } from '@auxx/lib/members'
 import { SETTINGS_CATALOG, SettingsService } from '@auxx/lib/settings'
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-settings')
 
@@ -85,6 +85,7 @@ export const settingsRouter = createTRPCRouter({
   // Update an organization setting
   updateOrganizationSetting: protectedProcedure
     .input(updateOrgSettingSchema)
+    .use(notDemo('change organization settings'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { key, value, allowUserOverride } = input
@@ -157,6 +158,7 @@ export const settingsRouter = createTRPCRouter({
   // Batch update organization settings
   batchUpdateOrganizationSettings: protectedProcedure
     .input(batchUpdateOrgSettingsSchema)
+    .use(notDemo('change organization settings'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { settings } = input

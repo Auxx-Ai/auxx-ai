@@ -8,8 +8,11 @@
  */
 
 import { database as db } from '@auxx/database'
+import { getOrgCache } from '@auxx/lib/cache'
 import { AuxxError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
+import { FeatureKey } from '@auxx/lib/permissions'
+import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter/redis-rate-limiter'
 import { initTRPC, type TRPC_ERROR_CODE_KEY, TRPCError } from '@trpc/server'
 import superjson from 'superjson'
 import { ZodError } from 'zod'
@@ -203,6 +206,68 @@ const auxxErrorMiddleware = t.middleware(async ({ next }) => {
 })
 
 /**
+ * Middleware factory that blocks demo organizations from performing the given action.
+ * Use with `.use(notDemo('action description'))` on any authenticated procedure.
+ *
+ * @example
+ * protectedProcedure.use(notDemo('connect email integrations')).input(...).mutation(...)
+ */
+export const notDemo = (action: string) =>
+  t.middleware(async ({ ctx, next }) => {
+    const { organizationId } = (ctx as { session: { organizationId: string } }).session
+    const { DemoGuard } = await import('@auxx/lib/demo')
+    await DemoGuard.requireNotDemo(organizationId, action)
+    return next()
+  })
+
+/**
+ * Rate limiter for tRPC mutations. Uses a token bucket with per-org limits
+ * derived from the plan's appMutationsPerMinuteHard feature key.
+ */
+const mutationRateLimiter = new RedisRateLimiter({
+  name: 'trpc:mutations',
+  maxRequests: 60,
+  perInterval: 60_000,
+})
+
+/**
+ * Middleware that rate-limits mutations based on the org's plan velocity limit.
+ * Queries and subscriptions are not affected.
+ */
+const mutationRateLimitMiddleware = t.middleware(async ({ ctx, next, type }) => {
+  if (type !== 'mutation') return next()
+
+  const orgId = ctx.session?.user?.defaultOrganizationId
+  if (!orgId) return next()
+
+  const { features } = await getOrgCache().getOrRecompute(orgId, ['features'])
+  const hardLimit = features?.[FeatureKey.appMutationsPerMinuteHard]
+
+  if (hardLimit === '+' || hardLimit === true || hardLimit === undefined || hardLimit === -1) {
+    return next()
+  }
+
+  if (hardLimit === false || hardLimit === 0) {
+    throw new TRPCError({
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Mutations are disabled on this plan.',
+    })
+  }
+
+  const key = `org:${orgId}:user:${ctx.session!.user!.id}`
+  const allowed = await mutationRateLimiter.acquire(key, 1)
+
+  if (!allowed) {
+    throw new TRPCError({
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Too many requests. Please slow down.',
+    })
+  }
+
+  return next()
+})
+
+/**
  * Public (unauthenticated) procedure
  *
  * This is the base piece you use to build new queries and mutations on your tRPC API. It does not
@@ -222,6 +287,7 @@ export const publicProcedure = t.procedure.use(timingMiddleware).use(auxxErrorMi
 export const protectedProcedure = t.procedure
   .use(timingMiddleware)
   .use(auxxErrorMiddleware)
+  .use(mutationRateLimitMiddleware)
   .use(({ ctx, next }) => {
     if (!ctx.session || !ctx.session.user || !ctx.session.user.defaultOrganizationId) {
       throw new TRPCError({ code: 'UNAUTHORIZED' })

@@ -12,7 +12,9 @@ const stateManager = new HealthStateManager()
  */
 export async function checkApp(db: Database) {
   try {
-    const result = await db.execute(sql`SELECT count(*)::int AS count FROM "Organization"`)
+    const result = await db.execute(
+      sql`SELECT count(*)::int AS count FROM "Organization" WHERE "demo_expires_at" IS NULL`
+    )
     const orgCount = Number(result.rows[0]?.count ?? 0)
 
     const details = {

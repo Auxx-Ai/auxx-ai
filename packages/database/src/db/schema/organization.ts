@@ -42,6 +42,7 @@ export const Organization = pgTable(
     disabledReason: text(),
     disabledBy: text(),
     completedOnboarding: boolean().default(false),
+    demoExpiresAt: timestamp('demo_expires_at', { precision: 3 }),
   },
   (table) => [
     index('Organization_handle_idx').using('btree', table.handle.asc().nullsLast()),

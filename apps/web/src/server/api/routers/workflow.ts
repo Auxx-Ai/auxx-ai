@@ -31,7 +31,7 @@ import { generateId } from '@auxx/utils/generateId'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 import { workflowTemplatesRouter } from './workflow-templates'
 
 /**
@@ -536,6 +536,7 @@ export const workflowRouter = createTRPCRouter({
    */
   publish: protectedProcedure
     .input(z.object({ workflowId: z.string(), versionTitle: z.string().optional() }))
+    .use(notDemo('publish workflows'))
     .mutation(async ({ ctx, input }) => {
       const versionService = new WorkflowVersionService(ctx.db)
       try {
@@ -763,6 +764,7 @@ export const workflowRouter = createTRPCRouter({
         ),
       })
     )
+    .use(notDemo('run workflow nodes'))
     .mutation(async ({ ctx, input }) => {
       const executionService = new WorkflowExecutionService(ctx.db, {
         errorHandler: createTRPCErrorHandler,
@@ -980,6 +982,7 @@ export const workflowRouter = createTRPCRouter({
    */
   generateShareToken: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(notDemo('share workflows'))
     .mutation(async ({ ctx, input }) => {
       const { id } = input
 

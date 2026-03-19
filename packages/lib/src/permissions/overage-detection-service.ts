@@ -226,14 +226,14 @@ export class OverageDetectionService {
       }
 
       case FeatureKey.savedViews: {
-        // Sum shared views from both TableView and MailView
+        // Sum user-created views from both TableView and MailView, excluding default (system) views
         const [tableResult] = await this.db
           .select({ value: count() })
           .from(schema.TableView)
           .where(
             and(
               eq(schema.TableView.organizationId, organizationId),
-              eq(schema.TableView.isShared, true)
+              eq(schema.TableView.isDefault, false)
             )
           )
         const [mailResult] = await this.db
@@ -242,7 +242,7 @@ export class OverageDetectionService {
           .where(
             and(
               eq(schema.MailView.organizationId, organizationId),
-              eq(schema.MailView.isShared, true)
+              eq(schema.MailView.isDefault, false)
             )
           )
         return (tableResult?.value ?? 0) + (mailResult?.value ?? 0)

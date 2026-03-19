@@ -104,6 +104,12 @@ Support Team`,
   },
 ]
 
+/** Options for seedNewOrganization */
+export interface SeedOrganizationOptions {
+  /** When true, skips trial subscription and creates a demo plan subscription instead */
+  isDemo?: boolean
+}
+
 export class OrganizationSeeder {
   private db: Database
   private userId: string
@@ -118,9 +124,14 @@ export class OrganizationSeeder {
    * Seed a new organization with all necessary default data
    * This method should be called whenever a new organization is created
    * @param organizationId The organization ID to seed
+   * @param options Optional configuration (e.g. isDemo flag)
    */
-  async seedNewOrganization(organizationId: string): Promise<void> {
-    logger.info('Starting seeding process for new organization', { organizationId })
+  async seedNewOrganization(
+    organizationId: string,
+    options?: SeedOrganizationOptions
+  ): Promise<void> {
+    const isDemo = options?.isDemo ?? false
+    logger.info('Starting seeding process for new organization', { organizationId, isDemo })
     try {
       // Initialize settings first as other components may depend on them
       await this.seedSettings(organizationId)
@@ -133,7 +144,9 @@ export class OrganizationSeeder {
         this.seedEmailTemplates(organizationId),
         this.seedTicketSequence(organizationId),
         this.seedKnowledgeBase(organizationId),
-        this.seedTrialSubscription(organizationId),
+        isDemo
+          ? this.seedDemoSubscription(organizationId)
+          : this.seedTrialSubscription(organizationId),
         this.seedAiProviderQuotas(organizationId),
         this.seedSystemModelDefaults(organizationId),
       ])
@@ -310,6 +323,12 @@ export class OrganizationSeeder {
       return
     }
 
+    // Demo accounts use a separate subscription flow — skip trial
+    if (this.userEmail.endsWith('@demo.auxx.ai')) {
+      logger.info('Demo account detected, skipping trial subscription', { organizationId })
+      return
+    }
+
     // Check if Stripe is configured
     if (!configService.get<string>('STRIPE_SECRET_KEY')) {
       logger.warn('Stripe not configured, skipping trial subscription', { organizationId })
@@ -343,6 +362,48 @@ export class OrganizationSeeder {
         error: error.message,
       })
       // Don't throw - we don't want to block org creation if trial fails
+    }
+  }
+
+  /**
+   * Create a demo plan subscription for the organization (no Stripe, no trial)
+   * @param organizationId The organization ID
+   */
+  private async seedDemoSubscription(organizationId: string): Promise<void> {
+    logger.info('Creating demo subscription for organization', { organizationId })
+
+    try {
+      // Find the Demo plan by name
+      const [demoPlan] = await this.db
+        .select({ id: schema.Plan.id })
+        .from(schema.Plan)
+        .where(eq(schema.Plan.name, 'Demo'))
+        .limit(1)
+
+      if (!demoPlan) {
+        logger.warn('Demo plan not found in database, skipping demo subscription', {
+          organizationId,
+        })
+        return
+      }
+
+      await this.db.insert(schema.PlanSubscription).values({
+        organizationId,
+        planId: demoPlan.id,
+        plan: 'Demo',
+        status: 'active',
+        billingCycle: 'MONTHLY',
+        seats: 1,
+        updatedAt: new Date(),
+      })
+
+      logger.info('Successfully created demo subscription', { organizationId })
+    } catch (error: any) {
+      logger.error('Failed to create demo subscription', {
+        organizationId,
+        error: error.message,
+      })
+      // Don't throw - we don't want to block org creation if subscription fails
     }
   }
 

@@ -9,7 +9,7 @@ import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 // Base knowledge base fields schema
 const kbFieldsSchema = z.object({
@@ -221,6 +221,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .input(
       z.object({ id: z.string(), knowledgeBaseId: z.string().optional(), isPublished: z.boolean() })
     )
+    .use(notDemo('publish knowledge base articles'))
     .mutation(async ({ ctx, input }) => {
       // Only enforce limit when publishing (not unpublishing)
       if (input.isPublished) {

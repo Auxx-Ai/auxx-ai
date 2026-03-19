@@ -51,6 +51,14 @@ export default async function ProtectedLayout({ children }: ProtectedLayoutProps
     redirect('/error?message=failed-to-load-state')
   }
 
+  // Check if demo session has expired
+  const currentOrg = dehydratedState.organizations.find(
+    (o) => o.id === dehydratedState.organizationId
+  )
+  if (currentOrg?.demoExpiresAt && new Date(currentOrg.demoExpiresAt) < new Date()) {
+    redirect('/demo-expired')
+  }
+
   return (
     <>
       {/* Inject dehydrated state into window BEFORE React hydration */}

@@ -56,6 +56,9 @@ export interface DehydratedEnvironment {
     region: string | null
   }
 
+  /** Whether the demo system is enabled */
+  demoEnabled: boolean
+
   // Build/version info
   version: {
     appVersion: string
@@ -109,6 +112,7 @@ export interface DehydratedOrganization {
   about: string | null
   createdAt: string
   completedOnboarding: boolean
+  demoExpiresAt: string | null
 
   // Subscription (nullable)
   subscription: {

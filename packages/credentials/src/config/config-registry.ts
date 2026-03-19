@@ -79,6 +79,15 @@ export const CONFIG_VARIABLES = {
     isSensitive: false,
     isEnvOnly: true,
   },
+  DEMO_ENABLED: {
+    key: 'DEMO_ENABLED',
+    description: 'Enable the demo system (anonymous demo sessions, demo CTA on login page)',
+    type: ConfigVariableType.BOOLEAN,
+    group: ConfigVariableGroup.SERVER,
+    defaultValue: false,
+    isSensitive: false,
+    isEnvOnly: true,
+  },
 
   // ── DATABASE ────────────────────────────────────────────
   DATABASE_URL: {

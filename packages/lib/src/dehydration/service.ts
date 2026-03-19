@@ -56,6 +56,7 @@ export function buildEnvironment(): DehydratedEnvironment {
       bucket: configService.get<string>('S3_PUBLIC_BUCKET') || null,
       region: configService.get<string>('S3_REGION') || null,
     },
+    demoEnabled: configService.get<boolean>('DEMO_ENABLED', false) === true,
     version: (() => {
       const gitSha = configService.get<string>('GIT_SHA')
       const isDev = !gitSha
@@ -142,6 +143,7 @@ export class DehydrationService {
       about: orgProfile.about,
       createdAt: orgProfile.createdAt,
       completedOnboarding: orgProfile.completedOnboarding,
+      demoExpiresAt: orgProfile.demoExpiresAt,
       subscription: toClientSubscription(subscription),
       features: features ?? {},
       overages,

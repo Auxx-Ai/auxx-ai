@@ -30,7 +30,7 @@ import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
-const PAGE_SIZE = 10
+const PAGE_SIZE = 50
 
 /**
  * Organizations list page for admin
@@ -186,7 +186,7 @@ export default function OrganizationsPage() {
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <Card className='flex-1 flex flex-col'>
+          <Card className='flex-1 flex flex-col overflow-y-auto'>
             <CardHeader>
               <CardTitle>Organizations</CardTitle>
               <CardDescription>Manage and view all organizations in the system</CardDescription>

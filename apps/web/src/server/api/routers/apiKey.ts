@@ -4,7 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('Api Key Action')
 
@@ -60,6 +60,7 @@ export const apiKeyRouter = createTRPCRouter({
         workflowAppId: z.string().optional(),
       })
     )
+    .use(notDemo('generate API keys'))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id
       const orgId = ctx.session.organizationId

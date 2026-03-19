@@ -9,7 +9,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, ilike, or } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-member')
 
@@ -160,6 +160,7 @@ export const memberRouter = createTRPCRouter({
   /** Remove a member from organization */
   remove: protectedProcedure
     .input(z.object({ memberId: z.string() }))
+    .use(notDemo('remove team members'))
     .mutation(async ({ ctx, input }) => {
       const memberService = new MemberService(ctx.db)
       const result = await memberService.removeMember({
@@ -184,6 +185,7 @@ export const memberRouter = createTRPCRouter({
         role: z.enum(OrganizationRole),
       })
     )
+    .use(notDemo('change member roles'))
     .mutation(async ({ ctx, input }) => {
       const memberService = new MemberService(ctx.db)
       const result = await memberService.updateMemberRole({
@@ -213,6 +215,7 @@ export const memberRouter = createTRPCRouter({
         role: z.enum(OrganizationRole).default('USER'),
       })
     )
+    .use(notDemo('invite team members'))
     .mutation(async ({ ctx, input }) => {
       const memberService = new MemberService(ctx.db)
       const [org] = await ctx.db

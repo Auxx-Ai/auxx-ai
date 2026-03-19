@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { and, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm'
 import { invalidateAppCatalog, invalidateAppSlugMap } from '../cache/invalidate'
 import { OrganizationService } from '../organizations/organization-service'
 import type { ExportData } from './import-apps'
@@ -222,12 +222,15 @@ export class AdminService {
       })
       .from(schema.Organization)
       .where(
-        search
-          ? or(
-              ilike(schema.Organization.name, `%${search}%`),
-              ilike(schema.Organization.handle, `%${search}%`)
-            )
-          : undefined
+        and(
+          isNull(schema.Organization.demoExpiresAt),
+          search
+            ? or(
+                ilike(schema.Organization.name, `%${search}%`),
+                ilike(schema.Organization.handle, `%${search}%`)
+              )
+            : undefined
+        )
       )
       .orderBy(desc(schema.Organization.createdAt))
       .limit(limit)

@@ -60,6 +60,10 @@ export enum FeatureKey {
   apiCallsPerMonthSoft = 'apiCallsPerMonthSoft',
   storageGbHard = 'storageGbHard',
   storageGbSoft = 'storageGbSoft',
+
+  // ── Velocity limits (per minute, enforced via RedisRateLimiter) ──
+  appMutationsPerMinuteHard = 'appMutationsPerMinuteHard',
+  appMutationsPerMinuteSoft = 'appMutationsPerMinuteSoft',
 }
 
 // ── Feature metadata registry ──
@@ -259,6 +263,28 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     pairedKey: FeatureKey.storageGbHard,
     unit: 'GB',
   },
+
+  // ── Velocity limits (per minute) ──
+  {
+    key: FeatureKey.appMutationsPerMinuteHard,
+    type: 'usage',
+    label: 'App Mutations',
+    group: 'Rate Limits',
+    metric: 'appMutations',
+    variant: 'hard',
+    pairedKey: FeatureKey.appMutationsPerMinuteSoft,
+    unit: 'req/min',
+  },
+  {
+    key: FeatureKey.appMutationsPerMinuteSoft,
+    type: 'usage',
+    label: 'App Mutations',
+    group: 'Rate Limits',
+    metric: 'appMutations',
+    variant: 'soft',
+    pairedKey: FeatureKey.appMutationsPerMinuteHard,
+    unit: 'req/min',
+  },
 ]
 
 /** Lookup map for quick access */
@@ -300,4 +326,6 @@ export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
   { key: FeatureKey.aiCompletionsPerMonthSoft, limit: 40 },
   { key: FeatureKey.apiCallsPerMonthHard, limit: 0 },
   { key: FeatureKey.storageGbHard, limit: 1 },
+  { key: FeatureKey.appMutationsPerMinuteHard, limit: 30 },
+  { key: FeatureKey.appMutationsPerMinuteSoft, limit: 25 },
 ]

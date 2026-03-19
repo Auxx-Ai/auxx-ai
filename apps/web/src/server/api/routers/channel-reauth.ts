@@ -12,7 +12,7 @@ import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 /**
  * Channel re-authentication router
@@ -29,6 +29,7 @@ export const channelReauthRouter = createTRPCRouter({
         integrationId: z.string(),
       })
     )
+    .use(notDemo('re-authenticate email'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
 
