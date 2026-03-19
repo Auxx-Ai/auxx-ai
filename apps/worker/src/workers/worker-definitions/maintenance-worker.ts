@@ -1,4 +1,5 @@
 import { isSelfHosted } from '@auxx/deployment'
+import { isDemoEnabled } from '@auxx/lib/demo'
 import {
   deletedFileCleanupJob,
   orphanedFileCleanupJob,
@@ -9,8 +10,8 @@ import {
   channelTokenRefreshJob,
   channelTokenRefreshScannerJob,
   cleanupExpiredMediaAssetsJob,
+  type DemoSeedJobData,
   demoCleanupJob,
-  demoSeedJob,
   expiredTrialAccountCleanupJob,
   type JobHandler,
   oauth2TokenRefreshScannerJob,
@@ -28,6 +29,21 @@ import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
 
 const logger = createScopedLogger('maintenance-worker')
+
+/** Real demoSeedJob handler — imports @auxx/seed which is only available in the worker. */
+const demoSeedJobHandler: JobHandler = async (ctx) => {
+  const { organizationId } = ctx.data as DemoSeedJobData
+  if (!isDemoEnabled()) {
+    logger.info('Demo disabled, skipping seed', { organizationId })
+    return { success: false, reason: 'demo_disabled' }
+  }
+
+  logger.info('Starting demo data seed', { organizationId })
+  const { OrganizationSeeder } = await import('@auxx/seed')
+  await OrganizationSeeder.seedOrganization(organizationId, 'additive', 'demo')
+  logger.info('Demo data seed completed', { organizationId })
+  return { success: true, organizationId }
+}
 
 /** Wraps a job handler to skip execution in self-hosted mode (defense in depth) */
 function cloudOnly(handler: JobHandler): JobHandler {
@@ -57,7 +73,7 @@ const jobMappings = {
 
   // Account management jobs (cloud-only)
   demoCleanupJob: cloudOnly(demoCleanupJob),
-  demoSeedJob: cloudOnly(demoSeedJob),
+  demoSeedJob: cloudOnly(demoSeedJobHandler),
   expiredTrialAccountCleanup: cloudOnly(expiredTrialAccountCleanupJob),
 
   // Lifecycle email jobs (cloud-only)

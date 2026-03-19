@@ -64,7 +64,7 @@ export function FinalCtaSection() {
                   <Link href={config.urls.signup}>Start Building</Link>
                 </Button>
                 <Button size='lg' variant='outline' className='gap-2' asChild>
-                  <Link href={config.urls.demo}>Book a demo</Link>
+                  <Link href={config.urls.demo}>Try Live Demo</Link>
                 </Button>
               </div>
             </div>

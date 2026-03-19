@@ -25,6 +25,7 @@ import {
   BookCheck,
   BookLock,
   CircleHelp,
+  Clock,
   Code2,
   Cog,
   Globe,
@@ -40,7 +41,8 @@ import {
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useDemo } from '~/hooks/use-demo'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
 import { useEnv } from '~/providers/dehydrated-state-provider'
@@ -253,12 +255,60 @@ function AppFooter({}: Props) {
           </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
+      <DemoSidebarBanner />
       <UpgradeButton />
     </SidebarGroup>
   )
 }
 
 export default AppFooter
+
+/** Compact demo banner shown in the sidebar when the main DemoBanner is dismissed. */
+function DemoSidebarBanner() {
+  const { isDemo, expiresAt, isBannerDismissed } = useDemo()
+  const [remaining, setRemaining] = useState('')
+
+  useEffect(() => {
+    if (!expiresAt) return
+
+    const expiresAtMs = expiresAt.getTime()
+
+    const update = () => {
+      const diff = expiresAtMs - Date.now()
+      if (diff <= 0) {
+        setRemaining('expired')
+        return
+      }
+      const minutes = Math.floor(diff / 60000)
+      const seconds = Math.floor((diff % 60000) / 1000)
+      setRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`)
+    }
+
+    update()
+    const interval = setInterval(update, 1000)
+    return () => clearInterval(interval)
+  }, [expiresAt])
+
+  if (!isDemo || !isBannerDismissed || remaining === 'expired') return null
+
+  return (
+    <div className='mx-auto'>
+      <SidebarButton
+        asChild
+        variant='outline'
+        className='mt-2 relative h-8.5 rounded-full'
+        tooltip='Demo time remaining'>
+        <Link href='/signup?from=demo'>
+          <BorderBeam />
+          <Clock className='size-4 text-info' />
+          <span className='group-data-[collapsible=icon]:hidden ps-3 pe-4 tabular-nums text-info'>
+            {remaining} remaining
+          </span>
+        </Link>
+      </SidebarButton>
+    </div>
+  )
+}
 
 function UpgradeButton() {
   const [dialogOpen, setDialogOpen] = useState(false)

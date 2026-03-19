@@ -15,6 +15,7 @@ import { CancelSubscriptionDialog } from '~/components/subscriptions/cancel-subs
 import { InvoiceList } from '~/components/subscriptions/invoice-list'
 import { PaymentMethodsCard } from '~/components/subscriptions/payment-methods-card'
 import { PlanChangeCard } from '~/components/subscriptions/plan-change-card'
+import { DemoBillingCycleGuard } from './_components/demo-billing-cycle-guard'
 import { PlanViewTracker } from './_components/plan-view-tracker'
 import { UpgradeConfetti } from './_components/upgrade-confetti'
 
@@ -28,9 +29,11 @@ export default function PlansPage() {
       <div className='p-6 space-y-10'>
         <PlanViewTracker />
         <UpgradeConfetti />
-        <Suspense fallback={<BillingCycleAlertSkeleton />}>
-          <BillingCycleAlert />
-        </Suspense>
+        <DemoBillingCycleGuard>
+          <Suspense fallback={<BillingCycleAlertSkeleton />}>
+            <BillingCycleAlert />
+          </Suspense>
+        </DemoBillingCycleGuard>
 
         <div id='plans' className=''>
           <Suspense fallback={<PlanChangeCardSkeleton />}>

@@ -11,6 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
   Table,
@@ -123,18 +125,18 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
 
   return (
     <>
-      <div className='p-4 space-y-6'>
-        <div>
-          <div className='flex items-center justify-between mb-3'>
-            <h3 className='text-sm font-medium text-muted-foreground'>
-              Parts ({vendorParts.length})
-            </h3>
-            <Button variant='ghost' size='xs' onClick={() => setIsDialogOpen(true)}>
+      <ScrollArea className='flex-1'>
+        <Section
+          title={`Parts (${vendorParts.length})`}
+          className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
+          collapsible={false}
+          icon={<Package className='size-4 text-muted-foreground/50' />}
+          actions={
+            <Button variant='ghost' size='sm' onClick={() => setIsDialogOpen(true)}>
               <Package />
               Add Part
             </Button>
-          </div>
-
+          }>
           {vendorParts.length === 0 ? (
             <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
               <Package className='mb-2 h-6 w-6 text-muted-foreground' />
@@ -225,8 +227,8 @@ export function ContactPartsTab({ entityInstanceId }: DrawerTabProps) {
               </Table>
             </div>
           )}
-        </div>
-      </div>
+        </Section>
+      </ScrollArea>
 
       {/* Vendor Part Dialog - contact mode */}
       <VendorPartDialog

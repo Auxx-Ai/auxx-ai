@@ -11,6 +11,8 @@ import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc
 const logger = createScopedLogger('api-auth')
 
 export const authRouter = createTRPCRouter({
+  // Primary demo guard is the better-auth hooks.before in auth/server.ts.
+  // This is defense-in-depth for the "add password" flow that goes through tRPC.
   addPassword: protectedProcedure
     .input(
       z.object({

@@ -1,6 +1,8 @@
 // apps/web/src/components/drawers/tabs/contact-orders-tab.tsx
 
 import { Button } from '@auxx/ui/components/button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Section } from '@auxx/ui/components/section'
 import { ShoppingBag } from 'lucide-react'
 import { useState } from 'react'
 import NoShopifyIntegration from '~/app/(protected)/app/shopify/_components/no-shopify-integration'
@@ -60,7 +62,7 @@ export function ContactOrdersTab({ entityInstanceId }: DrawerTabProps) {
       </div>
     )
   }
-  if (data?.orders.length === 0) {
+  if (!data || data?.orders.length === 0) {
     return (
       <div className='flex items-center justify-center h-full w-full'>
         <EmptyState
@@ -73,42 +75,42 @@ export function ContactOrdersTab({ entityInstanceId }: DrawerTabProps) {
   }
 
   return (
-    <>
-      <div className='flex items-center justify-between px-4'>
-        <h2 className='text-base flex items-center space-x-2 gap-2'>
-          <ShoppingBag className='h-5 w-5 text-muted-foreground/50' />
-          Orders
-        </h2>
-      </div>
-      <div className='space-y-4 m-4 border rounded-md bg-white dark:bg-muted/10'>
-        {data?.orders.map((order) => (
-          <OrderRow
-            key={order.id}
-            order={order}
-            className='cursor-pointer transition-colors hover:bg-muted/50'
-          />
-        ))}
+    <ScrollArea className='flex-1'>
+      <Section
+        title='Orders'
+        className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
+        collapsible={false}
+        icon={<ShoppingBag className='size-4 text-muted-foreground/50' />}>
+        <div className='space-y-4 p-4 border rounded-md bg-white dark:bg-muted/10 mx-4'>
+          {data?.orders.map((order) => (
+            <OrderRow
+              key={order.id}
+              order={order}
+              className='cursor-pointer transition-colors hover:bg-muted/50'
+            />
+          ))}
 
-        {data?.totalPages && data?.totalPages > 1 && (
-          <div className='mt-4 flex items-center justify-between'>
-            <Button
-              variant='outline'
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}>
-              Previous
-            </Button>
-            <span className='text-sm text-muted-foreground'>
-              Page {page} of {data!.totalPages}
-            </span>
-            <Button
-              variant='outline'
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page >= data!.totalPages}>
-              Next
-            </Button>
-          </div>
-        )}
-      </div>
-    </>
+          {data?.totalPages && data?.totalPages > 1 && (
+            <div className='mt-4 flex items-center justify-between'>
+              <Button
+                variant='outline'
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}>
+                Previous
+              </Button>
+              <span className='text-sm text-muted-foreground'>
+                Page {page} of {data!.totalPages}
+              </span>
+              <Button
+                variant='outline'
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page >= data!.totalPages}>
+                Next
+              </Button>
+            </div>
+          )}
+        </div>
+      </Section>
+    </ScrollArea>
   )
 }

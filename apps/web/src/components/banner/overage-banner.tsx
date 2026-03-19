@@ -12,26 +12,32 @@ export function OverageBanner({ overages }: { overages: Overage[] }) {
   const featureSummary = overages.map((o) => `${o.label} (${o.current}/${o.limit})`).join(', ')
 
   return (
-    <div className='bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 shrink-0 px-4 py-3 text-foreground'>
-      <div className='flex gap-2 md:items-center'>
-        <div className='flex grow gap-3 md:items-center'>
-          <div
-            className='flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50 max-md:mt-0.5'
-            aria-hidden='true'>
-            <AlertTriangleIcon className='text-amber-600 dark:text-amber-400' size={16} />
-          </div>
-          <div className='flex grow flex-col justify-between gap-3 md:flex-row md:items-center'>
-            <div className='space-y-0.5'>
-              <p className='text-sm font-medium'>Plan limits exceeded</p>
-              <p className='text-sm text-muted-foreground'>
-                Your current usage exceeds your plan limits for: {featureSummary}. You can&apos;t
-                create new items for these features until you&apos;re within limits.
-              </p>
+    <div className='relative z-50 px-3 pt-2  bg-neutral-100 dark:bg-primary-100'>
+      <div className='rounded-2xl  bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 shrink-0 ps-2 pe-2  text-foreground'>
+        <div className='flex gap-2 min-h-9 md:items-center'>
+          <div className='flex grow gap-3 md:items-center'>
+            <div
+              className=' flex size-6 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50 max-md:mt-0.5'
+              aria-hidden='true'>
+              <AlertTriangleIcon className='text-amber-600 dark:text-amber-400' size={16} />
             </div>
-            <div className='flex gap-2 max-md:flex-wrap shrink-0'>
-              <Button size='sm' variant='outline' asChild>
-                <Link href='/app/settings/plans'>Manage Plan</Link>
-              </Button>
+            <div className='flex grow flex-col justify-between gap-1 md:flex-row md:items-center'>
+              <div className='space-y-0 gap-2'>
+                <span className='text-sm font-medium me-2'>Plan limits exceeded</span>
+                <span className='text-sm text-muted-foreground'>
+                  Your current usage exceeds your plan limits for: {featureSummary}. You can&apos;t
+                  create new items for these features until you&apos;re within limits.
+                </span>
+              </div>
+              <div className='flex gap-2 max-md:flex-wrap shrink-0'>
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  asChild
+                  className='bg-amber-300 hover:bg-amber-200 dark:bg-amber-700 dark:hover:bg-amber-600 dark:text-white mb-2 md:mb-0'>
+                  <Link href='/app/settings/plans'>Manage Plan</Link>
+                </Button>
+              </div>
             </div>
           </div>
         </div>

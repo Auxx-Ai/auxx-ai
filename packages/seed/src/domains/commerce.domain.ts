@@ -96,7 +96,7 @@ export class CommerceDomain {
         integrationId: customerAssignments[i]!.integrationId,
         defaultAddressId: null,
         lastOrderId: null,
-        contactId: null,
+        entityInstanceId: null,
       })
     }
 
@@ -590,7 +590,7 @@ export class CommerceDomain {
         lastOrderId: helpers.valuesFromArray({
           values: Array(this.scenario.scales.customers).fill(null),
         }),
-        contactId: helpers.valuesFromArray({
+        entityInstanceId: helpers.valuesFromArray({
           values: Array(this.scenario.scales.customers).fill(null),
         }),
       }

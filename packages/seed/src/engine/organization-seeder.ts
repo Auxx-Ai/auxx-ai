@@ -342,6 +342,70 @@ export class OrganizationSeeder {
         integrationsCount: context.services.integrations.length,
       })
 
+      // For demo scenario, create mock integrations before domain seeding
+      if (scenarioName === 'demo') {
+        logger.info('seedOrganizationDirectly: Creating demo integrations')
+        const { DemoIntegrationDomain } = await import('../domains/demo-integration.domain')
+        const demoIntegrations = new DemoIntegrationDomain(organizationId, ownerId)
+        await demoIntegrations.insertDirectly(db)
+        logger.info('seedOrganizationDirectly: Demo integrations created')
+
+        // Re-fetch integrations after creating them
+        const freshIntegrations = await db
+          .select({
+            id: schema.Integration.id,
+            organizationId: schema.Integration.organizationId,
+          })
+          .from(schema.Integration)
+          .where(eq(schema.Integration.organizationId, organizationId))
+
+        const freshInboxes = await db
+          .select({
+            inboxId: schema.InboxIntegration.inboxId,
+            organizationId: schema.Organization.id,
+          })
+          .from(schema.InboxIntegration)
+          .innerJoin(
+            schema.Integration,
+            eq(schema.InboxIntegration.integrationId, schema.Integration.id)
+          )
+          .innerJoin(
+            schema.Organization,
+            eq(schema.Integration.organizationId, schema.Organization.id)
+          )
+          .where(eq(schema.Organization.id, organizationId))
+
+        const freshShopify = await db
+          .select({
+            id: schema.ShopifyIntegration.id,
+            organizationId: schema.ShopifyIntegration.organizationId,
+            createdById: schema.ShopifyIntegration.createdById,
+          })
+          .from(schema.ShopifyIntegration)
+          .where(eq(schema.ShopifyIntegration.organizationId, organizationId))
+
+        // Update context with fresh integration data
+        context.services.integrations = freshIntegrations.map((i) => ({
+          id: i.id,
+          organizationId: i.organizationId,
+        }))
+        context.services.inboxes = freshInboxes.map((i) => ({
+          id: i.inboxId!,
+          organizationId: i.organizationId,
+        }))
+        context.services.shopifyIntegrations = freshShopify.map((i) => ({
+          id: i.id,
+          organizationId: i.organizationId,
+          createdById: i.createdById,
+        }))
+
+        logger.info('seedOrganizationDirectly: Context refreshed with demo integrations', {
+          integrations: context.services.integrations.length,
+          inboxes: context.services.inboxes.length,
+          shopifyIntegrations: context.services.shopifyIntegrations.length,
+        })
+      }
+
       const domainOptions = { organizationId }
 
       // Seed domains directly
@@ -374,8 +438,8 @@ export class OrganizationSeeder {
       await organization.insertDirectly(db)
       logger.info('seedOrganizationDirectly: Organization domain complete')
 
-      // Commerce (only if shopify integration exists)
-      if (shopifyIntegrations.length > 0) {
+      // Commerce (only if shopify integration exists and scales > 0)
+      if (context.services.shopifyIntegrations.length > 0 && scenario.scales.products > 0) {
         logger.info('seedOrganizationDirectly: Seeding commerce domain')
         console.log('💾 Inserting commerce data...')
         const commerce = new CommerceDomain(scenarioWithRefinements, context, domainOptions)
@@ -392,8 +456,8 @@ export class OrganizationSeeder {
         logger.info('seedOrganizationDirectly: Ticket domain complete')
       }
 
-      // Communication (only if integrations exist)
-      if (integrations.length > 0 && scenario.scales.threads > 0) {
+      // Communication (only if integrations exist — use refreshed context, not stale initial fetch)
+      if (context.services.integrations.length > 0 && scenario.scales.threads > 0) {
         logger.info('seedOrganizationDirectly: Seeding communication domain')
         console.log('💾 Inserting communication data...')
         const communication = new CommunicationDomain(
@@ -412,6 +476,25 @@ export class OrganizationSeeder {
         const ai = new AiDomain(scenarioWithRefinements, context, domainOptions)
         await ai.insertDirectly(db)
         logger.info('seedOrganizationDirectly: AI domain complete')
+      }
+
+      // Datasets
+      if (scenario.scales.datasets && scenario.scales.datasets > 0) {
+        logger.info('seedOrganizationDirectly: Seeding dataset domain')
+        console.log('💾 Inserting dataset data...')
+        const { DatasetDomain } = await import('../domains/dataset.domain')
+        const dataset = new DatasetDomain(organizationId, ownerId)
+        await dataset.insertDirectly(db)
+        logger.info('seedOrganizationDirectly: Dataset domain complete')
+      }
+
+      // Entity templates (demo only)
+      if (scenarioName === 'demo') {
+        logger.info('seedOrganizationDirectly: Installing entity templates')
+        console.log('💾 Installing entity templates...')
+        const { installTemplates } = await import('@auxx/lib/entity-templates')
+        await installTemplates(organizationId, ['company'])
+        logger.info('seedOrganizationDirectly: Entity templates installed')
       }
 
       console.log('✅ Organization seeding complete')

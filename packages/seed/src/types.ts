@@ -93,6 +93,8 @@ export interface ScenarioScales {
   messages: number
   /** tickets represents the volume of support tickets to generate. */
   tickets: number
+  /** datasets indicates how many knowledge base datasets to create. */
+  datasets?: number
 }
 
 /** ScenarioFeatures toggles optional features for a scenario. */

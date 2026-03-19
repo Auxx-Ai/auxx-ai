@@ -1,5 +1,12 @@
 // apps/web/src/app/(protected)/app/contacts/_components/customer-tickets-tab.tsx
 
+/**
+ * @deprecated Use ContactTicketsTab from drawer tabs instead.
+ * This component is kept for the deprecated contact-detail.tsx.
+ */
+
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
@@ -12,37 +19,45 @@ import {
 } from '@auxx/ui/components/empty'
 import { Loader2, Plus, Ticket } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo } from 'react'
+import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import CreateTicketDialog from '~/components/tickets/create-ticket-dialog'
 import TicketRow from '~/components/tickets/ticket-row'
-import { api } from '~/trpc/react'
 
 interface CustomerTicketsTabProps {
-  customer: any // Replace with proper type
+  customer: any
   contactId: string
 }
 
-/**
- * CustomerTicketsTab displays tickets associated with a customer contact.
- */
 export default function CustomerTicketsTab({ customer, contactId }: CustomerTicketsTabProps) {
   const router = useRouter()
-  const [page, setPage] = useState(1)
-  const pageSize = 10
+  const entityDefinitionId = useResourceProperty('ticket', 'id')
 
-  // Query tickets for this customer
-  const { data: ticketsData, isLoading } = api.ticket.byContactId.useQuery(
-    { contactId, page, pageSize },
-    {
-      enabled: !!contactId,
-    }
+  const filters: ConditionGroup[] = useMemo(
+    () => [
+      {
+        id: 'contact-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'contact-match',
+            fieldId: 'ticket:contact' as ResourceFieldId,
+            operator: 'is' as const,
+            value: contactId,
+          },
+        ],
+      },
+    ],
+    [contactId]
   )
 
-  const handleCreateTicket = () => {
-    router.push(`/app/tickets/create?customerId=${contactId}`)
-  }
+  const { records, isLoading } = useRecordList({
+    entityDefinitionId: entityDefinitionId ?? '',
+    filters,
+    limit: 20,
+    enabled: !!contactId && !!entityDefinitionId,
+  })
 
-  // Loading state
   if (isLoading) {
     return (
       <div className='flex flex-col items-center justify-center flex-1'>
@@ -59,8 +74,7 @@ export default function CustomerTicketsTab({ customer, contactId }: CustomerTick
     )
   }
 
-  // No tickets found
-  if (!ticketsData?.tickets || ticketsData.tickets.length === 0) {
+  if (records.length === 0) {
     return (
       <div className='flex flex-col items-center justify-center flex-1'>
         <Empty>
@@ -74,7 +88,7 @@ export default function CustomerTicketsTab({ customer, contactId }: CustomerTick
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button onClick={handleCreateTicket}>
+            <Button onClick={() => router.push(`/app/tickets/create?customerId=${contactId}`)}>
               <Plus /> Create Ticket
             </Button>
           </EmptyContent>
@@ -83,7 +97,6 @@ export default function CustomerTicketsTab({ customer, contactId }: CustomerTick
     )
   }
 
-  // Tickets list
   return (
     <div className='flex flex-col flex-1 min-h-0 overflow-y-auto'>
       <CardHeader className='pb-3 border-b border-primary-200/50 shrink-0 sticky top-0 bg-background/80 backdrop-blur z-10'>
@@ -96,32 +109,17 @@ export default function CustomerTicketsTab({ customer, contactId }: CustomerTick
         </div>
       </CardHeader>
 
-      <div className='flex-1 '>
+      <div className='flex-1'>
         <CardContent className='py-4 px-6'>
           <div className='space-y-4'>
-            {ticketsData.tickets.map((ticket) => (
-              <TicketRow key={ticket.id} ticket={ticket} className='cursor-pointer' />
+            {records.map((record) => (
+              <TicketRow
+                key={record.id}
+                recordId={toRecordId(entityDefinitionId!, record.id)}
+                createdAt={record.createdAt}
+                className='cursor-pointer'
+              />
             ))}
-
-            {ticketsData.totalPages > 1 && (
-              <div className='mt-4 flex items-center justify-between'>
-                <Button
-                  variant='outline'
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}>
-                  Previous
-                </Button>
-                <span className='text-sm text-muted-foreground'>
-                  Page {page} of {ticketsData.totalPages}
-                </span>
-                <Button
-                  variant='outline'
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={page >= ticketsData.totalPages}>
-                  Next
-                </Button>
-              </div>
-            )}
           </div>
         </CardContent>
       </div>

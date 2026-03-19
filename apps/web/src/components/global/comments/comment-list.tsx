@@ -23,7 +23,6 @@ export function CommentList({
   // Use the hook directly
   const { comments, isFetchingComments } = useComments({ recordId, onCommentAdded })
 
-  console.log('CommentList - comments for recordId', recordId, comments, isFetchingComments)
   if (isFetchingComments) {
     return (
       <div className={className}>

@@ -24,6 +24,7 @@ import { Building, Check, Copy } from 'lucide-react'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { useDemo } from '~/hooks/use-demo'
 import { useOrganization } from '~/hooks/use-organization'
 import { useDehydratedStateContext } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
@@ -37,6 +38,7 @@ type OrgSettingsValues = z.infer<typeof orgSettingsSchema>
 
 export function EditOrganizationSettings() {
   const organization = useOrganization()
+  const { isDemo } = useDemo()
   const { patchOrganization } = useDehydratedStateContext()
   const { copied, copy } = useCopy({ toastMessage: 'Slug copied to clipboard' })
 
@@ -51,10 +53,10 @@ export function EditOrganizationSettings() {
     if (organization) {
       form.reset({
         name: organization.name || '',
-        handle: organization.handle || '',
+        handle: isDemo ? 'demo-workspace' : organization.handle || '',
       })
     }
-  }, [organization])
+  }, [organization, isDemo])
 
   const updateOrganization = api.organization.update.useMutation({
     onSuccess: (_data, variables) => {

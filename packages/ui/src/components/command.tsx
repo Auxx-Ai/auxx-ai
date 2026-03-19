@@ -383,6 +383,20 @@ function CommandEmpty(props: React.ComponentProps<typeof CommandPrimitive.Empty>
   )
 }
 
+/** Manually controlled message inside a CommandList. Unlike CommandEmpty, this does not
+ *  auto-show/hide based on list state — render it conditionally yourself. */
+function CommandPlaceholder({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        'relative flex cursor-default select-none items-center gap-2 rounded-full px-3 py-2 text-sm outline-hidden text-primary-400',
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
 function CommandGroup({
   className,
   ...props
@@ -826,6 +840,7 @@ export {
   CommandInput,
   CommandList,
   CommandEmpty,
+  CommandPlaceholder,
   CommandGroup,
   CommandGroupLabel,
   CommandItem,

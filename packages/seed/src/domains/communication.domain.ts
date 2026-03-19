@@ -204,11 +204,17 @@ export class CommunicationDomain {
       console.log(`✅ Upserted ${threadRows.length} threads`)
     }
 
+    // Build participantMap for thread participant and message generation
+    const participantMap = new Map(allParticipants.map((p: any) => [p.id, p]))
+
     // Insert ThreadParticipant records
     await this.seedThreadParticipants(db, schema, participantMap)
 
     // Generate and insert Messages (now with proper participant relationships)
     await this.seedMessages(db, schema, organizationId)
+
+    // Update threads with latestMessageId (required for UI to resolve sender)
+    await this.updateThreadLatestMessageIds(db, schema, organizationId)
 
     // Generate and insert thread tag associations (via FieldValue)
     await this.seedThreadTags(db, schema, organizationId)
@@ -333,6 +339,36 @@ export class CommunicationDomain {
   }
 
   /**
+   * updateThreadLatestMessageIds sets latestMessageId on each thread to the most recent message.
+   * Without this, the UI cannot resolve the sender participant and shows "Unknown".
+   * @param db - Drizzle database instance
+   * @param schema - Database schema
+   * @param organizationId - Organization ID
+   */
+  private async updateThreadLatestMessageIds(
+    db: any,
+    schema: any,
+    organizationId: string
+  ): Promise<void> {
+    console.log('🔗 Updating thread latestMessageId...')
+
+    const result = await db.execute(sql`
+      UPDATE "Thread" t
+      SET "latestMessageId" = sub."latestId"
+      FROM (
+        SELECT DISTINCT ON ("threadId") "threadId", "id" AS "latestId"
+        FROM "Message"
+        WHERE "organizationId" = ${organizationId}
+        ORDER BY "threadId", "sentAt" DESC NULLS LAST, "id" DESC
+      ) sub
+      WHERE t."id" = sub."threadId"
+        AND t."organizationId" = ${organizationId}
+    `)
+
+    console.log('✅ Updated thread latestMessageId references')
+  }
+
+  /**
    * seedThreadTags generates and inserts thread tag associations via FieldValue.
    * Uses the thread_tags RELATIONSHIP field to store tag assignments.
    * @param db - Drizzle database instance
@@ -361,6 +397,40 @@ export class CommunicationDomain {
 
     const fieldId = threadTagsField[0]!.id
 
+    // Look up the thread EntityDefinition ID
+    const threadEntityDef = await db
+      .select({ id: schema.EntityDefinition.id })
+      .from(schema.EntityDefinition)
+      .where(
+        and(
+          eq(schema.EntityDefinition.entityType, 'thread'),
+          eq(schema.EntityDefinition.organizationId, organizationId)
+        )
+      )
+      .limit(1)
+
+    if (threadEntityDef.length === 0) {
+      console.log('⚠️  Thread entity definition not found, skipping tag associations')
+      return
+    }
+
+    // Look up the tag EntityDefinition ID
+    const tagEntityDef = await db
+      .select({ id: schema.EntityDefinition.id })
+      .from(schema.EntityDefinition)
+      .where(
+        and(
+          eq(schema.EntityDefinition.entityType, 'tag'),
+          eq(schema.EntityDefinition.organizationId, organizationId)
+        )
+      )
+      .limit(1)
+
+    if (tagEntityDef.length === 0) {
+      console.log('⚠️  Tag entity definition not found, skipping tag associations')
+      return
+    }
+
     // Get existing threads
     const threads = await db
       .select({ id: schema.Thread.id })
@@ -372,14 +442,19 @@ export class CommunicationDomain {
       return
     }
 
-    // Get existing tags
+    // Get Tag EntityInstances (not the Tag table — FieldValue relationships reference EntityInstance IDs)
     const tags = await db
-      .select({ id: schema.Tag.id })
-      .from(schema.Tag)
-      .where(sql`${schema.Tag.organizationId} = ${organizationId}`)
+      .select({ id: schema.EntityInstance.id })
+      .from(schema.EntityInstance)
+      .where(
+        and(
+          eq(schema.EntityInstance.entityDefinitionId, tagEntityDef[0]!.id),
+          eq(schema.EntityInstance.organizationId, organizationId)
+        )
+      )
 
     if (tags.length === 0) {
-      console.log('⚠️  No tags found, skipping tag associations')
+      console.log('⚠️  No tag entity instances found, skipping tag associations')
       return
     }
 
@@ -387,7 +462,10 @@ export class CommunicationDomain {
       id: string
       fieldId: string
       entityId: string
+      entityDefinitionId: string
       relatedEntityId: string
+      relatedEntityDefinitionId: string
+      organizationId: string
       createdAt: Date
       updatedAt: Date
     }> = []
@@ -403,7 +481,10 @@ export class CommunicationDomain {
           id: `fv_${createId()}`,
           fieldId,
           entityId: thread.id,
+          entityDefinitionId: threadEntityDef[0]!.id,
           relatedEntityId: tag.id,
+          relatedEntityDefinitionId: tagEntityDef[0]!.id,
+          organizationId,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
@@ -516,7 +597,7 @@ export class CommunicationDomain {
             isFirstInThread: i === 0,
             subject: thread.subject,
             textPlain: messageContent,
-            textHtml: `<p>${messageContent}</p>`,
+            // textHtml: `<p>${messageContent}</p>`,
             snippet: messageContent.substring(0, 100), // First 100 chars as preview
             organizationId: thread.organizationId,
             fromId: customerParticipant.id, // FROM customer
@@ -554,7 +635,6 @@ export class CommunicationDomain {
             isFirstInThread: false,
             subject: `Re: ${thread.subject}`,
             textPlain: messageContent,
-            textHtml: `<p>${messageContent}</p>`,
             snippet: messageContent.substring(0, 100), // First 100 chars as preview
             organizationId: thread.organizationId,
             fromId: supportParticipant.id, // FROM support

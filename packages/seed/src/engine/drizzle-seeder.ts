@@ -180,7 +180,7 @@ export class DrizzleSeeder {
         console.log('✅ Ticket data inserted')
       }
 
-      // Communication inserts (Threads, Messages, TagOnThread, MessageParticipant)
+      // Communication inserts (Threads, Messages, MessageParticipant)
       if (this.scenario.scales.threads > 0) {
         console.log('💾 Inserting communication data directly...')
         const communication = new CommunicationDomain(this.scenario, context, domainOptions)
@@ -320,11 +320,6 @@ export class DrizzleSeeder {
       await this.db
         .delete(schema.MessageParticipant)
         .where(eq(schema.MessageParticipant.organizationId, organizationId))
-
-      console.log('  ↳ Deleting tags on threads...')
-      await this.db
-        .delete(schema.TagOnThread)
-        .where(eq(schema.TagOnThread.organizationId, organizationId))
 
       console.log('  ↳ Deleting messages...')
       await this.db.delete(schema.Message).where(eq(schema.Message.organizationId, organizationId))

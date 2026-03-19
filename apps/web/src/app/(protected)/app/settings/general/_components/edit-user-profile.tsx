@@ -14,7 +14,15 @@ import {
 import { Input } from '@auxx/ui/components/input'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { AlertCircle, Edit, Laptop, Smartphone } from 'lucide-react'
+import {
+  AlertCircle,
+  Edit,
+  Fingerprint,
+  Laptop,
+  RectangleEllipsis,
+  ShieldCheck,
+  Smartphone,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -23,6 +31,8 @@ import { z } from 'zod'
 import { client } from '~/auth/auth-client'
 import { UserRegistrationInfo } from '~/components/auth/user-registration-info'
 import { AvatarUpload } from '~/components/file-upload/ui/avatar-upload'
+import { Tooltip } from '~/components/global/tooltip'
+import { useDemo } from '~/hooks/use-demo'
 import { useUser } from '~/hooks/use-user'
 import { useDehydratedStateContext } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
@@ -55,6 +65,7 @@ export function EditUserProfileForm(): JSX.Element {
   const [emailDialogOpen, setEmailDialogOpen] = useState(false)
 
   const { user } = useUser()
+  const { isDemo } = useDemo()
   const { patchUser } = useDehydratedStateContext()
   const updateProfile = api.user.updateProfile.useMutation()
 
@@ -160,7 +171,7 @@ export function EditUserProfileForm(): JSX.Element {
                 className='bg-muted flex-1'
                 placeholder='Your email address'
               />
-              {canEditEmail && (
+              {canEditEmail && !isDemo && (
                 <Button
                   type='button'
                   variant='outline'
@@ -192,7 +203,18 @@ export function EditUserProfileForm(): JSX.Element {
             <p className='text-[0.8rem] text-muted-foreground'>
               Change or add a password to your account. This can be used to sign in to your account.
             </p>
-            <ChangePassword />
+            {isDemo ? (
+              <Tooltip content='Sign up for a free account to change your password' side='right'>
+                <span className='inline-block'>
+                  <Button variant='outline' size='sm' disabled>
+                    <RectangleEllipsis />
+                    Change Password
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <ChangePassword />
+            )}
           </div>
 
           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
@@ -201,14 +223,41 @@ export function EditUserProfileForm(): JSX.Element {
                 Passkeys
               </h2>
               <p className='text-[0.8rem] text-muted-foreground'>Passwordless login.</p>
-              <ListPasskeys />
+              {isDemo ? (
+                <Tooltip side='right' content='Sign up for a free account to manage passkeys'>
+                  <span className='inline-block'>
+                    <Button variant='outline' size='sm' disabled>
+                      <Fingerprint />
+                      Passkeys
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : (
+                <ListPasskeys />
+              )}
             </div>
 
             <div className='space-y-2'>
               <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
                 Two Factor
               </h2>
-              {user?.hasPassword ? (
+              {isDemo ? (
+                <>
+                  <p className='text-[0.8rem] text-muted-foreground'>
+                    Adds an extra layer of security.
+                  </p>
+                  <Tooltip
+                    side='right'
+                    content='Sign up for a free account to enable two-factor authentication'>
+                    <span className='inline-block'>
+                      <Button variant='outline' size='sm' disabled>
+                        <ShieldCheck />
+                        Enable 2FA
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </>
+              ) : user?.hasPassword ? (
                 <>
                   <p className='text-[0.8rem] text-muted-foreground'>
                     Adds an extra layer of security.

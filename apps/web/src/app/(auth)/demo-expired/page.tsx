@@ -1,43 +1,67 @@
 // apps/web/src/app/(auth)/demo-expired/page.tsx
+'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Check } from 'lucide-react'
 import Link from 'next/link'
+import { useEffect } from 'react'
+import { client } from '~/auth/auth-client'
 import { Logo } from '~/components/global/login/logo'
 
 export default function DemoExpiredPage() {
+  // Sign out the expired demo user so they can sign up or log in fresh
+  useEffect(() => {
+    client.signOut({ fetchOptions: { onSuccess: () => {} } })
+  }, [])
   return (
     <div className='flex min-h-screen w-screen items-center justify-center p-4 bg-white/10'>
-      <div className='flex w-full max-w-sm flex-col items-center gap-6 text-center'>
+      <div className='flex w-full max-w-sm flex-col items-center gap-4'>
         <Logo />
 
-        <div className='space-y-2'>
-          <h1 className='text-2xl font-semibold tracking-tight'>Your demo has ended</h1>
-          <p className='text-sm text-muted-foreground'>
-            Thanks for exploring Auxx.ai! Ready to set up your own workspace?
-          </p>
-        </div>
+        <Card className='shadow-md shadow-black/20 border-transparent w-full'>
+          <CardHeader className='text-center'>
+            <CardTitle className='text-xl'>Your demo has ended</CardTitle>
+            <CardDescription className='sr-only'>
+              Thanks for exploring Auxx.ai! Ready to set up your own workspace?
+            </CardDescription>
+          </CardHeader>
 
-        <ul className='space-y-1 text-sm text-muted-foreground'>
-          <li>&#10003; Free plan available</li>
-          <li>&#10003; No credit card required</li>
-          <li>&#10003; Connect your real email &amp; Shopify</li>
-        </ul>
+          <CardContent className='flex flex-col gap-4'>
+            <div className='flex w-full max-w-sm flex-col items-center gap-6 text-center'>
+              <ul className='space-y-2 text-sm text-primary-600'>
+                <li className='flex items-center gap-2'>
+                  <Check className='size-4 text-info' />
+                  Free plan available
+                </li>
+                <li className='flex items-center gap-2'>
+                  <Check className='size-4 text-info' />
+                  No credit card required
+                </li>
+                <li className='flex items-center gap-2'>
+                  <Check className='size-4 text-info' />
+                  Explore all features
+                </li>
+              </ul>
 
-        <div className='flex flex-col gap-3 w-full'>
-          <Button asChild size='lg' className='w-full'>
-            <Link href='/signup?from=demo'>Sign Up Free</Link>
-          </Button>
+              <div className='flex flex-col gap-3 w-full'>
+                <Button asChild size='lg' className='w-full'>
+                  <Link href='/signup?from=demo'>Sign Up Free</Link>
+                </Button>
 
-          <form action='/api/demo/create-session' method='POST'>
-            <Button
-              type='submit'
-              variant='ghost'
-              size='sm'
-              className='w-full text-muted-foreground'>
-              Start Another Demo
-            </Button>
-          </form>
-        </div>
+                <form action='/api/demo/create-session' method='POST'>
+                  <Button
+                    type='submit'
+                    variant='ghost'
+                    size='sm'
+                    className='w-full text-primary-600'>
+                    Start Another Demo
+                  </Button>
+                </form>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

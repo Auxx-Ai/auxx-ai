@@ -35,7 +35,6 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
 
   const color = values.tag_color as string | undefined
   const emoji = values.tag_emoji as string | undefined
-  console.log('color', color, 'emoji', emoji)
   // Show loading when recordId is undefined or when fetching data
   const isLoading = !recordId || recordLoading || valuesLoading
 
@@ -58,7 +57,7 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
         className
       )}
       {...props}>
-      {emoji && <span>{emoji}</span>}
+      {emoji && <span className='shrink-0'>{emoji}</span>}
       {color && !emoji && <span className={cn('size-2 rounded-full shrink-0', colorData.swatch)} />}
       <span data-slot='text' className='font-medium shrink-0'>
         {displayName}

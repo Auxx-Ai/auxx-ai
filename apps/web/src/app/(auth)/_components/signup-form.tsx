@@ -246,7 +246,7 @@ export function SignUpForm() {
                   exit='exit'
                   variants={variants}
                   transition={{ duration: 0.3 }}>
-                  <div className='font-semibold leading-none tracking-tight py-6 text-xl text-center'>
+                  <div className='font-semibold leading-none tracking-tight pb-6 text-xl text-center'>
                     Get started with Auxx.Ai
                   </div>
                   <div className='space-y-4'>

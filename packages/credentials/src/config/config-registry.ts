@@ -88,6 +88,15 @@ export const CONFIG_VARIABLES = {
     isSensitive: false,
     isEnvOnly: true,
   },
+  DEMO_EMAIL_DOMAIN: {
+    key: 'DEMO_EMAIL_DOMAIN',
+    description: 'Email domain used for demo user accounts (e.g. demo-abc123@<domain>)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.SERVER,
+    defaultValue: 'demo.auxx.ai',
+    isSensitive: false,
+    isEnvOnly: true,
+  },
 
   // ── DATABASE ────────────────────────────────────────────
   DATABASE_URL: {

@@ -55,6 +55,14 @@ export class ImapGetMessagesService {
             if (!parsed) continue
 
             const fromAddress = parsed.from[0]?.address || ''
+            if (!fromAddress) {
+              logger.warn('Skipping message with no sender address', {
+                uid,
+                folder: folderPath,
+                subject: parsed.subject,
+              })
+              continue
+            }
             const isInbound = fromAddress.toLowerCase() !== userEmail.toLowerCase()
 
             // Extract clean text
@@ -85,19 +93,19 @@ export class ImapGetMessagesService {
               sentAt,
               receivedAt: sentAt,
               from: {
-                address: fromAddress,
+                identifier: fromAddress,
                 name: parsed.from[0]?.name || '',
               },
               to: parsed.to.map((addr) => ({
-                address: addr.address,
+                identifier: addr.address,
                 name: addr.name,
               })),
               cc: parsed.cc.map((addr) => ({
-                address: addr.address,
+                identifier: addr.address,
                 name: addr.name,
               })),
               bcc: parsed.bcc.map((addr) => ({
-                address: addr.address,
+                identifier: addr.address,
                 name: addr.name,
               })),
               hasAttachments: parsed.attachments.length > 0,

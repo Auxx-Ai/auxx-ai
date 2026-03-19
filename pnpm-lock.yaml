@@ -1228,6 +1228,9 @@ importers:
       '@auxx/redis':
         specifier: workspace:*
         version: link:../../packages/redis
+      '@auxx/seed':
+        specifier: workspace:*
+        version: link:../../packages/seed
       '@auxx/utils':
         specifier: workspace:*
         version: link:../../packages/utils
