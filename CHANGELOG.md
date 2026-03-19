@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.93](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.92...auxx-v0.1.93) (2026-03-19)
+
+
+### Features
+
+* add demo organization features and cleanup jobs ([#301](https://github.com/Auxx-Ai/auxx-ai/issues/301)) ([4cf3929](https://github.com/Auxx-Ai/auxx-ai/commit/4cf3929fe11f241f013e6d8419547b6a80d13995))
+* enhance filter builder and find panel with resource field ID handling ([#299](https://github.com/Auxx-Ai/auxx-ai/issues/299)) ([0707884](https://github.com/Auxx-Ai/auxx-ai/commit/07078844601cf6c155f2a4e96d94b82ff7e78751))
+
 ## [0.1.92](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.91...auxx-v0.1.92) (2026-03-18)
 
 
