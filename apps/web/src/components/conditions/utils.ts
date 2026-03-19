@@ -6,6 +6,14 @@ import type { Condition, ConditionGroup, FieldDefinition, OperatorDefinition } f
 import { STANDARD_OPERATORS } from './types'
 
 /**
+ * Encode a fieldId (string or FieldPath array) into a stable string key for Map lookups.
+ * This is ONLY for internal cache keys — never pass encoded keys to picker APIs.
+ */
+export function encodeFieldIdKey(fieldId: string | string[]): string {
+  return Array.isArray(fieldId) ? fieldId.join('::') : fieldId
+}
+
+/**
  * Convert UnifiedVariable to FieldDefinition for variable-based systems
  */
 export const convertVariableToFieldDefinition = (variable: UnifiedVariable): FieldDefinition => {

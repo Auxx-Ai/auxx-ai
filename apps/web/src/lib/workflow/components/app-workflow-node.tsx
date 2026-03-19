@@ -249,9 +249,8 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
     )
   }, [uniqueHandles, id, data])
 
-  // Derive display error from local error or init error
-  const displayError =
-    error || (initError ? `Extension failed to load: ${initError.message}` : null)
+  // Derive display error from local error or init error — keep short for node display
+  const displayError = error || initError ? 'Extension failed to load' : null
 
   // Render reconstructed component with error handling
   const renderComponent = () => {
@@ -327,7 +326,11 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
             </Button>
           </div>
         ) : displayError ? (
-          <div className='text-xs text-destructive'>Error: {displayError}</div>
+          <div className='px-3'>
+            <div className='relative flex items-center justify-between h-6 rounded-md bg-bad-50 px-2'>
+              <div className='text-xs text-bad-600'>{displayError}</div>
+            </div>
+          </div>
         ) : (
           renderComponent()
         )}

@@ -2,7 +2,8 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
-import React, { type FC, useCallback } from 'react'
+import React, { type FC, useCallback, useRef } from 'react'
+import { useKeyValueNavigation } from '../hooks/use-key-value-navigation'
 import type { KeyValue } from '../types'
 import KeyValueItem from './key-value-item'
 
@@ -27,15 +28,22 @@ const KeyValueList: FC<Props> = ({
   keyNotSupportVar,
   insertVarTipToLeft,
 }) => {
-  // Use refs to maintain stable callbacks
+  const containerRef = useRef<HTMLDivElement>(null)
+  const colCount = isSupportFile ? 3 : 2
+
+  useKeyValueNavigation({
+    containerRef,
+    rowCount: list.length,
+    colCount,
+    onAddRow: onAdd,
+    readonly,
+  })
+
+  // Refs for stable callbacks — updated synchronously during render
   const listRef = React.useRef(list)
   const onChangeRef = React.useRef(onChange)
-
-  // Update refs when props change
-  React.useEffect(() => {
-    listRef.current = list
-    onChangeRef.current = onChange
-  }, [list, onChange])
+  listRef.current = list
+  onChangeRef.current = onChange
 
   // Stable callback that doesn't recreate on every render
   const handleChange = useCallback((index: number, newItem: KeyValue) => {
@@ -56,7 +64,7 @@ const KeyValueList: FC<Props> = ({
   if (!Array.isArray(list)) return null
 
   return (
-    <div className='overflow-hidden rounded-lg border border-primary-200'>
+    <div ref={containerRef} className='overflow-hidden rounded-lg border border-primary-200'>
       <div
         className={cn(
           'text-xs font-medium uppercase flex h-7 items-center leading-7 text-muted-foreground'

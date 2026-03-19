@@ -2,15 +2,17 @@
 
 'use client'
 
+import type { FieldReference } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { Trash2 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useConditionContext } from '../condition-context'
 import ValueInput from '../inputs/value-input'
-import type { ConditionItemProps, Operator } from '../types'
+import type { ConditionItemProps, FieldDefinition, Operator } from '../types'
 import { operatorRequiresValue } from '../types'
 import ConditionOperator from './condition-operator'
+import { NavigableFieldSelector } from './navigable-field-selector'
 import ResourceFieldSelector from './resource-field-selector'
 import VariableFieldSelector from './variable-field-selector'
 
@@ -33,6 +35,7 @@ const ConditionItem = ({
     updateCondition,
     removeCondition,
     getFieldDefinition,
+    registerFieldDefinition,
     getAvailableFields,
     nodeId,
   } = useConditionContext()
@@ -40,12 +43,15 @@ const ConditionItem = ({
   const display = config.display ?? 'stacked'
   const isInline = display === 'inline'
 
-  /** Resolve fieldId to a plain string (handles branded and array formats) */
+  // Use entityDefinitionId to determine if NavigableFieldSelector should be used
+  const useNavigable = config.mode === 'resource' && !!config.entityDefinitionId
+
+  const fieldDef = getFieldDefinition(condition.fieldId)
+
+  /** Resolve fieldId to a plain string for legacy selectors */
   const resolvedFieldId = Array.isArray(condition.fieldId)
     ? (condition.fieldId[0] ?? '')
     : (condition.fieldId as string)
-
-  const fieldDef = getFieldDefinition(resolvedFieldId)
 
   const handleUpdate = useCallback(
     (updates: Partial<typeof condition>) => {
@@ -66,6 +72,21 @@ const ConditionItem = ({
     }
   }, [condition.id, groupId, onRemove, removeCondition])
 
+  /** Handle field change from NavigableFieldSelector */
+  const handleNavigableFieldChange = useCallback(
+    (fieldReference: FieldReference, fieldDef: FieldDefinition) => {
+      registerFieldDefinition(fieldReference as string | string[], fieldDef)
+      const firstOperator = fieldDef.operators?.[0] || 'is'
+      handleUpdate({
+        fieldId: fieldReference as string | string[],
+        operator: firstOperator,
+        value: '',
+      })
+    },
+    [handleUpdate, registerFieldDefinition]
+  )
+
+  /** Handle field change from legacy selectors */
   const handleFieldChange = useCallback(
     (fieldId: string) => {
       const newFieldDef = getFieldDefinition(fieldId)
@@ -157,6 +178,14 @@ const ConditionItem = ({
                 className='h-6 w-full border-0 px-0 text-xs'
                 nodeId={nodeId}
               />
+            ) : useNavigable ? (
+              <NavigableFieldSelector
+                value={condition.fieldId as FieldReference | undefined}
+                onSelect={handleNavigableFieldChange}
+                entityDefinitionId={config.entityDefinitionId!}
+                disabled={readOnly}
+                placeholder='Select field'
+              />
             ) : (
               <ResourceFieldSelector
                 value={resolvedFieldId}
@@ -172,10 +201,10 @@ const ConditionItem = ({
           <div className='mx-1 h-3 w-[1px] bg-divider'></div>
 
           <ConditionOperator
-            fieldId={resolvedFieldId}
+            fieldId={condition.fieldId}
             value={condition.operator}
             onChange={handleOperatorChange}
-            disabled={!resolvedFieldId || readOnly}
+            disabled={!condition.fieldId || readOnly}
           />
 
           {isInline && valueBlock}

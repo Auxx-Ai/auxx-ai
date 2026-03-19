@@ -60,20 +60,13 @@ export function parseParamsToKeyValue(params: string): KeyValue[] {
  * Uses JSON array format to properly store TipTap JSON content
  */
 export function keyValueToString(list: KeyValue[]): string {
-  console.log('keyValueToString called with list:', list)
-  // Filter out completely empty rows (both key and value are empty)
-  const validItems = list.filter((item) => {
-    const keyText = item.key.trim()
-    const valueText = item.value.trim()
-    return keyText !== '' || valueText !== ''
-  })
-
-  // If no valid items, return empty string
-  if (validItems.length === 0) {
+  // Preserve all rows including empty ones so user-added rows don't vanish.
+  // Empty rows serialize as ":" and survive the parse round-trip.
+  if (list.length === 0) {
     return ''
   }
 
-  return validItems
+  return list
     .map((item) => {
       return `${item.key}:${item.value}`
     })
@@ -115,15 +108,13 @@ export function parseBodyDataToKeyValue(data: BodyPayload): KeyValue[] {
  * Convert KeyValue[] to BodyPayload for form data and URL encoded body types
  */
 export function keyValueToBodyPayload(kvList: KeyValue[]): BodyPayload {
-  return kvList
-    .filter((item) => item.key.trim() !== '' || item.value.trim() !== '')
-    .map((item) => ({
-      id: item.id || generateId(),
-      key: item.key,
-      type: item.type === 'file' ? BodyPayloadValueType.file : BodyPayloadValueType.text,
-      file: item.file,
-      value: item.value,
-    }))
+  return kvList.map((item) => ({
+    id: item.id || generateId(),
+    key: item.key,
+    type: item.type === 'file' ? BodyPayloadValueType.file : BodyPayloadValueType.text,
+    file: item.file,
+    value: item.value,
+  }))
 }
 
 /**

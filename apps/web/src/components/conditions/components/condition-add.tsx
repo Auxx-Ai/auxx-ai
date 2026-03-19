@@ -2,17 +2,19 @@
 
 'use client'
 
+import type { FieldReference } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { Plus } from 'lucide-react'
 import { memo, useCallback, useState } from 'react'
 import { useConditionContext } from '../condition-context'
-import type { ConditionAddProps } from '../types'
+import type { ConditionAddProps, FieldDefinition } from '../types'
+import { NavigableFieldSelector } from './navigable-field-selector'
 import ResourceFieldSelector from './resource-field-selector'
 import VariableFieldSelector from './variable-field-selector'
 
 /**
- * Generic condition add component that can work with both variable and resource-based systems
- * Uses VariableFieldSelector for variable mode and ResourceFieldSelector for resource mode
+ * Generic condition add component that can work with both variable and resource-based systems.
+ * When entityDefinitionId is available, uses NavigableFieldSelector for drill-down.
  */
 const ConditionAdd = memo(
   ({
@@ -25,16 +27,27 @@ const ConditionAdd = memo(
     const [open, setOpen] = useState(false)
     const { config, addCondition, getAvailableFields, nodeId } = useConditionContext()
 
-    /** Handle field selection and add condition to group */
+    const useNavigable = config.mode === 'resource' && !!config.entityDefinitionId
+
+    /** Handle field selection from legacy selectors */
     const handleFieldSelect = useCallback(
       (fieldId: string) => {
-        addCondition(fieldId, groupId)
+        addCondition(fieldId, undefined, groupId)
         setOpen(false)
       },
       [addCondition, groupId]
     )
 
-    /** Shared trigger button for both field selector modes */
+    /** Handle field selection from NavigableFieldSelector */
+    const handleNavigableFieldSelect = useCallback(
+      (fieldReference: FieldReference, fieldDef: FieldDefinition) => {
+        addCondition(fieldReference as string | string[], fieldDef, groupId)
+        setOpen(false)
+      },
+      [addCondition, groupId]
+    )
+
+    /** Shared trigger button */
     const renderTrigger = useCallback(
       ({ onClick }: { onClick: () => void }) => (
         <Button
@@ -50,7 +63,6 @@ const ConditionAdd = memo(
       [className, disabled, buttonText, buttonIcon]
     )
 
-    // For variable-based systems (like if-else), use VariableFieldSelector
     if (config.mode === 'variable' && nodeId) {
       return (
         <VariableFieldSelector
@@ -62,7 +74,20 @@ const ConditionAdd = memo(
       )
     }
 
-    // For resource-based systems (like find), use ResourceFieldSelector
+    if (useNavigable) {
+      return (
+        <NavigableFieldSelector
+          value={undefined}
+          onSelect={handleNavigableFieldSelect}
+          entityDefinitionId={config.entityDefinitionId!}
+          disabled={disabled}
+          open={open}
+          onOpenChange={setOpen}
+          renderTrigger={renderTrigger}
+        />
+      )
+    }
+
     if (config.mode === 'resource') {
       return (
         <ResourceFieldSelector

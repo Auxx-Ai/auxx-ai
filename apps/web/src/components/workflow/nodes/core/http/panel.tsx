@@ -30,9 +30,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { generateId } from '@auxx/utils/generateId'
 import { produce } from 'immer'
 import { ChevronDown, FileJson, Plus } from 'lucide-react'
-import { memo, useMemo } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import Field from '~/components/workflow/ui/field'
@@ -62,35 +63,62 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
 
   const { inputs, setInputs } = useNodeCrud<HttpNodeData>(nodeId, data)
 
-  // Parse headers and params to KeyValue arrays
-  const headersList = useMemo(() => {
-    return parseHeadersToKeyValue(inputs?.headers || '')
+  // Local KV array state — decoupled from the string format to prevent
+  // ID regeneration and state loss on every keystroke.
+  const [headersList, setHeadersList] = useState(() =>
+    parseHeadersToKeyValue(inputs?.headers || '')
+  )
+  const [paramsList, setParamsList] = useState(() => parseParamsToKeyValue(inputs?.params || ''))
+
+  // Track our own serialized strings so we can detect truly external changes
+  const headersStringRef = useRef(inputs?.headers || '')
+  const paramsStringRef = useRef(inputs?.params || '')
+
+  // Re-parse only when the string changes externally (not from our own onChange)
+  useEffect(() => {
+    const current = inputs?.headers || ''
+    if (current !== headersStringRef.current) {
+      headersStringRef.current = current
+      setHeadersList(parseHeadersToKeyValue(current))
+    }
   }, [inputs?.headers])
 
-  const paramsList = useMemo(() => {
-    return parseParamsToKeyValue(inputs?.params || '')
+  useEffect(() => {
+    const current = inputs?.params || ''
+    if (current !== paramsStringRef.current) {
+      paramsStringRef.current = current
+      setParamsList(parseParamsToKeyValue(current))
+    }
   }, [inputs?.params])
 
   const handleHeadersChange = (newList: KeyValue[]) => {
+    setHeadersList(newList)
     const headersString = keyValueToHeaders(newList)
+    headersStringRef.current = headersString
     setInputs({ ...inputs, headers: headersString })
   }
 
   const handleParamsChange = (newList: KeyValue[]) => {
+    setParamsList(newList)
     const paramsString = keyValueToParams(newList)
+    paramsStringRef.current = paramsString
     setInputs({ ...inputs, params: paramsString })
   }
 
   const handleAddHeader = () => {
-    const currentHeaders = inputs?.headers || ''
-    const newHeaderString = currentHeaders ? `${currentHeaders}\n:` : ':'
-    setInputs({ ...inputs, headers: newHeaderString })
+    const newList = [...headersList, { id: generateId(), key: '', value: '' }]
+    setHeadersList(newList)
+    const headersString = keyValueToHeaders(newList)
+    headersStringRef.current = headersString
+    setInputs({ ...inputs, headers: headersString })
   }
 
   const handleAddParam = () => {
-    const currentParams = inputs?.params || ''
-    const newParamsString = currentParams ? `${currentParams}\n:` : ':'
-    setInputs({ ...inputs, params: newParamsString })
+    const newList = [...paramsList, { id: generateId(), key: '', value: '' }]
+    setParamsList(newList)
+    const paramsString = keyValueToParams(newList)
+    paramsStringRef.current = paramsString
+    setInputs({ ...inputs, params: paramsString })
   }
 
   // Method handlers
@@ -256,6 +284,7 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
               list={paramsList}
               onChange={handleParamsChange}
               onAdd={handleAddParam}
+              nodeId={nodeId}
             />
           </Field>
           {inputs.method !== 'get' && inputs.method !== 'head' && (

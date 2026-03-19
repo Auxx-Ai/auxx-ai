@@ -78,9 +78,9 @@ function evaluateCondition<T>(
  * Handles: 'status', 'thread:status', ['thread:status', 'status:name']
  */
 function extractFieldId(fieldId: string | string[]): string {
-  // If it's an array (relationship path), use the first field's simple name
+  // If it's an array (relationship path), use the LAST field's simple name (the target field)
   if (Array.isArray(fieldId)) {
-    return extractSimpleField(fieldId[0] ?? '')
+    return extractSimpleField(fieldId[fieldId.length - 1] ?? '')
   }
   return extractSimpleField(fieldId)
 }

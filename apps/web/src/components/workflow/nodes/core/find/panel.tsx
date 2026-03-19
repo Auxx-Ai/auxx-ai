@@ -3,6 +3,8 @@
 'use client'
 
 import { BaseType, getFieldOperators } from '@auxx/lib/workflow-engine/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { toResourceFieldId } from '@auxx/types/field'
 import {
   Select,
   SelectContent,
@@ -87,18 +89,18 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
   // Convert filterable fields to field definitions for condition builder
   const fieldDefinitions = useMemo(() => {
     return filterableFields.map((field) => ({
-      id: field.key,
+      id: toResourceFieldId(nodeData.resourceType, field.key),
       label: field.label,
       type: field.type,
       fieldType: field.fieldType,
+      fieldKey: field.key,
       operators: field.operatorOverrides || getFieldOperators(field),
-      // Pass options for select fields
       options: field.options?.options,
-      // Add fieldReference for RELATION type fields
-      // Format: "resourceType:fieldKey" (e.g., "ticket:contact")
       ...(field.type === BaseType.RELATION &&
         field.relationship && {
-          fieldReference: `${nodeData.resourceType}:${field.key}`,
+          fieldReference: toResourceFieldId(nodeData.resourceType, field.key),
+          targetEntityDefinitionId:
+            getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) ?? undefined,
         }),
     }))
   }, [filterableFields, nodeData.resourceType])
@@ -106,6 +108,7 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
   const config: ConditionSystemConfig = useMemo(
     () => ({
       mode: 'resource' as const,
+      entityDefinitionId: nodeData.resourceType,
       fields: fieldDefinitions,
       allowNesting: false,
       allowReordering: true, // Enable reordering for groups
@@ -124,7 +127,7 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
       allowVarEditor: true, // Enable VarEditor for all field types
       allowConstantToggle: true, // Enable constant/variable mode toggle
     }),
-    [fieldDefinitions]
+    [fieldDefinitions, nodeData.resourceType]
   )
 
   const handleResourceTypeChange = (resourceType: string) => {

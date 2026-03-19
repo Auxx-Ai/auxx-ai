@@ -31,8 +31,6 @@ type Props = {
   keyNotSupportVar?: boolean
   insertVarTipToLeft?: boolean
   itemIndex?: number
-  // availableVariables: UnifiedVariable[]
-  // variableGroups: VariableGroup[]
 }
 
 const KeyValueItem: FC<Props> = ({
@@ -50,14 +48,28 @@ const KeyValueItem: FC<Props> = ({
   keyNotSupportVar,
   insertVarTipToLeft,
   itemIndex = 0,
-  // availableVariables,
-  // variableGroups,
 }) => {
-  // Local state for immediate updates
+  // Local state for immediate UI updates
   const [localKey, setLocalKey] = useState(payload.key || '')
   const [localValue, setLocalValue] = useState(payload.value || '')
   const [localType, setLocalType] = useState(payload.type || 'text')
   const [localFile, setLocalFile] = useState(payload.file)
+
+  // Refs to always have current values (avoids stale closures in debounced sync)
+  const localKeyRef = useRef(localKey)
+  const localValueRef = useRef(localValue)
+  const localTypeRef = useRef(localType)
+  const localFileRef = useRef(localFile)
+  const payloadRef = useRef(payload)
+  const onChangeRef = useRef(onChange)
+
+  // Keep refs in sync during render
+  localKeyRef.current = localKey
+  localValueRef.current = localValue
+  localTypeRef.current = localType
+  localFileRef.current = localFile
+  payloadRef.current = payload
+  onChangeRef.current = onChange
 
   // Sync timer ref
   const syncTimerRef = useRef<NodeJS.Timeout>()
@@ -79,58 +91,57 @@ const KeyValueItem: FC<Props> = ({
     }
   }, [])
 
-  // Sync local state to parent after delay
+  // Stable sync function — reads from refs so it always has current values
   const syncToParent = useCallback(() => {
     const newPayload: KeyValue = {
-      ...payload,
-      key: localKey,
-      value: localValue,
-      type: localType,
-      file: localFile,
+      ...payloadRef.current,
+      key: localKeyRef.current,
+      value: localValueRef.current,
+      type: localTypeRef.current,
+      file: localFileRef.current,
     }
-    onChange(newPayload)
-  }, [payload, localKey, localValue, localType, localFile, onChange])
+    onChangeRef.current(newPayload)
+  }, [])
 
-  // Handle local changes with debounced sync
+  // Stable handler — updates local state + ref immediately, debounces parent sync
   const handleLocalChange = useCallback(
     (field: string) => {
       return (value: any) => {
-        // Update local state immediately
+        // Update both state and ref immediately
         switch (field) {
           case 'key':
             setLocalKey(value)
+            localKeyRef.current = value
             break
           case 'value':
             setLocalValue(value)
+            localValueRef.current = value
             break
           case 'type':
             setLocalType(value)
+            localTypeRef.current = value
             break
           case 'file':
             setLocalFile(value)
+            localFileRef.current = value
             break
         }
 
-        // Clear existing timer
+        // Debounce parent sync
         if (syncTimerRef.current) {
           clearTimeout(syncTimerRef.current)
         }
-
-        // Set new timer to sync after 300ms of inactivity
-        syncTimerRef.current = setTimeout(() => {
-          syncToParent()
-        }, 300)
+        syncTimerRef.current = setTimeout(syncToParent, 300)
       }
     },
     [syncToParent]
   )
 
-  // Immediate sync for certain fields (like type selection)
+  // Immediate sync for discrete changes (like type selection)
   const handleImmediateChange = useCallback(
     (field: string) => {
       return (value: any) => {
         handleLocalChange(field)(value)
-        // Force immediate sync for dropdown changes
         if (syncTimerRef.current) {
           clearTimeout(syncTimerRef.current)
         }
@@ -145,6 +156,8 @@ const KeyValueItem: FC<Props> = ({
     <div
       className={cn(className, 'key-value-item h-min-7 group flex border-t  border-primary-200')}>
       <div
+        data-kv-row={itemIndex}
+        data-kv-col={0}
         className={cn(
           'shrink-0 border-r border-primary-200 ',
           isSupportFile ? 'w-[140px]' : 'w-1/2'
@@ -165,27 +178,16 @@ const KeyValueItem: FC<Props> = ({
             value={localKey}
             onChange={(e) => handleLocalChange('key')(e.target.value)}
             onBlur={syncToParent}
-            onKeyDown={(e) => {
-              if (e.key === 'Tab' && !e.shiftKey) {
-                const wrapper = e.currentTarget.closest('.key-value-item') as HTMLElement
-                if (wrapper) {
-                  const nextInput = wrapper.querySelector(
-                    '.w-\\[70px\\] select, .relative input, .relative [contenteditable="true"]'
-                  ) as HTMLElement
-                  if (nextInput) {
-                    e.preventDefault()
-                    nextInput.focus()
-                  }
-                }
-              }
-            }}
             placeholder='Enter key...'
             disabled={readonly}
           />
         )}
       </div>
       {isSupportFile && (
-        <div className='w-[70px] shrink-0 border-r border-primary-200 focus-within:bg-primary-150/60 focus-within:hover:bg-primary-150/60 hover:bg-primary-100'>
+        <div
+          data-kv-row={itemIndex}
+          data-kv-col={1}
+          className='w-[70px] shrink-0 border-r border-primary-200 focus-within:bg-primary-150/60 focus-within:hover:bg-primary-150/60 hover:bg-primary-100'>
           <Select
             value={localType}
             onValueChange={(value) => handleImmediateChange('type')(value)}
@@ -200,7 +202,10 @@ const KeyValueItem: FC<Props> = ({
           </Select>
         </div>
       )}
-      <div className={cn('relative', isSupportFile ? 'grow' : 'w-1/2')}>
+      <div
+        data-kv-row={itemIndex}
+        data-kv-col={isSupportFile ? 2 : 1}
+        className={cn('relative', isSupportFile ? 'grow' : 'w-1/2')}>
         {isSupportFile && payload.type === 'file' ? (
           <VariablePicker
             nodeId={nodeId}

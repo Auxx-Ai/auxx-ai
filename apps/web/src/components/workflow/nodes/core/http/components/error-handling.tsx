@@ -157,6 +157,7 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
               placeholder='Enter default response body or use {{variables}}...'
               minHeight={100}
               readOnly={isReadOnly}
+              trigger='{{'
             />
           </div>
 
@@ -167,7 +168,7 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
               value={getDefaultValue('headers') || '{}'}
               onUpdate={handleHeadersChange}
               readOnly={isReadOnly}
-              className='min-h-[100px] rounded-md border border-primary-200'
+              className='h-[128px] rounded-md border border-primary-200'
               editorWrapperClassName='h-[100px]'
               hideTopMenu={false}
             />

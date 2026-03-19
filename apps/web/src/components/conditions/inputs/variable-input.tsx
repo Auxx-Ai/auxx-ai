@@ -52,8 +52,11 @@ function buildFieldOptions(field: FieldDefinition) {
  */
 function buildAllowedTypes(varType: BaseType, field: FieldDefinition): (BaseType | string)[] {
   const allowedTypes: (BaseType | string)[] = []
-  if ((varType === BaseType.RELATION || varType === BaseType.REFERENCE) && field.targetTable) {
-    allowedTypes.push(field.targetTable)
+  if (
+    (varType === BaseType.RELATION || varType === BaseType.REFERENCE) &&
+    field.targetEntityDefinitionId
+  ) {
+    allowedTypes.push(field.targetEntityDefinitionId)
   } else if (varType !== BaseType.ANY) {
     allowedTypes.push(varType)
   }

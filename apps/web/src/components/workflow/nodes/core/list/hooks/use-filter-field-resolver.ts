@@ -74,17 +74,17 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
           .filter((field) => field.capabilities.filterable) // Only filterable fields
           .map(
             (field): FieldDefinition => ({
-              id: field.key,
+              id: toResourceFieldId(itemVar.resourceId!, field.key),
               label: field.label,
               type: field.type,
               fieldType: field.fieldType,
+              fieldKey: field.key,
               operators: getFieldOperators(field) as Operator[],
               options: field.options?.options,
-              // Add fieldReference and targetTable for RELATION type fields
               ...(field.type === BaseType.RELATION &&
                 field.relationship && {
                   fieldReference: toResourceFieldId(itemVar.resourceId!, field.key),
-                  targetTable:
+                  targetEntityDefinitionId:
                     getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) ??
                     undefined,
                 }),
@@ -134,10 +134,13 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
 
   const hasFields = fieldDefinitions.length > 0
   const isEmpty = !inputListValue
+  const entityDefinitionId = variable?.items?.resourceId ?? undefined
 
   return {
     /** Extracted field definitions for the array items */
     fieldDefinitions,
+    /** Entity definition ID for NavigableFieldSelector drill-down */
+    entityDefinitionId,
     /** Whether any fields were found */
     hasFields,
     /** Whether no input list is selected */

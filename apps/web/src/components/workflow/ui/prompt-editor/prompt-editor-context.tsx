@@ -61,6 +61,7 @@ interface PromptEditorContextType {
   editable: boolean
   compact?: boolean
   required?: boolean
+  trigger: string
 
   // Workflow Integration
   variables: UnifiedVariable[]
@@ -131,6 +132,10 @@ interface PromptEditorProviderProps {
   height?: number
   minHeight?: number
 
+  // Variable Picker
+  /** Trigger character(s) to open variable picker (default: '{') */
+  trigger?: string
+
   // Enhanced Workflow Integration
   nodeId: string // = required
   expectedTypes?: BaseType[] // Optional type filtering
@@ -186,6 +191,7 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
   includeSystem = true,
   height,
   minHeight = DEFAULT_PROMPT_MIN_HEIGHT,
+  trigger = '{',
   // Legacy props (fallback support)
   gradientBorder = true,
   ...props
@@ -250,19 +256,18 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
 
   // Variable insertion handler
   const handleInsertVariable = useCallback(() => {
-    // setFocus()
-    // Insert the trigger character to open variable picker
+    // Insert the trigger character(s) to open variable picker
     if (editorRef.current) {
       editorRef.current
         .chain()
         .focus()
         .command(({ tr }) => {
-          tr.insertText('{')
+          tr.insertText(trigger)
           return true
         })
         .run()
     }
-  }, [])
+  }, [trigger])
   // Enhanced variable system integration
   // Always call the hook with a fallback nodeId to satisfy hook requirements
   const { variables, groups, allVariables } = useAvailableVariables({
@@ -307,6 +312,7 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
       showRemove,
       showAIGenerate,
       gradientBorder,
+      trigger,
 
       // Workflow integration
       variables,
@@ -340,6 +346,7 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
       showRemove,
       showAIGenerate,
       gradientBorder,
+      trigger,
       variables,
       groups,
       allVariables,
