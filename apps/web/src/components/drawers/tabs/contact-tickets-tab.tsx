@@ -1,39 +1,59 @@
 // apps/web/src/components/drawers/tabs/contact-tickets-tab.tsx
 
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
-import { Plus, TicketIcon } from 'lucide-react'
-import { useState } from 'react'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Section } from '@auxx/ui/components/section'
+import { Loader2, Plus, TicketIcon } from 'lucide-react'
+import { useEffect, useMemo } from 'react'
+import { useInView } from 'react-intersection-observer'
 import { EmptyState } from '~/components/global/empty-state'
+import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import CreateTicketDialog from '~/components/tickets/create-ticket-dialog'
 import TicketRow from '~/components/tickets/ticket-row'
-import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /**
  * Tickets tab for contact drawer
+ * Uses useRecordList with a relationship filter to fetch tickets for this contact
  */
 export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
   const contactId = entityInstanceId
-  const [page, setPage] = useState(1)
-  const pageSize = 10
-  const utils = api.useUtils()
+  const entityDefinitionId = useResourceProperty('ticket', 'id')
 
-  // Query tickets for this customer
-  const { data, isLoading } = api.ticket.byContactId.useQuery(
-    { contactId, page, pageSize },
-    {
-      enabled: !!contactId,
-    }
+  const filters: ConditionGroup[] = useMemo(
+    () => [
+      {
+        id: 'contact-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'contact-match',
+            fieldId: 'ticket:contact' as ResourceFieldId,
+            operator: 'is' as const,
+            value: contactId,
+          },
+        ],
+      },
+    ],
+    [contactId]
   )
 
-  // Refetch tickets when a new one is created
-  const handleTicketCreated = () => {
-    utils.ticket.byContactId.invalidate({ contactId })
-  }
-  function handleViewTicket(ticketId: string) {
-    // Navigate to ticket page
-    window.location.href = `/app/tickets/${ticketId}`
-  }
+  const { records, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage, refresh } =
+    useRecordList({
+      entityDefinitionId: entityDefinitionId ?? '',
+      filters,
+      limit: 20,
+      enabled: !!contactId && !!entityDefinitionId,
+    })
+
+  const { ref, inView } = useInView({ threshold: 0 })
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage()
+    }
+  }, [inView, fetchNextPage, hasNextPage, isFetchingNextPage])
 
   if (isLoading) {
     return (
@@ -47,7 +67,9 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
         />
       </div>
     )
-  } else if (data?.tickets.length === 0) {
+  }
+
+  if (records.length === 0) {
     return (
       <div className='flex items-center justify-center h-full w-full'>
         <EmptyState
@@ -55,7 +77,7 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
           title='Create a ticket'
           description='Create a ticket for this contact'
           button={
-            <CreateTicketDialog contactId={contactId} onSuccess={handleTicketCreated}>
+            <CreateTicketDialog contactId={contactId} onSuccess={refresh}>
               <Button variant='outline' size='sm'>
                 <Plus />
                 Create Ticket
@@ -68,44 +90,39 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
   }
 
   return (
-    <>
-      <div className='flex items-center justify-between px-4 pt-3'>
-        <h2 className='text-base flex items-center space-x-2 gap-2'>
-          <TicketIcon className='size-5 text-muted-foreground/50' />
-          Tickets
-        </h2>
-        <CreateTicketDialog contactId={contactId} onSuccess={handleTicketCreated}>
-          <Button variant='outline' size='sm'>
-            <Plus />
-            Create Ticket
-          </Button>
-        </CreateTicketDialog>
-      </div>
-      <div className='space-y-4 m-4'>
-        {data?.tickets.map((ticket) => (
-          <TicketRow key={ticket.id} ticket={ticket} />
-        ))}
+    <ScrollArea className='flex-1'>
+      <Section
+        title='Tickets'
+        className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
+        collapsible={false}
+        icon={<TicketIcon className='size-4 text-muted-foreground/50' />}
+        actions={
+          <CreateTicketDialog contactId={contactId} onSuccess={refresh}>
+            <Button variant='ghost' size='sm'>
+              <Plus />
+              Create Ticket
+            </Button>
+          </CreateTicketDialog>
+        }>
+        <div className='space-y-4 p-4'>
+          {records.map((record) => (
+            <TicketRow
+              key={record.id}
+              recordId={toRecordId(entityDefinitionId!, record.id)}
+              createdAt={record.createdAt}
+            />
+          ))}
+        </div>
 
-        {data?.totalPages && data?.totalPages > 1 && (
-          <div className='mt-4 flex items-center justify-between'>
-            <Button
-              variant='outline'
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}>
-              Previous
-            </Button>
-            <span className='text-sm text-muted-foreground'>
-              Page {page} of {data!.totalPages}
-            </span>
-            <Button
-              variant='outline'
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page >= data!.totalPages}>
-              Next
-            </Button>
-          </div>
-        )}
-      </div>
-    </>
+        <div className='pb-4'>
+          {isFetchingNextPage && (
+            <div className='flex h-8 w-full items-center justify-center'>
+              <Loader2 className='h-4 w-4 animate-spin' />
+            </div>
+          )}
+          <div ref={ref} className='h-1' />
+        </div>
+      </Section>
+    </ScrollArea>
   )
 }

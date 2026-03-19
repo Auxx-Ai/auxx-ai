@@ -22,6 +22,8 @@ const KNOWN_ROUTE_PREFIXES = new Set([
   'change-password',
   'consent',
   'deactivated',
+  'demo',
+  'demo-expired',
   'forgot-password',
   'login',
   'reset-password',

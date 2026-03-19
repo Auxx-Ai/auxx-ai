@@ -65,7 +65,7 @@ function MainPage({ className, loading = false, children, ...props }: MainPagePr
       <div
         data-main='main'
         className={cn(
-          'h-screen flex flex-col w-full p-3 pt-0 bg-neutral-100 dark:bg-background',
+          'flex-1 overflow-hidden flex flex-col w-full p-3 pt-0 bg-neutral-100 dark:bg-background',
           className
         )}
         {...props}>

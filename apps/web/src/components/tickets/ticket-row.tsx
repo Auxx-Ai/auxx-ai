@@ -1,19 +1,31 @@
 // apps/web/src/components/tickets/ticket-row.tsx
 
+import type { RecordId } from '@auxx/lib/resources/client'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
-import { AlertCircle, AlertTriangle, Clock, Info, User } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Clock, Info } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { TicketTypeBadge } from './ticket-badges'
 
+/** System attributes for ticket fields */
+const TICKET_ATTRS = [
+  'ticket_title',
+  'ticket_number',
+  'ticket_status',
+  'ticket_priority',
+  'ticket_type',
+  'ticket_description',
+] as const
+
 type Props = {
-  ticket: any // Replace with proper ticket type
+  recordId: RecordId
+  createdAt: string | Date
   className?: string
 }
 
-/**
- * Get the priority icon and color based on priority level
- */
+/** Get the priority icon and color based on priority level */
 function getPriorityDisplay(priority: string) {
   switch (priority) {
     case 'URGENT':
@@ -51,68 +63,82 @@ function getPriorityDisplay(priority: string) {
   }
 }
 
-/**
- * Get the status badge styling
- */
+/** Get the status badge styling */
 function getStatusDisplay(status: string) {
   switch (status) {
     case 'IN_PROGRESS':
-      return {
-        icon: Clock,
-        bg: 'bg-yellow-100',
-        text: 'text-yellow-800',
-        label: 'In Progress',
-      }
+      return { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'In Progress' }
     case 'OPEN':
-      return {
-        icon: Clock,
-        bg: 'bg-blue-100',
-        text: 'text-blue-800',
-        label: 'Open',
-      }
+      return { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Open' }
     case 'WAITING_FOR_CUSTOMER':
-      return {
-        icon: Clock,
-        bg: 'bg-purple-100',
-        text: 'text-purple-800',
-        label: 'Waiting',
-      }
+      return { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Waiting' }
     case 'RESOLVED':
-      return {
-        icon: Clock,
-        bg: 'bg-green-100',
-        text: 'text-green-800',
-        label: 'Resolved',
-      }
+      return { bg: 'bg-green-100', text: 'text-green-800', label: 'Resolved' }
     case 'CLOSED':
-      return {
-        icon: Clock,
-        bg: 'bg-gray-100',
-        text: 'text-gray-800',
-        label: 'Closed',
-      }
+      return { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Closed' }
     default:
-      return {
-        icon: Clock,
-        bg: 'bg-gray-100',
-        text: 'text-gray-800',
-        label: (status + '').replace(/_/g, ' '),
-      }
+      return { bg: 'bg-gray-100', text: 'text-gray-800', label: (status + '').replace(/_/g, ' ') }
   }
 }
 
-/** TicketRow component - displays a ticket card that navigates to the ticket drawer */
-function TicketRow({ ticket, className }: Props) {
+/** TicketRow component - displays a ticket card using the field value store */
+function TicketRow({ recordId, createdAt, className }: Props) {
   const router = useRouter()
-  const handleViewTicket = (ticketId: string) => {
-    // Navigate to tickets page with drawer open via URL param
-    router.push(`/app/tickets?t=${ticketId}`)
+
+  const { values, isLoading } = useSystemValues(recordId, TICKET_ATTRS, { autoFetch: true })
+
+  const title = (values.ticket_title as string) ?? ''
+  const number = (values.ticket_number as string) ?? ''
+  const status = (values.ticket_status as string) ?? ''
+  const priority = (values.ticket_priority as string) ?? ''
+  const type = (values.ticket_type as string) ?? ''
+  const description = (values.ticket_description as string) ?? ''
+
+  // Extract instance ID from recordId (format: "entityDefinitionId:instanceId")
+  const instanceId = recordId.split(':').slice(1).join(':')
+
+  if (isLoading) {
+    return (
+      <div
+        className={cn(
+          'bg-card ring-border-illustration relative rounded-2xl p-3 shadow shadow-black/10 ring-1',
+          className
+        )}>
+        <div className='mb-2 flex items-start justify-between'>
+          <div className='space-y-1'>
+            {/* Priority row: icon + label */}
+            <div className='flex items-center gap-2'>
+              <Skeleton className='size-5 rounded-full' />
+              <Skeleton className='h-3 w-16' />
+            </div>
+            {/* Ticket number */}
+            <Skeleton className='h-7 w-24' />
+            {/* Created date */}
+            <Skeleton className='h-3 w-28' />
+          </div>
+          {/* Status badge */}
+          <Skeleton className='h-6 w-20 rounded-full' />
+        </div>
+        <div className='space-y-1.5 [--color-border:color-mix(in_oklab,var(--color-foreground)10%,transparent)]'>
+          <div className='border-b pb-3'>
+            {/* Title */}
+            <Skeleton className='mb-2 h-5 w-3/4' />
+            {/* Description (1 line) */}
+            <Skeleton className='h-3 w-full' />
+          </div>
+          {/* Category row */}
+          <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
+            <Skeleton className='h-3 w-14' />
+            <Skeleton className='h-5 w-16 rounded-full' />
+          </div>
+        </div>
+      </div>
+    )
   }
 
-  const priorityDisplay = getPriorityDisplay(ticket.priority)
-  const statusDisplay = getStatusDisplay(ticket.status)
+  const priorityDisplay = getPriorityDisplay(priority)
+  const statusDisplay = getStatusDisplay(status)
   const PriorityIcon = priorityDisplay.icon
-  const StatusIcon = statusDisplay.icon
 
   return (
     <div
@@ -120,7 +146,7 @@ function TicketRow({ ticket, className }: Props) {
         'bg-card ring-border-illustration relative cursor-pointer rounded-2xl p-3 shadow shadow-black/10 ring-1 transition-all',
         className
       )}
-      onClick={() => handleViewTicket(ticket.id)}>
+      onClick={() => router.push(`/app/tickets/${instanceId}`)}>
       <div className='mb-2 flex items-start justify-between'>
         <div className='space-y-1'>
           <div className='flex items-center gap-2'>
@@ -131,9 +157,9 @@ function TicketRow({ ticket, className }: Props) {
               {priorityDisplay.label}
             </span>
           </div>
-          <div className='font-mono text-lg font-semibold'>#{ticket.number}</div>
+          {number && <div className='font-mono text-lg font-semibold'>#{number}</div>}
           <div className='text-xs text-muted-foreground'>
-            Opened {formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true })}
+            Opened {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
           </div>
         </div>
         <div
@@ -142,40 +168,23 @@ function TicketRow({ ticket, className }: Props) {
             statusDisplay.bg,
             statusDisplay.text
           )}>
-          <StatusIcon className='size-3' />
+          <Clock className='size-3' />
           <span>{statusDisplay.label}</span>
         </div>
       </div>
 
       <div className='space-y-1.5 [--color-border:color-mix(in_oklab,var(--color-foreground)10%,transparent)]'>
         <div className='border-b pb-3'>
-          <div className='mb-2 text-sm font-medium'>{ticket.title}</div>
-          {ticket.description && (
-            <div className='line-clamp-2 text-xs text-muted-foreground'>{ticket.description}</div>
+          {title && <div className='mb-2 text-sm font-medium'>{title}</div>}
+          {description && (
+            <div className='line-clamp-2 text-xs text-muted-foreground'>{description}</div>
           )}
         </div>
 
-        <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
-          <span className='text-xs text-muted-foreground'>Customer:</span>
-          <div className='flex items-center gap-2'>
-            <User className='size-3 text-muted-foreground' />
-            <span className='text-sm'>
-              {ticket.contact?.name || ticket.contact?.email || 'Unknown'}
-            </span>
-          </div>
-        </div>
-
-        {ticket.assignedTo && (
-          <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
-            <span className='text-xs text-muted-foreground'>Assigned:</span>
-            <span className='text-sm'>{ticket.assignedTo.name || ticket.assignedTo.email}</span>
-          </div>
-        )}
-
-        {ticket.type && (
+        {type && (
           <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
             <span className='text-xs text-muted-foreground'>Category:</span>
-            <TicketTypeBadge type={ticket.type} />
+            <TicketTypeBadge type={type} />
           </div>
         )}
       </div>

@@ -88,7 +88,8 @@ export class CrmDomain {
 
       contactValues.push({
         primary_email: this.generateEmail(firstName, lastName, i),
-        full_name: { firstName, lastName },
+        first_name: firstName,
+        last_name: lastName,
         phone: this.generatePhone(i),
         contact_status: 'ACTIVE',
       })

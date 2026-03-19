@@ -219,6 +219,7 @@ export default function Header() {
               <MobileMenu
                 closeMenu={() => setIsMobileMenuOpen(false)}
                 signupUrl={urls.signup}
+                demoUrl={urls.demo}
                 docsUrl={urls.docs}
               />
             )}
@@ -228,6 +229,11 @@ export default function Header() {
                 <Button asChild variant='ghost' size='sm'>
                   <Link href={urls.login}>
                     <span>Login</span>
+                  </Link>
+                </Button>
+                <Button asChild variant='outline' size='sm'>
+                  <Link href={urls.demo}>
+                    <span>Try Demo</span>
                   </Link>
                 </Button>
                 <Button asChild variant='default' size='sm'>
@@ -247,10 +253,12 @@ export default function Header() {
 const MobileMenu = ({
   closeMenu,
   signupUrl,
+  demoUrl,
   docsUrl,
 }: {
   closeMenu: () => void
   signupUrl: string
+  demoUrl: string
   docsUrl: string
 }) => {
   const mobileLinks: MobileLink[] = [
@@ -270,6 +278,7 @@ const MobileMenu = ({
     { name: 'Solutions', href: '/solutions/shopify-stores' },
     { name: 'Pricing', href: '/pricing' },
     { name: 'Company', href: '/company' },
+    { name: 'Try Demo', href: demoUrl },
     { name: 'Get Started', href: signupUrl },
   ]
 

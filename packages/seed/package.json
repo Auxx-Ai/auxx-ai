@@ -6,9 +6,10 @@
   "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.mts",
+      "types": "./src/index.ts",
+      "source": "./src/index.ts",
       "import": "./dist/index.mjs",
-      "default": "./dist/index.mjs"
+      "default": "./src/index.ts"
     }
   },
   "files": [

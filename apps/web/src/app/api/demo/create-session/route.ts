@@ -188,11 +188,14 @@ export async function POST(request: NextRequest) {
 
     logger.info('Demo session created', { userId, organizationId, ip })
 
-    // 10. Redirect to app
-    // The signInResult from better-auth with nextCookies plugin sets cookies automatically.
-    // We just need to redirect.
-    const redirectUrl = new URL('/app', request.url)
-    return NextResponse.redirect(redirectUrl, { status: 303 })
+    // 10. Return response based on caller type:
+    // - fetch() calls (Accept: application/json) get JSON so cookies are set properly
+    // - Form submissions (browser navigation) get a redirect
+    const acceptsJson = request.headers.get('accept')?.includes('application/json')
+    if (acceptsJson) {
+      return NextResponse.json({ success: true, redirectTo: '/app' })
+    }
+    return NextResponse.redirect(new URL('/app', request.url), { status: 303 })
   } catch (error) {
     logger.error('Demo session creation failed', { error })
     return NextResponse.json({ error: 'Failed to create demo session' }, { status: 500 })

@@ -17,6 +17,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { passkey } from '@better-auth/passkey'
 import { betterAuth } from 'better-auth' // core lib
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { nextCookies } from 'better-auth/next-js'
 import {
   bearer,
@@ -50,12 +51,59 @@ const isProduction = configService.get<string>('NODE_ENV') === 'production'
 // }
 const trustedOrigins = getTrustedOrigins()
 
+/**
+ * Better-auth paths that demo users must not access.
+ * These bypass tRPC entirely (client SDK → /api/auth/[...all]).
+ */
+const DEMO_BLOCKED_AUTH_PATHS = new Set([
+  // Core auth mutations
+  '/change-password',
+  '/change-email',
+  // Passkey (WebAuthn two-step: generate-options → verify)
+  '/passkey/generate-register-options',
+  '/passkey/verify-registration',
+  '/passkey/delete-passkey',
+  // Two-factor
+  '/two-factor/enable',
+  '/two-factor/disable',
+  '/two-factor/verify-totp',
+  '/two-factor/get-totp-uri',
+])
+
 // export auth.api
 export const auth = betterAuth({
   database: drizzleAdapter(database, { provider: 'pg', schema }), // use your dialect
   secret: configService.get<string>('BETTER_AUTH_SECRET')!, // encryption secret
   baseURL: WEBAPP_URL,
   trustedOrigins,
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (!DEMO_BLOCKED_AUTH_PATHS.has(ctx.path)) return
+
+      // Session isn't resolved yet in before hooks — resolve from request headers
+      const session = await auth.api.getSession({ headers: ctx.request.headers })
+      if (!session?.user) return
+
+      const user = session.user as typeof session.user & {
+        defaultOrganizationId?: string | null
+      }
+      if (!user.defaultOrganizationId) return
+
+      const { getOrgCache } = await import('@auxx/lib/cache')
+      const orgProfile = await getOrgCache().get(user.defaultOrganizationId, 'orgProfile')
+
+      if (orgProfile?.demoExpiresAt) {
+        logger.info('[demo-guard] BLOCKING demo user', {
+          path: ctx.path,
+          orgId: user.defaultOrganizationId,
+        })
+        throw new APIError('FORBIDDEN', {
+          message:
+            'This action is not available in demo mode. Sign up for a free account to manage your security settings.',
+        })
+      }
+    }),
+  },
   databaseHooks: {
     user: {
       create: {
@@ -153,6 +201,13 @@ export const auth = betterAuth({
     sendOnSignIn: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url, token }, request) => {
+      // Skip verification email for demo users — prevents SES bounces to non-existent addresses
+      const demoDomain = configService.get<string>('DEMO_EMAIL_DOMAIN', 'demo.auxx.ai')
+      if (user.email?.endsWith(`@${demoDomain}`)) {
+        logger.info('Skipping verification email for demo user', { email: user.email })
+        return
+      }
+
       logger.info('Sending verification email', { userId: user.id, email: user.email })
 
       await enqueueEmailJob('verification', {

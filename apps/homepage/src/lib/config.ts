@@ -24,7 +24,7 @@ export const config = {
     signup: buildAppUrl('/signup'),
     dashboard: buildAppUrl('/app/settings'),
     pricing: getHomepageUrl('/pricing'),
-    demo: getHomepageUrl('/demo'),
+    demo: buildAppUrl('/demo'),
     docs: DOCS_URL,
   },
   mainNav: [

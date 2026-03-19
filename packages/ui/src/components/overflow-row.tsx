@@ -8,7 +8,6 @@ import {
   type ReactElement,
   type ReactNode,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -149,33 +148,38 @@ export function OverflowRow({
     }
   }, [])
 
-  // Measure child widths once on mount and when children change
-  // biome-ignore lint/correctness/useExhaustiveDependencies: childArray.length is used as a trigger to re-measure when children count changes
-  useLayoutEffect(() => {
+  // Measure child widths and re-measure when child DOM changes (e.g., async content loads)
+  useEffect(() => {
     const fullContainer = fullMeasureRef.current
     const collapsedContainer = collapsedMeasureRef.current
+    if (!fullContainer || !collapsedContainer) return
 
-    if (fullContainer) {
-      const widths = Array.from(fullContainer.children).map((el) => (el as HTMLElement).offsetWidth)
+    const measureAll = () => {
+      const fullW = Array.from(fullContainer.children).map((el) => (el as HTMLElement).offsetWidth)
       setFullWidths((prev) => {
-        if (prev.length !== widths.length || prev.some((w, i) => w !== widths[i])) {
-          return widths
-        }
+        if (prev.length !== fullW.length || prev.some((w, i) => w !== fullW[i])) return fullW
         return prev
       })
-    }
 
-    if (collapsedContainer) {
-      const widths = Array.from(collapsedContainer.children).map(
+      const collapsedW = Array.from(collapsedContainer.children).map(
         (el) => (el as HTMLElement).offsetWidth
       )
       setCollapsedWidths((prev) => {
-        if (prev.length !== widths.length || prev.some((w, i) => w !== widths[i])) {
-          return widths
-        }
+        if (prev.length !== collapsedW.length || prev.some((w, i) => w !== collapsedW[i]))
+          return collapsedW
         return prev
       })
     }
+
+    // Initial measurement
+    measureAll()
+
+    // Re-measure when child subtree mutates (skeleton → real content)
+    const observer = new MutationObserver(measureAll)
+    observer.observe(fullContainer, { childList: true, subtree: true })
+    observer.observe(collapsedContainer, { childList: true, subtree: true })
+
+    return () => observer.disconnect()
   }, [childArray.length])
 
   const { collapsedIndices, hiddenStartIndex } = useOverflowLayout(
@@ -203,10 +207,10 @@ export function OverflowRow({
   const collapseStyle = `[data-overflow-collapsed] [data-slot="${collapseSlot}"] { display: none !important; }`
 
   return (
-    <>
+    <div className={cn('relative min-w-0 flex-1', className)}>
       <style>{collapseStyle}</style>
 
-      {/* Hidden measurement container - full width */}
+      {/* Hidden measurement container - full width (max-content prevents shrink-to-fit clamping) */}
       <div
         ref={fullMeasureRef}
         aria-hidden='true'
@@ -215,10 +219,13 @@ export function OverflowRow({
           visibility: 'hidden',
           pointerEvents: 'none',
           display: 'flex',
+          width: 'max-content',
           gap,
         }}>
         {childArray.map((child, i) => (
-          <div key={i}>{child}</div>
+          <div key={i} style={{ flexShrink: 0 }}>
+            {child}
+          </div>
         ))}
       </div>
 
@@ -232,33 +239,33 @@ export function OverflowRow({
           visibility: 'hidden',
           pointerEvents: 'none',
           display: 'flex',
+          width: 'max-content',
           gap,
         }}>
         {childArray.map((child, i) => (
-          <div key={i}>{child}</div>
+          <div key={i} style={{ flexShrink: 0 }}>
+            {child}
+          </div>
         ))}
       </div>
 
-      {/* Wrapper with relative positioning for width measurement */}
-      <div className={cn('relative min-w-0 flex-1', className)}>
-        {/* Width measurement target */}
-        <div ref={containerRef} className='absolute inset-0 pointer-events-none' aria-hidden />
+      {/* Width measurement target */}
+      <div ref={containerRef} className='absolute inset-0 pointer-events-none' aria-hidden />
 
-        {/* Visible container */}
-        <div className='flex items-center  justify-end' style={{ gap }}>
-          {childArray.map((child, i) => {
-            if (i >= hiddenStartIndex) return null
+      {/* Visible container */}
+      <div className='flex items-center justify-end overflow-hidden' style={{ gap }}>
+        {childArray.map((child, i) => {
+          if (i >= hiddenStartIndex) return null
 
-            const isCollapsed = collapsedIndices.has(i)
-            return (
-              <div key={i} data-overflow-collapsed={isCollapsed || undefined}>
-                {child}
-              </div>
-            )
-          })}
-          {overflowCount > 0 && (renderOverflow ?? defaultOverflow)(overflowCount)}
-        </div>
+          const isCollapsed = collapsedIndices.has(i)
+          return (
+            <div key={i} data-overflow-collapsed={isCollapsed || undefined}>
+              {child}
+            </div>
+          )
+        })}
+        {overflowCount > 0 && (renderOverflow ?? defaultOverflow)(overflowCount)}
       </div>
-    </>
+    </div>
   )
 }

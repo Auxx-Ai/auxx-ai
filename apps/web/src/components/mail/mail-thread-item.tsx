@@ -285,7 +285,10 @@ export const MailThreadItem = memo(function MailThreadItem({
                     key={tagId}
                     recordId={tagId}
                     size='sm'
-                    className={cn(isMultiSelected && 'text-background/80 border-black/20')}
+                    className={cn(
+                      isMultiSelected &&
+                        'text-background/80 border-black/20 bg-background/50 border-black/3'
+                    )}
                   />
                 ))}
               </OverflowRow>

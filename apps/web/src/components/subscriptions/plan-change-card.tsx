@@ -9,7 +9,9 @@ import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { CreditCard, X } from 'lucide-react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import { useState } from 'react'
+import { useDemo } from '~/hooks/use-demo'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
 
@@ -33,6 +35,7 @@ export function PlanChangeCard() {
     requireRoles: ['ADMIN', 'OWNER'],
   })
 
+  const { isDemo } = useDemo()
   const [dialogOpen, setDialogOpen] = useState(false)
   const utils = api.useUtils()
 
@@ -128,9 +131,15 @@ export function PlanChangeCard() {
               </div>
             </div>
             <div className='flex items-center gap-2'>
-              <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
-                Change Plan
-              </Button>
+              {isDemo ? (
+                <Button variant='outline' size='sm' asChild>
+                  <Link href='/signup?from=demo'>Sign up</Link>
+                </Button>
+              ) : (
+                <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
+                  Change Plan
+                </Button>
+              )}
             </div>
           </div>
         )}

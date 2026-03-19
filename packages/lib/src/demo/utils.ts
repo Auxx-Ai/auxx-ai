@@ -29,8 +29,10 @@ export function isDemoExpired(org: { demoExpiresAt: Date | string | null }): boo
 /** Default demo session duration: 1 hour */
 export const DEMO_SESSION_DURATION_MS = 60 * 60 * 1000
 
-/** Demo user email domain */
-export const DEMO_EMAIL_DOMAIN = 'demo.auxx.ai'
+/** Demo user email domain — reads from configService with default fallback. */
+export function getDemoEmailDomain(): string {
+  return configService.get<string>('DEMO_EMAIL_DOMAIN', 'demo.auxx.ai')!
+}
 
 /**
  * Generate a demo user email address.
@@ -41,5 +43,5 @@ export function generateDemoEmail(): string {
   for (let i = 0; i < 6; i++) {
     suffix += chars[Math.floor(Math.random() * chars.length)]
   }
-  return `demo-${suffix}@${DEMO_EMAIL_DOMAIN}`
+  return `demo-${suffix}@${getDemoEmailDomain()}`
 }

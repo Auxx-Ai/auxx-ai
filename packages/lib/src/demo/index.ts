@@ -2,9 +2,9 @@
 
 export { DemoGuard } from './demo-guard'
 export {
-  DEMO_EMAIL_DOMAIN,
   DEMO_SESSION_DURATION_MS,
   generateDemoEmail,
+  getDemoEmailDomain,
   isDemoEnabled,
   isDemoExpired,
   isDemoOrganization,

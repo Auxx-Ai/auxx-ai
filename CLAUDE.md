@@ -54,6 +54,26 @@ Auxx.ai is an open-source AI-powered email support ticket answer service for Sho
 | `@auxx/email`       | Email service (Mailgun, SES, SMTP)          |
 | `@auxx/billing`     | Stripe integration                          |
 | `@auxx/sdk`         | Public SDK                                  |
+| `@auxx/seed`        | Database seeding (CLI + domain seeders)      |
+
+### Package Dependency Rules
+
+**CRITICAL**: Only import from packages listed as dependencies in the importing package's `package.json`. Node.js resolves packages relative to the **importing file**, not the app entry point. A dynamic `import('@auxx/foo')` inside `@auxx/lib` will fail if `@auxx/lib/package.json` doesn't list `@auxx/foo` — even if the calling app has it.
+
+**Dependency tiers** (higher tiers can import lower, never the reverse):
+
+```
+Tier 0 (leaf):  config, logger, deployment, typescript-config
+Tier 1 (infra): database, redis, credentials, utils, types
+Tier 2 (core):  services, email, billing, workflow-nodes
+Tier 3 (biz):   lib  (imports tier 0–2, NEVER seed)
+Tier 4 (seed):  seed (imports lib + database, NEVER imported by lib)
+Tier 5 (apps):  web, worker, api, lambda, build (can import anything)
+```
+
+**Key constraint**: `@auxx/seed` ↔ `@auxx/lib` is a **one-way dependency** (`seed → lib`). Code in `@auxx/lib` must NEVER import from `@auxx/seed`. If lib code needs seed functionality, either:
+1. Move the logic into lib itself, or
+2. Define an interface/stub in lib and implement it in the app layer (worker/web) where both are available
 
 ### Key Paths
 

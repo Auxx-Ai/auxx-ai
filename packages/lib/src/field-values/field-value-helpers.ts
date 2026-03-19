@@ -14,7 +14,7 @@ import {
 import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq, sql } from 'drizzle-orm'
-import { getCachedResource } from '../cache'
+import { findCachedResource } from '../cache'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
@@ -579,6 +579,58 @@ export async function preBatchValidateRelationships(
 // =============================================================================
 
 /**
+ * Check if a field is a source field for a NAME-type primary display field.
+ * If so, compose "firstName lastName" from the current value and the other source field.
+ * Returns the composed display string, null to clear, or undefined if not applicable.
+ */
+async function resolveNameFieldDisplayValue(
+  ctx: FieldValueContext,
+  recordId: RecordId,
+  entityDef: { primaryDisplayFieldId: string | null },
+  field: FieldWithDefinition,
+  value: TypedFieldValueInput | TypedFieldValueInput[] | null
+): Promise<string | null | undefined> {
+  if (!entityDef.primaryDisplayFieldId) return undefined
+
+  const primaryField = await getField(ctx, entityDef.primaryDisplayFieldId)
+  if (primaryField.type !== 'NAME') return undefined
+
+  const nameOpts = (primaryField.options as Record<string, any>)?.name as
+    | { firstNameFieldId?: string; lastNameFieldId?: string }
+    | undefined
+  if (!nameOpts?.firstNameFieldId || !nameOpts?.lastNameFieldId) return undefined
+
+  const isFirstName = nameOpts.firstNameFieldId === field.id
+  const isLastName = nameOpts.lastNameFieldId === field.id
+  if (!isFirstName && !isLastName) return undefined
+
+  // Extract the text value being set
+  const currentText =
+    value && !Array.isArray(value) && value.type === 'text' ? (value.value as string) || '' : ''
+
+  // Fetch the other source field's current value
+  const { entityInstanceId } = parseRecordId(recordId)
+  const otherFieldId = isFirstName ? nameOpts.lastNameFieldId : nameOpts.firstNameFieldId
+  const [otherRow] = await ctx.db
+    .select({ valueText: schema.FieldValue.valueText })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.entityId, entityInstanceId),
+        eq(schema.FieldValue.fieldId, otherFieldId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+    .limit(1)
+  const otherText = otherRow?.valueText || ''
+
+  const firstName = isFirstName ? currentText : otherText
+  const lastName = isLastName ? currentText : otherText
+
+  return [firstName, lastName].filter(Boolean).join(' ').trim() || null
+}
+
+/**
  * Update EntityInstance display columns if field is a display field.
  * Handles primary (displayName), secondary (secondaryDisplayValue), and avatar (avatarUrl).
  */
@@ -602,6 +654,24 @@ export async function maybeUpdateDisplayValue(
     column = 'secondaryDisplayValue'
   } else if ((entityDef as any).avatarFieldId === field.id) {
     column = 'avatarUrl'
+  }
+
+  // If no direct match, check if this field is a source for a NAME-type display field
+  if (!column && entityDef.primaryDisplayFieldId) {
+    const result = await resolveNameFieldDisplayValue(ctx, recordId, entityDef, field, value)
+    if (result !== undefined) {
+      await ctx.db
+        .update(schema.EntityInstance)
+        .set({ displayName: result })
+        .where(
+          and(
+            eq(schema.EntityInstance.id, entityInstanceId),
+            eq(schema.EntityInstance.organizationId, ctx.organizationId)
+          )
+        )
+      await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+      return
+    }
   }
 
   if (!column) return
@@ -739,13 +809,13 @@ export async function validateFieldReferences(
 
     for (let i = 0; i < path.length; i++) {
       const { entityDefinitionId, fieldId } = parseResourceFieldId(path[i])
-      const resource = await getCachedResource(organizationId, entityDefinitionId)
+      const resource = await findCachedResource(organizationId, entityDefinitionId)
 
       if (!resource) {
         throw new Error(`Entity "${entityDefinitionId}" not found`)
       }
 
-      const field = resource.fields.find((f) => f.id === fieldId)
+      const field = resource.fields.find((f) => f.id === fieldId || f.key === fieldId)
       if (!field) {
         throw new Error(`Field "${fieldId}" not found in "${entityDefinitionId}"`)
       }
@@ -768,12 +838,12 @@ export async function getFieldTypeFromRegistry(
   entityDefinitionId: string,
   fieldId: string
 ): Promise<FieldType> {
-  const resource = await getCachedResource(organizationId, entityDefinitionId)
+  const resource = await findCachedResource(organizationId, entityDefinitionId)
   if (!resource) {
     throw new Error(`Entity "${entityDefinitionId}" not found`)
   }
 
-  const field = resource.fields.find((f) => f.id === fieldId)
+  const field = resource.fields.find((f) => f.id === fieldId || f.key === fieldId)
   if (!field || !field.fieldType) {
     throw new Error(`Field "${fieldId}" not found or missing fieldType`)
   }

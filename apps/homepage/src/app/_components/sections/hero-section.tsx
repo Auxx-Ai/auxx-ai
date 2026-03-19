@@ -1,16 +1,14 @@
 // apps/homepage/src/app/_components/sections/hero-section.tsx
 'use client'
 
-import { Check, Clock, Play, Zap } from 'lucide-react'
+import { Check, Clock, Zap } from 'lucide-react'
 import Link from 'next/link'
-import React from 'react'
 import MessagingFeatures from '@/app/platform/messaging/_components/messaging-features'
 import { Button } from '~/components/ui/button'
 import { useConfig } from '~/lib/config-context'
 
 export default function HeroSection() {
   const { urls } = useConfig()
-  const [showVideo, setShowVideo] = React.useState(false)
 
   return (
     <>
@@ -34,13 +32,8 @@ export default function HeroSection() {
               <Button asChild size='lg' className='px-8 text-base'>
                 <Link href={urls.signup}>Start 14-Day Free Trial</Link>
               </Button>
-              <Button
-                variant='outline'
-                size='lg'
-                className='px-8 text-base'
-                onClick={() => setShowVideo(true)}>
-                <Play />
-                Watch 2-Min Demo
+              <Button asChild variant='outline' size='lg' className='px-8 text-base'>
+                <Link href={urls.demo}>Try Live Demo</Link>
               </Button>
             </div>
 
@@ -188,33 +181,6 @@ export default function HeroSection() {
         </section> */}
         <MessagingFeatures />
       </main>
-
-      {/* Video Modal */}
-      {showVideo && (
-        <div
-          role='dialog'
-          aria-label='Demo video'
-          aria-modal='true'
-          className='fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4'
-          onClick={() => setShowVideo(false)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setShowVideo(false)
-          }}>
-          <div
-            className='bg-card rounded-lg shadow-xl max-w-4xl w-full aspect-video'
-            onClick={(e) => e.stopPropagation()}>
-            <div className='p-4 border-b flex items-center justify-between'>
-              <span className='font-semibold'>Auxx.ai Demo</span>
-              <Button variant='ghost' size='sm' onClick={() => setShowVideo(false)}>
-                Close
-              </Button>
-            </div>
-            <div className='aspect-video bg-muted flex items-center justify-center'>
-              <span className='text-muted-foreground'>Video player would go here</span>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }

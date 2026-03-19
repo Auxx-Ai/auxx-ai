@@ -8,11 +8,13 @@ import { toastError } from '@auxx/ui/components/toast'
 import { CreditCard, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useDemo } from '~/hooks/use-demo'
 import { api } from '~/trpc/react'
 import { AddPaymentMethodDialog } from './add-payment-method-dialog'
 
 /** Card component displaying payment methods with add/delete functionality */
 export function PaymentMethodsCard() {
+  const { isDemo } = useDemo()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
@@ -79,7 +81,7 @@ export function PaymentMethodsCard() {
             size='icon-sm'
             className='-mt-7 -mr-2 rounded-full'
             onClick={() => setDialogOpen(true)}
-            disabled={isLoading}>
+            disabled={isLoading || isDemo}>
             <Plus />
           </Button>
         </div>
@@ -131,7 +133,7 @@ export function PaymentMethodsCard() {
                       variant='ghost'
                       size='sm'
                       onClick={() => setDefault.mutate({ paymentMethodId: pm.id })}
-                      disabled={setDefault.isPending}>
+                      disabled={setDefault.isPending || isDemo}>
                       Set Default
                     </Button>
                   )}
@@ -140,7 +142,7 @@ export function PaymentMethodsCard() {
                     size='icon'
                     className='size-8 text-destructive hover:text-destructive'
                     onClick={() => handleDelete(pm.id)}
-                    disabled={deleteMethod.isPending}>
+                    disabled={deleteMethod.isPending || isDemo}>
                     <Trash2 />
                   </Button>
                 </div>

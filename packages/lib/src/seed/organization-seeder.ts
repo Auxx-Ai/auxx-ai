@@ -324,7 +324,8 @@ export class OrganizationSeeder {
     }
 
     // Demo accounts use a separate subscription flow — skip trial
-    if (this.userEmail.endsWith('@demo.auxx.ai')) {
+    const { getDemoEmailDomain } = await import('../demo')
+    if (this.userEmail.endsWith(`@${getDemoEmailDomain()}`)) {
       logger.info('Demo account detected, skipping trial subscription', { organizationId })
       return
     }

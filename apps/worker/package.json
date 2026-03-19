@@ -21,6 +21,7 @@
     "@auxx/deployment": "workspace:*",
     "@auxx/database": "workspace:*",
     "@auxx/lib": "workspace:*",
+    "@auxx/seed": "workspace:*",
     "@auxx/logger": "workspace:*",
     "@auxx/redis": "workspace:*",
     "@auxx/email": "workspace:*",

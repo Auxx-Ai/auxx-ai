@@ -11,17 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@auxx/ui/components/form'
-import { Input } from '@auxx/ui/components/input'
+import { Form, FormControl, FormField, FormItem, FormLabel } from '@auxx/ui/components/form'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { TooltipError } from '@auxx/ui/components/tooltip'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { AlertCircle, Mail } from 'lucide-react'
 import { useState } from 'react'
@@ -201,15 +195,24 @@ export function EditEmailDialog({
                   <FormItem>
                     <FormLabel>New Email</FormLabel>
                     <FormControl>
-                      <Input
-                        type='email'
-                        placeholder='Enter new email address'
-                        autoComplete='email'
-                        disabled={isSubmitting}
-                        {...field}
-                      />
+                      <InputGroup>
+                        <InputGroupAddon align='inline-start'>
+                          <Mail className='size-4 text-muted-foreground' />
+                        </InputGroupAddon>
+                        <InputGroupInput
+                          type='email'
+                          placeholder='Enter new email address'
+                          autoComplete='email'
+                          disabled={isSubmitting}
+                          {...field}
+                        />
+                        <InputGroupAddon align='inline-end'>
+                          {form.formState.errors.newEmail && (
+                            <TooltipError text={form.formState.errors.newEmail.message ?? ''} />
+                          )}
+                        </InputGroupAddon>
+                      </InputGroup>
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />

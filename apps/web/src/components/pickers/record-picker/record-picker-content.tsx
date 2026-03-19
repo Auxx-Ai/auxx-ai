@@ -5,11 +5,11 @@
 import type { RecordId, RecordPickerItem } from '@auxx/lib/resources/client'
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
+  CommandPlaceholder,
   CommandSeparator,
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
@@ -17,6 +17,7 @@ import { keepPreviousData } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRelationship, useResourceStore } from '~/components/resources'
+import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 import { RecordItem } from './record-item'
 
@@ -108,6 +109,7 @@ export function RecordPickerContent({
   const [internalSearch, setInternalSearch] = useState('')
   const search = externalSearch ?? internalSearch
   const setSearch = externalSearch !== undefined ? () => {} : setInternalSearch
+  const [debouncedSearch] = useDebouncedValue(search, 300)
   const getResourceById = useResourceStore((s) => s.getResourceById)
 
   // Notify parent about capture state on mount/unmount
@@ -128,7 +130,7 @@ export function RecordPickerContent({
     if (entityDefinitionIds && entityDefinitionIds.length > 0) {
       // Multi-entity search mode - use global search with filter
       return {
-        query: search,
+        query: debouncedSearch,
         entityDefinitionIds,
         limit: 20,
       }
@@ -137,20 +139,20 @@ export function RecordPickerContent({
       // Single entity search mode
       return {
         entityDefinitionId,
-        query: search,
+        query: debouncedSearch,
         limit: 20,
       }
     }
     // Global search mode
     return {
-      query: search,
+      query: debouncedSearch,
       limit: 20,
     }
-  }, [entityDefinitionId, entityDefinitionIds, search])
+  }, [entityDefinitionId, entityDefinitionIds, debouncedSearch])
 
   // Search query
   const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(searchParams, {
-    enabled: true,
+    enabled: externalSearch === undefined || debouncedSearch.trim().length > 0,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   })
@@ -273,7 +275,9 @@ export function RecordPickerContent({
         />
       )}
       <CommandList>
-        <CommandEmpty>No results found</CommandEmpty>
+        {!isSearching && debouncedSearch.trim() && !hasSelectedSection && !hasResultsSection && (
+          <CommandPlaceholder>No results found</CommandPlaceholder>
+        )}
 
         {/* Selected Items Section */}
         {hasSelectedSection && (

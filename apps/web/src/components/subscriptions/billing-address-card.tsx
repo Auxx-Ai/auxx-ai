@@ -5,11 +5,13 @@ import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { MapPin, Pencil } from 'lucide-react'
 import { useState } from 'react'
+import { useDemo } from '~/hooks/use-demo'
 import { api } from '~/trpc/react'
 import { BillingAddressDialog } from './billing-address-dialog'
 
 /** Card component displaying billing address with edit functionality */
 export function BillingAddressCard() {
+  const { isDemo } = useDemo()
   const [dialogOpen, setDialogOpen] = useState(false)
   const { data: billingDetails, isLoading } = api.billing.getBillingDetails.useQuery()
 
@@ -42,7 +44,7 @@ export function BillingAddressCard() {
             size='icon-sm'
             className='-mt-7 -mr-2 rounded-full'
             onClick={() => setDialogOpen(true)}
-            disabled={isLoading}>
+            disabled={isLoading || isDemo}>
             <Pencil />
           </Button>
         </div>
