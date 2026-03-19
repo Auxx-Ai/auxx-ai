@@ -10,7 +10,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('billing-router')
 
@@ -239,6 +239,7 @@ export const billingRouter = createTRPCRouter({
         metadata: z.record(z.string(), z.string()).optional(),
       })
     )
+    .use(notDemo('manage billing'))
     .mutation(async ({ ctx, input }) => {
       try {
         const organizationId = getUserOrganizationId(ctx.session)
@@ -266,59 +267,63 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // Cancel subscription
-  cancelSubscription: cloudOnlyProcedure.mutation(async ({ ctx }) => {
-    try {
-      const organizationId = getUserOrganizationId(ctx.session)
-      if (!organizationId) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
+  cancelSubscription: cloudOnlyProcedure
+    .use(notDemo('manage billing'))
+    .mutation(async ({ ctx }) => {
+      try {
+        const organizationId = getUserOrganizationId(ctx.session)
+        if (!organizationId) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
+        }
+
+        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
+
+        await subscriptionService.cancelSubscription({
+          organizationId,
+          returnUrl: '', // No longer needed
+        })
+
+        await onCacheEvent('plan.canceled', { orgId: organizationId })
+
+        return { success: true }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : ''
+
+        logger.error('Error canceling subscription', { error: message })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Error canceling subscription: ${message}`,
+        })
       }
-
-      const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
-
-      await subscriptionService.cancelSubscription({
-        organizationId,
-        returnUrl: '', // No longer needed
-      })
-
-      await onCacheEvent('plan.canceled', { orgId: organizationId })
-
-      return { success: true }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : ''
-
-      logger.error('Error canceling subscription', { error: message })
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: `Error canceling subscription: ${message}`,
-      })
-    }
-  }),
+    }),
 
   // Restore canceled subscription
-  restoreSubscription: cloudOnlyProcedure.mutation(async ({ ctx }) => {
-    try {
-      const organizationId = getUserOrganizationId(ctx.session)
-      if (!organizationId) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
+  restoreSubscription: cloudOnlyProcedure
+    .use(notDemo('manage billing'))
+    .mutation(async ({ ctx }) => {
+      try {
+        const organizationId = getUserOrganizationId(ctx.session)
+        if (!organizationId) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
+        }
+
+        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
+
+        await subscriptionService.restoreSubscription({ organizationId })
+
+        await onCacheEvent('plan.changed', { orgId: organizationId })
+
+        return { success: true }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : ''
+
+        logger.error('Error restoring subscription', { error: message })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Error restoring subscription: ${message}`,
+        })
       }
-
-      const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
-
-      await subscriptionService.restoreSubscription({ organizationId })
-
-      await onCacheEvent('plan.changed', { orgId: organizationId })
-
-      return { success: true }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : ''
-
-      logger.error('Error restoring subscription', { error: message })
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: `Error restoring subscription: ${message}`,
-      })
-    }
-  }),
+    }),
 
   // Create billing portal session
   createBillingPortal: cloudOnlyProcedure
@@ -328,6 +333,7 @@ export const billingRouter = createTRPCRouter({
         locale: z.string().optional(),
       })
     )
+    .use(notDemo('manage billing'))
     .mutation(async ({ ctx, input }) => {
       try {
         const organizationId = getUserOrganizationId(ctx.session)

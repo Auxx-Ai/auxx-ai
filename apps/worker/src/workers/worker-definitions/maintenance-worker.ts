@@ -9,6 +9,8 @@ import {
   channelTokenRefreshJob,
   channelTokenRefreshScannerJob,
   cleanupExpiredMediaAssetsJob,
+  demoCleanupJob,
+  demoSeedJob,
   expiredTrialAccountCleanupJob,
   type JobHandler,
   oauth2TokenRefreshScannerJob,
@@ -54,6 +56,8 @@ const jobMappings = {
   stripeSubscriptionSyncJob: cloudOnly(stripeSubscriptionSyncJob),
 
   // Account management jobs (cloud-only)
+  demoCleanupJob: cloudOnly(demoCleanupJob),
+  demoSeedJob: cloudOnly(demoSeedJob),
   expiredTrialAccountCleanup: cloudOnly(expiredTrialAccountCleanupJob),
 
   // Lifecycle email jobs (cloud-only)

@@ -85,6 +85,7 @@ export interface DehydratedOrgProfile {
   about: string | null
   createdAt: string
   completedOnboarding: boolean
+  demoExpiresAt: string | null
 }
 
 /** Dehydrated group instance for cache (JSON-serializable) */

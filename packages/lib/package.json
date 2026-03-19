@@ -142,6 +142,12 @@
       "import": "./dist/dehydration/index.mjs",
       "default": "./src/dehydration/index.ts"
     },
+    "./demo": {
+      "types": "./src/demo/index.ts",
+      "source": "./src/demo/index.ts",
+      "import": "./dist/demo/index.mjs",
+      "default": "./src/demo/index.ts"
+    },
     "./drafts": {
       "types": "./src/drafts/index.ts",
       "source": "./src/drafts/index.ts",
@@ -406,6 +412,12 @@
       "import": "./dist/permissions/client.mjs",
       "default": "./src/permissions/client.ts"
     },
+    "./posthog/posthog-client": {
+      "types": "./src/posthog/posthog-client.ts",
+      "source": "./src/posthog/posthog-client.ts",
+      "import": "./dist/posthog/posthog-client.mjs",
+      "default": "./src/posthog/posthog-client.ts"
+    },
     "./providers": {
       "types": "./src/providers/index.ts",
       "source": "./src/providers/index.ts",
@@ -555,6 +567,12 @@
       "source": "./src/utils/rate-limiter/index.ts",
       "import": "./dist/utils/rate-limiter/index.mjs",
       "default": "./src/utils/rate-limiter/index.ts"
+    },
+    "./utils/rate-limiter/redis-rate-limiter": {
+      "types": "./src/utils/rate-limiter/redis-rate-limiter.ts",
+      "source": "./src/utils/rate-limiter/redis-rate-limiter.ts",
+      "import": "./dist/utils/rate-limiter/redis-rate-limiter.mjs",
+      "default": "./src/utils/rate-limiter/redis-rate-limiter.ts"
     },
     "./webhooks": {
       "types": "./src/webhooks/index.ts",

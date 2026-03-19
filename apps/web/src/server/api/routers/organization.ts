@@ -11,13 +11,14 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-organization')
 
 export const organizationRouter = createTRPCRouter({
   /** Create a new organization */
   create: protectedProcedure
+    .use(notDemo('create organizations'))
     .input(
       z.object({
         name: z.string().min(1, 'Organization name is required'),
@@ -62,6 +63,7 @@ export const organizationRouter = createTRPCRouter({
 
   /** Update organization details */
   update: protectedProcedure
+    .use(notDemo('update organizations'))
     .input(
       z.object({
         name: z.string().min(1).optional(),
@@ -293,6 +295,7 @@ export const organizationRouter = createTRPCRouter({
 
   /** Switch user's default organization */
   setDefault: protectedProcedure
+    .use(notDemo('switch organizations'))
     .input(z.object({ organizationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { userId, organizationId: currentOrganizationId } = ctx.session
@@ -321,6 +324,7 @@ export const organizationRouter = createTRPCRouter({
 
   /** Leave organization */
   leave: protectedProcedure
+    .use(notDemo('leave organizations'))
     .input(z.object({ organizationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id
@@ -402,6 +406,7 @@ export const organizationRouter = createTRPCRouter({
         confirmationEmail: z.string().email('Invalid email format for confirmation.'),
       })
     )
+    .use(notDemo('delete organizations'))
     .mutation(async ({ ctx, input }) => {
       const { user: sessionUser } = ctx.session
       const orgService = new OrganizationService(ctx.db)

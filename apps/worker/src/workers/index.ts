@@ -238,6 +238,23 @@ export async function setupSchedules() {
       }
     )
 
+    // Demo cleanup job
+    // Every 15 minutes - Clean up expired demo organizations
+    await maintenanceQueue.upsertJobScheduler(
+      'demoCleanupJob',
+      { pattern: '*/15 * * * *' },
+      {
+        data: { batchSize: 50, dryRun: false },
+        opts: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 },
+          priority: 10,
+          removeOnComplete: { count: 24 },
+          removeOnFail: { count: 48 },
+        },
+      }
+    )
+
     // Expired trial account cleanup job
     // Every day at 3 AM UTC - Clean up expired trial accounts after 14-day grace period
     await maintenanceQueue.upsertJobScheduler(

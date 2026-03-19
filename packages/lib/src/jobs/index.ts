@@ -50,6 +50,8 @@ export {
   type ChannelTokenRefreshScannerJobData,
   channelTokenRefreshScannerJob,
 } from './maintenance/channel-token-refresh-scanner-job'
+export { type DemoCleanupStats, demoCleanupJob } from './maintenance/demo-cleanup-job'
+export { type DemoSeedJobData, demoSeedJob } from './maintenance/demo-seed-job'
 export {
   type CleanupStats,
   expiredTrialAccountCleanupJob,

@@ -22,6 +22,7 @@ import React, { useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { OverageBanner } from '~/components/banner/overage-banner'
+import { DemoBanner } from '~/components/demo/demo-banner'
 import AppSidebar from '~/components/global/sidebar'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { useThreadMutation } from '~/components/threads/hooks'
@@ -124,6 +125,7 @@ export const Dashboard = ({
           <div className='flex h-screen overflow-hidden w-full'>
             <AppSidebar className='min-w-0' user={user} />
             <SidebarInset>
+              <DemoBanner />
               <OverageBanner overages={overages} />
               {children}
             </SidebarInset>

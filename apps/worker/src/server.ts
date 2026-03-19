@@ -4,6 +4,7 @@ import { getDevPort } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { closePools } from '@auxx/database'
 import { closeAllQueues, closeFlowProducer } from '@auxx/lib/jobs/queues'
+import { shutdownPostHog } from '@auxx/lib/posthog/posthog-client'
 import { serve } from '@hono/node-server'
 import type { Worker } from 'bullmq'
 import { Hono } from 'hono'
@@ -105,6 +106,11 @@ const gracefulShutdown = async (signal: string) => {
     } else {
       console.log('No worker instances to close.')
     }
+
+    // Flush pending PostHog events
+    console.log('Shutting down PostHog...')
+    await shutdownPostHog()
+    console.log('PostHog shut down.')
 
     // Close FlowProducer
     console.log('Closing FlowProducer...')

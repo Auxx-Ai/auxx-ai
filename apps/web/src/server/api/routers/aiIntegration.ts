@@ -18,7 +18,7 @@ import {
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 export const aiIntegrationRouter = createTRPCRouter({
   /**
@@ -52,6 +52,7 @@ export const aiIntegrationRouter = createTRPCRouter({
    */
   toggleModel: protectedProcedure
     .input(z.object({ provider: z.string(), model: z.string(), enabled: z.boolean() }))
+    .use(notDemo('configure AI models'))
     .mutation(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
 
@@ -72,6 +73,7 @@ export const aiIntegrationRouter = createTRPCRouter({
     .input(
       z.object({ provider: z.string(), model: z.string(), config: z.record(z.string(), z.any()) })
     )
+    .use(notDemo('configure AI models'))
     .mutation(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
 
@@ -126,6 +128,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         mode: z.enum(['create', 'edit']),
       })
     )
+    .use(notDemo('configure AI providers'))
     .mutation(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
 
@@ -179,6 +182,7 @@ export const aiIntegrationRouter = createTRPCRouter({
    */
   deleteProviderConfiguration: protectedProcedure
     .input(z.object({ provider: z.string() }))
+    .use(notDemo('delete AI providers'))
     .mutation(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
 
@@ -205,6 +209,7 @@ export const aiIntegrationRouter = createTRPCRouter({
     .input(
       z.object({ provider: z.string(), credentials: z.record(z.string(), z.any()).optional() })
     )
+    .use(notDemo('test AI provider credentials'))
     .mutation(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
 
@@ -319,6 +324,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         mode: z.enum(['create', 'edit']),
       })
     )
+    .use(notDemo('create custom AI models'))
     .mutation(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
 
@@ -404,6 +410,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         modelId: z.string(),
       })
     )
+    .use(notDemo('delete custom AI models'))
     .mutation(async ({ input, ctx }) => {
       const { userId, organizationId } = ctx.session
 
@@ -464,6 +471,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         model: z.string(),
       })
     )
+    .use(notDemo('set AI model defaults'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       if (!organizationId) {
@@ -485,6 +493,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         modelType: z.nativeEnum(ModelType),
       })
     )
+    .use(notDemo('modify AI defaults'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       if (!organizationId) {
@@ -544,6 +553,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         providerType: z.enum(['system', 'custom']),
       })
     )
+    .use(notDemo('switch AI provider type'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       if (!organizationId) {
@@ -568,6 +578,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         planTier: z.enum(['starter', 'growth', 'business', 'enterprise']),
       })
     )
+    .use(notDemo('upgrade AI quota'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       if (!organizationId) {

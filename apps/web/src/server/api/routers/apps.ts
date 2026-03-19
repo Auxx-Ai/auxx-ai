@@ -21,7 +21,7 @@ import {
 } from '@auxx/services/apps'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('trpc-apps')
 
@@ -118,6 +118,7 @@ export const appsRouter = createTRPCRouter({
         })
         .merge(installAppRequestSchema)
     )
+    .use(notDemo('install apps'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { appSlug, type, deploymentId } = input
@@ -167,6 +168,7 @@ export const appsRouter = createTRPCRouter({
         })
         .merge(uninstallAppRequestSchema)
     )
+    .use(notDemo('uninstall apps'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { appSlug, type } = input
@@ -271,6 +273,7 @@ export const appsRouter = createTRPCRouter({
         credentialId: z.string(),
       })
     )
+    .use(notDemo('delete app connections'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const { credentialId } = input
@@ -307,6 +310,7 @@ export const appsRouter = createTRPCRouter({
         connectionId: z.string().optional(),
       })
     )
+    .use(notDemo('save app credentials'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { appId, installationId, appName, connectionType, secret, connectionId } = input

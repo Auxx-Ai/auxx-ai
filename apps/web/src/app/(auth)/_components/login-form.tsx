@@ -619,6 +619,8 @@ export default function LoginForm({
             </span>
           </CardFooter>
         </Card>
+
+        {env.demoEnabled && <DemoButton />}
       </div>
       {turnstileSiteKey && (
         <div className='min-h-[75px]'>
@@ -633,5 +635,28 @@ export default function LoginForm({
         </div>
       )}
     </>
+  )
+}
+
+/** "Try Live Demo" button — submits a form POST to the demo session endpoint */
+function DemoButton() {
+  const [loading, setLoading] = useState(false)
+
+  return (
+    <form
+      action='/api/demo/create-session'
+      method='POST'
+      onSubmit={() => setLoading(true)}
+      className='w-full text-center'>
+      <Button
+        type='submit'
+        variant='ghost'
+        size='sm'
+        loading={loading}
+        loadingText='Setting up demo...'
+        className='text-xs text-muted-foreground'>
+        Or try a live demo — no signup required
+      </Button>
+    </form>
   )
 }

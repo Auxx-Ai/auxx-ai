@@ -6,7 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, count, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('shopify-router')
 
@@ -21,7 +21,8 @@ const jobTypes: { [key: string]: string } = {
 export const shopifyRouter = createTRPCRouter({
   getAuthUrl: adminProcedure
     .input(z.object({ shopDomain: z.string().min(1) }))
-    .mutation(async ({ input }) => {
+    .use(notDemo('connect Shopify'))
+    .mutation(async ({ ctx, input }) => {
       try {
         // Check if user has access to an organization
         // Normalize shop domain (remove protocol if present)
@@ -91,6 +92,7 @@ export const shopifyRouter = createTRPCRouter({
   // Toggle an integration's enabled status
   toggleIntegration: adminProcedure
     .input(z.object({ integrationId: z.string(), enabled: z.boolean() }))
+    .use(notDemo('toggle Shopify integrations'))
     .mutation(async ({ input, ctx }) => {
       const { organizationId } = ctx.session
       const { integrationId, enabled } = input
@@ -129,6 +131,7 @@ export const shopifyRouter = createTRPCRouter({
         type: z.enum(['orders', 'products', 'customers', 'all']),
       })
     )
+    .use(notDemo('sync Shopify data'))
     .mutation(async ({ input, ctx }) => {
       try {
         // Find the integration
@@ -167,6 +170,7 @@ export const shopifyRouter = createTRPCRouter({
   // Delete an integration
   deleteIntegration: adminProcedure
     .input(z.object({ integrationId: z.string() }))
+    .use(notDemo('disconnect Shopify'))
     .mutation(async ({ input, ctx }) => {
       try {
         const { organizationId } = ctx.session

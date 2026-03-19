@@ -18,7 +18,7 @@ import { recordIdSchema } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('thread-router')
 
@@ -260,81 +260,84 @@ export const threadRouter = createTRPCRouter({
    * Sends an email message, potentially from a draft.
    * Updated to use MessageSenderService directly.
    */
-  sendMessage: protectedProcedure.input(SendMessageInputSchema).mutation(async ({ ctx, input }) => {
-    try {
-      const { messageSender, organizationId, userId } = getServiceDependencies(ctx)
-      const {
-        integrationId,
-        threadId,
-        subject,
-        textHtml,
-        textPlain,
-        signatureId,
-        to,
-        cc,
-        bcc,
-        draftMessageId,
-        attachments,
-      } = input
-      // Transform input to MessageSenderService format
-      const senderInput = {
-        userId,
-        organizationId,
-        integrationId,
-        threadId,
-        subject,
-        textHtml: textHtml || undefined,
-        textPlain: textPlain || undefined,
-        signatureId: signatureId || undefined,
-        to: to.map((p) => ({
-          identifier: p.identifier,
-          name: p.name || undefined,
-          identifierType: p.identifierType,
-        })),
-        cc: cc?.map((p) => ({
-          identifier: p.identifier,
-          name: p.name || undefined,
-          identifierType: p.identifierType,
-        })),
-        bcc: bcc?.map((p) => ({
-          identifier: p.identifier,
-          name: p.name || undefined,
-          identifierType: p.identifierType,
-        })),
-        attachmentIds: attachments?.map((att) => att.id) || undefined, // Map attachments to IDs
-      }
-      logger.info('API: Sending message via MessageSenderService', {
-        userId,
-        threadId: input.threadId,
-        draftId: input.draftMessageId,
-      })
-      const sentMessage = await messageSender.sendMessage(senderInput)
-
-      // Clean up draft after successful send
-      if (draftMessageId) {
-        try {
-          const draftService = new DraftService(ctx.db, organizationId, userId)
-          await draftService.markAsSent(draftMessageId)
-        } catch (draftError) {
-          // Non-fatal: message was sent, draft cleanup failure is acceptable
-          logger.warn('Failed to clean up draft after send', {
-            draftMessageId,
-            error: draftError instanceof Error ? draftError.message : String(draftError),
-          })
+  sendMessage: protectedProcedure
+    .input(SendMessageInputSchema)
+    .use(notDemo('send emails'))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { messageSender, organizationId, userId } = getServiceDependencies(ctx)
+        const {
+          integrationId,
+          threadId,
+          subject,
+          textHtml,
+          textPlain,
+          signatureId,
+          to,
+          cc,
+          bcc,
+          draftMessageId,
+          attachments,
+        } = input
+        // Transform input to MessageSenderService format
+        const senderInput = {
+          userId,
+          organizationId,
+          integrationId,
+          threadId,
+          subject,
+          textHtml: textHtml || undefined,
+          textPlain: textPlain || undefined,
+          signatureId: signatureId || undefined,
+          to: to.map((p) => ({
+            identifier: p.identifier,
+            name: p.name || undefined,
+            identifierType: p.identifierType,
+          })),
+          cc: cc?.map((p) => ({
+            identifier: p.identifier,
+            name: p.name || undefined,
+            identifierType: p.identifierType,
+          })),
+          bcc: bcc?.map((p) => ({
+            identifier: p.identifier,
+            name: p.name || undefined,
+            identifierType: p.identifierType,
+          })),
+          attachmentIds: attachments?.map((att) => att.id) || undefined, // Map attachments to IDs
         }
-      }
+        logger.info('API: Sending message via MessageSenderService', {
+          userId,
+          threadId: input.threadId,
+          draftId: input.draftMessageId,
+        })
+        const sentMessage = await messageSender.sendMessage(senderInput)
 
-      return sentMessage
-    } catch (error: unknown) {
-      if (error instanceof TRPCError) throw error
-      handleServiceError(error, 'messageSender.sendMessage', {
-        organizationId: (ctx.session as any).organizationId,
-        userId: ctx.session.user.id,
-        input: input,
-      })
-      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to send message.' })
-    }
-  }),
+        // Clean up draft after successful send
+        if (draftMessageId) {
+          try {
+            const draftService = new DraftService(ctx.db, organizationId, userId)
+            await draftService.markAsSent(draftMessageId)
+          } catch (draftError) {
+            // Non-fatal: message was sent, draft cleanup failure is acceptable
+            logger.warn('Failed to clean up draft after send', {
+              draftMessageId,
+              error: draftError instanceof Error ? draftError.message : String(draftError),
+            })
+          }
+        }
+
+        return sentMessage
+      } catch (error: unknown) {
+        if (error instanceof TRPCError) throw error
+        handleServiceError(error, 'messageSender.sendMessage', {
+          organizationId: (ctx.session as any).organizationId,
+          userId: ctx.session.user.id,
+          input: input,
+        })
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to send message.' })
+      }
+    }),
   /**
    * Tag multiple threads in bulk
    * Updated to use ThreadMutationService.

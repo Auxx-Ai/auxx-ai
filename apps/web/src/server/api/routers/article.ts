@@ -4,7 +4,7 @@ import { onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api/article')
 // Helper function to get article with tags and author
@@ -369,6 +369,7 @@ export const articleRouter = createTRPCRouter({
     }),
   publish: protectedProcedure
     .input(z.object({ id: z.string(), status: z.enum(ArticleStatus) }))
+    .use(notDemo('publish articles'))
     .mutation(async ({ ctx, input }) => {
       const { id, status } = input
       const organizationId = ctx.session.user.defaultOrganizationId

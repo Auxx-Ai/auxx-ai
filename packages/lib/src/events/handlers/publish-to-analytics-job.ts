@@ -1,8 +1,9 @@
 // packages/lib/src/events/handlers/publish-to-analytics-job.ts
+// packages/lib/src/events/handlers/publish-to-analytics-job.ts
 import { configService } from '@auxx/credentials'
 import type { Job } from 'bullmq'
 import { createScopedLogger } from '../../logger'
-import { PostHogClient } from '../../posthog/posthog-client'
+import { getPostHogClient } from '../../posthog/posthog-client'
 import type { AuxxEvent } from '../types'
 
 const logger = createScopedLogger('publish-to-analytics-job')
@@ -34,7 +35,7 @@ export const publishToAnalyticsJob = async (job: Job<AuxxEvent>) => {
     logger.info('Analytics event captured:', { type: event.type })
   }
 
-  const client = PostHogClient()
+  const client = getPostHogClient()
   if (!client) return
 
   const { organizationId, ...properties } = d
@@ -44,6 +45,4 @@ export const publishToAnalyticsJob = async (job: Job<AuxxEvent>) => {
     properties,
     groups: organizationId ? { organization: organizationId as string } : undefined,
   })
-
-  await client.shutdown()
 }

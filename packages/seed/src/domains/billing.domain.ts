@@ -30,12 +30,24 @@ interface PlanDefinition {
   trialFeatureLimits: FeatureLimit[] | null
   hierarchyLevel: number
   isFree: boolean
+  selfServed?: boolean
+  isMostPopular?: boolean
 }
 
 // ── Shared feature building blocks ──
 
 /** Static limits (count of things) keyed by plan tier */
 const STATIC_LIMITS = {
+  demo: {
+    teammates: 1,
+    channels: 1,
+    workflowsLimit: 3,
+    savedViews: 2,
+    knowledgeBases: 1,
+    kbPublishedArticles: 5,
+    datasetsLimit: 1,
+    entities: 1,
+  },
   free: {
     teammates: 1,
     channels: 3,
@@ -80,14 +92,26 @@ const STATIC_LIMITS = {
 
 /** Boolean gates (on/off) keyed by plan tier */
 const BOOLEAN_GATES = {
-  free: {
-    knowledgeBase: false,
+  demo: {
+    knowledgeBase: true,
     apiAccess: false,
-    workflows: false,
+    workflows: true,
+    aiAgent: true,
+    sso: false,
+    datasets: true,
+    files: true,
+    webhooks: false,
+    shopify: false,
+    devTools: false,
+  },
+  free: {
+    knowledgeBase: true,
+    apiAccess: false,
+    workflows: true,
     aiAgent: false,
     sso: false,
-    datasets: false,
-    files: false,
+    datasets: true,
+    files: true,
     webhooks: false,
     shopify: false,
     devTools: false,
@@ -132,6 +156,20 @@ const BOOLEAN_GATES = {
 
 /** Usage limits (per billing cycle) keyed by plan tier */
 const USAGE_LIMITS = {
+  demo: {
+    outboundEmailsPerMonthHard: 0,
+    outboundEmailsPerMonthSoft: 0,
+    workflowRunsPerMonthHard: 10,
+    workflowRunsPerMonthSoft: 8,
+    aiCompletionsPerMonthHard: 20,
+    aiCompletionsPerMonthSoft: 15,
+    apiCallsPerMonthHard: 0,
+    apiCallsPerMonthSoft: 0,
+    storageGbHard: 0.1,
+    storageGbSoft: 0.08,
+    appMutationsPerMinuteHard: 10,
+    appMutationsPerMinuteSoft: 8,
+  },
   free: {
     outboundEmailsPerMonthHard: 100,
     outboundEmailsPerMonthSoft: 80,
@@ -143,6 +181,8 @@ const USAGE_LIMITS = {
     apiCallsPerMonthSoft: 0,
     storageGbHard: 1,
     storageGbSoft: 0.8,
+    appMutationsPerMinuteHard: 30,
+    appMutationsPerMinuteSoft: 25,
   },
   starter: {
     outboundEmailsPerMonthHard: 1000,
@@ -155,6 +195,8 @@ const USAGE_LIMITS = {
     apiCallsPerMonthSoft: 0,
     storageGbHard: 10,
     storageGbSoft: 8,
+    appMutationsPerMinuteHard: 60,
+    appMutationsPerMinuteSoft: 50,
   },
   growth: {
     outboundEmailsPerMonthHard: 10000,
@@ -167,6 +209,8 @@ const USAGE_LIMITS = {
     apiCallsPerMonthSoft: 8000,
     storageGbHard: 50,
     storageGbSoft: 40,
+    appMutationsPerMinuteHard: 120,
+    appMutationsPerMinuteSoft: 100,
   },
   enterprise: {
     outboundEmailsPerMonthHard: -1,
@@ -179,6 +223,8 @@ const USAGE_LIMITS = {
     apiCallsPerMonthSoft: -1,
     storageGbHard: -1,
     storageGbSoft: -1,
+    appMutationsPerMinuteHard: -1,
+    appMutationsPerMinuteSoft: -1,
   },
 } as const
 
@@ -203,6 +249,22 @@ function composeFeatureLimits(
  * Prices are in cents (e.g., 2000 = $20.00).
  */
 const PLAN_DEFINITIONS: PlanDefinition[] = [
+  {
+    name: 'Demo',
+    description: 'Temporary demo environment for prospective users',
+    features: ['Full product preview', 'Pre-loaded demo data', '1 hour session'],
+    monthlyPrice: 0,
+    annualPrice: 0,
+    isCustomPricing: false,
+    hasTrial: false,
+    trialDays: 0,
+    featureLimits: composeFeatureLimits(STATIC_LIMITS.demo, BOOLEAN_GATES.demo, USAGE_LIMITS.demo),
+    trialFeatureLimits: null,
+    hierarchyLevel: -1,
+    isFree: true,
+    selfServed: false,
+    isMostPopular: false,
+  },
   {
     name: 'Free',
     description: 'Basic features for individuals and small teams',
@@ -337,6 +399,8 @@ export class BillingDomain {
           trialFeatureLimits: planData.trialFeatureLimits,
           hierarchyLevel: planData.hierarchyLevel,
           isFree: planData.isFree,
+          selfServed: planData.selfServed ?? true,
+          isMostPopular: planData.isMostPopular ?? false,
           updatedAt: new Date(),
         })
         .returning()
@@ -428,7 +492,27 @@ export class BillingDomain {
         console.log(`  ✓ Updated feature limits: ${planData.name}`)
         plansUpdated += 1
       } else {
-        console.log(`  ⚠ Plan not found, skipped: ${planData.name}`)
+        // Plan doesn't exist yet — create it
+        console.log(`  + Creating missing plan: ${planData.name}`)
+        await db.insert(schema.Plan).values({
+          name: planData.name,
+          description: planData.description,
+          features: planData.features,
+          monthlyPrice: planData.monthlyPrice,
+          annualPrice: planData.annualPrice,
+          isCustomPricing: planData.isCustomPricing,
+          hasTrial: planData.hasTrial,
+          trialDays: planData.trialDays,
+          featureLimits: planData.featureLimits,
+          trialFeatureLimits: planData.trialFeatureLimits,
+          hierarchyLevel: planData.hierarchyLevel,
+          isFree: planData.isFree,
+          selfServed: planData.selfServed ?? true,
+          isMostPopular: planData.isMostPopular ?? false,
+          updatedAt: new Date(),
+        })
+        console.log(`  ✓ Created plan: ${planData.name}`)
+        plansUpdated += 1
       }
     }
 

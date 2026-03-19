@@ -6,7 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { auth } from '~/auth/server'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-auth')
 
@@ -17,6 +17,7 @@ export const authRouter = createTRPCRouter({
         newPassword: z.string().min(8, { error: 'Password must be at least 8 characters' }),
       })
     )
+    .use(notDemo('change password'))
     .mutation(async ({ ctx, input }) => {
       // console.log(ctx.headers)
       const _result = await auth.api.setPassword({

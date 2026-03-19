@@ -20,7 +20,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, asc, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('channel-router')
 
@@ -93,9 +93,11 @@ export const channelRouter = createTRPCRouter({
         provider: IntegrationProviderTypeEnum,
       })
     )
+    .use(notDemo('connect email integrations'))
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
+
       await requireAdminAccess(userId, organizationId)
 
       await checkChannelLimit(ctx.db, organizationId)
@@ -132,6 +134,7 @@ export const channelRouter = createTRPCRouter({
    */
   disconnect: protectedProcedure
     .input(z.object({ integrationId: z.string() }))
+    .use(notDemo('disconnect email integrations'))
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
@@ -150,6 +153,7 @@ export const channelRouter = createTRPCRouter({
    */
   toggle: protectedProcedure
     .input(z.object({ integrationId: z.string(), enabled: z.boolean() }))
+    .use(notDemo('toggle email integrations'))
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
@@ -169,6 +173,7 @@ export const channelRouter = createTRPCRouter({
         days: z.number().min(1).max(90).default(30),
       })
     )
+    .use(notDemo('sync messages'))
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
@@ -188,6 +193,7 @@ export const channelRouter = createTRPCRouter({
    */
   syncAllMessages: protectedProcedure
     .input(z.object({ days: z.number().min(1).max(90).default(7) }))
+    .use(notDemo('sync all messages'))
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
@@ -206,6 +212,7 @@ export const channelRouter = createTRPCRouter({
         webhookSigningSecret: z.string().min(16),
       })
     )
+    .use(notDemo('connect OpenPhone'))
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
@@ -225,6 +232,7 @@ export const channelRouter = createTRPCRouter({
    * Add a new Chat Widget Integration.
    */
   addChatWidgetIntegration: protectedProcedure
+    .use(notDemo('add chat widgets'))
     .input(
       z.object({
         name: z.string().min(1, 'Widget name is required'),
@@ -398,6 +406,7 @@ export const channelRouter = createTRPCRouter({
    * Tests connections, encrypts credentials, creates integration.
    */
   connectImap: protectedProcedure
+    .use(notDemo('connect IMAP email'))
     .input(
       z
         .object({
@@ -553,6 +562,7 @@ export const channelRouter = createTRPCRouter({
         fullResync: z.boolean().default(false),
       })
     )
+    .use(notDemo('reset sync state'))
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
@@ -643,6 +653,7 @@ export const channelRouter = createTRPCRouter({
         clientSecret: z.string().min(1),
       })
     )
+    .use(notDemo('set provider credentials'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const config = PROVIDER_CREDENTIAL_CONFIG[input.provider]
@@ -666,6 +677,7 @@ export const channelRouter = createTRPCRouter({
    */
   deleteProviderCredentials: adminProcedure
     .input(z.object({ provider: z.enum(['google', 'outlook']) }))
+    .use(notDemo('delete provider credentials'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const config = PROVIDER_CREDENTIAL_CONFIG[input.provider]

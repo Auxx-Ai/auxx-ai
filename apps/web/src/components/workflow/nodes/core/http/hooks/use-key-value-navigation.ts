@@ -81,24 +81,20 @@ export function useKeyValueNavigation({
       // Contenteditable (TipTap)
       const editable = el.closest('[contenteditable="true"]') as HTMLElement | null
       if (!editable) {
-        console.log(`[kv-nav] no editable, el=${el.tagName}.${el.className}`)
         return true
       }
 
       // Empty editor — cursor is at both boundaries
       const textContent = editable.textContent || ''
       if (textContent.length === 0) {
-        console.log('[kv-nav] empty editor')
         return true
       }
 
       const selection = window.getSelection()
       if (!selection || selection.rangeCount === 0) {
-        console.log('[kv-nav] no selection')
         return true
       }
       if (!selection.isCollapsed) {
-        console.log(`[kv-nav] selection not collapsed, type=${selection.type}`)
         return false
       }
 
@@ -211,7 +207,6 @@ export function useKeyValueNavigation({
 
         case 'ArrowLeft': {
           const atStart = isCursorAtBoundary('start')
-          console.log(`[kv-nav] ArrowLeft row=${row} col=${col} atStart=${atStart}`)
           if (col > 0 && atStart) {
             e.preventDefault()
             focusCell(row, col - 1)
@@ -221,9 +216,6 @@ export function useKeyValueNavigation({
 
         case 'ArrowRight': {
           const atEnd = isCursorAtBoundary('end')
-          console.log(
-            `[kv-nav] ArrowRight row=${row} col=${col} atEnd=${atEnd} totalCols=${totalCols}`
-          )
           if (col < totalCols - 1 && atEnd) {
             e.preventDefault()
             focusCell(row, col + 1)
