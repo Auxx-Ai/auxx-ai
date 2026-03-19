@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.94](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.93...auxx-v0.1.94) (2026-03-19)
+
+
+### Features
+
+* integrate demo data seeding and configurations ([#302](https://github.com/Auxx-Ai/auxx-ai/issues/302)) ([e995771](https://github.com/Auxx-Ai/auxx-ai/commit/e99577167ff7b6e69209b5723360cd087d6b9c9f))
+
 ## [0.1.93](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.92...auxx-v0.1.93) (2026-03-19)
 
 
