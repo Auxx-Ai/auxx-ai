@@ -12,7 +12,10 @@ import type { ListNodeData, ListOperation } from './types'
  */
 const conditionSchema = z.object({
   id: z.string(),
-  fieldId: z.string().min(1, 'Field is required'),
+  fieldId: z.union([
+    z.string().min(1, 'Field is required'),
+    z.array(z.string().min(1)).min(1, 'Field path is required'),
+  ]),
   operator: z.string().min(1, 'Operator is required'), // Operator enum from engine
   value: z.any(),
   isConstant: z.boolean(),

@@ -56,7 +56,10 @@ export interface ConditionGroup extends Omit<BaseConditionGroup, 'metadata'> {
 }
 
 /**
- * Field definition for condition system
+ * Field definition for condition system.
+ *
+ * In resource mode with entityDefinitionId, `id` uses ResourceFieldId format ("entity:fieldKey").
+ * Static-mode consumers (mail, task) keep plain string IDs.
  */
 export interface FieldDefinition {
   id: string
@@ -65,15 +68,16 @@ export interface FieldDefinition {
   fieldType?: FieldType
   operators?: Operator[]
   options?: SelectOption[]
-  subFields?: FieldDefinition[]
   placeholder?: string
   description?: string
   unit?: string
   variable?: UnifiedVariable
   fieldReference?: string
-  targetTable?: string
+  /** For RELATION fields — enables drill-down in NavigableFieldSelector */
+  targetEntityDefinitionId?: string
   displayType?: string
   resourceType?: string
+  /** The bare field key (for runtime field access, e.g., "email" from "contact:email") */
   fieldKey?: string
 }
 
@@ -83,6 +87,8 @@ export interface FieldDefinition {
 export interface ConditionSystemConfig {
   mode: 'variable' | 'resource' | 'hybrid'
   fields: FieldDefinition[] | 'dynamic'
+  /** When set with mode:'resource', enables NavigableFieldSelector with drill-down */
+  entityDefinitionId?: string
   allowNesting?: boolean
   allowReordering?: boolean
   showLogicalOperators?: boolean
@@ -121,7 +127,7 @@ export interface ConditionContextValue {
   groups: ConditionGroup[]
   config: ConditionSystemConfig
   readOnly: boolean
-  addCondition: (fieldId: string, groupId?: string) => void
+  addCondition: (fieldId: string | string[], fieldDef?: FieldDefinition, groupId?: string) => void
   updateCondition: (id: string, updates: Partial<Condition>, groupId?: string) => void
   removeCondition: (id: string, groupId?: string) => void
   addGroup?: () => void
@@ -132,9 +138,10 @@ export interface ConditionContextValue {
   toggleGroupCollapse?: (groupId: string) => void
   reorderGroups?: (groupIds: string[]) => void
   validateGroup?: (group: ConditionGroup) => boolean
-  getFieldDefinition: (fieldId: string) => FieldDefinition | undefined
+  getFieldDefinition: (fieldId: string | string[]) => FieldDefinition | undefined
+  registerFieldDefinition: (fieldId: string | string[], fieldDef: FieldDefinition) => void
   getAvailableFields: () => FieldDefinition[]
-  getAvailableOperators: (fieldId: string) => OperatorDefinition[]
+  getAvailableOperators: (fieldId: string | string[]) => OperatorDefinition[]
   validateCondition: (condition: Condition) => boolean
   validateAllConditions: () => boolean
   nodeId?: string
@@ -203,7 +210,7 @@ export interface ValueInputProps {
  * Props for operator selector
  */
 export interface OperatorSelectorProps {
-  fieldId: string
+  fieldId: string | string[]
   value: string
   onChange: (operator: Operator) => void
   disabled?: boolean

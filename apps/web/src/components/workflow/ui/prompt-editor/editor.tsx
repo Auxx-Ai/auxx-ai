@@ -39,6 +39,10 @@ export interface EditorProps {
   height?: number
   minHeight?: number
 
+  // Variable Picker
+  /** Trigger character(s) to open variable picker (default: '{') */
+  trigger?: string
+
   // Styling Options
   className?: string
   headerClassName?: string

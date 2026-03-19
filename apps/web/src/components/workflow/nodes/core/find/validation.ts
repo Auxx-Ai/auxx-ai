@@ -79,9 +79,19 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
   if (data.conditions && resourceConfig) {
     data.conditions.forEach((condition, index) => {
       // Find the field definition for this condition
-      const fieldDef = resourceConfig.filterableFields.find(
-        (field) => field.key === condition.fieldId
-      )
+      // FieldPath (relation drill-down) — skip static field validation,
+      // the field was selected from a valid resource via the picker
+      if (Array.isArray(condition.fieldId)) {
+        return
+      }
+
+      // ResourceFieldId: extract bare key for comparison
+      const bareKey =
+        typeof condition.fieldId === 'string' && condition.fieldId.includes(':')
+          ? condition.fieldId.split(':')[1]
+          : condition.fieldId
+
+      const fieldDef = resourceConfig.filterableFields.find((field) => field.key === bareKey)
 
       if (!fieldDef) {
         errors.push({
@@ -146,10 +156,19 @@ export const validateFindNodeConfig = (data: FindNodeData): ValidationResult => 
     data.conditionGroups.forEach((group, groupIndex) => {
       // Validate each condition in the group
       group.conditions.forEach((condition, conditionIndex) => {
+        // FieldPath (relation drill-down) — skip static field validation
+        if (Array.isArray(condition.fieldId)) {
+          return
+        }
+
+        // ResourceFieldId: extract bare key for comparison
+        const bareKey =
+          typeof condition.fieldId === 'string' && condition.fieldId.includes(':')
+            ? condition.fieldId.split(':')[1]
+            : condition.fieldId
+
         // Find the field definition for this condition
-        const fieldDef = resourceConfig.filterableFields.find(
-          (field) => field.key === condition.fieldId
-        )
+        const fieldDef = resourceConfig.filterableFields.find((field) => field.key === bareKey)
 
         if (!fieldDef) {
           errors.push({

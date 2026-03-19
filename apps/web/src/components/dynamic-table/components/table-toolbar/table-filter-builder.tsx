@@ -89,22 +89,15 @@ export function TableFilterBuilder({
   }, [])
 
   // Convert ResourceField[] to FieldDefinition[]
-  // Pattern from: workflow/nodes/core/find/panel.tsx
   const fieldDefinitions = useMemo(() => {
     return filterableFields.map((field) => ({
-      id: field.id,
+      id: field.resourceFieldId ?? field.id,
       label: field.label,
       type: field.type,
       fieldType: field.fieldType,
-      // Use operatorOverrides if defined, otherwise get defaults for field type
+      fieldKey: field.key,
       operators: field.operatorOverrides || getFieldOperators(field),
-      // Pass options from field.options.options
       options: field.options,
-      // Add fieldReference for RELATION type fields
-      // ...(field.type === BaseType.RELATION &&
-      //   field.relationship && {
-      //     fieldReference: `${resourceType}:${field.key}`,
-      //   }),
     }))
   }, [filterableFields])
 
@@ -112,6 +105,7 @@ export function TableFilterBuilder({
   const config: ConditionSystemConfig = useMemo(
     () => ({
       mode: 'resource',
+      entityDefinitionId: resourceType,
       fields: fieldDefinitions,
       allowNesting: false,
       allowReordering: true,
@@ -125,7 +119,7 @@ export function TableFilterBuilder({
       allowVarEditor: false,
       allowConstantToggle: false,
     }),
-    [fieldDefinitions]
+    [fieldDefinitions, resourceType]
   )
 
   // Use draft when popover is open, otherwise show committed filters

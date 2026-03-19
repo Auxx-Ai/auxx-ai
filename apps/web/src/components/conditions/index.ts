@@ -11,6 +11,7 @@ export { default as ConditionItem } from './components/condition-item'
 export { default as ConditionList } from './components/condition-list'
 export { default as ConditionOperator } from './components/condition-operator'
 export { default as ConditionValue } from './components/condition-value'
+export { NavigableFieldSelector } from './components/navigable-field-selector'
 export {
   default as ResourceFieldSelector,
   type ResourceFieldSelectorProps,

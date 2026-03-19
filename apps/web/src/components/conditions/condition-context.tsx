@@ -3,10 +3,14 @@
 'use client'
 
 import { getOperatorsForBaseType } from '@auxx/lib/conditions/client'
+import { getFieldOperators } from '@auxx/lib/resources/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { produce } from 'immer'
 import type React from 'react'
-import { createContext, useCallback, useContext, useMemo } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef } from 'react'
 import { v4 as generateId } from 'uuid'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 import type {
   Condition,
   ConditionContextValue,
@@ -17,8 +21,36 @@ import type {
   OperatorDefinition,
 } from './types'
 import { getOperatorDefinition, getOperatorsForFieldType } from './types'
+import { encodeFieldIdKey } from './utils'
 
 const ConditionContext = createContext<ConditionContextValue | null>(null)
+
+/**
+ * Resolve a FieldDefinition from the resource store for a ResourceFieldId.
+ * Called from event handlers/callbacks, not during render.
+ */
+function resolveFromResourceStore(resourceFieldId: string): FieldDefinition | undefined {
+  const { entityDefinitionId, fieldId } = parseResourceFieldId(resourceFieldId as ResourceFieldId)
+  const resource = useResourceStore.getState().resourceMap.get(entityDefinitionId)
+  if (!resource) return undefined
+
+  const field = resource.fields.find((f) => f.key === fieldId || f.id === fieldId)
+  if (!field) return undefined
+
+  return {
+    id: resourceFieldId,
+    label: field.label,
+    type: field.type,
+    fieldType: field.fieldType,
+    operators: getFieldOperators(field) as any[],
+    options: field.options?.options,
+    fieldKey: field.key,
+    fieldReference: field.resourceFieldId,
+    targetEntityDefinitionId: field.relationship
+      ? (getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) ?? undefined)
+      : undefined,
+  }
+}
 
 /**
  * Props for the condition provider
@@ -33,7 +65,7 @@ interface ConditionProviderProps {
   nodeId?: string
   readOnly?: boolean
   getAvailableFields?: () => FieldDefinition[]
-  getFieldDefinition?: (fieldId: string) => FieldDefinition | undefined
+  getFieldDefinition?: (fieldId: string | string[]) => FieldDefinition | undefined
 }
 
 /**
@@ -51,6 +83,17 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
   getAvailableFields,
   getFieldDefinition,
 }) => {
+  // Dynamic field definition cache for drilled-down fields (not in static config.fields)
+  const dynamicFieldDefs = useRef<Map<string, FieldDefinition>>(new Map())
+
+  const registerFieldDefinition = useCallback(
+    (fieldId: string | string[], fieldDef: FieldDefinition) => {
+      const key = encodeFieldIdKey(fieldId)
+      dynamicFieldDefs.current.set(key, fieldDef)
+    },
+    []
+  )
+
   // Field resolution functions
   const resolveAvailableFields = useCallback((): FieldDefinition[] => {
     if (getAvailableFields) {
@@ -65,28 +108,56 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
   }, [config.fields, getAvailableFields])
 
   const resolveFieldDefinition = useCallback(
-    (fieldId: string): FieldDefinition | undefined => {
+    (fieldId: string | string[]): FieldDefinition | undefined => {
       if (getFieldDefinition) {
-        return getFieldDefinition(fieldId)
+        const result = getFieldDefinition(fieldId)
+        if (result) return result
       }
 
-      const availableFields = resolveAvailableFields()
-      return availableFields.find((field) => field.id === fieldId)
+      const key = encodeFieldIdKey(fieldId)
+
+      // 1. Check static fields
+      const staticField = resolveAvailableFields().find((f) => f.id === key)
+      if (staticField) return staticField
+
+      // 2. Check dynamic cache (drilled-down fields)
+      const dynamic = dynamicFieldDefs.current.get(key)
+      if (dynamic) return dynamic
+
+      // 3. For FieldPath, resolve target field from resource store
+      if (Array.isArray(fieldId) && fieldId.length > 0) {
+        const targetRfId = fieldId[fieldId.length - 1]
+        if (targetRfId) return resolveFromResourceStore(targetRfId)
+      }
+
+      // 4. Try resource store for single ResourceFieldId
+      if (typeof fieldId === 'string' && fieldId.includes(':')) {
+        return resolveFromResourceStore(fieldId)
+      }
+
+      return undefined
     },
     [getFieldDefinition, resolveAvailableFields]
   )
 
   // Core condition operations
   const addCondition = useCallback(
-    (fieldId: string, groupId?: string) => {
-      const fieldDef = resolveFieldDefinition(fieldId)
+    (fieldId: string | string[], fieldDef?: FieldDefinition, groupId?: string) => {
+      // Register provided field definition (drill-down case)
+      if (fieldDef) {
+        registerFieldDefinition(fieldId, fieldDef)
+      }
 
-      if (!fieldDef) {
+      const resolvedFieldDef = fieldDef ?? resolveFieldDefinition(fieldId)
+
+      if (!resolvedFieldDef) {
         return
       }
 
       // Use fieldType to get operators (fieldType is now required)
-      const availableOperators = getOperatorsForFieldType(fieldDef.fieldType ?? fieldDef.type)
+      const availableOperators = getOperatorsForFieldType(
+        resolvedFieldDef.fieldType ?? resolvedFieldDef.type
+      )
       const defaultOperator = availableOperators[0]?.key || 'equals'
 
       const newCondition: Condition = {
@@ -95,7 +166,12 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         operator: defaultOperator,
         value: '',
         isConstant: true,
-        variableId: config.mode === 'variable' ? fieldId : undefined,
+        variableId:
+          config.mode === 'variable'
+            ? typeof fieldId === 'string'
+              ? fieldId
+              : undefined
+            : undefined,
       }
 
       if (groupId && onGroupsChange) {
@@ -119,7 +195,15 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         onConditionsChange(updatedConditions)
       }
     },
-    [conditions, groups, config.mode, onConditionsChange, onGroupsChange, resolveFieldDefinition]
+    [
+      conditions,
+      groups,
+      config.mode,
+      onConditionsChange,
+      onGroupsChange,
+      resolveFieldDefinition,
+      registerFieldDefinition,
+    ]
   )
 
   const updateCondition = useCallback(
@@ -363,7 +447,7 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
 
   // Operator resolution - derives operators from fieldType or baseType
   const getAvailableOperators = useCallback(
-    (fieldId: string): OperatorDefinition[] => {
+    (fieldId: string | string[]): OperatorDefinition[] => {
       const fieldDef = resolveFieldDefinition(fieldId)
       if (!fieldDef) return []
 
@@ -444,6 +528,7 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
       reorderGroups: config.allowGroupReordering ? reorderGroups : undefined,
       validateGroup,
       getFieldDefinition: resolveFieldDefinition,
+      registerFieldDefinition,
       getAvailableFields: resolveAvailableFields,
       getAvailableOperators,
       validateCondition,
@@ -467,6 +552,7 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
       reorderGroups,
       validateGroup,
       resolveFieldDefinition,
+      registerFieldDefinition,
       resolveAvailableFields,
       getAvailableOperators,
       validateCondition,

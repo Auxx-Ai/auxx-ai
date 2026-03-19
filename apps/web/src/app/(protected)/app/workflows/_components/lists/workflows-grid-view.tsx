@@ -141,7 +141,7 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
         </div>
 
         {/* Bottom row: Executions + Dropdown */}
-        <div className='flex items-center justify-between'>
+        <div className='flex items-center justify-between mt-auto'>
           <div className='flex items-center gap-3 text-xs text-muted-foreground'>
             {workflow._count?.workflows > 1 && <span>{workflow._count.workflows} versions</span>}
             <span>{workflow._count?.executions || 0} executions</span>

@@ -40,7 +40,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   nodeId,
 }) => {
   // Get field definitions from the array variable
-  const { fieldDefinitions, hasFields, isEmpty } = useFilterFieldResolver({
+  const { fieldDefinitions, entityDefinitionId, hasFields, isEmpty } = useFilterFieldResolver({
     nodeId,
     inputListValue: config.inputList,
   })
@@ -51,7 +51,8 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   // Configure condition system
   const conditionConfig: ConditionSystemConfig = useMemo(
     () => ({
-      mode: 'resource' as const, // Use resource mode for field-based filtering
+      mode: 'resource' as const,
+      entityDefinitionId,
       fields: fieldDefinitions,
       allowNesting: false,
       allowReordering: true,
@@ -61,10 +62,8 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       allowConstantToggle: true,
       readOnly: isReadOnly,
     }),
-    [fieldDefinitions, isReadOnly]
+    [fieldDefinitions, entityDefinitionId, isReadOnly]
   )
-  console.log('fieldDefinitions', fieldDefinitions)
-
   // Show hint if no array selected
   if (isEmpty) {
     return (

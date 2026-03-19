@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/list-processor.ts
 
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
@@ -123,6 +124,24 @@ export class ListProcessor extends BaseNodeProcessor {
   }
 
   /**
+   * Convert ResourceFieldId/FieldPath to a dot-path for in-memory filtering.
+   * - FieldPath: ["contact:contact_tickets", "ticket:subject"] → "contact_tickets.subject"
+   * - ResourceFieldId: "contact:email" → "email"
+   * - Plain string fallback: "email" → "email"
+   */
+  private resolveFilterField(fieldId: string | string[]): string {
+    if (Array.isArray(fieldId)) {
+      return fieldId.map((rfId) => parseResourceFieldId(rfId as ResourceFieldId).fieldId).join('.')
+    }
+
+    if (typeof fieldId === 'string' && fieldId.includes(':')) {
+      return parseResourceFieldId(fieldId as ResourceFieldId).fieldId
+    }
+
+    return fieldId
+  }
+
+  /**
    * Filter operation implementation
    */
   private async executeFilter(
@@ -136,7 +155,8 @@ export class ListProcessor extends BaseNodeProcessor {
 
     return list.filter((item) => {
       const results = config.conditions.map((condition: any) => {
-        const fieldValue = this.getNestedValue(item, condition.field)
+        const fieldKey = this.resolveFilterField(condition.fieldId ?? condition.field)
+        const fieldValue = this.getNestedValue(item, fieldKey)
         return this.evaluateCondition(
           fieldValue,
           condition.operator,

@@ -31,6 +31,7 @@ const TiptapPromptEditor: React.FC = () => {
     editorRef,
     setCharacterCount,
     nodeId,
+    trigger,
   } = usePromptEditorContext()
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -61,6 +62,7 @@ const TiptapPromptEditor: React.FC = () => {
     onContentChange: onChange,
     onBlur,
     editable,
+    trigger,
   })
 
   // Update context focus state when isFocused changes

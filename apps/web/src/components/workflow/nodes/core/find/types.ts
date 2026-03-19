@@ -62,7 +62,7 @@ export const findNodeDataSchema = z.object({
   conditions: z.array(
     z.object({
       id: z.string(),
-      fieldId: z.string(),
+      fieldId: z.union([z.string(), z.array(z.string())]),
       operator: z.string(),
       value: z.any(),
       isConstant: z.boolean(),
@@ -80,7 +80,7 @@ export const findNodeDataSchema = z.object({
       conditions: z.array(
         z.object({
           id: z.string(),
-          fieldId: z.string(),
+          fieldId: z.union([z.string(), z.array(z.string())]),
           operator: z.string(),
           value: z.any(),
           isConstant: z.boolean(),

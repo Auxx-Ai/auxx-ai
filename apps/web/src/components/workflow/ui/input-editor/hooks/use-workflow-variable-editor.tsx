@@ -56,6 +56,8 @@ export interface UseWorkflowVariableEditorOptions {
   debounceMs?: number
   /** Debounce delay for blur (default: 100ms) */
   blurDebounceMs?: number
+  /** Trigger character(s) to open variable picker (default: '{') */
+  trigger?: string
 }
 
 /**
@@ -113,6 +115,7 @@ export function useWorkflowVariableEditor({
   onFocus,
   debounceMs = 1000,
   blurDebounceMs = 100,
+  trigger = '{',
 }: UseWorkflowVariableEditorOptions): UseWorkflowVariableEditorReturn {
   const [isFocused, setIsFocused] = useState(false)
   const [suggestionState, setSuggestionState] = useState<InlinePickerState>(initialPickerState)
@@ -189,10 +192,10 @@ export function useWorkflowVariableEditor({
     () =>
       createInlinePickerExtension({
         type: 'variable-node',
-        trigger: '{',
+        trigger,
         onStateChange: setSuggestionState,
       }),
-    []
+    [trigger]
   )
 
   // Placeholder extension (memoized)
