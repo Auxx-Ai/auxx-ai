@@ -446,7 +446,11 @@ export default function LoginForm({
                     <p>Enter the code we sent to {contact}</p>
                     {error && <p style={{ color: 'red' }}>{error}</p>}
                     <div className='flex items-center justify-center'>
-                      <InputOTP maxLength={6} value={otp} onChange={(value) => setOtp(value)}>
+                      <InputOTP
+                        maxLength={6}
+                        value={otp}
+                        onChange={(value) => setOtp(value)}
+                        autoFocus>
                         <InputOTPGroup>
                           <InputOTPSlot index={0} />
                           <InputOTPSlot index={1} />
@@ -539,6 +543,7 @@ export default function LoginForm({
                       autoComplete='current-password webauthn'
                       value={password}
                       required
+                      autoFocus
                     />
                     <Button
                       type='submit'

@@ -2,8 +2,8 @@
 
 // Import from shared conditions module - single source of truth
 import type { ConditionGroup as BaseConditionGroup, Condition } from '@auxx/lib/conditions/client'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { BaseType } from '@auxx/lib/workflow-engine/client'
-import type { SelectOption } from '@auxx/types/custom-field'
 import type { ReactNode } from 'react'
 
 // Re-export core types from lib
@@ -67,7 +67,7 @@ export interface FieldDefinition {
   type: BaseType
   fieldType?: FieldType
   operators?: Operator[]
-  options?: SelectOption[]
+  options?: FieldOptions
   placeholder?: string
   description?: string
   unit?: string

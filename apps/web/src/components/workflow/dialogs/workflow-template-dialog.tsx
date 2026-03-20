@@ -42,18 +42,8 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react'
-import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
-import type { EntityTemplateInstallResult } from '~/components/custom-fields/ui/entity-template-dialog'
-
-const EntityTemplateDialog = dynamic(
-  () =>
-    import('~/components/custom-fields/ui/entity-template-dialog').then(
-      (mod) => mod.EntityTemplateDialog
-    ),
-  { ssr: false }
-)
 
 import { InlineAppInstallButton } from '~/components/apps/app-install-button'
 import { useResources } from '~/components/resources/hooks'
@@ -62,6 +52,7 @@ import { WorkflowViewer } from '~/components/workflow/viewer/workflow-viewer'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api } from '~/trpc/react'
 import { EntityRequirementsStep } from './entity-requirements-step'
+import { SingleEntityInstallDialog } from './single-entity-install-dialog'
 
 export type WorkflowCategory = (typeof constants.workflowCategories)[number]['value']
 
@@ -116,9 +107,8 @@ export function WorkflowTemplateDialog({
   const [workflowName, setWorkflowName] = useState('')
   const [workflowDescription, setWorkflowDescription] = useState('')
 
-  // Entity template dialog state
-  const [showEntityInstallDialog, setShowEntityInstallDialog] = useState(false)
-  const [entityInstallTemplateIds, setEntityInstallTemplateIds] = useState<string[]>([])
+  // Single entity install dialog state
+  const [entityInstallTemplateId, setEntityInstallTemplateId] = useState<string | null>(null)
 
   // Fetch all public templates once
   const { data: templates, isLoading } = api.workflow.templates.getPublic.useQuery(
@@ -243,16 +233,14 @@ export function WorkflowTemplateDialog({
     })
   }
 
-  /** Handle entity install request from EntityRequirementsStep */
-  const handleInstallEntities = useCallback((templateIds: string[]) => {
-    setEntityInstallTemplateIds(templateIds)
-    setShowEntityInstallDialog(true)
+  /** Handle single entity install request from EntityRequirementsStep */
+  const handleInstallEntity = useCallback((templateId: string) => {
+    setEntityInstallTemplateId(templateId)
   }, [])
 
   /** Handle completion of entity installation */
-  const handleEntityInstallComplete = useCallback((_result: EntityTemplateInstallResult) => {
-    setShowEntityInstallDialog(false)
-    setEntityInstallTemplateIds([])
+  const handleEntityInstallComplete = useCallback(() => {
+    setEntityInstallTemplateId(null)
     // Resource store auto-updates → EntityRequirementsStep re-evaluates via useResources()
   }, [])
 
@@ -267,8 +255,7 @@ export function WorkflowTemplateDialog({
       setWorkflowDescription('')
       setSearchQuery('')
       setSelectedCategory('all')
-      setShowEntityInstallDialog(false)
-      setEntityInstallTemplateIds([])
+      setEntityInstallTemplateId(null)
     }
     onOpenChange(open)
   }
@@ -550,16 +537,15 @@ export function WorkflowTemplateDialog({
 
                         {/* Entity Requirements Section */}
                         {hasEntityRequirements && (
-                          <EntityRequirementsStep
-                            requiredEntities={selectedRequiredEntities}
-                            onInstallEntities={handleInstallEntities}
-                            onSkip={() => {
-                              /* user wants to skip — just proceed to create */
-                            }}
-                            onContinue={() => {
-                              /* all resolved — proceed to create */
-                            }}
-                          />
+                          <div>
+                            <h4 className='text-xs font-semibold text-muted-foreground mb-2'>
+                              Required Entities
+                            </h4>
+                            <EntityRequirementsStep
+                              requiredEntities={selectedRequiredEntities}
+                              onInstallEntity={handleInstallEntity}
+                            />
+                          </div>
                         )}
 
                         {/* Workflow Name */}
@@ -626,12 +612,14 @@ export function WorkflowTemplateDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Entity Template Install Dialog (shown when user clicks Install Entities) */}
-      {showEntityInstallDialog && entityInstallTemplateIds.length > 0 && (
-        <EntityTemplateDialog
-          open={showEntityInstallDialog}
-          onOpenChange={setShowEntityInstallDialog}
-          preSelectedTemplateIds={entityInstallTemplateIds}
+      {/* Single Entity Install Dialog (shown when user clicks Install on an entity row) */}
+      {entityInstallTemplateId && (
+        <SingleEntityInstallDialog
+          open={!!entityInstallTemplateId}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setEntityInstallTemplateId(null)
+          }}
+          templateId={entityInstallTemplateId}
           onComplete={handleEntityInstallComplete}
         />
       )}

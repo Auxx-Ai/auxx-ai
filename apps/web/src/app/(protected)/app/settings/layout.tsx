@@ -33,7 +33,7 @@ export default function SettingsSidebar({ children }: { children: React.ReactNod
             current={page}
             title='Settings'
           />
-          <div className='relative flex h-full flex-1 grow overflow-hidden bg-background '>
+          <div className='relative flex h-full flex-1 grow overflow-hidden bg-background outline-none'>
             {children}
           </div>
         </div>

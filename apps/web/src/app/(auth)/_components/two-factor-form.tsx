@@ -106,7 +106,8 @@ function TwoFactorForm(_props: Props) {
                 maxLength={6}
                 value={otp}
                 onChange={(value) => setOtp(value)}
-                onKeyDown={handleKeyDown}>
+                onKeyDown={handleKeyDown}
+                autoFocus>
                 <InputOTPGroup>
                   <InputOTPSlot index={0} />
                   <InputOTPSlot index={1} />

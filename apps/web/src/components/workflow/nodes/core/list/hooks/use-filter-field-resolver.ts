@@ -80,7 +80,7 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
               fieldType: field.fieldType,
               fieldKey: field.key,
               operators: getFieldOperators(field) as Operator[],
-              options: field.options?.options,
+              options: field.options,
               ...(field.type === BaseType.RELATION &&
                 field.relationship && {
                   fieldReference: toResourceFieldId(itemVar.resourceId!, field.key),
@@ -102,7 +102,7 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
           label: prop.label || key,
           type: prop.type,
           operators: getOperatorsForType(prop.type),
-          options: prop.options?.options,
+          options: prop.options,
           description: prop.description,
           // Preserve field reference for relation types
           ...(prop.fieldReference

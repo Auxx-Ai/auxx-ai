@@ -331,7 +331,7 @@ export function getVariableFieldDefinition(variable: UnifiedVariable): FieldDefi
     displayType,
     actualType,
     operators: getOperatorsForBaseType(actualType).map((op) => op.key),
-    options,
+    options: options ? { options } : undefined,
     fieldReference: variable.fieldReference,
     relatedEntityDefinitionId: relationship?.relatedEntityDefinitionId,
   }

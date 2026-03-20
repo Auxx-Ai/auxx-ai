@@ -76,6 +76,7 @@ const dialogVariants = cva(
       },
       size: {
         default: 'max-w-lg',
+        xs: 'max-w-sm',
         sm: 'max-w-md',
         md: 'max-w-lg',
         lg: 'max-w-xl',

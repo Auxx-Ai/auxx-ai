@@ -2,13 +2,21 @@
 'use client'
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
-import { Plus } from 'lucide-react'
+import { ChevronDown, LayoutTemplate, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
 import { EntityRow } from '~/components/custom-fields/ui/entity-row'
+import { EntityTemplateDialog } from '~/components/custom-fields/ui/entity-template-dialog'
 import SettingsPage from '~/components/global/settings-page'
 import { useResources } from '~/components/resources/hooks'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
@@ -22,6 +30,7 @@ const HIDDEN_ENTITY_TYPES = ['signature', 'inbox', 'entity_group', 'tag']
 export default function CustomFieldsPage() {
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const { isAtLimit, getLimit } = useFeatureFlags()
 
@@ -32,7 +41,7 @@ export default function CustomFieldsPage() {
   const entityLimit = getLimit(FeatureKey.entities)
   console.log(
     'CustomFieldsPage: resources',
-    customResources?.length,
+    userCreatedEntityCount,
     'limit',
     entityLimit,
     'atLimit',
@@ -44,11 +53,20 @@ export default function CustomFieldsPage() {
   }
 
   /** Open dialog in create mode or show limit dialog */
-  function handleCreateEntity() {
+  function handleCreateFromBlank() {
     if (atEntityLimit) {
       setLimitDialogOpen(true)
     } else {
       setDialogOpen(true)
+    }
+  }
+
+  /** Open template dialog or show limit dialog */
+  function handleCreateFromTemplate() {
+    if (atEntityLimit) {
+      setLimitDialogOpen(true)
+    } else {
+      setTemplateDialogOpen(true)
     }
   }
 
@@ -64,10 +82,26 @@ export default function CustomFieldsPage() {
             <TableHead>Type</TableHead>
             <TableHead>Fields</TableHead>
             <TableHead className='w-[100px]'>
-              <Button onClick={handleCreateEntity} size='sm' variant='outline'>
-                <Plus />
-                Create
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size='sm' variant='outline'>
+                    <Plus />
+                    Create
+                    <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  <DropdownMenuItem onClick={handleCreateFromBlank}>
+                    <Plus /> Create Entity
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={handleCreateFromTemplate}
+                    className='data-highlighted:bg-[#ffaa40]/10'>
+                    <LayoutTemplate className='text-[#ffaa40]' />{' '}
+                    <AnimatedGradientText>Create from template</AnimatedGradientText>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -91,13 +125,19 @@ export default function CustomFieldsPage() {
 
       {dialogOpen && <EntityDefinitionDialog open={dialogOpen} onOpenChange={setDialogOpen} />}
 
-      <LimitReachedDialog
-        open={limitDialogOpen}
-        onOpenChange={setLimitDialogOpen}
-        icon={Plus}
-        title='Entity Limit Reached'
-        description={`You've reached the maximum of ${entityLimit} custom entities on your current plan.`}
-      />
+      {templateDialogOpen && (
+        <EntityTemplateDialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen} />
+      )}
+
+      {limitDialogOpen && (
+        <LimitReachedDialog
+          open={limitDialogOpen}
+          onOpenChange={setLimitDialogOpen}
+          icon={Plus}
+          title='Entity Limit Reached'
+          description={`You've reached the maximum of ${entityLimit} custom entities on your current plan.`}
+        />
+      )}
     </SettingsPage>
   )
 }

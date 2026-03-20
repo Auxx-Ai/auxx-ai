@@ -85,6 +85,7 @@ function ChangePasswordContent() {
             onChange={(e) => setCurrentPassword(e.target.value)}
             autoComplete='current-password'
             placeholder='Current password'
+            autoFocus
           />
         </div>
         <div className='flex flex-col gap-2'>

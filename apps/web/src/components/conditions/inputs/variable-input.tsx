@@ -38,8 +38,8 @@ interface VariableInputProps {
  */
 function buildFieldOptions(field: FieldDefinition) {
   const opts: { enum?: Array<{ label: string; value: string }>; fieldReference?: string } = {}
-  if (field.options?.length) {
-    opts.enum = field.options
+  if (field.options?.options?.length) {
+    opts.enum = field.options.options
   }
   if (field.fieldReference) {
     opts.fieldReference = field.fieldReference

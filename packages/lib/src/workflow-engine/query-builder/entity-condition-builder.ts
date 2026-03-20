@@ -6,6 +6,8 @@ import { getValueType } from '@auxx/types'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { parseResourceFieldId } from '@auxx/types/field'
+import type { RecordId } from '@auxx/types/resource'
+import { getInstanceId } from '@auxx/types/resource'
 import { type SQL, sql } from 'drizzle-orm'
 import type { Operator } from '../../conditions/operator-definitions'
 import { getFieldOutputKey, type ResourceField } from '../../resources/registry/field-types'
@@ -594,6 +596,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
 
     // Handle relatedEntityId fields (RELATIONSHIP)
     if (columnName === 'relatedEntityId') {
+      rawValue = this.normalizeRelationshipValue(rawValue)
       switch (operator) {
         case 'is':
           return rawValue === null || rawValue === undefined
@@ -822,6 +825,18 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
    * as a SEPARATE FieldValue row with optionId. The EXISTS subquery will
    * match ANY row that satisfies the condition.
    */
+  private normalizeRelationshipValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((v) =>
+        typeof v === 'string' && v.includes(':') ? getInstanceId(v as RecordId) : v
+      )
+    }
+    if (typeof value === 'string' && value.includes(':')) {
+      return getInstanceId(value as RecordId)
+    }
+    return value
+  }
+
   private buildTypedValueCondition(
     operator: Operator,
     rawValue: unknown,
