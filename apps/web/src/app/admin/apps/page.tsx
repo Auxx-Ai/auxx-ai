@@ -136,10 +136,44 @@ export default function AppsPage() {
           </MainPageSubheader>
 
           {isLoading ? (
-            <div className='space-y-3'>
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className='h-12 w-full' />
-              ))}
+            <div className='flex-1 overflow-hidden flex flex-col min-h-0 relative'>
+              <div className='overflow-auto flex-1 relative'>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>App Name</TableHead>
+                      <TableHead>Developer Account</TableHead>
+                      <TableHead>Version</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <div className='space-y-1'>
+                            <Skeleton className='h-4 w-32' />
+                            <Skeleton className='h-3 w-20' />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className='h-4 w-28' />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className='h-4 w-12' />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className='h-5 w-16 rounded-full' />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className='h-4 w-20' />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           ) : !apps || apps.length === 0 ? (
             <div className='flex h-40 items-center justify-center text-muted-foreground'>

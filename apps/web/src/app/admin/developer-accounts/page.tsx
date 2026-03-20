@@ -123,10 +123,40 @@ export default function DeveloperAccountsPage() {
           </MainPageSubheader>
 
           {isLoading ? (
-            <div className='space-y-3'>
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className='h-12 w-full' />
-              ))}
+            <div className='flex-1 overflow-hidden flex flex-col min-h-0 relative'>
+              <div className='overflow-auto flex-1 relative'>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Account Name</TableHead>
+                      <TableHead className='text-right'>Members</TableHead>
+                      <TableHead className='text-right'>Apps</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <div className='space-y-1'>
+                            <Skeleton className='h-4 w-36' />
+                            <Skeleton className='h-3 w-20' />
+                          </div>
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          <Skeleton className='h-4 w-6 ml-auto' />
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          <Skeleton className='h-4 w-6 ml-auto' />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className='h-4 w-20' />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           ) : !accounts || accounts.length === 0 ? (
             <div className='flex h-40 items-center justify-center text-muted-foreground'>

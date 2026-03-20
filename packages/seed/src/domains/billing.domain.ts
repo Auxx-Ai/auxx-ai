@@ -103,6 +103,7 @@ const BOOLEAN_GATES = {
     webhooks: false,
     shopify: false,
     devTools: false,
+    unverifiedApps: false,
   },
   free: {
     knowledgeBase: true,
@@ -115,6 +116,7 @@ const BOOLEAN_GATES = {
     webhooks: false,
     shopify: false,
     devTools: false,
+    unverifiedApps: true,
   },
   starter: {
     knowledgeBase: true,
@@ -127,6 +129,7 @@ const BOOLEAN_GATES = {
     webhooks: false,
     shopify: false,
     devTools: false,
+    unverifiedApps: true,
   },
   growth: {
     knowledgeBase: true,
@@ -139,6 +142,7 @@ const BOOLEAN_GATES = {
     webhooks: true,
     shopify: false,
     devTools: false,
+    unverifiedApps: true,
   },
   enterprise: {
     knowledgeBase: true,
@@ -151,6 +155,7 @@ const BOOLEAN_GATES = {
     webhooks: true,
     shopify: false,
     devTools: false,
+    unverifiedApps: true,
   },
 } as const
 

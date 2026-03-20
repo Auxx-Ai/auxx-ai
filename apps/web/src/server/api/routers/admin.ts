@@ -375,17 +375,21 @@ export const adminRouter = createTRPCRouter({
       ]
 
       const guard = await createUsageGuard(ctx.db)
-      const results = await Promise.all(
-        input.organizationIds.map(async (orgId) => {
-          if (!guard) {
-            return { organizationId: orgId, maxPercentUsed: 0, allUnlimited: true }
-          }
-          const statuses = await Promise.all(ALL_METRICS.map((m) => guard.check(orgId, m)))
-          const allUnlimited = statuses.every((s) => s.unlimited)
-          const maxPercentUsed = allUnlimited ? 0 : Math.max(...statuses.map((s) => s.percentUsed))
-          return { organizationId: orgId, maxPercentUsed, allUnlimited }
-        })
-      )
+      if (!guard) {
+        return input.organizationIds.map((orgId) => ({
+          organizationId: orgId,
+          maxPercentUsed: 0,
+          allUnlimited: true,
+        }))
+      }
+
+      const statusMap = await guard.checkBatch(input.organizationIds, ALL_METRICS)
+      const results = input.organizationIds.map((orgId) => {
+        const statuses = ALL_METRICS.map((m) => statusMap.get(`${orgId}:${m}`)!)
+        const allUnlimited = statuses.every((s) => s.unlimited)
+        const maxPercentUsed = allUnlimited ? 0 : Math.max(...statuses.map((s) => s.percentUsed))
+        return { organizationId: orgId, maxPercentUsed, allUnlimited }
+      })
       return results
     }),
 
@@ -930,6 +934,12 @@ export const adminRouter = createTRPCRouter({
         })
         .returning()
 
+      // Invalidate build cache for the newly added user and all existing members
+      await onCacheEvent('build.developer-account.member-added', {
+        userId: user.id,
+        developerAccountId: input.developerAccountId,
+      })
+
       return member
     }),
 
@@ -937,11 +947,25 @@ export const adminRouter = createTRPCRouter({
    * Remove a member from a developer account
    */
   removeDeveloperAccountMember: superAdminProcedure
-    .input(z.object({ memberId: z.string() }))
+    .input(z.object({ memberId: z.string(), developerAccountId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // Get the member's userId before deleting for cache invalidation
+      const member = await ctx.db
+        .select({ userId: schema.DeveloperAccountMember.userId })
+        .from(schema.DeveloperAccountMember)
+        .where(eq(schema.DeveloperAccountMember.id, input.memberId))
+        .limit(1)
+        .then((rows) => rows[0])
+
       await ctx.db
         .delete(schema.DeveloperAccountMember)
         .where(eq(schema.DeveloperAccountMember.id, input.memberId))
+
+      // Invalidate build cache for the removed user and all remaining members
+      await onCacheEvent('build.developer-account.member-removed', {
+        userId: member?.userId,
+        developerAccountId: input.developerAccountId,
+      })
     }),
 
   /**

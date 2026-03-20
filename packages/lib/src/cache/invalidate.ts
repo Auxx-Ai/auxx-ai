@@ -2,39 +2,47 @@
 
 import type { CacheEvent } from './invalidation-graph'
 import { INVALIDATION_GRAPH, isMixedMapping, isOrgOnlyMapping } from './invalidation-graph'
-import { getAppCache, getOrgCache, getUserCache } from './singletons'
+import { getAppCache, getBuildUserCache, getOrgCache, getUserCache } from './singletons'
 
 /**
  * Declarative cache invalidation helper.
  * Call AFTER the DB transaction commits, never inside it.
  *
+ * @param context.orgId Required for org/user mappings, optional for build-only events
+ * @param context.userId Target user for user/build cache invalidation
+ * @param context.broadcastUserKeys If true, invalidate user keys for ALL org members
+ * @param context.developerAccountId For build events, invalidate all members of this account
+ *
  * @example
  * ```ts
- * await db.transaction(async (tx) => {
- *   await tx.update(schema.PlanSubscription).set({ ... })
- * })
  * await onCacheEvent('plan.changed', { orgId })
+ * await onCacheEvent('build.app.created', { developerAccountId: '...' })
  * ```
  */
 export async function onCacheEvent(
   event: CacheEvent,
-  context: { orgId: string; userId?: string; broadcastUserKeys?: boolean }
+  context: {
+    orgId?: string
+    userId?: string
+    broadcastUserKeys?: boolean
+    developerAccountId?: string
+  }
 ): Promise<void> {
   const mapping = INVALIDATION_GRAPH[event]
   if (!mapping) return
 
   if (isOrgOnlyMapping(mapping)) {
-    if (mapping.length > 0) {
+    if (mapping.length > 0 && context.orgId) {
       await getOrgCache().invalidateAndRecompute(context.orgId, mapping)
     }
   } else if (isMixedMapping(mapping)) {
     const promises: Promise<void>[] = []
 
-    if ('org' in mapping && mapping.org && mapping.org.length > 0) {
+    if ('org' in mapping && mapping.org && mapping.org.length > 0 && context.orgId) {
       promises.push(getOrgCache().invalidateAndRecompute(context.orgId, mapping.org))
     }
     if ('user' in mapping && mapping.user && mapping.user.length > 0) {
-      if (context.broadcastUserKeys) {
+      if (context.broadcastUserKeys && context.orgId) {
         // Invalidate for ALL org members
         promises.push(getUserCache().invalidateOrgUsersForKeys(context.orgId, mapping.user))
       } else if (context.userId) {
@@ -42,6 +50,17 @@ export async function onCacheEvent(
         promises.push(
           getUserCache().invalidateAndRecompute(context.userId, mapping.user, context.orgId)
         )
+      }
+    }
+    if ('build' in mapping && mapping.build && mapping.build.length > 0) {
+      if (context.developerAccountId) {
+        // Invalidate all members of the developer account
+        promises.push(
+          getBuildUserCache().invalidateAllMembers(context.developerAccountId, mapping.build)
+        )
+      } else if (context.userId) {
+        // Invalidate for a single user
+        promises.push(getBuildUserCache().invalidateAndRecompute(context.userId, mapping.build))
       }
     }
 

@@ -271,9 +271,54 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className='space-y-6'>
-            <Skeleton className='h-12 w-full' />
-            <Skeleton className='h-96 w-full' />
+          <div className='flex-1 overflow-hidden flex flex-col min-h-0 relative'>
+            <div className='overflow-auto flex-1 relative'>
+              <div className='grid lg:grid-cols-4'>
+                {/* App Information skeleton */}
+                <div className='col-span-2 p-6 space-y-4'>
+                  <div>
+                    <Skeleton className='h-5 w-32 mb-1' />
+                    <Skeleton className='h-4 w-48' />
+                  </div>
+                  <div className='overflow-hidden rounded-md border'>
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <div key={i} className='flex border-b last:border-b-0'>
+                        <div className='bg-muted/50 w-40 p-2'>
+                          <Skeleton className='h-4 w-24' />
+                        </div>
+                        <div className='flex-1 p-2'>
+                          <Skeleton className='h-4 w-32' />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Deployments skeleton */}
+                <div className='col-span-2 p-6 space-y-4'>
+                  <div>
+                    <Skeleton className='h-5 w-28 mb-1' />
+                    <Skeleton className='h-4 w-44' />
+                  </div>
+                  <div className='overflow-hidden rounded-md border'>
+                    <div className='flex border-b bg-muted/50 p-2 gap-8'>
+                      <Skeleton className='h-4 w-20' />
+                      <Skeleton className='h-4 w-14' />
+                      <Skeleton className='h-4 w-16' />
+                    </div>
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className='flex items-center border-b last:border-b-0 p-2 gap-8'>
+                        <div className='space-y-1'>
+                          <Skeleton className='h-4 w-20' />
+                          <Skeleton className='h-3 w-28' />
+                        </div>
+                        <Skeleton className='h-5 w-16 rounded-full' />
+                        <Skeleton className='h-7 w-20 rounded-md' />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </MainPageContent>
       </MainPage>

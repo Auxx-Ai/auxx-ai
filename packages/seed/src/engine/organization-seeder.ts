@@ -495,6 +495,17 @@ export class OrganizationSeeder {
         const { installTemplates } = await import('@auxx/lib/entity-templates')
         await installTemplates(organizationId, ['company'])
         logger.info('seedOrganizationDirectly: Entity templates installed')
+
+        // Rename default inbox to match demo Gmail UX
+        logger.info('seedOrganizationDirectly: Renaming inbox for demo')
+        const { InboxService } = await import('@auxx/lib/inboxes')
+        const inboxService = new InboxService(db, organizationId, ownerId)
+        const inboxes = await inboxService.getInboxes()
+        const defaultInbox = inboxes.find((i) => i.name === 'Shared Inbox')
+        if (defaultInbox) {
+          await inboxService.updateInboxById(defaultInbox.id, { name: 'Gmail Inbox' })
+          logger.info('seedOrganizationDirectly: Inbox renamed to Gmail Inbox')
+        }
       }
 
       console.log('✅ Organization seeding complete')

@@ -18,8 +18,9 @@ interface ProgressStep {
 
 const STEP_LABELS = [
   'Creating demo environment',
-  'Loading Shopify store data',
+  'Loading test data',
   'Preparing AI responses',
+  'Finalizing setup',
 ]
 
 function StepIcon({ status }: { status: StepStatus }) {
@@ -27,7 +28,7 @@ function StepIcon({ status }: { status: StepStatus }) {
     return <Check className='size-4 text-emerald-500' />
   }
   if (status === 'active') {
-    return <Loader2 className='size-4 text-primary animate-spin' />
+    return <Loader2 className='size-4 text-primary-500 animate-spin' />
   }
   return <CircleDashed className='size-4 text-muted-foreground/50' />
 }
@@ -53,25 +54,22 @@ export default function DemoPage() {
       }))
     )
 
-    // Cosmetic step progression
-    const timer1 = setTimeout(() => {
-      setSteps((prev) =>
-        prev.map((s, i) => ({
-          ...s,
-          status: i === 0 ? 'done' : i === 1 ? 'active' : 'pending',
-        }))
+    // Cosmetic step progression — each step activates then completes
+    const timers: ReturnType<typeof setTimeout>[] = []
+    for (let step = 1; step < STEP_LABELS.length; step++) {
+      timers.push(
+        setTimeout(() => {
+          setSteps((prev) =>
+            prev.map((s, i) => ({
+              ...s,
+              status: i < step ? 'done' : i === step ? 'active' : 'pending',
+            }))
+          )
+        }, step * 800)
       )
-    }, 800)
+    }
 
-    const timer2 = setTimeout(() => {
-      setSteps((prev) =>
-        prev.map((s, i) => ({
-          ...s,
-          status: i <= 1 ? 'done' : 'active',
-        }))
-      )
-    }, 2000)
-
+    // TODO: re-enable session creation
     try {
       const res = await fetch('/api/demo/create-session', {
         method: 'POST',
@@ -87,11 +85,17 @@ export default function DemoPage() {
       await new Promise((resolve) => setTimeout(resolve, 300))
       window.location.href = '/app'
     } catch (err) {
-      clearTimeout(timer1)
-      clearTimeout(timer2)
+      timers.forEach(clearTimeout)
       setError(err instanceof Error ? err.message : 'Something went wrong')
       setStatus('error')
     }
+
+    // Temporary: mark all steps done after animation completes
+    timers.push(
+      setTimeout(() => {
+        setSteps((prev) => prev.map((s) => ({ ...s, status: 'done' as const })))
+      }, STEP_LABELS.length * 800)
+    )
   }, [])
 
   // Auto-launch on mount

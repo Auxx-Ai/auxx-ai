@@ -97,6 +97,7 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
   const enhancedClient: RedisClient = {
     // Standard Redis operations
     get: async (key: string) => await client.get(key),
+    mget: async (...keys: string[]) => await client.mget(...keys),
     set: async (key: string, value: any, ...args: any[]) => await client.set(key, value, ...args),
     setex: async (key: string, seconds: number, value: string) =>
       await client.setex(key, seconds, value),

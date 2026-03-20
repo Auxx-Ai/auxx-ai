@@ -1,8 +1,13 @@
 // packages/lib/src/cache/register-providers.ts
 
 import type { AppCacheService } from './app-cache-service'
+import type { BuildUserCacheService } from './build-user-cache-service'
 import type { OrganizationCacheService } from './org-cache-service'
 import { appSlugMapProvider } from './providers/app-slug-map-provider'
+// Build user cache providers
+import { buildAppsProvider } from './providers/build-apps-provider'
+import { buildDeveloperAccountsProvider } from './providers/build-developer-accounts-provider'
+import { buildOrganizationsProvider } from './providers/build-organizations-provider'
 import { channelProvidersProvider } from './providers/channel-providers-provider'
 import { customFieldsProvider } from './providers/custom-fields-provider'
 import { entityDefSlugsProvider } from './providers/entity-def-slugs-provider'
@@ -34,7 +39,8 @@ import type { UserCacheService } from './user-cache-service'
 export function registerAllProviders(
   orgCache: OrganizationCacheService,
   userCache: UserCacheService,
-  appCache: AppCacheService
+  appCache: AppCacheService,
+  buildUserCache: BuildUserCacheService
 ): void {
   // Org-scoped: near-immutable
   orgCache.register('entityDefs', entityDefsProvider)
@@ -72,4 +78,9 @@ export function registerAllProviders(
   appCache.register('workflowTemplates', workflowTemplatesProvider)
   appCache.register('appSlugMap', appSlugMapProvider)
   appCache.register('publishedApps', publishedAppsProvider)
+
+  // Build-user-scoped
+  buildUserCache.register('buildDeveloperAccounts', buildDeveloperAccountsProvider)
+  buildUserCache.register('buildApps', buildAppsProvider)
+  buildUserCache.register('buildOrganizations', buildOrganizationsProvider)
 }

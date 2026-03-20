@@ -1,15 +1,17 @@
 // packages/lib/src/cache/invalidation-graph.ts
 
+import type { BuildUserCacheKeyName } from './build-user-cache-keys'
 import type { OrgCacheKeyName } from './org-cache-keys'
 import type { UserCacheKeyName } from './user-cache-keys'
 
 /** Org-only mapping: array of org cache keys */
 type OrgOnlyMapping = readonly OrgCacheKeyName[]
 
-/** Mixed mapping: has org and/or user cache keys */
+/** Mixed mapping: has org and/or user and/or build cache keys */
 interface MixedMapping {
   readonly user?: readonly UserCacheKeyName[]
   readonly org?: readonly OrgCacheKeyName[]
+  readonly build?: readonly BuildUserCacheKeyName[]
 }
 
 type InvalidationMapping = OrgOnlyMapping | MixedMapping
@@ -98,6 +100,20 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // ── Dataset events (affects overages for datasetsLimit) ──
   'dataset.created': ['overages'],
   'dataset.deleted': ['overages'],
+
+  // ── Build portal events ──
+  'build.developer-account.created': { build: ['buildDeveloperAccounts'] },
+  'build.developer-account.updated': { build: ['buildDeveloperAccounts'] },
+  'build.developer-account.deleted': { build: ['buildDeveloperAccounts', 'buildApps'] },
+
+  'build.developer-account.member-added': { build: ['buildDeveloperAccounts'] },
+  'build.developer-account.member-removed': { build: ['buildDeveloperAccounts'] },
+
+  'build.app.created': { build: ['buildApps'] },
+  'build.app.updated': { build: ['buildApps'] },
+  'build.app.deleted': { build: ['buildApps'] },
+
+  'build.organization.changed': { build: ['buildOrganizations'] },
 }
 
 export type CacheEvent = keyof typeof INVALIDATION_GRAPH

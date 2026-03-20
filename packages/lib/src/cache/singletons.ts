@@ -1,12 +1,14 @@
 // packages/lib/src/cache/singletons.ts
 
 import { AppCacheService } from './app-cache-service'
+import { BuildUserCacheService } from './build-user-cache-service'
 import { OrganizationCacheService } from './org-cache-service'
 import { registerAllProviders } from './register-providers'
 import { TokenCacheService } from './token-cache-service'
 import { UserCacheService } from './user-cache-service'
 
 let appCacheInstance: AppCacheService | undefined
+let buildUserCacheInstance: BuildUserCacheService | undefined
 let orgCacheInstance: OrganizationCacheService | undefined
 let tokenCacheInstance: TokenCacheService | undefined
 let userCacheInstance: UserCacheService | undefined
@@ -16,7 +18,13 @@ function initCaches(): void {
   orgCacheInstance = new OrganizationCacheService()
   userCacheInstance = new UserCacheService()
   appCacheInstance = new AppCacheService()
-  registerAllProviders(orgCacheInstance, userCacheInstance, appCacheInstance)
+  buildUserCacheInstance = new BuildUserCacheService()
+  registerAllProviders(
+    orgCacheInstance,
+    userCacheInstance,
+    appCacheInstance,
+    buildUserCacheInstance
+  )
 }
 
 /** Get the singleton app-wide cache service (lazily initialized with all providers) */
@@ -41,4 +49,10 @@ export function getTokenCache(): TokenCacheService {
 export function getUserCache(): UserCacheService {
   if (!userCacheInstance) initCaches()
   return userCacheInstance!
+}
+
+/** Get the singleton build user cache service (lazily initialized with all providers) */
+export function getBuildUserCache(): BuildUserCacheService {
+  if (!buildUserCacheInstance) initCaches()
+  return buildUserCacheInstance!
 }

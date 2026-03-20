@@ -4,7 +4,7 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { RedisClient } from '@auxx/redis'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { RecordUsageEventJobData } from './types'
 
 const logger = createScopedLogger('usage-counter')
@@ -163,6 +163,88 @@ export class UsageCounter {
 
     // Lazy import to avoid circular deps
     import('./enqueue-usage-event').then((mod) => mod.enqueueUsageEvent(data)).catch(() => {}) // Don't fail the action if queue is down
+  }
+
+  /**
+   * Batch-fetch current usage for multiple (org, metric) pairs.
+   * Checks Redis first, then falls back to a single Postgres query for all misses.
+   */
+  async getCurrentUsageBatch(
+    pairs: { orgId: string; metric: string }[]
+  ): Promise<Map<string, number>> {
+    if (pairs.length === 0) return new Map()
+
+    const periodKey = this.getMonthKey()
+    const result = new Map<string, number>()
+    const misses: { orgId: string; metric: string }[] = []
+
+    // 1. Check Redis for all pairs
+    const redisKeys = pairs.map((p) => `usage:${p.orgId}:${p.metric}:${periodKey}`)
+    const redisValues = await this.redis.mget(...redisKeys)
+
+    for (let i = 0; i < pairs.length; i++) {
+      const key = `${pairs[i].orgId}:${pairs[i].metric}`
+      const val = redisValues[i]
+      if (val !== null && val !== undefined) {
+        result.set(key, Number.parseInt(String(val), 10))
+      } else {
+        misses.push(pairs[i])
+      }
+    }
+
+    // 2. Single Postgres query for all Redis misses using IN clauses
+    if (misses.length > 0) {
+      try {
+        const uniqueOrgIds = [...new Set(misses.map((m) => m.orgId))]
+        const uniqueMetrics = [...new Set(misses.map((m) => m.metric))]
+
+        const rows = await this.db
+          .select({
+            organizationId: schema.UsageEvent.organizationId,
+            metric: schema.UsageEvent.metric,
+            total: sql<number>`coalesce(sum(${schema.UsageEvent.quantity}), 0)`,
+          })
+          .from(schema.UsageEvent)
+          .where(
+            and(
+              eq(schema.UsageEvent.periodKey, periodKey),
+              inArray(schema.UsageEvent.organizationId, uniqueOrgIds),
+              inArray(schema.UsageEvent.metric, uniqueMetrics)
+            )
+          )
+          .groupBy(schema.UsageEvent.organizationId, schema.UsageEvent.metric)
+
+        // Seed results and Redis
+        const seenKeys = new Set<string>()
+        for (const row of rows) {
+          const key = `${row.organizationId}:${row.metric}`
+          seenKeys.add(key)
+          result.set(key, row.total)
+          if (row.total > 0) {
+            const redisKey = `usage:${row.organizationId}:${row.metric}:${periodKey}`
+            await this.redis.set(redisKey, String(row.total), 'EX', this.getMonthTTL())
+          }
+        }
+
+        // Misses not in Postgres = 0
+        for (const m of misses) {
+          const key = `${m.orgId}:${m.metric}`
+          if (!seenKeys.has(key)) {
+            result.set(key, 0)
+          }
+        }
+      } catch (error) {
+        logger.error('Failed to batch-rebuild usage from Postgres', {
+          error: (error as Error).message,
+        })
+        // Fall back to 0 for all misses
+        for (const m of misses) {
+          result.set(`${m.orgId}:${m.metric}`, 0)
+        }
+      }
+    }
+
+    return result
   }
 
   /** TTL in seconds until end of current month + 7 day buffer */

@@ -40,8 +40,9 @@ import {
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { client } from '~/auth/auth-client'
 import { useDemo } from '~/hooks/use-demo'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
@@ -267,6 +268,7 @@ export default AppFooter
 function DemoSidebarBanner() {
   const { isDemo, expiresAt, isBannerDismissed } = useDemo()
   const [remaining, setRemaining] = useState('')
+  const router = useRouter()
 
   useEffect(() => {
     if (!expiresAt) return
@@ -294,17 +296,19 @@ function DemoSidebarBanner() {
   return (
     <div className='mx-auto'>
       <SidebarButton
-        asChild
         variant='outline'
         className='mt-2 relative h-8.5 rounded-full'
-        tooltip='Demo time remaining'>
-        <Link href='/signup?from=demo'>
-          <BorderBeam />
-          <Clock className='size-4 text-info' />
-          <span className='group-data-[collapsible=icon]:hidden ps-3 pe-4 tabular-nums text-info'>
-            {remaining} remaining
-          </span>
-        </Link>
+        tooltip='Demo time remaining'
+        onClick={() => {
+          client.signOut({
+            fetchOptions: { onSuccess: () => router.push('/signup?from=demo') },
+          })
+        }}>
+        <BorderBeam />
+        <Clock className='size-4 text-info' />
+        <span className='group-data-[collapsible=icon]:hidden ps-3 pe-4 tabular-nums text-info'>
+          {remaining} remaining
+        </span>
       </SidebarButton>
     </div>
   )

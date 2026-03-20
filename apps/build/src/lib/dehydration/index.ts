@@ -1,6 +1,5 @@
 // apps/build/src/lib/dehydration/index.ts
 
-export { BuildDehydrationCacheService } from './cache'
 export { BuildDehydrationService } from './service'
 export type {
   BuildDehydratedState,

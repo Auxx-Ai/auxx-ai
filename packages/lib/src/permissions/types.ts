@@ -38,6 +38,7 @@ export enum FeatureKey {
   webhooks = 'webhooks',
   shopify = 'shopify',
   devTools = 'devTools',
+  unverifiedApps = 'unverifiedApps',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -105,6 +106,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
   { key: FeatureKey.webhooks, type: 'boolean', label: 'Webhooks', group: 'Integrations' },
   { key: FeatureKey.shopify, type: 'boolean', label: 'Shopify', group: 'Integrations' },
   { key: FeatureKey.devTools, type: 'boolean', label: 'Dev Tools', group: 'Internal' },
+  {
+    key: FeatureKey.unverifiedApps,
+    type: 'boolean',
+    label: 'Unverified Apps',
+    description: 'Allow installing unverified apps from the marketplace',
+    group: 'Integrations',
+  },
 
   // ── Static limits ──
   { key: FeatureKey.teammates, type: 'static', label: 'Teammates', group: 'Team', unit: 'seats' },
@@ -319,6 +327,7 @@ export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
   { key: FeatureKey.webhooks, limit: false },
   { key: FeatureKey.shopify, limit: false },
   { key: FeatureKey.devTools, limit: false },
+  { key: FeatureKey.unverifiedApps, limit: true },
   { key: FeatureKey.outboundEmailsPerMonthHard, limit: 100 },
   { key: FeatureKey.outboundEmailsPerMonthSoft, limit: 80 },
   { key: FeatureKey.workflowRunsPerMonthHard, limit: 0 },

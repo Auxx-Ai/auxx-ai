@@ -32,6 +32,10 @@ export function createUpstashClient(): RedisClient {
   const enhancedClient: RedisClient = {
     // Standard Redis operations
     get: async (key: string) => await upstashClient.get(key),
+    mget: async (...keys: string[]) => {
+      const results = await upstashClient.mget<(string | null)[]>(...keys)
+      return results
+    },
 
     set: async (key: string, value: any, ...args: any[]) => {
       if (args.length === 0) {
