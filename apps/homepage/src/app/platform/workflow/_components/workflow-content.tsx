@@ -1,5 +1,4 @@
 // apps/homepage/src/app/platform/workflow/_components/workflow-content.tsx
-import Image from 'next/image'
 
 /**
  * WorkflowContent component displays the visual workflow routing section
@@ -19,12 +18,13 @@ export default function WorkflowContent() {
                 </strong>
               </h2>
               <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
-                <Image
-                  src='/images/platform/workflow/workflow-routing.png'
-                  width={3070}
-                  height={1994}
-                  alt='Workflow routing diagram showing automated customer support flow'
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
                   className='h-full w-full object-cover'
+                  src='/videos/workflow-zoom.mp4'
                 />
               </div>
               <div className='grid gap-6 md:grid-cols-2 md:gap-12'>

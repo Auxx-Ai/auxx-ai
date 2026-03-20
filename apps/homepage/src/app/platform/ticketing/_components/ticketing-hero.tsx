@@ -25,7 +25,7 @@ export default function TicketingHero() {
                 <Link href={config.urls.signup}>Start Managing Tickets</Link>
               </Button>
               <Button asChild variant='outline' className='ml-3'>
-                <Link href={config.urls.demo}>See Demo</Link>
+                <Link href={config.urls.demo}>Try Demo</Link>
               </Button>
             </div>
 

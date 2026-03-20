@@ -71,7 +71,7 @@ export default function ManufacturingHero() {
                     <Link href={config.urls.signup}>Start Tracking</Link>
                   </Button>
                   <Button asChild variant='outline'>
-                    <Link href={config.urls.demo}>View Demo</Link>
+                    <Link href={config.urls.demo}>Try Demo</Link>
                   </Button>
                 </div>
                 <div aria-hidden className='scale-85 flex w-28 flex-wrap gap-2.5 opacity-75'>

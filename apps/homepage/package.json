@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack --port=3001",
-    "build": "next build --turbopack",
+    "build": "next build --turbopack && cp -r .next/static .next/standalone/apps/homepage/.next/static && cp -r public .next/standalone/apps/homepage/public",
     "build:opennext": "open-next build",
     "check:opennext": "open-next build",
     "start": "PORT=3001 node .next/standalone/apps/homepage/server.js",

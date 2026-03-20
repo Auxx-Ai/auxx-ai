@@ -70,12 +70,6 @@ const features: FeatureLink[] = [
     description: 'Automate and streamline processes',
     icon: <GitBranch className='stroke-foreground fill-purple-500/15' />,
   },
-  {
-    href: '/platform/integration',
-    name: 'Integration',
-    description: 'Connect all your business tools',
-    icon: <Plug className='stroke-foreground fill-orange-500/15' />,
-  },
 ]
 
 const useCases: FeatureLink[] = [
@@ -114,17 +108,23 @@ const getResourceLinks = (docsUrl: string): FeatureLink[] => [
 
 const moreFeatures: FeatureLink[] = [
   {
-    href: '/platform/knowledge-base',
-    name: 'Knowledge base',
-    description: 'Automate your workflow',
-    icon: <Bot className='stroke-foreground fill-yellow-500/15' />,
+    href: '/platform/integration',
+    name: 'Integration',
+    description: 'Connect all your business tools',
+    icon: <Plug className='stroke-foreground fill-orange-500/15' />,
   },
-  {
-    href: '/platform/live-chat',
-    name: 'Live chat',
-    description: 'Scale your application',
-    icon: <Rocket className='stroke-foreground fill-orange-500/15' />,
-  },
+  // {
+  //   href: '/platform/knowledge-base',
+  //   name: 'Knowledge base',
+  //   description: 'Automate your workflow',
+  //   icon: <Bot className='stroke-foreground fill-yellow-500/15' />,
+  // },
+  // {
+  //   href: '/platform/live-chat',
+  //   name: 'Live chat',
+  //   description: 'Scale your application',
+  //   icon: <Rocket className='stroke-foreground fill-orange-500/15' />,
+  // },
   {
     href: '/platform/ticketing',
     name: 'Ticketing',
@@ -378,18 +378,23 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
                 <div className='bg-linear-to-b inset-ring-foreground/10 inset-ring-1 relative row-span-2 grid overflow-hidden rounded-xl bg-emerald-100 dark:bg-emerald-500/10 from-white dark:from-background via-white/50 dark:via-background/50 to-sky-100 dark:to-sky-500/10 p-1 transition-colors duration-200 hover:bg-emerald-50 dark:hover:bg-emerald-500/15'>
                   <div className='aspect-3/2 absolute inset-0 px-6 pt-2'>
                     <div className='mask-b-from-35% before:bg-background before:ring-foreground/10 after:ring-foreground/5 after:bg-background/75 before:z-1 group relative -mx-4 h-4/5 px-4 pt-6 before:absolute before:inset-x-6 before:bottom-0 before:top-4 before:rounded-t-xl before:border before:border-transparent before:ring-1 after:absolute after:inset-x-9 after:bottom-0 after:top-2 after:rounded-t-xl after:border after:border-transparent after:ring-1'>
-                      <div className='bg-card ring-foreground/10 relative z-10 h-full overflow-hidden rounded-t-xl border border-transparent p-8 text-sm shadow-xl shadow-black/25 ring-1'></div>
+                      <div className='bg-card ring-foreground/10 relative z-10 h-full overflow-hidden rounded-t-xl border border-transparent shadow-xl shadow-black/25 ring-1'>
+                        <img
+                          src='/images/platform/messaging/mail-view-dark.png'
+                          alt='AI-powered support'
+                          className='size-full scale-150 object-cover object-top-left'
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className='space-y-0.5 self-end p-3'>
                     <NavigationMenuLink
                       asChild
                       className='text-foreground p-0 text-sm font-medium before:absolute before:inset-0 hover:bg-transparent focus:bg-transparent'>
-                      <Link href='#'>Multimodal Learning</Link>
+                      <Link href='/platform/messaging'>AI-Powered Support</Link>
                     </NavigationMenuLink>
                     <p className='text-foreground/60 line-clamp-1 text-xs'>
-                      Explore how our platform integrates text, image, and audio processing into a
-                      unified framework.
+                      Resolve customer tickets instantly with AI that understands your business.
                     </p>
                   </div>
                 </div>

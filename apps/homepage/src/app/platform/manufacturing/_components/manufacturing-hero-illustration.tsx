@@ -1,19 +1,4 @@
-import Image from 'next/image'
-
-const previews = [
-  {
-    label: 'Analytics',
-    image: 'https://res.cloudinary.com/dohqjvu9k/image/upload/v1757920808/circle-2_qt7ip8.png',
-  },
-  {
-    label: 'AI Copilot',
-    image: 'https://res.cloudinary.com/dohqjvu9k/image/upload/v1757920810/circle-3_tgdnaa.png',
-  },
-  {
-    label: 'Task Management',
-    image: 'https://res.cloudinary.com/dohqjvu9k/image/upload/v1757920810/circle_un3f39.png',
-  },
-]
+// apps/homepage/src/app/platform/manufacturing/_components/manufacturing-hero-illustration.tsx
 
 export const ManufacturingHeroIllustration = () => {
   return (
@@ -47,27 +32,21 @@ export const ManufacturingHeroIllustration = () => {
       </div>
 
       <div className='relative mx-auto max-w-6xl max-md:mx-1 md:px-6'>
-        <div className='group/grid relative grid lg:grid-cols-3'>
-          {previews.map((preview, index) => (
-            <div
-              key={index}
-              className='max-lg:not-first:hidden border-border-illustration group relative overflow-hidden'>
-              <div className='mask-radial-from-60% max-lg:mask-radial-at-top mask-radial-at-top-left mask-radial-[95%_100%] pl-6 pt-6 max-lg:pr-6 max-md:pt-2'>
-                <div className='bg-background/60 lg:min-w-4xl ring-border-illustration rounded-2xl p-1 shadow-xl shadow-black/20 ring-1'>
-                  <div className='bg-background lg:aspect-3/2 relative origin-top overflow-hidden rounded-xl border-4 border-l-8 border-transparent sm:aspect-video'>
-                    <Image
-                      className='object-top-left size-full object-cover'
-                      src={preview.image}
-                      alt={preview.label}
-                      width={2880}
-                      height={1920}
-                      sizes='(max-width: 640px) 768px, (max-width: 768px) 1024px, (max-width: 1024px) 1280px, 1280px'
-                    />
-                  </div>
-                </div>
+        <div className='relative overflow-hidden'>
+          <div className='mask-radial-from-60% mask-radial-at-top mask-radial-[95%_100%] px-6 pt-6 max-md:pt-2'>
+            <div className='bg-background/60 ring-border-illustration mx-auto max-w-4xl rounded-2xl p-1 shadow-xl shadow-black/20 ring-1'>
+              <div className='bg-background relative origin-top overflow-hidden rounded-xl border-4 border-l-8 border-transparent aspect-4/3'>
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className='size-full object-cover object-top-left'
+                  src='/videos/new-part.mp4'
+                />
               </div>
             </div>
-          ))}
+          </div>
         </div>
       </div>
     </div>

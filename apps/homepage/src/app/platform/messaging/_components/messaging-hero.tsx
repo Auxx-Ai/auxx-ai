@@ -20,13 +20,8 @@ export default function MessagingHero() {
           initial={{ opacity: 0, y: -72, filter: 'blur(12px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 2, ease: 'easeInOut' }}
-          className='mask-radial-from-80% mask-radial-at-top-right mask-radial-[100%_85%] dark:mask-radial-from-60% dark:mask-radial-[80%_70%] absolute inset-0 opacity-75 dark:opacity-50'>
-          <img
-            src='https://images.unsplash.com/photo-1588345921523-c2dcdb7f1dcd?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
-            alt=''
-            className='size-full -scale-y-100 object-cover dark:invert'
-          />
-        </motion.div>
+          className='absolute inset-0 bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-transparent'
+        />
 
         <div className='perspective-dramatic pb-20 pt-24 md:pt-32 lg:py-44'>
           <div className='relative z-10 mx-auto max-w-5xl px-6 text-center'>

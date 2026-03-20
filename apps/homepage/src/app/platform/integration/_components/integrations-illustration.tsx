@@ -22,7 +22,7 @@ export const IntegrationsIllustration = () => {
         <div className='w-1/7 left-6/7 border-foreground/10 -top-13 absolute -bottom-64 border-r border-dashed'></div>
       </div>
       <div className='lg:before:mask-x-from-85% before:border-foreground/10 relative mx-auto max-w-xl before:absolute before:inset-0 before:border-t before:border-dashed'>
-        <div className='*:bg-card *:ring-border-illustration mx-auto grid max-w-sm grid-cols-7 *:relative *:flex *:aspect-square *:items-center *:justify-center *:rounded-lg *:shadow-md *:ring-1'>
+        <div className='*:bg-card *:dark:bg-black/20 *:ring-border-illustration mx-auto grid max-w-sm grid-cols-7 *:relative *:flex *:aspect-square *:items-center *:justify-center *:rounded-lg *:shadow-md *:ring-1'>
           <div className='col-start-4'>
             <Shopify className='size-5' />
           </div>
@@ -39,7 +39,7 @@ export const IntegrationsIllustration = () => {
           <div className='border-border-illustration bg-foreground/3 col-start-3 -mr-px border'>
             <Outlook className=' size-5' />
           </div>
-          <div className='bg-card ring-border-illustration col-start-5 rounded-lg shadow-md ring-1'>
+          <div className='bg-card dark:bg-black/20 ring-border-illustration col-start-5 rounded-lg shadow-md ring-1'>
             <Facebook className='size-5' />
           </div>
           <div className='border-border-illustration bg-foreground/3 col-start-7 -mb-px -ml-px border'>
@@ -52,7 +52,7 @@ export const IntegrationsIllustration = () => {
           <div className='border-border-illustration bg-foreground/3 col-start-2 -mr-px -mt-px border'>
             <OpenAI className='size-5' />
           </div>
-          <div className='bg-card ring-border-illustration col-start-6 rounded-lg shadow-md ring-1'>
+          <div className='bg-card dark:bg-black/20 ring-border-illustration col-start-6 rounded-lg shadow-md ring-1'>
             <ClaudeAI className='size-5' />
           </div>
         </div>

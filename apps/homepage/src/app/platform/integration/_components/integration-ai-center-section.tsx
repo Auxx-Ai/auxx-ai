@@ -1,5 +1,4 @@
 // apps/homepage/src/app/platform/integration/_components/integration-ai-center-section.tsx
-import Image from 'next/image'
 
 /**
  * IntegrationAiCenterSection component displays AI provider integrations
@@ -17,12 +16,13 @@ export default function IntegrationAiCenterSection() {
                 <strong className='text-foreground font-semibold'>leading AI providers</strong>
               </h2>
               <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
-                <Image
-                  src='/images/platform/integration/ai-integration.png'
-                  width={3070}
-                  height={1994}
-                  alt='AI provider integration interface showing multiple AI model options'
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
                   className='h-full w-full object-cover'
+                  src='/videos/ai-model-choose.mp4'
                 />
               </div>
               <div className='grid gap-6 md:grid-cols-2 md:gap-12'>

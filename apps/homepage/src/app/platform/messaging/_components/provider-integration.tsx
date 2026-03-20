@@ -43,8 +43,8 @@ export default function ProviderIntegrationsSection() {
                 </ProviderIntegrationCard>
 
                 <ProviderIntegrationCard
-                  title='OpenPhone'
-                  description='Connect OpenPhone to handle SMS and call support requests seamlessly.'>
+                  title='Quo'
+                  description='Connect Quo to handle SMS and call support requests seamlessly.'>
                   <OpenPhone />
                 </ProviderIntegrationCard>
 
