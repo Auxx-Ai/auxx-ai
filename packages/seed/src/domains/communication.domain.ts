@@ -136,6 +136,18 @@ export class CommunicationDomain {
       `  📊 Participants: ${customerParticipants.length} customers, ${supportParticipants.length} support agents`
     )
 
+    // Get ticket entity instances for thread-ticket linking
+    const ticketInstances = await db
+      .select({ id: schema.EntityInstance.id })
+      .from(schema.EntityInstance)
+      .innerJoin(
+        schema.EntityDefinition,
+        sql`${schema.EntityInstance.entityDefinitionId} = ${schema.EntityDefinition.id}`
+      )
+      .where(
+        sql`${schema.EntityDefinition.entityType} = 'ticket' AND ${schema.EntityInstance.organizationId} = ${organizationId}`
+      )
+
     // Generate thread data
     console.log('💬 Generating thread data...')
     const ids = this.generateThreadIds()
@@ -170,6 +182,12 @@ export class CommunicationDomain {
         })
       }
 
+      // Link ~60% of threads to tickets (round-robin across available tickets)
+      const ticketId =
+        ticketInstances.length > 0 && i % 5 < 3
+          ? ticketInstances[i % ticketInstances.length]!.id
+          : undefined
+
       threadRows.push({
         id: threadId,
         subject: subjects[i],
@@ -184,6 +202,7 @@ export class CommunicationDomain {
         lastMessageAt: lastMessageAt[i],
         inboxId: inboxIds[i],
         metadata: metadata[i],
+        ...(ticketId ? { ticketId } : {}),
       })
     }
 
@@ -201,7 +220,13 @@ export class CommunicationDomain {
             messageCount: sql`excluded."messageCount"`,
           },
         })
-      console.log(`✅ Upserted ${threadRows.length} threads`)
+      const linkedCount = threadRows.filter((r: any) => r.ticketId).length
+      const uniqueTickets = new Set(
+        threadRows.filter((r: any) => r.ticketId).map((r: any) => r.ticketId)
+      ).size
+      console.log(
+        `✅ Upserted ${threadRows.length} threads (${linkedCount} linked to ${uniqueTickets} tickets)`
+      )
     }
 
     // Build participantMap for thread participant and message generation

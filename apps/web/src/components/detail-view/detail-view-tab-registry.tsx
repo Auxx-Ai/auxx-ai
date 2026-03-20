@@ -35,8 +35,8 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
   // ─────────────────────────────────────────────────────────────────
   // TICKET TABS
   // ─────────────────────────────────────────────────────────────────
-  // 'ticket:conversation': () =>
-  //   import('./tabs/ticket-conversation-tab').then((m) => ({ default: m.TicketConversationTab })),
+  'ticket:conversation': () =>
+    import('./tabs/ticket-conversation-tab').then((m) => ({ default: m.TicketConversationTab })),
 
   // ─────────────────────────────────────────────────────────────────
   // PART TABS

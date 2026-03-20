@@ -27,5 +27,6 @@ export {
   selectHasActiveConditions,
   // Legacy aliases
   selectHasActiveFilters,
+  selectHasNonDefaultScope,
   useSearchStore,
 } from './search-store'

@@ -106,6 +106,8 @@ function buildConditionQuery(condition: Condition, organizationId: string): SQL<
         return buildBeforeQuery(op, value)
       case 'after':
         return buildAfterQuery(op, value)
+      case 'ticket':
+        return buildTicketQuery(op, value)
       case 'hasAttachments':
         return buildHasAttachmentsQuery(op, value)
       case 'freeText':
@@ -246,6 +248,27 @@ function buildInboxQuery(operator: Operator, value: any): SQL<unknown> | null {
 }
 
 /**
+ * Build ticket condition query.
+ * Filters threads linked to a specific ticket EntityInstance.
+ */
+function buildTicketQuery(operator: Operator, value: any): SQL<unknown> | null {
+  const ticketId = isRecordId(value) ? getInstanceId(value as RecordId) : value
+
+  switch (operator) {
+    case 'is':
+      return eq(Thread.ticketId, ticketId)
+    case 'is not':
+      return not(eq(Thread.ticketId, ticketId))
+    case 'empty':
+      return isNull(Thread.ticketId)
+    case 'not empty':
+      return isNotNull(Thread.ticketId)
+    default:
+      return null
+  }
+}
+
+/**
  * Build status condition query.
  * Maps user-facing status values to database conditions.
  */
@@ -322,20 +345,24 @@ function buildDateQuery(operator: Operator, value: any, field?: string): SQL<unk
       const afterDate = parseDate(value)
       return afterDate ? gt(dateColumn, afterDate) : null
     }
-    case 'is': {
+    case 'is':
+    case 'on_date': {
       const isDate = parseDate(value)
       if (!isDate) return null
-      // The frontend sends the start-of-day in UTC (e.g. 2026-03-20T07:00:00Z for PDT midnight).
-      // Use it directly as startOfDay and add 24h for endOfDay to cover the user's full calendar day.
-      const startOfDay = new Date(isDate.getTime())
-      const endOfDay = new Date(isDate.getTime() + 24 * 60 * 60 * 1000 - 1)
+      const startOfDay = new Date(isDate)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(isDate)
+      endOfDay.setHours(23, 59, 59, 999)
       return and(gte(dateColumn, startOfDay), lte(dateColumn, endOfDay))
     }
-    case 'is not': {
+    case 'is not':
+    case 'not_on_date': {
       const isNotDate = parseDate(value)
       if (!isNotDate) return null
-      const startOfDay = new Date(isNotDate.getTime())
-      const endOfDay = new Date(isNotDate.getTime() + 24 * 60 * 60 * 1000 - 1)
+      const startOfDay = new Date(isNotDate)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(isNotDate)
+      endOfDay.setHours(23, 59, 59, 999)
       return or(lt(dateColumn, startOfDay), gt(dateColumn, endOfDay))
     }
     case 'empty':

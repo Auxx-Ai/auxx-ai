@@ -327,13 +327,7 @@ export class DrizzleSeeder {
       console.log('  ↳ Deleting threads...')
       await this.db.delete(schema.Thread).where(eq(schema.Thread.organizationId, organizationId))
 
-      // 3. Ticket replies (references EntityInstance.id)
-      console.log('  ↳ Deleting ticket replies...')
-      await this.db
-        .delete(schema.TicketReply)
-        .where(eq(schema.TicketReply.organizationId, organizationId))
-
-      // 4. Commerce domain (Orders → Addresses → Products/Customers)
+      // 3. Commerce domain (Orders → Addresses → Products/Customers)
       console.log('  ↳ Deleting orders...')
       await this.db.delete(schema.Order).where(eq(schema.Order.organizationId, organizationId))
 

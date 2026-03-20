@@ -1,7 +1,6 @@
 // packages/seed/src/domains/ticket.domain.ts
 // Ticket domain refinements via UnifiedCrudHandler
 
-import { createId } from '@paralleldrive/cuid2'
 import { sql } from 'drizzle-orm'
 import { ContentEngine } from '../generators/content-engine'
 import type { SeedingContext, SeedingScenario } from '../types'
@@ -90,9 +89,6 @@ export class TicketDomain {
 
     // Seed tickets via UnifiedCrudHandler
     await this.seedTickets(db, schema, organizationId, userId, UnifiedCrudHandler)
-
-    // Seed ticket replies (TicketReply stays as its own table)
-    await this.seedTicketReplies(db, schema, organizationId)
   }
 
   /**
@@ -172,82 +168,6 @@ export class TicketDomain {
       }
 
       console.log(`✅ Created ${created.length} tickets via UnifiedCrudHandler`)
-    }
-  }
-
-  /**
-   * seedTicketReplies generates and inserts ticket reply records.
-   * Uses EntityInstance IDs from ticket entities.
-   * @param db - Drizzle database instance
-   * @param schema - Database schema
-   * @param organizationId - Organization ID to filter tickets
-   */
-  private async seedTicketReplies(db: any, schema: any, organizationId: string): Promise<void> {
-    console.log('💬 Generating ticket replies...')
-
-    // Get ticket EntityInstances
-    const tickets = await db
-      .select({ id: schema.EntityInstance.id })
-      .from(schema.EntityInstance)
-      .innerJoin(
-        schema.EntityDefinition,
-        sql`${schema.EntityInstance.entityDefinitionId} = ${schema.EntityDefinition.id}`
-      )
-      .where(
-        sql`${schema.EntityDefinition.entityType} = 'ticket' AND ${schema.EntityInstance.organizationId} = ${organizationId}`
-      )
-
-    if (tickets.length === 0) {
-      console.log('⚠️  No tickets found, skipping reply generation')
-      return
-    }
-
-    const replies: any[] = []
-
-    tickets.forEach((ticket: any, ticketIndex: number) => {
-      // Generate 1-5 replies per ticket
-      const replyCount = 1 + (ticketIndex % 5)
-
-      for (let i = 0; i < replyCount; i++) {
-        const isFromCustomer = i % 2 === 0 // Alternate customer/agent
-        const sentTime = new Date(Date.now() - (replyCount - i) * 7200000) // 2 hours apart
-
-        replies.push({
-          id: createId(),
-          content: this.generateReplyContent(i, isFromCustomer),
-          createdAt: sentTime,
-          messageId: null,
-          senderEmail: null,
-          isFromCustomer,
-          entityInstanceId: ticket.id,
-          organizationId: organizationId,
-          recipientEmail: null,
-          ccEmails: [],
-          createdById: isFromCustomer ? null : this.users[ticketIndex % this.users.length]!,
-          inReplyTo: null,
-          references: null,
-        })
-      }
-    })
-
-    if (replies.length > 0) {
-      const BATCH_SIZE = 2000
-      console.log(`📦 Inserting ${replies.length} ticket replies...`)
-
-      for (let i = 0; i < replies.length; i += BATCH_SIZE) {
-        const batch = replies.slice(i, i + BATCH_SIZE)
-        await db
-          .insert(schema.TicketReply)
-          .values(batch)
-          .onConflictDoUpdate({
-            target: schema.TicketReply.id,
-            set: {
-              content: sql`excluded.content`,
-            },
-          })
-      }
-
-      console.log(`✅ Upserted ${replies.length} ticket replies`)
     }
   }
 
@@ -416,26 +336,5 @@ export class TicketDomain {
 
     const typeTemplates = descriptions[type] || descriptions.GENERAL
     return typeTemplates[index % typeTemplates.length]!
-  }
-
-  /** generateReplyContent creates realistic reply content. */
-  private generateReplyContent(index: number, isFromCustomer: boolean): string {
-    if (isFromCustomer) {
-      return [
-        'Hello, I need help with my recent order.',
-        'Thank you for your response. I have some additional questions.',
-        'I appreciate your help with this matter.',
-        'Could you provide an update on the status?',
-        "I'm still waiting for a resolution.",
-      ][index % 5]!
-    } else {
-      return [
-        "Thank you for contacting us. We're looking into your request.",
-        "I've reviewed your case and here's what we can do to help.",
-        'We apologize for the inconvenience. Let me assist you with this.',
-        "I've processed your request and you should see changes shortly.",
-        'Is there anything else I can help you with today?',
-      ][index % 5]!
-    }
   }
 }

@@ -652,6 +652,7 @@ function ReplyComposeEditorComponent({
         bcc: toPayload(recipients.BCC),
         attachments: draftPayload.attachments, // Use combined attachments from payload
         includePreviousMessage: state.includePrev,
+        linkTicketId: presetValues?.linkTicketId,
       })
     } catch (error) {
       setIsSending(false) // Reset on error

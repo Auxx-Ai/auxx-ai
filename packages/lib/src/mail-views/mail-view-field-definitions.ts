@@ -241,6 +241,10 @@ export function getDefaultOperatorForField(fieldId: string): Operator {
   if (!field) {
     return 'is'
   }
+  // Date fields default to on_date (same-day comparison)
+  if (field.fieldType === FieldType.DATE || field.fieldType === FieldType.DATETIME) {
+    return 'on_date'
+  }
   const operators = getOperatorsForFieldType(field.fieldType)
   if (operators.length === 0) {
     return 'is'

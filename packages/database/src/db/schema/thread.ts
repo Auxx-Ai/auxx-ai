@@ -60,6 +60,11 @@ export const Thread = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
+    /** Ticket EntityInstance this thread is linked to (one ticket per thread) */
+    ticketId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     closedAt: timestamp({ precision: 3 }),
     repliedAt: timestamp({ precision: 3 }),
     waitingSince: timestamp({ precision: 3 }),
@@ -99,6 +104,7 @@ export const Thread = pgTable(
       table.id.desc().nullsFirst()
     ),
     index('Thread_inboxId_idx').using('btree', table.inboxId.asc().nullsLast()),
+    index('Thread_ticketId_idx').using('btree', table.ticketId.asc().nullsLast()),
   ]
 )
 

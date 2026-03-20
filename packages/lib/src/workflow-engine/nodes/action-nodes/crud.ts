@@ -33,7 +33,7 @@ import {
   setEntityVariables,
 } from '../../../resources/registry'
 import type { TableId } from '../../../resources/registry/field-registry'
-import type { ResourceField } from '../../../resources/registry/field-types'
+import { getFieldOutputKey, type ResourceField } from '../../../resources/registry/field-types'
 import type { CustomResource } from '../../../resources/registry/types'
 import { ThreadMutationService } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
@@ -433,7 +433,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       // Validate required fields for create using registry (system resources only)
       if (config.mode === 'create') {
         for (const field of crudConfig.requiredFields) {
-          const value = config.data?.[field.key]
+          const value = config.data?.[getFieldOutputKey(field)] ?? config.data?.[field.key]
           if (!value || (typeof value === 'string' && value.trim() === '')) {
             errors.push(`${field.label} is required for creating ${config.resourceType}`)
           }
@@ -847,8 +847,8 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     const result: Record<string, any> = {}
 
     for (const [key, value] of Object.entries(data)) {
-      // Find field definition by key (human-readable name)
-      const field = fields.find((f) => f.key === key)
+      // Find field definition by output key (stable identifier), with fallback to key (backward compat)
+      const field = fields.find((f) => getFieldOutputKey(f) === key || f.key === key)
 
       if (field?.id) {
         // Use database ID as key for entity operations
@@ -1295,7 +1295,10 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     // Check if any logical names are being used instead of dbColumn names
     const invalidFields = relationFields.filter((field) => {
       // If data has the logical name but NOT the database column name, that's invalid
-      return data[field.key] !== undefined && data[field.dbColumn!] === undefined
+      return (
+        (data[getFieldOutputKey(field)] !== undefined || data[field.key] !== undefined) &&
+        data[field.dbColumn!] === undefined
+      )
     })
 
     if (invalidFields.length > 0) {

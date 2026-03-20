@@ -88,7 +88,6 @@ import {
   // TagsOnThread, // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
   Thread,
   ThreadReadStatus,
-  TicketReply,
   TicketSequence,
   TwoFactor,
   UploadSession,
@@ -139,7 +138,6 @@ export const userRelations = relations(User, ({ one, many }) => ({
   ApiKey: many(ApiKey),
   articleRevisions: many(ArticleRevision),
   parts: many(Part),
-  ticketReplies: many(TicketReply),
   avatarAsset: one(MediaAsset, {
     fields: [User.avatarAssetId],
     references: [MediaAsset.id],
@@ -451,21 +449,6 @@ export const inventoryRelations = relations(Inventory, ({ one }) => ({
 export const ticketSequenceRelations = relations(TicketSequence, ({ one }) => ({
   organization: one(Organization, {
     fields: [TicketSequence.organizationId],
-    references: [Organization.id],
-  }),
-}))
-
-export const ticketReplyRelations = relations(TicketReply, ({ one }) => ({
-  createdBy: one(User, {
-    fields: [TicketReply.createdById],
-    references: [User.id],
-  }),
-  entityInstance: one(EntityInstance, {
-    fields: [TicketReply.entityInstanceId],
-    references: [EntityInstance.id],
-  }),
-  organization: one(Organization, {
-    fields: [TicketReply.organizationId],
     references: [Organization.id],
   }),
 }))

@@ -267,6 +267,23 @@ export interface ResourceField {
 }
 
 /**
+ * Get the stable output key for a field.
+ *
+ * For entity-definition system fields (tag, contact, ticket, etc.), the field's `key`
+ * after plan 09 is the display name (e.g., "Parent Tag"). The stable identifier is
+ * stored in `systemAttribute` (e.g., "tag_parent").
+ *
+ * For system resources (thread, message, etc.), `mergeSystemAndCustomFields` already
+ * overrides `key` with the static field key, so `systemAttribute` and `key` are
+ * effectively equivalent — this helper is a no-op.
+ *
+ * For custom fields, `systemAttribute` is undefined, so this falls back to `key`.
+ */
+export function getFieldOutputKey(field: Pick<ResourceField, 'key' | 'systemAttribute'>): string {
+  return field.systemAttribute ?? field.key
+}
+
+/**
  * Resource field registry type
  * Maps resource types to their field definitions
  */

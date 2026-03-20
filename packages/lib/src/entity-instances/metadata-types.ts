@@ -14,8 +14,6 @@ export type TicketMetadata = {
   typeData?: Record<string, unknown>
   /** Type-specific status (e.g., return status, refund status) */
   typeStatus?: string
-  /** Email thread reference for email-originated tickets */
-  emailThreadId?: string
   /** Mailgun message ID for email deduplication (unique indexed) */
   mailgunMessageId?: string
   /** Generated ticket email address for inbound routing */

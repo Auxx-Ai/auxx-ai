@@ -736,8 +736,9 @@ export class ThreadQueryService {
     // Note: batchGetThreadTagIds returns RecordIds (from FieldValue.relatedEntityId which stores RecordIds)
     const tagIdMap = await batchGetThreadTagIds(this.db, ids, this.organizationId)
 
-    // Resolve inbox entityDefinitionId from org cache
+    // Resolve inbox and ticket entityDefinitionIds from org cache
     const inboxEntityDefId = await requireCachedEntityDefId(this.organizationId, 'inbox')
+    const ticketEntityDefId = await requireCachedEntityDefId(this.organizationId, 'ticket')
 
     // Fetch read status for all threads for this user
     const readStatuses = await this.db
@@ -823,6 +824,7 @@ export class ThreadQueryService {
           latestMessageId: t.latestMessageId ?? null,
           latestCommentId: t.latestCommentId ?? null,
           inboxId: t.inboxId ? toRecordId(inboxEntityDefId, t.inboxId) : null,
+          ticketId: t.ticketId ? toRecordId(ticketEntityDefId, t.ticketId) : null,
           externalId: t.externalId ?? null,
           tagIds,
           isUnread,

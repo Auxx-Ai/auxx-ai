@@ -163,13 +163,7 @@ export class OrganizationSeeder {
       console.log('  ↳ Deleting threads...')
       await db.delete(schema.Thread).where(eq(schema.Thread.organizationId, organizationId))
 
-      // 3. Ticket replies (tickets are now EntityInstances)
-      console.log('  ↳ Deleting ticket replies...')
-      await db
-        .delete(schema.TicketReply)
-        .where(eq(schema.TicketReply.organizationId, organizationId))
-
-      // 4. Entity data (FieldValues first, then EntityInstances - covers contacts, tickets, signatures)
+      // 3. Entity data (FieldValues first, then EntityInstances - covers contacts, tickets, signatures)
       console.log('  ↳ Deleting field values...')
       await db.delete(schema.FieldValue).where(eq(schema.FieldValue.organizationId, organizationId))
 

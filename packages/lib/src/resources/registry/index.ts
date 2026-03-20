@@ -169,6 +169,7 @@ export type {
   ResourceFieldRegistry,
   ResourceTableDefinition,
 } from './field-types'
+export { getFieldOutputKey } from './field-types'
 
 // Re-export option helpers
 export {

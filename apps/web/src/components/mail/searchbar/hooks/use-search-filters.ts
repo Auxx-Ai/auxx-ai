@@ -2,8 +2,9 @@
 'use client'
 
 import type { SearchCondition } from '@auxx/lib/mail-query/client'
+import { SEARCH_SCOPE_FIELD_ID } from '@auxx/lib/mail-views/client'
 import { useMemo } from 'react'
-import { selectHasActiveConditions, useSearchStore } from '../store'
+import { selectHasActiveConditions, selectHasNonDefaultScope, useSearchStore } from '../store'
 
 /**
  * Get raw search conditions from the store.
@@ -24,10 +25,15 @@ import { selectHasActiveConditions, useSearchStore } from '../store'
 export function useSearchConditions(): SearchCondition[] | undefined {
   const conditions = useSearchStore((s) => s.conditions)
   const hasConditions = useSearchStore(selectHasActiveConditions)
+  const hasNonDefaultScope = useSearchStore(selectHasNonDefaultScope)
 
   return useMemo(() => {
-    if (!hasConditions) return undefined
-    // Filter out conditions without valid values
-    return conditions.filter((c) => c.value !== undefined && c.value !== '' && c.value !== null)
-  }, [conditions, hasConditions])
+    if (!hasConditions && !hasNonDefaultScope) return undefined
+    // Keep scope condition (no value needed) + conditions with valid values
+    return conditions.filter(
+      (c) =>
+        c.fieldId === SEARCH_SCOPE_FIELD_ID ||
+        (c.value !== undefined && c.value !== '' && c.value !== null)
+    )
+  }, [conditions, hasConditions, hasNonDefaultScope])
 }

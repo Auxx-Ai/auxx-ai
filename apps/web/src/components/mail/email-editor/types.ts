@@ -202,6 +202,8 @@ export interface EditorPresetValues {
   includePreviousMessage?: boolean
   /** Source message for reply context */
   sourceMessage?: MessageType | null
+  /** Auto-link the new thread to this ticket after send */
+  linkTicketId?: string
 }
 
 /** Minimal thread data needed by the editor */

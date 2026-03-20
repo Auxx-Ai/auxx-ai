@@ -243,6 +243,18 @@ function evaluateOperator(
       return diffDays > days
     }
 
+    case 'on_date': {
+      const fieldDate = toDate(fieldValue)
+      const condDate = toDate(conditionValue)
+      return fieldDate !== null && condDate !== null && isSameDay(fieldDate, condDate)
+    }
+
+    case 'not_on_date': {
+      const fieldDate = toDate(fieldValue)
+      const condDate = toDate(conditionValue)
+      return fieldDate !== null && condDate !== null && !isSameDay(fieldDate, condDate)
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // ARRAY LENGTH OPERATORS
     // ═══════════════════════════════════════════════════════════════
@@ -384,4 +396,76 @@ function isThisWeek(date: Date): boolean {
 function isThisMonth(date: Date): boolean {
   const now = new Date()
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATUS NORMALIZATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Virtual status value → DB status + optional assignee condition */
+const VIRTUAL_STATUS_MAP: Record<string, { status: string; assignee?: 'empty' | 'not empty' }> = {
+  assigned: { status: 'OPEN', assignee: 'not empty' },
+  unassigned: { status: 'OPEN', assignee: 'empty' },
+  done: { status: 'ARCHIVED' },
+  archived: { status: 'ARCHIVED' },
+  trash: { status: 'TRASH' },
+  trashed: { status: 'TRASH' },
+  spam: { status: 'SPAM' },
+}
+
+/**
+ * Normalize condition groups to expand virtual status values (assigned, unassigned, done, etc.)
+ * into DB-level status + assignee conditions. This bridges the gap between
+ * searchbar/view conditions (virtual values) and the client-side evaluator (DB values).
+ */
+export function normalizeStatusConditions(groups: ConditionGroup[]): ConditionGroup[] {
+  return groups.map((group) => {
+    const expandedConditions: Condition[] = []
+
+    for (const condition of group.conditions) {
+      if (condition.fieldId !== 'status') {
+        expandedConditions.push(condition)
+        continue
+      }
+
+      // Unwrap single-element arrays
+      const rawValue =
+        Array.isArray(condition.value) && condition.value.length === 1
+          ? condition.value[0]
+          : condition.value
+
+      // For array operators (in, not in) with DB values, no normalization needed
+      if (Array.isArray(rawValue)) {
+        expandedConditions.push(condition)
+        continue
+      }
+
+      const mapping =
+        typeof rawValue === 'string' ? VIRTUAL_STATUS_MAP[rawValue.toLowerCase()] : undefined
+
+      if (!mapping) {
+        // Already a DB value (OPEN, ARCHIVED, etc.) — pass through
+        expandedConditions.push(condition)
+        continue
+      }
+
+      // Expand: status → DB status condition
+      expandedConditions.push({
+        ...condition,
+        value: mapping.status,
+      })
+
+      // Expand: add assignee condition if needed
+      if (mapping.assignee) {
+        expandedConditions.push({
+          id: `${condition.id}_assignee`,
+          fieldId: 'assignee',
+          operator: mapping.assignee as Operator,
+          value: undefined,
+        })
+      }
+    }
+
+    return { ...group, conditions: expandedConditions }
+  })
 }

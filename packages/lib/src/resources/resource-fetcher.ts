@@ -12,7 +12,7 @@ import {
   RESOURCE_TABLE_MAP,
   type TableId,
 } from './registry/field-registry'
-import type { ResourceField } from './registry/field-types'
+import { getFieldOutputKey, type ResourceField } from './registry/field-types'
 import { isCustomResourceId } from './registry/types'
 import { BaseType } from './types'
 
@@ -376,7 +376,7 @@ export async function fetchResourceWithRelationships(
     return resource
   }
 
-  const fieldMap = new Map(fields.map((f) => [f.key, f]))
+  const fieldMap = new Map(fields.map((f) => [getFieldOutputKey(f), f]))
 
   // 3. Fetch all requested relationships in parallel for performance
   const fetchPromises = relationships.map(async (relFieldName) => {
@@ -608,7 +608,7 @@ async function fetchHasManyCustomEntity(
 
   // Get field definitions from org cache
   const fields = await getCachedResourceFields(organizationId, targetResourceType)
-  const fieldIdToName = new Map(fields.map((f) => [f.id, f.key]))
+  const fieldIdToName = new Map(fields.map((f) => [f.id, getFieldOutputKey(f)]))
 
   // Transform to standard entity format
   return results
@@ -700,7 +700,7 @@ export async function analyzePathForRelationships(
         })),
     })
 
-    const field = fields.find((f) => f.key === segment)
+    const field = fields.find((f) => getFieldOutputKey(f) === segment || f.key === segment)
 
     if (field?.type === BaseType.RELATION && field.relationship) {
       // This is a relationship - needs fetching

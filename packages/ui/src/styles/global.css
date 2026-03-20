@@ -807,6 +807,24 @@
     color: rgb(var(--primary-700));
   }
 
+  /* Horizontal scroll edge mask for fading content at left/right edges */
+  .mask-x {
+    mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      black 24px,
+      black calc(100% - 24px),
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      black 24px,
+      black calc(100% - 24px),
+      transparent 100%
+    );
+  }
+
   /* Fix for Vaul drawer snap points with direction='right' */
   /* Vaul calculates --snap-point-height as (drawerWidth - desiredWidth) */
   /* For delayed snap points, we need to use the snap point height directly */
