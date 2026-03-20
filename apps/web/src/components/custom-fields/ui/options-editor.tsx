@@ -4,6 +4,7 @@
 import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
+import { generateId } from '@auxx/utils/generateId'
 import { GripVertical, PlusCircle, Trash2 } from 'lucide-react'
 import { forwardRef, useEffect, useState } from 'react'
 import { getNextOptionColor } from '../utils/get-next-option-color'
@@ -218,14 +219,14 @@ interface OptionsEditorProps {
 export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
   // Convert options to include id for stable sorting
   const [internalOptions, setInternalOptions] = useState<Option[]>(() =>
-    Array.isArray(options) ? options.map((opt) => ({ ...opt, id: crypto.randomUUID() })) : []
+    Array.isArray(options) ? options.map((opt) => ({ ...opt, id: generateId() })) : []
   )
 
   // Update internal options when external options change
   useEffect(() => {
     const optionsArray = Array.isArray(options) ? options : []
     if (optionsArray.length !== internalOptions.length) {
-      setInternalOptions(optionsArray.map((opt) => ({ ...opt, id: crypto.randomUUID() })))
+      setInternalOptions(optionsArray.map((opt) => ({ ...opt, id: generateId() })))
     }
   }, [options, internalOptions.length])
 
@@ -252,7 +253,7 @@ export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
         color: getNextOptionColor(
           internalOptions.map((o) => o.color).filter(Boolean) as SelectOptionColor[]
         ),
-        id: crypto.randomUUID(),
+        id: generateId(),
       },
     ]
     setInternalOptions(newOptions)

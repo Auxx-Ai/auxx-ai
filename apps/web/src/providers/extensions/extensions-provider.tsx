@@ -3,7 +3,7 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { usePathname } from 'next/navigation'
-import { Fragment, type ReactNode, Suspense, useEffect, useState } from 'react'
+import { Fragment, type ReactNode, Suspense, useCallback, useEffect, useState } from 'react'
 import { ConnectionExpiredDialog } from '~/components/apps/connection-expired-dialog'
 import { AssetsDataHandler } from '~/components/extensions/data-handlers/assets-data-handler'
 import { DialogDataHandler } from '~/components/extensions/data-handlers/dialog-data-handler'
@@ -63,6 +63,12 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
   // Always provide installations (empty during loading)
   const installations = result?.installations || []
 
+  const utils = api.useUtils()
+
+  const refreshInstallations = useCallback(async () => {
+    await utils.apps.listInstalled.invalidate()
+  }, [utils])
+
   const { data: connectionsResult } = api.apps.listConnections.useQuery()
   const connections = connectionsResult ?? []
 
@@ -107,7 +113,8 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
         appInstallations={installations}
         appConnections={connections}
         isLoading={isLoading}
-        isError={!!error}>
+        isError={!!error}
+        refreshInstallations={refreshInstallations}>
         {/* Set up infrastructure for each extension - only when loaded */}
         {!isLoading &&
           !error &&

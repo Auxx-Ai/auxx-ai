@@ -2,6 +2,7 @@
 
 import type { FileUploadEvent } from '@auxx/lib/files/types'
 import { ENTITY_TYPES, FileUploadEventType } from '@auxx/lib/files/types'
+import { generateId } from '@auxx/utils/generateId'
 import type { StateCreator } from 'zustand'
 import { SSEConnectionManager } from '../../utils'
 import type { CreateSessionOptions, SessionState, SSEConnectionState, UploadStore } from '../types'
@@ -61,7 +62,7 @@ export const createUnifiedSessionSlice: StateCreator<UploadStore, [], [], Sessio
 
       // Create client-side session container only
       // Actual presigned sessions are created per-file in startUpload
-      const sessionId = crypto.randomUUID()
+      const sessionId = generateId()
 
       const session: SessionState & { sseConnection?: SSEConnectionState } = {
         id: sessionId,

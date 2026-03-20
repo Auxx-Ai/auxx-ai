@@ -15,6 +15,7 @@ import {
 import { type BreadcrumbSegment, SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 import type { Header } from '@tanstack/react-table'
 import {
   ArrowUpDown,
@@ -191,11 +192,11 @@ function HeaderCellOptionsDropdown<TData>({
             onClick={() => {
               // Add a new filter group with a condition for this column
               const newGroup: ConditionGroup = {
-                id: crypto.randomUUID(),
+                id: generateId(),
                 logicalOperator: 'AND',
                 conditions: [
                   {
-                    id: crypto.randomUUID(),
+                    id: generateId(),
                     fieldId: column.id,
                     operator: 'contains',
                     value: '',

@@ -2,6 +2,7 @@
 'use client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
+import { generateId } from '@auxx/utils/generateId'
 import { Paperclip } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
@@ -51,7 +52,7 @@ export function FileInputField() {
   const removeAttachment = api.attachment.removeFromCustomField.useMutation()
 
   // Stable entityId across re-renders (prevents session churn)
-  const entityId = useMemo(() => `temp-custom-field-${crypto.randomUUID()}`, [])
+  const entityId = useMemo(() => `temp-custom-field-${generateId()}`, [])
 
   /**
    * Ensure FieldValue exists and return its ID.

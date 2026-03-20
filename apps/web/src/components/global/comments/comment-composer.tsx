@@ -7,6 +7,7 @@ import { ENTITY_TYPES } from '@auxx/lib/files/types'
 import { Button } from '@auxx/ui/components/button'
 import { EmojiPicker } from '@auxx/ui/components/emoji-picker'
 import { cn } from '@auxx/ui/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 import type { Editor } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 import { EditorContent } from '@tiptap/react'
@@ -174,7 +175,7 @@ const CommentComposer = ({
   const [pickerOpen, setPickerOpen] = useState(false)
 
   // File selection hook with temporary entity ID for pre-comment uploads
-  const tempEntityIdRef = useRef(`temp-comment-${crypto.randomUUID()}`)
+  const tempEntityIdRef = useRef(`temp-comment-${generateId()}`)
   const fileSelect = useFileSelect({
     entityType: ENTITY_TYPES.COMMENT,
     entityId: tempEntityIdRef.current,

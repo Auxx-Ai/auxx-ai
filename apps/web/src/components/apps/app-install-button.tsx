@@ -12,9 +12,10 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
-import { ChevronDown, Code } from 'lucide-react'
+import { Check, ChevronDown, Code, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useAnalytics } from '~/hooks/use-analytics'
+import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api } from '~/trpc/react'
 
 /**
@@ -180,5 +181,61 @@ export default function AppInstallButton({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  )
+}
+
+type InlineAppInstallButtonProps = {
+  appSlug: string
+  /** Custom content for the button. Defaults to "Install" with download icon */
+  children?: React.ReactNode
+}
+
+/**
+ * Lightweight install button that self-determines install status.
+ * Use in contexts where you want inline install without navigating away.
+ */
+export function InlineAppInstallButton({ appSlug, children }: InlineAppInstallButtonProps) {
+  const { appInstallations, refreshInstallations } = useExtensionsContext()
+  const posthog = useAnalytics()
+
+  const isInstalled = appInstallations.some((inst) => inst.app.slug === appSlug)
+
+  const install = api.apps.install.useMutation({
+    onSuccess: async () => {
+      posthog?.capture('app_installed', { app_slug: appSlug })
+      await refreshInstallations()
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to install app', description: error.message })
+    },
+  })
+
+  if (isInstalled) {
+    return (
+      <Badge variant='gray' className='h-6 text-xs'>
+        <Check className='mr-1' />
+        Installed
+      </Badge>
+    )
+  }
+
+  return (
+    <Button
+      variant='outline'
+      size='sm'
+      className='h-6 text-xs'
+      onClick={(e) => {
+        e.stopPropagation()
+        install.mutate({ appSlug })
+      }}
+      loading={install.isPending}
+      loadingText='Installing...'>
+      {children ?? (
+        <>
+          <Download className='size-3' />
+          Install
+        </>
+      )}
+    </Button>
   )
 }

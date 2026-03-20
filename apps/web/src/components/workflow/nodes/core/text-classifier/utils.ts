@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/text-classifier/utils.ts
 
+import { generateId } from '@auxx/utils/generateId'
 import type { TextClassifierNodeData } from './types'
 
 // Re-export variable utilities from shared location
@@ -9,7 +10,7 @@ import type { TextClassifierNodeData } from './types'
  * Generate a unique category ID
  */
 export function generateCategoryId(): string {
-  return crypto.randomUUID?.() || Math.random().toString(36).substring(2, 11)
+  return generateId()
 }
 
 /**
