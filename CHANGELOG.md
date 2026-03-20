@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.96](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.95...auxx-v0.1.96) (2026-03-20)
+
+
+### Features
+
+* update Instagram and OpenPhone logos with new designs and gradients ([#307](https://github.com/Auxx-Ai/auxx-ai/issues/307)) ([bcb728b](https://github.com/Auxx-Ai/auxx-ai/commit/bcb728b0e6586cca820ca6a9c156c41f5f278f17))
+
 ## [0.1.95](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.94...auxx-v0.1.95) (2026-03-20)
 
 
