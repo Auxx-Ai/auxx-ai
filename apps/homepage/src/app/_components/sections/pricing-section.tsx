@@ -13,16 +13,16 @@ import { cn } from '~/lib/utils'
 export default function PricingSection() {
   const { urls, emails } = useConfig()
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annually'>('annually')
-  const annualReduction = 0.75
+  const annualDiscount = 0.3
 
   const prices = {
-    pro: {
-      monthly: 19,
-      annually: 19 * annualReduction,
+    starter: {
+      monthly: 20,
+      annually: 20 * (1 - annualDiscount),
     },
-    startup: {
-      monthly: 49,
-      annually: 49 * annualReduction,
+    growth: {
+      monthly: 50,
+      annually: 50 * (1 - annualDiscount),
     },
   }
 
@@ -31,10 +31,10 @@ export default function PricingSection() {
       <section className='pt-30 pb-16 border-b'>
         <div className='mx-auto max-w-2xl text-center'>
           <h2 className='text-balance text-3xl font-bold md:text-4xl lg:text-5xl lg:tracking-tight'>
-            Pricing that scale with your business
+            Pricing that scales with your business
           </h2>
           <p className='text-muted-foreground mx-auto mt-4 max-w-xl text-balance text-lg'>
-            Choose the perfect plan for your needs and start optimizing your workflow today
+            Choose the perfect plan for your team and start automating your support today
           </p>
         </div>
       </section>
@@ -70,7 +70,7 @@ export default function PricingSection() {
                       </button>
                     </div>
                     <div className='mt-3 text-center text-xs'>
-                      <span className='text-info font-medium'>Save 25%</span> On Annual Billing
+                      <span className='text-info font-medium'>Save 30%</span> On Annual Billing
                     </div>
                   </div>
                 </div>
@@ -88,7 +88,7 @@ export default function PricingSection() {
                           <div className='self-end'>
                             <CardTitle className='text-lg font-medium'>Free</CardTitle>
                             <div className='text-muted-foreground mt-1 text-balance text-sm'>
-                              For developers trying out Tailark for the first time
+                              Basic features for individuals and small teams
                             </div>
                           </div>
 
@@ -102,9 +102,14 @@ export default function PricingSection() {
 
                           <ul role='list' className='space-y-3 text-sm'>
                             {[
-                              'Basic Analytics Dashboard',
-                              '5GB Cloud Storage',
-                              'Email and Chat Support',
+                              '1 team member',
+                              '1 connected channel',
+                              '50 AI completions/month',
+                              '100 outbound emails/month',
+                              '1 GB storage',
+                              '5 saved views',
+                              '3 workflows',
+                              '100 workflow runs/month',
                             ].map((item, index) => (
                               <li key={index} className='flex items-center gap-2'>
                                 <Check className='text-muted-foreground size-3' strokeWidth={3.5} />
@@ -115,15 +120,15 @@ export default function PricingSection() {
                         </div>
                         <div className='rounded-(--radius) ring-foreground/10 bg-card @4xl:my-2 @max-4xl:mx-1 row-span-4 grid grid-rows-subgrid gap-8 border-transparent shadow shadow-xl ring-1 backdrop-blur'>
                           <div className='self-end'>
-                            <CardTitle className='text-lg font-medium'>Pro</CardTitle>
+                            <CardTitle className='text-lg font-medium'>Starter</CardTitle>
                             <CardDescription className='text-muted-foreground mt-1 text-balance text-sm'>
-                              Ideal for developers who need more features and support
+                              Essential features for growing teams
                             </CardDescription>
                           </div>
 
                           <div>
                             <NumberFlow
-                              value={prices.pro[billingPeriod]}
+                              value={prices.starter[billingPeriod]}
                               format={{
                                 style: 'currency',
                                 currency: 'USD',
@@ -134,45 +139,51 @@ export default function PricingSection() {
                             <div className='text-muted-foreground text-sm'>Per month</div>
                           </div>
                           <Button asChild className='w-full'>
-                            <Link href={urls.signup}>Get Started</Link>
+                            <Link href={urls.signup}>Start Free Trial</Link>
                           </Button>
 
-                          <ul role='list' className='space-y-3 text-sm'>
-                            {[
-                              'Everything in Free Plan, plus:',
-                              '5GB Cloud Storage',
-                              'Email and Chat Support',
-                              'Access to Community Forum',
-                              'Single User Access',
-                              'Access to Basic Templates',
-                              'Mobile App Access',
-                              '1 Custom Report Per Month',
-                              'Monthly Product Updates',
-                              'Standard Security Features',
-                            ].map((item, index) => (
-                              <li
-                                key={index}
-                                className='group flex items-center gap-2 first:font-medium'>
-                                <Check
-                                  className='text-muted-foreground size-3 group-first:hidden'
-                                  strokeWidth={3.5}
-                                />
-                                {item}
-                              </li>
-                            ))}
-                          </ul>
+                          <div>
+                            <div className='text-muted-foreground mb-3 text-xs'>
+                              14-day free trial
+                            </div>
+                            <ul role='list' className='space-y-3 text-sm'>
+                              {[
+                                'Everything in Free, plus:',
+                                'Unlimited team members',
+                                '3 connected channels',
+                                '500 AI completions/month',
+                                '1,000 outbound emails/month',
+                                '10 GB storage',
+                                '20 saved views',
+                                '1 knowledge base (50 articles)',
+                                '5 datasets',
+                                '15 workflows',
+                                '5,000 workflow runs/month',
+                              ].map((item, index) => (
+                                <li
+                                  key={index}
+                                  className='group flex items-center gap-2 first:font-medium'>
+                                  <Check
+                                    className='text-muted-foreground size-3 group-first:hidden'
+                                    strokeWidth={3.5}
+                                  />
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         </div>
                         <div className='@max-4xl:p-9 row-span-4 grid grid-rows-subgrid gap-8'>
                           <div className='self-end'>
-                            <CardTitle className='text-lg font-medium'>Startup</CardTitle>
+                            <CardTitle className='text-lg font-medium'>Growth</CardTitle>
                             <CardDescription className='text-muted-foreground mt-1 text-balance text-sm'>
-                              For startups that need more advanced features and support.
+                              Advanced features for scaling businesses
                             </CardDescription>
                           </div>
 
                           <div>
                             <NumberFlow
-                              value={prices.startup[billingPeriod]}
+                              value={prices.growth[billingPeriod]}
                               format={{
                                 style: 'currency',
                                 currency: 'USD',
@@ -183,33 +194,39 @@ export default function PricingSection() {
                             <div className='text-muted-foreground text-sm'>Per month</div>
                           </div>
                           <Button asChild variant='outline' className='w-full'>
-                            <Link href={urls.signup}>Get Started</Link>
+                            <Link href={urls.signup}>Start Free Trial</Link>
                           </Button>
 
-                          <ul role='list' className='space-y-3 text-sm'>
-                            {[
-                              'Everything in Pro Plan, plus:',
-                              '5GB Cloud Storage',
-                              'Email and Chat Support',
-                              'Multi-User Access',
-                              '1 Custom Report Per Month',
-                              'Monthly Product Updates',
-                              'Standard Security Features',
-                              'Access to Advanced Templates',
-                              'Access to Community Forum',
-                              'Mobile App Access',
-                            ].map((item, index) => (
-                              <li
-                                key={index}
-                                className='group flex items-center gap-2 first:font-medium'>
-                                <Check
-                                  className='text-muted-foreground size-3 group-first:hidden'
-                                  strokeWidth={3.5}
-                                />
-                                {item}
-                              </li>
-                            ))}
-                          </ul>
+                          <div>
+                            <div className='text-muted-foreground mb-3 text-xs'>
+                              14-day free trial
+                            </div>
+                            <ul role='list' className='space-y-3 text-sm'>
+                              {[
+                                'Everything in Starter, plus:',
+                                'Unlimited channels',
+                                '5,000 AI completions/month',
+                                '10,000 outbound emails/month',
+                                '50 GB storage',
+                                'Unlimited saved views',
+                                'Unlimited knowledge bases',
+                                'Unlimited datasets',
+                                '15,000 workflow runs/month',
+                                'API access (10,000 calls/month)',
+                                'Webhooks',
+                              ].map((item, index) => (
+                                <li
+                                  key={index}
+                                  className='group flex items-center gap-2 first:font-medium'>
+                                  <Check
+                                    className='text-muted-foreground size-3 group-first:hidden'
+                                    strokeWidth={3.5}
+                                  />
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -219,12 +236,10 @@ export default function PricingSection() {
                       <div className='@4xl:grid-cols-3 @max-4xl:divide-y @4xl:divide-x grid border-t *:p-8'>
                         <div className='space-y-6'>
                           <div className='self-end'>
-                            <CardTitle className='text-lg font-medium'>
-                              Enterprise Custom Plan
-                            </CardTitle>
+                            <CardTitle className='text-lg font-medium'>Enterprise</CardTitle>
                             <div className='text-muted-foreground mt-1 text-balance text-sm'>
-                              For large organizations with complex workflows and advanced reporting
-                              requirements.{' '}
+                              Custom solutions for large organizations with dedicated support and
+                              SLA guarantees.
                             </div>
                           </div>
                           <Button asChild variant='outline' className='@max-4xl:w-full'>
@@ -236,15 +251,14 @@ export default function PricingSection() {
                             role='list'
                             className='@4xl:grid-cols-2 grid gap-x-14 gap-y-3 text-sm'>
                             {[
-                              '1 Custom Report Per Month',
-                              'Standard Security Features',
-                              'Access to Advanced Templates',
-                              'Access to Community Forum',
-                              'Mobile App Access',
-                              'Custom Invoicing',
-                              'Custom User Roles',
-                              'Enhanced Reporting',
-                              'Priority Support',
+                              'Everything in Growth',
+                              'AI Agent',
+                              'SSO',
+                              'Unlimited API calls',
+                              'Unlimited storage',
+                              'Custom integrations',
+                              'Dedicated support',
+                              'SLA guarantee',
                             ].map((item, index) => (
                               <li key={index} className='flex items-center gap-2'>
                                 <Check className='text-muted-foreground size-3' strokeWidth={3.5} />

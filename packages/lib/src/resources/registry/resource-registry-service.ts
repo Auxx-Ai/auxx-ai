@@ -777,6 +777,7 @@ export class ResourceRegistryService {
         // DB field takes priority, enrich with static-only properties
         return {
           ...dbField,
+          key: staticField.key,
           dbColumn: staticField.dbColumn,
           dynamicOptionsKey: staticField.dynamicOptionsKey,
           operatorOverrides: staticField.operatorOverrides,
@@ -916,8 +917,8 @@ export class ResourceRegistryService {
         // Core identifiers
         id: fieldId,
         resourceFieldId,
-        // For system fields, use systemAttribute as key (e.g., 'title'); for custom fields use name
-        key: field.systemAttribute ?? field.name,
+        // Use field name as key — for system fields this gets overridden by static key during merge
+        key: field.name,
         label: field.name,
         type: baseType,
 

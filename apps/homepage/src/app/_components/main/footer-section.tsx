@@ -13,7 +13,7 @@ const links = [
     items: [
       {
         title: 'Platform',
-        href: '/platform',
+        href: '/platform/messaging',
       },
       {
         title: 'Getting started',

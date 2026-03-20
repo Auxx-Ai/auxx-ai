@@ -42,7 +42,15 @@ export type ValidationResult = ConditionValidationResult
  * @template TContext - The context type needed by the specific builder
  *                      (e.g., TableId for system, EntityQueryContext for entities)
  */
+export interface DroppedCondition {
+  fieldRef: string | string[]
+  reason: string
+}
+
 export abstract class BaseConditionBuilder<TContext> {
+  /** Conditions dropped during the last build call. Reset on each build. */
+  droppedConditions: DroppedCondition[] = []
+
   /**
    * Build WHERE SQL from flat conditions array
    */
@@ -51,9 +59,19 @@ export abstract class BaseConditionBuilder<TContext> {
       return undefined
     }
 
-    const sqlClauses = conditions
-      .map((condition) => this.conditionToSql(condition, context))
-      .filter((clause): clause is SQL<unknown> => Boolean(clause))
+    const results = conditions.map((condition) => {
+      const sqlResult = this.conditionToSql(condition, context)
+      if (!sqlResult) {
+        const fieldRef = condition.fieldId
+        this.droppedConditions.push({
+          fieldRef: Array.isArray(fieldRef) ? fieldRef : fieldRef,
+          reason: `could not resolve in ${this.constructor.name}`,
+        })
+      }
+      return sqlResult
+    })
+
+    const sqlClauses = results.filter((clause): clause is SQL<unknown> => Boolean(clause))
 
     if (sqlClauses.length === 0) {
       return undefined
@@ -70,6 +88,8 @@ export abstract class BaseConditionBuilder<TContext> {
    * Build WHERE SQL from grouped conditions
    */
   buildGroupedQuery(groups: ConditionGroup[], context: TContext): SQL<unknown> | undefined {
+    this.droppedConditions = []
+
     if (groups.length === 0) {
       return undefined
     }

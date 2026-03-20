@@ -61,10 +61,10 @@ export function MergeItemCard({ recordId, actions, className }: MergeItemCardPro
       )}
 
       {/* Name and secondary */}
-      <div className='flex-1 min-w-0'>
-        <span className='text-sm font-medium truncate'>{record?.displayName ?? 'Untitled'}</span>
+      <div className='flex-1 min-w-0 truncate'>
+        <span className='text-sm font-medium'>{record?.displayName ?? 'Untitled'}</span>
         {record?.secondaryDisplayValue ? (
-          <span className='text-xs text-muted-foreground truncate'>
+          <span className='ps-1 text-xs text-muted-foreground truncate'>
             {record.secondaryDisplayValue}
           </span>
         ) : null}

@@ -1,3 +1,4 @@
+// apps/homepage/src/app/_components/sections/plans-section.tsx
 'use client'
 import Link from 'next/link'
 import { type ReactNode, useState } from 'react'
@@ -7,7 +8,7 @@ import { useMedia } from '~/hooks/use-media'
 import { useConfig } from '~/lib/config-context'
 import { cn } from '~/lib/utils'
 
-const plans = ['free', 'pro', 'team'] as const
+const plans = ['free', 'starter', 'growth'] as const
 
 type PlanAvailability = boolean | string
 
@@ -27,237 +28,183 @@ type Category = {
 
 export default function PlansSection() {
   const config = useConfig()
-  const [activePlan, setActivePlan] = useState<Plan>('pro')
+  const [activePlan, setActivePlan] = useState<Plan>('starter')
   const isMedium = useMedia('(min-width: 768px)')
 
   const categories: Category[] = [
     {
-      name: 'Platform',
-      description: 'Core features that enable seamless operations of your SaaS',
+      name: 'Channels & Messaging',
+      description: 'Connect your support channels and manage customer communication',
       features: [
         {
-          name: 'Daily Exercises',
-          description: 'Engage users with daily interactive exercises.',
+          name: 'Connected channels',
+          description: 'Number of email inboxes and messaging channels you can connect.',
+          plans: {
+            free: '1',
+            starter: '3',
+            growth: 'Unlimited',
+          },
+        },
+        {
+          name: 'Outbound emails/month',
+          description: 'Maximum number of outbound emails you can send per month.',
+          plans: {
+            free: '100',
+            starter: '1,000',
+            growth: '10,000',
+          },
+        },
+        {
+          name: 'File attachments',
+          description: 'Attach files to tickets and messages.',
           plans: {
             free: true,
-            pro: true,
-            team: true,
-          },
-        },
-        {
-          name: 'Unlimited Storage',
-          description: 'Store unlimited data with no additional cost.',
-          plans: {
-            free: '2 GB',
-            pro: '100 GB',
-            team: 'Unlimited',
-          },
-        },
-        {
-          name: 'Custom Dashboards',
-          description: 'Create personalized dashboards for data visualization.',
-          plans: {
-            free: true,
-            pro: true,
-            team: true,
-          },
-        },
-        {
-          name: 'Self-paced Learning',
-          description: 'Empower users to learn at their own pace.',
-          plans: {
-            free: true,
-            pro: true,
-            team: true,
-          },
-        },
-        {
-          name: 'Ad-free Experience',
-          description: 'Provide an uninterrupted, ad-free environment.',
-          plans: {
-            free: false,
-            pro: true,
-            team: true,
-          },
-        },
-        {
-          name: 'Team Collaboration',
-          description: 'Enhance productivity with team collaboration tools.',
-          plans: {
-            free: false,
-            pro: false,
-            team: true,
+            starter: true,
+            growth: true,
           },
         },
       ],
     },
     {
-      name: 'Infrastructure',
-      description: 'Robust infrastructure to support your SaaS needs',
+      name: 'AI & Automation',
+      description: 'Automate your support workflows with AI-powered tools',
       features: [
         {
-          name: 'Global CDN',
-          description: 'Deliver content rapidly across the globe.',
+          name: 'AI completions/month',
+          description: 'AI-powered draft replies and analysis for your tickets.',
           plans: {
-            free: true,
-            pro: true,
-            team: 'Unlimited',
+            free: '50',
+            starter: '500',
+            growth: '5,000',
           },
         },
         {
-          name: 'Scalable Servers',
-          description: 'Automatically scale resources as demand grows.',
+          name: 'Workflows',
+          description: 'Automated workflows to route, tag, and respond to tickets.',
           plans: {
-            free: false,
-            pro: true,
-            team: 'Unlimited',
+            free: '3',
+            starter: '15',
+            growth: 'Unlimited',
           },
         },
         {
-          name: 'Data Backups',
-          description: 'Ensure data safety with regular backups.',
+          name: 'Workflow runs/month',
+          description: 'Number of automated workflow executions per month.',
           plans: {
-            free: false,
-            pro: '3 days',
-            team: '1 month',
+            free: '100',
+            starter: '5,000',
+            growth: '15,000',
           },
         },
         {
-          name: 'API Access',
-          description: 'Integrate seamlessly with third-party services.',
+          name: 'AI Agent',
+          description: 'Fully autonomous AI agent that handles tickets end-to-end.',
           plans: {
             free: false,
-            pro: true,
-            team: true,
-          },
-        },
-        {
-          name: '24/7 Monitoring',
-          description: 'Keep your platform running smoothly with constant monitoring.',
-          plans: {
-            free: false,
-            pro: true,
-            team: true,
-          },
-        },
-        {
-          name: 'Load Balancing',
-          description: 'Distribute traffic efficiently across servers.',
-          plans: {
-            free: false,
-            pro: false,
-            team: true,
+            starter: false,
+            growth: false,
           },
         },
       ],
     },
     {
-      name: 'Support',
-      description: 'Comprehensive support to assist your users',
+      name: 'Knowledge & Data',
+      description: 'Build your knowledge base and manage customer data',
       features: [
         {
-          name: 'Priority Support',
-          description: 'Get fast-track assistance for urgent issues.',
+          name: 'Knowledge bases',
+          description: 'Self-service help centers for your customers.',
           plans: {
             free: false,
-            pro: true,
-            team: true,
+            starter: '1',
+            growth: 'Unlimited',
           },
         },
         {
-          name: 'Live Chat',
-          description: 'Provide real-time support via chat.',
+          name: 'Published articles',
+          description: 'Number of published help articles.',
           plans: {
             free: false,
-            pro: true,
-            team: true,
+            starter: '50',
+            growth: 'Unlimited',
           },
         },
         {
-          name: 'Knowledge Base',
-          description: 'Access a rich repository of self-help articles.',
-          plans: {
-            free: true,
-            pro: false,
-            team: true,
-          },
-        },
-        {
-          name: 'Onboarding Assistance',
-          description: 'Ensure smooth onboarding with expert guidance.',
+          name: 'Datasets',
+          description: 'Structured data collections for AI context and automation.',
           plans: {
             free: false,
-            pro: '1 hour',
-            team: '12 hours',
+            starter: '5',
+            growth: 'Unlimited',
           },
         },
         {
-          name: 'Community Forums',
-          description: 'Engage in community discussions and support.',
+          name: 'Custom entities',
+          description: 'Define custom data types to model your business.',
           plans: {
-            free: true,
-            pro: true,
-            team: true,
+            free: '3',
+            starter: '10',
+            growth: 'Unlimited',
           },
         },
         {
-          name: 'Dedicated Account Manager',
-          description: 'Receive personalized service and support.',
+          name: 'Storage',
+          description: 'File storage for attachments and uploads.',
           plans: {
-            free: false,
-            pro: false,
-            team: true,
+            free: '1 GB',
+            starter: '10 GB',
+            growth: '50 GB',
           },
         },
       ],
     },
     {
-      name: 'Analytics',
-      description: 'Advanced analytics to drive data-driven decisions',
+      name: 'Team & Platform',
+      description: 'Collaborate with your team and integrate with your stack',
       features: [
         {
-          name: 'Real-time Reports',
-          description: 'Generate instant reports to track performance.',
+          name: 'Team members',
+          description: 'Number of team members who can access the platform.',
           plans: {
-            free: false,
-            pro: true,
-            team: true,
+            free: '1',
+            starter: 'Unlimited',
+            growth: 'Unlimited',
           },
         },
         {
-          name: 'User Insights',
-          description: 'Analyze user behavior to improve engagement.',
+          name: 'Saved views',
+          description: 'Custom filtered views of your ticket queue.',
           plans: {
-            free: false,
-            pro: true,
-            team: true,
+            free: '5',
+            starter: '20',
+            growth: 'Unlimited',
           },
         },
         {
-          name: 'Custom Metrics',
-          description: 'Define and track metrics that matter to you.',
+          name: 'API access',
+          description: 'Programmatic access to your data via REST API.',
           plans: {
             free: false,
-            pro: '10',
-            team: 'Unlimited',
+            starter: false,
+            growth: true,
           },
         },
         {
-          name: 'A/B Testing',
-          description: 'Optimize features through controlled experiments.',
+          name: 'Webhooks',
+          description: 'Real-time event notifications to external services.',
           plans: {
             free: false,
-            pro: false,
-            team: true,
+            starter: false,
+            growth: true,
           },
         },
         {
-          name: 'Predictive Analytics',
-          description: 'Leverage AI to predict future trends.',
+          name: 'SSO',
+          description: 'Single sign-on for enterprise identity providers.',
           plans: {
             free: false,
-            pro: false,
-            team: true,
+            starter: false,
+            growth: false,
           },
         },
       ],
@@ -270,35 +217,41 @@ export default function PlansSection() {
         <Link href={config.urls.signup}>Get Started</Link>
       </Button>
     ),
-    pro: (
+    starter: (
       <Button className='lg:w-full' size='sm' asChild>
-        <Link href={config.urls.signup}>Start a free trial</Link>
+        <Link href={config.urls.signup}>Start Free Trial</Link>
       </Button>
     ),
-    team: (
+    growth: (
       <Button className='lg:w-full' size='sm' asChild>
-        <Link href={`mailto:${config.emails.sales}`}>Contact Us</Link>
+        <Link href={config.urls.signup}>Start Free Trial</Link>
       </Button>
     ),
   }
 
   const prices: Record<Plan, string> = {
-    free: '0$ / month',
-    pro: '15$ / month',
-    team: 'Custom',
+    free: '$0 / month',
+    starter: '$20 / month',
+    growth: '$50 / month',
   }
 
   const renderPlanColumn = (plan: Plan) => {
+    const planNames: Record<Plan, string> = {
+      free: 'Free',
+      starter: 'Starter',
+      growth: 'Growth',
+    }
+
     const header =
-      plan === 'pro' ? (
+      plan === 'starter' ? (
         <div className='bg-muted sticky top-0 flex h-36 flex-col justify-center rounded-t-xl border-b px-4 max-md:hidden lg:px-6'>
-          <div className='text-lg font-medium'>Pro</div>
-          <div className='text-muted-foreground mb-4 mt-0.5'>15$ / month</div>
+          <div className='text-lg font-medium'>Starter</div>
+          <div className='text-muted-foreground mb-4 mt-0.5'>{prices[plan]}</div>
           {plansActions[plan]}
         </div>
       ) : (
         <div className='bg-background sticky top-0 flex h-36 flex-col justify-center border-b px-4 pt-2 max-md:hidden lg:px-8'>
-          <div className='text-lg font-medium'>{plan === 'free' ? 'Free' : 'Business'}</div>
+          <div className='text-lg font-medium'>{planNames[plan]}</div>
           <div className='text-muted-foreground mb-4 mt-0.5'>{prices[plan]}</div>
           <div className='[--color-primary-foreground:var(--color-background)] [--color-primary:var(--color-foreground)]'>
             {plansActions[plan]}
@@ -310,7 +263,7 @@ export default function PlansSection() {
       <div
         data-plan={plan}
         className={cn(
-          plan === 'pro' && 'z-1 md:bg-muted md:ring-muted relative md:rounded-xl md:ring-1'
+          plan === 'starter' && 'z-1 md:bg-muted md:ring-muted relative md:rounded-xl md:ring-1'
         )}>
         {header}
         {categories.map((category, index) => (
@@ -320,7 +273,7 @@ export default function PlansSection() {
               {category.features.map((feature, index) => (
                 <div
                   key={index}
-                  className='lg:in-data-[plan=pro]:px-6 flex h-14 items-center border-t px-6 text-sm last:h-[calc(3.5rem+1px)] last:border-b max-md:justify-center max-md:border-l md:px-4 lg:px-8'>
+                  className='lg:in-data-[plan=starter]:px-6 flex h-14 items-center border-t px-6 text-sm last:h-[calc(3.5rem+1px)] last:border-b max-md:justify-center max-md:border-l md:px-4 lg:px-8'>
                   <div>
                     {feature.plans[plan] === true ? (
                       <Indicator checked />
