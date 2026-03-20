@@ -95,7 +95,13 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                 <FormItem>
                   <FormLabel>New Password</FormLabel>
                   <FormControl>
-                    <Input type='password' placeholder='••••••••' {...field} disabled={isLoading} />
+                    <Input
+                      type='password'
+                      placeholder='••••••••'
+                      autoFocus
+                      {...field}
+                      disabled={isLoading}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

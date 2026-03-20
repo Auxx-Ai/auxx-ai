@@ -43,7 +43,7 @@ function resolveFromResourceStore(resourceFieldId: string): FieldDefinition | un
     type: field.type,
     fieldType: field.fieldType,
     operators: getFieldOperators(field) as any[],
-    options: field.options?.options,
+    options: field.options,
     fieldKey: field.key,
     fieldReference: field.resourceFieldId,
     targetEntityDefinitionId: field.relationship

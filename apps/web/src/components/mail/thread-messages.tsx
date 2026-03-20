@@ -40,7 +40,8 @@ export function ThreadMessages() {
     <div className='flex flex-col overflow-y-auto'>
       <div className='flex flex-1 flex-col space-y-4'>
         {/* Email messages */}
-        <div className='flex flex-col gap-4 px-4 py-2'>
+        <div
+          className={`flex flex-col gap-4 px-4 py-2 ${thread.status === 'TRASH' ? 'opacity-50' : ''}`}>
           {messages.map((message, index) => {
             // Check if this is the last message in the array
             const isLastMessage = index === messages.length - 1

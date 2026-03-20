@@ -502,7 +502,7 @@ export function EntityTemplateDialog({
                     <Button variant='ghost' size='sm'>
                       Entity templates
                     </Button>
-                    <DialogTitle className='sr-only'>Create from Template</DialogTitle>
+                    <DialogTitle className='sr-only'>Create from template</DialogTitle>
                     <DialogDescription className='sr-only'>
                       Select an entity template to scaffold
                     </DialogDescription>

@@ -325,13 +325,13 @@ export function EntitySidebarNav() {
               <DropdownMenuSeparator />
               {/* <DropdownMenuLabel>Create Entity</DropdownMenuLabel> */}
               <DropdownMenuItem onClick={handleCreateFromBlank}>
-                <Plus /> Create Entity
+                <Plus /> Create entity
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={handleCreateFromTemplate}
                 className='data-highlighted:bg-[#ffaa40]/10'>
                 <LayoutTemplate className='text-[#ffaa40]' />{' '}
-                <AnimatedGradientText>Create From Template</AnimatedGradientText>
+                <AnimatedGradientText>Create from template</AnimatedGradientText>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>

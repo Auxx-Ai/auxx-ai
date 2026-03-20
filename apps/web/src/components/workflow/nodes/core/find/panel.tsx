@@ -95,7 +95,7 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
       fieldType: field.fieldType,
       fieldKey: field.key,
       operators: field.operatorOverrides || getFieldOperators(field),
-      options: field.options?.options,
+      options: field.options,
       ...(field.type === BaseType.RELATION &&
         field.relationship && {
           fieldReference: toResourceFieldId(nodeData.resourceType, field.key),

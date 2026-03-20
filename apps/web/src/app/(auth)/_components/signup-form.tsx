@@ -319,6 +319,7 @@ export function SignUpForm() {
                                 <Input
                                   type='email'
                                   placeholder='your@email.com'
+                                  autoFocus
                                   {...field}
                                   disabled={isLoading}
                                   onChange={(e) => {
@@ -456,7 +457,11 @@ export function SignUpForm() {
 
                     <form onSubmit={handleVerifyOtp}>
                       <div className='flex items-center justify-center'>
-                        <InputOTP maxLength={6} value={otp} onChange={(value) => setOtp(value)}>
+                        <InputOTP
+                          maxLength={6}
+                          value={otp}
+                          onChange={(value) => setOtp(value)}
+                          autoFocus>
                           <InputOTPGroup>
                             <InputOTPSlot index={0} />
                             <InputOTPSlot index={1} />

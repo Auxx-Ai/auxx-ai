@@ -110,6 +110,7 @@ export function ForgotPasswordForm() {
                       <Input
                         type='email'
                         placeholder='your@email.com'
+                        autoFocus
                         {...field}
                         disabled={isLoading} // Disable input while loading
                       />

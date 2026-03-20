@@ -3,6 +3,7 @@
 
 import type { ActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
+import { Alert } from '@auxx/ui/components/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -14,6 +15,8 @@ import {
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import {
   Archive,
+  ArchiveRestore,
+  MailCheck,
   MailWarning,
   MoreHorizontal,
   PackageOpen,
@@ -68,6 +71,7 @@ export function ThreadHeader() {
   // Derive state
   const isDone = thread?.status === 'ARCHIVED'
   const isTrash = thread?.status === 'TRASH'
+  const isSpam = thread?.status === 'SPAM'
 
   // Local state for tag popover
   const [open, setOpen] = useState(false)
@@ -82,6 +86,14 @@ export function ThreadHeader() {
     if (!thread) return
     await handlers.updateStatus(!isDone)
   }, [thread, isDone, handlers])
+
+  /**
+   * Handle restore from trash/spam back to open
+   */
+  const handleRestore = useCallback(async () => {
+    if (!thread) return
+    await mutations.unarchiveThread()
+  }, [thread, mutations])
 
   /**
    * Handle move to trash with confirmation
@@ -224,26 +236,26 @@ export function ThreadHeader() {
               </Button>
             </Tooltip>
 
-            <Tooltip content='Trash Thread'>
+            <Tooltip content={isTrash ? 'Restore from trash' : 'Trash Thread'}>
               <Button
                 variant='ghost'
                 size='icon'
                 disabled={!thread}
-                onClick={handleMarkTrash}
+                onClick={isTrash ? handleRestore : handleMarkTrash}
                 className='rounded-full hover:bg-foreground/10'>
-                <Trash />
-                <span className='sr-only'>Delete</span>
+                {isTrash ? <ArchiveRestore /> : <Trash />}
+                <span className='sr-only'>{isTrash ? 'Restore' : 'Delete'}</span>
               </Button>
             </Tooltip>
-            <Tooltip content='Mark as spam'>
+            <Tooltip content={isSpam ? 'Not spam' : 'Mark as spam'}>
               <Button
                 variant='ghost'
                 size='icon'
                 disabled={!thread}
-                onClick={handleMarkSpam}
+                onClick={isSpam ? handleRestore : handleMarkSpam}
                 className='rounded-full hover:bg-foreground/10'>
-                <MailWarning />
-                <span className='sr-only'>Mark as spam</span>
+                {isSpam ? <MailCheck /> : <MailWarning />}
+                <span className='sr-only'>{isSpam ? 'Not spam' : 'Mark as spam'}</span>
               </Button>
             </Tooltip>
 
@@ -372,6 +384,35 @@ export function ThreadHeader() {
           )}
         </div>
       </div>
+
+      {isTrash && (
+        <div className='px-4 mt-2'>
+          <Alert variant='destructive' className='flex items-center justify-between'>
+            <div className='flex items-center gap-2'>
+              <Trash className='size-4' />
+              <span>This thread is in the trash</span>
+            </div>
+            <div className='flex items-center gap-1'>
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={handleRestore}
+                className='h-7 text-destructive hover:text-destructive'>
+                <ArchiveRestore className='size-3.5' />
+                Restore
+              </Button>
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={handlePermanentlyDelete}
+                className='h-7 text-destructive hover:text-destructive'>
+                <Trash className='size-3.5' />
+                Delete forever
+              </Button>
+            </div>
+          </Alert>
+        </div>
+      )}
     </>
   )
 }

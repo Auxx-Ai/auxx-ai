@@ -4,7 +4,7 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { Check, Database, X } from 'lucide-react'
+import { Check, Database, Download } from 'lucide-react'
 import { useMemo } from 'react'
 import { useResources } from '~/components/resources/hooks'
 
@@ -22,10 +22,7 @@ interface RequiredEntity {
 
 interface EntityRequirementsStepProps {
   requiredEntities: RequiredEntity[]
-  onInstallEntities: (templateIds: string[]) => void
-  onSkip: () => void
-  onContinue: () => void
-  isInstalling?: boolean
+  onInstallEntity: (templateId: string) => void
 }
 
 /**
@@ -34,25 +31,22 @@ interface EntityRequirementsStepProps {
  */
 export function EntityRequirementsStep({
   requiredEntities,
-  onInstallEntities,
-  onSkip,
-  onContinue,
-  isInstalling,
+  onInstallEntity,
 }: EntityRequirementsStepProps) {
-  const { getResourceById } = useResources()
+  const { resources, getResourceById } = useResources()
 
   // Client-side resolution: check which entities exist using the same
-  // approach as EntityTemplateDialog (apiSlug lookup via useResources)
+  // approach as EntityTemplateDialog (apiSlug lookup via useResources).
+  // `resources` is included as a dependency because `getResourceById` is a
+  // stable function ref from Zustand and won't trigger recomputation alone.
   const entityStatuses = useMemo(() => {
     return requiredEntities.map((req) => {
       const isSystem = req.entityTemplateId.startsWith('__system:')
 
       if (isSystem) {
-        // System entities always exist
         return { ...req, status: 'ready' as const }
       }
 
-      // Check if entity exists by apiSlug (same as EntityTemplateDialog conflict detection)
       const existing = getResourceById(req.apiSlug)
       if (existing) {
         return { ...req, status: 'ready' as const }
@@ -60,87 +54,47 @@ export function EntityRequirementsStep({
 
       return { ...req, status: 'missing' as const }
     })
-  }, [requiredEntities, getResourceById])
-
-  const missingEntities = entityStatuses.filter((e) => e.status === 'missing')
-  const hasMissing = missingEntities.length > 0
+  }, [requiredEntities, resources, getResourceById])
 
   return (
-    <div className='space-y-4'>
-      <div>
-        <h3 className='text-sm font-medium'>Entity Requirements</h3>
-        <p className='text-xs text-muted-foreground mt-1'>
-          This workflow uses custom entities. Review their status below.
-        </p>
-      </div>
+    <div className='space-y-2'>
+      {entityStatuses.map((entity) => (
+        <div
+          key={entity.entityTemplateId}
+          className='flex items-center justify-between rounded-lg border p-2'>
+          <div className='flex items-center gap-2'>
+            {entity.icon ? (
+              <EntityIcon iconId={entity.icon} color={entity.color} size='xs' inverse />
+            ) : (
+              <Database className='size-4 text-muted-foreground shrink-0' />
+            )}
+            <span className='text-sm'>
+              {entity.name || entity.entityTemplateId || entity.apiSlug}
+            </span>
+            {!entity.required && (
+              <Badge variant='outline' className='text-xs'>
+                Optional
+              </Badge>
+            )}
+          </div>
 
-      <div className='space-y-2'>
-        {entityStatuses.map((entity) => {
-          const isSystem = entity.entityTemplateId.startsWith('__system:')
-
-          return (
-            <div
-              key={entity.entityTemplateId}
-              className='flex items-center gap-3 rounded-lg border p-2.5'>
-              {entity.icon ? (
-                <EntityIcon iconId={entity.icon} color={entity.color} size='xs' inverse />
-              ) : (
-                <Database className='size-4 text-muted-foreground shrink-0' />
-              )}
-
-              <div className='flex-1 min-w-0'>
-                <div className='flex items-center gap-2'>
-                  <span className='text-sm font-medium truncate'>
-                    {entity.name || entity.entityTemplateId || entity.apiSlug}
-                  </span>
-                  {isSystem && (
-                    <Badge variant='secondary' className='text-xs'>
-                      System
-                    </Badge>
-                  )}
-                  {!entity.required && (
-                    <Badge variant='outline' className='text-xs'>
-                      Optional
-                    </Badge>
-                  )}
-                </div>
-              </div>
-
-              {entity.status === 'missing' ? (
-                <Badge variant='destructive' className='text-xs shrink-0'>
-                  <X className='size-3' /> Not found
-                </Badge>
-              ) : (
-                <Badge variant='secondary' className='text-xs shrink-0'>
-                  <Check className='size-3' /> Ready
-                </Badge>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Actions: only show buttons when there are issues */}
-      {hasMissing ? (
-        <div className='flex gap-2'>
-          <Button
-            size='sm'
-            onClick={() => onInstallEntities(missingEntities.map((e) => e.entityTemplateId))}
-            loading={isInstalling}
-            loadingText='Installing...'>
-            Install Entities
-          </Button>
-          <Button variant='outline' size='sm' onClick={onSkip}>
-            Skip
-          </Button>
+          {entity.status === 'missing' ? (
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-6 text-xs'
+              onClick={() => onInstallEntity(entity.entityTemplateId)}>
+              <Download className='size-3' />
+              Install
+            </Button>
+          ) : (
+            <Badge variant='gray'>
+              <Check className='mr-1' />
+              Installed
+            </Badge>
+          )}
         </div>
-      ) : (
-        // All resolved — no button here, parent's "Use this template" handles creation
-        <div className='flex items-center gap-2 text-xs text-emerald-600'>
-          <Check className='size-3.5' />
-          <span>All entities are ready</span>
-        </div>
-      )}
+      ))}
     </div>
   )
 }
