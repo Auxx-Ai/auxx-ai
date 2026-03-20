@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.95](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.94...auxx-v0.1.95) (2026-03-20)
+
+
+### Features
+
+* implement inline app install button and enhance extensions context for installation management ([#306](https://github.com/Auxx-Ai/auxx-ai/issues/306)) ([ba2829c](https://github.com/Auxx-Ai/auxx-ai/commit/ba2829c0b6a66fb8ec5d023f07ca675692be7860))
+* update demo login button and enhance demo page step progression ([#304](https://github.com/Auxx-Ai/auxx-ai/issues/304)) ([13e7299](https://github.com/Auxx-Ai/auxx-ai/commit/13e7299f322ab2eb824e0e1c94561aa083e553bf))
+
 ## [0.1.94](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.93...auxx-v0.1.94) (2026-03-19)
 
 
