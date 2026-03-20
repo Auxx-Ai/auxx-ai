@@ -264,6 +264,14 @@ export const selectHasActiveConditions = (state: SearchState): boolean => {
 }
 
 /**
+ * Check if scope is set to something other than the default (this_mailbox).
+ */
+export const selectHasNonDefaultScope = (state: SearchState): boolean => {
+  const scope = state.conditions.find((c) => c.fieldId === SEARCH_SCOPE_FIELD_ID)
+  return scope?.operator !== 'this_mailbox'
+}
+
+/**
  * Count the number of active conditions (excluding scope).
  */
 export const selectConditionCount = (state: SearchState): number => {

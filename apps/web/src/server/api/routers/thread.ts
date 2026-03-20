@@ -50,6 +50,7 @@ const SendMessageInputSchema = z.object({
   attachments: z.array(FileAttachmentSchema).optional(), // File attachments to attach
   draftMessageId: z.string().nullish(), // Optional ID of draft being sent
   includePreviousMessage: z.boolean().optional(), // Include previous message content
+  linkTicketId: z.string().nullish(), // Auto-link new thread to ticket after send
 })
 // --- Helper Functions ---
 /**
@@ -312,6 +313,27 @@ export const threadRouter = createTRPCRouter({
           draftId: input.draftMessageId,
         })
         const sentMessage = await messageSender.sendMessage(senderInput)
+
+        // Auto-link thread to ticket if linkTicketId is provided
+        if (input.linkTicketId && sentMessage.threadId) {
+          try {
+            await ctx.db
+              .update(schema.Thread)
+              .set({ ticketId: input.linkTicketId })
+              .where(eq(schema.Thread.id, sentMessage.threadId))
+            logger.info('Auto-linked new thread to ticket', {
+              threadId: sentMessage.threadId,
+              ticketId: input.linkTicketId,
+            })
+          } catch (linkError) {
+            // Non-fatal: message was sent, link failure is acceptable
+            logger.warn('Failed to auto-link thread to ticket', {
+              threadId: sentMessage.threadId,
+              ticketId: input.linkTicketId,
+              error: linkError instanceof Error ? linkError.message : String(linkError),
+            })
+          }
+        }
 
         // Clean up draft after successful send
         if (draftMessageId) {
@@ -603,5 +625,96 @@ export const threadRouter = createTRPCRouter({
           message: 'Failed to retry message send',
         })
       }
+    }),
+
+  // ═══════════════════════════════════════════════════════════════
+  // TICKET LINKING
+  // ═══════════════════════════════════════════════════════════════
+
+  linkToTicket: protectedProcedure
+    .input(z.object({ threadId: z.string(), ticketId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = getServiceDependencies(ctx)
+
+      // Verify thread belongs to org
+      const [thread] = await ctx.db
+        .select({ id: schema.Thread.id })
+        .from(schema.Thread)
+        .where(
+          and(
+            eq(schema.Thread.id, input.threadId),
+            eq(schema.Thread.organizationId, organizationId)
+          )
+        )
+        .limit(1)
+
+      if (!thread) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
+      }
+
+      // Verify ticket entity instance belongs to org
+      const [ticket] = await ctx.db
+        .select({ id: schema.EntityInstance.id })
+        .from(schema.EntityInstance)
+        .where(
+          and(
+            eq(schema.EntityInstance.id, input.ticketId),
+            eq(schema.EntityInstance.organizationId, organizationId)
+          )
+        )
+        .limit(1)
+
+      if (!ticket) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Ticket not found' })
+      }
+
+      await ctx.db
+        .update(schema.Thread)
+        .set({ ticketId: input.ticketId })
+        .where(eq(schema.Thread.id, input.threadId))
+
+      logger.info('Thread linked to ticket', {
+        threadId: input.threadId,
+        ticketId: input.ticketId,
+        userId,
+        organizationId,
+      })
+
+      return { success: true }
+    }),
+
+  unlinkFromTicket: protectedProcedure
+    .input(z.object({ threadId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = getServiceDependencies(ctx)
+
+      // Verify thread belongs to org
+      const [thread] = await ctx.db
+        .select({ id: schema.Thread.id })
+        .from(schema.Thread)
+        .where(
+          and(
+            eq(schema.Thread.id, input.threadId),
+            eq(schema.Thread.organizationId, organizationId)
+          )
+        )
+        .limit(1)
+
+      if (!thread) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
+      }
+
+      await ctx.db
+        .update(schema.Thread)
+        .set({ ticketId: null })
+        .where(eq(schema.Thread.id, input.threadId))
+
+      logger.info('Thread unlinked from ticket', {
+        threadId: input.threadId,
+        userId,
+        organizationId,
+      })
+
+      return { success: true }
     }),
 })

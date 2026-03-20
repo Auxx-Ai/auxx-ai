@@ -13,9 +13,11 @@ import type { ThreadMeta } from '../store'
  */
 export const threadFieldResolver: FieldResolver<ThreadMeta> = (thread, fieldId) => {
   switch (fieldId) {
-    // Status fields
+    // Status — return raw DB value (OPEN, ARCHIVED, TRASH, SPAM).
+    // Virtual values (assigned, unassigned, done) are handled by normalizeStatusConditions
+    // which expands them into DB-level status + assignee conditions before evaluation.
     case 'status':
-      return thread.status
+      return thread.status ?? null
 
     // Inbox field - return instance ID for comparison
     case 'inbox':

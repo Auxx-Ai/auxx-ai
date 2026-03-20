@@ -211,6 +211,33 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
         return this.combineColumnPredicates(columns, (col) => notInArray(col, values), 'and')
       }
 
+      // ===== DATE (same-day) =====
+      case 'on_date': {
+        if (rawValue === null || rawValue === undefined) return undefined
+        const date = new Date(rawValue)
+        const startOfDay = new Date(date)
+        startOfDay.setHours(0, 0, 0, 0)
+        const endOfDay = new Date(date)
+        endOfDay.setHours(23, 59, 59, 999)
+        return this.combineColumnPredicates(columns, (col) =>
+          and(gte(col, startOfDay), lte(col, endOfDay))
+        )
+      }
+
+      case 'not_on_date': {
+        if (rawValue === null || rawValue === undefined) return undefined
+        const date = new Date(rawValue)
+        const startOfDay = new Date(date)
+        startOfDay.setHours(0, 0, 0, 0)
+        const endOfDay = new Date(date)
+        endOfDay.setHours(23, 59, 59, 999)
+        return this.combineColumnPredicates(
+          columns,
+          (col) => or(lt(col, startOfDay), gt(col, endOfDay)),
+          'and'
+        )
+      }
+
       // ===== EXISTENCE =====
       case 'empty': {
         return this.combineColumnPredicates(columns, (col) => or(isNull(col), eq(col, '')), 'and')

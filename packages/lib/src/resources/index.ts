@@ -70,6 +70,7 @@ export {
   getCreatableFields,
   getField,
   getFieldOperators,
+  getFieldOutputKey,
   getFilterableFields,
   getReadOnlyFields,
   getRequiredFields,

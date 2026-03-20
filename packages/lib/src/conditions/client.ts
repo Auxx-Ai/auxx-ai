@@ -4,7 +4,7 @@
 // This allows tree-shaking and separate bundling if needed
 
 // Condition evaluation (pure TypeScript, safe for client)
-export { evaluateConditions, type FieldResolver } from './evaluate'
+export { evaluateConditions, type FieldResolver, normalizeStatusConditions } from './evaluate'
 export type { FieldInputConfig } from './field-input-modes'
 // Field input modes for resource-based conditions
 export { FieldInputMode, resolveFieldInputConfig } from './field-input-modes'

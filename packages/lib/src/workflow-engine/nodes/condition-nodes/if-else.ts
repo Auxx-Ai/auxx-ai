@@ -424,12 +424,14 @@ export class IfElseProcessor extends BaseNodeProcessor {
     }
 
     switch (operator) {
-      case 'is': {
+      case 'is':
+      case 'on_date': {
         const targetDate = parseDate(compareValue)
         return targetDate ? isSameDay(date, targetDate) : false
       }
 
-      case 'is not': {
+      case 'is not':
+      case 'not_on_date': {
         const targetDate = parseDate(compareValue)
         return targetDate ? !isSameDay(date, targetDate) : true
       }

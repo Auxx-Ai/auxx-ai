@@ -125,13 +125,6 @@ export type TicketUnassignedEvent = AuxxEventGeneric<
     eventData: Record<string, unknown>
   }
 >
-export type TicketReplyCreatedEvent = AuxxEventGeneric<
-  'ticket:reply:created',
-  {
-    ticketId: string
-    organizationId: string
-  }
->
 export type MessageReceivedEvent = AuxxEventGeneric<
   'message:received',
   {
@@ -638,7 +631,6 @@ export type AuxxEvent =
   | TicketStatusChangedEvent
   | TicketAssignedEvent
   | TicketUnassignedEvent
-  | TicketReplyCreatedEvent
   | MessageReceivedEvent
   | MessageSentEvent
   | MessageFailedEvent
@@ -697,7 +689,6 @@ export interface IEventsHandlers {
   'ticket:status:changed': EventHandler<TicketStatusChangedEvent>[]
   'ticket:assignee:added': EventHandler<TicketAssignedEvent>[]
   'ticket:assignee:removed': EventHandler<TicketUnassignedEvent>[]
-  'ticket:reply:created': EventHandler<TicketReplyCreatedEvent>[]
   'messages:sync:pending': EventHandler<MessageSyncPendingEvent>[]
   'messages:sync:processing': EventHandler<MessageSyncProcessingEvent>[]
   'messages:sync:complete': EventHandler<MessageSyncCompleteEvent>[]

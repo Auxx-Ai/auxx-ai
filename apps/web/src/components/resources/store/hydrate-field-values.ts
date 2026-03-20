@@ -2,7 +2,12 @@
 
 import type { FieldType } from '@auxx/database/types'
 import { formatToTypedInput } from '@auxx/lib/field-values/client'
-import { isComputedField, type RecordId, type Resource } from '@auxx/lib/resources/client'
+import {
+  getFieldOutputKey,
+  isComputedField,
+  type RecordId,
+  type Resource,
+} from '@auxx/lib/resources/client'
 import { buildFieldValueKey, type StoredFieldValue, useFieldValueStore } from './field-value-store'
 
 interface HydrationOptions {
@@ -34,8 +39,8 @@ export function hydrateFieldValues({ resource, recordId, recordData }: Hydration
         field.sourceFields.map((sourceKey) => [sourceKey, recordData[sourceKey] ?? ''])
       )
     } else {
-      // Regular field - get value from dbColumn or key
-      const valueKey = field.dbColumn || field.key
+      // Regular field - get value from dbColumn or output key
+      const valueKey = field.dbColumn || getFieldOutputKey(field)
       rawValue = recordData[valueKey]
     }
 
@@ -60,7 +65,7 @@ export function hydrateFieldValues({ resource, recordId, recordData }: Hydration
 
     if (typedValue !== null) {
       // Use buildFieldValueKey with RecordId directly
-      const storeKey = buildFieldValueKey(recordId, field.key)
+      const storeKey = buildFieldValueKey(recordId, getFieldOutputKey(field))
       entries.push({ key: storeKey, value: typedValue as StoredFieldValue })
     }
   }
@@ -91,7 +96,7 @@ export function hydrateMultipleRecords(
           field.sourceFields.map((sourceKey) => [sourceKey, record.data[sourceKey] ?? ''])
         )
       } else {
-        const valueKey = field.key
+        const valueKey = getFieldOutputKey(field)
         rawValue = record.data[valueKey]
       }
       // console.log('Hydrating field', {
@@ -117,7 +122,7 @@ export function hydrateMultipleRecords(
       })
 
       if (typedValue !== null) {
-        const storeKey = buildFieldValueKey(record.recordId, field.key)
+        const storeKey = buildFieldValueKey(record.recordId, getFieldOutputKey(field))
         allEntries.push({ key: storeKey, value: typedValue as StoredFieldValue })
       }
     }

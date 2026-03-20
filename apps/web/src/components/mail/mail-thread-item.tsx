@@ -1,7 +1,7 @@
 // apps/web/src/components/mail/mail-thread-item.tsx
 'use client'
 
-import { evaluateConditions } from '@auxx/lib/conditions/client'
+import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditions/client'
 import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -131,11 +131,17 @@ export const MailThreadItem = memo(function MailThreadItem({
   const { update, isUpdating } = useThreadMutation()
 
   // --- Client-side filtering for optimistic updates ---
+  // Normalize virtual status values (assigned/unassigned/done) into DB-level conditions
+  const normalizedConditions = useMemo(
+    () => normalizeStatusConditions(filterConditions),
+    [filterConditions]
+  )
+
   // Evaluate if this thread matches the current filter conditions
   const matchesFilter = useMemo(() => {
     if (!thread) return true // Show loading state
-    return evaluateConditions(thread, filterConditions, threadFieldResolver)
-  }, [thread, filterConditions])
+    return evaluateConditions(thread, normalizedConditions, threadFieldResolver)
+  }, [thread, normalizedConditions])
 
   // Draft status is now embedded in ThreadMeta
   const hasDraft = (thread?.draftIds?.length ?? 0) > 0

@@ -80,6 +80,7 @@ export type {
   FieldValidation,
   ResourceField,
 } from './registry/field-types'
+export { getFieldOutputKey } from './registry/field-types'
 // Field utility functions (client-safe)
 export {
   getDisplayFields,

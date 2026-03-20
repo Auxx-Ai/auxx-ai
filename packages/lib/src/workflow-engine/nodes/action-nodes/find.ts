@@ -13,6 +13,7 @@ import {
   RESOURCE_FIELD_REGISTRY,
 } from '../../../resources/registry'
 import type { TableId } from '../../../resources/registry/field-registry'
+import { getFieldOutputKey } from '../../../resources/registry/field-types'
 import { executeResourceQuery } from '../../../resources/resource-fetcher'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
@@ -872,7 +873,9 @@ export class FindProcessor extends BaseNodeProcessor {
           return
         }
 
-        const field = resourceConfig.filterableFields.find((f: any) => f.key === condition.fieldId)
+        const field = resourceConfig.filterableFields.find(
+          (f: any) => getFieldOutputKey(f) === condition.fieldId || f.key === condition.fieldId
+        )
         if (!field) {
           errors.push(
             `Flat Condition ${index + 1}: Invalid field "${condition.fieldId}" for ${config.resourceType}`
@@ -948,7 +951,7 @@ export class FindProcessor extends BaseNodeProcessor {
           }
 
           const field = resourceConfig.filterableFields.find(
-            (f: any) => f.key === condition.fieldId
+            (f: any) => getFieldOutputKey(f) === condition.fieldId || f.key === condition.fieldId
           )
           if (!field) {
             errors.push(
@@ -1005,7 +1008,8 @@ export class FindProcessor extends BaseNodeProcessor {
     if (config.orderBy && config.resourceType && isSystemResource) {
       const resourceConfig = FIND_RESOURCE_CONFIGS[config.resourceType as TableId]!
       const sortableField = resourceConfig.sortableFields.find(
-        (f: any) => f.key === config.orderBy!.field
+        (f: any) =>
+          getFieldOutputKey(f) === config.orderBy!.field || f.key === config.orderBy!.field
       )
       if (!sortableField) {
         errors.push(

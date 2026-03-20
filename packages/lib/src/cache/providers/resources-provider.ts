@@ -2,7 +2,7 @@
 
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
-import type { ResourceField } from '../../resources/registry/field-types'
+import { getFieldOutputKey, type ResourceField } from '../../resources/registry/field-types'
 import { computeAllResources } from '../../resources/registry/resource-registry-compute'
 import type { Resource } from '../../resources/registry/types'
 import { ArrayAccessor } from '../accessors'
@@ -21,7 +21,10 @@ function resolveInverseReferences(resources: Resource[]): Resource[] {
     const entityType = resource.entityType ?? resource.id
     for (const field of resource.fields) {
       if (field.resourceFieldId) {
-        fieldKeyToResourceFieldId.set(`${entityType}:${field.key}`, field.resourceFieldId)
+        fieldKeyToResourceFieldId.set(
+          `${entityType}:${getFieldOutputKey(field)}`,
+          field.resourceFieldId
+        )
       }
     }
   }

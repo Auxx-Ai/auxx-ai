@@ -277,6 +277,31 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Select destination inbox',
   },
 
+  ticket: {
+    id: toFieldId('ticket'),
+    key: 'ticket',
+    label: 'Ticket',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'thread_ticket',
+    dbColumn: 'ticketId',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'ticket:ticket_threads' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    description: 'Ticket this thread is linked to',
+  },
+
   messages: {
     id: toFieldId('messages'),
     key: 'messages',

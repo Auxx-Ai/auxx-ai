@@ -25,8 +25,12 @@ import {
   entityConditionBuilder,
 } from '../../workflow-engine/query-builder/entity-condition-builder'
 import { systemConditionBuilder } from '../../workflow-engine/query-builder/system-condition-builder'
-import type { ResourceField } from '../registry'
-import { RESOURCE_TABLE_MAP, RESOURCE_TABLE_REGISTRY } from '../registry'
+import {
+  getFieldOutputKey,
+  RESOURCE_TABLE_MAP,
+  RESOURCE_TABLE_REGISTRY,
+  type ResourceField,
+} from '../registry'
 import type { TableId } from '../registry/field-registry'
 import type { ResourceRegistryService } from '../registry/resource-registry-service'
 import { type RecordId, toRecordId } from '../resource-id'
@@ -105,7 +109,10 @@ export function extractRequiredRelatedEntities(
 
       // Find relationship field in source fields
       const relationshipField = sourceFields.find(
-        (f) => f.key === relationshipFieldKey || (f.id && f.id === relationshipFieldKey)
+        (f) =>
+          getFieldOutputKey(f) === relationshipFieldKey ||
+          f.key === relationshipFieldKey ||
+          (f.id && f.id === relationshipFieldKey)
       )
 
       if (relationshipField?.relationship) {
@@ -455,12 +462,13 @@ export async function listAll(
   // Get all fields for this entity from org cache
   const fields = await getCachedResourceFields(organizationId, entityDefId)
 
-  // Build fields map (key → { id, key, type })
+  // Build fields map (outputKey → { id, key, type })
   const fieldsMap: Record<string, ListAllFieldInfo> = {}
   for (const field of fields) {
-    fieldsMap[field.key] = {
+    const outputKey = getFieldOutputKey(field)
+    fieldsMap[outputKey] = {
       id: field.id,
-      key: field.key,
+      key: outputKey,
       type: field.fieldType ?? field.type,
     }
   }
@@ -481,7 +489,7 @@ export async function listAll(
       // Find field by id to get its key and type
       const field = fields.find((f) => f.id === fieldId)
       if (field) {
-        resourceFieldIdToKey.set(resourceFieldId, field.key)
+        resourceFieldIdToKey.set(resourceFieldId, getFieldOutputKey(field))
         resourceFieldIdToType.set(resourceFieldId, (field.fieldType ?? field.type) as FieldType)
       }
       return resourceFieldId as ResourceFieldId
@@ -491,7 +499,7 @@ export async function listAll(
     fieldReferences = fields
       .filter((f) => f.resourceFieldId) // Only fields with resourceFieldId
       .map((f) => {
-        resourceFieldIdToKey.set(f.resourceFieldId as string, f.key)
+        resourceFieldIdToKey.set(f.resourceFieldId as string, getFieldOutputKey(f))
         resourceFieldIdToType.set(f.resourceFieldId as string, (f.fieldType ?? f.type) as FieldType)
         return f.resourceFieldId as ResourceFieldId
       })

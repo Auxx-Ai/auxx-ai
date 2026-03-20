@@ -8,7 +8,7 @@ import type { ResourceFieldId } from '@auxx/types/field'
 import { parseResourceFieldId } from '@auxx/types/field'
 import { type SQL, sql } from 'drizzle-orm'
 import type { Operator } from '../../conditions/operator-definitions'
-import type { ResourceField } from '../../resources/registry/field-types'
+import { getFieldOutputKey, type ResourceField } from '../../resources/registry/field-types'
 import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
 import { BaseType } from '../core/types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
@@ -118,7 +118,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
 
     // Custom fields + system fields stored in FieldValue
     const fieldIdForSql = fieldDef.id || field
-    const dbFieldType = fieldDef.dbFieldType || 'TEXT'
+    const dbFieldType = fieldDef.fieldType || 'TEXT'
     const valueColumn = this.getTypedColumnName(dbFieldType)
     const outerTableId = context.outerTable.id
 
@@ -169,11 +169,15 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     const byRfId = context.fields.find((f) => f.resourceFieldId === fieldRef)
     if (byRfId) return byRfId
 
-    // 2. By key (human-readable name, e.g., "contact", "firstName")
+    // 2. By output key (stable identifier, e.g., "tag_parent", "contact")
+    const byOutputKey = context.fields.find((f) => getFieldOutputKey(f) === fieldRef)
+    if (byOutputKey) return byOutputKey
+
+    // 3. By key (backward compat — may be display name for entity-def fields)
     const byKey = context.fields.find((f) => f.key === fieldRef)
     if (byKey) return byKey
 
-    // 3. By id (CUID or static id)
+    // 4. By id (CUID or static id)
     return context.fields.find((f) => f.id === fieldRef)
   }
 
@@ -197,7 +201,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     }
 
     logger.debug(
-      `Found field: key=${field.key}, type=${field.type}, isSystem=${field.isSystem}, dbColumn=${field.dbColumn}, dbFieldType=${field.dbFieldType}`
+      `Found field: key=${field.key}, type=${field.type}, isSystem=${field.isSystem}, dbColumn=${field.dbColumn}, fieldType=${field.fieldType}`
     )
 
     // Extract ID from object format and transform option labels
@@ -227,7 +231,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     // Custom fields + system fields stored in FieldValue table
     const fieldIdForSql = field.id || fieldKey
     const fieldType = this.baseTypeToQueryType(field.type)
-    const dbFieldType = field.dbFieldType || 'TEXT'
+    const dbFieldType = field.fieldType || 'TEXT'
 
     logger.debug(
       `Building custom field condition SQL: fieldIdForSql=${fieldIdForSql}, operator=${condition.operator}, value=${rawValue}, fieldType=${fieldType}, dbFieldType=${dbFieldType}`
@@ -509,7 +513,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     }
 
     // Determine which typed column to use for related field
-    const relatedFieldType = relatedField.dbFieldType || this.fieldTypeToDbType(relatedField.type)
+    const relatedFieldType = relatedField.fieldType || this.fieldTypeToDbType(relatedField.type)
     const relatedColumnName = this.getTypedColumnName(relatedFieldType)
 
     // Build the value condition SQL directly for the related field
@@ -730,7 +734,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       case BaseType.DATETIME:
         return 'DATE'
       case BaseType.ENUM:
-        return 'TEXT'
+        return 'SINGLE_SELECT'
       case BaseType.RELATION:
         return 'RELATIONSHIP'
       default:
@@ -905,10 +909,12 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       const dateCol = sql.raw(`"FieldValue"."valueDate"`)
       switch (operator) {
         case 'is':
+        case 'on_date':
           return rawValue === null || rawValue === undefined
             ? sql`${dateCol} IS NULL`
             : sql`${dateCol}::date = ${String(rawValue)}::date`
         case 'is not':
+        case 'not_on_date':
           return rawValue === null || rawValue === undefined
             ? sql`${dateCol} IS NOT NULL`
             : sql`${dateCol}::date != ${String(rawValue)}::date`

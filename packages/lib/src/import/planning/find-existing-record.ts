@@ -146,7 +146,7 @@ async function findInCustomEntity(
   if (!identifierField.id) return null
 
   // Determine which typed column to query based on field type
-  const dbFieldType = identifierField.dbFieldType || 'TEXT'
+  const dbFieldType = identifierField.fieldType || 'TEXT'
   const valueType = getValueType(dbFieldType)
 
   // Build the value comparison based on type

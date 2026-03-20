@@ -107,6 +107,9 @@ export interface ThreadMeta {
   /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null if unassigned */
   inboxId: RecordId | null
 
+  /** Ticket EntityInstance ID this thread is linked to, or null */
+  ticketId: RecordId | null
+
   // External ID for chat threads (e.g., Facebook conversation ID)
   externalId: string | null
 

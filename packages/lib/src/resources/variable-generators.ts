@@ -12,7 +12,7 @@ import {
   RESOURCE_TABLE_MAP,
   type TableId,
 } from './registry/field-registry'
-import type { ResourceField } from './registry/field-types'
+import { getFieldOutputKey, type ResourceField } from './registry/field-types'
 import { createRelationshipCollection } from './registry/relationship-utils'
 import { BaseType } from './types'
 
@@ -416,7 +416,7 @@ function convertFieldToVariableProperty(
           // Include relationship fields if within depth limit (for drilling down)
           if (targetField.type === BaseType.RELATION) {
             if (currentDepth + 1 < maxDepth) {
-              properties[targetField.key] = convertFieldToVariableProperty(
+              properties[getFieldOutputKey(targetField)] = convertFieldToVariableProperty(
                 targetField,
                 relatedEntityDefinitionId,
                 newVisited,
@@ -425,7 +425,7 @@ function convertFieldToVariableProperty(
               )
             }
           } else {
-            properties[targetField.key] = convertFieldToVariableProperty(
+            properties[getFieldOutputKey(targetField)] = convertFieldToVariableProperty(
               targetField,
               relatedEntityDefinitionId,
               newVisited,
@@ -441,7 +441,7 @@ function convertFieldToVariableProperty(
         label: field.label,
         description: field.description,
         properties,
-        fieldReference: toResourceFieldId(tableId, field.key),
+        fieldReference: toResourceFieldId(tableId, getFieldOutputKey(field)),
       }
     }
 
@@ -610,7 +610,7 @@ export function generateResourceOutputVariables(
   // Convert array to object format for existing code
   const fields: Record<string, ResourceField> = {}
   for (const field of fieldsArray) {
-    fields[field.key] = field
+    fields[getFieldOutputKey(field)] = field
   }
 
   const basePath = options?.basePath || resourceType
@@ -811,7 +811,7 @@ export function generateFindNodeVariablesFromFields(
   // Build properties from fields - use key for consistent variable paths
   const properties: Record<string, any> = {}
   fields.forEach((field) => {
-    properties[field.key] = convertFieldToVariableProperty(
+    properties[getFieldOutputKey(field)] = convertFieldToVariableProperty(
       field,
       resourceMeta.id,
       new Set(),
@@ -988,7 +988,7 @@ export function generateCrudNodeVariablesFromFields(
     // Build properties from fields
     const properties: Record<string, any> = {}
     fields.forEach((field) => {
-      properties[field.key] = convertFieldToVariableProperty(
+      properties[getFieldOutputKey(field)] = convertFieldToVariableProperty(
         field,
         resourceMeta.id,
         new Set(),
@@ -1155,7 +1155,7 @@ export function generateResourceTriggerVariablesFromFields(
   // Build properties from fields - use key for consistent variable paths
   const properties: Record<string, any> = {}
   fields.forEach((field) => {
-    properties[field.key] = convertFieldToVariableProperty(
+    properties[getFieldOutputKey(field)] = convertFieldToVariableProperty(
       field,
       resourceMeta.id,
       new Set(),
