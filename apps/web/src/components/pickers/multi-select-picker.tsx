@@ -15,6 +15,7 @@ import {
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
+import { generateId } from '@auxx/utils/generateId'
 import { Check, Loader2, Plus, Tags, TextCursorInput, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -213,7 +214,7 @@ export function MultiSelectPicker({
     }
 
     // Use label as value when useValueAsLabel is true, otherwise generate UUID
-    const newValue = useValueAsLabel ? newLabel : crypto.randomUUID()
+    const newValue = useValueAsLabel ? newLabel : generateId()
     const newOption: SelectOption = { label: newLabel, value: newValue }
 
     // Update options and auto-select the new option

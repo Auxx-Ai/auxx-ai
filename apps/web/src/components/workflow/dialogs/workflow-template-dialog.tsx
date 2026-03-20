@@ -29,9 +29,7 @@ import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import {
   AlertTriangle,
-  Check,
   ChevronLeft,
-  Download,
   GitBranch,
   Headphones,
   Image as ImageIcon,
@@ -57,6 +55,7 @@ const EntityTemplateDialog = dynamic(
   { ssr: false }
 )
 
+import { InlineAppInstallButton } from '~/components/apps/app-install-button'
 import { useResources } from '~/components/resources/hooks'
 import type { WorkflowViewerData } from '~/components/workflow/viewer/hooks/use-workflow-viewer'
 import { WorkflowViewer } from '~/components/workflow/viewer/workflow-viewer'
@@ -509,7 +508,9 @@ export function WorkflowTemplateDialog({
                           <h3 className='text-sm font-semibold text-muted-foreground mb-2'>
                             {selectedTemplate.name}
                           </h3>
-                          <p className='text-sm'>{selectedTemplate?.description}</p>
+                          <p className='text-sm text-primary-400'>
+                            {selectedTemplate?.description}
+                          </p>
                           <div className='flex gap-1 flex-wrap mt-2'>
                             {(selectedTemplate?.categories as string[])?.map((cat) => (
                               <Badge key={cat} variant='outline' className='text-xs'>
@@ -540,24 +541,7 @@ export function WorkflowTemplateDialog({
                                     )}
                                     <span className='text-sm'>{app.appTitle || app.appSlug}</span>
                                   </div>
-                                  {app.installed ? (
-                                    <Badge variant='secondary' className='text-xs'>
-                                      <Check className='size-3 mr-1' />
-                                      Installed
-                                    </Badge>
-                                  ) : (
-                                    <Button
-                                      variant='outline'
-                                      size='sm'
-                                      className='h-6 text-xs'
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        window.open(`/app/settings/apps/${app.appSlug}`, '_blank')
-                                      }}>
-                                      <Download className='size-3' />
-                                      Install
-                                    </Button>
-                                  )}
+                                  <InlineAppInstallButton appSlug={app.appSlug} />
                                 </div>
                               ))}
                             </div>

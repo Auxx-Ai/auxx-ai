@@ -47,6 +47,8 @@ interface ExtensionsContextValue {
   appConnections: AppConnection[]
   isLoading: boolean
   isError: boolean
+  /** Refetch installed apps. Call after installing/uninstalling an app. */
+  refreshInstallations: () => Promise<void>
 }
 
 /**
@@ -63,16 +65,19 @@ export function ExtensionsContextProvider({
   appConnections,
   isLoading,
   isError,
+  refreshInstallations,
   children,
 }: {
   appInstallations: AppInstallation[]
   appConnections: AppConnection[]
   isLoading: boolean
   isError: boolean
+  refreshInstallations: () => Promise<void>
   children: ReactNode
 }) {
   return (
-    <ExtensionsContext.Provider value={{ appInstallations, appConnections, isLoading, isError }}>
+    <ExtensionsContext.Provider
+      value={{ appInstallations, appConnections, isLoading, isError, refreshInstallations }}>
       {children}
     </ExtensionsContext.Provider>
   )

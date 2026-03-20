@@ -1,6 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/if-else/schema.ts
 
 import { ALL_OPERATOR_KEYS } from '@auxx/lib/conditions/client'
+import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import {
   BaseType,
@@ -92,7 +93,7 @@ export const ifElseDefaultData: Partial<IfElseNodeData> = {
   desc: 'Branch based on conditions',
   cases: [
     {
-      id: crypto.randomUUID?.() || Math.random().toString(36).substring(2, 11),
+      id: generateId(),
       case_id: 'true',
       logical_operator: 'and',
       conditions: [],

@@ -12,6 +12,7 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { AiModelMode, type TextClassifierNodeData } from './types'
+import { generateCategoryId } from './utils'
 
 /**
  * Zod schema for AI model completion parameters
@@ -110,7 +111,7 @@ export const createTextClassifierDefaultData = (): Partial<TextClassifierNodeDat
   // textEditorContent: '',
   categories: [
     {
-      id: crypto.randomUUID?.() || Math.random().toString(36).substring(2, 11),
+      id: generateCategoryId(),
       name: 'Category 1',
       description: '',
       text: '',
