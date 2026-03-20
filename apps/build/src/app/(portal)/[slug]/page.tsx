@@ -15,6 +15,8 @@ export default async function DeveloperAccountPage({
     // Check access and get first app
     const { app } = await api.developerAccounts.getFirstApp({ slug })
 
+    console.log('First app for developer account', { app })
+
     if (app) {
       redirect(`/${slug}/apps/${app.slug}`)
     } else {

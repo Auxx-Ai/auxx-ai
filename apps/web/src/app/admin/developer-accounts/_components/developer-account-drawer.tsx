@@ -172,7 +172,7 @@ export function DeveloperAccountDrawer({
       destructive: true,
     })
     if (confirmed) {
-      await removeMember.mutateAsync({ memberId })
+      await removeMember.mutateAsync({ memberId, developerAccountId: account!.id })
     }
   }
 

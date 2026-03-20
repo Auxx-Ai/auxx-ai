@@ -25,6 +25,15 @@ export { AppCacheService } from './app-cache-service'
 export { invalidateOrgsByAppId, invalidateOrgsByDeploymentId } from './app-invalidation-helpers'
 export type { CacheEntry, CacheOptions } from './base-cache-service'
 export { BaseCacheService } from './base-cache-service'
+// ── Build User Cache Service ──
+export type {
+  BuildCachedApp,
+  BuildCachedDeveloperAccount,
+  BuildCachedOrganization,
+  BuildUserCacheDataMap,
+  BuildUserCacheKeyName,
+} from './build-user-cache-keys'
+export { BuildUserCacheService } from './build-user-cache-service'
 export { consumeOAuthCsrfToken, storeOAuthCsrfToken } from './csrf'
 export {
   flushOrganization,
@@ -62,7 +71,13 @@ export { OrganizationCacheService } from './org-cache-service'
 export { PromiseMemoizer } from './promise-memoizer'
 export type { CachedPublishedWorkflow, CachedWorkflowApp } from './providers/workflow-apps-provider'
 // ── Singletons ──
-export { getAppCache, getOrgCache, getTokenCache, getUserCache } from './singletons'
+export {
+  getAppCache,
+  getBuildUserCache,
+  getOrgCache,
+  getTokenCache,
+  getUserCache,
+} from './singletons'
 export { TokenCacheService } from './token-cache-service'
 export type { CachedTableView, UserCacheDataMap, UserCacheKeyName } from './user-cache-keys'
 export { UserCacheService } from './user-cache-service'

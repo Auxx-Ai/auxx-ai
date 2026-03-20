@@ -34,7 +34,6 @@ import {
   NavigationMenuTrigger,
   navigationMenuTriggerStyle,
 } from '~/components/ui/navigation-menu'
-import { useMedia } from '~/hooks/use-media'
 import { useConfig } from '~/lib/config-context'
 import { cn } from '~/lib/utils'
 
@@ -144,7 +143,6 @@ export default function Header() {
   const { urls } = useConfig()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
   const [isScrolled, setIsScrolled] = React.useState(false)
-  const isLarge = useMedia('(min-width: 64rem)')
   React.useEffect(() => {
     const handleScroll = () => {
       const scrollContainer = document.getElementById('root')
@@ -172,7 +170,7 @@ export default function Header() {
       data-state={isMobileMenuOpen ? 'active' : 'inactive'}
       {...(isScrolled && { 'data-scrolled': true })}
       className='[--color-popover:color-mix(in_oklch,var(--color-muted)_25%,var(--color-background))]'>
-      <div className='h-18 fixed inset-x-[10px] z-50 '>
+      <div className='h-18 fixed absolute left-0 right-[10px] z-50 '>
         <div
           aria-hidden='true'
           className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
@@ -185,7 +183,7 @@ export default function Header() {
         )}>
         <div
           className={cn(
-            'in-data-scrolled:ring-foreground/5 in-data-scrolled:bg-background/75 in-data-scrolled:shadow-black/10 in-data-scrolled:max-w-4xl max-lg:in-data-scrolled:px-5 in-data-scrolled:backdrop-blur mx-auto w-full max-w-6xl rounded-2xl border border-transparent px-3 shadow-md shadow-transparent ring-1 ring-transparent transition-all duration-500 ease-in-out',
+            'in-data-scrolled:ring-foreground/5 in-data-scrolled:bg-background/75 in-data-scrolled:shadow-black/10 in-data-scrolled:max-w-4xl max-lg:in-data-scrolled:px-5 in-data-scrolled:backdrop-blur mx-auto w-full max-w-6xl rounded-2xl border border-transparent px-3 shadow-md shadow-transparent ring-1 ring-transparent transition-[max-width,padding,background-color,box-shadow,backdrop-filter] duration-500 ease-in-out',
             'max-lg:in-data-[state=active]:backdrop-blur max-lg:in-data-[state=active]:ring-foreground/5 max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:px-5 max-lg:in-data-[state=active]:shadow-black/10'
           )}>
           <div className='relative flex flex-wrap items-center justify-between lg:py-3'>
@@ -210,12 +208,10 @@ export default function Header() {
               </button>
             </div>
 
-            {isLarge && (
-              <div className='absolute inset-0 m-auto size-fit'>
-                <NavMenu docsUrl={urls.docs} />
-              </div>
-            )}
-            {!isLarge && isMobileMenuOpen && (
+            <div className='absolute inset-0 m-auto size-fit max-lg:hidden'>
+              <NavMenu docsUrl={urls.docs} />
+            </div>
+            {isMobileMenuOpen && (
               <MobileMenu
                 closeMenu={() => setIsMobileMenuOpen(false)}
                 signupUrl={urls.signup}
@@ -224,7 +220,7 @@ export default function Header() {
               />
             )}
 
-            <div className='max-lg:in-data-[state=active]:mt-6 in-data-[state=active]:flex mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:shadow-none dark:lg:bg-transparent'>
+            <div className='max-lg:in-data-[state=active]:mt-6 max-lg:hidden max-lg:in-data-[state=active]:flex w-full flex-wrap items-center justify-end space-y-8 md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0'>
               <div className='flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit'>
                 <Button asChild variant='ghost' size='sm'>
                   <Link href={urls.login}>
@@ -277,7 +273,7 @@ const MobileMenu = ({
     { name: 'Platform', href: '/platform/messaging' },
     { name: 'Solutions', href: '/solutions/shopify-stores' },
     { name: 'Pricing', href: '/pricing' },
-    { name: 'Company', href: '/company' },
+    // { name: 'Company', href: '/company' },
     { name: 'Try Demo', href: demoUrl },
     { name: 'Get Started', href: signupUrl },
   ]
@@ -444,11 +440,11 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
             <Link href='/pricing'>Pricing</Link>
           </NavigationMenuLink>
         </NavigationMenuItem>
-        <NavigationMenuItem value='company'>
+        {/* <NavigationMenuItem value='company'>
           <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
             <Link href='/company'>Company</Link>
           </NavigationMenuLink>
-        </NavigationMenuItem>
+        </NavigationMenuItem> */}
         <NavigationMenuItem value='github'>
           <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
             <Link

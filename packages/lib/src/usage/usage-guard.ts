@@ -107,6 +107,51 @@ export class UsageGuard {
     }
   }
 
+  /**
+   * Batch-check usage for multiple orgs and metrics in minimal round-trips.
+   * Returns a Map keyed by `orgId:metric`.
+   */
+  async checkBatch(orgIds: string[], metrics: UsageMetric[]): Promise<Map<string, UsageStatus>> {
+    // Build all (org, metric) pairs
+    const pairs = orgIds.flatMap((orgId) => metrics.map((metric) => ({ orgId, metric })))
+
+    // Fetch all limits in parallel
+    const limitPromises = pairs.map(async ({ orgId, metric }) => {
+      const hardKey = `${metric}PerMonthHard` as FeatureKey
+      const softKey = `${metric}PerMonthSoft` as FeatureKey
+      const [hardLimit, softLimit] = await Promise.all([
+        this.featureService.getLimit(orgId, hardKey),
+        this.featureService.getLimit(orgId, softKey),
+      ])
+      return { orgId, metric, hardLimit, softLimit }
+    })
+
+    // Fetch all usage counts in one batch
+    const [limits, usageMap] = await Promise.all([
+      Promise.all(limitPromises),
+      this.counter.getCurrentUsageBatch(pairs),
+    ])
+
+    const result = new Map<string, UsageStatus>()
+    for (const { orgId, metric, hardLimit, softLimit } of limits) {
+      const key = `${orgId}:${metric}`
+      const current = usageMap.get(key) ?? 0
+      const numericHard = this.toNumericLimit(hardLimit)
+      const numericSoft = this.toNumericLimit(softLimit)
+
+      result.set(key, {
+        metric,
+        current,
+        hardLimit: numericHard,
+        softLimit: numericSoft,
+        unlimited: numericHard === -1,
+        percentUsed: numericHard > 0 ? Math.round((current / numericHard) * 100) : 0,
+      })
+    }
+
+    return result
+  }
+
   /** Convert FeatureLimit to numeric: '+'/true → -1, null/false → 0, number stays */
   private toNumericLimit(limit: FeatureLimit | null): number {
     if (limit === '+' || limit === true) return -1

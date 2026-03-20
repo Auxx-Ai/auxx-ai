@@ -311,7 +311,7 @@ export function UsersTable({ organizationId, pageSize = DEFAULT_PAGE_SIZE }: Use
                 ))
               ) : users && users.length > 0 ? (
                 users.map((user) => (
-                  <TableRow key={user.id} className='hover:bg-muted/50'>
+                  <TableRow key={user.id} className='h-10 hover:bg-muted/50'>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={selectedIds.has(user.id)}

@@ -8,11 +8,11 @@ import {
   DeveloperAccountMember,
   User,
 } from '@auxx/database'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { enqueueEmailJob } from '@auxx/lib/jobs/email/enqueue'
 import { TRPCError } from '@trpc/server'
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { BuildDehydrationService } from '~/lib/dehydration'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /**
@@ -505,10 +505,11 @@ export const membersRouter = createTRPCRouter({
         .set({ acceptedAt: new Date(), updatedAt: new Date() })
         .where(eq(DeveloperAccountInvite.id, invite.id))
 
-      // 6. Invalidate dehydration cache so sidebar updates
-      const dehydrationService = new BuildDehydrationService()
-      await dehydrationService.invalidateUser(ctx.session.userId)
-      await dehydrationService.invalidateDeveloperAccount(invite.developerAccountId)
+      // 6. Invalidate build cache so sidebar updates
+      await onCacheEvent('build.developer-account.member-added', {
+        userId: ctx.session.userId,
+        developerAccountId: invite.developerAccountId,
+      })
 
       // 7. Get the account slug so we can redirect
       const [account] = await ctx.db

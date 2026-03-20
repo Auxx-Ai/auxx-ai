@@ -2,6 +2,7 @@
 
 import { getAppDeployments, getAppWithInstallationStatus, getAvailableApps } from '@auxx/lib/apps'
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import {
   deleteAppConnection,
@@ -118,7 +119,6 @@ export const appsRouter = createTRPCRouter({
         })
         .merge(installAppRequestSchema)
     )
-    .use(notDemo('install apps'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { appSlug, type, deploymentId } = input
@@ -127,6 +127,15 @@ export const appsRouter = createTRPCRouter({
       const cachedApp = await getCachedAppBySlug(appSlug)
       if (!cachedApp) {
         throw new TRPCError({ code: 'NOT_FOUND', message: `App "${appSlug}" not found` })
+      }
+
+      // If the app is not verified, require the unverifiedApps feature gate.
+      // Verified apps skip this check entirely.
+      if (!cachedApp.verified) {
+        await new FeaturePermissionService().requireAccess(
+          organizationId,
+          FeatureKey.unverifiedApps
+        )
       }
 
       const result = await installApp({

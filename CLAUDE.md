@@ -118,6 +118,10 @@ import { something } from '@auxx/lib/custom-fields/client'
 
 If a constant/type doesn't exist in the `/client` export yet, add it there first, then import from `/client`. See `packages/lib/package.json` exports field for all available subpaths.
 
+## Import Subpaths
+
+Before writing an import, check the target package's `package.json` `exports` field to confirm the subpath exists. Do not guess import paths — e.g. `@auxx/lib/permissions/types` won't work if only `@auxx/lib/permissions` is exported. When in doubt, check what existing code in the same file or router imports.
+
 ## Component Architecture
 
 - File naming: kebab-case (e.g., `user-profile.tsx`)

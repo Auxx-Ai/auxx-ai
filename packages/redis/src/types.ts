@@ -32,6 +32,7 @@ export interface RedisPipeline {
 export interface RedisClient {
   // Standard Redis operations (supported by all providers)
   get(key: string): Promise<any>
+  mget(...keys: string[]): Promise<(string | null)[]>
   set(key: string, value: any, ...args: any[]): Promise<any>
   setex(key: string, seconds: number, value: string): Promise<string>
   del(key: string | string[]): Promise<number>

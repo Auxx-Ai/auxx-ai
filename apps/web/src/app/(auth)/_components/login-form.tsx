@@ -640,23 +640,11 @@ export default function LoginForm({
 
 /** "Try Live Demo" button — submits a form POST to the demo session endpoint */
 function DemoButton() {
-  const [loading, setLoading] = useState(false)
-
   return (
-    <form
-      action='/api/demo/create-session'
-      method='POST'
-      onSubmit={() => setLoading(true)}
-      className='w-full text-center'>
-      <Button
-        type='submit'
-        variant='ghost'
-        size='sm'
-        loading={loading}
-        loadingText='Setting up demo...'
-        className='text-xs text-muted-foreground'>
-        Or try a live demo — no signup required
+    <div className='w-full text-center'>
+      <Button variant='ghost' size='sm' className='text-xs  hover:bg-info hover:text-white' asChild>
+        <Link href='/demo'>Or try a live demo — no signup required</Link>
       </Button>
-    </form>
+    </div>
   )
 }

@@ -1,6 +1,7 @@
 // apps/build/src/server/api/routers/developer-accounts.ts
 // Developer accounts tRPC router
 
+import { onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import {
   checkDeveloperAccountSlugExists,
@@ -16,7 +17,6 @@ import {
 } from '@auxx/services/developer-accounts'
 import { TRPCError } from '@trpc/server'
 import z from 'zod'
-import { BuildDehydrationService } from '~/lib/dehydration'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('trpc-build-developer-accounts')
@@ -103,8 +103,7 @@ export const developerAccountsRouter = createTRPCRouter({
       }
 
       // Invalidate cache for the current user (they now have a new account)
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateUser(ctx.session.userId)
+      await onCacheEvent('build.developer-account.created', { userId: ctx.session.userId })
 
       return result.value
     }),
@@ -232,8 +231,7 @@ export const developerAccountsRouter = createTRPCRouter({
       }
 
       // Invalidate cache for the current user
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateUser(ctx.session.userId)
+      await onCacheEvent('build.developer-account.updated', { userId: ctx.session.userId })
 
       return result.value
     }),

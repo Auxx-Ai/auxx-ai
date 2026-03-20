@@ -1,5 +1,12 @@
 // apps/build/src/lib/dehydration/types.ts
 
+import type {
+  BuildCachedApp,
+  BuildCachedDeveloperAccount,
+  BuildCachedOrganization,
+} from '@auxx/lib/cache'
+import type { DehydratedUser } from '@auxx/lib/dehydration'
+
 /**
  * Window global interface for build dehydrated state
  */
@@ -13,130 +20,26 @@ declare global {
  * Main dehydrated state for developer portal
  */
 export interface BuildDehydratedState {
-  authenticatedUser: DehydratedBuildUser
-  developerAccounts: DehydratedDeveloperAccount[]
-  apps: DehydratedApp[]
-  organizations: DehydratedOrganization[]
+  authenticatedUser: DehydratedUser
+  developerAccounts: BuildCachedDeveloperAccount[]
+  apps: BuildCachedApp[]
+  organizations: BuildCachedOrganization[]
   invitedDeveloperAccounts: DehydratedDeveloperAccountInvitation[]
   environment: DehydratedBuildEnvironment
   timestamp: number
 }
 
-/**
- * Dehydrated user from User table
- */
-export interface DehydratedBuildUser {
-  id: string
-  name: string | null
-  email: string | null
-  emailVerified: boolean
-  image: string | null
-  firstName: string | null
-  lastName: string | null
-  phoneNumber: string | null
-  phoneNumberVerified: boolean | null
-  createdAt: Date
-  updatedAt: Date
-}
+/** @deprecated Use DehydratedUser from @auxx/lib/dehydration */
+export type DehydratedBuildUser = DehydratedUser
+/** Re-export from cache for backward compatibility */
+export type DehydratedDeveloperAccount = BuildCachedDeveloperAccount
+export type DehydratedApp = BuildCachedApp
+export type DehydratedOrganization = BuildCachedOrganization
 
-/**
- * Dehydrated developer account with members
- */
-export interface DehydratedDeveloperAccount {
-  id: string
-  title: string
-  slug: string
-  logoId: string | null
-  logoUrl: string | null
-  featureFlags: Record<string, boolean> | null
-  createdAt: Date
-  updatedAt: Date
-  // This user's membership info in this account
-  userMember: DehydratedUserMember
-  // All members of this account
-  members: DehydratedDeveloperAccountMember[]
-}
-
-/**
- * Current user's membership in an account
- */
-export interface DehydratedUserMember {
-  id: string
-  userId: string
-  accessLevel: 'admin' | 'member'
-  createdAt: Date
-}
-
-/**
- * Dehydrated developer account member (for displaying team members)
- */
-export interface DehydratedDeveloperAccountMember {
-  id: string
-  userId: string
-  userName: string | null
-  userEmail: string | null
-  userImage: string | null
-  accessLevel: 'admin' | 'member'
-  createdAt: Date
-}
-
-/**
- * Dehydrated app - includes all app fields
- */
-export interface DehydratedApp {
-  // Basic info
-  id: string
-  developerAccountId: string
-  slug: string
-  title: string
-  description: string | null
-
-  // Avatar
-  avatarId: string | null
-  avatarUrl: string | null
-
-  // Marketplace listing
-  category: string | null
-  websiteUrl: string | null
-  documentationUrl: string | null
-  contactUrl: string | null
-  supportSiteUrl: string | null
-  termsOfServiceUrl: string | null
-
-  // Content
-  overview: string | null
-  contentOverview: string | null
-  contentHowItWorks: string | null
-  contentConfigure: string | null
-
-  // Permissions
-  scopes: string[] | null
-
-  // OAuth
-  hasOauth: boolean
-  oauthExternalEntrypointUrl: string | null
-  // oauthRedirectUris: string[] | null
-
-  // Bundle
-  hasBundle: boolean
-
-  // Publication
-  publicationStatus: string | null
-
-  // Timestamps
-  createdAt: Date
-  updatedAt: Date
-}
-
-/**
- * Dehydrated organization (user organizations for filtering/selection)
- */
-export interface DehydratedOrganization {
-  id: string
-  name: string | null
-  handle: string
-  slug: string
-}
+/** Current user's membership in an account */
+export type DehydratedUserMember = BuildCachedDeveloperAccount['userMember']
+/** Dehydrated developer account member (for displaying team members) */
+export type DehydratedDeveloperAccountMember = BuildCachedDeveloperAccount['members'][number]
 
 /**
  * Dehydrated developer account invitation

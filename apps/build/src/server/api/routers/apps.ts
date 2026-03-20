@@ -26,7 +26,6 @@ import { verifyAppAccess } from '@auxx/services/developer-accounts'
 import { TRPCError } from '@trpc/server'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { BuildDehydrationService } from '~/lib/dehydration'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('trpc-build-apps')
@@ -112,8 +111,9 @@ export const appsRouter = createTRPCRouter({
       }
 
       // Invalidate cache for all members of the developer account
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateDeveloperAccount(result.value.app.developerAccountId)
+      await onCacheEvent('build.app.created', {
+        developerAccountId: result.value.app.developerAccountId,
+      })
       await invalidateAppCatalog()
 
       return result.value
@@ -190,8 +190,9 @@ export const appsRouter = createTRPCRouter({
       }
 
       // Invalidate cache for all members of the developer account
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateDeveloperAccount(result.value.app.developerAccountId)
+      await onCacheEvent('build.app.updated', {
+        developerAccountId: result.value.app.developerAccountId,
+      })
       await invalidateAppCatalog()
 
       return result.value
@@ -244,8 +245,9 @@ export const appsRouter = createTRPCRouter({
       }
 
       // Invalidate cache for all members of the developer account
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateDeveloperAccount(result.value.app.developerAccountId)
+      await onCacheEvent('build.app.updated', {
+        developerAccountId: result.value.app.developerAccountId,
+      })
       await invalidateAppCatalog()
 
       return result.value
@@ -383,8 +385,7 @@ export const appsRouter = createTRPCRouter({
         .where(eq(schema.App.id, app.id))
 
       // Invalidate cache
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateDeveloperAccount(app.developerAccountId)
+      await onCacheEvent('build.app.updated', { developerAccountId: app.developerAccountId })
       await invalidateAppSlugMap()
 
       return result.value
@@ -449,8 +450,7 @@ export const appsRouter = createTRPCRouter({
         .where(eq(schema.App.id, app.id))
 
       // Invalidate cache
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateDeveloperAccount(app.developerAccountId)
+      await onCacheEvent('build.app.updated', { developerAccountId: app.developerAccountId })
       await invalidateAppSlugMap()
 
       return { success: true }
@@ -505,8 +505,7 @@ export const appsRouter = createTRPCRouter({
       }
 
       // Invalidate cache
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateDeveloperAccount(app.developerAccountId)
+      await onCacheEvent('build.app.updated', { developerAccountId: app.developerAccountId })
 
       return { success: true }
     }),
@@ -557,8 +556,7 @@ export const appsRouter = createTRPCRouter({
         .where(eq(schema.App.id, app.id))
 
       // Invalidate cache
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateDeveloperAccount(app.developerAccountId)
+      await onCacheEvent('build.app.updated', { developerAccountId: app.developerAccountId })
       await invalidateAppSlugMap()
 
       return { success: true }
@@ -608,8 +606,7 @@ export const appsRouter = createTRPCRouter({
         .where(eq(schema.oauthApplication.id, app.oauthApplicationId))
 
       // Invalidate cache
-      const dehydrationService = new BuildDehydrationService(ctx.db)
-      await dehydrationService.invalidateDeveloperAccount(app.developerAccountId)
+      await onCacheEvent('build.app.updated', { developerAccountId: app.developerAccountId })
 
       return { clientSecret: newClientSecret }
     }),

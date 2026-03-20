@@ -263,14 +263,18 @@ export async function updateEntity(
 
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 
+  // Rebuild RecordId with resolved UUID so cache lookups in setFieldValues work
+  // (input recordId may use entityType string like "inbox:xxx" instead of UUID)
+  const resolvedRecordId = toRecordId(entityDef.id, entityInstanceId)
+
   // Run pre-update hooks
   const processedValues = await ctx.runPreHooks('update', entityDef, values, instance)
 
   // Check uniqueness (excluding current entity)
   await ctx.validateUniqueFields(entityDef.id, processedValues, entityInstanceId)
 
-  // Set field values using RecordId
-  await ctx.setFieldValues(recordId, processedValues)
+  // Set field values using resolved RecordId
+  await ctx.setFieldValues(resolvedRecordId, processedValues)
 
   // Invalidate snapshots (unless skipped for bulk operations)
   if (!options.skipSnapshotInvalidation) {

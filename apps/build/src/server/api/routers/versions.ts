@@ -1,6 +1,6 @@
 // apps/build/src/server/api/routers/versions.ts
 
-import { invalidateAppCatalog, invalidateOrgsByDeploymentId } from '@auxx/lib/cache'
+import { invalidateAppCatalog, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import {
   calculateNextVersion,
@@ -10,7 +10,6 @@ import {
 } from '@auxx/services/app-versions'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { BuildDehydrationService } from '~/lib/dehydration'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('trpc-build-versions')
@@ -91,15 +90,14 @@ export const versionsRouter = createTRPCRouter({
       }
 
       // Invalidate cache
-      const dehydrationService = new BuildDehydrationService(ctx.db)
       const deploymentWithApp = await ctx.db.query.AppDeployment.findFirst({
         where: (deployments, { eq }) => eq(deployments.id, input.deploymentId),
         with: { app: true },
       })
       if (deploymentWithApp?.app) {
-        await dehydrationService.invalidateDeveloperAccount(
-          deploymentWithApp.app.developerAccountId
-        )
+        await onCacheEvent('build.app.updated', {
+          developerAccountId: deploymentWithApp.app.developerAccountId,
+        })
       }
 
       await invalidateOrgsByDeploymentId(input.deploymentId, ctx.db)
@@ -155,15 +153,14 @@ export const versionsRouter = createTRPCRouter({
       }
 
       // Invalidate cache
-      const dehydrationService = new BuildDehydrationService(ctx.db)
       const deploymentWithApp = await ctx.db.query.AppDeployment.findFirst({
         where: (deployments, { eq }) => eq(deployments.id, result.value.id),
         with: { app: true },
       })
       if (deploymentWithApp?.app) {
-        await dehydrationService.invalidateDeveloperAccount(
-          deploymentWithApp.app.developerAccountId
-        )
+        await onCacheEvent('build.app.updated', {
+          developerAccountId: deploymentWithApp.app.developerAccountId,
+        })
       }
 
       await invalidateOrgsByDeploymentId(result.value.id, ctx.db)
