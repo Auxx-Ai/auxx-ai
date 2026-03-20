@@ -4,6 +4,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { Archive, Ban, Merge, Trash2, Users, Zap } from 'lucide-react'
 import { useState } from 'react'
+import { MergeDialog } from '~/components/merge'
 import { useConfirm } from '~/hooks/use-confirm'
 import type { DetailViewActionsProps } from '../types'
 
@@ -19,6 +20,7 @@ export function DetailViewActions({
 }: DetailViewActionsProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
 
   const { actions } = config
 
@@ -86,7 +88,7 @@ export function DetailViewActions({
         )}
 
         {actions.enableMerge && (
-          <Button variant='outline' size='sm' onClick={() => console.log('Merge:', recordId)}>
+          <Button variant='outline' size='sm' onClick={() => setMergeDialogOpen(true)}>
             <Merge /> Merge
           </Button>
         )}
@@ -117,6 +119,15 @@ export function DetailViewActions({
       </div>
 
       <ConfirmDialog />
+
+      {mergeDialogOpen && recordId && (
+        <MergeDialog
+          open={mergeDialogOpen}
+          onOpenChange={setMergeDialogOpen}
+          baseRecordIds={[recordId]}
+          onMergeComplete={() => setMergeDialogOpen(false)}
+        />
+      )}
     </>
   )
 }

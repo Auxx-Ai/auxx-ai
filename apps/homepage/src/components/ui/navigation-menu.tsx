@@ -100,7 +100,7 @@ function NavigationMenuViewport({
     <div
       data-slot='navigation-menu-viewport-parent'
       className={cn(
-        'px-(--viewport-outer-px) fixed inset-x-0 top-12 isolate z-50 mx-auto flex max-w-6xl'
+        'px-(--viewport-outer-px) fixed inset-x-0 top-12 isolate z-50 mx-auto flex justify-center max-w-6xl in-data-scrolled:max-w-4xl transition-[max-width] duration-500 ease-in-out'
       )}>
       <NavigationMenuPrimitive.Viewport
         data-slot='navigation-menu-viewport'

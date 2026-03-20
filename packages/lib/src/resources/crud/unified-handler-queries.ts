@@ -84,20 +84,24 @@ export function extractRequiredRelatedEntities(
   for (const group of filters) {
     for (const condition of group.conditions) {
       const fieldRef = condition.fieldId
+      let relationshipFieldKey: string | undefined
 
-      // Only process array format (relationship paths)
-      if (!Array.isArray(fieldRef) || fieldRef.length < 2) {
+      // Array format: ['ticket:contact', 'contact:email']
+      if (Array.isArray(fieldRef) && fieldRef.length >= 2) {
+        const relationshipRef = fieldRef[0]
+        relationshipFieldKey =
+          typeof relationshipRef === 'string' && relationshipRef.includes(':')
+            ? parseResourceFieldId(relationshipRef as ResourceFieldId).fieldId
+            : relationshipRef
+      }
+      // Dot notation: 'contact.email'
+      else if (typeof fieldRef === 'string' && fieldRef.includes('.')) {
+        relationshipFieldKey = fieldRef.split('.')[0]
+      } else {
         continue
       }
 
-      // First element is the relationship field on source entity
-      const relationshipRef = fieldRef[0]
-
-      // Parse field key (handle both ResourceFieldId and plain string)
-      const relationshipFieldKey =
-        typeof relationshipRef === 'string' && relationshipRef.includes(':')
-          ? parseResourceFieldId(relationshipRef as ResourceFieldId).fieldId
-          : relationshipRef
+      if (!relationshipFieldKey) continue
 
       // Find relationship field in source fields
       const relationshipField = sourceFields.find(
@@ -162,6 +166,18 @@ export async function queryEntityInstanceIds(params: {
   }
 
   const whereClause = entityConditionBuilder.buildGroupedQuery(filters, context)
+
+  if (entityConditionBuilder.droppedConditions.length > 0) {
+    logger.warn(
+      `Dropped ${entityConditionBuilder.droppedConditions.length} filter condition(s): ${JSON.stringify(entityConditionBuilder.droppedConditions)}`
+    )
+    if (process.env.NODE_ENV === 'development') {
+      console.error(
+        `[entity-query] Filter conditions dropped:`,
+        entityConditionBuilder.droppedConditions
+      )
+    }
+  }
 
   // Build ORDER BY
   const orderByClauses =

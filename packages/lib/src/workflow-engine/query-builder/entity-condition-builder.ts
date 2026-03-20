@@ -159,28 +159,21 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
 
   /**
    * Resolve a field reference to a ResourceField.
-   * Handles: resourceFieldId ("entityDefId:fieldId"), field id, or plain key.
+   * Handles: resourceFieldId ("entityDefId:fieldId"), key, or plain id.
    */
   private resolveFieldRef(
     fieldRef: string,
     context: EntityQueryContext
   ): ResourceField | undefined {
-    // 1. Try resourceFieldId match (e.g., "mr5uh5...:xfwv3p...")
-    if (fieldRef.includes(':')) {
-      const byResourceFieldId = context.fields.find((f) => f.resourceFieldId === fieldRef)
-      if (byResourceFieldId) return byResourceFieldId
+    // 1. By resourceFieldId (scoped lookup)
+    const byRfId = context.fields.find((f) => f.resourceFieldId === fieldRef)
+    if (byRfId) return byRfId
 
-      // Parse and try matching the fieldId portion
-      const { fieldId } = parseResourceFieldId(fieldRef as ResourceFieldId)
-      const byId = context.fields.find((f) => f.id === fieldId)
-      if (byId) return byId
-    }
-
-    // 2. Try by key (e.g., "number", "ticket_number")
+    // 2. By key (human-readable name, e.g., "contact", "firstName")
     const byKey = context.fields.find((f) => f.key === fieldRef)
     if (byKey) return byKey
 
-    // 3. Try by id directly (e.g., plain CUID)
+    // 3. By id (CUID or static id)
     return context.fields.find((f) => f.id === fieldRef)
   }
 
@@ -198,8 +191,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
   ): SQL<unknown> | undefined {
     const field = this.resolveFieldRef(fieldKey, context)
     if (!field) {
-      logger.warn(`Field '${fieldKey}' not found in entity fields`)
-      logger.debug(`Available fields: ${context.fields.map((f) => f.key).join(', ')}`)
+      const available = context.fields.map((f) => `${f.key}(${f.id})`).join(', ')
+      logger.warn(`Field '${fieldKey}' not found. Available: [${available}]`)
       return undefined
     }
 
@@ -449,7 +442,10 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     // Get fields for the related entity
     const relatedFields = this.getRelatedEntityFields(relatedEntityDefId, context)
     if (!relatedFields) {
-      logger.warn(`Related entity fields not found for '${relatedEntityDefId}'`)
+      logger.warn(
+        `Related entity fields for '${relatedEntityDefId}' not pre-populated in context. ` +
+          `This means extractRequiredRelatedEntities() missed this relationship.`
+      )
       return undefined
     }
 

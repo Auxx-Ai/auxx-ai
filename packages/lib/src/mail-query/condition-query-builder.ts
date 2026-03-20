@@ -325,19 +325,17 @@ function buildDateQuery(operator: Operator, value: any, field?: string): SQL<unk
     case 'is': {
       const isDate = parseDate(value)
       if (!isDate) return null
-      const startOfDay = new Date(isDate)
-      startOfDay.setHours(0, 0, 0, 0)
-      const endOfDay = new Date(isDate)
-      endOfDay.setHours(23, 59, 59, 999)
+      // The frontend sends the start-of-day in UTC (e.g. 2026-03-20T07:00:00Z for PDT midnight).
+      // Use it directly as startOfDay and add 24h for endOfDay to cover the user's full calendar day.
+      const startOfDay = new Date(isDate.getTime())
+      const endOfDay = new Date(isDate.getTime() + 24 * 60 * 60 * 1000 - 1)
       return and(gte(dateColumn, startOfDay), lte(dateColumn, endOfDay))
     }
     case 'is not': {
       const isNotDate = parseDate(value)
       if (!isNotDate) return null
-      const startOfDay = new Date(isNotDate)
-      startOfDay.setHours(0, 0, 0, 0)
-      const endOfDay = new Date(isNotDate)
-      endOfDay.setHours(23, 59, 59, 999)
+      const startOfDay = new Date(isNotDate.getTime())
+      const endOfDay = new Date(isNotDate.getTime() + 24 * 60 * 60 * 1000 - 1)
       return or(lt(dateColumn, startOfDay), gt(dateColumn, endOfDay))
     }
     case 'empty':

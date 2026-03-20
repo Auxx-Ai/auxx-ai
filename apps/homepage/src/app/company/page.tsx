@@ -17,7 +17,7 @@ export default function FeaturesPage() {
     <div id='root' className='relative h-screen overflow-y-auto bg-background'>
       <Header />
       <main className=''>
-        <ImageIllustration />
+        {/* <ImageIllustration /> */}
         <HowCanWeHelp />
       </main>
       <FooterSection />
