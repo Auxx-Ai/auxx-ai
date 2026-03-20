@@ -1,5 +1,4 @@
 // apps/homepage/src/app/platform/integration/_components/integration-center-section.tsx
-import Image from 'next/image'
 
 /**
  * IntegrationCenterSection component displays the integration marketplace
@@ -12,17 +11,17 @@ export default function IntegrationCenterSection() {
         <div className='border-x'>
           <div className='bg-muted/25 py-16 md:py-24'>
             <div className='mx-auto max-w-5xl px-6'>
-              <div className='aspect-3/2 mask-radial-to-65% mx-auto max-w-2xl'>
-                <Image
+              <div className='aspect-3/2  mx-auto max-w-3xl'>
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
                   className='rounded-(--radius)'
-                  src='/images/platform/integration/add-new-integration.png'
-                  alt='Integration marketplace showing available connections'
-                  width={1764}
-                  height={1298}
-                  loading='lazy'
+                  src='/videos/app-install.mp4'
                 />
               </div>
-              <div className='mx-auto max-w-xl space-y-6 text-center'>
+              <div className='mx-auto max-w-xl space-y-6 text-center pt-10'>
                 <h2 className='text-balance text-3xl font-medium lg:text-4xl'>
                   Connect everything your business needs
                 </h2>

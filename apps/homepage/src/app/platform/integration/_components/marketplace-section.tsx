@@ -45,7 +45,7 @@ const IntegrationsGroup = ({
   return (
     <div
       className={cn(
-        'ring-foreground/5 relative z-20 col-span-2 row-span-2 grid grid-rows-subgrid gap-1.5 self-center rounded-2xl border border-transparent bg-zinc-50 p-2 shadow ring-1',
+        'ring-foreground/5 relative z-20 col-span-2 row-span-2 grid grid-rows-subgrid gap-1.5 self-center rounded-2xl border border-transparent bg-zinc-50 dark:bg-white/5 p-2 shadow ring-1',
         className
       )}>
       <span className='text-muted-foreground block self-center text-balance text-center text-sm'>

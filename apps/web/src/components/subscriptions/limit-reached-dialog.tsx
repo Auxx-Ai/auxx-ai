@@ -3,10 +3,13 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Dialog, DialogContent, DialogTitle } from '@auxx/ui/components/dialog'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, UserPlus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useState } from 'react'
+import { client } from '~/auth/auth-client'
 import { EmptyState } from '~/components/global/empty-state'
+import { useDemo } from '~/hooks/use-demo'
 import { PlanChangeSummary } from './plan-change-summary'
 
 interface LimitReachedDialogProps {
@@ -28,6 +31,8 @@ export function LimitReachedDialog({
   description,
 }: LimitReachedDialogProps) {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const { isDemo } = useDemo()
+  const router = useRouter()
 
   return (
     <>
@@ -39,20 +44,33 @@ export function LimitReachedDialog({
             title={title}
             description={description}
             button={
-              <Button
-                onClick={() => {
-                  onOpenChange(false)
-                  setUpgradeOpen(true)
-                }}>
-                <Sparkles />
-                Upgrade Plan
-              </Button>
+              isDemo ? (
+                <Button
+                  onClick={() => {
+                    onOpenChange(false)
+                    client.signOut({
+                      fetchOptions: { onSuccess: () => router.push('/signup?from=demo') },
+                    })
+                  }}>
+                  <UserPlus />
+                  Sign Up
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => {
+                    onOpenChange(false)
+                    setUpgradeOpen(true)
+                  }}>
+                  <Sparkles />
+                  Upgrade Plan
+                </Button>
+              )
             }
           />
         </DialogContent>
       </Dialog>
 
-      <PlanChangeSummary open={upgradeOpen} onOpenChange={setUpgradeOpen} />
+      {!isDemo && <PlanChangeSummary open={upgradeOpen} onOpenChange={setUpgradeOpen} />}
     </>
   )
 }

@@ -47,7 +47,7 @@ export default function NoMissedMessages() {
                   <Link href={urls.signup}>Get Started</Link>
                 </Button>
                 <Button asChild variant='outline' className='ml-3'>
-                  <Link href={urls.demo}>Get a demo</Link>
+                  <Link href={urls.demo}>Try Demo</Link>
                 </Button>
 
                 <div className='border-border-illustration mt-20 grid gap-6 border-y py-6 text-left sm:grid-cols-2 md:grid-cols-3 lg:gap-12'>

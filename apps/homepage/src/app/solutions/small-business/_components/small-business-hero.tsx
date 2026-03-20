@@ -25,7 +25,7 @@ export default function HeroSection() {
                 <Link href={config.urls.signup}>Start Free Trial</Link>
               </Button>
               <Button asChild variant='outline' className='ml-3'>
-                <Link href={config.urls.demo}>Get a demo</Link>
+                <Link href={config.urls.demo}>Try Demo</Link>
               </Button>
 
               <div className='mt-12 grid max-w-sm grid-cols-2 max-md:mx-auto'>

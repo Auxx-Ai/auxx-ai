@@ -46,7 +46,7 @@ const STATIC_LIMITS = {
     knowledgeBases: 1,
     kbPublishedArticles: 5,
     datasetsLimit: 1,
-    entities: 1,
+    entities: 3,
   },
   free: {
     teammates: 1,

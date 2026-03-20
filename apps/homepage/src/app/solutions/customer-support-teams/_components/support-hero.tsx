@@ -24,7 +24,7 @@ export default function HeroSection() {
                 <Link href='/contact'>Start Free Trial</Link>
               </Button>
               <Button asChild variant='outline' className='ml-3'>
-                <Link href='/demo'>Get a demo</Link>
+                <Link href='/demo'>Try Demo</Link>
               </Button>
 
               <div className='mt-12 grid max-w-sm grid-cols-2 max-md:mx-auto'>
