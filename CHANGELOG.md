@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.97](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.96...auxx-v0.1.97) (2026-03-21)
+
+
+### Features
+
+* enhance date handling and ticket integration ([#311](https://github.com/Auxx-Ai/auxx-ai/issues/311)) ([3d67285](https://github.com/Auxx-Ai/auxx-ai/commit/3d6728530204b186fcac7498270fbac0604868e1))
+* fix conditions ([#312](https://github.com/Auxx-Ai/auxx-ai/issues/312)) ([763be20](https://github.com/Auxx-Ai/auxx-ai/commit/763be2028b4eabaeaa2cda664b7232b6d7d3d528))
+* resource key unification ([#309](https://github.com/Auxx-Ai/auxx-ai/issues/309)) ([79a5114](https://github.com/Auxx-Ai/auxx-ai/commit/79a51146445cf9b4e732a360e0860c160ef2dad1))
+* streamline workflow components and enhance caching mechanisms ([#314](https://github.com/Auxx-Ai/auxx-ai/issues/314)) ([2e97f2b](https://github.com/Auxx-Ai/auxx-ai/commit/2e97f2b5dce9b3682ae394f4d0d2ae907ffd4638))
+* update workflow vars in apps ([#313](https://github.com/Auxx-Ai/auxx-ai/issues/313)) ([11de09f](https://github.com/Auxx-Ai/auxx-ai/commit/11de09f6f2c67c27c3dd0b5d5e326ff16bd92dfa))
+
 ## [0.1.96](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.95...auxx-v0.1.96) (2026-03-20)
 
 
