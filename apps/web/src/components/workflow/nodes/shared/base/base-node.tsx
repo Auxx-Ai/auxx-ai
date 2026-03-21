@@ -104,7 +104,7 @@ export const BaseNode = memo<BaseNodeProps>(
           'workflow-node relative group/node border rounded-2xl transition-all duration-200',
           'after:opacity-0 after:absolute after:inset-[-9px] after:rounded-[24px] after:border-[8px] hover:after:opacity-100 after:pointer-events-none',
           nodeType === 'standard' &&
-            'bg-background/50 backdrop-blur-sm border-primary-300 dark:border-background/40 after:border-primary-300/20',
+            'bg-background/50 backdrop-blur-sm border-primary-300 dark:border-[#495162] after:border-primary-300/20',
           nodeType === 'input' &&
             'bg-orange-50 dark:bg-amber-950 border-orange-300 dark:border-amber-900 after:border-orange-200/20 dark:after:border-amber-800/20',
           isSelected && !isDisabled && 'shadow-lg',

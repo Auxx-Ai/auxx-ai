@@ -13,6 +13,7 @@ import {
   CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
+import { Kbd } from '@auxx/ui/components/kbd'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { useStore } from '@xyflow/react'
@@ -499,7 +500,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
             </Button>
           </div>
         ) : (
-          <div className='flex items-center border-b px-1 py-1 bg-neutral-100/50 dark:bg-primary-200/50 h-9 backdrop-blur-sm'>
+          <div className='flex items-center border-b px-1 py-1 bg-neutral-100/50 dark:bg-primary-100/50 h-9 backdrop-blur-sm'>
             <Button
               variant='ghost'
               size='icon-xs'
@@ -542,7 +543,9 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
         )}
 
         {/* Variable List */}
-        <CommandList className='flex-1 overflow-y-auto' style={{ maxHeight }}>
+        <CommandList
+          className='flex-1 overflow-y-auto min-h-[200px] outline-none'
+          style={{ maxHeight }}>
           {getCurrentLevelItems.length === 0 ? (
             <CommandEmpty className='py-8 flex flex-col items-center'>
               <Search className='size-8 mx-auto mb-2 opacity-50' />
@@ -595,28 +598,22 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
         </CommandList>
 
         {/* Keyboard Navigation Hints */}
-        <div className='border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50 dark:bg-neutral-800'>
+        <div className='border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50 dark:bg-primary-100'>
           <div className='flex items-center justify-between gap-4'>
             <div className='flex items-center gap-3'>
               <span className='flex items-center gap-1'>
                 <span>Select</span>
 
-                <kbd className='px-1.5 py-0.5 bg-white dark:bg-neutral-700 border rounded text-[10px] font-mono'>
-                  ↵
-                </kbd>
+                <Kbd variant='outline'>↵</Kbd>
               </span>
               <span className='flex items-center gap-1'>
                 <span>Go properties</span>
-                <kbd className='px-1.5 py-0.5 bg-white dark:bg-neutral-700 border rounded text-[10px] font-mono'>
-                  →
-                </kbd>
+                <Kbd variant='outline'>→</Kbd>
               </span>
               <span className='flex items-center gap-1'>
                 <span>Back</span>
 
-                <kbd className='px-1.5 py-0.5 bg-white dark:bg-neutral-700 border rounded text-[10px] font-mono'>
-                  ←
-                </kbd>
+                <Kbd variant='outline'>←</Kbd>
               </span>
             </div>
           </div>

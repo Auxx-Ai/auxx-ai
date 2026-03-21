@@ -14,6 +14,7 @@ import { FieldValueService } from '../../field-values'
 import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../../snapshot'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
+import { isSystemResourceId } from '../registry'
 import type { TableId } from '../registry/field-registry'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
 import {
@@ -560,6 +561,24 @@ export class UnifiedCrudHandler {
     }
 
     const service = new RecordPickerService(this.organizationId, this.userId, this.db)
+
+    // System table types (thread, message, etc.) don't have EntityInstance rows.
+    // Route to getResources() which queries the actual table via RESOURCE_TABLE_MAP.
+    if (entityDefinitionId && isSystemResourceId(entityDefinitionId)) {
+      const result = await service.getResources({
+        entityDefinitionId,
+        limit: limit ?? 25,
+        cursor,
+        search: query,
+      })
+      return {
+        ...result,
+        hasMore: !!result.nextCursor,
+        processingTimeMs: 0,
+        query: query ?? '',
+      }
+    }
+
     return service.search({
       query: query ?? '',
       entityDefinitionId,

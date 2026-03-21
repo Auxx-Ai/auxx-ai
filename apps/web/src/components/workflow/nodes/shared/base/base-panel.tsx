@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Input } from '@auxx/ui/components/input'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
 import {
@@ -59,6 +60,7 @@ import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { NodeType } from '~/components/workflow/types'
 import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { BlockSelector } from '~/components/workflow/ui/block-selector'
+import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
 import NextStep from '~/components/workflow/ui/next-step'
 // Specific UI imports
 import { ReplaceTrigger } from '~/components/workflow/ui/replace-trigger'
@@ -178,6 +180,7 @@ export const BasePanel = memo<BasePanelProps>(
     // Local state for title editing to prevent saving invalid titles
     const [localTitle, setLocalTitle] = useState(nodeData?.title || title || '')
     const [localDesc, setLocalDesc] = useState(nodeData?.desc || '')
+    const [isDescCollapsed, setIsDescCollapsed] = useState(true)
 
     // Ensure mounted ref is true when component is active
     useEffect(() => {
@@ -327,7 +330,7 @@ export const BasePanel = memo<BasePanelProps>(
     }, [nodeType])
 
     return (
-      <div className='flex-1 h-full w-full flex flex-col overflow-y-auto [--sticky-offset:89px]'>
+      <div className='flex-1 h-full w-full flex flex-col [--sticky-offset:89px] overflow-y-auto'>
         <DrawerHeader
           icon={
             <AppIcon
@@ -452,24 +455,33 @@ export const BasePanel = memo<BasePanelProps>(
             </>
           }>
           {/* Description area */}
-          <div className='leading-0 group flex rounded-lg px-2 py-[5px]'>
-            <AutosizeTextarea
-              id='desc'
-              minHeight={1}
-              value={localDesc}
-              onChange={handleDescChange}
-              onBlur={handleDescBlur}
-              onKeyDown={handleDescKeyDown}
-              className='w-full bg-transparent dark:bg-transparent border-none resize-none appearance-none text-xs leading-[18px] caret-[#295EFF] outline-none'
-              placeholder='Enter node description'
-            />
-          </div>
+          <CollapseWrap
+            minHeight={60}
+            isCollapsed={isDescCollapsed}
+            onCollapsedChange={setIsDescCollapsed}>
+            <div className='leading-0 group flex rounded-lg px-2 py-[5px]'>
+              <AutosizeTextarea
+                id='desc'
+                minHeight={1}
+                value={localDesc}
+                onChange={handleDescChange}
+                onFocus={() => setIsDescCollapsed(false)}
+                onBlur={() => {
+                  handleDescBlur()
+                  setIsDescCollapsed(true)
+                }}
+                onKeyDown={handleDescKeyDown}
+                className='w-full bg-transparent dark:bg-transparent border-none resize-none appearance-none text-xs leading-[18px] caret-[#295EFF] outline-none'
+                placeholder='Enter node description'
+              />
+            </div>
+          </CollapseWrap>
         </DrawerHeader>
         <Tabs value={activeTab} onValueChange={setActiveTab} className='flex-1 flex flex-col '>
           <div className='w-full border-b flex flex-col flex-1'>
             <TabsList
               variant='outline'
-              className='sticky top-[var(--sticky-offset)] z-10 bg-background/60 backdrop-blur-sm'>
+              className='sticky top-[var(--sticky-offset)] z-9 bg-background/60 backdrop-blur-sm'>
               <TabsTrigger value='settings' variant='outline' size='sm'>
                 <Cog />
                 Settings

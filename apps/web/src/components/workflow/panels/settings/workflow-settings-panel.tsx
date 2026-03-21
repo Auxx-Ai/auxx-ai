@@ -342,10 +342,10 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
         {/* Content */}
         <div className='flex-1 flex-col flex overflow-y-auto'>
           <CollapseWrap
-            minHeight={80}
+            minHeight={60}
             isCollapsed={isDescriptionCollapsed}
             onCollapsedChange={setIsDescriptionCollapsed}
-            className='sticky top-0 z-10 border-b bg-primary-50/90 backdrop-blur-sm'>
+            className='sticky top-0 z-12 border-b bg-primary-50/90 backdrop-blur-sm'>
             <div className='relative flex flex-row gap-1 px-2 py-1.5'>
               <IconPicker
                 value={

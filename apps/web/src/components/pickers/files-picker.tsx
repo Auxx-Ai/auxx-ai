@@ -15,6 +15,7 @@ import {
   type NavigationItem,
   useCommandNavigation,
 } from '@auxx/ui/components/command'
+import { Kbd } from '@auxx/ui/components/kbd'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
@@ -540,26 +541,22 @@ function FilesPickerContent({
 
       {/* Keyboard shortcuts footer */}
       {enableKeyboardNavigation && (
-        <div className='border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50/50'>
+        <div className='border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50/50 rounded-b-xl dark:bg-primary-50'>
           <div className='flex items-center justify-between gap-4'>
             <div className='flex items-center gap-3'>
               <span className='flex items-center gap-1'>
                 <span>Select</span>
-                <kbd className='px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono'>↵</kbd>
+                <Kbd variant='outline'>↵</Kbd>
               </span>
               {!isGlobalSearchActive && (
                 <>
                   <span className='flex items-center gap-1'>
                     <span>Open</span>
-                    <kbd className='px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono'>
-                      →
-                    </kbd>
+                    <Kbd variant='outline'>→</Kbd>
                   </span>
                   <span className='flex items-center gap-1'>
                     <span>Back</span>
-                    <kbd className='px-1.5 py-0.5 bg-white border rounded text-[10px] font-mono'>
-                      ←
-                    </kbd>
+                    <Kbd variant='outline'>←</Kbd>
                   </span>
                 </>
               )}

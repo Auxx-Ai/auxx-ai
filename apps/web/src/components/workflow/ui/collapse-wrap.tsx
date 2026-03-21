@@ -79,7 +79,7 @@ const CollapseWrap: React.FC<CollapseWrapProps> = ({
         {/* Gradient mask overlay when collapsed */}
         <div
           className={cn(
-            'pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-white/80 dark:from-black/50 to-transparent transition-opacity duration-500',
+            'pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-white/80 dark:from-black/20 to-transparent transition-opacity duration-500',
             isCollapsed && showButton ? 'opacity-100' : 'opacity-0'
           )}
         />
@@ -88,7 +88,7 @@ const CollapseWrap: React.FC<CollapseWrapProps> = ({
       {/* Full-width bottom click area - only shown when content > minHeight */}
       {showButton && (
         <div
-          className='group absolute bottom-0 left-0 z-10 flex h-5 w-full translate-y-1/2 cursor-pointer items-center justify-center hover:bg-accent/10'
+          className='group absolute bottom-0 left-0 z-12 flex h-5 w-full translate-y-1/2 cursor-pointer items-center justify-center hover:bg-accent/10'
           onClick={handleToggle}>
           <div className='flex items-center gap-1 rounded-xl border bg-primary-100 px-1.5 py-0.5 text-[10px] text-normal text-muted-foreground transition-colors group-hover:text-foreground'>
             <span>{isCollapsed ? 'Expand' : 'Collapse'}</span>
