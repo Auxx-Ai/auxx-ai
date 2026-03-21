@@ -36,11 +36,13 @@ export function useEditorActiveState(): UseEditorActiveStateReturn {
   }, [])
 
   const trackPopoverClose = useCallback((id: string) => {
-    setOpenPopovers((prev) => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next.size === prev.size ? prev : next
-    })
+    setTimeout(() => {
+      setOpenPopovers((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next.size === prev.size ? prev : next
+      })
+    }, 1000)
   }, [])
 
   const trackSelectOpen = useCallback((id: string) => {

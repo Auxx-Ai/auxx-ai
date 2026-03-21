@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/trigger-nodes/message-received.ts
 
+import { toRecordId } from '@auxx/types/resource'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
@@ -39,7 +40,7 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
       from: context.message.from?.identifier,
     })
 
-    // Set message-related variables in context
+    // Set message-related variables in context (legacy global variables)
     contextManager.setVariable('messageId', context.message.id)
     contextManager.setVariable('messageSubject', context.message.subject || '')
     contextManager.setVariable('messageFrom', context.message.from?.identifier || '')
@@ -51,10 +52,57 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
     contextManager.setVariable('isInbound', context.message.isInbound)
     contextManager.setVariable('hasAttachments', context.message.hasAttachments)
 
+    // Set node-scoped message output variables (matching frontend output variable definitions)
+    contextManager.setNodeVariable(node.nodeId, 'message.id', context.message.id)
+    contextManager.setNodeVariable(node.nodeId, 'message.thread_id', context.message.threadId || '')
+    contextManager.setNodeVariable(node.nodeId, 'message.subject', context.message.subject || '')
+    contextManager.setNodeVariable(
+      node.nodeId,
+      'message.body',
+      context.message.textPlain || context.message.textHtml || ''
+    )
+    contextManager.setNodeVariable(node.nodeId, 'message.html', context.message.textHtml || '')
+    contextManager.setNodeVariable(
+      node.nodeId,
+      'message.received_at',
+      context.message.receivedAt || new Date().toISOString()
+    )
+    contextManager.setNodeVariable(
+      node.nodeId,
+      'message.has_attachments',
+      context.message.hasAttachments
+    )
+    if (context.message.from) {
+      contextManager.setNodeVariable(
+        node.nodeId,
+        'message.from.email',
+        context.message.from.identifier || ''
+      )
+      contextManager.setNodeVariable(
+        node.nodeId,
+        'message.from.name',
+        context.message.from.name || ''
+      )
+    }
+
     // Set thread-related variables if available
     if (context.message.threadId) {
       contextManager.setVariable('threadId', context.message.threadId)
     }
+
+    // Set RELATION output variables using RecordId format (entityDefinitionId:entityInstanceId)
+    if (context.message.threadId) {
+      contextManager.setNodeVariable(
+        node.nodeId,
+        'thread',
+        toRecordId('thread', context.message.threadId)
+      )
+    }
+    contextManager.setNodeVariable(
+      node.nodeId,
+      'message_ref',
+      toRecordId('message', context.message.id)
+    )
 
     // Set organization context
     contextManager.setVariable('organizationId', context.organizationId)

@@ -3,12 +3,22 @@
 import { IdentifierType } from '@auxx/database/enums'
 import type { RecordPickerItem } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { toastError } from '@auxx/ui/components/toast'
-import { X } from 'lucide-react'
+import { Copy, Mail, X } from 'lucide-react'
 import type React from 'react'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { RecordPickerContent } from '~/components/pickers/record-picker/record-picker-content'
+import { useEditorActiveStateContext } from './editor-active-state-context'
+
+export type RecipientField = 'TO' | 'CC' | 'BCC'
 
 interface RecipientState {
   id: string
@@ -25,8 +35,10 @@ export interface RecipientInputHandle {
 
 interface RecipientInputProps {
   recipients: RecipientState[]
+  field: RecipientField
   onAdd: (recipient: RecipientState) => void
   onRemove: (id: string) => void
+  onMoveTo: (id: string, target: RecipientField) => void
   onContactSelect: (contact: {
     id: string
     identifier: string
@@ -37,8 +49,116 @@ interface RecipientInputProps {
   disabled?: boolean
 }
 
+const FIELD_LABELS: Record<RecipientField, string> = { TO: 'To', CC: 'Cc', BCC: 'Bcc' }
+const ALL_FIELDS: RecipientField[] = ['TO', 'CC', 'BCC']
+
+function RecipientBadge({
+  person,
+  index,
+  highlightedIndex,
+  disabled,
+  field,
+  onRemove,
+  onMoveTo,
+  onFocus,
+  onBlur,
+  onKeyDown,
+  inputRef,
+}: {
+  person: RecipientState
+  index: number
+  highlightedIndex: number | null
+  disabled?: boolean
+  field: RecipientField
+  onRemove: (id: string) => void
+  onMoveTo: (id: string, target: RecipientField) => void
+  onFocus: () => void
+  onBlur: () => void
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void
+  inputRef: React.RefObject<HTMLInputElement | null>
+}) {
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const activeState = useEditorActiveStateContext()
+  const dropdownId = `recipient-badge-${person.id}`
+  const displayName = person.name ?? person.identifier
+  const isHighlighted = highlightedIndex === index
+
+  return (
+    <DropdownMenu
+      open={dropdownOpen}
+      onOpenChange={(open) => {
+        setDropdownOpen(open)
+        if (open) {
+          onFocus()
+          activeState.trackPopoverOpen(dropdownId)
+        } else {
+          activeState.trackPopoverClose(dropdownId)
+        }
+      }}>
+      <Tooltip content={person.identifier} allowInteraction>
+        <DropdownMenuTrigger asChild>
+          <Badge
+            variant='user'
+            tabIndex={0}
+            onFocus={onFocus}
+            onBlur={() => {
+              if (!dropdownOpen) onBlur()
+            }}
+            onKeyDown={(e) => {
+              e.stopPropagation()
+              onKeyDown(e)
+            }}
+            className={`cursor-pointer ${
+              isHighlighted
+                ? 'border-transparent bg-info text-background dark:text-foreground ring-0  ring-info/90 focus:outline-hidden focus:ring-0'
+                : ''
+            }`}
+            aria-selected={isHighlighted}
+            role='option'
+            aria-label={`Recipient: ${displayName}`}>
+            {displayName}
+            <button
+              type='button'
+              disabled={disabled}
+              onClick={(e) => {
+                e.stopPropagation()
+                onRemove(person.id)
+                inputRef.current?.focus()
+              }}
+              className='ml-1 cursor-pointer focus:outline-hidden'
+              aria-label={`Remove ${displayName}`}>
+              <X className='size-3' />
+            </button>
+          </Badge>
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent align='start' sideOffset={5}>
+        <DropdownMenuItem onSelect={() => navigator.clipboard.writeText(person.identifier)}>
+          <Copy />
+          Copy '{person.identifier}'
+        </DropdownMenuItem>
+        {person.name && (
+          <DropdownMenuItem onSelect={() => navigator.clipboard.writeText(person.name!)}>
+            <Copy />
+            Copy '{person.name}'
+          </DropdownMenuItem>
+        )}
+        {ALL_FIELDS.filter((f) => f !== field).map((target) => (
+          <DropdownMenuItem key={target} onSelect={() => onMoveTo(person.id, target)}>
+            <Mail />
+            Move to {FIELD_LABELS[target]}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export const RecipientInput = forwardRef<RecipientInputHandle, RecipientInputProps>(
-  ({ recipients, onAdd, onRemove, onContactSelect, placeholder, disabled }, ref) => {
+  (
+    { recipients, field, onAdd, onRemove, onMoveTo, onContactSelect, placeholder, disabled },
+    ref
+  ) => {
     const [inputValue, setInputValue] = useState('')
     const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null)
     const [showPicker, setShowPicker] = useState(false)
@@ -184,40 +304,30 @@ export const RecipientInput = forwardRef<RecipientInputHandle, RecipientInputPro
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
         setHighlightedIndex(index < recipients.length - 1 ? index + 1 : null)
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
       }
     }
     return (
       <div className='relative flex min-w-0 flex-1 flex-wrap items-center gap-1'>
         {recipients.map((person, index) => (
-          <Badge
+          <RecipientBadge
             key={person.id}
-            variant='user'
-            tabIndex={0}
+            person={person}
+            index={index}
+            highlightedIndex={highlightedIndex}
+            disabled={disabled}
+            field={field}
+            onRemove={(id) => {
+              onRemove(id)
+              setHighlightedIndex(null)
+            }}
+            onMoveTo={onMoveTo}
             onFocus={() => setHighlightedIndex(index)}
             onBlur={() => setHighlightedIndex(null)}
             onKeyDown={(e) => handleBadgeKeyDown(e, index, person.id)}
-            className={`${
-              highlightedIndex === index
-                ? 'border-transparent bg-info text-background dark:text-foreground ring-0  ring-info/90 focus:outline-hidden focus:ring-0'
-                : ''
-            }`}
-            aria-selected={highlightedIndex === index}
-            role='option'
-            aria-label={`Recipient: ${person.name ?? person.identifier}`}>
-            {person.name ?? person.identifier}
-            <button
-              type='button'
-              disabled={disabled}
-              onClick={() => {
-                onRemove(person.id)
-                setHighlightedIndex(null)
-                inputRef.current?.focus()
-              }}
-              className='ml-1 cursor-pointer focus:outline-hidden'
-              aria-label={`Remove ${person.name ?? person.identifier}`}>
-              <X className='size-3' />
-            </button>
-          </Badge>
+            inputRef={inputRef}
+          />
         ))}
 
         <Popover open={showPicker} onOpenChange={setShowPicker}>

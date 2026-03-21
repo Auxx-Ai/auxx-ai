@@ -1,8 +1,10 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/answer.ts
 
 import { schema } from '@auxx/database'
-import { IdentifierType } from '@auxx/database/enums'
-import { eq } from 'drizzle-orm'
+import { IdentifierType, ParticipantRole } from '@auxx/database/enums'
+import type { RecordId } from '@auxx/types/resource'
+import { getDefinitionId, getInstanceId, isRecordId } from '@auxx/types/resource'
+import { and, desc, eq } from 'drizzle-orm'
 import { MessageSenderService } from '../../../messages/message-sender.service'
 import type {
   ParticipantInput,
@@ -19,10 +21,13 @@ import { BaseNodeProcessor } from '../base-node'
  * Configuration interface for Answer node
  */
 interface AnswerNodeData {
-  messageType: 'new' | 'reply'
+  messageType: 'new' | 'reply' | 'replyAll'
   integrationId?: string
-  resourceType?: 'thread' | 'message'
-  resourceId?: string
+  recordId?: string // Format: "entityDefinitionId:id" (e.g. "thread:abc123")
+  toIsAuto?: boolean
+  ccIsAuto?: boolean
+  bccIsAuto?: boolean
+  subjectIsAuto?: boolean
   to?: string[]
   toModes?: boolean[]
   cc?: string[]
@@ -54,74 +59,104 @@ export class AnswerProcessor extends BaseNodeProcessor {
       throw new Error('Message text is required')
     }
 
-    if (!config.to || config.to.length === 0) {
-      throw new Error('At least one recipient is required')
-    }
-
     // Get messageType (default to 'reply' for backward compatibility)
     const messageType = config.messageType || 'reply'
+    const isReply = messageType === 'reply' || messageType === 'replyAll'
 
-    // 2. Resolve variables in all fields
+    // 2. Resolve variables in text
     const resolvedText = await this.interpolateVariables(config.text, contextManager)
-
-    // Resolve subject
-    let resolvedSubject: string
-    if (config.subject) {
-      resolvedSubject = await this.interpolateVariables(config.subject, contextManager)
-    } else if (messageType === 'new') {
-      throw new Error('Subject is required for new messages')
-    } else {
-      resolvedSubject = '' // Will be set from thread
-    }
-
-    // Resolve resourceId for replies
-    let resolvedResourceId: string | undefined
-    if (messageType === 'reply') {
-      if (!config.resourceId) {
-        throw new Error('Resource ID is required for reply messages')
-      }
-      resolvedResourceId = await this.interpolateVariables(config.resourceId, contextManager)
-    }
-
-    // Resolve email recipients
-    const resolvedTo = await this.resolveEmailArray(config.to, config.toModes, contextManager)
-    const resolvedCc = config.cc
-      ? await this.resolveEmailArray(config.cc, config.ccModes, contextManager)
-      : []
-    const resolvedBcc = config.bcc
-      ? await this.resolveEmailArray(config.bcc, config.bccModes, contextManager)
-      : []
 
     // 3. Get thread context based on messageType
     let threadId: string | undefined
     let integrationId: string
+    let resolvedSubject = ''
+    let resolvedTo: string[] = []
+    let resolvedCc: string[] = []
+    let resolvedBcc: string[] = []
 
-    if (messageType === 'reply') {
-      if (!config.resourceType) {
-        throw new Error('Resource type is required for reply messages')
+    if (isReply) {
+      // Resolve recordId — supports both new format ("thread:abc") and legacy resourceId
+      const rawRecordId = config.recordId
+      if (!rawRecordId) {
+        throw new Error('Reply target (recordId) is required for reply messages')
+      }
+      const resolvedRecordId = await this.interpolateVariables(rawRecordId, contextManager)
+
+      // Parse recordId to get entity type and instance id
+      let resourceType: 'thread' | 'message'
+      let resourceInstanceId: string
+
+      if (isRecordId(resolvedRecordId as RecordId)) {
+        const defId = getDefinitionId(resolvedRecordId as RecordId)
+        resourceInstanceId = getInstanceId(resolvedRecordId as RecordId)
+        if (defId === 'thread' || defId === 'message') {
+          resourceType = defId
+        } else {
+          throw new Error(`Unsupported resource type in recordId: ${defId}`)
+        }
+      } else {
+        // Fallback: treat plain ID as thread (backward compatibility)
+        resourceType = 'thread'
+        resourceInstanceId = resolvedRecordId
       }
 
-      // Fetch the specific resource type directly (no guessing!)
+      // Fetch the resource
       const resource = await this.getResource(
-        resolvedResourceId!,
-        config.resourceType,
+        resourceInstanceId,
+        resourceType,
         context.organizationId,
         context.db
       )
 
       if (!resource) {
-        throw new Error(`${config.resourceType} not found: ${resolvedResourceId}`)
+        throw new Error(`${resourceType} not found: ${resourceInstanceId}`)
       }
 
-      // Extract threadId and integrationId based on type
-      threadId = config.resourceType === 'thread' ? resource.id : resource.threadId
+      // Extract threadId and integrationId
+      threadId = resourceType === 'thread' ? resource.id : resource.threadId
       integrationId = resource.integrationId
 
-      // If no subject provided, use thread subject with "Re:" prefix
-      if (!config.subject) {
+      // Auto-resolve subject
+      if (config.subjectIsAuto !== false) {
         resolvedSubject = resource.subject?.startsWith('Re:')
           ? resource.subject
           : `Re: ${resource.subject || 'Your message'}`
+      } else if (config.subject) {
+        resolvedSubject = await this.interpolateVariables(config.subject, contextManager)
+      }
+
+      // Auto-resolve recipients from thread
+      if (config.toIsAuto !== false || (messageType === 'replyAll' && config.ccIsAuto !== false)) {
+        const participants = await this.getThreadParticipants(
+          threadId,
+          integrationId,
+          context.organizationId,
+          context.db
+        )
+
+        if (config.toIsAuto !== false) {
+          resolvedTo = participants.sender ? [participants.sender] : []
+        }
+
+        if (messageType === 'replyAll' && config.ccIsAuto !== false) {
+          resolvedCc = participants.otherRecipients
+        }
+      }
+
+      // Manually resolved fields override auto
+      if (config.toIsAuto === false) {
+        if (!config.to || config.to.length === 0) {
+          throw new Error('At least one recipient is required')
+        }
+        resolvedTo = await this.resolveEmailArray(config.to, config.toModes, contextManager)
+      }
+
+      if (config.ccIsAuto === false && config.cc) {
+        resolvedCc = await this.resolveEmailArray(config.cc, config.ccModes, contextManager)
+      }
+
+      if (config.bccIsAuto === false && config.bcc) {
+        resolvedBcc = await this.resolveEmailArray(config.bcc, config.bccModes, contextManager)
       }
     } else {
       // New message
@@ -129,7 +164,29 @@ export class AnswerProcessor extends BaseNodeProcessor {
         throw new Error('Integration ID is required for new messages')
       }
       integrationId = config.integrationId
-      threadId = undefined // Will be created by MessageSenderService
+      threadId = undefined
+
+      if (!config.to || config.to.length === 0) {
+        throw new Error('At least one recipient is required')
+      }
+
+      resolvedTo = await this.resolveEmailArray(config.to, config.toModes, contextManager)
+      resolvedCc = config.cc
+        ? await this.resolveEmailArray(config.cc, config.ccModes, contextManager)
+        : []
+      resolvedBcc = config.bcc
+        ? await this.resolveEmailArray(config.bcc, config.bccModes, contextManager)
+        : []
+
+      if (!config.subject?.trim()) {
+        throw new Error('Subject is required for new messages')
+      }
+      resolvedSubject = await this.interpolateVariables(config.subject, contextManager)
+    }
+
+    // Ensure we have at least one recipient
+    if (resolvedTo.length === 0) {
+      throw new Error('No recipients resolved — at least one To address is required')
     }
 
     // 4. Process recipients - convert email strings to ParticipantInput format
@@ -161,7 +218,6 @@ export class AnswerProcessor extends BaseNodeProcessor {
     const isDryRun = contextManager.getOptions()?.dryRun
 
     if (isDryRun) {
-      // Dry run: Log and skip actual sending
       contextManager.log('INFO', node.name, 'DryRun: Skipping message send', {
         messageType,
         integrationId,
@@ -173,11 +229,9 @@ export class AnswerProcessor extends BaseNodeProcessor {
         textLength: resolvedText.length,
       })
 
-      // Generate fake IDs for dry run
       const fakeMessageId = `dry-run-${node.nodeId}-${Date.now()}`
       const fakeThreadId = threadId || `dry-run-thread-${Date.now()}`
 
-      // Set output variables
       contextManager.setNodeVariable(node.nodeId, 'sent', true)
       contextManager.setNodeVariable(node.nodeId, 'message_id', fakeMessageId)
       contextManager.setNodeVariable(node.nodeId, 'thread_id', fakeThreadId)
@@ -199,7 +253,6 @@ export class AnswerProcessor extends BaseNodeProcessor {
 
     // 6. Send message via MessageSenderService
     try {
-      // Initialize MessageSenderService
       const providerRegistry = new ProviderRegistryService(context.organizationId)
       const messageSender = new MessageSenderService(
         context.organizationId,
@@ -207,15 +260,14 @@ export class AnswerProcessor extends BaseNodeProcessor {
         context.db
       )
 
-      // Prepare SendMessageInput
       const sendInput: SendMessageInput = {
         userId: context.userId,
         organizationId: context.organizationId,
         integrationId,
-        threadId, // undefined for new messages
+        threadId,
         subject: resolvedSubject,
         textPlain: resolvedText,
-        textHtml: undefined, // Could convert markdown to HTML in future
+        textHtml: undefined,
         to: toParticipants,
         cc: ccParticipants,
         bcc: bccParticipants,
@@ -231,7 +283,6 @@ export class AnswerProcessor extends BaseNodeProcessor {
         recipientCount: toParticipants.length,
       })
 
-      // Send message
       const result = await messageSender.sendMessage(sendInput)
 
       contextManager.log('INFO', node.name, 'Message sent successfully', {
@@ -284,16 +335,13 @@ export class AnswerProcessor extends BaseNodeProcessor {
 
     for (let i = 0; i < emails.length; i++) {
       const email = emails[i]
-      const isConstant = modes?.[i] ?? false // Default to variable mode
+      const isConstant = modes?.[i] ?? false
 
       if (isConstant) {
-        // Constant mode: email is a literal string
         resolved.push(email)
       } else {
-        // Variable mode: email is a variable reference like {{variableId}}
         const resolvedEmail = await this.interpolateVariables(email, contextManager)
 
-        // Validate that it's a valid email
         if (!this.isValidEmail(resolvedEmail)) {
           throw new Error(`Invalid email address: ${resolvedEmail}`)
         }
@@ -315,7 +363,6 @@ export class AnswerProcessor extends BaseNodeProcessor {
 
   /**
    * Fetch specific resource type from database
-   * No guessing - we know the type from frontend selection!
    */
   private async getResource(
     resourceId: string,
@@ -348,7 +395,6 @@ export class AnswerProcessor extends BaseNodeProcessor {
         subject: thread.subject,
       }
     } else {
-      // resourceType === 'message'
       const message = await executeResourceQuery(
         'message',
         organizationId,
@@ -371,42 +417,112 @@ export class AnswerProcessor extends BaseNodeProcessor {
   }
 
   /**
+   * Get thread participants for auto-resolving recipients.
+   * Finds the latest inbound message in the thread and extracts sender + other recipients,
+   * filtering out the integration's own email address.
+   */
+  private async getThreadParticipants(
+    threadId: string,
+    integrationId: string,
+    organizationId: string,
+    db: any
+  ): Promise<{
+    sender: string | null
+    otherRecipients: string[]
+  }> {
+    // Get the integration's email to filter it out from recipients
+    const integration = await db
+      .select({ email: schema.Integration.email })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
+
+    const integrationEmail = integration[0]?.email?.toLowerCase()
+
+    // Get the latest inbound message in this thread
+    const latestMessage = await db
+      .select({ id: schema.Message.id })
+      .from(schema.Message)
+      .where(and(eq(schema.Message.threadId, threadId), eq(schema.Message.isInbound, true)))
+      .orderBy(desc(schema.Message.receivedAt))
+      .limit(1)
+
+    if (!latestMessage[0]) {
+      return { sender: null, otherRecipients: [] }
+    }
+
+    // Get all participants on this message with their roles
+    const messageParticipants = await db
+      .select({
+        role: schema.MessageParticipant.role,
+        identifier: schema.Participant.identifier,
+      })
+      .from(schema.MessageParticipant)
+      .innerJoin(
+        schema.Participant,
+        eq(schema.MessageParticipant.participantId, schema.Participant.id)
+      )
+      .where(eq(schema.MessageParticipant.messageId, latestMessage[0].id))
+
+    let sender: string | null = null
+    const otherRecipients: string[] = []
+    const seen = new Set<string>()
+
+    for (const p of messageParticipants) {
+      const email = p.identifier?.toLowerCase()
+      if (!email || seen.has(email)) continue
+      // Skip the integration's own email
+      if (integrationEmail && email === integrationEmail) continue
+      seen.add(email)
+
+      if (p.role === ParticipantRole.FROM) {
+        sender = p.identifier
+      } else if (p.role === ParticipantRole.TO || p.role === ParticipantRole.CC) {
+        otherRecipients.push(p.identifier)
+      }
+    }
+
+    return { sender, otherRecipients }
+  }
+
+  /**
    * Extract variables from all fields that support variable references
    */
   protected extractRequiredVariables(node: WorkflowNode): string[] {
     const config = node.data as AnswerNodeData
     const variables = new Set<string>()
 
-    // Extract from text
     if (config.text) {
       this.extractVariableIds(config.text).forEach((v) => variables.add(v))
     }
 
-    // Extract from subject
-    if (config.subject) {
+    if (config.subject && config.subjectIsAuto === false) {
       this.extractVariableIds(config.subject).forEach((v) => variables.add(v))
     }
 
-    // Extract from resourceId (for replies)
-    if (config.resourceId) {
-      this.extractVariableIds(config.resourceId).forEach((v) => variables.add(v))
+    if (config.recordId) {
+      this.extractVariableIds(config.recordId).forEach((v) => variables.add(v))
     }
 
-    // Extract from email arrays
     const extractFromEmailArray = (emails: string[] | undefined, modes: boolean[] | undefined) => {
       if (!emails) return
       emails.forEach((email, i) => {
         const isConstant = modes?.[i] ?? true
         if (!isConstant) {
-          // Only extract if in variable mode
           this.extractVariableIds(email).forEach((v) => variables.add(v))
         }
       })
     }
 
-    extractFromEmailArray(config.to, config.toModes)
-    extractFromEmailArray(config.cc, config.ccModes)
-    extractFromEmailArray(config.bcc, config.bccModes)
+    if (config.toIsAuto === false) {
+      extractFromEmailArray(config.to, config.toModes)
+    }
+    if (config.ccIsAuto === false) {
+      extractFromEmailArray(config.cc, config.ccModes)
+    }
+    if (config.bccIsAuto === false) {
+      extractFromEmailArray(config.bcc, config.bccModes)
+    }
 
     return Array.from(variables)
   }
@@ -419,18 +535,12 @@ export class AnswerProcessor extends BaseNodeProcessor {
     const warnings: string[] = []
     const config = node.data as AnswerNodeData
 
-    // Validate text content
     if (!config.text?.trim()) {
       errors.push('Message text is required')
     }
 
-    // Validate recipients
-    if (!config.to || config.to.length === 0) {
-      errors.push('At least one recipient is required')
-    }
-
-    // Validate messageType-specific requirements
     const messageType = config.messageType || 'reply'
+    const isReply = messageType === 'reply' || messageType === 'replyAll'
 
     if (messageType === 'new') {
       if (!config.integrationId) {
@@ -439,12 +549,16 @@ export class AnswerProcessor extends BaseNodeProcessor {
       if (!config.subject?.trim()) {
         errors.push('Subject is required for new messages')
       }
-    } else if (messageType === 'reply') {
-      if (!config.resourceId) {
-        errors.push('Resource ID (thread or message) is required for replies')
+      if (!config.to || config.to.length === 0) {
+        errors.push('At least one recipient is required')
       }
-      if (!config.resourceType) {
-        errors.push('Resource type (thread or message) is required for replies')
+    } else if (isReply) {
+      if (!config.recordId) {
+        errors.push('Reply target (recordId) is required for replies')
+      }
+      // To only required when not auto-resolved
+      if (config.toIsAuto === false && (!config.to || config.to.length === 0)) {
+        errors.push('At least one recipient is required when To is in manual mode')
       }
     }
 

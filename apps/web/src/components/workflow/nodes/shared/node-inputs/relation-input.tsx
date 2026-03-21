@@ -27,6 +27,8 @@ interface RelationInputProps extends NodeInputProps {
   placeholder?: string
   /** Field reference: "resourceType:fieldKey" or just "resourceId" for direct */
   fieldReference?: string
+  /** Direct resource type when fieldReference is absent (e.g. "thread", "message") */
+  relatedEntityDefinitionId?: string
   /** Relationship cardinality type (has_many, belongs_to, etc.) */
   relationshipType?: RelationshipType
   /** Whether to show the clear button on the picker trigger (defaults to multi value) */
@@ -45,6 +47,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
     name,
     placeholder,
     fieldReference,
+    relatedEntityDefinitionId,
     relationshipType,
     showClear,
   }) => {
@@ -64,7 +67,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
 
     // Resolve target resourceId
     const targetResourceId = useMemo(() => {
-      if (!fieldReference) return null
+      if (!fieldReference) return relatedEntityDefinitionId || null
 
       // Direct resource reference (e.g., "contact")
       if (!isResourceFieldId(fieldReference)) {
@@ -76,7 +79,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
       return field?.relationship
         ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
         : null
-    }, [fieldReference, fields, fieldKey])
+    }, [fieldReference, fields, fieldKey, relatedEntityDefinitionId])
 
     // Get current value from inputs
     const value = inputs[name] ?? ''

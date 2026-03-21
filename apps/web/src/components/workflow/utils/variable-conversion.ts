@@ -38,6 +38,7 @@ export function createUnifiedOutputVariable(config: {
   required?: boolean
   default?: any
   example?: any
+  resourceId?: string
   // Support old 'name' parameter for backward compatibility during transition
   name?: string
 }): UnifiedVariable {
@@ -65,6 +66,7 @@ export function createUnifiedOutputVariable(config: {
     required: config.required,
     default: config.default,
     example: config.example,
+    ...(config.resourceId && { resourceId: config.resourceId }),
   }
 
   return variable

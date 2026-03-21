@@ -19,10 +19,13 @@ import type { AnswerNodeData } from './types'
 export const answerNodeDataSchema = baseNodeDataSchema.extend({
   title: z.string().min(1),
   description: z.string().optional(),
-  messageType: z.enum(['new', 'reply']).default('reply'),
+  messageType: z.enum(['new', 'reply', 'replyAll']).default('reply'),
   integrationId: z.string().optional(),
-  resourceType: z.enum(['thread', 'message']).optional(),
-  resourceId: z.string().optional(),
+  recordId: z.string().optional(),
+  toIsAuto: z.boolean().optional(),
+  ccIsAuto: z.boolean().optional(),
+  bccIsAuto: z.boolean().optional(),
+  subjectIsAuto: z.boolean().optional(),
   to: z.array(z.string()).optional(),
   toModes: z.array(z.boolean()).optional(),
   cc: z.array(z.string()).optional(),
@@ -44,6 +47,10 @@ export const answerDefaultData: Partial<AnswerNodeData> = {
   desc: 'Reply to customer',
   messageType: 'reply',
   text: '',
+  toIsAuto: true,
+  ccIsAuto: true,
+  bccIsAuto: true,
+  subjectIsAuto: true,
   to: [],
   toModes: [],
   cc: [],
@@ -72,7 +79,8 @@ export const validateAnswerConfig = (data: AnswerNodeData): ValidationResult => 
     errors.push({ field: 'text', message: 'Message content is required', type: 'error' })
   }
 
-  // Validate messageType-specific requirements
+  const isReply = data.messageType === 'reply' || data.messageType === 'replyAll'
+
   if (data.messageType === 'new') {
     // For new messages, integration is required
     if (!data.integrationId) {
@@ -82,32 +90,23 @@ export const validateAnswerConfig = (data: AnswerNodeData): ValidationResult => 
         type: 'error',
       })
     }
-  } else if (data.messageType === 'reply') {
-    // For replies, resourceId is required
-    if (!data.resourceId) {
+    // To and Subject always required for new messages
+    if (!data.to || data.to.length === 0) {
+      errors.push({ field: 'to', message: 'At least one recipient is required', type: 'error' })
+    }
+  } else if (isReply) {
+    // recordId is always required for replies
+    if (!data.recordId) {
       errors.push({
-        field: 'resourceId',
-        message: 'Reply target (thread or message) is required',
+        field: 'recordId',
+        message: 'Reply target is required',
         type: 'error',
       })
     }
-    // resourceType is required for replies
-    if (!data.resourceType) {
-      errors.push({
-        field: 'resourceType',
-        message: 'Resource type (thread or message) is required for replies',
-        type: 'error',
-      })
+    // To only required when not auto-resolved
+    if (data.toIsAuto === false && (!data.to || data.to.length === 0)) {
+      errors.push({ field: 'to', message: 'At least one recipient is required', type: 'error' })
     }
-  }
-
-  // Validate that at least one 'to' recipient is provided
-  if (!data.to || data.to.length === 0) {
-    errors.push({
-      field: 'to',
-      message: 'At least one recipient is required',
-      type: 'error',
-    })
   }
 
   return { isValid: errors.filter((e) => e.type === 'error').length === 0, errors }
@@ -152,7 +151,7 @@ const getAnswerOutputVariables = (data: AnswerNodeData, nodeId: string): any[] =
       nodeId,
       path: 'message_type',
       type: BaseType.STRING,
-      description: 'Type of message sent (new or reply)',
+      description: 'Type of message sent (new, reply, or replyAll)',
     }),
   ]
 }
@@ -165,31 +164,37 @@ export function extractAnswerVariables(data: AnswerNodeData): string[] {
     extractVarIdsFromString(data.text).forEach((varId) => uniqueVariables.add(varId))
   }
 
-  // Extract from subject
-  if (data.subject) {
+  // Extract from subject (only when not auto-resolved)
+  if (data.subject && data.subjectIsAuto === false) {
     extractVarIdsFromString(data.subject).forEach((varId) => uniqueVariables.add(varId))
   }
 
-  // Extract from email arrays
-  if (data.to && Array.isArray(data.to)) {
+  // Extract from email arrays (only when not auto-resolved)
+  if (data.toIsAuto === false && data.to && Array.isArray(data.to)) {
     data.to.forEach((email) => {
       extractVarIdsFromString(email).forEach((varId) => uniqueVariables.add(varId))
     })
   }
-  if (data.cc && Array.isArray(data.cc)) {
+  if (data.ccIsAuto === false && data.cc && Array.isArray(data.cc)) {
     data.cc.forEach((email) => {
       extractVarIdsFromString(email).forEach((varId) => uniqueVariables.add(varId))
     })
   }
-  if (data.bcc && Array.isArray(data.bcc)) {
+  if (data.bccIsAuto === false && data.bcc && Array.isArray(data.bcc)) {
     data.bcc.forEach((email) => {
       extractVarIdsFromString(email).forEach((varId) => uniqueVariables.add(varId))
     })
   }
 
-  // Extract from resourceId for replies
-  if (data.resourceId) {
-    extractVarIdsFromString(data.resourceId).forEach((varId) => uniqueVariables.add(varId))
+  // Extract from recordId for replies (PICKER mode stores raw variable ID, not {{...}} wrapped)
+  if (data.recordId) {
+    const extracted = extractVarIdsFromString(data.recordId)
+    if (extracted.length > 0) {
+      extracted.forEach((varId) => uniqueVariables.add(varId))
+    } else if (data.recordId.includes('.')) {
+      // Raw variable ID from PICKER mode (e.g. "nodeId.thread")
+      uniqueVariables.add(data.recordId)
+    }
   }
 
   // Extract from attachment files

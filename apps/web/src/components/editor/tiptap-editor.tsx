@@ -12,7 +12,7 @@ import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import '~/styles/prosemirror.css'
 import { useEditorContext } from './editor-context'
 import { FontSize } from './extensions'
@@ -80,8 +80,18 @@ const TiptapEditor = ({
         setEditor(null)
         slashCommand.setEditor(null)
       },
-      onUpdate: ({ editor }) => {
-        onChange(editor.getHTML())
+      onUpdate: ({ editor, transaction }) => {
+        if (!transaction.docChanged) return
+        if (slashCommand.isOpenRef.current) return
+        // Defer onChange — the Suggestion plugin's onStart fires after
+        // onUpdate in the same tick, so we need to let it set isOpenRef
+        // before deciding whether to propagate the change.
+        const html = editor.getHTML()
+        setTimeout(() => {
+          if (!slashCommand.isOpenRef.current) {
+            onChange(html)
+          }
+        }, 0)
       },
     },
     []
@@ -102,6 +112,15 @@ const TiptapEditor = ({
       }
     }
   }, [content, editorInstance])
+
+  // Flush deferred content change when slash command picker closes
+  const prevSlashOpen = useRef(false)
+  useEffect(() => {
+    if (prevSlashOpen.current && !slashCommand.suggestionState.isOpen && editorInstance) {
+      onChange(editorInstance.getHTML())
+    }
+    prevSlashOpen.current = slashCommand.suggestionState.isOpen
+  }, [slashCommand.suggestionState.isOpen, editorInstance, onChange])
 
   // Synchronize editable state
   useEffect(() => {

@@ -18,6 +18,8 @@ const initialState: InlinePickerState = {
 interface UseSlashCommandReturn {
   /** Current suggestion state for rendering picker */
   suggestionState: InlinePickerState
+  /** Synchronous ref tracking whether the picker is open — use in callbacks that can't wait for React render */
+  isOpenRef: React.RefObject<boolean>
   /** Execute a command at the trigger position. Command receives editor and range to delete `/query` in a single chain. */
   executeCommand: (command: (editor: Editor, range: { from: number; to: number }) => void) => void
   /** Close picker without executing */
@@ -41,6 +43,7 @@ export function useSlashCommand(): UseSlashCommandReturn {
   const [suggestionState, setSuggestionState] = useState<InlinePickerState>(initialState)
   const rangeRef = useRef<{ from: number; to: number } | null>(null)
   const editorRef = useRef<Editor | null>(null)
+  const isOpenRef = useRef(false)
 
   // Track range for command execution
   useEffect(() => {
@@ -54,7 +57,11 @@ export function useSlashCommand(): UseSlashCommandReturn {
         type: 'slash-command',
         trigger: '/',
         allowSpaces: true,
-        onStateChange: setSuggestionState,
+        onStateChange: (state) => {
+          // Update ref synchronously so onUpdate can check it in the same tick
+          isOpenRef.current = state.isOpen
+          setSuggestionState(state)
+        },
       }),
     []
   )
@@ -73,6 +80,9 @@ export function useSlashCommand(): UseSlashCommandReturn {
       const range = rangeRef.current
       rangeRef.current = null
 
+      // Close ref synchronously before command so onUpdate sees it as closed
+      isOpenRef.current = false
+
       // Pass range to command so deleteRange + action run in a single chain
       command(editor, range)
 
@@ -83,12 +93,14 @@ export function useSlashCommand(): UseSlashCommandReturn {
 
   // Close picker without executing
   const closePicker = useCallback(() => {
+    isOpenRef.current = false
     setSuggestionState(initialState)
     editorRef.current?.commands.focus()
   }, [])
 
   return {
     suggestionState,
+    isOpenRef,
     executeCommand,
     closePicker,
     slashCommandExtension,
