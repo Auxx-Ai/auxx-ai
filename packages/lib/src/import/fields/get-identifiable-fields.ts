@@ -1,5 +1,6 @@
 // packages/lib/src/import/fields/get-identifiable-fields.ts
 
+import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { Resource } from '../../resources/registry/types'
 import type { ImportableField } from './get-importable-fields'
 
@@ -26,15 +27,16 @@ export function getIdentifiableFields(resource: Resource): ImportableField[] {
       // Include if explicitly marked as identifier (system or unique custom field)
       if (field.isIdentifier) return true
       // Include known system identifier fields
-      return IDENTIFIER_FIELD_KEYS.has(field.key)
+      const outputKey = getFieldOutputKey(field)
+      return IDENTIFIER_FIELD_KEYS.has(outputKey)
     })
     .map((field) => {
-      // Custom fields have UUID id different from key; system fields have id === key
-      const isCustomField = !field.isSystem && field.id !== field.key
+      const isCustomField = !field.isSystem
+      const outputKey = getFieldOutputKey(field)
       return {
-        key: field.key,
+        key: outputKey,
         id: isCustomField ? field.id : undefined,
-        label: field.key === 'id' ? 'Record ID' : field.label,
+        label: outputKey === 'id' ? 'Record ID' : field.label,
         type: field.type,
         required: false,
         isRelation: !!field.relationship,

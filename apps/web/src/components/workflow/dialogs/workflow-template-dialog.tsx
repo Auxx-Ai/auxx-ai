@@ -126,7 +126,7 @@ export function WorkflowTemplateDialog({
   // Entity requirements — resolved client-side via useResources()
   const selectedRequiredEntities = templateDetail?.requiredEntities ?? []
   const hasEntityRequirements = selectedRequiredEntities.length > 0
-  const { getResourceById } = useResources()
+  const { resources, getResourceById } = useResources()
 
   // Transform template detail into WorkflowViewerData format
   const workflowViewerData: WorkflowViewerData | null = useMemo(() => {
@@ -273,7 +273,7 @@ export function WorkflowTemplateDialog({
       if (req.entityTemplateId.startsWith('__system:')) return false
       return !getResourceById(req.apiSlug)
     }).length
-  }, [selectedRequiredEntities, getResourceById, hasEntityRequirements])
+  }, [selectedRequiredEntities, resources, getResourceById, hasEntityRequirements])
 
   return (
     <>

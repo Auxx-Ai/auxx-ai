@@ -1,5 +1,6 @@
 // packages/lib/src/import/fields/get-identifier-options.ts
 
+import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { Resource } from '../../resources/registry/types'
 
 /** Field that can be used as an identifier for duplicate detection */
@@ -40,14 +41,16 @@ export function getIdentifierOptions(resource: Resource): IdentifierOption[] {
     // Skip relation fields
     if (field.relationship) continue
 
+    const outputKey = getFieldOutputKey(field)
+
     // Determine if this is likely a unique field
-    const isUnique = COMMON_UNIQUE_FIELDS.has(field.key)
+    const isUnique = COMMON_UNIQUE_FIELDS.has(outputKey)
 
     // Recommend email and externalId fields
-    const isRecommended = field.key === 'email' || field.key === 'externalId'
+    const isRecommended = outputKey === 'email' || outputKey === 'externalId'
 
     options.push({
-      key: field.key,
+      key: outputKey,
       label: field.label,
       type: field.type,
       isUnique,

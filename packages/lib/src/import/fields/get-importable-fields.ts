@@ -5,6 +5,7 @@ import {
   type RelationshipConfig,
   type SelectOption,
 } from '@auxx/types/custom-field'
+import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { Resource } from '../../resources/registry/types'
 import { getIdentifiableFields } from './get-identifiable-fields'
 
@@ -66,10 +67,9 @@ export function getImportableFields(
   const scalarFields = resource.fields
     .filter((field) => field.capabilities.creatable && !field.relationship)
     .map((field) => {
-      // Custom fields have UUID id different from key; system fields have id === key
-      const isCustomField = !field.isSystem && field.id !== field.key
+      const isCustomField = !field.isSystem
       return {
-        key: field.key,
+        key: getFieldOutputKey(field),
         id: isCustomField ? field.id : undefined,
         label: field.label,
         type: field.type,
@@ -87,9 +87,9 @@ export function getImportableFields(
     const relationFields = resource.fields
       .filter((field) => field.capabilities.creatable && field.relationship)
       .map((field) => {
-        const isCustomField = !field.isSystem && field.id !== field.key
+        const isCustomField = !field.isSystem
         return {
-          key: field.key,
+          key: getFieldOutputKey(field),
           id: isCustomField ? field.id : undefined,
           label: field.label,
           type: field.type,
@@ -119,5 +119,5 @@ export function getImportableFields(
 export function getRequiredFields(resource: Resource): string[] {
   return resource.fields
     .filter((field) => field.capabilities.required && field.capabilities.creatable)
-    .map((field) => field.key)
+    .map((field) => getFieldOutputKey(field))
 }

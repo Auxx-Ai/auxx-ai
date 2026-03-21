@@ -859,6 +859,26 @@ Host.onRequest('render-workflow-panel', async (data) => {
   return await renderWorkflowPanel(data.blockId, data.nodeId, data.data)
 })
 
+// Handler for computing workflow node outputs without rendering a panel.
+// Used by the platform to eagerly fetch output schemas for app nodes
+// (e.g., after template installation, before the user opens the panel).
+Host.onRequest('compute-workflow-node-outputs', async (data) => {
+  const block = getWorkflowBlock(data.blockId)
+  if (!block?.schema?.computeOutputs) {
+    return { outputs: null }
+  }
+  try {
+    const computed = block.schema.computeOutputs(data.data || {})
+    if (computed && typeof computed === 'object') {
+      return { outputs: serializeComputedOutputs(computed) }
+    }
+    return { outputs: null }
+  } catch (err) {
+    console.error('[Workflow] compute-workflow-node-outputs error:', err)
+    return { outputs: null }
+  }
+})
+
 // Handler for executing workflow block (for single node testing)
 Host.onRequest('execute-workflow-block', async (data) => {
   const { blockId, input } = data

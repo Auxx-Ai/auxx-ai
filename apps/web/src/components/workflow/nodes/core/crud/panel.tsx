@@ -364,7 +364,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
             description='Select the type of resource and operation to perform'>
             <VarEditorField className='p-0'>
               <div className='flex flex-row p-1'>
-                <div className=''>
+                <div className='flex items-center'>
                   <Select
                     value={nodeData.mode}
                     onValueChange={handleModeChange}

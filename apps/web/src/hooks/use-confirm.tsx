@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { useState } from 'react'
 
 interface ConfirmOptions {
@@ -74,14 +75,15 @@ export function useConfirm() {
             variant='ghost'
             onClick={handleCancel}
             data-testid='confirmation-modal-cancel-button'>
-            {options.cancelText}
+            {options.cancelText} <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
           <Button
+            data-dialog-submit
             size='sm'
-            variant={options.destructive ? 'destructive' : 'default'}
+            variant={options.destructive ? 'destructive' : 'outline'}
             onClick={handleConfirm}
             data-testid='confirmation-modal-confirm-button'>
-            {options.confirmText}
+            {options.confirmText} <KbdSubmit variant='default' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

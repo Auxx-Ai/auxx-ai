@@ -26,6 +26,7 @@ export interface IfElseCondition extends Omit<NodeCondition, 'varType' | 'value'
   conditions?: IfElseCondition[]
   varType?: BaseType
   value?: string | number | boolean | string[] | TiptapJSON
+  isConstant?: boolean
   // Modern variable reference
   variableId?: string
 }

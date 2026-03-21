@@ -102,7 +102,7 @@ export interface RequiredEntity {
 export interface EntityResolutionResult {
   /** entityTemplateId → resolved entityDefinitionId */
   entityIdMap: Record<string, string>
-  /** entityTemplateId → { fieldRef → resolved customFieldId } */
+  /** entityTemplateId → { fieldRef → resolved field key (systemAttribute or name) } */
   fieldIdMap: Record<string, Record<string, string>>
   /** Entities that exist but are missing required fields */
   missingFields: Array<{
@@ -290,26 +290,85 @@ export function resolveEntityRefsInGraph(
       node.data.resourceType = entityDefId
     }
 
-    // Resolve @field: references in node data
-    if (node.data.data) {
-      const fields = fieldIdMap[templateId]
-      if (!fields) continue
+    const fields = fieldIdMap[templateId]
+    if (!fields) continue
 
+    // Resolve @field: references in node data keys
+    if (node.data.data) {
       const resolvedData: Record<string, any> = {}
       for (const [key, value] of Object.entries(node.data.data as Record<string, any>)) {
         if (key.startsWith('@field:')) {
           const fieldRef = key.replace('@field:', '')
           const fieldId = fields[fieldRef]
-          if (fieldId) {
-            resolvedData[fieldId] = value
-          } else {
-            resolvedData[key] = value // Leave unresolved — user can fix manually
-          }
+          resolvedData[fieldId ?? key] = value
         } else {
           resolvedData[key] = value
         }
       }
       node.data.data = resolvedData
+    }
+
+    // Resolve @field: keys in fieldModes to match resolved data keys
+    if (node.data.fieldModes) {
+      const resolvedFieldModes: Record<string, boolean> = {}
+      for (const [key, value] of Object.entries(node.data.fieldModes as Record<string, boolean>)) {
+        if (key.startsWith('@field:')) {
+          const fieldRef = key.replace('@field:', '')
+          const fieldId = fields[fieldRef]
+          resolvedFieldModes[fieldId ?? key] = value
+        } else {
+          resolvedFieldModes[key] = value
+        }
+      }
+      node.data.fieldModes = resolvedFieldModes
+    }
+
+    // Resolve @field: keys in fieldUpdateModes (relation/multi-select update mode per field)
+    if (node.data.fieldUpdateModes) {
+      const resolved: Record<string, string> = {}
+      for (const [key, value] of Object.entries(
+        node.data.fieldUpdateModes as Record<string, string>
+      )) {
+        if (key.startsWith('@field:')) {
+          const fieldRef = key.replace('@field:', '')
+          const fieldId = fields[fieldRef]
+          resolved[fieldId ?? key] = value
+        } else {
+          resolved[key] = value
+        }
+      }
+      node.data.fieldUpdateModes = resolved
+    }
+
+    // Resolve @field: keys in fieldUpdateModeVars (dynamic mode variable per field)
+    if (node.data.fieldUpdateModeVars) {
+      const resolved: Record<string, string> = {}
+      for (const [key, value] of Object.entries(
+        node.data.fieldUpdateModeVars as Record<string, string>
+      )) {
+        if (key.startsWith('@field:')) {
+          const fieldRef = key.replace('@field:', '')
+          const fieldId = fields[fieldRef]
+          resolved[fieldId ?? key] = value
+        } else {
+          resolved[key] = value
+        }
+      }
+      node.data.fieldUpdateModeVars = resolved
+    }
+
+    // Resolve @field: references in find node conditionGroups
+    // Find node fieldIds use compound format: entityDefinitionId:customFieldId
+    if (node.data.type === 'find' && node.data.conditionGroups) {
+      for (const group of node.data.conditionGroups as any[]) {
+        for (const condition of group.conditions ?? []) {
+          if (typeof condition.fieldId === 'string' && condition.fieldId.startsWith('@field:')) {
+            const fieldRef = condition.fieldId.replace('@field:', '')
+            const fieldId = fields[fieldRef]
+            if (fieldId) condition.fieldId = `${entityDefId}:${fieldId}`
+          }
+        }
+      }
     }
   }
 
@@ -332,8 +391,15 @@ export function extractRequiredEntities(graph: WorkflowGraph): Partial<RequiredE
     const slug = resourceType.replace('@entity:', '')
     const fieldRefs = entityMap.get(slug) ?? new Set()
 
-    if (node.data.data) {
-      for (const key of Object.keys(node.data.data as Record<string, any>)) {
+    // Scan all dictionaries that may contain @field: refs
+    for (const dict of [
+      node.data.data,
+      node.data.fieldModes,
+      node.data.fieldUpdateModes,
+      node.data.fieldUpdateModeVars,
+    ]) {
+      if (!dict) continue
+      for (const key of Object.keys(dict as Record<string, unknown>)) {
         if (key.startsWith('@field:')) {
           fieldRefs.add(key.replace('@field:', ''))
         }

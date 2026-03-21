@@ -55,6 +55,9 @@ COPY --from=pruner /app/out/full/ .
 # Build api and all workspace deps
 RUN pnpm --filter @auxx/api... --workspace-concurrency=1 build
 
+# Build platform runtime (generates public/app-runtime/platform.{hash}.js)
+RUN cd apps/api && pnpm build:platform-runtime
+
 # ──────────────────────────────────────────────
 # Stage 4: DEPLOY — extract production-only dependencies
 # ──────────────────────────────────────────────
@@ -98,6 +101,7 @@ RUN groupadd --system --gid 1001 nodejs && \
     useradd --system --uid 1001 --gid nodejs api
 
 COPY --from=deploy --chown=api:nodejs /deployed /app
+COPY --from=builder --chown=api:nodejs /app/apps/api/public/app-runtime /app/public/app-runtime
 
 USER api
 WORKDIR /app

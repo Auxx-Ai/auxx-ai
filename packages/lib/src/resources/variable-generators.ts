@@ -459,7 +459,7 @@ function convertFieldToVariableProperty(
             const nestedRelType = targetField.relationship?.relationshipType
             // Only drill into has_many, skip many_to_many in nested context
             if (nestedRelType === 'has_many' && currentDepth + 1 < maxDepth) {
-              itemProperties[targetField.key] = convertFieldToVariableProperty(
+              itemProperties[getFieldOutputKey(targetField)] = convertFieldToVariableProperty(
                 targetField,
                 relatedEntityDefinitionId,
                 newVisited,
@@ -469,7 +469,7 @@ function convertFieldToVariableProperty(
             } else if (nestedRelType === 'belongs_to' || nestedRelType === 'has_one') {
               // Include belongs_to references within depth limit
               if (currentDepth + 1 < maxDepth) {
-                itemProperties[targetField.key] = convertFieldToVariableProperty(
+                itemProperties[getFieldOutputKey(targetField)] = convertFieldToVariableProperty(
                   targetField,
                   relatedEntityDefinitionId,
                   newVisited,
@@ -480,7 +480,7 @@ function convertFieldToVariableProperty(
             }
           } else {
             // Include non-relationship fields
-            itemProperties[targetField.key] = convertFieldToVariableProperty(
+            itemProperties[getFieldOutputKey(targetField)] = convertFieldToVariableProperty(
               targetField,
               relatedEntityDefinitionId,
               newVisited,
@@ -524,7 +524,7 @@ function convertFieldToVariableProperty(
         // Only include non-relationship fields for many-to-many
         targetFields.forEach((targetField) => {
           if (targetField.type !== BaseType.RELATION) {
-            itemProperties[targetField.key] = convertFieldToVariableProperty(
+            itemProperties[getFieldOutputKey(targetField)] = convertFieldToVariableProperty(
               targetField,
               relatedEntityDefinitionId,
               newVisited,
@@ -854,6 +854,15 @@ export function generateFindNodeVariablesFromFields(
       items: itemVar,
     })
   }
+
+  // Count variable — matches backend contextManager.setNodeVariable(nodeId, 'count', resultCount)
+  variables.push({
+    id: `${nodeId}.count`,
+    label: 'Count',
+    type: BaseType.NUMBER,
+    category: 'node',
+    description: `Number of ${resourceMeta.label.toLowerCase()} records found`,
+  })
 
   // Query info variable
   variables.push(createQueryInfoVariable(nodeId))

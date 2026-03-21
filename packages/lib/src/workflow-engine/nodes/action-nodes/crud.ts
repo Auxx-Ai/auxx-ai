@@ -848,7 +848,9 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
     for (const [key, value] of Object.entries(data)) {
       // Find field definition by output key (stable identifier), with fallback to key (backward compat)
-      const field = fields.find((f) => getFieldOutputKey(f) === key || f.key === key)
+      const field = fields.find(
+        (f) => getFieldOutputKey(f) === key || f.key === key || f.name === key || f.id === key
+      )
 
       if (field?.id) {
         // Use database ID as key for entity operations

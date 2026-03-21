@@ -32,9 +32,10 @@ export const useIfElseConditionAdapter = ({
             id: condition.id,
             fieldId: condition.variableId || '',
             operator: condition.comparison_operator || 'is',
-            value: condition.value || '',
+            value: condition.value ?? '',
             variableId: condition.variableId,
             key: condition.key,
+            isConstant: condition.isConstant,
             numberVarType: condition.varType === 'number' ? 'number' : 'string',
             logicalOperator: condition.logical_operator === 'or' ? 'OR' : 'AND',
           })
@@ -77,6 +78,7 @@ export const useIfElseConditionAdapter = ({
               comparison_operator: condition.operator as any,
               value: condition.value,
               key: condition.key,
+              isConstant: condition.isConstant,
               varType: condition.numberVarType === 'number' ? 'number' : undefined,
               logical_operator: condition.logicalOperator?.toLowerCase() as
                 | 'and'

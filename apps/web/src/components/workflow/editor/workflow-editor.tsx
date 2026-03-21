@@ -8,7 +8,12 @@ import { Loader2 } from 'lucide-react'
 import { memo, useEffect, useRef } from 'react'
 import { WorkflowCanvas } from '../canvas/workflow-canvas'
 import { WorkflowToolbar } from '../canvas/workflow-toolbar'
-import { useWorkflowBlocks, useWorkflowInit, useWorkflowShortcuts } from '../hooks'
+import {
+  useEagerAppOutputs,
+  useWorkflowBlocks,
+  useWorkflowInit,
+  useWorkflowShortcuts,
+} from '../hooks'
 import { PropertyPanel } from '../panels/property-panel'
 import { WorkflowRunPanel } from '../panels/run/workflow-run-panel'
 import { WorkflowSettingsPanel } from '../panels/settings'
@@ -46,6 +51,9 @@ const WorkflowEditorInner = memo<{
 
   // Load workflow blocks from installed apps (side effect only)
   useWorkflowBlocks()
+
+  // Eagerly fetch computed outputs for app nodes (e.g., Shopify)
+  useEagerAppOutputs()
 
   // Initialize test input sync
   useTestInputSync()

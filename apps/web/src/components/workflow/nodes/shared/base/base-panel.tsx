@@ -507,7 +507,7 @@ export const BasePanel = memo<BasePanelProps>(
                 {showNextStep && data && (
                   <>
                     {isTrigger && <ReplaceTrigger nodeId={nodeId} nodeType={nodeType} />}
-                    <div className='border-t bg-background sticky bottom-0'>
+                    <div className='border-t bg-background sticky bottom-0 z-10'>
                       <div className='p-3'>
                         <div className='mb-2 text-xs font-semibold uppercase text-muted-foreground'>
                           Next Steps

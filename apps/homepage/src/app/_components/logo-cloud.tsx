@@ -9,17 +9,11 @@ import {
   GeminiFull,
   Gmail,
   GroqFull,
-  InstagramFull,
+  InstagramMono,
   OpenAIFull,
   OutlookFull,
   QuoFull,
 } from '@/components/logos'
-import { Beacon } from '~/components/logos/beacon'
-import { Cisco } from '~/components/logos/cisco'
-import { LeapWallet } from '~/components/logos/leap-wallet'
-import { PayPal } from '~/components/logos/paypal'
-import { Polars } from '~/components/logos/polars'
-import { Stripe } from '~/components/logos/stripe'
 
 const logoClass = 'h-7 w-auto'
 
@@ -34,29 +28,14 @@ const aiLogos: React.ReactNode[] = [
 const messagesLogos: React.ReactNode[] = [
   <Gmail className={logoClass} />,
   <OutlookFull className={logoClass} />,
-  <InstagramFull className={logoClass} />,
+  <InstagramMono className={logoClass} />,
   <FacebookFull className={logoClass} />,
   <QuoFull className={logoClass} />,
 ]
 
-const paymentsLogos: React.ReactNode[] = [
-  <Stripe className={logoClass} />,
-  <PayPal className={logoClass} />,
-  <LeapWallet className={logoClass} />,
-  <Beacon className={logoClass} />,
-  <Polars className={logoClass} />,
-]
-
-const streamingLogos: React.ReactNode[] = [
-  <Cisco className={logoClass} />,
-  <Beacon className={logoClass} />,
-]
-
-const logos: Record<'ai' | 'messages' | 'streaming' | 'payments', React.ReactNode[]> = {
+const logos: Record<'ai' | 'messages', React.ReactNode[]> = {
   ai: aiLogos,
   messages: messagesLogos,
-  payments: paymentsLogos,
-  streaming: streamingLogos,
 }
 
 type LogoGroup = keyof typeof logos
@@ -85,16 +64,11 @@ export default function LogoCloudTwo() {
             <p data-current={currentGroup} className='text-muted-foreground mt-4 md:text-lg'>
               Auxx.Ai integrates with{' '}
               <span className='in-data-[current=messages]:text-foreground transition-colors duration-200'>
-                Email and Messaging apps,
+                Email and Messaging apps
               </span>{' '}
+              and{' '}
               <span className='in-data-[current=ai]:text-foreground transition-colors duration-200'>
-                AI Providers,
-              </span>{' '}
-              <span className='in-data-[current=payments]:text-foreground transition-colors duration-200'>
-                Payments Providers,
-              </span>{' '}
-              <span className='in-data-[current=streaming]:text-foreground transition-colors duration-200'>
-                Streaming Providers
+                AI Providers
               </span>
             </p>
           </div>
