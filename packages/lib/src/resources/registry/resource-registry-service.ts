@@ -32,7 +32,10 @@ function sortFieldsWithMetadataLast(fields: ResourceField[]): ResourceField[] {
   const leading: ResourceField[] = []
   const trailing: ResourceField[] = []
   for (const field of fields) {
-    if (TRAILING_FIELD_KEYS.has(field.key)) {
+    if (
+      TRAILING_FIELD_KEYS.has(field.key) ||
+      TRAILING_FIELD_KEYS.has(field.systemAttribute ?? '')
+    ) {
       trailing.push(field)
     } else {
       leading.push(field)
@@ -917,8 +920,9 @@ export class ResourceRegistryService {
         // Core identifiers
         id: fieldId,
         resourceFieldId,
-        // Use field name as key — for system fields this gets overridden by static key during merge
-        key: field.name,
+        // Use field.id as key — maximally stable (rename-proof, template-resolution compatible)
+        // For system resources, mergeSystemAndCustomFields() overrides with the static registry key
+        key: field.id,
         label: field.name,
         type: baseType,
 

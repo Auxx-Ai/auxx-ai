@@ -4,6 +4,7 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { useUpdateNodeInternals } from '@xyflow/react'
 import { Download } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks/use-node-data-update'
@@ -45,6 +46,7 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   const [nodeComponent, setNodeComponent] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const dataRef = useRef(data)
+  const updateNodeInternals = useUpdateNodeInternals()
 
   // Keep ref in sync with latest data
   useEffect(() => {
@@ -144,6 +146,8 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
         if (result?.component) {
           setNodeComponent(result.component)
           setError(null)
+          // Force React Flow to re-measure handles now that the iframe component rendered
+          updateNodeInternals(id)
         } else {
           setError('No component returned')
         }
@@ -168,6 +172,7 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
         if (updateData.nodeId === id) {
           // Store raw component data - will be reconstructed in renderComponent
           setNodeComponent(updateData.component)
+          updateNodeInternals(id)
         }
       }
     )
@@ -302,8 +307,10 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
 
   return (
     <BaseNode id={id} data={data} selected={selected}>
-      {/* Render fallback handles when there's an error or app not installed */}
-      {(displayError || isNotInstalled) && renderFallbackHandles()}
+      {/* Render fallback handles when iframe component hasn't loaded yet.
+          Uses _connectedSourceHandleIds/_connectedTargetHandleIds from edge data
+          so React Flow can position edges before the iframe renders its own handles. */}
+      {(displayError || isNotInstalled || !nodeComponent) && renderFallbackHandles()}
 
       <div className='space-y-1 pb-2'>
         {isLoading ? (

@@ -585,6 +585,14 @@ export const useVarStore = create<VarStoreState>()(
 
           if (affectedNodeIds.length === 0) return
 
+          // Clear cached outputs for affected nodes so updateGraph doesn't
+          // skip them due to dataRef equality (same pattern as setResources)
+          set((s) => {
+            for (const nodeId of affectedNodeIds) {
+              s.nodeOutputs.delete(nodeId)
+            }
+          })
+
           // Recompute in topo order via full updateGraph
           get().actions.updateGraph(state.graph.nodes, state.graph.edges)
         },

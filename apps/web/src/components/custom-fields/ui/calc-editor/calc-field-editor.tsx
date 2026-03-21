@@ -3,7 +3,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
-import type { ResourceField } from '@auxx/lib/resources/client'
+import { getFieldOutputKey, type ResourceField } from '@auxx/lib/resources/client'
 import type { FieldReference } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -125,7 +125,7 @@ export function CalcFieldEditor({
   /** Handle selecting a field from the picker */
   const handleSelectField = useCallback(
     (_fieldReference: FieldReference, field: ResourceField) => {
-      insertField(field.key)
+      insertField(getFieldOutputKey(field))
     },
     [insertField]
   )

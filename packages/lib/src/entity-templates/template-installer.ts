@@ -331,6 +331,9 @@ async function createField(
     organizationId,
     entityDefinitionId,
     isCustom: true,
+    // Store templateFieldId as systemAttribute so template resolution can match
+    // fields reliably even if the user renames them later
+    systemAttribute: templateFieldId,
   })
 
   if (result.isOk()) {

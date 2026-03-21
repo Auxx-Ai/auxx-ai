@@ -845,6 +845,11 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     const columnName = this.getTypedColumnName(dbFieldType)
     const valueCol = sql.raw(`"FieldValue"."${columnName}"`)
 
+    // Strip entityDefinitionId: prefix from RecordId values for RELATIONSHIP fields
+    if (columnName === 'relatedEntityId') {
+      rawValue = this.normalizeRelationshipValue(rawValue)
+    }
+
     // ========================================
     // MULTI-VALUE OPTION FIELDS (MULTI_SELECT, TAGS)
     // These store each option as a separate row with optionId

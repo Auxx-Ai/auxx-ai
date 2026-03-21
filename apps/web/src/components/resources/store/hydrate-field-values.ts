@@ -64,8 +64,8 @@ export function hydrateFieldValues({ resource, recordId, recordData }: Hydration
     })
 
     if (typedValue !== null) {
-      // Use buildFieldValueKey with RecordId directly
-      const storeKey = buildFieldValueKey(recordId, getFieldOutputKey(field))
+      // Use field identity (resourceFieldId or id) for store key — must match what cells read
+      const storeKey = buildFieldValueKey(recordId, field.resourceFieldId ?? field.id)
       entries.push({ key: storeKey, value: typedValue as StoredFieldValue })
     }
   }
@@ -96,7 +96,7 @@ export function hydrateMultipleRecords(
           field.sourceFields.map((sourceKey) => [sourceKey, record.data[sourceKey] ?? ''])
         )
       } else {
-        const valueKey = getFieldOutputKey(field)
+        const valueKey = field.dbColumn || getFieldOutputKey(field)
         rawValue = record.data[valueKey]
       }
       // console.log('Hydrating field', {
@@ -122,7 +122,7 @@ export function hydrateMultipleRecords(
       })
 
       if (typedValue !== null) {
-        const storeKey = buildFieldValueKey(record.recordId, getFieldOutputKey(field))
+        const storeKey = buildFieldValueKey(record.recordId, field.resourceFieldId ?? field.id)
         allEntries.push({ key: storeKey, value: typedValue as StoredFieldValue })
       }
     }
