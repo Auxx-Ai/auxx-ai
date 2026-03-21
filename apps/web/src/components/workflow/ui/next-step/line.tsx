@@ -22,7 +22,12 @@ const Line = ({ list }: LineProps) => {
           <g key={index}>
             {index === 0 && (
               <>
-                <path d='M0,18 L24,18' strokeWidth={1} fill='none' className='stroke-primary-200' />
+                <path
+                  d='M0,18 L24,18'
+                  strokeWidth={1}
+                  fill='none'
+                  className='stroke-primary-200 dark:stroke-[#525761]'
+                />
                 <rect x={0} y={16} width={1} height={4} className='fill-primary-400' />
               </>
             )}
@@ -31,7 +36,7 @@ const Line = ({ list }: LineProps) => {
                 d={`M0,18 Q12,18 12,28 L12,${space - 10 + 2} Q12,${space + 2} 24,${space + 2}`}
                 strokeWidth={1}
                 fill='none'
-                className='stroke-primary-200'
+                className='stroke-primary-200 dark:stroke-[#525761]'
               />
             )}
             <rect x={23} y={space} width={1} height={4} className='fill-primary-400' />

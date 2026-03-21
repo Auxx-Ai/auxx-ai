@@ -27,6 +27,7 @@ import {
   updateValueResolution,
 } from '@auxx/lib/import'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -53,6 +54,12 @@ export const dataImportRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
+
+      await new FeaturePermissionService().requireLimit(
+        organizationId,
+        FeatureKey.importRowsLimit,
+        async () => input.rowCount
+      )
 
       try {
         const result = await createImportJob(ctx.db, {

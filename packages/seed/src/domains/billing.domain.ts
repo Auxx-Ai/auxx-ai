@@ -47,6 +47,7 @@ const STATIC_LIMITS = {
     kbPublishedArticles: 5,
     datasetsLimit: 1,
     entities: 5,
+    importRowsLimit: 50,
   },
   free: {
     teammates: 1,
@@ -57,6 +58,7 @@ const STATIC_LIMITS = {
     kbPublishedArticles: 0,
     datasetsLimit: 0,
     entities: 3,
+    importRowsLimit: 50,
   },
   starter: {
     teammates: -1,
@@ -67,6 +69,7 @@ const STATIC_LIMITS = {
     kbPublishedArticles: 50,
     datasetsLimit: 5,
     entities: 10,
+    importRowsLimit: 500,
   },
   growth: {
     teammates: -1,
@@ -77,6 +80,7 @@ const STATIC_LIMITS = {
     kbPublishedArticles: -1,
     datasetsLimit: -1,
     entities: -1,
+    importRowsLimit: 1000,
   },
   enterprise: {
     teammates: -1,
@@ -87,6 +91,7 @@ const STATIC_LIMITS = {
     kbPublishedArticles: -1,
     datasetsLimit: -1,
     entities: -1,
+    importRowsLimit: -1,
   },
 } as const
 

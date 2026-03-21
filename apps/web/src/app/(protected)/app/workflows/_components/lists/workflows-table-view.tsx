@@ -21,7 +21,6 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { formatDistanceToNow } from 'date-fns'
 import { Copy, Edit, ExternalLink, MoreHorizontal, TestTube, Trash } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -73,32 +72,6 @@ export function WorkflowsTableView() {
     setEditDialogOpen(true)
   }
 
-  const getStatusBadge = (executions: any[]) => {
-    if (!executions || executions.length === 0) {
-      return (
-        <Badge variant='gray' className='shrink-0 truncate'>
-          Never run
-        </Badge>
-      )
-    }
-
-    const latest = executions[0]
-    switch (latest.status) {
-      case 'SUCCEEDED':
-        return <Badge variant='green'>Success</Badge>
-      case 'FAILED':
-        return <Badge variant='destructive'>Failed</Badge>
-      case 'RUNNING':
-        return <Badge variant='blue'>Running</Badge>
-      default:
-        return (
-          <Badge variant='gray' className='shrink-0 truncate'>
-            {latest.status}
-          </Badge>
-        )
-    }
-  }
-
   return (
     <div className='border rounded-lg'>
       <Table>
@@ -106,10 +79,6 @@ export function WorkflowsTableView() {
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Trigger</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Versions</TableHead>
-            <TableHead>Executions</TableHead>
-            <TableHead>Last Run</TableHead>
             <TableHead>Enabled</TableHead>
             <TableHead className='w-[50px]'></TableHead>
           </TableRow>
@@ -136,32 +105,6 @@ export function WorkflowsTableView() {
                 <Badge className='shrink-0 truncate' variant='outline'>
                   {TRIGGER_NAME_MAP[workflow.triggerType as WorkflowTriggerType] || 'Unknown'}
                 </Badge>
-              </TableCell>
-
-              <TableCell>{getStatusBadge(workflow.executions)}</TableCell>
-
-              <TableCell>
-                <span className='text-sm text-muted-foreground'>
-                  {workflow._count?.workflows || 1}
-                </span>
-              </TableCell>
-
-              <TableCell>
-                <span className='text-sm text-muted-foreground'>
-                  {workflow._count?.executions || 0}
-                </span>
-              </TableCell>
-
-              <TableCell>
-                {workflow.executions && workflow.executions.length > 0 ? (
-                  <span className='text-sm text-muted-foreground'>
-                    {formatDistanceToNow(new Date(workflow.executions[0].createdAt), {
-                      addSuffix: true,
-                    })}
-                  </span>
-                ) : (
-                  <span className='text-sm text-muted-foreground'>Never</span>
-                )}
               </TableCell>
 
               <TableCell>

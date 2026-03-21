@@ -23,20 +23,20 @@ export function WorkflowsStatsCards() {
       icon: <Play className='size-4' />,
       color: 'text-comparison-500',
     },
-    {
-      title: 'Success Rate',
-      body: stats ? `${stats.successRate}%` : '0%',
-      description: 'Recent executions',
-      icon: <CheckCircle className='size-4' />,
-      color: 'text-good-500',
-    },
-    {
-      title: 'Total Executions',
-      body: stats?.totalExecutions || 0,
-      description: 'All time',
-      icon: <TrendingUp className='size-4' />,
-      color: 'text-fuchsia-500',
-    },
+    // {
+    //   title: 'Success Rate',
+    //   body: stats ? `${stats.successRate}%` : '0%',
+    //   description: 'Recent executions',
+    //   icon: <CheckCircle className='size-4' />,
+    //   color: 'text-good-500',
+    // },
+    // {
+    //   title: 'Total Executions',
+    //   body: stats?.totalExecutions || 0,
+    //   description: 'All time',
+    //   icon: <TrendingUp className='size-4' />,
+    //   color: 'text-fuchsia-500',
+    // },
   ]
 
   return (
@@ -45,7 +45,8 @@ export function WorkflowsStatsCards() {
       loading={isLoading}
       columns={{
         default: 'grid-cols-2',
-        md: 'md:grid-cols-4',
+        // md: 'md:grid-cols-4',
+        md: 'md:grid-cols-2',
       }}
       className='border-b bg-primary-50'
     />

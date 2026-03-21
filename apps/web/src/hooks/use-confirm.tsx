@@ -83,7 +83,8 @@ export function useConfirm() {
             variant={options.destructive ? 'destructive' : 'outline'}
             onClick={handleConfirm}
             data-testid='confirmation-modal-confirm-button'>
-            {options.confirmText} <KbdSubmit variant='default' size='sm' />
+            {options.confirmText}{' '}
+            <KbdSubmit variant={options.destructive ? 'default' : 'outline'} size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>
