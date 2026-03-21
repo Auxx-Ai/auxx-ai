@@ -2,8 +2,9 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, count, desc, eq, ilike, inArray, or, type SQL } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
+import { getCachedWorkflowAppsList } from '../cache/workflow-app-queries'
 import { getQueue, Queues } from '../jobs/queues'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { PollingTriggerService } from './polling-trigger-service'
@@ -28,137 +29,37 @@ export class WorkflowService {
   constructor(private db: Database) {}
 
   /**
-   * Get all workflow apps for the organization
+   * Get all workflow apps for the organization (reads from org cache — zero DB queries)
    */
   async getAll(organizationId: string, filters: WorkflowFilter): Promise<WorkflowListResult> {
-    const { enabled, triggerType, search, limit, offset } = filters
-
-    logger.info('Fetching workflow apps', { organizationId, filters })
+    logger.info('Fetching workflow apps from cache', { organizationId, filters })
 
     try {
-      // Build conditional filters
-      const whereFilters: SQL[] = [eq(schema.WorkflowApp.organizationId, organizationId)]
-
-      if (enabled !== undefined) {
-        whereFilters.push(eq(schema.WorkflowApp.enabled, enabled))
-      }
-
-      if (search) {
-        whereFilters.push(
-          or(
-            ilike(schema.WorkflowApp.name, `%${search}%`),
-            ilike(schema.WorkflowApp.description, `%${search}%`)
-          )!
-        )
-      }
-
-      // Get workflow apps with published workflow details
-      const workflowApps = await this.db.query.WorkflowApp.findMany({
-        where: and(...whereFilters),
-        with: {
-          publishedWorkflow: {
-            columns: {
-              id: true,
-              version: true,
-              triggerType: true,
-              graph: true,
-              variables: true,
-            },
-          },
-          createdBy: {
-            columns: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: [desc(schema.WorkflowApp.enabled), desc(schema.WorkflowApp.updatedAt)],
-        limit,
-        offset,
+      const cached = await getCachedWorkflowAppsList(organizationId, {
+        search: filters.search,
+        triggerType: filters.triggerType,
+        enabled: filters.enabled,
+        limit: filters.limit,
+        offset: filters.offset,
       })
 
-      // Filter out apps that don't match triggerType if specified
-      const filteredApps = triggerType
-        ? workflowApps.filter((app) => app.publishedWorkflow?.triggerType === triggerType)
-        : workflowApps
-
-      // Get latest workflow run for each app
-      const workflowAppIds = filteredApps.map((app) => app.id)
-      const latestRuns =
-        workflowAppIds.length > 0
-          ? await this.db.query.WorkflowRun.findMany({
-              where: and(
-                inArray(schema.WorkflowRun.workflowAppId, workflowAppIds),
-                eq(schema.WorkflowRun.organizationId, organizationId)
-              ),
-              columns: {
-                id: true,
-                status: true,
-                createdAt: true,
-                workflowAppId: true,
-              },
-              orderBy: desc(schema.WorkflowRun.createdAt),
-            })
-          : []
-
-      // Get counts separately since Drizzle extras can't handle aggregates
-      const [totalCount, runCounts, workflowCounts] = await Promise.all([
-        this.db
-          .select({ count: count() })
-          .from(schema.WorkflowApp)
-          .where(and(...whereFilters))
-          .then((r) => r[0]?.count || 0),
-        workflowAppIds.length > 0
-          ? this.db
-              .select({
-                workflowAppId: schema.WorkflowRun.workflowAppId,
-                count: count(),
-              })
-              .from(schema.WorkflowRun)
-              .where(
-                and(
-                  inArray(schema.WorkflowRun.workflowAppId, workflowAppIds),
-                  eq(schema.WorkflowRun.organizationId, organizationId)
-                )
-              )
-              .groupBy(schema.WorkflowRun.workflowAppId)
-          : [],
-        workflowAppIds.length > 0
-          ? this.db
-              .select({
-                workflowAppId: schema.Workflow.workflowAppId,
-                count: count(),
-              })
-              .from(schema.Workflow)
-              .where(inArray(schema.Workflow.workflowAppId, workflowAppIds))
-              .groupBy(schema.Workflow.workflowAppId)
-          : [],
-      ])
-
-      // Create lookup maps for counts and runs
-      const runCountMap = new Map(runCounts.map((r) => [r.workflowAppId, r.count]))
-      const workflowCountMap = new Map(workflowCounts.map((w) => [w.workflowAppId, w.count]))
-      const latestRunMap = new Map(latestRuns.map((r) => [r.workflowAppId, r]))
-
-      // Transform to match expected structure
-      const workflows = filteredApps.map((app) => ({
+      const workflows = cached.workflows.map((app) => ({
         id: app.id,
         name: app.name,
         description: app.description,
         enabled: app.enabled,
         version: app.publishedWorkflow?.version || 1,
-        triggerType: app.publishedWorkflow?.triggerType,
+        triggerType: app.publishedWorkflow?.triggerType || app.draftTriggerType,
         organizationId: app.organizationId,
-        createdAt: app.createdAt,
-        updatedAt: app.updatedAt,
-        createdBy: app.createdBy,
-        graph: app.publishedWorkflow?.graph || null,
-        variables: app.publishedWorkflow?.variables || [],
-        executions: latestRunMap.get(app.id) ? [latestRunMap.get(app.id)!] : [],
+        createdAt: new Date(app.createdAt),
+        updatedAt: new Date(app.updatedAt),
+        createdBy: null,
+        graph: null,
+        variables: [],
+        executions: [],
         _count: {
-          executions: runCountMap.get(app.id) || 0,
-          workflows: workflowCountMap.get(app.id) || 0,
+          executions: 0,
+          workflows: 0,
         },
         isPublic: app.isPublic,
         isUniversal: app.isUniversal,
@@ -168,8 +69,8 @@ export class WorkflowService {
 
       return {
         workflows,
-        total: totalCount,
-        hasMore: offset + workflows.length < totalCount,
+        total: cached.total,
+        hasMore: cached.hasMore,
       }
     } catch (error) {
       logger.error('Failed to fetch workflow apps', { error, organizationId })
@@ -541,6 +442,8 @@ export class WorkflowService {
       })
 
       logger.info('Workflow app updated successfully', { workflowAppId: id, organizationId })
+
+      await onCacheEvent('workflow.updated', { orgId: organizationId })
 
       // Handle enable/disable scheduling logic
       if (updateData.enabled !== undefined && result) {

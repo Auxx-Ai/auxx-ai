@@ -44,3 +44,20 @@ export async function getCachedWorkflowAppsByAppTrigger(params: {
     connectionId: params.connectionId,
   })
 }
+
+/**
+ * Get workflow apps list with filtering and pagination from cache.
+ * Used by the workflow list view — pure cache read, zero DB queries.
+ */
+export async function getCachedWorkflowAppsList(
+  organizationId: string,
+  filters?: {
+    search?: string
+    triggerType?: string
+    enabled?: boolean
+    limit?: number
+    offset?: number
+  }
+) {
+  return getOrgCache().from(organizationId, 'workflowApps').list(filters)
+}

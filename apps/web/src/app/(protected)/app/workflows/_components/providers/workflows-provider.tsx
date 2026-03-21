@@ -69,35 +69,28 @@ export function WorkflowsProvider({ children }: WorkflowsProviderProps) {
         total: 0,
         enabled: 0,
         disabled: 0,
-        totalExecutions: 0,
-        successRate: 0,
-        totalVersions: 0,
+        // totalExecutions: 0,
+        // successRate: 0,
+        // totalVersions: 0,
       }
     }
 
     const workflowApps = workflowsData.workflows
     const total = workflowApps.length
     const enabled = workflowApps.filter((w) => w.enabled).length
-    const disabled = total - enabled
-    const totalExecutions = workflowApps.reduce((sum, w) => sum + (w._count?.executions || 0), 0)
-    const totalVersions = workflowApps.reduce((sum, w) => sum + (w._count?.workflows || 1), 0)
+    // const disabled = total - enabled
+    // const totalExecutions = workflowApps.reduce((sum, w) => sum + (w._count?.executions || 0), 0)
+    // const totalVersions = workflowApps.reduce((sum, w) => sum + (w._count?.workflows || 1), 0)
 
-    // Calculate success rate from recent executions
-    const recentExecutions = workflowApps.flatMap((w) => w.executions || [])
-    const successfulExecutions = recentExecutions.filter((e) => e.status === 'SUCCEEDED').length
-    const successRate =
-      recentExecutions.length > 0
-        ? Math.round((successfulExecutions / recentExecutions.length) * 100)
-        : 0
+    // // Calculate success rate from recent executions
+    // const recentExecutions = workflowApps.flatMap((w) => w.executions || [])
+    // const successfulExecutions = recentExecutions.filter((e) => e.status === 'SUCCEEDED').length
+    // const successRate =
+    //   recentExecutions.length > 0
+    //     ? Math.round((successfulExecutions / recentExecutions.length) * 100)
+    //     : 0
 
-    return {
-      total,
-      enabled,
-      disabled,
-      totalExecutions,
-      successRate,
-      totalVersions,
-    }
+    return { total, enabled, disabled: total - enabled }
   }, [workflowsData])
 
   const value: WorkflowsContextValue = {

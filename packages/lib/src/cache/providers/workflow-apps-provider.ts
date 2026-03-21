@@ -3,12 +3,24 @@
 import { ArrayAccessor } from '../accessors'
 import type { CacheProvider } from '../org-cache-provider'
 
-/** Cached workflow app shape — only fields needed by trigger matching + execution hot paths */
+/** Cached workflow app shape — execution hot paths + display fields for list view */
 export interface CachedWorkflowApp {
   id: string
   organizationId: string
   enabled: boolean
   workflowId: string | null
+
+  // Display fields
+  name: string
+  description: string | null
+  icon: any | null
+  updatedAt: string // ISO string
+  createdAt: string // ISO string
+  isPublic: boolean
+  isUniversal: boolean
+
+  // Draft trigger type (for unpublished workflows)
+  draftTriggerType: string | null
 
   publishedWorkflow: CachedPublishedWorkflow | null
 }
@@ -33,12 +45,19 @@ export interface CachedPublishedWorkflow {
   createdById: string | null
 }
 
-/** Narrow a DB WorkflowApp + publishedWorkflow to the serializable cache shape */
+/** Narrow a DB WorkflowApp + publishedWorkflow + draftWorkflow to the serializable cache shape */
 function dehydrateWorkflowApp(app: {
   id: string
   organizationId: string
   enabled: boolean
   workflowId: string | null
+  name: string
+  description: string | null
+  icon: unknown
+  updatedAt: Date
+  createdAt: Date
+  isPublic: boolean
+  isUniversal: boolean
   publishedWorkflow: {
     id: string
     version: number
@@ -53,12 +72,23 @@ function dehydrateWorkflowApp(app: {
     variables: unknown
     createdById: string | null
   } | null
+  draftWorkflow: {
+    triggerType: string | null
+  } | null
 }): CachedWorkflowApp {
   return {
     id: app.id,
     organizationId: app.organizationId,
     enabled: app.enabled,
     workflowId: app.workflowId,
+    name: app.name,
+    description: app.description,
+    icon: app.icon,
+    updatedAt: app.updatedAt.toISOString(),
+    createdAt: app.createdAt.toISOString(),
+    isPublic: app.isPublic,
+    isUniversal: app.isUniversal,
+    draftTriggerType: app.draftWorkflow?.triggerType ?? null,
     publishedWorkflow: app.publishedWorkflow
       ? {
           id: app.publishedWorkflow.id,
@@ -85,6 +115,9 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
       where: (t, { eq }) => eq(t.organizationId, orgId),
       with: {
         publishedWorkflow: true,
+        draftWorkflow: {
+          columns: { triggerType: true },
+        },
       },
     })
     return apps.map(dehydrateWorkflowApp)
@@ -131,6 +164,51 @@ export const workflowAppsProvider: CacheProvider<CachedWorkflowApp[]> = {
             (!params.connectionId ||
               app.publishedWorkflow?.triggerConnectionId === params.connectionId)
         )
+      },
+
+      /** List workflow apps with filtering, sorting, and pagination for the list view */
+      async list(filters?: {
+        search?: string
+        triggerType?: string
+        enabled?: boolean
+        limit?: number
+        offset?: number
+      }): Promise<{ workflows: CachedWorkflowApp[]; total: number; hasMore: boolean }> {
+        let data = await dataFn()
+
+        if (filters?.enabled !== undefined) {
+          data = data.filter((app) => app.enabled === filters.enabled)
+        }
+        if (filters?.triggerType) {
+          data = data.filter(
+            (app) =>
+              (app.publishedWorkflow?.triggerType || app.draftTriggerType) === filters.triggerType
+          )
+        }
+        if (filters?.search) {
+          const q = filters.search.toLowerCase()
+          data = data.filter(
+            (app) =>
+              app.name.toLowerCase().includes(q) || app.description?.toLowerCase().includes(q)
+          )
+        }
+
+        // Sort: enabled first, then by updatedAt desc
+        data.sort((a, b) => {
+          if (a.enabled !== b.enabled) return a.enabled ? -1 : 1
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        })
+
+        const total = data.length
+        const offset = filters?.offset ?? 0
+        const limit = filters?.limit ?? 50
+        const sliced = data.slice(offset, offset + limit)
+
+        return {
+          workflows: sliced,
+          total,
+          hasMore: offset + sliced.length < total,
+        }
       },
     })
   },

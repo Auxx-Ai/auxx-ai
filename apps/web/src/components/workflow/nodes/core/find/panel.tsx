@@ -78,11 +78,13 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
 
   // Get resource and fields for current selection
   const { resource } = useResource(nodeData.resourceType)
+
   const {
     filterableFields,
     sortableFields,
     isLoading: isLoadingFields,
   } = useResourceFields(nodeData.resourceType)
+
   // Group management hooks
   const groupHooks = useFindGroups(nodeData, setNodeData)
 

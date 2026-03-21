@@ -127,9 +127,6 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
               <p className='text-sm font-semibold line-clamp-2 group-hover/workflow-card:text-info'>
                 {workflow.name}
               </p>
-              <Badge variant='pill' size='sm' className='shrink-0 mt-0.5'>
-                {TRIGGER_NAME_MAP[workflow.triggerType as WorkflowTriggerType] || 'Unknown'}
-              </Badge>
             </div>
             <LastUpdated
               timestamp={workflow.updatedAt}
@@ -140,13 +137,11 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
           </div>
         </div>
 
-        {/* Bottom row: Executions + Dropdown */}
+        {/* Bottom row: Dropdown */}
         <div className='flex items-center justify-between mt-auto'>
-          <div className='flex items-center gap-3 text-xs text-muted-foreground'>
-            {workflow._count?.workflows > 1 && <span>{workflow._count.workflows} versions</span>}
-            <span>{workflow._count?.executions || 0} executions</span>
-          </div>
-
+          <Badge variant='pill' size='sm' className='shrink-0 mt-0.5'>
+            {TRIGGER_NAME_MAP[workflow.triggerType as WorkflowTriggerType] || 'Unknown'}
+          </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

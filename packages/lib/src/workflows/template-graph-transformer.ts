@@ -54,12 +54,14 @@ export class TemplateGraphTransformer {
       const newId = generateId()
       idMapping.set(node.id, newId)
 
+      // Deep clone and strip $comment (template authoring aid, not needed at runtime)
+      const { $comment: _, ...clonedData } = JSON.parse(JSON.stringify(node.data))
+
       return {
         ...node,
         id: newId,
-        // Deep clone the data object to prevent reference issues
         data: {
-          ...JSON.parse(JSON.stringify(node.data)),
+          ...clonedData,
           id: newId, // node.data.id must match node.id
         },
         // Deep clone position

@@ -1,7 +1,7 @@
 // packages/lib/src/cache/providers/entity-def-slugs-provider.ts
 
 import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { CacheProvider } from '../org-cache-provider'
 
 /** Computes apiSlug → entityDefId map for an organization */
@@ -13,7 +13,12 @@ export const entityDefSlugsProvider: CacheProvider<Record<string, string>> = {
         apiSlug: schema.EntityDefinition.apiSlug,
       })
       .from(schema.EntityDefinition)
-      .where(eq(schema.EntityDefinition.organizationId, orgId))
+      .where(
+        and(
+          eq(schema.EntityDefinition.organizationId, orgId),
+          isNull(schema.EntityDefinition.archivedAt)
+        )
+      )
 
     const map: Record<string, string> = {}
     for (const row of rows) {

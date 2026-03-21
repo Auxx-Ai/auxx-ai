@@ -33,9 +33,9 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'custom-field.updated': ['resources', 'customFields'],
   'custom-field.deleted': ['resources', 'customFields'],
 
-  // entityDefs/entityDefSlugs are near-immutable — only invalidate on create/delete
+  // entityDefs/entityDefSlugs — invalidate slugs on create/delete/update (archive changes visibility)
   'entity-def.created': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields', 'overages'],
-  'entity-def.updated': ['resources'], // slug/type don't change
+  'entity-def.updated': ['resources', 'entityDefs', 'entityDefSlugs'],
   'entity-def.deleted': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields', 'overages'],
 
   'channel.connected': ['channelProviders', 'inboxes', 'overages'],
@@ -53,6 +53,7 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // Workflow lifecycle events
   'workflow.published': ['workflowApps'],
   'workflow.enabled': ['workflowApps'],
+  'workflow.updated': ['workflowApps'],
   'workflow.created': ['workflowApps', 'overages'],
   'workflow.deleted': ['workflowApps', 'overages'],
 

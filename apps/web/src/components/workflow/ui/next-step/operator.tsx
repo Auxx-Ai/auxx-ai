@@ -146,14 +146,14 @@ const Operator = ({ open, onOpenChange, data, nodeId, sourceHandle }: OperatorPr
           <button
             className='flex h-8 w-full cursor-pointer items-center rounded-lg px-2 hover:bg-muted'
             onClick={handleNodeDisconnect}>
-            <Unlink className='mr-2 h-3 w-3' />
+            <Unlink className='mr-2 size-3' />
             Disconnect
           </button>
           <div className='my-1 h-px bg-border' />
           <button
             className='flex h-8 w-full cursor-pointer items-center rounded-lg px-2 text-destructive hover:bg-destructive/10'
             onClick={handleNodeDelete}>
-            <Trash2 className='mr-2 h-3 w-3' />
+            <Trash2 className='mr-2 size-3' />
             Delete
           </button>
         </div>

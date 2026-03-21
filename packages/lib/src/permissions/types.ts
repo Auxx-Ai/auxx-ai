@@ -49,6 +49,7 @@ export enum FeatureKey {
   knowledgeBases = 'knowledgeBases',
   datasetsLimit = 'datasetsLimit',
   entities = 'entities',
+  importRowsLimit = 'importRowsLimit',
 
   // ── Usage limits (per billing cycle, Soft + Hard) ──
   outboundEmailsPerMonthHard = 'outboundEmailsPerMonthHard',
@@ -164,6 +165,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'Custom Entities',
     group: 'Data',
     unit: 'entities',
+  },
+  {
+    key: FeatureKey.importRowsLimit,
+    type: 'static',
+    label: 'Import Rows',
+    group: 'Data',
+    unit: 'rows',
   },
 
   // ── Usage limits (paired) ──
@@ -321,6 +329,7 @@ export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
   { key: FeatureKey.aiAgent, limit: false },
   { key: FeatureKey.sso, limit: false },
   { key: FeatureKey.entities, limit: 3 },
+  { key: FeatureKey.importRowsLimit, limit: 50 },
   { key: FeatureKey.datasets, limit: false },
   { key: FeatureKey.datasetsLimit, limit: 0 },
   { key: FeatureKey.files, limit: false },
