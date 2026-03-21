@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.98](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.97...auxx-v0.1.98) (2026-03-21)
+
+
+### Features
+
+* enhance message handling with replyAll option and auto-resolve features ([#315](https://github.com/Auxx-Ai/auxx-ai/issues/315)) ([15fd30e](https://github.com/Auxx-Ai/auxx-ai/commit/15fd30e1e586826b0558b377e8f48ef87abd3e51))
+* enhance UI components with keyboard shortcuts and collapsible sections ([55fb1e8](https://github.com/Auxx-Ai/auxx-ai/commit/55fb1e8b713582166351c6a2a7e258137c2fa520))
+
 ## [0.1.97](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.96...auxx-v0.1.97) (2026-03-21)
 
 
