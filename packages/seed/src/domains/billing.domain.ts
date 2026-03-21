@@ -98,7 +98,7 @@ const STATIC_LIMITS = {
 /** Boolean gates (on/off) keyed by plan tier */
 const BOOLEAN_GATES = {
   demo: {
-    knowledgeBase: true,
+    knowledgeBase: false,
     apiAccess: false,
     workflows: true,
     aiAgent: true,
@@ -111,7 +111,7 @@ const BOOLEAN_GATES = {
     unverifiedApps: false,
   },
   free: {
-    knowledgeBase: true,
+    knowledgeBase: false,
     apiAccess: false,
     workflows: true,
     aiAgent: false,
@@ -124,7 +124,7 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
   },
   starter: {
-    knowledgeBase: true,
+    knowledgeBase: false,
     apiAccess: false,
     workflows: true,
     aiAgent: false,
@@ -137,7 +137,7 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
   },
   growth: {
-    knowledgeBase: true,
+    knowledgeBase: false,
     apiAccess: true,
     workflows: true,
     aiAgent: false,
@@ -150,7 +150,7 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
   },
   enterprise: {
-    knowledgeBase: true,
+    knowledgeBase: false,
     apiAccess: true,
     workflows: true,
     aiAgent: true,

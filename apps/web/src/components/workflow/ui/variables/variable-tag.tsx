@@ -137,7 +137,7 @@ const VariableTag = ({
                 <div
                   className={cn(
                     'truncate shrink-0 font-medium text-muted-foreground group-aria-selected/var:text-white/90',
-                    withMaxWidth && 'max-w-[60px]'
+                    withMaxWidth && 'max-w-[50px]'
                   )}
                   title={nodeTitle}>
                   {nodeTitle}

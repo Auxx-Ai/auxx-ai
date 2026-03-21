@@ -24,7 +24,9 @@ function isInputElement(element: Element | null): boolean {
     tagName === 'SELECT' ||
     (element.hasAttribute('contenteditable') &&
       element.getAttribute('contenteditable') !== 'false') ||
-    element.getAttribute('role') === 'textbox'
+    element.getAttribute('role') === 'textbox' ||
+    element.getAttribute('role') === 'option' ||
+    element.getAttribute('role') === 'menuitem'
   )
 }
 

@@ -41,7 +41,7 @@ import IntegrationSelector from './integration-selector'
 import { LazyTiptapEditor } from './lazy-tiptap-editor'
 import { MessageFile } from './message-file'
 import PrevMessage from './prev-message'
-import { RecipientInput, type RecipientInputHandle } from './recipient-input'
+import { type RecipientField, RecipientInput, type RecipientInputHandle } from './recipient-input'
 import type {
   FileAttachment,
   ParticipantInputData,
@@ -440,6 +440,26 @@ function ReplyComposeEditorComponent({
       })
     },
     [upsertRecipient]
+  )
+  const handleMoveTo = useCallback(
+    (fromField: RecipientField, id: string, target: RecipientField) => {
+      setRecipients((prev) => {
+        const recipient = prev[fromField].find((r) => r.id === id)
+        if (!recipient) return prev
+        if (prev[target].some((r) => r.identifier === recipient.identifier)) {
+          return { ...prev, [fromField]: prev[fromField].filter((r) => r.id !== id) }
+        }
+        return {
+          ...prev,
+          [fromField]: prev[fromField].filter((r) => r.id !== id),
+          [target]: [...prev[target], recipient],
+        }
+      })
+      if (target === 'CC') setShowCc(true)
+      if (target === 'BCC') setShowBcc(true)
+      setIsDraftSaved(false)
+    },
+    []
   )
   // Calculate if editor has content
   // biome-ignore lint/correctness/useExhaustiveDependencies: content triggers recalculation when editor content changes
@@ -854,9 +874,11 @@ function ReplyComposeEditorComponent({
               <span className='w-10 shrink-0 text-sm text-muted-foreground'>To:</span>
               <RecipientInput
                 ref={toInputRef}
+                field='TO'
                 recipients={recipients.TO}
                 onAdd={(r) => upsertRecipient('TO', r)}
                 onRemove={(id) => removeRecipient('TO', id)}
+                onMoveTo={(id, target) => handleMoveTo('TO', id, target)}
                 onContactSelect={(c) => handleContactSelect('TO', c)}
                 placeholder='Add recipients...'
                 disabled={isSending}
@@ -903,9 +925,11 @@ function ReplyComposeEditorComponent({
                   <span className='w-10 shrink-0 text-sm text-muted-foreground'>Cc:</span>
                   <RecipientInput
                     ref={ccInputRef}
+                    field='CC'
                     recipients={recipients.CC}
                     onAdd={(r) => upsertRecipient('CC', r)}
                     onRemove={(id) => removeRecipient('CC', id)}
+                    onMoveTo={(id, target) => handleMoveTo('CC', id, target)}
                     onContactSelect={(c) => handleContactSelect('CC', c)}
                     placeholder='Add Cc recipients...'
                     disabled={isSending}
@@ -933,9 +957,11 @@ function ReplyComposeEditorComponent({
                   <span className='w-10 shrink-0 text-sm text-muted-foreground'>Bcc:</span>
                   <RecipientInput
                     ref={bccInputRef}
+                    field='BCC'
                     recipients={recipients.BCC}
                     onAdd={(r) => upsertRecipient('BCC', r)}
                     onRemove={(id) => removeRecipient('BCC', id)}
+                    onMoveTo={(id, target) => handleMoveTo('BCC', id, target)}
                     onContactSelect={(c) => handleContactSelect('BCC', c)}
                     placeholder='Add Bcc recipients...'
                     disabled={isSending}

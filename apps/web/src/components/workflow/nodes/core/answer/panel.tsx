@@ -15,7 +15,7 @@ import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { getIntegrationIcon } from '~/components/mail/mail-status-config'
 import { IntegrationPicker } from '~/components/pickers/integration-picker'
-import { useAvailableVariables, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
 import {
@@ -28,6 +28,7 @@ import { Editor } from '~/components/workflow/ui/prompt-editor'
 import Section from '~/components/workflow/ui/section'
 import { api } from '~/trpc/react'
 import { BasePanel } from '../../shared/base/base-panel'
+import { AutoResolveBadge } from './components/auto-resolve-badge'
 import { validateAnswerConfig } from './schema'
 import type { AnswerNodeData } from './types'
 
@@ -47,12 +48,6 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
   // Fetch integrations to display selected integration name
   const { data: integrations } = api.channel.listForPicker.useQuery()
 
-  // Get available variables to auto-detect resource type
-  const { allVariables } = useAvailableVariables({
-    nodeId,
-    expectedTypes: [BaseType.RELATION],
-  })
-
   // Find selected integration
   const selectedIntegration = useMemo(() => {
     if (!nodeData.integrationId || !integrations) return null
@@ -62,24 +57,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
   // Validation
   const validationResult = useMemo(() => validateAnswerConfig(nodeData), [nodeData])
 
-  // Helper function to detect resource type from variable ID
-  const detectResourceType = useCallback(
-    (variableId: string): 'thread' | 'message' | null => {
-      // Find the variable in available variables
-      const variable = allVariables.find((v) => v.id === variableId)
-
-      if (!variable) return null
-
-      // Check if it's a RELATION type with thread or message reference
-      if (variable.type === BaseType.RELATION && variable.resourceId) {
-        if (variable.resourceId === 'thread') return 'thread'
-        if (variable.resourceId === 'message') return 'message'
-      }
-
-      return null
-    },
-    [allVariables]
-  )
+  const isReplyMode = nodeData.messageType === 'reply' || nodeData.messageType === 'replyAll'
 
   // Validation helper functions
   const getFieldErrorMessage = useCallback(
@@ -100,13 +78,20 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
 
   // Handler functions
   const handleMessageTypeChange = useCallback(
-    (value: 'new' | 'reply') => {
+    (value: 'new' | 'reply' | 'replyAll') => {
       setNodeData({
         ...nodeData,
         messageType: value,
         // Clear type-specific fields when switching
         integrationId: value === 'new' ? nodeData.integrationId : undefined,
-        resourceId: value === 'reply' ? nodeData.resourceId : undefined,
+        recordId: value !== 'new' ? nodeData.recordId : undefined,
+        // Default auto-resolve for reply modes
+        ...(value !== 'new' && {
+          toIsAuto: nodeData.toIsAuto ?? true,
+          ccIsAuto: nodeData.ccIsAuto ?? true,
+          bccIsAuto: nodeData.bccIsAuto ?? true,
+          subjectIsAuto: nodeData.subjectIsAuto ?? true,
+        }),
       })
     },
     [nodeData, setNodeData]
@@ -137,12 +122,13 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
             <SelectContent>
               <SelectItem value='new'>New Message</SelectItem>
               <SelectItem value='reply'>Reply</SelectItem>
+              <SelectItem value='replyAll'>Reply All</SelectItem>
             </SelectContent>
           </Select>
         }>
         {/* Email Fields and conditional fields */}
         <VarEditorField className='p-0'>
-          {nodeData.messageType !== 'reply' && (
+          {nodeData.messageType === 'new' && (
             <VarEditorFieldRow
               className=''
               title='Integration'
@@ -172,35 +158,28 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
             </VarEditorFieldRow>
           )}
 
-          {nodeData.messageType === 'reply' && (
+          {isReplyMode && (
             <VarEditorFieldRow
               className=''
               title='Reply To'
               description='Select Thread or Message to reply to'
               type={BaseType.RELATION}
               isRequired
-              validationError={showValidation ? getFieldErrorMessage('resourceId') : undefined}
-              validationType={hasFieldErrorOfType('resourceId', 'error') ? 'error' : 'warning'}
+              validationError={showValidation ? getFieldErrorMessage('recordId') : undefined}
+              validationType={hasFieldErrorOfType('recordId', 'error') ? 'error' : 'warning'}
               onClear={
-                nodeData.resourceId
+                nodeData.recordId
                   ? () => {
-                      setNodeData({ ...nodeData, resourceId: '', resourceType: undefined })
+                      setNodeData({ ...nodeData, recordId: '' })
                       if (!showValidation) setShowValidation(true)
                     }
                   : undefined
               }>
               <VarEditor
                 nodeId={nodeId}
-                value={nodeData.resourceId || ''}
+                value={nodeData.recordId || ''}
                 onChange={(value) => {
-                  // Auto-detect resource type from selected variable
-                  const resourceType = detectResourceType(value)
-
-                  setNodeData({
-                    ...nodeData,
-                    resourceId: value,
-                    resourceType: resourceType || undefined,
-                  })
+                  setNodeData({ ...nodeData, recordId: value })
                   if (!showValidation) setShowValidation(true)
                 }}
                 varType={BaseType.RELATION}
@@ -210,109 +189,173 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
                 allowConstant={false}
                 hideClearButton
               />
-              {/* Show detected resource type for user feedback */}
-              {nodeData.resourceType && (
-                <div className='mt-1 text-xs text-muted-foreground'>
-                  Replying to: {nodeData.resourceType === 'thread' ? 'Thread' : 'Message'}
-                </div>
-              )}
             </VarEditorFieldRow>
           )}
 
+          {/* Subject field */}
           <VarEditorFieldRow
             title='Subject'
             description={
-              nodeData.messageType === 'new'
-                ? 'Email subject line (required)'
-                : 'Email subject line (optional, defaults to Re: thread subject)'
+              isReplyMode
+                ? 'Email subject line (auto-resolves to Re: thread subject)'
+                : 'Email subject line (required)'
             }
             type={BaseType.STRING}
             isRequired={nodeData.messageType === 'new'}
             validationError={showValidation ? getFieldErrorMessage('subject') : undefined}
             validationType={hasFieldErrorOfType('subject', 'error') ? 'error' : 'warning'}
             onClear={
-              nodeData.subject
+              nodeData.subject && (!isReplyMode || nodeData.subjectIsAuto === false)
                 ? () => {
                     setNodeData({ ...nodeData, subject: '' })
                     if (!showValidation) setShowValidation(true)
                   }
                 : undefined
             }>
-            <VarEditor
-              nodeId={nodeId}
-              value={nodeData.subject || ''}
-              onChange={(value) => {
-                setNodeData({ ...nodeData, subject: value })
-                if (!showValidation) setShowValidation(true)
-              }}
-              varType={BaseType.STRING}
-              allowedTypes={[BaseType.STRING]}
-              mode={VAR_MODE.RICH}
-              placeholder='Enter subject or use variables'
-              allowConstant={true}
-              hideClearButton
-            />
+            <div className='relative'>
+              {isReplyMode && (
+                <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+                  <AutoResolveBadge
+                    isAuto={nodeData.subjectIsAuto ?? true}
+                    onChange={(isAuto) => setNodeData({ ...nodeData, subjectIsAuto: isAuto })}
+                  />
+                </div>
+              )}
+              {!isReplyMode || nodeData.subjectIsAuto === false ? (
+                <VarEditor
+                  nodeId={nodeId}
+                  value={nodeData.subject || ''}
+                  onChange={(value) => {
+                    setNodeData({ ...nodeData, subject: value })
+                    if (!showValidation) setShowValidation(true)
+                  }}
+                  varType={BaseType.STRING}
+                  allowedTypes={[BaseType.STRING]}
+                  mode={VAR_MODE.RICH}
+                  placeholder='Enter subject or use variables'
+                  allowConstant={true}
+                  hideClearButton
+                />
+              ) : (
+                <span className='flex h-8 items-center text-xs text-muted-foreground px-2'>
+                  Auto resolved
+                </span>
+              )}
+            </div>
           </VarEditorFieldRow>
 
+          {/* To field */}
           <VarEditorFieldRow
             className=''
             title='To'
             description='Email recipients'
             type={BaseType.EMAIL}
-            isRequired
+            isRequired={nodeData.messageType === 'new' || nodeData.toIsAuto === false}
             validationError={showValidation ? getFieldErrorMessage('to') : undefined}
             validationType={hasFieldErrorOfType('to', 'error') ? 'error' : 'warning'}>
-            <VarEditorArray
-              value={nodeData.to || []}
-              onChange={(values, modes) => {
-                setNodeData({ ...nodeData, to: values, toModes: modes })
-                if (!showValidation) setShowValidation(true)
-              }}
-              modes={nodeData.toModes}
-              varType={BaseType.EMAIL}
-              nodeId={nodeId}
-              disabled={isReadOnly}
-              allowConstant={true}
-              placeholder='Enter email or select variable'
-              placeholderConstant='Enter email address'
-            />
+            <div className='relative'>
+              {isReplyMode && (
+                <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+                  <AutoResolveBadge
+                    isAuto={nodeData.toIsAuto ?? true}
+                    onChange={(isAuto) => setNodeData({ ...nodeData, toIsAuto: isAuto })}
+                  />
+                </div>
+              )}
+              {!isReplyMode || nodeData.toIsAuto === false ? (
+                <VarEditorArray
+                  value={nodeData.to || []}
+                  onChange={(values, modes) => {
+                    setNodeData({ ...nodeData, to: values, toModes: modes })
+                    if (!showValidation) setShowValidation(true)
+                  }}
+                  modes={nodeData.toModes}
+                  varType={BaseType.EMAIL}
+                  nodeId={nodeId}
+                  disabled={isReadOnly}
+                  allowConstant={true}
+                  placeholder='Enter email or select variable'
+                  placeholderConstant='Enter email address'
+                />
+              ) : (
+                <span className='flex h-8 items-center text-xs text-muted-foreground px-2'>
+                  Auto resolved
+                </span>
+              )}
+            </div>
           </VarEditorFieldRow>
 
+          {/* CC field */}
           <VarEditorFieldRow
             className=''
             title='CC'
             description='Carbon copy recipients'
             type={BaseType.EMAIL}>
-            <VarEditorArray
-              value={nodeData.cc || []}
-              onChange={(values, modes) => setNodeData({ ...nodeData, cc: values, ccModes: modes })}
-              modes={nodeData.ccModes}
-              varType={BaseType.EMAIL}
-              nodeId={nodeId}
-              disabled={isReadOnly}
-              allowConstant={true}
-              placeholder='Enter email or select variable'
-              placeholderConstant='Enter email address'
-            />
+            <div className='relative'>
+              {isReplyMode && (
+                <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+                  <AutoResolveBadge
+                    isAuto={nodeData.ccIsAuto ?? true}
+                    onChange={(isAuto) => setNodeData({ ...nodeData, ccIsAuto: isAuto })}
+                  />
+                </div>
+              )}
+              {!isReplyMode || nodeData.ccIsAuto === false ? (
+                <VarEditorArray
+                  value={nodeData.cc || []}
+                  onChange={(values, modes) =>
+                    setNodeData({ ...nodeData, cc: values, ccModes: modes })
+                  }
+                  modes={nodeData.ccModes}
+                  varType={BaseType.EMAIL}
+                  nodeId={nodeId}
+                  disabled={isReadOnly}
+                  allowConstant={true}
+                  placeholder='Enter email or select variable'
+                  placeholderConstant='Enter email address'
+                />
+              ) : (
+                <span className='flex h-8 items-center text-xs text-muted-foreground px-2'>
+                  Auto resolved
+                </span>
+              )}
+            </div>
           </VarEditorFieldRow>
 
+          {/* BCC field */}
           <VarEditorFieldRow
             title='BCC'
             description='Blind carbon copy recipients'
             type={BaseType.EMAIL}>
-            <VarEditorArray
-              value={nodeData.bcc || []}
-              onChange={(values, modes) =>
-                setNodeData({ ...nodeData, bcc: values, bccModes: modes })
-              }
-              modes={nodeData.bccModes}
-              varType={BaseType.EMAIL}
-              nodeId={nodeId}
-              disabled={isReadOnly}
-              allowConstant={true}
-              placeholder='Enter email or select variable'
-              placeholderConstant='Enter email address'
-            />
+            <div className='relative'>
+              {isReplyMode && (
+                <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+                  <AutoResolveBadge
+                    isAuto={nodeData.bccIsAuto ?? true}
+                    onChange={(isAuto) => setNodeData({ ...nodeData, bccIsAuto: isAuto })}
+                  />
+                </div>
+              )}
+              {!isReplyMode || nodeData.bccIsAuto === false ? (
+                <VarEditorArray
+                  value={nodeData.bcc || []}
+                  onChange={(values, modes) =>
+                    setNodeData({ ...nodeData, bcc: values, bccModes: modes })
+                  }
+                  modes={nodeData.bccModes}
+                  varType={BaseType.EMAIL}
+                  nodeId={nodeId}
+                  disabled={isReadOnly}
+                  allowConstant={true}
+                  placeholder='Enter email or select variable'
+                  placeholderConstant='Enter email address'
+                />
+              ) : (
+                <span className='flex h-8 items-center text-xs text-muted-foreground px-2'>
+                  Auto resolved
+                </span>
+              )}
+            </div>
           </VarEditorFieldRow>
         </VarEditorField>
       </Section>

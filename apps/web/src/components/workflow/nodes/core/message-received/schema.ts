@@ -9,7 +9,10 @@ import {
   type ValidationResult,
 } from '~/components/workflow/types'
 import { BaseType, type UnifiedVariable } from '../../../types/variable-types'
-import { createNestedVariable } from '../../../utils/variable-conversion'
+import {
+  createNestedVariable,
+  createUnifiedOutputVariable,
+} from '../../../utils/variable-conversion'
 import type { MessageReceivedNodeData } from './types'
 
 /**
@@ -235,6 +238,23 @@ function getMessageReceivedOutputVariables(
     },
   })
 
-  // Return the message variable - createNestedVariable handles all the nested paths correctly
-  return [messageVariable]
+  // Thread relation — points to the thread this message belongs to
+  const threadRelation = createUnifiedOutputVariable({
+    nodeId,
+    path: 'thread',
+    type: BaseType.RELATION,
+    description: 'The email thread this message belongs to',
+    resourceId: 'thread',
+  })
+
+  // Message relation — points to the received message itself
+  const messageRelation = createUnifiedOutputVariable({
+    nodeId,
+    path: 'message_ref',
+    type: BaseType.RELATION,
+    description: 'The received message (for replying to)',
+    resourceId: 'message',
+  })
+
+  return [messageVariable, threadRelation, messageRelation]
 }

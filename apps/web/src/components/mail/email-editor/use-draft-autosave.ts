@@ -77,6 +77,9 @@ export function useDraftAutosave({
       if (lastSavedKey.current === k) return
       const currentVersion = ++version.current
       isSaving.current = true
+      // Capture focused element before async save — the mutation's onSuccess
+      // triggers store updates that can steal focus from popovers
+      const activeElBeforeSave = document.activeElement as HTMLElement | null
       try {
         // Check again after async boundary
         if (isDeleting.current) {
@@ -100,6 +103,18 @@ export function useDraftAutosave({
             payload: p,
             draftData: result,
             firstSave: isFirst,
+          })
+          // Restore focus if lost during save — mutation onSuccess triggers store
+          // updates that re-render the component tree and can steal popover focus
+          requestAnimationFrame(() => {
+            if (
+              document.activeElement === document.body &&
+              activeElBeforeSave &&
+              activeElBeforeSave !== document.body &&
+              document.contains(activeElBeforeSave)
+            ) {
+              activeElBeforeSave.focus()
+            }
           })
         }
       } catch (error: any) {

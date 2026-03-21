@@ -101,6 +101,14 @@ export class OrganizationDomain {
     console.log('✍️  Generating signatures via UnifiedCrudHandler...')
 
     const handler = new UnifiedCrudHandler(organizationId, ownerId, db)
+
+    // Skip if signatures already exist (additive mode)
+    const existing = await handler.list('signature', { limit: 1 })
+    if (existing.items.length > 0) {
+      console.log('⏭️  Signatures already exist, skipping')
+      return
+    }
+
     const signaturesPerUser = 2
     let created = 0
 

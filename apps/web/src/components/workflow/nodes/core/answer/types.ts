@@ -6,10 +6,21 @@ import type { BaseNodeData, ExecutionResult, SpecificNode } from '../../../types
  * Node data for answer nodes with flattened structure
  */
 export interface AnswerNodeData extends BaseNodeData {
-  messageType: 'new' | 'reply'
-  integrationId?: string
-  resourceType?: 'thread' | 'message'
-  resourceId?: string
+  // 'new' = compose fresh email, 'reply' = reply to sender, 'replyAll' = reply to all
+  messageType: 'new' | 'reply' | 'replyAll'
+
+  integrationId?: string // Required for 'new', auto-derived for reply/replyAll
+  recordId?: string // Format: "entityDefinitionId:id" (e.g. "thread:abc123", "message:xyz789")
+  // Required for reply/replyAll. Replaces old resourceId + resourceType.
+
+  // Per-field auto-resolve toggles (reply/replyAll only, ignored for 'new')
+  // true (default): system auto-resolves from thread at execution time
+  // false: user provides the value explicitly
+  toIsAuto?: boolean
+  ccIsAuto?: boolean
+  bccIsAuto?: boolean
+  subjectIsAuto?: boolean
+
   to?: string[]
   toModes?: boolean[]
   cc?: string[]
