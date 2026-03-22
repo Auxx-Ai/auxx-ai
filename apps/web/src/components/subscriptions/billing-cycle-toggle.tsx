@@ -8,16 +8,23 @@ import { Switch } from '@auxx/ui/components/switch'
 type BillingCycleToggleProps = {
   value: 'MONTHLY' | 'ANNUAL'
   onChange: (value: 'MONTHLY' | 'ANNUAL') => void
+  variant?: 'default' | 'translucent'
 }
 
-export function BillingCycleToggle({ value, onChange }: BillingCycleToggleProps) {
+export function BillingCycleToggle({
+  value,
+  onChange,
+  variant = 'default',
+}: BillingCycleToggleProps) {
+  const t = variant === 'translucent'
+  const activeColor = t ? 'text-white' : 'text-foreground'
+  const inactiveColor = t ? 'text-white/50' : 'text-muted-foreground'
+
   return (
     <div className='flex items-center space-x-4'>
       <Label
         htmlFor='billing-cycle'
-        className={`text-sm font-medium ${
-          value === 'MONTHLY' ? 'text-foreground' : 'text-muted-foreground'
-        }`}>
+        className={`text-sm font-medium ${value === 'MONTHLY' ? activeColor : inactiveColor}`}>
         Monthly
       </Label>
 
@@ -30,9 +37,7 @@ export function BillingCycleToggle({ value, onChange }: BillingCycleToggleProps)
       <div className='flex items-center'>
         <Label
           htmlFor='billing-cycle'
-          className={`text-sm font-medium ${
-            value === 'ANNUAL' ? 'text-foreground' : 'text-muted-foreground'
-          }`}>
+          className={`text-sm font-medium ${value === 'ANNUAL' ? activeColor : inactiveColor}`}>
           Annual
         </Label>
         <Badge

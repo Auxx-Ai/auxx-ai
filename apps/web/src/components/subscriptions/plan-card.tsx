@@ -32,6 +32,7 @@ type PlanCardProps = {
   billingCycle: 'MONTHLY' | 'ANNUAL'
   isCurrentPlan: boolean
   showTrialOption?: boolean
+  variant?: 'default' | 'translucent'
   /** Callback when plan is selected (used in dialog mode) */
   onPlanSelect?: (plan: PlanCardProps['plan']) => void
 }
@@ -41,6 +42,7 @@ export function PlanCard({
   billingCycle,
   isCurrentPlan,
   showTrialOption = true,
+  variant = 'default',
   onPlanSelect,
 }: PlanCardProps) {
   const router = useRouter()
@@ -163,23 +165,23 @@ export function PlanCard({
   const isProcessing = upgradeSubscription.isPending || isLoadingSubscription
   const isTrialProcessing = upgradeSubscription.isPending || isLoadingSubscription
 
+  const t = variant === 'translucent'
+  const mutedText = t ? 'text-white/50' : 'text-muted-foreground'
+  const btnVariant = t ? 'translucent' : 'outline'
+
   return (
     <div className='flex flex-col flex-1'>
-      {/* {plan.isMostPopular ? (
-        <div className="pb-2 text-center font-semibold text-bad-500">Most popular</div>
-      ) : (
-        <div className="pb-2 text-center font-bold text-muted-foreground"> &nbsp;</div>
-      )} */}
       <div
         className={cn(
-          'flex flex-1 rounded-2xl flex-col ring-1 ring-black/10',
+          'flex flex-1 rounded-2xl flex-col ring-1',
+          t ? 'ring-white/10' : 'ring-black/10',
           isCurrentPlan && 'ring-info'
         )}>
         <CardHeader>
           <div className='flex items-start justify-between'>
             <div>
               <div className='font-semibold leading-none tracking-tight'>{plan.name}</div>
-              <div className='text-xs text-muted-foreground'>{plan.description}</div>
+              <div className={cn('text-xs', mutedText)}>{plan.description}</div>
             </div>
           </div>
         </CardHeader>
@@ -194,27 +196,20 @@ export function PlanCard({
                   <div className='text-2xl font-normal'>
                     <span className=''>Free</span>
                   </div>
-                  <div className='mt-1 text-xs text-muted-foreground'>Forever</div>
+                  <div className={cn('mt-1 text-xs', mutedText)}>Forever</div>
                 </>
               ) : (
                 <div className='flex flex-row relative'>
                   <div className='flex flex-col'>
                     <div className='text-2xl font-normal'>
                       <span className=''>${(pricePerMonth / 100).toFixed(0)}</span>
-                      <span className='text-xs font-normal text-muted-foreground'>/seat/mo</span>
+                      <span className={cn('text-xs font-normal', mutedText)}>/seat/mo</span>
                     </div>
 
-                    <div className='mt-1 text-xs text-muted-foreground'>
+                    <div className={cn('mt-1 text-xs', mutedText)}>
                       Billed {billingCycle.toLowerCase()}
                     </div>
                   </div>
-                  {/* {billingCycle === 'ANNUAL' && annualSavings > 0 && (
-                    <div>
-                      <Badge className="absolute" variant="green">
-                        Save ${(annualSavings / 100).toFixed(0)}/year
-                      </Badge>
-                    </div>
-                  )} */}
                 </div>
               )}
             </div>
@@ -223,7 +218,11 @@ export function PlanCard({
           <div className='space-y-1'>
             {features.map((feature: string, index: number) => (
               <div key={index} className='flex items-start'>
-                <div className='mr-2 mt-0.5 flex items-center ring-1 ring-black/10 justify-center size-4 rounded-md bg-muted shrink-0'>
+                <div
+                  className={cn(
+                    'mr-2 mt-0.5 flex items-center ring-1 justify-center size-4 rounded-md shrink-0',
+                    t ? 'ring-white/10 bg-muted/10' : 'ring-black/10 bg-muted'
+                  )}>
                   <Check className='size-3 shrink-0 ' />
                 </div>
                 <span className='text-sm'>{feature}</span>
@@ -235,7 +234,7 @@ export function PlanCard({
         <CardFooter className='flex flex-col gap-2 p-3 pt-0'>
           {actionType === 'contact' ? (
             <Button
-              variant='outline'
+              variant={btnVariant}
               className='w-full'
               onClick={() => router.push('/contact-sales')}>
               Contact Sales
@@ -245,22 +244,20 @@ export function PlanCard({
               Current Plan
             </Button>
           ) : trialEligible && plan.hasTrial && plan.trialDays > 0 ? (
-            // Show Trial button if eligible
             <Button
-              className='w-full' // Or specific trial styling
+              className='w-full'
               onClick={handleStartTrial}
               loading={isTrialProcessing}
               loadingText='Processing...'
-              variant='outline'>
+              variant={btnVariant}>
               <Sparkles />
               Start {plan.trialDays}-Day Free Trial
             </Button>
           ) : (
-            // Default action button (Upgrade/Downgrade/Select)
             <Button
-              className='w-full' // Adjust styling based on actionType if desired
+              className='w-full'
               onClick={handleSelectPlan}
-              variant='outline'
+              variant={btnVariant}
               loading={isProcessing}
               loadingText='Processing...'>
               {buttonText}

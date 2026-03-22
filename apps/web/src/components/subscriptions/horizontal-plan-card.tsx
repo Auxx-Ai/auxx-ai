@@ -3,6 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { Check, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -31,6 +32,7 @@ type HorizontalPlanCardProps = {
   billingCycle: 'MONTHLY' | 'ANNUAL'
   isCurrentPlan: boolean
   showTrialOption?: boolean
+  variant?: 'default' | 'translucent'
   /** Callback when plan is selected (used in dialog mode) */
   onPlanSelect?: (plan: HorizontalPlanCardProps['plan']) => void
 }
@@ -44,6 +46,7 @@ export function HorizontalPlanCard({
   billingCycle,
   isCurrentPlan,
   showTrialOption = true,
+  variant = 'default',
   onPlanSelect,
 }: HorizontalPlanCardProps) {
   const router = useRouter()
@@ -154,22 +157,21 @@ export function HorizontalPlanCard({
 
   const isProcessing = upgradeSubscription.isPending || isLoadingSubscription
 
+  const t = variant === 'translucent'
+  const mutedText = t ? 'text-white/50' : 'text-muted-foreground'
+  const btnVariant = t ? 'translucent' : 'outline'
+
   return (
     <div
-      className={`flex flex-col md:flex-row gap-6 rounded-lg border p-3 items-center ${isCurrentPlan ? 'ring-1 ring-info' : ''}`}>
+      className={cn(
+        'flex flex-col md:flex-row gap-6 rounded-lg border p-3 items-center',
+        t && 'border-white/10',
+        isCurrentPlan && 'ring-1 ring-info'
+      )}>
       {/* Left Section: Plan Info & Pricing */}
       <div className='flex flex-col md:w-1/3 justify-center'>
         <div className='font-semibold leading-none tracking-tight mb-2'>{plan.name}</div>
-        <div className='text-sm text-muted-foreground'>{plan.description}</div>
-
-        {/* {plan.isFree ? (
-          <div className="flex items-baseline gap-2">
-            <div className="text-2xl font-normal">Free</div>
-            <div className="text-xs text-muted-foreground">Forever</div>
-          </div>
-        ) : plan.isCustomPricing ? (
-          <div className="text-2xl font-normal">Custom</div>
-        ) : null} */}
+        <div className={cn('text-sm', mutedText)}>{plan.description}</div>
       </div>
 
       {/* Middle Section: Features */}
@@ -177,7 +179,11 @@ export function HorizontalPlanCard({
         <div className=' gap-4 space-y-1'>
           {features.map((feature: string, index: number) => (
             <div key={index} className='flex items-start'>
-              <div className='mr-2 mt-0.5 flex items-center ring-1 ring-black/10 justify-center size-4 rounded-md bg-muted shrink-0'>
+              <div
+                className={cn(
+                  'mr-2 mt-0.5 flex items-center ring-1 justify-center size-4 rounded-md shrink-0',
+                  t ? 'ring-white/10 bg-muted/10' : 'ring-black/10 bg-muted'
+                )}>
                 <Check className='size-3 shrink-0 ' />
               </div>
               <span className='text-sm'>{feature}</span>
@@ -189,7 +195,10 @@ export function HorizontalPlanCard({
       {/* Right Section: CTA */}
       <div className='flex items-center md:w-1/6 justify-end'>
         {actionType === 'contact' ? (
-          <Button className='w-full md:w-auto' onClick={() => router.push('/contact-sales')}>
+          <Button
+            className='w-full md:w-auto'
+            variant={btnVariant}
+            onClick={() => router.push('/contact-sales')}>
             Contact Sales
           </Button>
         ) : actionType === 'current' ? (
@@ -202,7 +211,7 @@ export function HorizontalPlanCard({
             onClick={handleStartTrial}
             loading={isProcessing}
             loadingText='Processing...'
-            variant='outline'>
+            variant={btnVariant}>
             <Sparkles />
             Start {plan.trialDays}-Day Trial
           </Button>
@@ -210,7 +219,7 @@ export function HorizontalPlanCard({
           <Button
             className='w-full md:w-auto'
             onClick={handleSelectPlan}
-            variant='outline'
+            variant={btnVariant}
             loadingText='Processing...'
             loading={isProcessing}>
             {buttonText}

@@ -253,7 +253,7 @@ function SummaryContent() {
   if (!state.selectedPlan) {
     return (
       <div className='mx-auto max-w-4xl p-6'>
-        <div className='text-center py-8 text-muted-foreground'>
+        <div className='text-center py-8 text-white/50'>
           No plan selected. Please go back and select a plan.
         </div>
       </div>
@@ -310,15 +310,19 @@ function SummaryContent() {
             </Card> */}
 
             {/* Billing Information */}
-            <Card className='shadow-md shadow-black/20 border-transparent'>
+            <Card variant='translucent' className='shadow-md shadow-black/20 border-transparent'>
               <div className='p-3 pb-0'>
-                <Alert variant='outline' className='flex items-center gap-3 '>
+                <Alert
+                  variant='outline'
+                  className='flex items-center gap-3 border-white/20 hover:bg-white/10 '>
                   <AlertIcon icon={Building}></AlertIcon>
                   <div className='flex flex-col gap-0'>
-                    <AlertTitle className='pb-0 mt-0 mb-0'>
+                    <AlertTitle className='pb-0 mt-0 mb-0 text-white'>
                       {state.selectedPlan.name} Plan
                     </AlertTitle>
-                    <AlertDescription>${monthlyPrice.toFixed(2)} per user/month</AlertDescription>
+                    <AlertDescription className='text-white/50'>
+                      ${monthlyPrice.toFixed(2)} per user/month
+                    </AlertDescription>
                   </div>
                 </Alert>
               </div>
@@ -329,8 +333,10 @@ function SummaryContent() {
                 <div className='grid grid-cols-2 gap-3'>
                   <div>
                     <Input
+                      variant='translucent'
                       {...register('email', { required: 'Email is required' })}
                       placeholder='Email'
+                      size='lg'
                       type='email'
                       disabled={isLoadingData}
                     />
@@ -340,6 +346,8 @@ function SummaryContent() {
                   </div>
                   <div>
                     <Input
+                      variant='translucent'
+                      size='lg'
                       {...register('companyName')}
                       placeholder='Company'
                       disabled={isLoadingData}
@@ -348,6 +356,8 @@ function SummaryContent() {
                 </div>
 
                 <Input
+                  variant='translucent'
+                  size='lg'
                   {...register('line1', { required: 'Address is required' })}
                   placeholder='Address Line 1'
                   disabled={isLoadingData}
@@ -359,6 +369,8 @@ function SummaryContent() {
                 <div className='grid grid-cols-3 gap-3'>
                   <div>
                     <Input
+                      size='lg'
+                      variant='translucent'
                       {...register('city', { required: 'City is required' })}
                       placeholder='City'
                       disabled={isLoadingData}
@@ -368,10 +380,18 @@ function SummaryContent() {
                     )}
                   </div>
                   <div>
-                    <Input {...register('state')} placeholder='State' disabled={isLoadingData} />
+                    <Input
+                      size='lg'
+                      variant='translucent'
+                      {...register('state')}
+                      placeholder='State'
+                      disabled={isLoadingData}
+                    />
                   </div>
                   <div>
                     <Input
+                      variant='translucent'
+                      size='lg'
                       {...register('postalCode', { required: 'Postal code is required' })}
                       placeholder='Postal Code'
                       disabled={isLoadingData}
@@ -388,6 +408,7 @@ function SummaryContent() {
                   rules={{ required: 'Country is required' }}
                   render={({ field }) => (
                     <CountrySelect
+                      variant='translucent'
                       value={field.value}
                       onChange={field.onChange}
                       disabled={isLoadingData}
@@ -401,18 +422,18 @@ function SummaryContent() {
             </Card>
 
             {/* Payment Information */}
-            <Card className='shadow-md shadow-black/20 border-transparent'>
+            <Card variant='translucent' className='shadow-md shadow-black/20 border-transparent'>
               <CardHeader>
                 <CardTitle className='text-lg'>Payment Information</CardTitle>
               </CardHeader>
               <CardContent className='space-y-3'>
                 {defaultPaymentMethod ? (
-                  <div className='flex items-center justify-between rounded-lg border p-3'>
+                  <div className='flex items-center justify-between rounded-lg border border-white/20 p-3'>
                     <div>
                       <p className='text-sm font-medium'>
                         {defaultPaymentMethod.brand} •••• {defaultPaymentMethod.last4}
                       </p>
-                      <p className='text-xs text-muted-foreground'>
+                      <p className='text-xs text-white/50'>
                         Expires {defaultPaymentMethod.expMonth}/{defaultPaymentMethod.expYear}
                       </p>
                     </div>
@@ -430,7 +451,7 @@ function SummaryContent() {
                 ) : null}
 
                 {shouldCollectNewPaymentMethod ? (
-                  <div className='p-2 border rounded-lg border-primary-200 focus:border-primary-300 bg-primary-50 dark:bg-primary-100 focus:ring-primary-400 placeholder:text-primary-500'>
+                  <div className='p-2 border rounded-lg border-white/20 bg-muted/10'>
                     <CardElement
                       options={{
                         style: {
@@ -452,7 +473,7 @@ function SummaryContent() {
               </CardContent>
             </Card>
             <div className=''>
-              <Button variant='outline' asChild>
+              <Button variant='translucent' asChild>
                 <Link href='/subscription/convert/addons'>Back</Link>
               </Button>
             </div>
@@ -460,11 +481,13 @@ function SummaryContent() {
 
           {/* Summary Sidebar */}
           <div className='col-span-1'>
-            <div className='rounded-2xl bg-foreground/5 backdrop-blur-sm ring-1 ring-foreground/10 p-4 space-y-4 sticky top-4'>
+            <Card
+              variant='translucent'
+              className='rounded-2xl bg-foreground/5 backdrop-blur-sm ring-1 ring-foreground/10 p-4 space-y-4 sticky top-0'>
               <h3 className='font-semibold'>Summary</h3>
               <div className='space-y-2 text-sm'>
                 <div className='flex justify-between'>
-                  <span className='text-muted-foreground'>
+                  <span className='text-white/50'>
                     {isLoadingPreview ? (
                       <Skeleton className='h-[20px] w-32' />
                     ) : (
@@ -479,7 +502,7 @@ function SummaryContent() {
                     <span className='font-medium'>${subtotal.toFixed(2)}</span>
                   )}
                 </div>
-                <div className='text-xs text-muted-foreground'>
+                <div className='text-xs text-white/50'>
                   {isLoadingPreview ? (
                     <Skeleton className='h-[16px] w-24' />
                   ) : (
@@ -490,8 +513,8 @@ function SummaryContent() {
                   )}
                 </div>
 
-                <div className='border-t border-black/15 pt-2 flex justify-between'>
-                  <span className='text-muted-foreground'>Subtotal</span>
+                <div className='border-t border-white/20 pt-2 flex justify-between'>
+                  <span className='text-white/50'>Subtotal</span>
                   {isLoadingPreview ? (
                     <Skeleton className='h-[20px] w-16' />
                   ) : (
@@ -500,7 +523,7 @@ function SummaryContent() {
                 </div>
 
                 <div className='flex justify-between'>
-                  <span className='text-muted-foreground'>Tax</span>
+                  <span className='text-white/50'>Tax</span>
                   {isLoadingPreview ? (
                     <Skeleton className='h-[20px] w-16' />
                   ) : (
@@ -508,7 +531,7 @@ function SummaryContent() {
                   )}
                 </div>
 
-                <div className='border-t border-black/15 pt-2 flex justify-between font-semibold'>
+                <div className='border-t border-white/20 pt-2 flex justify-between font-semibold'>
                   <span>Total</span>
                   {isLoadingPreview ? (
                     <Skeleton className='h-[20px] w-16' />
@@ -518,7 +541,7 @@ function SummaryContent() {
                 </div>
 
                 <div className='flex justify-between text-xs'>
-                  <span className='text-muted-foreground'>Due today</span>
+                  <span className='text-white/50'>Due today</span>
                   {isLoadingPreview ? (
                     <Skeleton className='h-[16px] w-12' />
                   ) : (
@@ -535,7 +558,7 @@ function SummaryContent() {
                 loadingText='Processing...'>
                 Complete Subscription
               </Button>
-            </div>
+            </Card>
           </div>
         </div>
       </form>

@@ -89,8 +89,8 @@ export function ForgotPasswordForm() {
 
   return (
     <>
-      <Card className='w-full max-w-md shadow-md shadow-black/20 border-transparent'>
-        <CardHeader className='text-center'>
+      <Card variant='translucent' className='w-full max-w-md px-4'>
+        <CardHeader className='text-center pt-6'>
           <CardTitle>Forgot Your Password?</CardTitle>
           <CardDescription>
             Enter your email address below, and we&apos;ll send you a link to reset your password if
@@ -108,11 +108,13 @@ export function ForgotPasswordForm() {
                     <FormLabel>Email</FormLabel>
                     <FormControl>
                       <Input
+                        variant='translucent'
                         type='email'
+                        size='lg'
                         placeholder='your@email.com'
                         autoFocus
                         {...field}
-                        disabled={isLoading} // Disable input while loading
+                        disabled={isLoading}
                       />
                     </FormControl>
                     <FormMessage />
@@ -120,6 +122,7 @@ export function ForgotPasswordForm() {
                 )}
               />
               <Button
+                variant='translucent'
                 type='submit'
                 className='w-full'
                 loading={isLoading}
@@ -131,7 +134,7 @@ export function ForgotPasswordForm() {
           </Form>
         </CardContent>
         <CardFooter className='flex justify-center'>
-          <Button variant='link' asChild className='text-sm'>
+          <Button variant='link' asChild className='text-sm text-white'>
             <Link href='/login'>Back to Login</Link>
           </Button>
         </CardFooter>

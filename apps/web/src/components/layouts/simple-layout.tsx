@@ -50,6 +50,7 @@ export function SimpleLayout({ children, title, showBackToDashboard = true }: Si
   return (
     <div className='relative overflow-hidden'>
       <ColorfulBg>
+        <div className='absolute pointer-events-none inset-0 bg-gradient-to-br from-primary/20 to-secondary/20 blur-lg opacity-50' />
         <div className='min-h-screen flex flex-col'>
           {/* Header */}
           <header className='sticky top-0 z-50 w-full'>

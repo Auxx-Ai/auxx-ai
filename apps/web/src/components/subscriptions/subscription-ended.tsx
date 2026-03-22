@@ -37,7 +37,9 @@ export function SubscriptionEnded({
   return (
     <div className='flex items-center justify-center flex-1 min-h-0 h-full'>
       <div className='flex w-full max-w-sm flex-col items-center space-y-5 px-6 mx-auto'>
-        <Card className='w-full max-w-md shadow-md shadow-black/20 border-transparent'>
+        <Card
+          variant='translucent'
+          className='w-full max-w-md shadow-md shadow-black/20 border-transparent'>
           <CardHeader className='text-center'>
             <div className='mx-auto mb-5 size-14 border flex items-center justify-center rounded-2xl bg-muted text-bad-500 '>
               <Clock className='size-8' />
@@ -49,19 +51,19 @@ export function SubscriptionEnded({
             <Button asChild className='w-full'>
               <Link href='/subscription/convert/addons'>Continue with {displayPlanName}</Link>
             </Button>
-            <Button asChild variant='outline' className='w-full'>
+            <Button asChild variant='translucent' className='w-full'>
               <Link href='/subscription/convert/explore'>Explore plans</Link>
             </Button>
           </CardContent>
         </Card>
         <div className='w-full'>
-          <Card className=' w-full max-w-md shadow-none shadow-black/20 bg-white/10 backdrop-blur-sm border'>
-            <CardTitle className='text-center py-3 font-normal text-sm'>
+          <Card className=' w-full max-w-md shadow-none shadow-black/20 bg-white/10 backdrop-blur-sm border border-white/20'>
+            <CardTitle className='text-center py-3 font-normal text-sm text-white/90'>
               Need any help from us?
             </CardTitle>
 
             <CardContent className='space-y-3'>
-              <Button asChild variant='outline' className='w-full'>
+              <Button asChild variant='translucent' className='w-full'>
                 <a href='mailto:sales@auxx.ai' target='_blank' rel='noopener noreferrer'>
                   Talk to sales
                 </a>

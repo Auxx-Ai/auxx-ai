@@ -19,8 +19,20 @@ export default async function OnboardingPage() {
     redirect('/login')
   }
 
-  const user = session.user as typeof session.user & { defaultOrganizationId?: string | null }
-  const organizationId = user.defaultOrganizationId
+  // Read defaultOrganizationId directly from DB instead of the session cookie cache.
+  // The session cookie is cached for 5 minutes (cookieCache.maxAge) and can serve a stale
+  // org ID after switching organizations, causing an infinite redirect loop between
+  // /app/onboarding (which checks the old org) and /app (which checks the new org).
+  const [freshUser] = await database
+    .select({
+      defaultOrganizationId: schema.User.defaultOrganizationId,
+      completedOnboarding: schema.User.completedOnboarding,
+    })
+    .from(schema.User)
+    .where(eq(schema.User.id, session.user.id))
+    .limit(1)
+
+  const organizationId = freshUser?.defaultOrganizationId ?? null
 
   // Fetch organization's onboarding status
   let org: { completedOnboarding: boolean | null; handle: string | null } | null = null
@@ -42,7 +54,7 @@ export default async function OnboardingPage() {
   }
 
   // Determine starting step based on user and org status
-  const userCompletedOnboarding = user.completedOnboarding ?? false
+  const userCompletedOnboarding = freshUser?.completedOnboarding ?? false
 
   if (!userCompletedOnboarding) {
     // User hasn't completed personal info - start at step 1

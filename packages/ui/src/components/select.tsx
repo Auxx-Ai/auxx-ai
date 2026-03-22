@@ -22,6 +22,8 @@ const selectTriggerVariants = cva(
           'border-primary-200 focus:border-primary-300 bg-primary-50 dark:bg-[#1e2227] dark:border-[#2c313a] focus:ring-primary-400 placeholder:text-primary-500',
         transparent:
           'border-none bg-transparent shadow-none focus:ring-0 focus-visible:ring-0 placeholder:text-muted-foreground',
+        translucent:
+          'border-none bg-[#0519453d] text-white shadow-none placeholder:text-white/60 focus-visible:ring-white/30',
         ghost: 'shadow-none border-none hover:bg-accent hover:text-accent-foreground',
         outline:
           'border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground focus-visible:ring-blue-500',

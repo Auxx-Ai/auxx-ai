@@ -39,13 +39,13 @@ export default function AddonsConvertPage() {
   return (
     <div className='mx-auto max-w-xl p-6 space-y-3'>
       {/* Plan Display Card */}
-      <Card className='shadow-md shadow-black/20 border-transparent'>
+      <Card variant='translucent' className='shadow-md shadow-black/20 border-transparent'>
         <CardHeader>
           <CardTitle className='text-2xl mb-0'>{state.selectedPlan.name} Plan</CardTitle>
           <CardDescription>
             <div className='flex items-center flex-row gap-1'>
-              <span className='font-semibold text-lg text-foreground'>${basePrice}</span>
-              <span className='text-sm text-muted-foreground'>per user/month</span>
+              <span className='font-semibold text-lg text-white'>${basePrice}</span>
+              <span className='text-sm text-white/50'>per user/month</span>
               <TooltipExplanation
                 text={`Billed ${state.billingCycle.toLowerCase()}`}></TooltipExplanation>
             </div>
@@ -58,26 +58,27 @@ export default function AddonsConvertPage() {
               <CardDescription>Add seats for your team members</CardDescription>
             </div>
             <div className='flex flex-row gap-2 text-sm'>
-              <span className='text-muted-foreground'>
+              <span className='text-white/50'>
                 ({state.addons.seats}x ${basePrice.toFixed(2)})
               </span>
               <span>${totalPrice.toFixed(2)}</span>
             </div>
           </div>
-          <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
+          <div className='group flex items-center justify-between rounded-2xl border border-white/20 py-2 px-3 hover:bg-muted/10 transition-colors duration-200'>
             <div className='flex flex-row items-center gap-2'>
               <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
-                <Users className='size-4' />
+                <Users className='size-4 text-info' />
               </div>
               <div className='flex flex-col'>
                 <span className='text-sm font-medium'>Seats</span>
-                <span className='text-xs text-muted-foreground'>
+                <span className='text-xs text-white/50'>
                   Purchase additional seats to add more users
                 </span>
               </div>
             </div>
             <Input
               type='number'
+              variant='translucent'
               min={state.selectedPlan.minSeats}
               max={state.selectedPlan.maxSeats}
               value={state.addons.seats}
@@ -96,7 +97,7 @@ export default function AddonsConvertPage() {
       </Card>
 
       <div className='flex items-center justify-between w-full'>
-        <Button variant='outline' asChild size='sm'>
+        <Button variant='translucent' asChild size='sm'>
           <Link href='/subscription/convert/explore'>Back</Link>
         </Button>
         <Button onClick={handleContinue} size='sm'>

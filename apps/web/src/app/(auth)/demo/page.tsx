@@ -28,9 +28,9 @@ function StepIcon({ status }: { status: StepStatus }) {
     return <Check className='size-4 text-emerald-500' />
   }
   if (status === 'active') {
-    return <Loader2 className='size-4 text-primary-500 animate-spin' />
+    return <Loader2 className='size-4 text-white/80 animate-spin' />
   }
-  return <CircleDashed className='size-4 text-muted-foreground/50' />
+  return <CircleDashed className='size-4 text-white/20' />
 }
 
 export default function DemoPage() {
@@ -109,12 +109,12 @@ export default function DemoPage() {
     <div className='flex min-h-screen w-screen items-center justify-center p-4 bg-white/10'>
       <div className='flex w-full max-w-sm flex-col items-center gap-4'>
         <Logo />
-        <Card className='shadow-md shadow-black/20 border-transparent w-full'>
+        <Card variant='translucent' className='border-transparent w-full px-4 py-3'>
           {status === 'loading' ? (
             <>
               <CardHeader className='text-center'>
                 <CardTitle className='text-xl'>Setting up your demo</CardTitle>
-                <p className='text-sm text-muted-foreground'>No signup required</p>
+                <p className='text-sm text-white/50'>No signup required</p>
               </CardHeader>
               <CardContent>
                 <div className='space-y-3'>
@@ -124,8 +124,8 @@ export default function DemoPage() {
                       <span
                         className={
                           step.status === 'pending'
-                            ? 'text-sm text-muted-foreground/50'
-                            : 'text-sm text-foreground'
+                            ? 'text-sm text-white/30'
+                            : 'text-sm text-white/80'
                         }>
                         {step.label}
                         {step.status === 'active' && '...'}
@@ -133,14 +133,16 @@ export default function DemoPage() {
                     </div>
                   ))}
                 </div>
-                <p className='text-xs text-muted-foreground text-center mt-6'>
+                <p className='text-xs text-white/50 text-center mt-6'>
                   This usually takes a few seconds.
                 </p>
               </CardContent>
-              <CardFooter className='flex flex-col items-center gap-2 text-center text-xs text-muted-foreground'>
+              <CardFooter className='flex flex-col items-center gap-2 text-center text-xs text-white/50'>
                 <span>
                   Want the real thing?{' '}
-                  <Link href='/signup' className='underline hover:text-foreground'>
+                  <Link
+                    href='/signup'
+                    className='text-white underline-offset-3 underline hover:text-white'>
                     Sign up free
                   </Link>{' '}
                   — no credit card required.
@@ -151,20 +153,22 @@ export default function DemoPage() {
             <>
               <CardHeader className='text-center'>
                 <CardTitle className='text-xl'>Couldn&apos;t start demo</CardTitle>
-                <p className='text-sm text-muted-foreground'>{error}</p>
+                <p className='text-sm text-white/50'>{error}</p>
               </CardHeader>
               <CardContent className='flex flex-col gap-3'>
                 <Button onClick={createDemo} className='w-full'>
                   Try Again
                 </Button>
-                <Button asChild variant='outline' className='w-full'>
+                <Button asChild variant='translucent' className='w-full'>
                   <Link href='/signup'>Sign Up Instead</Link>
                 </Button>
               </CardContent>
-              <CardFooter className='flex flex-col items-center gap-2 text-center text-xs text-muted-foreground'>
+              <CardFooter className='pt-3 flex flex-col items-center gap-2 text-center text-xs text-white/50'>
                 <span>
                   Having trouble? Contact{' '}
-                  <a href='mailto:support@auxx.ai' className='underline hover:text-foreground'>
+                  <a
+                    href='mailto:support@auxx.ai'
+                    className='text-white/80 underline hover:text-white underline-offset-3'>
                     support@auxx.ai
                   </a>
                 </span>

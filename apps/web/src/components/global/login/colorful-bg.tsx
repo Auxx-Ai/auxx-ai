@@ -1,8 +1,32 @@
-// apps/web/src/components/global/colorful-bg.tsx
+// apps/web/src/components/global/login/colorful-bg.tsx
 
-import { AnimatedGridPattern } from '@auxx/ui/components/animated-grid-pattern'
-import { cn } from '@auxx/ui/lib/utils'
+import Image from 'next/image'
 import type { ReactNode } from 'react'
+
+function WelcomeBackgroundGrid({ className }: { className?: string }) {
+  return (
+    <svg
+      width='1750'
+      height='1046'
+      viewBox='0 0 1750 1046'
+      fill='none'
+      xmlns='http://www.w3.org/2000/svg'
+      className={className}>
+      <g transform='translate(-1, -13)'>
+        <rect width='120%' height='120%' fill='url(#grid)' />
+      </g>
+      <defs>
+        <pattern id='smallGrid' width='12' height='12' patternUnits='userSpaceOnUse'>
+          <path d='M 12 0 L 0 0 0 12' fill='none' stroke='#00000014' strokeWidth='0.5' />
+        </pattern>
+        <pattern id='grid' width='120' height='120' patternUnits='userSpaceOnUse'>
+          <rect width='120' height='120' fill='url(#smallGrid)' />
+          <path d='M 120 0 L 0 0 0 120' fill='none' stroke='#00000009' strokeWidth='1' />
+        </pattern>
+      </defs>
+    </svg>
+  )
+}
 
 interface ColorfulBgProps {
   children?: ReactNode
@@ -10,44 +34,37 @@ interface ColorfulBgProps {
 
 function ColorfulBg({ children }: ColorfulBgProps) {
   return (
-    <div data-theme='light' className='relative min-h-screen overflow-hidden'>
-      <div className='pointer-events-none fixed inset-0 overflow-hidden bg-white dark:bg-black transition-opacity duration-300 opacity-60'>
-        <div className='absolute inset-0 overflow-hidden mask-[radial-gradient(70%_100%_at_50%_0%,black_70%,transparent)] opacity-15'>
-          <div
-            className='absolute inset-0 saturate-150'
-            style={{
-              backgroundImage:
-                'conic-gradient(from -45deg at 50% -10%, rgb(58, 139, 253) 0deg, rgb(255, 0, 0) 172.98deg, rgb(133, 90, 252) 215.14deg, rgb(255, 123, 0) 257.32deg, rgb(58, 139, 253) 360deg)',
-            }}></div>
-          <div className='absolute inset-0 backdrop-blur-[100px]'></div>
+    <div data-theme='dark' className='relative min-h-screen overflow-hidden'>
+      <div className='pointer-events-none fixed inset-0 overflow-hidden transition-opacity duration-300 '>
+        <div className='absolute inset-0 overflow-hidden mask-[radial-gradient(70%_100%_at_50%_0%,black_70%,transparent)] opacity-15' />
+        <Image
+          src='https://res.cloudinary.com/dohqjvu9k/image/upload/v1759207511/constellation_uvxuml.webp'
+          alt='gradient background'
+          className='size-full object-cover'
+          width={2342}
+          height={1561}
+          priority
+          fetchPriority='high'
+        />
+        <div className='mask-b-from-55% mask-b-to-75% mask-radial-from-45% mask-radial-at-bottom mask-radial-[125%_80%] lg:aspect-7/5 absolute inset-0'>
+          <Image
+            src='https://res.cloudinary.com/dohqjvu9k/image/upload/v1759207511/constellation_uvxuml.webp'
+            alt='gradient background'
+            className='size-full object-cover'
+            width={2342}
+            height={1561}
+            priority
+            fetchPriority='high'
+          />
         </div>
-        <div className='absolute left-1/2 top-0 -translate-x-1/2 opacity-50 transition-all sm:opacity-100'>
-          {/* <img alt="" loading="lazy" width="1750" height="1046" decoding="async" data-nimg="1" className="absolute inset-0" src="https://assets.dub.co/misc/welcome-background-grid.svg" style="color: transparent;">
-      <img alt="" loading="lazy" width="1750" height="1046" decoding="async" data-nimg="1" className="relative min-w-[1000px] max-w-(--breakpoint-2xl) transition-opacity duration-300 opacity-0" src="https://assets.dub.co/misc/welcome-background.svg" style="color: transparent;"> */}
-        </div>
-        <div className='absolute inset-0 overflow-hidden mask-[radial-gradient(70%_100%_at_50%_0%,black_70%,transparent)] opacity-100 mix-blend-soft-light'>
-          <div
-            className='absolute inset-0 saturate-150'
-            style={{
-              backgroundImage:
-                'conic-gradient(from -45deg at 50% -10%, rgb(58, 139, 253) 0deg, rgb(255, 0, 0) 172.98deg, rgb(133, 90, 252) 215.14deg, rgb(255, 123, 0) 257.32deg, rgb(58, 139, 253) 360deg)',
-            }}></div>
-          <div className='absolute inset-0 backdrop-blur-[100px]'></div>
+        <div className='z-20 absolute left-1/2 top-0 -translate-x-1/2 opacity-50 transition-all sm:opacity-100'>
+          <WelcomeBackgroundGrid className='absolute inset-0 brightness-[3] invert' />
+          <WelcomeBackgroundGrid className='relative min-w-[1000px] max-w-(--breakpoint-2xl) transition-opacity duration-300 opacity-0 brightness-[3] invert' />
         </div>
       </div>
-      <div className='flex flex-col h-full flex-1 z-40 relative'>{children && children}</div>
-      <AnimatedGridPattern
-        numSquares={100}
-        maxOpacity={0.3}
-        duration={3}
-        repeatDelay={1}
-        className={cn(
-          '[mask-image:radial-gradient(500px_circle_at_center,white,transparent)]',
-          'inset-x-0 h-full skew-y-12 z-30'
-        )}
-      />
+      <div className='flex flex-col h-full flex-1 z-40 relative'>{children}</div>
     </div>
   )
 }
 
-export { ColorfulBg }
+export { ColorfulBg, WelcomeBackgroundGrid }

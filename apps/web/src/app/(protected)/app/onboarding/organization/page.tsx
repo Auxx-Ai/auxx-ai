@@ -213,7 +213,7 @@ export default function OrganizationOnboardingPage() {
   return (
     <div className='grid grid-cols-1 md:grid-cols-2 w-full'>
       {/* Left column: Organization form */}
-      <div className='relative md:border-r p-3'>
+      <div className='relative p-3 md:after:absolute md:after:right-0 md:after:top-[5px] md:after:bottom-[5px] md:after:w-px md:after:bg-white/10'>
         <motion.div variants={containerVariants} initial='hidden' animate='visible'>
           <motion.div variants={itemVariants}>
             <CardHeader>
@@ -236,7 +236,7 @@ export default function OrganizationOnboardingPage() {
                       <FormItem>
                         <FormLabel>Organization Name</FormLabel>
                         <FormControl>
-                          <InputGroup>
+                          <InputGroup variant='translucent'>
                             <InputGroupInput placeholder='Acme Corp' {...field} />
                             <InputGroupAddon align='inline-end'>
                               {form.formState.errors.name && (
@@ -259,7 +259,7 @@ export default function OrganizationOnboardingPage() {
                       <FormItem>
                         <FormLabel>Organization Handle</FormLabel>
                         <FormControl>
-                          <InputGroup>
+                          <InputGroup variant='translucent'>
                             <InputGroupAddon align='inline-start'>
                               <InputGroupText>auxx.ai /</InputGroupText>
                             </InputGroupAddon>
@@ -292,7 +292,9 @@ export default function OrganizationOnboardingPage() {
                             </InputGroupAddon>
                           </InputGroup>
                         </FormControl>
-                        <FormDescription>This will be used in your public URLs</FormDescription>
+                        <FormDescription className='text-white/30'>
+                          This will be used in your public URLs
+                        </FormDescription>
                       </FormItem>
                     )}
                   />
@@ -307,7 +309,7 @@ export default function OrganizationOnboardingPage() {
                       <FormItem>
                         <FormLabel>Website (optional)</FormLabel>
                         <FormControl>
-                          <InputGroup>
+                          <InputGroup variant='translucent'>
                             <InputGroupInput placeholder='https://example.com' {...field} />
                             <InputGroupAddon align='inline-end'>
                               {form.formState.errors.website && (
@@ -353,7 +355,7 @@ export default function OrganizationOnboardingPage() {
             Build Your Workspace
           </motion.h2>
           <motion.p
-            className='text-muted-foreground'
+            className='text-white/50'
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.6 }}>

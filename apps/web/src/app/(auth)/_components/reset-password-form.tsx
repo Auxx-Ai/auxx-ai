@@ -80,7 +80,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   }
 
   return (
-    <Card className='w-full max-w-md shadow-md shadow-black/20 border-transparent'>
+    <Card variant='translucent' className='w-full max-w-md border-transparent px-4'>
       <CardHeader className='text-center'>
         <CardTitle>Reset Your Password</CardTitle>
         <CardDescription>Enter and confirm your new password below.</CardDescription>
@@ -96,6 +96,8 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                   <FormLabel>New Password</FormLabel>
                   <FormControl>
                     <Input
+                      variant='translucent'
+                      size='lg'
                       type='password'
                       placeholder='••••••••'
                       autoFocus
@@ -114,7 +116,14 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                 <FormItem>
                   <FormLabel>Confirm New Password</FormLabel>
                   <FormControl>
-                    <Input type='password' placeholder='••••••••' {...field} disabled={isLoading} />
+                    <Input
+                      variant='translucent'
+                      size='lg'
+                      type='password'
+                      placeholder='••••••••'
+                      {...field}
+                      disabled={isLoading}
+                    />
                   </FormControl>
                   <FormMessage /> {/* Will show "Passwords don't match" here */}
                 </FormItem>
@@ -122,6 +131,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             />
             <Button
               type='submit'
+              variant='translucent'
               className='w-full'
               loading={isLoading}
               loadingText='Resetting Password...'>
@@ -131,7 +141,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         </Form>
       </CardContent>
       <CardFooter className='flex justify-center'>
-        <Button variant='link' asChild className='text-sm'>
+        <Button variant='link' asChild className='text-sm text-white'>
           <Link href='/login'>Back to Login</Link>
         </Button>
       </CardFooter>

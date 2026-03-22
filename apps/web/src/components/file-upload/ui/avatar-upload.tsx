@@ -28,6 +28,8 @@ interface AvatarUploadProps {
   className?: string
   /** Avatar size variant */
   size?: 'sm' | 'md' | 'lg'
+  /** Visual style variant */
+  variant?: 'default' | 'translucent'
   /** Disable the component */
   disabled?: boolean
 }
@@ -64,6 +66,7 @@ export function AvatarUpload({
   onError,
   className,
   size = 'md',
+  variant = 'default',
   disabled = false,
 }: AvatarUploadProps): JSX.Element {
   const [confirm, ConfirmDialog] = useConfirm()
@@ -228,10 +231,12 @@ export function AvatarUpload({
         <Avatar
           className={cn(
             config.avatar,
-            'border-2 border-dashed border-transparent group-hover:border-border transition-colors'
+            'border-2 border-dashed border-transparent transition-colors',
+            variant === 'translucent' ? 'group-hover:border-white/30' : 'group-hover:border-border'
           )}>
           {hasAvatar && <AvatarImage src={displayUrl} alt='Profile' />}
-          <AvatarFallback>
+          <AvatarFallback
+            className={variant === 'translucent' ? 'bg-[#0519453d] text-white/60' : ''}>
             {isUploading ? (
               <Loader2 className='size-6 animate-spin' />
             ) : (
@@ -253,7 +258,7 @@ export function AvatarUpload({
         <div className='flex gap-2'>
           {/* Upload button */}
           <Button
-            variant='outline'
+            variant={variant === 'translucent' ? 'translucent' : 'outline'}
             type='button'
             size={config.buttonSize}
             disabled={disabled || isUploading}
@@ -267,7 +272,7 @@ export function AvatarUpload({
           {/* Remove button */}
           {hasAvatar && (
             <Button
-              variant='outline'
+              variant={variant === 'translucent' ? 'translucent' : 'outline'}
               type='button'
               size={config.buttonSize}
               disabled={disabled || isRemoving}
@@ -283,7 +288,11 @@ export function AvatarUpload({
         {/* Upload progress, errors, or instructions */}
         {isUploading ? (
           <div className='w-full h-8'>
-            <div className='flex justify-between text-xs text-primary-500 mb-1'>
+            <div
+              className={cn(
+                'flex justify-between text-xs mb-1',
+                variant === 'translucent' ? 'text-white/60' : 'text-primary-500'
+              )}>
               <span>Uploading...</span>
               <span>{fileUpload.uploadSummary?.overallProgress || 0}%</span>
             </div>
@@ -302,7 +311,12 @@ export function AvatarUpload({
           </div>
         ) : (
           <div className='w-full h-8'>
-            <p className={cn('text-primary-500 max-w-xs text-xs', config.uploadText)}>
+            <p
+              className={cn(
+                'max-w-xs text-xs',
+                config.uploadText,
+                variant === 'translucent' ? 'text-white/60' : 'text-primary-500'
+              )}>
               Upload a photo to use as your profile picture. Max 5MB. Supports JPEG, PNG, WebP, and
               GIF.
             </p>
