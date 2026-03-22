@@ -18,6 +18,7 @@ type StandaloneCountrySelectProps = {
   disabled?: boolean
   className?: string
   placeholder?: string
+  variant?: 'default' | 'translucent'
 }
 
 /** Flag icon with Globe fallback instead of PhoneIcon */
@@ -35,7 +36,10 @@ function CountryFlag({ code, name }: { code: RPNInput.Country; name: string }) {
  * Wraps the phone-input CountrySelect with a form-friendly trigger
  */
 const CountrySelect = forwardRef<HTMLButtonElement, StandaloneCountrySelectProps>(
-  ({ value, onChange, disabled, className, placeholder = 'Select country' }, ref) => {
+  (
+    { value, onChange, disabled, className, placeholder = 'Select country', variant = 'default' },
+    ref
+  ) => {
     /** Build full country options from react-phone-number-input */
     const options = useMemo(
       () =>
@@ -62,9 +66,9 @@ const CountrySelect = forwardRef<HTMLButtonElement, StandaloneCountrySelectProps
             disabled={disabled}
             aria-label='Select country'
             className={cn(
-              selectTriggerVariants(),
+              selectTriggerVariants({ variant }),
               'gap-2',
-              !value && 'text-primary-400',
+              !value && (variant === 'translucent' ? 'text-white/60' : 'text-primary-400'),
               className
             )}>
             {value && selectedLabel ? (
@@ -73,7 +77,13 @@ const CountrySelect = forwardRef<HTMLButtonElement, StandaloneCountrySelectProps
                 <span className='flex-1 truncate text-left'>{selectedLabel}</span>
               </>
             ) : (
-              <span className='flex-1 truncate text-left text-primary-400'>{placeholder}</span>
+              <span
+                className={cn(
+                  'flex-1 truncate text-left',
+                  variant === 'translucent' ? 'text-white/60' : 'text-primary-400'
+                )}>
+                {placeholder}
+              </span>
             )}
             <ChevronDown className='size-4 opacity-50' />
           </button>

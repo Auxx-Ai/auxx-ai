@@ -32,6 +32,8 @@ export type Plan = {
 interface PlanComparisonProps {
   /** Whether component is rendered inside a dialog */
   inDialog?: boolean
+  /** Visual style variant */
+  variant?: 'default' | 'translucent'
   /** Callback when a plan is selected (used in dialog mode) */
   onPlanSelect?: (plan: Plan) => void
 }
@@ -40,7 +42,11 @@ interface PlanComparisonProps {
  * Plan comparison component showing all available plans
  * Can be rendered standalone or inside a dialog
  */
-export function PlanComparison({ inDialog = false, onPlanSelect }: PlanComparisonProps) {
+export function PlanComparison({
+  inDialog = false,
+  variant = 'default',
+  onPlanSelect,
+}: PlanComparisonProps) {
   useUser({
     requireOrganization: true, // Require organization membership
     requireRoles: ['ADMIN', 'OWNER'], // Ensure user is an admin or owner
@@ -77,14 +83,15 @@ export function PlanComparison({ inDialog = false, onPlanSelect }: PlanCompariso
     }
   }, [subscription, subscriptionLoading, initialCycleSet]) // Dependencies
 
-  // Separate free and paid plans
-  const paidPlans = plans?.filter((plan) => !plan.isFree) ?? []
-  const freePlan = plans?.find((plan) => plan.isFree)
+  // Filter out internal plans (e.g. Demo), then separate free and paid
+  const availablePlans = plans?.filter((plan) => plan.hierarchyLevel >= 0) ?? []
+  const paidPlans = availablePlans.filter((plan) => !plan.isFree)
+  const freePlan = availablePlans.find((plan) => plan.isFree)
 
   return (
     <div className={inDialog ? '' : 'p-6'}>
       <div className='flex flex-col gap-4 justify-center items-center'>
-        <BillingCycleToggle value={billingCycle} onChange={setBillingCycle} />
+        <BillingCycleToggle value={billingCycle} onChange={setBillingCycle} variant={variant} />
       </div>
 
       {isLoading && !initialCycleSet ? (
@@ -116,6 +123,7 @@ export function PlanComparison({ inDialog = false, onPlanSelect }: PlanCompariso
                 key={plan.id}
                 plan={plan}
                 billingCycle={billingCycle}
+                variant={variant}
                 isCurrentPlan={
                   subscription?.planId === plan.id && subscription?.billingCycle === billingCycle
                 }
@@ -130,6 +138,7 @@ export function PlanComparison({ inDialog = false, onPlanSelect }: PlanCompariso
               <HorizontalPlanCard
                 plan={freePlan}
                 billingCycle={billingCycle}
+                variant={variant}
                 isCurrentPlan={subscription?.planId === freePlan.id}
                 onPlanSelect={onPlanSelect}
               />

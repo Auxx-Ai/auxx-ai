@@ -94,7 +94,7 @@ export default function PersonalOnboardingPage() {
   return (
     <div className='grid grid-cols-1 md:grid-cols-2 w-full'>
       {/* Left column: Personal information form */}
-      <div className='relative md:border-r p-3'>
+      <div className='relative p-3 md:after:absolute md:after:right-0 md:after:top-[5px] md:after:bottom-[5px] md:after:w-px md:after:bg-white/10'>
         <motion.div variants={containerVariants} initial='hidden' animate='visible'>
           <motion.div variants={itemVariants}>
             <CardHeader>
@@ -110,7 +110,11 @@ export default function PersonalOnboardingPage() {
               <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
                 {/* Avatar Upload */}
                 <motion.div variants={itemVariants} className='flex justify-center'>
-                  <AvatarUpload currentAvatarUrl={userData.image} className='pb-6' />
+                  <AvatarUpload
+                    variant='translucent'
+                    currentAvatarUrl={userData.image}
+                    className='pb-6'
+                  />
                 </motion.div>
 
                 {/* First Name */}
@@ -122,7 +126,7 @@ export default function PersonalOnboardingPage() {
                       <FormItem>
                         <FormLabel>First Name</FormLabel>
                         <FormControl>
-                          <Input placeholder='John' {...field} />
+                          <Input variant='translucent' placeholder='John' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -139,7 +143,7 @@ export default function PersonalOnboardingPage() {
                       <FormItem>
                         <FormLabel>Last Name</FormLabel>
                         <FormControl>
-                          <Input placeholder='Doe' {...field} />
+                          <Input variant='translucent' placeholder='Doe' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -177,7 +181,7 @@ export default function PersonalOnboardingPage() {
             Welcome to Auxx.ai! 🚀
           </motion.h2>
           <motion.p
-            className='text-muted-foreground'
+            className='text-white/50'
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.6 }}>

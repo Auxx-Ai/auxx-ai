@@ -22,7 +22,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import Link from 'next/link' // For Sign Up link
 import { useRouter, useSearchParams } from 'next/navigation'
 import type React from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 // import { z } from 'zod'
 import { client } from '~/auth/auth-client' // Use the cached auth
 import { PasswordInput } from '~/components/credentials/password-fields'
@@ -62,9 +62,9 @@ export default function LoginForm({
     widgetRef: turnstileRef,
   } = useTurnstile()
   const variants = {
-    enter: { opacity: 0, x: 50 },
-    center: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: -50 },
+    enter: { opacity: 0 },
+    center: { opacity: 1 },
+    exit: { opacity: 0 },
   }
 
   const [isLoading, setIsLoading] = useState(false)
@@ -73,8 +73,24 @@ export default function LoginForm({
   const [password, setPassword] = useState('')
   const [otp, setOtp] = useState('')
   const [error, setError] = useState('')
+  const [isEditingEmail, setIsEditingEmail] = useState(false)
   const [resendTimeout, setResendTimeout] = useState(0)
+  const [contentHeight, setContentHeight] = useState<number | undefined>(undefined)
+  const contentRef = useRef<HTMLDivElement>(null)
   const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (!contentRef.current) return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const height =
+          entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height
+        setContentHeight(height)
+      }
+    })
+    observer.observe(contentRef.current)
+    return () => observer.disconnect()
+  }, [])
 
   const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s)
   const isPhone = (s: string) => /^\+?\d{7,15}$/.test(s)
@@ -337,249 +353,306 @@ export default function LoginForm({
   return (
     <>
       <div className='flex w-full flex-col gap-6'>
-        <Card className='shadow-md shadow-black/20 border-transparent'>
+        <Card variant='translucent' className='px-4 py-3'>
           <CardHeader className='text-center'>
             <CardTitle className='text-xl'>Welcome Back</CardTitle>
             <CardDescription className='sr-only'>Sign in to your AuxxLift account</CardDescription>
           </CardHeader>
           <CardContent className='flex flex-col gap-4'>
-            <AnimatePresence mode='wait'>
-              {/* Display Login Errors */}
-              {/* Email/Password Form */}
-              {/* <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4"> */}
-
-              {step === 'initial' && (
-                <motion.form
-                  key='initial'
-                  onSubmit={handleContinue}
-                  initial='enter'
-                  animate='center'
-                  exit='exit'
-                  variants={variants}
-                  transition={{ duration: 0.3 }}>
-                  <div className='space-y-2'>
-                    <Input
-                      placeholder='Email or phone'
-                      value={contact}
-                      autoComplete='username webauthn'
-                      onChange={(e) => setContact(e.target.value.trim())}
-                    />
-                    {error && (
-                      <p
-                        className='peer-aria-invalid:text-red-500 mt-2 text-xs text-red-500'
-                        role='alert'
-                        aria-live='polite'>
-                        {error}
-                      </p>
-                    )}
-                    <Button
-                      type='submit'
-                      variant='outline'
-                      className='w-full'
-                      loading={isLoading}
-                      loadingText='Logging in...'>
-                      Continue with Email or Phone
-                    </Button>
-                  </div>
-                  {/* Divider */}
-                  <div className='relative my-4'>
-                    <div className='absolute inset-0 flex items-center'>
-                      <span className='w-full border-t' />
-                    </div>
-                    <div className='relative flex justify-center text-xs uppercase'>
-                      <span className='bg-background px-2 text-muted-foreground'>
-                        Or continue with
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* OAuth Buttons */}
-                  <div className='flex flex-col gap-3'>
-                    <GeneralSubmitButton
-                      icon={<GoogleIcon className='mr-2 size-4' />} // Add margin if needed
-                      width='w-full'
-                      variant='outline'
-                      text='Login with Google'
-                      onClick={() => {
-                        posthog?.capture('user_logged_in', { method: 'google' })
-                        setIsLoading(true)
-                        client.signIn.social({ provider: 'google', callbackURL: redirectToPath })
-                      }}
-                    />
-                    <GeneralSubmitButton
-                      icon={<GithubIcon className='mr-2 size-4 text-foreground' />} // Add margin if needed
-                      width='w-full'
-                      variant='outline'
-                      text='Login with Github'
-                      onClick={() => {
-                        posthog?.capture('user_logged_in', { method: 'github' })
-                        setIsLoading(true)
-                        client.signIn.social({ provider: 'github', callbackURL: redirectToPath })
-                      }}
-                    />
-                    <Button
-                      type='button'
-                      className='w-full'
-                      variant='outline'
-                      onClick={() => handleSSO()}>
-                      <Lock className='size-4' />
-                      Continue with SSO
-                    </Button>
-                  </div>
-
-                  {/* <button type="submit" style={{ width: '100%', padding: 10 }}>
-                  Continue
-                </button> */}
-                </motion.form>
-              )}
-
-              {step === 'otp' && (
-                <motion.form
-                  key='otp'
-                  onSubmit={handleVerifyOtp}
-                  initial='enter'
-                  animate='center'
-                  exit='exit'
-                  variants={variants}
-                  transition={{ duration: 0.3 }}>
-                  <div className='space-y-4'>
-                    <p>Enter the code we sent to {contact}</p>
-                    {error && <p style={{ color: 'red' }}>{error}</p>}
-                    <div className='flex items-center justify-center'>
-                      <InputOTP
-                        maxLength={6}
-                        value={otp}
-                        onChange={(value) => setOtp(value)}
-                        autoFocus>
-                        <InputOTPGroup>
-                          <InputOTPSlot index={0} />
-                          <InputOTPSlot index={1} />
-                          <InputOTPSlot index={2} />
-                          <InputOTPSlot index={3} />
-                          <InputOTPSlot index={4} />
-                          <InputOTPSlot index={5} />
-                        </InputOTPGroup>
-                      </InputOTP>
-                    </div>
-
-                    <Button
-                      type='submit'
-                      className='w-full mt-4'
-                      disabled={isLoading || otp.length < 6}
-                      loadingText='Verifying...'>
-                      Verify Code
-                    </Button>
-                    <div className=''>
-                      <div className='text-sm text-muted-foreground'>
-                        Didn&apos;t receive the code?{' '}
+            <motion.div
+              animate={{ height: contentHeight }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }}>
+              <div ref={contentRef} className='p-1'>
+                <AnimatePresence mode='wait'>
+                  {step === 'initial' && (
+                    <motion.form
+                      key='initial'
+                      onSubmit={handleContinue}
+                      initial='enter'
+                      animate='center'
+                      exit='exit'
+                      variants={variants}
+                      transition={{ duration: 0.3 }}>
+                      <div className='space-y-2'>
+                        <Input
+                          variant='translucent'
+                          size='lg'
+                          placeholder='Email or phone'
+                          value={contact}
+                          autoComplete='username webauthn'
+                          onChange={(e) => setContact(e.target.value.trim())}
+                        />
+                        {error && (
+                          <p
+                            className='peer-aria-invalid:text-red-500 mt-2 text-xs text-red-500'
+                            role='alert'
+                            aria-live='polite'>
+                            {error}
+                          </p>
+                        )}
                         <Button
-                          variant='link'
-                          className='h-auto p-0 font-normal'
-                          disabled={resendTimeout > 0 || isLoading}
-                          onClick={async () => {
-                            setIsLoading(true)
-                            try {
-                              const { error } = await client.phoneNumber.sendOtp({
-                                phoneNumber: contact,
-                              })
-
-                              if (error) {
-                                setError(error.message!)
-                              } else {
-                                startResendTimeout()
-                                toastSuccess({
-                                  title: 'Code Resent',
-                                  description: 'A new verification code has been sent.',
-                                })
-                              }
-                            } catch (err: any) {
-                              setError(err.message || 'Failed to resend code.')
-                            } finally {
-                              setIsLoading(false)
-                            }
-                          }}>
-                          Resend
+                          type='submit'
+                          variant='translucent'
+                          className='w-full'
+                          loading={isLoading}
+                          loadingText='Logging in...'>
+                          Continue with Email or Phone
                         </Button>
                       </div>
-                      {resendTimeout > 0 && (
-                        <p className='text-sm text-muted-foreground'>
-                          New code will be available in {resendTimeout} seconds.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className='text-right flex items-center justify-between mt-4'>
-                    <Button
-                      variant='link'
-                      size='sm'
-                      className='h-auto p-0 font-normal'
-                      onClick={() => setStep('initial')}>
-                      Back
-                    </Button>
-                  </div>
-                </motion.form>
-              )}
+                      {/* Divider */}
+                      <div className='relative my-6'>
+                        <div className='absolute inset-0 flex items-center'>
+                          <span className='w-full border-t border-white/20' />
+                        </div>
+                        <div className='relative flex justify-center text-xs uppercase'>
+                          <span className='bg-translucent rounded-full py-1 px-2 text-white'>
+                            Or continue with
+                          </span>
+                        </div>
+                      </div>
 
-              {step === 'password' && (
-                <motion.form
-                  key='password'
-                  onSubmit={handleEmailSignIn}
-                  initial='enter'
-                  animate='center'
-                  exit='exit'
-                  variants={variants}
-                  transition={{ duration: 0.3 }}>
-                  <div className='space-y-4'>
-                    <div className='text-sm'>
-                      Sign in as{' '}
-                      <Badge variant='pill' size='sm'>
-                        {contact}
-                      </Badge>
-                    </div>
-                    {error && <p className='text-xs text-red-500'>{error}</p>}
-                    <PasswordInput
-                      placeholder='Your password'
-                      onChange={(e) => setPassword(e.target.value)}
-                      autoComplete='current-password webauthn'
-                      value={password}
-                      required
-                      autoFocus
-                    />
-                    <Button
-                      type='submit'
-                      className='w-full'
-                      loading={isLoading}
-                      disabled={!!turnstileSiteKey && !turnstileToken}
-                      loadingText='Signing in...'>
-                      Sign in
-                    </Button>
-                  </div>
-                  <div className='text-right flex items-center justify-between mt-4'>
-                    <Button
-                      variant='link'
-                      size='sm'
-                      className='h-auto p-0 font-normal'
-                      onClick={() => setStep('initial')}>
-                      Back
-                    </Button>
+                      {/* OAuth Buttons */}
+                      <div className='flex flex-col gap-3'>
+                        <GeneralSubmitButton
+                          icon={<GoogleIcon className='mr-2 size-4' />} // Add margin if needed
+                          width='w-full'
+                          variant='translucent'
+                          text='Login with Google'
+                          onClick={() => {
+                            posthog?.capture('user_logged_in', { method: 'google' })
+                            setIsLoading(true)
+                            client.signIn.social({
+                              provider: 'google',
+                              callbackURL: redirectToPath,
+                            })
+                          }}
+                        />
+                        <GeneralSubmitButton
+                          icon={<GithubIcon className='mr-2 size-4 text-foreground' />} // Add margin if needed
+                          width='w-full'
+                          variant='translucent'
+                          text='Login with Github'
+                          onClick={() => {
+                            posthog?.capture('user_logged_in', { method: 'github' })
+                            setIsLoading(true)
+                            client.signIn.social({
+                              provider: 'github',
+                              callbackURL: redirectToPath,
+                            })
+                          }}
+                        />
+                        <Button
+                          type='button'
+                          className='w-full'
+                          variant='translucent'
+                          onClick={() => handleSSO()}>
+                          <Lock className='size-4' />
+                          Continue with SSO
+                        </Button>
+                      </div>
 
-                    <Button variant='link' size='sm' className='h-auto p-0 font-normal' asChild>
-                      <Link href='/forgot-password'>Forgot password?</Link>
-                    </Button>
-                  </div>
-                </motion.form>
-              )}
+                      {/* <button type="submit" style={{ width: '100%', padding: 10 }}>
+                  Continue
+                </button> */}
+                    </motion.form>
+                  )}
 
-              {/* Consider adding a "Forgot Password?" link */}
+                  {step === 'otp' && (
+                    <motion.form
+                      key='otp'
+                      onSubmit={handleVerifyOtp}
+                      initial='enter'
+                      animate='center'
+                      exit='exit'
+                      variants={variants}
+                      transition={{ duration: 0.3 }}>
+                      <div className='space-y-4'>
+                        <p>Enter the code we sent to {contact}</p>
+                        {error && <p style={{ color: 'red' }}>{error}</p>}
+                        <div className='flex items-center justify-center'>
+                          <InputOTP
+                            maxLength={6}
+                            value={otp}
+                            onChange={(value) => setOtp(value)}
+                            autoFocus>
+                            <InputOTPGroup>
+                              <InputOTPSlot index={0} />
+                              <InputOTPSlot index={1} />
+                              <InputOTPSlot index={2} />
+                              <InputOTPSlot index={3} />
+                              <InputOTPSlot index={4} />
+                              <InputOTPSlot index={5} />
+                            </InputOTPGroup>
+                          </InputOTP>
+                        </div>
 
-              {/* </form> */}
-            </AnimatePresence>
+                        <Button
+                          type='submit'
+                          variant='translucent'
+                          className='w-full mt-4'
+                          disabled={isLoading || otp.length < 6}
+                          loadingText='Verifying...'>
+                          Verify Code
+                        </Button>
+                        <div className=''>
+                          <div className='text-sm text-muted-foreground'>
+                            Didn&apos;t receive the code?{' '}
+                            <Button
+                              variant='link'
+                              className='h-auto p-0 font-normal'
+                              disabled={resendTimeout > 0 || isLoading}
+                              onClick={async () => {
+                                setIsLoading(true)
+                                try {
+                                  const { error } = await client.phoneNumber.sendOtp({
+                                    phoneNumber: contact,
+                                  })
+
+                                  if (error) {
+                                    setError(error.message!)
+                                  } else {
+                                    startResendTimeout()
+                                    toastSuccess({
+                                      title: 'Code Resent',
+                                      description: 'A new verification code has been sent.',
+                                    })
+                                  }
+                                } catch (err: any) {
+                                  setError(err.message || 'Failed to resend code.')
+                                } finally {
+                                  setIsLoading(false)
+                                }
+                              }}>
+                              Resend
+                            </Button>
+                          </div>
+                          {resendTimeout > 0 && (
+                            <p className='text-sm text-muted-foreground'>
+                              New code will be available in {resendTimeout} seconds.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className='text-right flex items-center justify-between mt-4'>
+                        <Button
+                          variant='link'
+                          size='sm'
+                          className='h-auto p-0 font-normal'
+                          onClick={() => setStep('initial')}>
+                          Back
+                        </Button>
+                      </div>
+                    </motion.form>
+                  )}
+
+                  {step === 'password' && (
+                    <motion.form
+                      key='password'
+                      onSubmit={handleEmailSignIn}
+                      initial='enter'
+                      animate='center'
+                      exit='exit'
+                      variants={variants}
+                      transition={{ duration: 0.3 }}>
+                      <div className='space-y-4'>
+                        <div className='text-sm'>
+                          {isEditingEmail ? (
+                            <Input
+                              variant='translucent'
+                              size='lg'
+                              value={contact}
+                              onChange={(e) => setContact(e.target.value.trim())}
+                              autoFocus
+                              onFocus={(e) => e.target.select()}
+                              onBlur={() => {
+                                if (isEmail(contact)) {
+                                  setIsEditingEmail(false)
+                                  setError('')
+                                } else {
+                                  setError('Please enter a valid email address.')
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  if (isEmail(contact)) {
+                                    setIsEditingEmail(false)
+                                    setError('')
+                                  } else {
+                                    setError('Please enter a valid email address.')
+                                  }
+                                }
+                                if (e.key === 'Escape') {
+                                  setIsEditingEmail(false)
+                                }
+                              }}
+                            />
+                          ) : (
+                            <>
+                              Sign in as{' '}
+                              <Badge
+                                size='sm'
+                                className='ms-1 cursor-pointer bg-white/20 text-white/80 ring-white/40! hover:bg-white/30'
+                                onClick={() => setIsEditingEmail(true)}>
+                                {contact}
+                              </Badge>
+                            </>
+                          )}
+                        </div>
+                        {error && <p className='text-xs text-red-500'>{error}</p>}
+                        <PasswordInput
+                          variant='translucent'
+                          size='lg'
+                          placeholder='Your password'
+                          onChange={(e) => setPassword(e.target.value)}
+                          autoComplete='current-password webauthn'
+                          value={password}
+                          required
+                          autoFocus
+                        />
+                        <Button
+                          type='submit'
+                          variant='translucent'
+                          className='w-full'
+                          loading={isLoading}
+                          disabled={!!turnstileSiteKey && !turnstileToken}
+                          loadingText='Signing in...'>
+                          Sign in
+                        </Button>
+                      </div>
+                      <div className='text-right flex items-center justify-between mt-4'>
+                        <Button
+                          variant='link'
+                          size='sm'
+                          className='h-auto p-0 font-normal text-white'
+                          onClick={() => setStep('initial')}>
+                          Back
+                        </Button>
+
+                        <Button
+                          variant='link'
+                          size='sm'
+                          className='h-auto p-0 font-normal text-white'
+                          asChild>
+                          <Link href='/forgot-password'>Forgot password?</Link>
+                        </Button>
+                      </div>
+                    </motion.form>
+                  )}
+
+                  {/* Consider adding a "Forgot Password?" link */}
+
+                  {/* </form> */}
+                </AnimatePresence>
+              </div>
+            </motion.div>
           </CardContent>
           <CardFooter className='flex flex-col items-center gap-2 text-center text-xs text-muted-foreground'>
-            <div className='flex flex-row items-center gap-2'>
+            <div className='flex flex-row items-center gap-2 text-white/60'>
               <span>
                 Don&apos;t have an account?{' '}
-                <Button variant='link' className='h-auto p-0' asChild>
+                <Button variant='link' className='h-auto p-0 text-white' asChild>
                   <Link
                     href={
                       redirectToPath !== defaultRedirectPath
@@ -594,34 +667,13 @@ export default function LoginForm({
                 <>
                   |
                   <span>
-                    <Button variant='link' className='h-auto p-0' asChild>
+                    <Button variant='link' className='h-auto p-0 text-white' asChild>
                       <Link href='/forgot-password'>Forgot password?</Link>
                     </Button>
                   </span>
                 </>
               )}
             </div>
-            <span className=''>
-              By clicking continue, you agree to our{' '}
-              <Button variant='link' className='h-auto p-0 text-xs' asChild>
-                <Link
-                  href={`${homepageUrl}/terms-of-service`}
-                  target='_blank'
-                  rel='noopener noreferrer'>
-                  terms and service
-                </Link>
-              </Button>{' '}
-              and{' '}
-              <Button variant='link' className='h-auto p-0 text-xs' asChild>
-                <Link
-                  href={`${homepageUrl}/privacy-policy`}
-                  target='_blank'
-                  rel='noopener noreferrer'>
-                  privacy policy
-                </Link>
-              </Button>
-              .
-            </span>
           </CardFooter>
         </Card>
 
@@ -647,7 +699,11 @@ export default function LoginForm({
 function DemoButton() {
   return (
     <div className='w-full text-center'>
-      <Button variant='ghost' size='sm' className='text-xs  hover:bg-info hover:text-white' asChild>
+      <Button
+        variant='ghost'
+        size='sm'
+        className='text-xs text-white hover:bg-info hover:text-white'
+        asChild>
         <Link href='/demo'>Or try a live demo — no signup required</Link>
       </Button>
     </div>

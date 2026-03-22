@@ -16,8 +16,10 @@ const inputVariants = cva(
         secondary: 'bg-muted/50 hover:bg-muted focus-visible:bg-muted focus-visible:ring-0',
         transparent:
           'h-9 border-none bg-transparent shadow-none focus-visible:ring-0 placeholder:text-primary-400',
+        translucent:
+          'border-none bg-[#0519453d] text-white shadow-none placeholder:text-white/60 focus-visible:ring-white/30',
       },
-      size: { default: '', sm: 'h-7 px-2 text-xs' },
+      size: { default: '', sm: 'h-7 px-2 text-xs', lg: 'h-9 px-4 text-lg' },
     },
     defaultVariants: { variant: 'default', size: 'default' },
   }

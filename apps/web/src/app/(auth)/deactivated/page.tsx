@@ -18,7 +18,7 @@ export default function DeactivatedPage() {
     <div className='flex min-h-screen w-screen items-center justify-center p-4 bg-white/10 shadow-[inset_10px_-50px_94px_0_rgb(199,199,199,0.2)] backdrop-blur-sm'>
       <div className='flex w-full max-w-sm flex-col items-center gap-4'>
         <Logo />
-        <Card className='w-full max-w-md shadow-md shadow-black/20 border-transparent'>
+        <Card variant='translucent' className='w-full max-w-md border-transparent px-4 py-3'>
           <CardHeader className='items-center text-center'>
             <ShieldOff className='mb-2 size-8 text-destructive' />
             <CardTitle>Account Deactivated</CardTitle>
@@ -28,7 +28,7 @@ export default function DeactivatedPage() {
             </CardDescription>
           </CardHeader>
           <CardFooter className='flex justify-center'>
-            <Button variant='link' asChild>
+            <Button variant='link' asChild className='text-white'>
               <Link href='/login'>Back to Login</Link>
             </Button>
           </CardFooter>

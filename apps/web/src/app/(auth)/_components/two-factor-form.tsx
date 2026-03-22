@@ -92,7 +92,7 @@ function TwoFactorForm(_props: Props) {
 
   return (
     <div className='flex w-full flex-col gap-6'>
-      <Card className='shadow-md shadow-black/20 border-transparent'>
+      <Card variant='translucent' className='border-transparent px-4'>
         <CardHeader className='text-center'>
           <CardTitle className='text-xl'>Two Factor Authentication</CardTitle>
           <div className='text-sm text-muted-foreground'>
@@ -121,6 +121,7 @@ function TwoFactorForm(_props: Props) {
 
             <Button
               type='submit'
+              variant='translucent'
               className='w-full mt-4'
               disabled={isLoading || otp.length < 6}
               loading={isLoading}

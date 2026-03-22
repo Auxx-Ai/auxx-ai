@@ -39,7 +39,11 @@ export function OnboardingNavigation({
     <div className='flex items-center justify-between pt-6'>
       <div>
         {showBack && onBack && (
-          <Button type='button' variant='ghost' onClick={onBack} className='gap-2'>
+          <Button
+            type='button'
+            variant='ghost'
+            onClick={onBack}
+            className='gap-2 hover:bg-white/40 hover:text-black/80'>
             Back
           </Button>
         )}

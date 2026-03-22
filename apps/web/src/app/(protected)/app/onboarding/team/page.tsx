@@ -183,7 +183,7 @@ export default function TeamOnboardingPage() {
   return (
     <div className='grid grid-cols-1 md:grid-cols-2 w-full'>
       {/* Left column: Team invitations */}
-      <div className='relative md:border-r bg-transparent shadow-none p-4'>
+      <div className='relative bg-transparent shadow-none p-4 md:after:absolute md:after:right-0 md:after:top-[5px] md:after:bottom-[5px] md:after:w-px md:after:bg-white/10'>
         <motion.div variants={containerVariants} initial='hidden' animate='visible'>
           <motion.div variants={itemVariants}>
             <CardHeader>
@@ -202,7 +202,7 @@ export default function TeamOnboardingPage() {
               <div className='space-y-3'>
                 {invites.map((invite, index) => (
                   <div key={index} className='flex gap-2'>
-                    <InputGroup className='flex-1'>
+                    <InputGroup className='flex-1' variant='translucent'>
                       <InputGroupInput
                         type='email'
                         placeholder='colleague@example.com'
@@ -241,13 +241,13 @@ export default function TeamOnboardingPage() {
               </div>
               <div className='flex flex-row items-center justify-between pt-3'>
                 {/* Add more button */}
-                <Button type='button' variant='outline' size='sm' onClick={addInvite}>
+                <Button type='button' variant='translucent' size='sm' onClick={addInvite}>
                   <Plus />
                   Add another
                 </Button>
 
                 {/* Copy invite link */}
-                <Button type='button' variant='outline' size='sm' onClick={copyInviteLink}>
+                <Button type='button' variant='translucent' size='sm' onClick={copyInviteLink}>
                   <Copy />
                   Copy invite link
                 </Button>
@@ -255,8 +255,8 @@ export default function TeamOnboardingPage() {
             </motion.div>
 
             {/* Info message */}
-            <motion.div variants={itemVariants} className='rounded-lg bg-muted p-4'>
-              <p className='text-sm text-muted-foreground'>
+            <motion.div variants={itemVariants} className='rounded-lg bg-muted/10 p-4'>
+              <p className='text-sm text-white/50'>
                 <Users className='inline size-4 mr-2' />
                 Team members will receive an email invitation to join your organization.
               </p>
@@ -309,7 +309,7 @@ export default function TeamOnboardingPage() {
             Stronger Together
           </motion.h2>
           <motion.p
-            className='text-muted-foreground'
+            className='text-white/50'
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.6 }}>

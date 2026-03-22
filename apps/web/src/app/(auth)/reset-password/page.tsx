@@ -29,11 +29,11 @@ function ResetPasswordContent({ searchParams }: ResetPasswordContentProps) {
   if (typeof token !== 'string' || !token) {
     // Handle invalid or missing token
     return (
-      <Card className='w-full max-w-md border-destructive bg-white/10'>
+      <Card variant='translucent' className='w-full max-w-md px-6'>
         <CardHeader className='items-center text-center'>
           <AlertTriangle className='mb-2 size-8 text-destructive' />
-          <CardTitle className='text-destructive'>Invalid Link</CardTitle>
-          <CardDescription>
+          <CardTitle className='text-destructive!'>Invalid Link</CardTitle>
+          <CardDescription className='text-white/90!'>
             The password reset link is missing, invalid, or has expired. Please request a new one.
           </CardDescription>
         </CardHeader>
@@ -41,7 +41,7 @@ function ResetPasswordContent({ searchParams }: ResetPasswordContentProps) {
           <Button asChild>
             <Link href='/forgot-password'>Request Reset Link</Link>
           </Button>
-          <Button variant='link' asChild className='ml-4'>
+          <Button variant='link' asChild className='ml-4 text-white'>
             <Link href='/login'>Back to Login</Link>
           </Button>
         </CardFooter>

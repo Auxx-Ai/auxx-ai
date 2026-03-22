@@ -19,11 +19,13 @@ export default function ExploreConvertPage() {
 
   return (
     <div className='mx-auto max-w-3xl'>
-      <Card className='w-full shadow-md shadow-black/20 border-transparent mx-auto'>
-        <PlanComparison onPlanSelect={handlePlanSelect} />
+      <Card
+        variant='translucent'
+        className='w-full shadow-md shadow-black/20 border-transparent mx-auto'>
+        <PlanComparison onPlanSelect={handlePlanSelect} variant='translucent' />
       </Card>
       <div>
-        <Button size='sm' variant='outline' asChild className='mt-3'>
+        <Button size='sm' variant='translucent' asChild className='mt-3'>
           <Link href='/subscription/ended'>Back</Link>
         </Button>
       </div>

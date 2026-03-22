@@ -4,6 +4,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { Check, Mail } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
@@ -15,7 +16,6 @@ import { api } from '~/trpc/react'
 import { OnboardingNavigation } from '../_components/onboarding-navigation'
 import { useOnboarding } from '../_components/onboarding-provider'
 
-console.log(PROVIDER_ICONS)
 // Icons for providers
 const GoogleIcon = () => (
   <svg className='size-5' viewBox='0 0 24 24'>
@@ -174,7 +174,7 @@ export default function ConnectionsOnboardingPage() {
   return (
     <div className='grid grid-cols-1 md:grid-cols-2 w-full'>
       {/* Left column: Connection options */}
-      <div className='relative md:border-r p-4'>
+      <div className='relative p-4 md:after:absolute md:after:right-0 md:after:top-[5px] md:after:bottom-[5px] md:after:w-px md:after:bg-white/10'>
         <motion.div variants={containerVariants} initial='hidden' animate='visible'>
           <motion.div variants={itemVariants}>
             <CardHeader>
@@ -191,53 +191,50 @@ export default function ConnectionsOnboardingPage() {
             <motion.div variants={itemVariants} className='space-y-4'>
               <Button
                 type='button'
-                variant={isGoogleConnected ? 'secondary' : 'outline'}
+                variant={'translucent'}
                 className='w-full justify-start gap-3 h-14'
                 onClick={() => !isGoogleConnected && handleOAuthConnect('google')}
                 disabled={isGoogleConnected || isConnecting !== null}
                 loading={isConnecting === 'google'}
                 loadingText='Connecting...'>
-                {isGoogleConnected ? (
-                  <>
-                    <Check className='size-5 text-green-600' />
-                    <GoogleIcon />
-                    <span className='flex-1 text-left'>Google Connected</span>
-                  </>
-                ) : (
-                  <>
-                    <GoogleIcon />
-                    <span className='flex-1 text-left'>Connect Google</span>
-                  </>
+                <GoogleIcon />
+                <span className='flex-1 text-left'>
+                  {isGoogleConnected ? 'Google Connected' : 'Connect Google'}
+                </span>
+                {isGoogleConnected && (
+                  <span className='flex size-6 items-center justify-center rounded-full border border-green-500 bg-transparent'>
+                    <Check className='size-3.5 text-green-500' />
+                  </span>
                 )}
               </Button>
 
               {/* Microsoft Connection */}
               <Button
                 type='button'
-                variant={isOutlookConnected ? 'secondary' : 'outline'}
-                className='w-full justify-start gap-3 h-14'
+                variant={'translucent'}
+                className={cn(
+                  'w-full justify-start gap-3 h-14',
+                  isOutlookConnected && 'opacity-70'
+                )}
                 onClick={() => !isOutlookConnected && handleOAuthConnect('outlook')}
                 disabled={isOutlookConnected || isConnecting !== null}
                 loading={isConnecting === 'outlook'}
                 loadingText='Connecting...'>
-                {isOutlookConnected ? (
-                  <>
-                    <Check className='size-5 text-green-600' />
-                    <OutlookIcon className='size-6' />
-                    <span className='flex-1 text-left'>Outlook Connected</span>
-                  </>
-                ) : (
-                  <>
-                    <OutlookIcon />
-                    <span className='flex-1 text-left'>Connect Outlook</span>
-                  </>
+                <OutlookIcon />
+                <span className='flex-1 text-left'>
+                  {isOutlookConnected ? 'Outlook Connected' : 'Connect Outlook'}
+                </span>
+                {isOutlookConnected && (
+                  <span className='flex size-5 items-center justify-center rounded-full border border-green-500 bg-transparent'>
+                    <Check className='size-3.5 text-green-500' />
+                  </span>
                 )}
               </Button>
             </motion.div>
 
             {/* Info message */}
-            <motion.div variants={itemVariants} className='rounded-lg bg-muted p-4'>
-              <p className='text-sm text-muted-foreground'>
+            <motion.div variants={itemVariants} className='rounded-lg bg-muted/10 p-4'>
+              <p className='text-sm text-white/70'>
                 <Mail className='inline size-4 mr-2' />
                 Your email data is securely encrypted and only used to provide AI-powered support
                 responses.
@@ -274,7 +271,7 @@ export default function ConnectionsOnboardingPage() {
             Sync Your Data
           </motion.h2>
           <motion.p
-            className='text-muted-foreground'
+            className='text-white/50'
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.6 }}>

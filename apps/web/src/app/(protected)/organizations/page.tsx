@@ -86,7 +86,7 @@ function OrganizationCard({
   return (
     <div
       onClick={handleCardClick}
-      className={`group flex cursor-pointer hover:bg-muted items-center justify-between rounded-2xl border-0 ring-1 ring-border-illustration py-2 px-3 transition-colors duration-200 ${
+      className={`group flex cursor-pointer hover:bg-muted/10 items-center justify-between rounded-2xl border-0 ring-1 ring-white/20 py-2 px-3 transition-colors duration-200 ${
         status.isActive && !isCurrent
           ? 'hover:bg-muted cursor-pointer'
           : isCurrent
@@ -95,8 +95,8 @@ function OrganizationCard({
       }`}>
       <div className='flex flex-row items-center gap-2'>
         <div
-          className={`size-8 border bg-muted rounded-lg flex items-center justify-center transition-colors shrink-0 ${
-            status.isActive && !isCurrent ? 'group-hover:bg-secondary' : ''
+          className={`size-8 border bg-muted/10 border-white/10 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+            status.isActive && !isCurrent ? 'group-hover:bg-muted/20' : ''
           }`}>
           <Building className='size-4' />
         </div>
@@ -104,7 +104,7 @@ function OrganizationCard({
           <div className='flex items-center gap-2'>
             <span className='text-sm'>{org.name || `Organization ${org.id.substring(0, 6)}`}</span>
             {isDefault && (
-              <Badge size='xs' variant='outline'>
+              <Badge size='xs' variant='default'>
                 Default
               </Badge>
             )}
@@ -115,13 +115,13 @@ function OrganizationCard({
             )}
           </div>
           <div className='flex items-center gap-2'>
-            <span className='text-xs text-muted-foreground'>
+            <span className='text-xs text-white/50'>
               {org.handle || `@${org.id.substring(0, 8)}`}
             </span>
             {org.subscription && (
               <>
-                <span className='text-xs text-muted-foreground'>•</span>
-                <span className='text-xs text-muted-foreground'>{status.label}</span>
+                <span className='text-xs text-white/50'>•</span>
+                <span className='text-xs text-white/50'>{status.label}</span>
               </>
             )}
           </div>
@@ -130,7 +130,7 @@ function OrganizationCard({
       <div className='flex items-center gap-2'>
         <DropdownMenu>
           <DropdownMenuTrigger asChild data-dropdown-trigger>
-            <Button variant='ghost' size='icon-sm'>
+            <Button variant='ghost' size='icon-sm' className='hover:bg-muted/20 hover:text-white'>
               <MoreVertical />
             </Button>
           </DropdownMenuTrigger>
@@ -191,13 +191,15 @@ export default function OrganizationsPage() {
   return (
     <div className='flex min-h-[calc(100vh-8rem)] w-screen items-center justify-center p-4'>
       <div className='flex w-full max-w-md flex-col items-center space-y-5 px-6'>
-        <Card className='w-full bg-background shadow-md shadow-black/20 border-transparent'>
+        <Card
+          variant='translucent'
+          className='w-full  shadow-md shadow-black/20 border-transparent'>
           <CardHeader className='text-center'>
             <div className='mx-auto mb-5 size-14 border flex items-center justify-center rounded-2xl bg-muted '>
               <Building className='size-8 text-info' />
             </div>
 
-            <CardTitle>Organizations</CardTitle>
+            <CardTitle className='text-white'>Organizations</CardTitle>
             <CardDescription>Jump into an existing workspace or add a new one</CardDescription>
           </CardHeader>
           <CardContent className='flex flex-col min-h-[300px]'>
@@ -215,13 +217,13 @@ export default function OrganizationsPage() {
                   />
                 ))
               ) : (
-                <p className='text-center text-sm text-muted-foreground py-4'>
+                <p className='text-center text-sm text-white/50 py-4'>
                   You are not a member of any organizations.
                 </p>
               )}
             </div>
             <Button
-              variant='outline'
+              variant='translucent'
               className='w-full mt-3'
               onClick={() => setCreateDialogOpen(true)}>
               <Plus />

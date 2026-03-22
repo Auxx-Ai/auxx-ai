@@ -6,7 +6,7 @@ import { type ReactNode, useState } from 'react'
 
 interface GeneralSubmitButtonProps {
   text: string
-  variant?: 'default' | 'destructive' | 'secondary' | 'ghost' | 'link' | 'outline'
+  variant?: 'default' | 'destructive' | 'secondary' | 'ghost' | 'link' | 'outline' | 'translucent'
   width?: string
   icon?: ReactNode
   onClick?: () => void
