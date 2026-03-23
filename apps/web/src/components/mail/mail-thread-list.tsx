@@ -17,6 +17,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@auxx/ui/components/empty'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, Mail, User } from 'lucide-react'
@@ -105,7 +106,7 @@ export const ThreadList = memo(function ThreadList({
   }, [isLoading, isFetchingNextPage, onLoadingChange])
 
   // Infinite scroll trigger
-  const container = useRef(null)
+
   const { ref, inView } = useInView({ threshold: 0 })
 
   useEffect(() => {
@@ -129,7 +130,7 @@ export const ThreadList = memo(function ThreadList({
 
   return (
     <div className={cn('relative flex h-full w-full flex-col', isEmpty && 'flex-1')}>
-      <div className={cn('overflow-y-auto', isEmpty && 'flex-1 flex flex-col')} ref={container}>
+      <ScrollArea className={cn(isEmpty && 'flex-1 flex flex-col')}>
         <ThreadListMenu threadIds={threadIds} />
 
         <div
@@ -180,7 +181,7 @@ export const ThreadList = memo(function ThreadList({
         {!hasNextPage && recordIds.length > 0 && !isFetchingNextPage && (
           <div className='pb-8 pt-4 text-center text-sm text-muted-foreground'>End of list.</div>
         )}
-      </div>
+      </ScrollArea>
     </div>
   )
 })
@@ -262,7 +263,7 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
   }
 
   return (
-    <div className='sticky top-0 z-10 h-10  flex flex-row items-center justify-between px-4 dark:bg-muted-50'>
+    <div className='sticky top-0 py-3 z-10 h-10 mr-3 flex flex-row items-center justify-between pl-4 bg-secondary dark:bg-muted-50 mask-b-from-80% mask-b-to-100%'>
       <div className='flex items-center justify-start flex-row gap-2'>
         <div className='flex items-center justify-center rounded-full font-medium transition-colors text-xs py-0 w-[97px]'>
           {viewMode === 'edit' && (

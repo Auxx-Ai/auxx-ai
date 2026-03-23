@@ -1050,7 +1050,7 @@ function ReplyComposeEditorComponent({
                   <span className='shrink-0 text-sm text-muted-foreground'>Subject:</span>
                   <input
                     type='text'
-                    className='w-full flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground/50'
+                    className='w-full flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground/60'
                     value={state.subject}
                     onChange={(e) => handleSubjectChange(e.target.value)}
                     placeholder='Enter subject'

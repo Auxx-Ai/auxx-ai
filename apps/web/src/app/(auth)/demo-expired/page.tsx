@@ -48,12 +48,6 @@ export default function DemoExpiredPage() {
                 <Button asChild variant='translucent' size='lg' className='w-full'>
                   <Link href='/signup?from=demo'>Sign Up Free</Link>
                 </Button>
-
-                <form action='/api/demo/create-session' method='POST'>
-                  <Button type='submit' variant='link' className='w-full text-white'>
-                    Start Another Demo
-                  </Button>
-                </form>
               </div>
             </div>
           </CardContent>
