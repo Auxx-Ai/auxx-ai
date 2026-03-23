@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.99](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.98...auxx-v0.1.99) (2026-03-23)
+
+
+### Features
+
+* add translucent variant to AvatarUpload, BillingCycleToggle, HorizontalPlanCard, PlanCard ([#317](https://github.com/Auxx-Ai/auxx-ai/issues/317)) ([912abc5](https://github.com/Auxx-Ai/auxx-ai/commit/912abc5319bc9c47a9e1abee3889f8490a9561e1))
+* enhance compose editor with pop-out, minimize, and dock-back functionality ([#320](https://github.com/Auxx-Ai/auxx-ai/issues/320)) ([0c5d2a5](https://github.com/Auxx-Ai/auxx-ai/commit/0c5d2a57fc89dba1790ea078e2c5046f2f9428da))
+* integrate mail filter context into search bar to conditionally display scope badge ([#319](https://github.com/Auxx-Ai/auxx-ai/issues/319)) ([99e8b35](https://github.com/Auxx-Ai/auxx-ai/commit/99e8b35e581230c0def9148521aa2b809167d160))
+* integrate react-hotkeys for keyboard shortcuts in workflow and threads ([fffbc25](https://github.com/Auxx-Ai/auxx-ai/commit/fffbc252d62f7178927e6a61d5a7b18f8a258cf9))
+
 ## [0.1.98](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.97...auxx-v0.1.98) (2026-03-21)
 
 
