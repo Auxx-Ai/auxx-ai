@@ -27,6 +27,8 @@ interface AIToolsProps {
   hasPreviousMessages: boolean
   state: ReturnType<typeof useAIToolsState>['state']
   onOperation: (operation: AIOperation, options?: { tone?: string; language?: string }) => void
+  /** className forwarded to picker content elements (e.g. for z-index override) */
+  popoverClassName?: string
 }
 
 /**
@@ -40,6 +42,7 @@ export function AITools({
   hasPreviousMessages,
   state,
   onOperation,
+  popoverClassName,
 }: AIToolsProps) {
   // Compose button for empty editor
   if (!hasContent) {
@@ -79,6 +82,7 @@ export function AITools({
         placeholderIcon={<SlidersHorizontal className='size-3.5' />}
         disabled={state.isProcessing}
         className='min-w-[100px]'
+        contentClassName={popoverClassName}
       />
 
       {/* Fix Grammar Button */}
@@ -104,6 +108,7 @@ export function AITools({
         placeholderIcon={<Languages className='size-3.5' />}
         disabled={state.isProcessing}
         className='min-w-[100px]'
+        contentClassName={popoverClassName}
       />
 
       {/* Expand Button */}

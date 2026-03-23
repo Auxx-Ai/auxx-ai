@@ -4,9 +4,10 @@
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useThreadStore } from '~/components/threads/store'
-import { NewMessageDialog } from './email-editor/new-message-dialog'
+import { useCompose } from '~/hooks/use-compose'
+import type { DraftMessageType } from './email-editor/types'
 import { getIntegrationIcon } from './mail-status-config'
 
 /**
@@ -22,7 +23,7 @@ export interface StandaloneDraftItemProps {
  * Standalone drafts are new compose drafts that don't belong to any thread.
  */
 export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
-  const [isComposeOpen, setIsComposeOpen] = useState(false)
+  const { openDraft } = useCompose()
 
   // Get draft from store
   const draft = useThreadStore((s) => s.standaloneDrafts.get(draftId))
@@ -35,9 +36,25 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
       : ''
   }, [draft?.updatedAt])
 
-  // Click handler - opens the draft in compose dialog
+  // Click handler - opens the draft in a floating compose editor
   const handleClick = () => {
-    setIsComposeOpen(true)
+    if (!draft) return
+    // Pass a minimal DraftMessageType with the ID so FloatingCompose can fetch full content
+    openDraft({
+      id: draftId,
+      threadId: null,
+      inReplyToMessageId: null,
+      includePreviousMessage: false,
+      subject: draft.subject || '',
+      textHtml: '',
+      textPlain: '',
+      signatureId: null,
+      participants: [],
+      attachments: [],
+      metadata: {},
+      createdAt: draft.updatedAt,
+      updatedAt: draft.updatedAt,
+    } satisfies DraftMessageType)
   }
 
   // Loading state
@@ -95,14 +112,6 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
           )}
         </div>
       </div>
-
-      {/* Compose dialog for editing this draft */}
-      <NewMessageDialog
-        open={isComposeOpen}
-        onOpenChange={setIsComposeOpen}
-        draftId={draftId}
-        mode='draft'
-      />
     </>
   )
 }

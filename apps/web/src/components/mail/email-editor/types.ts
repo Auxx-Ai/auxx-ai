@@ -226,4 +226,12 @@ export interface ReplyComposeEditorProps {
   presetValues?: EditorPresetValues
   /** When true, X button closes dialog (preserving draft) and separate delete button is shown */
   isDialogMode?: boolean
+  /** Called when the user clicks the pop-out button (inline mode only) */
+  onPopOut?: () => void
+  /** Called when the user clicks the minimize button (floating mode only) */
+  onMinimize?: () => void
+  /** Called when the user clicks the dock-back button (floating mode, thread is visible) */
+  onDockBack?: () => void
+  /** Called when the subject field changes (for tracking in minimized bar) */
+  onSubjectChange?: (subject: string) => void
 }

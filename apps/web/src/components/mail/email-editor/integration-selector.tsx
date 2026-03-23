@@ -10,6 +10,7 @@ import {
   CommandList,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import React, { useState } from 'react'
 import { api } from '~/trpc/react'
@@ -18,9 +19,16 @@ interface IntegrationSelectorProps {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  /** className forwarded to PopoverContent (e.g. for z-index override) */
+  className?: string
 }
 
-const IntegrationSelector: React.FC<IntegrationSelectorProps> = ({ value, onChange, disabled }) => {
+const IntegrationSelector: React.FC<IntegrationSelectorProps> = ({
+  value,
+  onChange,
+  disabled,
+  className,
+}) => {
   const { data: integrations, isLoading } = api.channel.getEmailClients.useQuery()
 
   const [open, setOpen] = useState(false)
@@ -82,7 +90,7 @@ const IntegrationSelector: React.FC<IntegrationSelectorProps> = ({ value, onChan
           </Badge>
         </div>
       </PopoverTrigger>
-      <PopoverContent className='w-auto min-w-[200px] p-0'>
+      <PopoverContent className={cn('w-auto min-w-[200px] p-0', className)}>
         <Command
           filter={(value, search) => {
             // This is needed because the default filter doesn't work well with our custom CommandItem setup

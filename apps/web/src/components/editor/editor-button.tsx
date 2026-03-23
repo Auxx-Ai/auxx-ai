@@ -93,10 +93,12 @@ interface EditorButtonsProps {
   onSend?: () => void
   isSending?: boolean
   disabled?: boolean
+  /** className forwarded to popover/dropdown content elements (e.g. for z-index override) */
+  popoverClassName?: string
 }
 
 // Font Selector Button
-export const FontSelectorButton = ({ editor, disabled }: EditorButtonsProps) => {
+export const FontSelectorButton = ({ editor, disabled, popoverClassName }: EditorButtonsProps) => {
   if (!editor) return null
 
   return (
@@ -108,12 +110,13 @@ export const FontSelectorButton = ({ editor, disabled }: EditorButtonsProps) => 
       placeholder='Font'
       disabled={disabled}
       className='min-w-[100px] '
+      contentClassName={popoverClassName}
     />
   )
 }
 
 // Font Size Selector Button
-export const FontSizeButton = ({ editor, disabled }: EditorButtonsProps) => {
+export const FontSizeButton = ({ editor, disabled, popoverClassName }: EditorButtonsProps) => {
   if (!editor) return null
 
   return (
@@ -125,12 +128,13 @@ export const FontSizeButton = ({ editor, disabled }: EditorButtonsProps) => {
       placeholder='Size'
       disabled={disabled}
       className='min-w-[60px]'
+      contentClassName={popoverClassName}
     />
   )
 }
 
 // Color Picker Button
-export const ColorPickerButton = ({ editor, disabled }: EditorButtonsProps) => {
+export const ColorPickerButton = ({ editor, disabled, popoverClassName }: EditorButtonsProps) => {
   if (!editor) return null
 
   // Try to get active state context if available
@@ -171,7 +175,7 @@ export const ColorPickerButton = ({ editor, disabled }: EditorButtonsProps) => {
           </Tooltip>
         </div>
       </PopoverTrigger>
-      <PopoverContent className='w-64 p-2'>
+      <PopoverContent className={cn('w-64 p-2', popoverClassName)}>
         <div className='grid grid-cols-5 gap-1'>
           {colorOptions.map((color) => (
             <button
@@ -271,7 +275,7 @@ export const StrikethroughButton = ({ editor, disabled }: EditorButtonsProps) =>
 }
 
 // List Button
-export const ListButton = ({ editor, disabled }: EditorButtonsProps) => {
+export const ListButton = ({ editor, disabled, popoverClassName }: EditorButtonsProps) => {
   if (!editor) return null
 
   // Try to get active state context if available
@@ -308,7 +312,7 @@ export const ListButton = ({ editor, disabled }: EditorButtonsProps) => {
           <List />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className='w-56' align='start' side='bottom'>
+      <DropdownMenuContent className={cn('w-56', popoverClassName)} align='start' side='bottom'>
         <DropdownMenuItem
           className={editor.isActive('bulletList') ? 'bg-muted' : ''}
           onClick={() => editor.chain().focus().toggleBulletList().run()}>
@@ -390,9 +394,11 @@ export const QuoteButton = ({ editor, disabled }: EditorButtonsProps) => {
 const FileSelectPickerWithTracking = ({
   fileSelect,
   disabled,
+  popoverClassName,
 }: {
   fileSelect: UseFileSelectReturn
   disabled?: boolean
+  popoverClassName?: string
 }) => {
   // Try to get active state context if available
   let activeState: any = null
@@ -407,6 +413,7 @@ const FileSelectPickerWithTracking = ({
       fileSelect={fileSelect}
       align='end'
       side='top'
+      className={popoverClassName}
       onOpenChange={(open) => {
         if (activeState) {
           if (open) {
@@ -486,6 +493,7 @@ export const EditorToolbar = ({
   fileSelect,
   aiToolsProps,
   showSend = true,
+  popoverClassName,
 }: Partial<EditorButtonsProps> & {
   fileSelect?: UseFileSelectReturn
   showSend?: boolean
@@ -515,14 +523,30 @@ export const EditorToolbar = ({
         className: 'aria-selected:bg-primary-200',
         renderItems: (editor, props) => (
           <>
-            <FontSelectorButton editor={editor} disabled={props?.disabled} />
-            <FontSizeButton editor={editor} disabled={props?.disabled} />
-            <ColorPickerButton editor={editor} disabled={props?.disabled} />
+            <FontSelectorButton
+              editor={editor}
+              disabled={props?.disabled}
+              popoverClassName={props?.popoverClassName}
+            />
+            <FontSizeButton
+              editor={editor}
+              disabled={props?.disabled}
+              popoverClassName={props?.popoverClassName}
+            />
+            <ColorPickerButton
+              editor={editor}
+              disabled={props?.disabled}
+              popoverClassName={props?.popoverClassName}
+            />
             <BoldButton editor={editor} disabled={props?.disabled} />
             <ItalicButton editor={editor} disabled={props?.disabled} />
             <UnderlineButton editor={editor} disabled={props?.disabled} />
             <StrikethroughButton editor={editor} disabled={props?.disabled} />
-            <ListButton editor={editor} disabled={props?.disabled} />
+            <ListButton
+              editor={editor}
+              disabled={props?.disabled}
+              popoverClassName={props?.popoverClassName}
+            />
             <LinkButton editor={editor} disabled={props?.disabled} />
             <QuoteButton editor={editor} disabled={props?.disabled} />
           </>
@@ -548,6 +572,7 @@ export const EditorToolbar = ({
               hasPreviousMessages={props.aiToolsProps.hasPreviousMessages}
               state={props.aiToolsProps.state}
               onOperation={props.aiToolsProps.onOperation}
+              popoverClassName={props?.popoverClassName}
             />
           )
         },
@@ -616,7 +641,11 @@ export const EditorToolbar = ({
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.3 }}
                     className='flex items-center'>
-                    <FileSelectPickerWithTracking fileSelect={fileSelect} disabled={disabled} />
+                    <FileSelectPickerWithTracking
+                      fileSelect={fileSelect}
+                      disabled={disabled}
+                      popoverClassName={popoverClassName}
+                    />
                   </motion.div>
                 )}
               </React.Fragment>
@@ -655,7 +684,7 @@ export const EditorToolbar = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: activeGroup === group.id ? 1 : 0 }}
                 transition={{ delay: 0.1 }}>
-                {group.renderItems(editor, { aiToolsProps, disabled })}
+                {group.renderItems(editor, { aiToolsProps, disabled, popoverClassName })}
               </motion.div>
             </motion.div>
           ))}

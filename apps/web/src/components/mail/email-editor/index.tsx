@@ -6,7 +6,17 @@ import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { Loader2, Mail, Plus, Trash2, Upload, X } from 'lucide-react'
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Loader2,
+  Mail,
+  Minus,
+  Plus,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
@@ -88,7 +98,14 @@ function ReplyComposeEditorComponent({
   onSendSuccess,
   presetValues,
   isDialogMode = false,
+  onPopOut,
+  onMinimize,
+  onDockBack,
+  onSubjectChange,
 }: ReplyComposeEditorProps) {
+  // Z-index override for popovers when editor is in floating mode (above compose at z-101+)
+  const popoverZIndex = isDialogMode ? 'z-[200]' : undefined
+
   const utils = api.useUtils()
   const { editor } = useEditorContext()
   const activeState = useEditorActiveStateContext()
@@ -410,10 +427,14 @@ function ReplyComposeEditorComponent({
     setContent((prev) => (prev === newContent ? prev : newContent))
     setIsDraftSaved(false)
   }, [])
-  const handleSubjectChange = useCallback((subject: string) => {
-    setState((prev) => ({ ...prev, subject }))
-    setIsDraftSaved(false)
-  }, [])
+  const handleSubjectChange = useCallback(
+    (subject: string) => {
+      setState((prev) => ({ ...prev, subject }))
+      setIsDraftSaved(false)
+      onSubjectChange?.(subject)
+    },
+    [onSubjectChange]
+  )
   const handleSignatureChange = useCallback((signatureId: string | null) => {
     setState((prev) => ({ ...prev, signatureId }))
     setIsDraftSaved(false)
@@ -789,6 +810,42 @@ function ReplyComposeEditorComponent({
               />
               {state.draftId && <span className='text-muted-foreground text-sm me-2'>Draft</span>}
 
+              {/* Pop-out button — only in inline (non-dialog) mode */}
+              {!isDialogMode && onPopOut && (
+                <Button
+                  size='icon-sm'
+                  variant='ghost'
+                  className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
+                  onClick={onPopOut}
+                  title='Pop out'>
+                  <ArrowUpRight />
+                </Button>
+              )}
+
+              {/* Dock-back button — floating mode when thread is visible */}
+              {isDialogMode && onDockBack && (
+                <Button
+                  size='icon-sm'
+                  variant='ghost'
+                  className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
+                  onClick={onDockBack}
+                  title='Dock into thread'>
+                  <ArrowDownLeft />
+                </Button>
+              )}
+
+              {/* Minimize button — only in floating/dialog mode */}
+              {isDialogMode && onMinimize && (
+                <Button
+                  size='icon-sm'
+                  variant='ghost'
+                  className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
+                  onClick={onMinimize}
+                  title='Minimize'>
+                  <Minus />
+                </Button>
+              )}
+
               {/* Delete button - only show in dialog mode when draft exists */}
               {isDialogMode && state.draftId && (
                 <Button
@@ -864,6 +921,7 @@ function ReplyComposeEditorComponent({
                   value={state.integrationId}
                   onChange={handleIntegrationChange}
                   disabled={isSending}
+                  className={popoverZIndex}
                 />
               </div>
             </div>
@@ -882,6 +940,7 @@ function ReplyComposeEditorComponent({
                 onContactSelect={(c) => handleContactSelect('TO', c)}
                 placeholder='Add recipients...'
                 disabled={isSending}
+                popoverClassName={popoverZIndex}
               />
               <div className='ml-auto flex shrink-0 items-center gap-1'>
                 {!showSubject && (
@@ -933,6 +992,7 @@ function ReplyComposeEditorComponent({
                     onContactSelect={(c) => handleContactSelect('CC', c)}
                     placeholder='Add Cc recipients...'
                     disabled={isSending}
+                    popoverClassName={popoverZIndex}
                   />
                   <Button
                     variant='ghost'
@@ -965,6 +1025,7 @@ function ReplyComposeEditorComponent({
                     onContactSelect={(c) => handleContactSelect('BCC', c)}
                     placeholder='Add Bcc recipients...'
                     disabled={isSending}
+                    popoverClassName={popoverZIndex}
                   />
                   <Button
                     variant='ghost'
@@ -1021,6 +1082,7 @@ function ReplyComposeEditorComponent({
               selectedSignatureId={state.signatureId}
               onSignatureChange={handleSignatureChange}
               disabled={isSending}
+              className={popoverZIndex}
             />
 
             {/* File Attachments Display - Persisted + In-Progress Uploads */}
@@ -1097,6 +1159,7 @@ function ReplyComposeEditorComponent({
                 isSending={isSending}
                 disabled={isSending || !editor?.isEditable || aiToolsState.isProcessing}
                 fileSelect={fileSelect}
+                popoverClassName={popoverZIndex}
                 aiToolsProps={{
                   threadId: thread?.id || state.threadId || undefined,
                   hasContent,

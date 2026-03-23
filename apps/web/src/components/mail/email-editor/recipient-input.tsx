@@ -11,6 +11,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { Copy, Mail, X } from 'lucide-react'
 import type React from 'react'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
@@ -47,6 +48,8 @@ interface RecipientInputProps {
   }) => void
   placeholder: string
   disabled?: boolean
+  /** className forwarded to popover/dropdown content (e.g. for z-index override) */
+  popoverClassName?: string
 }
 
 const FIELD_LABELS: Record<RecipientField, string> = { TO: 'To', CC: 'Cc', BCC: 'Bcc' }
@@ -64,6 +67,7 @@ function RecipientBadge({
   onBlur,
   onKeyDown,
   inputRef,
+  popoverClassName,
 }: {
   person: RecipientState
   index: number
@@ -76,6 +80,7 @@ function RecipientBadge({
   onBlur: () => void
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void
   inputRef: React.RefObject<HTMLInputElement | null>
+  popoverClassName?: string
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const activeState = useEditorActiveStateContext()
@@ -132,7 +137,7 @@ function RecipientBadge({
           </Badge>
         </DropdownMenuTrigger>
       </Tooltip>
-      <DropdownMenuContent align='start' sideOffset={5}>
+      <DropdownMenuContent align='start' sideOffset={5} className={popoverClassName}>
         <DropdownMenuItem onSelect={() => navigator.clipboard.writeText(person.identifier)}>
           <Copy />
           Copy '{person.identifier}'
@@ -156,7 +161,17 @@ function RecipientBadge({
 
 export const RecipientInput = forwardRef<RecipientInputHandle, RecipientInputProps>(
   (
-    { recipients, field, onAdd, onRemove, onMoveTo, onContactSelect, placeholder, disabled },
+    {
+      recipients,
+      field,
+      onAdd,
+      onRemove,
+      onMoveTo,
+      onContactSelect,
+      placeholder,
+      disabled,
+      popoverClassName,
+    },
     ref
   ) => {
     const [inputValue, setInputValue] = useState('')
@@ -327,6 +342,7 @@ export const RecipientInput = forwardRef<RecipientInputHandle, RecipientInputPro
             onBlur={() => setHighlightedIndex(null)}
             onKeyDown={(e) => handleBadgeKeyDown(e, index, person.id)}
             inputRef={inputRef}
+            popoverClassName={popoverClassName}
           />
         ))}
 
@@ -364,7 +380,7 @@ export const RecipientInput = forwardRef<RecipientInputHandle, RecipientInputPro
           </PopoverAnchor>
           <PopoverContent
             ref={pickerRef}
-            className='w-72 p-0'
+            className={cn('w-72 p-0', popoverClassName)}
             align='start'
             side='bottom'
             sideOffset={5}

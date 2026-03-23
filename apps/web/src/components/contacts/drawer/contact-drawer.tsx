@@ -13,10 +13,10 @@ import * as React from 'react'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
-import NewMessageDialog from '~/components/mail/email-editor/new-message-dialog'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
 import { toRecordId, useRecord } from '~/components/resources'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
+import { useCompose } from '~/hooks/use-compose'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 
@@ -41,6 +41,7 @@ export function ContactDrawer({
   contactId,
   onDeleteContact,
 }: ContactDrawerProps) {
+  const { openCompose } = useCompose()
   const router = useRouter()
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
@@ -119,15 +120,14 @@ export function ContactDrawer({
       headerTitle='Contact'
       headerActions={
         <>
-          <NewMessageDialog
-            trigger={
-              <Button variant='ghost' size='xs' disabled={!presetValues}>
-                <Mail />
-                Compose
-              </Button>
-            }
-            presetValues={presetValues}
-          />
+          <Button
+            variant='ghost'
+            size='xs'
+            disabled={!presetValues}
+            onClick={() => presetValues && openCompose({ presetValues })}>
+            <Mail />
+            Compose
+          </Button>
           <Tooltip content='Create note'>
             <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
               <MessagesSquare />

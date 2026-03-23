@@ -5,10 +5,10 @@ import { Mail, Plus } from 'lucide-react'
 import { useThread } from '~/components/threads/hooks'
 import { useFirstSelectedThreadId, useHasMultipleSelected } from '~/components/threads/store'
 import type { ChannelProvider } from '~/components/threads/store/thread-store'
+import { useCompose } from '~/hooks/use-compose'
 import { EmptyState } from '../global/empty-state'
 import ChatInterface from '../mail-views/chat-interface'
 import BulkActionToolbar from './bulk-action-toolbar'
-import NewMessageDialog from './email-editor/new-message-dialog'
 import { useMailFilter } from './mail-filter-context'
 import ThreadDetails from './thread-details'
 import { ThreadProvider } from './thread-provider'
@@ -26,6 +26,7 @@ function isChatThread(provider: ChannelProvider | null): boolean {
  * Gets thread data from Zustand store.
  */
 export function ThreadDisplay() {
+  const { openCompose } = useCompose()
   const { viewMode } = useMailFilter()
 
   // Granular selectors for minimal re-renders
@@ -61,14 +62,10 @@ export function ThreadDisplay() {
             title='No message selected'
             description='Select a message to view its details.'
             button={
-              <NewMessageDialog
-                trigger={
-                  <Button variant='outline'>
-                    <Plus size={16} />
-                    <span>Compose Message</span>
-                  </Button>
-                }
-              />
+              <Button variant='outline' onClick={() => openCompose()}>
+                <Plus size={16} />
+                <span>Compose Message</span>
+              </Button>
             }
           />
         ))}
