@@ -275,6 +275,9 @@ export function SelectFieldInput({
   open: controlledOpen,
   onOpenChange,
 }: SelectFieldInputProps) {
+  // Normalize value — callers may pass a single string when switching operators
+  const normalizedValue = Array.isArray(value) ? value : value ? [value] : []
+
   const [internalOpen, setInternalOpen] = useState(false)
 
   // Use controlled or uncontrolled state
@@ -320,7 +323,7 @@ export function SelectFieldInput({
     [onChange]
   )
 
-  const hasValue = value.length > 0
+  const hasValue = normalizedValue.length > 0
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -335,13 +338,13 @@ export function SelectFieldInput({
           onClear={handleClearAll}
           asCombobox
           className={cn(className, triggerProps?.className)}>
-          <TagsView value={value} options={options} className='flex-1' />
+          <TagsView value={normalizedValue} options={options} className='flex-1' />
         </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent className='min-w-[var(--radix-popover-trigger-width)] p-0' align='start'>
         <MultiSelectPicker
           options={options}
-          value={value}
+          value={normalizedValue}
           onChange={handleChange}
           onSelectSingle={config.closeOnSelect ? handleSelectSingle : undefined}
           onOptionsChange={config.canManage ? onOptionsChange : undefined}

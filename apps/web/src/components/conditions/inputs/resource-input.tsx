@@ -27,8 +27,6 @@ interface ResourceInputProps {
   disabled?: boolean
   /** Placeholder text */
   placeholder?: string
-  /** Additional className for text inputs */
-  inputClassName?: string
   /** Trigger customization options for picker-based inputs */
   triggerProps?: PickerTriggerOptions
   /** Controlled open state for picker-based inputs */
@@ -50,7 +48,6 @@ export function ResourceInput({
   onChange,
   disabled = false,
   placeholder,
-  inputClassName,
   triggerProps,
   open,
   onOpenChange,
@@ -78,7 +75,6 @@ export function ResourceInput({
       triggerProps={triggerProps}
       open={open}
       onOpenChange={onOpenChange}
-      inputClassName={inputClassName}
       autoGrow={autoGrow}
     />
   )

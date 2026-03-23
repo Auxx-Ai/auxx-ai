@@ -102,10 +102,24 @@ export interface FieldOptions {
   calc?: CalcOptions
 
   // ─────────────────────────────────────────────────────────────
+  // EMAIL (participant search)
+  // ─────────────────────────────────────────────────────────────
+  email?: EmailFieldOptions
+
+  // ─────────────────────────────────────────────────────────────
   // NAME (composite name field)
   // ─────────────────────────────────────────────────────────────
   /** NAME field options - references two TEXT fields for firstName/lastName */
   name?: NameFieldOptions
+}
+
+/**
+ * Options for EMAIL fields with participant search.
+ * Controls participant type filtering when used with ParticipantPicker.
+ */
+export interface EmailFieldOptions {
+  /** Filter participants by type (from/to/cc/any) */
+  participantType?: 'from' | 'to' | 'cc' | 'any'
 }
 
 /**

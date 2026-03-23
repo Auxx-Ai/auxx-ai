@@ -16,6 +16,7 @@ import { type Comment as CommentType, useComments } from '~/hooks/use-comments'
 import { useConfirm } from '~/hooks/use-confirm'
 import { Tooltip } from '../tooltip'
 import CommentComposer from './comment-composer'
+import { ParsedCommentContent } from './parsed-comment-content'
 
 /** Helper to convert userId to ActorId format */
 const toUserActorId = (userId: string): ActorId => `user:${userId}` as ActorId
@@ -71,7 +72,6 @@ export function CommentItem({
     handleAddEmoji,
     handleTogglePin,
     handleDeleteComment,
-    formatContent,
     isUpdating,
     deletingCommentId,
     pinningCommentId,
@@ -199,11 +199,7 @@ export function CommentItem({
             {!isEditing && (
               <div className='block h-full w-fit max-w-full rounded-[15px] bg-primary-200 text-sm font-normal text-foreground'>
                 <div className='cursor-text select-text px-3 py-1 leading-[22px]'>
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: formatContent(comment.content, comment.mentions),
-                    }}
-                  />
+                  <ParsedCommentContent>{comment.content}</ParsedCommentContent>
                 </div>
 
                 {/* Attachment display with download functionality */}

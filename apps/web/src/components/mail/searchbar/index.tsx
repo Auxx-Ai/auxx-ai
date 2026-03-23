@@ -15,6 +15,7 @@ import { Filter, Loader2, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v4 as generateId } from 'uuid'
 import { ConditionProvider } from '~/components/conditions/condition-context'
+import { useMailFilter } from '~/components/mail/mail-filter-context'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useSaveSearchQuery, useSearchSuggestions } from './_hooks/use-search-suggestions'
 import { AdvancedFilterMode } from './advanced-filter-mode'
@@ -80,6 +81,10 @@ export function MailSearchBar({
   const actions = useSearchActions()
 
   const posthog = useAnalytics()
+
+  // Hide scope badge for view contexts — view filters ARE the scope
+  const { contextType } = useMailFilter()
+  const isViewContext = contextType === 'view'
 
   // Build chips for display
   const chips = buildFilterChips(conditions)
@@ -311,7 +316,7 @@ export function MailSearchBar({
           <SearchFilterInput
             inputRef={inputRef}
             inputValue={inputValue}
-            showScopeBadge={isOpen || hasActiveConditions}
+            showScopeBadge={!isViewContext && (isOpen || hasActiveConditions)}
             onInputChange={setInputValue}
             onInputKeyDown={handleInputKeyDown}
             onFocus={handleInputFocus}

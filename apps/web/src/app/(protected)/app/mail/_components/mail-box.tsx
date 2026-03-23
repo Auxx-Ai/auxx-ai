@@ -1,5 +1,6 @@
 'use client'
 
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { buildConditionGroups } from '@auxx/lib/mail-query/client'
 import { InternalFilterContextType } from '@auxx/lib/types'
 import { Button } from '@auxx/ui/components/button'
@@ -50,6 +51,7 @@ import { useIsMobile } from '~/hooks/use-mobile'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
 import { useUser } from '~/hooks/use-user'
 import { useDockStore } from '~/stores/dock-store'
+import { api } from '~/trpc/react'
 import {
   calculateBasePathForList,
   constructNavigationSearchParams,
@@ -186,6 +188,12 @@ function MailboxInner({
   // Get search conditions from store for condition-based filtering
   const searchConditions = useSearchConditions()
 
+  // For view contexts, fetch the view's saved filter conditions
+  const { data: mailViewData } = api.mailView.getById.useQuery(
+    { id: contextId! },
+    { enabled: contextType === 'view' && !!contextId }
+  )
+
   // State for the currently selected thread ID, derived from URL search parameter 'thread'
   const selectedThreadId = searchParams?.get('selected')
 
@@ -209,19 +217,28 @@ function MailboxInner({
 
   // Build the unified filter using condition groups
   // Combines context (from URL) with search conditions (from searchbar store)
-  const filterConditions = useMemo(
-    () =>
-      buildConditionGroups(
-        {
-          contextType,
-          contextId,
-          statusSlug: activeStatusSlug === 'all' ? undefined : activeStatusSlug,
-          userId,
-        },
-        searchConditions
-      ),
-    [contextType, contextId, activeStatusSlug, userId, searchConditions]
-  )
+  // For views, also merges the view's saved filter groups
+  const filterConditions = useMemo(() => {
+    const groups = buildConditionGroups(
+      {
+        contextType,
+        contextId,
+        statusSlug: activeStatusSlug === 'all' ? undefined : activeStatusSlug,
+        userId,
+      },
+      searchConditions
+    )
+
+    // Prepend the view's saved filter groups so they're always applied
+    if (contextType === 'view' && mailViewData?.filters) {
+      const viewFilters = mailViewData.filters as ConditionGroup[]
+      if (viewFilters.length > 0) {
+        return [...viewFilters, ...groups]
+      }
+    }
+
+    return groups
+  }, [contextType, contextId, activeStatusSlug, userId, searchConditions, mailViewData])
 
   getMailboxContextType(pathname)
   const mailFilterContextValue = useMemo(

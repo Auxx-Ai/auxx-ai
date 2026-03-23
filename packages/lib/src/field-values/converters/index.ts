@@ -7,6 +7,7 @@ import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types/field-va
 export type {
   BooleanFieldOptions,
   DateFieldOptions,
+  EmailFieldOptions,
   FieldOptions,
   NumberFieldOptions,
   PhoneFieldOptions,

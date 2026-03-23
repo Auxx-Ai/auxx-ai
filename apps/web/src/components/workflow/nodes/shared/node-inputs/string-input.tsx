@@ -6,6 +6,7 @@ import { Input } from '@auxx/ui/components/input'
 import { cn } from '@auxx/ui/lib/utils'
 import type React from 'react'
 import { useEffect, useState } from 'react'
+import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
@@ -33,6 +34,8 @@ interface StringInputProps extends NodeInputProps {
   className?: string
   /** Enable auto-grow for text inputs */
   autoGrow?: AutoGrowOptions
+  /** Trigger customization options (className is merged into the input) */
+  triggerProps?: PickerTriggerOptions
 }
 
 /**
@@ -53,6 +56,7 @@ export const StringInput = createNodeInput<StringInputProps>(
     maxLength,
     className,
     autoGrow,
+    triggerProps,
   }) => {
     // Local state for immediate UI updates
     const [localValue, setLocalValue] = useState(inputs[name] ?? '')
@@ -99,7 +103,7 @@ export const StringInput = createNodeInput<StringInputProps>(
       return (
         <AutosizeField
           variant='transparent'
-          className={cn(baseClassName, className)}
+          className={cn(baseClassName, className, triggerProps?.className)}
           id={inputId}
           value={localValue}
           onChange={handleChange}
@@ -128,7 +132,8 @@ export const StringInput = createNodeInput<StringInputProps>(
           inputClassName={cn(
             'bg-transparent border-0 outline-none focus:ring-0 text-sm',
             baseClassName,
-            className
+            className,
+            triggerProps?.className
           )}
         />
       )
@@ -137,7 +142,7 @@ export const StringInput = createNodeInput<StringInputProps>(
     return (
       <Input
         variant='transparent'
-        className={cn(baseClassName, className)}
+        className={cn(baseClassName, className, triggerProps?.className)}
         size='sm'
         autoComplete='one-time-code'
         id={inputId}

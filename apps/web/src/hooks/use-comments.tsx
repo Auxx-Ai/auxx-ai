@@ -3,7 +3,6 @@ import type { RecordId } from '@auxx/lib/field-values/client'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 // hooks/useComments.ts
 import { useState } from 'react'
-import { formatCommentContent } from '~/lib/sanitize'
 import { api } from '~/trpc/react'
 
 // System entity types
@@ -368,7 +367,6 @@ export function useComments({
     handleAddEmoji,
 
     // Utilities
-    formatContent: formatCommentContent,
     refreshComments: isSingleCommentMode ? refetchSingleComment : refetchComments,
   }
 }

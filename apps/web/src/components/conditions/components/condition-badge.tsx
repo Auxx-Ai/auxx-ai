@@ -220,12 +220,11 @@ export const ConditionBadge = ({
         value={condition.value}
         onChange={handleValueChange}
         disabled={readOnly}
-        inputClassName='text-xs px-1'
         autoGrow={{ minWidth: 30, placeholderIsMinWidth: true }}
         triggerProps={{
           size: 'sm',
           badgeSize: 'sm',
-          className: 'min-h-6 h-6 ps-1 pe-1 mx-0',
+          className: 'min-h-6 h-6 ps-1 pe-1 mx-0 text-xs',
           hideIcon: true,
           showClear: false,
         }}

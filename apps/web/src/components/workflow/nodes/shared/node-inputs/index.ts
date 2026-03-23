@@ -19,8 +19,6 @@ export { FileInput } from './file-input'
 export { MultiSelectInput } from './multi-select-input'
 export { NumberInput } from './number-input'
 export { ObjectInput } from './object-input'
-// Export complex input components
-export { ParticipantInput } from './participant-input'
 export { PhoneInput } from './phone-input'
 export { RelationInput } from './relation-input'
 // Export input components

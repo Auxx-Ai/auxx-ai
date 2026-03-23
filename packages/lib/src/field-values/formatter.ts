@@ -316,6 +316,7 @@ export type { ConverterOptions, FieldOptions, FieldValueConverter }
 export type {
   BooleanFieldOptions,
   DateFieldOptions,
+  EmailFieldOptions,
   NumberFieldOptions,
   PhoneFieldOptions,
   SelectFieldOptions,
