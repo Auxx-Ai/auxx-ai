@@ -85,6 +85,9 @@ export function MultiRelationInput({
   open: controlledOpen,
   onOpenChange,
 }: MultiRelationInputProps) {
+  // Normalize value — callers may pass a single string when switching operators
+  const normalizedValue = Array.isArray(value) ? value : value ? [value] : []
+
   const [internalOpen, setInternalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -157,17 +160,15 @@ export function MultiRelationInput({
     [onChange]
   )
 
-  // Convert value to string[] for MultiSelectPicker (extract instance IDs)
-  // const selectedIds = useMemo(() => value.map(getInstanceId), [value])
-  const selectedIds = value
-  const hasValue = value.length > 0
+  const selectedIds = normalizedValue
+  const hasValue = normalizedValue.length > 0
 
   /**
    * Render the trigger content showing selected items
    */
   const renderTriggerContent = () => {
-    const displayItems = value.slice(0, maxDisplayItems)
-    const remainingCount = value.length - maxDisplayItems
+    const displayItems = normalizedValue.slice(0, maxDisplayItems)
+    const remainingCount = normalizedValue.length - maxDisplayItems
 
     return (
       <div className='flex flex-wrap gap-1 flex-1 py-0.5'>

@@ -80,6 +80,9 @@ export function ActorPicker({
   disabled,
   ...pickerProps
 }: ActorPickerProps) {
+  // Normalize value — callers may pass a single string when switching operators
+  const normalizedValue = Array.isArray(value) ? value : value ? [value] : []
+
   // Internal open state (for uncontrolled mode)
   const [internalOpen, setInternalOpen] = useState(false)
 
@@ -126,7 +129,7 @@ export function ActorPicker({
     }
   }, [open])
 
-  const hasValue = value.length > 0
+  const hasValue = normalizedValue.length > 0
 
   // Custom trigger or default button using PickerTrigger
   const triggerElement = children ? (
@@ -143,7 +146,7 @@ export function ActorPicker({
       hideIcon={triggerProps?.hideIcon}
       className={triggerProps?.className}>
       <ItemsListView
-        items={value}
+        items={normalizedValue}
         renderItem={(item) => (
           <ActorBadge actorId={item as ActorId} size={triggerProps?.badgeSize} />
         )}
@@ -181,7 +184,7 @@ export function ActorPicker({
           if (anchorRef) e.preventDefault()
         }}>
         <ActorPickerContent
-          value={value}
+          value={normalizedValue}
           onChange={onChange}
           multi={multi}
           onSelectSingle={multi ? undefined : handleSelectSingle}

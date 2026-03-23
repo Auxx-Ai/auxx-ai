@@ -2,7 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import type { FieldOptions } from '@auxx/lib/field-values/client'
+import type { EmailFieldOptions, FieldOptions } from '@auxx/lib/field-values/client'
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
@@ -16,6 +16,7 @@ import type { RecordId } from '@auxx/types/resource'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
+import { ParticipantPicker } from '~/components/pickers/participant-picker'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import {
@@ -94,8 +95,6 @@ export interface FieldInputAdapterProps {
   open?: boolean
   /** Callback when picker open state changes */
   onOpenChange?: (open: boolean) => void
-  /** Additional className for inline text inputs */
-  inputClassName?: string
   /** Enable auto-grow for text inputs */
   autoGrow?: AutoGrowOptions
 }
@@ -117,7 +116,6 @@ export function FieldInputAdapter({
   triggerProps,
   open,
   onOpenChange,
-  inputClassName,
   autoGrow,
 }: FieldInputAdapterProps) {
   // For NodeInputProps-compatible components
@@ -189,8 +187,7 @@ export function FieldInputAdapter({
       // Use allowMultiple if provided (from operator), otherwise derive from relationship type
       const multi = allowMultiple ?? isMultiRelationship(relationship.relationshipType)
 
-      // Value is already RecordId[] from caller - just pass through
-      const recordIds = (value as RecordId[]) || []
+      const recordIds = Array.isArray(value) ? value : value ? [value] : []
 
       /**
        * Handle opening the create dialog
@@ -245,8 +242,7 @@ export function FieldInputAdapter({
       // Use allowMultiple if provided (from operator), otherwise use field options
       const multi = allowMultiple ?? actorOpts?.multiple
 
-      // Value is already ActorId[] from caller
-      const actorIds = (value as ActorId[]) || []
+      const actorIds = Array.isArray(value) ? value : value ? [value] : []
 
       return (
         <ActorPicker
@@ -277,8 +273,7 @@ export function FieldInputAdapter({
       const config =
         allowMultiple !== undefined ? { ...baseConfig, multi: allowMultiple } : baseConfig
 
-      // Value should already be string[] - caller normalizes
-      const selectedValues = (value as string[]) || []
+      const selectedValues = Array.isArray(value) ? value : value ? [value] : []
 
       return (
         <SelectFieldInput
@@ -321,21 +316,45 @@ export function FieldInputAdapter({
     case FieldType.TEXT:
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
-          <StringInput {...nodeInputProps} className={inputClassName} autoGrow={autoGrow} />
+          <StringInput {...nodeInputProps} autoGrow={autoGrow} triggerProps={triggerProps} />
         </FocusableInputWrapper>
       )
 
-    case FieldType.EMAIL:
+    case FieldType.EMAIL: {
+      const emailOpts = fieldOptions?.email as EmailFieldOptions | undefined
+      console.log('Rendering EMAIL input with options:', emailOpts, value)
+      // If email options with participantType exist, use ParticipantPicker
+      if (emailOpts?.participantType) {
+        const multi = allowMultiple ?? true
+        const identifiers = Array.isArray(value) ? value : value ? [value] : []
+
+        return (
+          <ParticipantPicker
+            value={identifiers as string[]}
+            onChange={onChange as (identifiers: string[]) => void}
+            type={emailOpts.participantType}
+            multi={multi}
+            placeholder={placeholder}
+            disabled={disabled}
+            triggerProps={triggerProps}
+            open={open}
+            onOpenChange={onOpenChange}
+          />
+        )
+      }
+
+      // Fallback to plain text input for regular email fields
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
           <StringInput
             {...nodeInputProps}
             validationType='email'
-            className={inputClassName}
             autoGrow={autoGrow}
+            triggerProps={triggerProps}
           />
         </FocusableInputWrapper>
       )
+    }
 
     case FieldType.URL:
       return (
@@ -343,8 +362,8 @@ export function FieldInputAdapter({
           <StringInput
             {...nodeInputProps}
             validationType='url'
-            className={inputClassName}
             autoGrow={autoGrow}
+            triggerProps={triggerProps}
           />
         </FocusableInputWrapper>
       )
@@ -352,7 +371,7 @@ export function FieldInputAdapter({
     case FieldType.RICH_TEXT:
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
-          <StringInput {...nodeInputProps} multiline={true} className={inputClassName} />
+          <StringInput {...nodeInputProps} multiline={true} triggerProps={triggerProps} />
         </FocusableInputWrapper>
       )
 
@@ -465,7 +484,7 @@ export function FieldInputAdapter({
     default:
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
-          <StringInput {...nodeInputProps} className={inputClassName} autoGrow={autoGrow} />
+          <StringInput {...nodeInputProps} autoGrow={autoGrow} triggerProps={triggerProps} />
         </FocusableInputWrapper>
       )
   }

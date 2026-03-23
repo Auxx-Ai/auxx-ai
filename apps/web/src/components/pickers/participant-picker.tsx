@@ -1,212 +1,171 @@
-// src/components/pickers/participant-picker.tsx
+// apps/web/src/components/pickers/participant-picker.tsx
 'use client'
 
-import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
-import { Button } from '@auxx/ui/components/button'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@auxx/ui/components/command'
+import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, Search, User } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { ItemsListView } from '~/components/ui/items-list-view'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 
-export interface Participant {
-  id: string
-  identifier: string
-  displayName: string
-  identifierType: string
-  contactId?: string | null
-  contact?: {
-    id: string
-    firstName?: string | null
-    lastName?: string | null
-    email?: string | null
-  } | null
-}
-
 export interface ParticipantPickerProps {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  selected?: string | string[] // identifiers
-  onChange?: (selected: string[]) => void
-  allowMultiple?: boolean
-  className?: string
-  placeholder?: string
+  /** Currently selected email identifiers */
+  value: string[]
+  /** Callback when selection changes */
+  onChange: (identifiers: string[]) => void
+  /** Filter participants by type */
   type?: 'from' | 'to' | 'cc' | 'any'
+  /** Allow multiple selections (default: true) */
+  multi?: boolean
+  /** Whether the input is disabled */
   disabled?: boolean
-  size?: 'xs' | 'sm' | 'lg' | 'default'
-  align?: 'start' | 'center' | 'end' // Alignment for the popover
-  side?: 'top' | 'right' | 'bottom' | 'left' // Side for the popover
-  sideOffset?: number // Offset for the popover
-  style?: React.CSSProperties // Additional styles for the popover
+  /** Placeholder text */
+  placeholder?: string
+  /** Additional CSS classes */
+  className?: string
+  /** Trigger customization options */
+  triggerProps?: PickerTriggerOptions
+  /** Controlled open state */
+  open?: boolean
+  /** Callback when open state changes */
+  onOpenChange?: (open: boolean) => void
 }
 
 export function ParticipantPicker({
-  open,
-  onOpenChange,
-  selected,
+  value = [],
   onChange,
-  allowMultiple = false,
-  className,
-  placeholder = 'Select participant',
   type = 'any',
+  multi = true,
   disabled = false,
-  size = 'default',
-  ...props
+  placeholder = 'Select participant...',
+  className,
+  triggerProps,
+  open: controlledOpen,
+  onOpenChange,
 }: ParticipantPickerProps) {
-  const [isOpen, setIsOpen] = useState(open || false)
-  const [searchValue, setSearchValue] = useState('')
-  const [debouncedSearchValue] = useDebouncedValue(searchValue, 300)
+  const normalizedValue = Array.isArray(value) ? value : value ? [value] : []
 
-  // Normalize selected to array
-  const selectedIdentifiers = Array.isArray(selected) ? selected : selected ? [selected] : []
+  const [internalOpen, setInternalOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch] = useDebouncedValue(searchQuery, 300)
 
-  // Fetch participants based on search
-  const { data: participants = [], isLoading } = api.search.participants.useQuery(
-    { query: debouncedSearchValue, type: type },
-    { enabled: isOpen && debouncedSearchValue.length > 0 }
-  )
+  // Track the last query that returned 0 results to avoid redundant fetches
+  const emptyQueryRef = useRef<string | null>(null)
 
-  // Handle open state changes
-  useEffect(() => {
-    if (open !== undefined && open !== isOpen) {
-      setIsOpen(open)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (newOpen: boolean) => {
+    if (!newOpen) {
+      emptyQueryRef.current = null
     }
-  }, [open, isOpen])
-
-  const handleSelect = (participant: Participant) => {
-    let newSelected: string[]
-
-    if (allowMultiple) {
-      const isSelected = selectedIdentifiers.includes(participant.identifier)
-
-      if (isSelected) {
-        newSelected = selectedIdentifiers.filter((id) => id !== participant.identifier)
-      } else {
-        newSelected = [...selectedIdentifiers, participant.identifier]
-      }
-    } else {
-      newSelected = [participant.identifier]
+    if (controlledOpen === undefined) {
+      setInternalOpen(newOpen)
     }
-
-    onChange?.(newSelected)
-
-    if (!allowMultiple) {
-      setIsOpen(false)
-      onOpenChange?.(false)
-    }
-  }
-
-  const handleOpenChange = (newOpen: boolean) => {
-    setIsOpen(newOpen)
     onOpenChange?.(newOpen)
   }
 
-  // Get initials for avatar
-  const getInitials = (name: string): string => {
-    return name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2)
-  }
+  // Skip fetching if current query extends a query that already returned 0 results
+  const shouldFetch =
+    open &&
+    debouncedSearch.length > 0 &&
+    !(emptyQueryRef.current && debouncedSearch.startsWith(emptyQueryRef.current))
 
-  // Get selected participant details for display
-  const getSelectedDisplay = () => {
-    if (selectedIdentifiers.length === 0) return null
+  // Fetch participants based on debounced search
+  const {
+    data: participants = [],
+    isLoading,
+    isFetched,
+  } = api.search.participants.useQuery({ query: debouncedSearch, type }, { enabled: shouldFetch })
 
-    if (selectedIdentifiers.length === 1) {
-      // For single selection, try to find the participant in our data
-      const selected = participants.find((p) => p.identifier === selectedIdentifiers[0])
-      return selected?.displayName || selectedIdentifiers[0]
+  // Track queries that return 0 results to avoid redundant fetches
+  useEffect(() => {
+    if (isFetched && shouldFetch) {
+      emptyQueryRef.current = participants.length === 0 ? debouncedSearch : null
     }
+  }, [isFetched, shouldFetch, participants.length, debouncedSearch])
 
-    return `${selectedIdentifiers.length} participants`
-  }
+  // Convert to SelectOption format for MultiSelectPicker
+  // Include already-selected values so they show as checked when reopening
+  const selectOptions = useMemo(() => {
+    const fromSearch = participants.map((p) => ({
+      label: p.displayName ? `${p.displayName} (${p.identifier})` : p.identifier,
+      value: p.identifier,
+    }))
+    const searchValues = new Set(fromSearch.map((o) => o.value))
+    const fromSelected = normalizedValue
+      .filter((id) => !searchValues.has(id))
+      .map((id) => ({ label: id, value: id }))
+    return [...fromSelected, ...fromSearch]
+  }, [participants, normalizedValue])
 
-  const triggerElement = (
-    <Button
-      variant='input'
-      role='combobox'
-      size={size}
-      aria-expanded={isOpen}
-      disabled={disabled}
-      className={cn('justify-between', className)}>
-      {selectedIdentifiers.length > 0 ? (
-        <span className='truncate'>{getSelectedDisplay()}</span>
-      ) : (
-        <span className='text-muted-foreground'>{placeholder}</span>
-      )}
-    </Button>
+  const handleSelectionChange = useCallback(
+    (identifiers: string[]) => {
+      onChange(identifiers)
+    },
+    [onChange]
   )
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is a stable useState setter
+  const handleSelectSingle = useCallback(() => {
+    setOpen(false)
+    setSearchQuery('')
+  }, [])
+
+  const handleClearAll = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onChange([])
+    },
+    [onChange]
+  )
+
+  const hasValue = normalizedValue.length > 0
+
   return (
-    <Popover open={isOpen} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
-      <PopoverContent className='w-[400px] p-0' {...props}>
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder='Search by name or email...'
-            value={searchValue}
-            onValueChange={setSearchValue}
-            className='h-9'
-            icon={Search}
-          />
-
-          <CommandList>
-            {isLoading ? (
-              <div className='py-6 text-center text-sm text-muted-foreground'>Searching...</div>
-            ) : participants.length === 0 && searchValue ? (
-              <CommandEmpty>No participants found.</CommandEmpty>
-            ) : searchValue ? (
-              <CommandGroup heading='Search Results'>
-                {participants.map((participant) => {
-                  const isSelected = selectedIdentifiers.includes(participant.identifier)
-
-                  return (
-                    <CommandItem
-                      key={participant.id}
-                      value={participant.identifier}
-                      onSelect={() => handleSelect(participant)}
-                      className='flex items-center'>
-                      <Avatar className='mr-2 h-6 w-6'>
-                        <AvatarFallback>
-                          {participant.displayName ? (
-                            getInitials(participant.displayName)
-                          ) : (
-                            <User className='h-3 w-3' />
-                          )}
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <div className='flex-1 min-w-0'>
-                        <div className='font-medium truncate'>{participant.displayName}</div>
-                        <div className='text-xs text-muted-foreground truncate'>
-                          {participant.identifier}
-                        </div>
-                      </div>
-
-                      {isSelected && <Check className='ml-2 h-4 w-4' />}
-                    </CommandItem>
-                  )
-                })}
-              </CommandGroup>
-            ) : (
-              <div className='py-6 text-center text-sm text-muted-foreground'>
-                Type to search participants
-              </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <PickerTrigger
+          open={open}
+          disabled={disabled}
+          variant={triggerProps?.variant ?? 'transparent'}
+          size={triggerProps?.size}
+          hasValue={hasValue}
+          placeholder={placeholder}
+          showClear={triggerProps?.showClear ?? multi}
+          hideIcon={triggerProps?.hideIcon}
+          onClear={handleClearAll}
+          asCombobox
+          className={cn('h-auto min-h-8', className, triggerProps?.className)}>
+          <ItemsListView
+            items={normalizedValue}
+            maxDisplay={3}
+            renderItem={(identifier) => (
+              <Badge variant='outline' className='text-xs truncate max-w-[180px]'>
+                {String(identifier)}
+              </Badge>
             )}
-          </CommandList>
-        </Command>
+          />
+        </PickerTrigger>
+      </PopoverTrigger>
+      <PopoverContent
+        className='p-0 min-w-[max(var(--radix-popover-trigger-width),18rem)]'
+        align='start'>
+        <MultiSelectPicker
+          options={selectOptions}
+          value={normalizedValue}
+          onChange={handleSelectionChange}
+          isLoading={isLoading}
+          onSearchChange={setSearchQuery}
+          canManage={false}
+          canAdd={true}
+          useValueAsLabel
+          multi={multi}
+          placeholder='Search by name or email...'
+          onSelectSingle={handleSelectSingle}
+          disabled={disabled}
+        />
       </PopoverContent>
     </Popover>
   )

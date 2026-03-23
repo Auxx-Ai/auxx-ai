@@ -229,8 +229,11 @@ export function buildConditionGroups(
   const groups: ConditionGroup[] = []
 
   // Extract scope from search conditions
+  // Views always use 'current' scope — their saved filters ARE the scope
   const scopeCondition = searchConditions?.find((c) => c.fieldId === SEARCH_SCOPE_FIELD_ID)
-  const searchScope = scopeCondition?.operator === 'everywhere' ? 'everywhere' : 'current'
+  const isViewContext = contextParams.contextType === 'view'
+  const searchScope =
+    !isViewContext && scopeCondition?.operator === 'everywhere' ? 'everywhere' : 'current'
 
   // Filter out the scope condition — it's not a real query condition
   const realSearchConditions = searchConditions?.filter((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
