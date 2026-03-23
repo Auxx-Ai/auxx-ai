@@ -124,7 +124,7 @@ export const Dashboard = ({
         <DndStateProvider activeDndItem={activeDndItem}>
           <div className='flex h-screen overflow-hidden w-full'>
             <AppSidebar className='min-w-0' user={user} />
-            <SidebarInset>
+            <SidebarInset className='min-h-0'>
               <DemoBanner />
               <OverageBanner overages={overages} />
               {children}

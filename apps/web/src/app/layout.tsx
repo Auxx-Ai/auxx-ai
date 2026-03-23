@@ -74,7 +74,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <script dangerouslySetInnerHTML={{ __html: IS_MAC_SCRIPT }} />
       </head>
-      <body className='bg-primary-100'>
+      <body className='bg-primary-100 overflow-hidden'>
         <ClientProviders>{children}</ClientProviders>
       </body>
     </html>

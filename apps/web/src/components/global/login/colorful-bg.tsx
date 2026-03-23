@@ -1,5 +1,6 @@
 // apps/web/src/components/global/login/colorful-bg.tsx
 
+import { Meteors } from '@auxx/ui/components/meteors'
 import Image from 'next/image'
 import type { ReactNode } from 'react'
 
@@ -36,9 +37,15 @@ function ColorfulBg({ children }: ColorfulBgProps) {
   return (
     <div data-theme='dark' className='relative min-h-screen overflow-hidden'>
       <div className='pointer-events-none fixed inset-0 overflow-hidden transition-opacity duration-300 '>
+        <Meteors
+          count={40}
+          angle={330}
+          color='rgba(255,255,255,0.5)'
+          tailColor='rgba(255,255,255,0.5)'
+        />
         <div className='absolute inset-0 overflow-hidden mask-[radial-gradient(70%_100%_at_50%_0%,black_70%,transparent)] opacity-15' />
         <Image
-          src='https://res.cloudinary.com/dohqjvu9k/image/upload/v1759207511/constellation_uvxuml.webp'
+          src='/mountains-night.webp'
           alt='gradient background'
           className='size-full object-cover'
           width={2342}
@@ -48,7 +55,7 @@ function ColorfulBg({ children }: ColorfulBgProps) {
         />
         <div className='mask-b-from-55% mask-b-to-75% mask-radial-from-45% mask-radial-at-bottom mask-radial-[125%_80%] lg:aspect-7/5 absolute inset-0'>
           <Image
-            src='https://res.cloudinary.com/dohqjvu9k/image/upload/v1759207511/constellation_uvxuml.webp'
+            src='/mountains-night.webp'
             alt='gradient background'
             className='size-full object-cover'
             width={2342}

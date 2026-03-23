@@ -648,34 +648,22 @@ export default function LoginForm({
               </div>
             </motion.div>
           </CardContent>
-          <CardFooter className='flex flex-col items-center gap-2 text-center text-xs text-muted-foreground'>
-            <div className='flex flex-row items-center gap-2 text-white/60'>
-              <span>
-                Don&apos;t have an account?{' '}
-                <Button variant='link' className='h-auto p-0 text-white' asChild>
-                  <Link
-                    href={
-                      redirectToPath !== defaultRedirectPath
-                        ? `/signup?callbackUrl=${encodeURIComponent(redirectToPath)}`
-                        : '/signup'
-                    }>
-                    Sign up
-                  </Link>
-                </Button>
-              </span>
-              {step !== 'password' && (
-                <>
-                  |
-                  <span>
-                    <Button variant='link' className='h-auto p-0 text-white' asChild>
-                      <Link href='/forgot-password'>Forgot password?</Link>
-                    </Button>
-                  </span>
-                </>
-              )}
-            </div>
-          </CardFooter>
         </Card>
+        <div className='text-center text-sm gap-2 text-white/60'>
+          <span>
+            Don&apos;t have an account?{' '}
+            <Button variant='link' className='ms-1 h-auto p-0 text-white' asChild>
+              <Link
+                href={
+                  redirectToPath !== defaultRedirectPath
+                    ? `/signup?callbackUrl=${encodeURIComponent(redirectToPath)}`
+                    : '/signup'
+                }>
+                Sign up
+              </Link>
+            </Button>
+          </span>
+        </div>
 
         {env.demoEnabled && <DemoButton />}
       </div>
