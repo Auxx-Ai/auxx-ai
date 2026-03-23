@@ -9,9 +9,7 @@ export default function RenderResults() {
       items={results}
       onRender={({ item, active }) =>
         typeof item === 'string' ? (
-          <div
-            key={item}
-            className='px-4 py-2 text-sm uppercase text-gray-600 opacity-50 dark:text-gray-400'>
+          <div key={item} className='px-4 py-2 text-xs font-medium text-muted-foreground'>
             {item}
           </div>
         ) : (

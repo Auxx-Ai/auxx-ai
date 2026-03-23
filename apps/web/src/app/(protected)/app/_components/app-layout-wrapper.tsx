@@ -14,6 +14,7 @@ import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { FloatingComposeRoot } from '~/components/mail/email-editor/floating-compose-root'
 import { ResourceProvider } from '~/components/resources'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
+import { FloatingTaskRoot } from '~/components/tasks/ui/floating-task-root'
 import { ThreadDataProvider } from '~/components/threads'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
@@ -79,6 +80,7 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
                   <TooltipProvider>
                     <Dashboard user={user}>{children}</Dashboard>
                     <FloatingComposeRoot />
+                    <FloatingTaskRoot />
                   </TooltipProvider>
                 </KBar>
               </ThreadDataProvider>

@@ -1,9 +1,9 @@
 // apps/web/src/components/threads/hooks/use-thread-keyboard-nav.ts
 'use client'
 
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { useCallback } from 'react'
 import { toast } from 'sonner'
-import { useKeyboard } from '../context/keyboard-context'
 import { useThreadSelectionStore } from '../store/thread-selection-store'
 
 interface UseThreadKeyboardNavOptions {
@@ -13,19 +13,16 @@ interface UseThreadKeyboardNavOptions {
   enabled?: boolean
   /** Callback when navigating near end of list (for infinite scroll) */
   onNavigateToEnd?: () => void
-  /** Priority for keyboard shortcuts (higher = takes precedence) */
-  priority?: number
 }
 
 /**
  * Provides keyboard navigation for thread lists.
- * Registers shortcuts: ArrowUp/Down, Shift+Arrow, Meta+a, Escape, m, Home, End
+ * Registers shortcuts: ArrowUp/Down, Shift+Arrow, Mod+A, Escape, M, Home, End
  */
 export function useThreadKeyboardNav({
   threadIds,
   enabled = true,
   onNavigateToEnd,
-  priority = 0,
 }: UseThreadKeyboardNavOptions) {
   // Navigation helper
   const navigate = useCallback(
@@ -64,50 +61,21 @@ export function useThreadKeyboardNav({
   )
 
   // Arrow Down
-  useKeyboard(
-    'ArrowDown',
-    (e) => {
-      e.preventDefault()
-      navigate('down', false)
-    },
-    { enabled, priority }
-  )
+  useHotkey('ArrowDown', () => navigate('down', false), { enabled })
 
   // Arrow Up
-  useKeyboard(
-    'ArrowUp',
-    (e) => {
-      e.preventDefault()
-      navigate('up', false)
-    },
-    { enabled, priority }
-  )
+  useHotkey('ArrowUp', () => navigate('up', false), { enabled })
 
   // Shift + Arrow Down (extend selection)
-  useKeyboard(
-    'Shift+ArrowDown',
-    (e) => {
-      e.preventDefault()
-      navigate('down', true)
-    },
-    { enabled, priority }
-  )
+  useHotkey('Shift+ArrowDown', () => navigate('down', true), { enabled })
 
   // Shift + Arrow Up (extend selection)
-  useKeyboard(
-    'Shift+ArrowUp',
-    (e) => {
-      e.preventDefault()
-      navigate('up', true)
-    },
-    { enabled, priority }
-  )
+  useHotkey('Shift+ArrowUp', () => navigate('up', true), { enabled })
 
   // Home - go to first thread
-  useKeyboard(
+  useHotkey(
     'Home',
-    (e) => {
-      e.preventDefault()
+    () => {
       const store = useThreadSelectionStore.getState()
       if (threadIds.length > 0 && threadIds[0]) {
         store.setActiveThread(threadIds[0])
@@ -116,14 +84,13 @@ export function useThreadKeyboardNav({
         }
       }
     },
-    { enabled, priority }
+    { enabled }
   )
 
   // End - go to last thread
-  useKeyboard(
+  useHotkey(
     'End',
-    (e) => {
-      e.preventDefault()
+    () => {
       const store = useThreadSelectionStore.getState()
       const lastId = threadIds[threadIds.length - 1]
       if (threadIds.length > 0 && lastId) {
@@ -133,47 +100,28 @@ export function useThreadKeyboardNav({
         }
       }
     },
-    { enabled, priority }
+    { enabled }
   )
 
-  // Select All (Cmd+A / Ctrl+A)
-  useKeyboard(
-    'Meta+a',
-    (e) => {
-      e.preventDefault()
-      useThreadSelectionStore.getState().selectAll(threadIds)
-    },
-    { enabled, priority }
-  )
-
-  useKeyboard(
-    'Control+a',
-    (e) => {
-      e.preventDefault()
-      useThreadSelectionStore.getState().selectAll(threadIds)
-    },
-    { enabled, priority }
-  )
+  // Select All: Mod+A (replaces separate Meta+a and Control+a)
+  // ignoreInputs: true so native select-all works in text editors
+  useHotkey('Mod+A', () => useThreadSelectionStore.getState().selectAll(threadIds), {
+    enabled,
+    ignoreInputs: true,
+  })
 
   // Escape - clear selection
-  useKeyboard(
-    'Escape',
-    (e) => {
-      e.preventDefault()
-      useThreadSelectionStore.getState().clearSelection()
-    },
-    { enabled, priority }
-  )
+  useHotkey('Escape', () => useThreadSelectionStore.getState().clearSelection(), { enabled })
 
   // Toggle view mode (view/edit)
-  useKeyboard(
-    'm',
+  useHotkey(
+    'M',
     () => {
       const store = useThreadSelectionStore.getState()
       const currentMode = store.viewMode
       store.toggleViewMode()
       toast.info(currentMode === 'view' ? 'Edit mode enabled' : 'View mode enabled')
     },
-    { enabled, priority }
+    { enabled }
   )
 }

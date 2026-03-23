@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-editor/floating-compose-root.tsx
 'use client'
 
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { useComposeStore } from '../store/compose-store'
 import { FloatingCompose } from './floating-compose'
 
@@ -10,6 +11,11 @@ import { FloatingCompose } from './floating-compose'
  */
 export function FloatingComposeRoot() {
   const instances = useComposeStore((s) => s.instances)
+
+  // Global shortcut: C to open a new compose editor
+  useHotkey('C', () => {
+    useComposeStore.getState().open({ mode: 'new', displayMode: 'floating' })
+  })
 
   console.log(
     '[FloatingComposeRoot] render, instances:',

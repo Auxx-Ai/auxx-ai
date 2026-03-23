@@ -7,8 +7,7 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { ListTodo, Plus } from 'lucide-react'
-import { useState } from 'react'
-import { TaskDialog } from './task-dialog'
+import { useCreateTaskStore } from '../stores/create-task-store'
 import { TasksList } from './tasks-list'
 
 /**
@@ -24,36 +23,25 @@ interface TasksSectionProps {
  * Displays a list of tasks linked to the entity with ability to create new tasks.
  */
 export function TasksSection({ recordId }: TasksSectionProps) {
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const openDialog = useCreateTaskStore((s) => s.openDialog)
+
+  const handleCreate = () => openDialog({ referencedEntity: recordId })
 
   return (
-    <>
-      <ScrollArea className='flex-1'>
-        <Section
-          title='Tasks'
-          className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
-          collapsible={false}
-          icon={<ListTodo className='size-4 text-muted-foreground/50' />}
-          actions={
-            <Button variant='ghost' size='sm' onClick={() => setDialogOpen(true)}>
-              <Plus />
-              Create
-            </Button>
-          }>
-          <TasksList
-            viewMode='entity'
-            recordId={recordId}
-            onCreateClick={() => setDialogOpen(true)}
-          />
-        </Section>
-      </ScrollArea>
-
-      <TaskDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        mode='create'
-        defaultReferencedEntity={recordId}
-      />
-    </>
+    <ScrollArea className='flex-1'>
+      <Section
+        title='Tasks'
+        className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
+        collapsible={false}
+        icon={<ListTodo className='size-4 text-muted-foreground/50' />}
+        actions={
+          <Button variant='ghost' size='sm' onClick={handleCreate}>
+            <Plus />
+            Create
+          </Button>
+        }>
+        <TasksList viewMode='entity' recordId={recordId} onCreateClick={handleCreate} />
+      </Section>
+    </ScrollArea>
   )
 }

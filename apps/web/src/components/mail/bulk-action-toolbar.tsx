@@ -4,12 +4,12 @@
 import type { ActorId } from '@auxx/types/actor'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { Archive, Ban, Play, Tags, Trash, Trash2, UserPlus } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { TagPicker } from '~/components/pickers/tag-picker'
 import { toRecordId } from '~/components/resources'
-import { useKeyboard } from '~/components/threads/context/keyboard-context'
 import { useThreadMutation } from '~/components/threads/hooks'
 import {
   useHasMultipleSelected,
@@ -90,10 +90,9 @@ export default function BulkActionToolbar() {
   )
 
   // --- Keyboard shortcuts ---
-  useKeyboard(
-    'd',
-    (e) => {
-      e.preventDefault()
+  useHotkey(
+    'D',
+    () => {
       if (selectionCount > 0 && !isBulkUpdating) {
         handleArchive()
       }

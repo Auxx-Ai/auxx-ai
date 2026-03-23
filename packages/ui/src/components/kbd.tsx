@@ -25,7 +25,7 @@ const kbdGroupVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-background/5 ring-background/40  text-white rounded-sm',
+        default: 'bg-background/5 ring-background/40  text-white rounded-sm dark:text-background',
         outline: ' ring-ring/50 text-muted-foreground/80 rounded-sm',
         ghost: 'ring-ring/50 text-muted-foreground/80 rounded-sm',
       },

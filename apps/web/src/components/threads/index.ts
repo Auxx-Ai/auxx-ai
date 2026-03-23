@@ -1,8 +1,5 @@
 // apps/web/src/components/threads/index.ts
 
-// Context
-export { KeyboardProvider, useKeyboard, useKeyboardContext } from './context'
-
 // Hooks
 export {
   type InboxItem,

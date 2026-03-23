@@ -1,6 +1,7 @@
 // ResultItem.tsx
 
 // import * as React from "react";
+import { EntityIcon } from '@auxx/ui/components/icons'
 import type { ActionId, ActionImpl } from 'kbar'
 import { motion } from 'motion/react'
 import React, { useMemo } from 'react'
@@ -20,16 +21,26 @@ const ResultItem: React.FC<Prop> = ({ action, active, currentRootActionId, ref }
   return (
     <div
       ref={ref}
-      className={`relative z-10 flex cursor-pointer items-center justify-between px-3 py-1`}>
+      className='relative mx-2 z-10 flex cursor-default select-none items-center justify-between px-2 py-1'>
       {active && (
         <motion.div
           layoutId='kbar-result-item'
-          className='absolute inset-0 z-[-1]! border-l-4 border-neutral-500 bg-neutral-100 dark:border-white dark:bg-gray-700'
+          className='absolute inset-0 z-[-1]! rounded-full ring-1 ring-border-illustration bg-accent/50 dark:bg-[#404754]/50'
           transition={{ duration: 0.14, type: 'spring', ease: 'easeInOut' }}></motion.div>
       )}
       <div className='relative z-10 flex items-center gap-2'>
-        <span className='text-neutral-500 [&>svg]:size-5'>{action.icon && action.icon}</span>
-        <div className='flex flex-col text-sm text-neutral-600'>
+        {typeof action.icon === 'string' ? (
+          <EntityIcon
+            iconId={action.icon}
+            color='gray'
+            size='sm'
+            inverse
+            className='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
+          />
+        ) : (
+          action.icon && <span className='text-muted-foreground [&>svg]:size-4'>{action.icon}</span>
+        )}
+        <div className='flex flex-col text-sm text-foreground'>
           <div>
             {ancestors.length > 0 &&
               ancestors.map((ancestor) => (
@@ -40,9 +51,9 @@ const ResultItem: React.FC<Prop> = ({ action, active, currentRootActionId, ref }
               ))}
             <span>{action.name}</span>
           </div>
-          {action.subtitle && (
-            <span className='text-sm text-neutral-400 dark:text-gray-400'>{action.subtitle}</span>
-          )}
+          {/* {action.subtitle && (
+            <span className='text-sm text-muted-foreground'>{action.subtitle}</span>
+          )} */}
         </div>
       </div>
       {action.shortcut?.length ? (
@@ -51,7 +62,7 @@ const ResultItem: React.FC<Prop> = ({ action, active, currentRootActionId, ref }
             <kbd
               key={i}
               // key={sc}
-              className='flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-1.5 py-1 text-xs font-medium text-gray-600 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'>
+              className='flex items-center gap-1 rounded-md border border-border/50 bg-muted/50 px-1.5 py-1 text-xs font-medium text-muted-foreground dark:border-[#323842]/80'>
               {sc}
             </kbd>
           ))}

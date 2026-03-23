@@ -39,12 +39,7 @@ import { MailSearchBar } from '~/components/mail/searchbar'
 import { useSearchConditions } from '~/components/mail/searchbar/hooks/use-search-filters'
 import { ThreadDisplay } from '~/components/mail/thread-display'
 import type { ThreadsFilterInput } from '~/components/mail/types'
-import {
-  KeyboardProvider,
-  useSelectedThreadIds,
-  useThreadSelectionStore,
-  useViewMode,
-} from '~/components/threads'
+import { useSelectedThreadIds, useThreadSelectionStore, useViewMode } from '~/components/threads'
 import { useCompose } from '~/hooks/use-compose'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useIsMobile } from '~/hooks/use-mobile'
@@ -358,166 +353,164 @@ function MailboxInner({
 
   return (
     <MailFilterProvider value={mailFilterContextValue}>
-      <KeyboardProvider>
-        <MainPage loading={true}>
-          <MainPageHeader
-            action={
-              <Button
-                variant='info'
-                size='sm'
-                className='h-7 rounded-lg'
-                onClick={() => openCompose()}>
-                Compose
-              </Button>
-            }>
-            <MainPageBreadcrumb>
-              <MainPageBreadcrumbItem title='Mail' href='/app/mail' />
-              {(contextType === InternalFilterContextType.DRAFTS ||
-                contextType === InternalFilterContextType.SENT) && (
-                <MainPageBreadcrumbItem
-                  title={breadcrumbTitle}
-                  href={
-                    contextType === InternalFilterContextType.DRAFTS
-                      ? '/app/mail/drafts'
-                      : '/app/mail/sent'
-                  }
-                  last
-                />
-              )}
-              {isPersonalContext(contextType) &&
-                contextType !== InternalFilterContextType.DRAFTS &&
-                contextType !== InternalFilterContextType.SENT && (
-                  <MainPageBreadcrumbItem title={breadcrumbTitle} last />
-                )}
-              {isSharedContext(contextType) && (
+      <MainPage loading={true}>
+        <MainPageHeader
+          action={
+            <Button
+              variant='info'
+              size='sm'
+              className='h-7 rounded-lg'
+              onClick={() => openCompose()}>
+              Compose
+            </Button>
+          }>
+          <MainPageBreadcrumb>
+            <MainPageBreadcrumbItem title='Mail' href='/app/mail' />
+            {(contextType === InternalFilterContextType.DRAFTS ||
+              contextType === InternalFilterContextType.SENT) && (
+              <MainPageBreadcrumbItem
+                title={breadcrumbTitle}
+                href={
+                  contextType === InternalFilterContextType.DRAFTS
+                    ? '/app/mail/drafts'
+                    : '/app/mail/sent'
+                }
+                last
+              />
+            )}
+            {isPersonalContext(contextType) &&
+              contextType !== InternalFilterContextType.DRAFTS &&
+              contextType !== InternalFilterContextType.SENT && (
                 <MainPageBreadcrumbItem title={breadcrumbTitle} last />
               )}
-            </MainPageBreadcrumb>
-          </MainPageHeader>
-          <MainPageContent
-            dockedPanel={dockedPanel}
-            dockedPanelWidth={dockedWidth}
-            onDockedPanelWidthChange={setDockedWidth}
-            dockedPanelMinWidth={minWidth}
-            dockedPanelMaxWidth={maxWidth}>
-            <div className='flex items-center justify-between bg-primary-150 border-b w-full rounded-t-lg px-2 h-10.5 '>
-              {/* Status Dropdown and Search Bar */}
-              <div className='w-full flex flex-1 justify-between overflow-x-auto no-scrollbar gap-2'>
-                <div className='flex flex-1 items-center gap-2'>
-                  {displayTabs.length > 0 && (
-                    <MailboxStatusDropdown
-                      availableStatuses={displayTabs}
-                      selectedStatus={activeStatusSlug}
-                      onStatusChange={handleTabChange}
-                    />
-                  )}
-
-                  <MailSearchBar
-                    onSearch={handleSearch}
-                    // Pass the non-deferred query for immediate display feedback in input
-                    initialQuery={searchQuery}
-                    isLoading={isListLoading} // Pass loading state from ThreadList
+            {isSharedContext(contextType) && (
+              <MainPageBreadcrumbItem title={breadcrumbTitle} last />
+            )}
+          </MainPageBreadcrumb>
+        </MainPageHeader>
+        <MainPageContent
+          dockedPanel={dockedPanel}
+          dockedPanelWidth={dockedWidth}
+          onDockedPanelWidthChange={setDockedWidth}
+          dockedPanelMinWidth={minWidth}
+          dockedPanelMaxWidth={maxWidth}>
+          <div className='flex items-center justify-between bg-primary-150 border-b w-full rounded-t-lg px-2 h-10.5 '>
+            {/* Status Dropdown and Search Bar */}
+            <div className='w-full flex flex-1 justify-between overflow-x-auto no-scrollbar gap-2'>
+              <div className='flex flex-1 items-center gap-2'>
+                {displayTabs.length > 0 && (
+                  <MailboxStatusDropdown
+                    availableStatuses={displayTabs}
+                    selectedStatus={activeStatusSlug}
+                    onStatusChange={handleTabChange}
                   />
+                )}
 
-                  {/* Show pending actions badge in mail mode */}
-                </div>
-                <div className='flex items-center shrink-0 gap-2'>
-                  <RadioTab
-                    value={mode}
-                    onValueChange={setMode}
-                    size='sm'
-                    className='border border-primary-200 bg-background/30'>
-                    <RadioTabItem value='mail' size='sm'>
-                      <MailIcon />
-                      Mail
-                    </RadioTabItem>
-                    <RadioTabItem value='actions' size='sm'>
-                      <Play />
-                      Actions
-                    </RadioTabItem>
-                  </RadioTab>
-                </div>
+                <MailSearchBar
+                  onSearch={handleSearch}
+                  // Pass the non-deferred query for immediate display feedback in input
+                  initialQuery={searchQuery}
+                  isLoading={isListLoading} // Pass loading state from ThreadList
+                />
+
+                {/* Show pending actions badge in mail mode */}
+              </div>
+              <div className='flex items-center shrink-0 gap-2'>
+                <RadioTab
+                  value={mode}
+                  onValueChange={setMode}
+                  size='sm'
+                  className='border border-primary-200 bg-background/30'>
+                  <RadioTabItem value='mail' size='sm'>
+                    <MailIcon />
+                    Mail
+                  </RadioTabItem>
+                  <RadioTabItem value='actions' size='sm'>
+                    <Play />
+                    Actions
+                  </RadioTabItem>
+                </RadioTab>
               </div>
             </div>
-            {mode === 'actions' ? (
-              // Actions mode: Show proposed actions view
-              <div className='h-full flex-1 bg-secondary dark:bg-primary-100'></div>
-            ) : // Mail mode: Show regular mail interface
-            isSmallScreen ? (
-              // Mobile: Single panel view based on URL state
-              <div className='h-full flex-1 bg-secondary dark:bg-primary-100'>
-                {selectedThreadId ? (
-                  // Detail view: Show ThreadDisplay with back button
-                  <div className='h-full flex flex-col'>
-                    <MobileThreadHeader onBack={handleBackToList} />
-                    <div className='flex-1 overflow-hidden'>
-                      <ThreadDisplay />
-                    </div>
+          </div>
+          {mode === 'actions' ? (
+            // Actions mode: Show proposed actions view
+            <div className='h-full flex-1 bg-secondary dark:bg-primary-100'></div>
+          ) : // Mail mode: Show regular mail interface
+          isSmallScreen ? (
+            // Mobile: Single panel view based on URL state
+            <div className='h-full flex-1 bg-secondary dark:bg-primary-100'>
+              {selectedThreadId ? (
+                // Detail view: Show ThreadDisplay with back button
+                <div className='h-full flex flex-col'>
+                  <MobileThreadHeader onBack={handleBackToList} />
+                  <div className='flex-1 overflow-hidden'>
+                    <ThreadDisplay />
                   </div>
-                ) : (
-                  // List view: Show ThreadList
-                  <div className='h-full overflow-hidden'>
+                </div>
+              ) : (
+                // List view: Show ThreadList
+                <div className='h-full overflow-hidden'>
+                  <ThreadList
+                    filter={threadFilterForHook}
+                    basePath={basePathForList}
+                    selectedThreadId={selectedThreadId}
+                    onLoadingChange={setIsListLoading}
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            // Desktop: Keep existing ResizablePanelGroup
+            <ResizablePanelGroup
+              id='mail-layout'
+              direction='horizontal'
+              // Ensure the group fills the available height and prevents internal overflow issues
+              className='h-full  flex-1 grow overflow-hidden bg-secondary dark:bg-muted-50'>
+              {/* Left Panel: Contains Tabs (if applicable), Search, and ThreadList */}
+              <ResizablePanel
+                id='mail-thread-list'
+                defaultSize={defaultLayout[0]}
+                // minSize={20} // Minimum width for the list panel
+                // maxSize={40} // Maximum width for the list panel
+                collapsible={true}
+                className='flex flex-col overflow-y-hidden! border-none'>
+                <div className='flex flex-1 flex-col items-stretch h-full'>
+                  <div className=' overflow-hidden flex-1 min-h-0'>
                     <ThreadList
-                      filter={threadFilterForHook}
+                      filter={threadFilterForHook} // Filter uses deferred search query
                       basePath={basePathForList}
                       selectedThreadId={selectedThreadId}
+                      // Callback to receive loading state changes from ThreadList
                       onLoadingChange={setIsListLoading}
                     />
                   </div>
-                )}
-              </div>
-            ) : (
-              // Desktop: Keep existing ResizablePanelGroup
-              <ResizablePanelGroup
-                id='mail-layout'
-                direction='horizontal'
-                // Ensure the group fills the available height and prevents internal overflow issues
-                className='h-full  flex-1 grow overflow-hidden bg-secondary dark:bg-muted-50'>
-                {/* Left Panel: Contains Tabs (if applicable), Search, and ThreadList */}
-                <ResizablePanel
-                  id='mail-thread-list'
-                  defaultSize={defaultLayout[0]}
-                  // minSize={20} // Minimum width for the list panel
-                  // maxSize={40} // Maximum width for the list panel
-                  collapsible={true}
-                  className='flex flex-col overflow-y-hidden! border-none'>
-                  <div className='flex flex-1 flex-col items-stretch h-full'>
-                    <div className=' overflow-hidden flex-1 min-h-0'>
-                      <ThreadList
-                        filter={threadFilterForHook} // Filter uses deferred search query
-                        basePath={basePathForList}
-                        selectedThreadId={selectedThreadId}
-                        // Callback to receive loading state changes from ThreadList
-                        onLoadingChange={setIsListLoading}
-                      />
-                    </div>
-                  </div>
-                </ResizablePanel>
+                </div>
+              </ResizablePanel>
 
-                <ResizableHandle withHandle />
+              <ResizableHandle withHandle />
 
-                {/* Right Panel: Displays the selected thread details */}
-                <ResizablePanel
-                  id='mail-thread-display'
-                  defaultSize={defaultLayout[1]}
-                  minSize={30}
-                  collapsible>
-                  <ThreadDisplay />
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            )}
-          </MainPageContent>
-        </MainPage>
+              {/* Right Panel: Displays the selected thread details */}
+              <ResizablePanel
+                id='mail-thread-display'
+                defaultSize={defaultLayout[1]}
+                minSize={30}
+                collapsible>
+                <ThreadDisplay />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          )}
+        </MainPageContent>
+      </MainPage>
 
-        {/* Overlay contact drawer when NOT docked */}
-        {!isDocked && (
-          <ContactDrawer
-            contactId={contactId}
-            open={isContactDrawerOpen}
-            onOpenChange={handleContactDrawerClose}
-          />
-        )}
-      </KeyboardProvider>
+      {/* Overlay contact drawer when NOT docked */}
+      {!isDocked && (
+        <ContactDrawer
+          contactId={contactId}
+          open={isContactDrawerOpen}
+          onOpenChange={handleContactDrawerClose}
+        />
+      )}
     </MailFilterProvider>
   )
 }

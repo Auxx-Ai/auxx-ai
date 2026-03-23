@@ -4,6 +4,7 @@ import { type Action, useRegisterActions } from 'kbar'
 import { useRouter } from 'next/navigation'
 import React from 'react'
 import { useUser } from '~/hooks/use-user'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 /**
  * useKbarSettings hook
@@ -29,11 +30,10 @@ const useKbarSettings = () => {
   const settingsActions = [
     {
       id: 'goToSettings',
-
       name: 'Settings',
       subtitle: 'View your settings',
+      icon: 'settings',
       shortcut: ['s', 'g'],
-      // shortcut: ['s'],
       section: 'Navigation',
       perform: () => goToSetting('/general'),
     },
@@ -41,7 +41,7 @@ const useKbarSettings = () => {
     {
       id: 'goToGeneralSettings',
       name: 'General Settings',
-      // shortcut: ['s', 'g'],
+      icon: 'settings',
       section: 'Settings',
       parent: 'goToSettings',
       perform: () => goToSetting('/general'),
@@ -49,53 +49,42 @@ const useKbarSettings = () => {
     {
       id: 'goToOrganizationSettings',
       name: 'Organization Settings',
+      icon: 'building',
       shortcut: ['s', 'o'],
       keywords: 'organization',
       section: 'Settings',
       parent: 'goToSettings',
-
       perform: () => goToSetting('/organization'),
     },
     {
       id: 'goToSnippetsSettings',
       name: 'Snippets Settings',
+      icon: 'braces',
       shortcut: ['s', 'n'],
       keywords: 'snippets',
       section: 'Settings',
       parent: 'goToSettings',
-
       perform: () => goToSetting('/snippets'),
     },
     {
       id: 'goToSignaturesSettings',
       name: 'Signatures Settings',
+      icon: 'pen-tool',
       shortcut: ['s', 's'],
       keywords: 'signatures',
       section: 'Settings',
       parent: 'goToSettings',
-
       perform: () => goToSetting('/signatures'),
     },
     {
       id: 'goToSignaturesCreate',
       name: 'Create Signature',
+      icon: 'plus',
       shortcut: ['s', 's', 'c'],
       keywords: 'signatures',
       section: 'Signatures',
       parent: 'goToSettings',
-
       perform: () => goToSetting('/signatures/new'),
-    },
-
-    {
-      id: 'goToApiKeysSettings',
-      name: 'API Keys Settings',
-      shortcut: ['s', 'k'],
-      keywords: 'api, keys',
-      section: 'Settings',
-      parent: 'goToSettings',
-
-      perform: () => goToSetting('/apiKeys'),
     },
   ]
 
@@ -118,123 +107,160 @@ export default useKbarSettings
 export const useKbarAdminSettings = () => {
   const router = useRouter()
   const data = useUser()
-  /**
-   * Navigates to a specific settings page.
-   * @param page - The settings page path.
-   */
+  const { hasAccess } = useFeatureFlags()
+
   const goToSetting = (page: string) => {
     router.push(`/app/settings${page}`)
   }
-  // Admin-only settings actions
-  const adminSettingsActions: Action[] = [
-    {
-      id: 'goToChannelsSettings',
-      name: 'Channels',
-      shortcut: ['s', 'i'],
-      keywords: 'channels',
-      section: 'Settings',
-      parent: 'goToSettings',
 
-      perform: () => goToSetting('/channels'),
-    },
-    {
-      id: 'goToWebhooksSettings',
-      name: 'Webhooks',
-      shortcut: ['s', 'w'],
-      keywords: 'webhooks',
-      section: 'Settings',
-      parent: 'goToSettings',
+  // biome-ignore lint/correctness/useExhaustiveDependencies: adminSettingsActions built from stable refs
+  const actions = React.useMemo(() => {
+    if (!data?.isAdminOrOwner) return []
 
-      perform: () => goToSetting('/webhooks'),
-    },
-    {
-      id: 'goToShopifySettings',
-      name: 'Shopify',
-      shortcut: ['s', 'h'],
-      keywords: 'shopify',
-      section: 'Settings',
-      parent: 'goToSettings',
-      perform: () => goToSetting('/shopify'),
-    },
-    {
-      id: 'goToMembersSettings',
-      name: 'Members',
-      shortcut: ['s', 'm'],
-      keywords: 'members, users',
-      section: 'Settings',
-      parent: 'goToSettings',
-      perform: () => goToSetting('/members'),
-    },
-    {
-      id: 'goToGroupsSettings',
-      name: 'Groups',
-      shortcut: ['s', 'r'],
-      keywords: 'groups, users',
-      section: 'Settings',
-      parent: 'goToSettings',
-      perform: () => goToSetting('/groups'),
-    },
-    {
-      id: 'goToInboxSettings',
-      name: 'Inbox',
-      shortcut: ['s', 'b'],
-      keywords: 'inbox, messages',
-      section: 'Settings',
-      parent: 'goToSettings',
-      perform: () => goToSetting('/inbox'),
-    },
-    {
-      id: 'goToAppearanceSettings',
-      name: 'Appearance',
-      shortcut: ['s', 'l'],
-      keywords: 'appearance, theme',
-      section: 'Settings',
-      parent: 'goToSettings',
-      perform: () => goToSetting('/appearance'),
-    },
-    {
-      id: 'goToAiModelsSettings',
-      name: 'AI Models',
-      shortcut: ['s', 'a'],
-      keywords: 'ai, models, openai, gemini, deepseek, chatgpt, claude',
-      section: 'Settings',
-      parent: 'goToSettings',
-      perform: () => goToSetting('/aiModels'),
-    },
-    {
-      id: 'goToCustomFieldsSettings',
-      name: 'Custom Fields',
-      shortcut: ['s', 'c'],
-      keywords: 'custom, fields',
-      section: 'Settings',
-      parent: 'goToSettings',
-      perform: () => goToSetting('/custom-fields'),
-    },
-    {
-      id: 'goToTagsSettings',
-      name: 'Tags',
-      shortcut: ['s', 't'],
-      keywords: 'tags',
-      section: 'Settings',
-      parent: 'goToSettings',
-      perform: () => goToSetting('/tags'),
-    },
-    {
-      id: 'goToBillingSettings',
-      name: 'Billing',
-      shortcut: ['s', 'b'],
-      keywords: 'billing, plans',
-      section: 'Settings',
-      parent: 'goToSettings',
+    const result: Action[] = [
+      {
+        id: 'goToChannelsSettings',
+        name: 'Channels',
+        icon: 'inbox',
+        shortcut: ['s', 'i'],
+        keywords: 'channels',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/channels'),
+      },
+      {
+        id: 'goToMembersSettings',
+        name: 'Members',
+        icon: 'users',
+        shortcut: ['s', 'm'],
+        keywords: 'members, users',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/members'),
+      },
+      {
+        id: 'goToGroupsSettings',
+        name: 'Groups',
+        icon: 'layers',
+        shortcut: ['s', 'r'],
+        keywords: 'groups, users',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/groups'),
+      },
+      {
+        id: 'goToInboxSettings',
+        name: 'Inbox',
+        icon: 'inbox',
+        shortcut: ['s', 'b'],
+        keywords: 'inbox, messages',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/inbox'),
+      },
+      {
+        id: 'goToAppearanceSettings',
+        name: 'Appearance',
+        icon: 'sun',
+        shortcut: ['s', 'l'],
+        keywords: 'appearance, theme',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/appearance'),
+      },
+      {
+        id: 'goToAiModelsSettings',
+        name: 'AI Models',
+        icon: 'sparkles',
+        shortcut: ['s', 'a'],
+        keywords: 'ai, models, openai, gemini, deepseek, chatgpt, claude',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/aiModels'),
+      },
+      {
+        id: 'goToCustomFieldsSettings',
+        name: 'Custom Fields',
+        icon: 'text-cursor-input',
+        shortcut: ['s', 'c'],
+        keywords: 'custom, fields',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/custom-fields'),
+      },
+      {
+        id: 'goToTagsSettings',
+        name: 'Tags',
+        icon: 'tag',
+        shortcut: ['s', 't'],
+        keywords: 'tags',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/tags'),
+      },
+      {
+        id: 'goToBillingSettings',
+        name: 'Billing',
+        icon: 'credit-card',
+        shortcut: ['s', 'b'],
+        keywords: 'billing, plans',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/plans'),
+      },
+      {
+        id: 'goToAppsSettings',
+        name: 'Apps',
+        icon: 'boxes',
+        shortcut: ['s', 'p'],
+        keywords: 'apps, marketplace, integrations',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/apps'),
+      },
+    ]
 
-      perform: () => goToSetting('/plans'),
-    },
-  ]
-  // Only register actions if user is admin or owner
-  // biome-ignore lint/correctness/useExhaustiveDependencies: adminSettingsActions is a static array defined inline
-  const actions = React.useMemo(
-    () => (data?.isAdminOrOwner ? adminSettingsActions : []),
-    [data?.isAdminOrOwner]
-  )
-  useRegisterActions(actions, [data])
+    if (hasAccess('webhooks')) {
+      result.push({
+        id: 'goToWebhooksSettings',
+        name: 'Webhooks',
+        icon: 'webhook',
+        shortcut: ['s', 'w'],
+        keywords: 'webhooks',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/webhooks'),
+      })
+    }
+
+    if (hasAccess('apiAccess')) {
+      result.push({
+        id: 'goToApiKeysSettings',
+        name: 'API Keys Settings',
+        icon: 'key',
+        shortcut: ['s', 'k'],
+        keywords: 'api, keys',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/apiKeys'),
+      })
+    }
+
+    if (hasAccess('shopify')) {
+      result.push({
+        id: 'goToShopifySettings',
+        name: 'Shopify',
+        icon: 'shopping-cart',
+        shortcut: ['s', 'h'],
+        keywords: 'shopify',
+        section: 'Settings',
+        parent: 'goToSettings',
+        perform: () => goToSetting('/shopify'),
+      })
+    }
+
+    return result
+  }, [data?.isAdminOrOwner, hasAccess])
+
+  useRegisterActions(actions, [actions])
 }
