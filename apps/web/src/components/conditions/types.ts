@@ -199,7 +199,7 @@ export interface ValueInputProps {
   condition: Condition
   field: FieldDefinition
   value: any
-  onChange: (value: any, isConstantMode?: boolean) => void
+  onChange: (value: any, isConstantMode?: boolean, metadata?: Record<string, any>) => void
   disabled?: boolean
   placeholder?: string
   className?: string

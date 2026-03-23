@@ -128,14 +128,17 @@ const ConditionItem = ({
   )
 
   const handleValueChange = useCallback(
-    (value: any, isConstantMode?: boolean) => {
+    (value: any, isConstantMode?: boolean, metadata?: Record<string, any>) => {
       const updates: any = { value }
       if (isConstantMode !== undefined) {
         updates.isConstant = isConstantMode
       }
+      if (metadata) {
+        updates.metadata = { ...condition.metadata, ...metadata }
+      }
       handleUpdate(updates)
     },
-    [handleUpdate]
+    [handleUpdate, condition.metadata]
   )
 
   /** Value input block — placed inline or stacked depending on config.display */

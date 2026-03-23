@@ -3,11 +3,9 @@
 'use client'
 
 import { BaseType, InputMode, resolveInputConfig } from '@auxx/lib/workflow-engine/client'
-import { Button } from '@auxx/ui/components/button'
-import { cn } from '@auxx/ui/lib/utils'
-import { Plus, Trash2 } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
+import { VarEditorArray } from '~/components/workflow/ui/input-editor/var-editor-array'
 import { useConditionContext } from '../condition-context'
 import type { Condition, FieldDefinition } from '../types'
 
@@ -23,8 +21,8 @@ interface VariableInputProps {
   value: unknown
   /** Node ID for variable context */
   nodeId: string
-  /** Callback when value changes, with optional constant mode flag */
-  onChange: (value: unknown, isConstantMode?: boolean) => void
+  /** Callback when value changes, with optional constant mode flag and metadata */
+  onChange: (value: unknown, isConstantMode?: boolean, metadata?: Record<string, any>) => void
   /** Whether input is disabled */
   disabled?: boolean
   /** Custom placeholder */
@@ -105,18 +103,23 @@ export function VariableInput({
 
   // Multiple value mode for "in" / "not in" operators
   if (inputConfig.mode === InputMode.MULTIPLE) {
+    const arrayValue = Array.isArray(value) ? value.map(String) : value ? [String(value)] : []
+    const valueModes = condition.metadata?.valueModes as boolean[] | undefined
+
     return (
-      <MultipleVarEditor
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        placeholder={placeholderText}
-        className={className}
-        nodeId={nodeId}
+      <VarEditorArray
+        value={arrayValue}
+        onChange={(values, modes) => {
+          onChange(values, undefined, { valueModes: modes })
+        }}
+        modes={valueModes}
         varType={varType}
-        allowedTypes={allowedTypes}
-        fieldOptions={fieldOptions}
+        nodeId={nodeId}
+        disabled={disabled}
         allowConstant={config.allowConstantToggle}
+        placeholder={placeholderText}
+        placeholderConstant={`Enter ${field.label?.toLowerCase() || 'value'}`}
+        fieldOptions={fieldOptions}
       />
     )
   }
@@ -144,109 +147,5 @@ export function VariableInput({
       fieldOptions={fieldOptions}
       allowedTypes={allowedTypes}
     />
-  )
-}
-
-/**
- * Props for MultipleVarEditor sub-component
- */
-interface MultipleVarEditorProps {
-  value: unknown
-  onChange: (value: unknown, isConstantMode?: boolean) => void
-  disabled: boolean
-  placeholder: string
-  className?: string
-  nodeId: string
-  varType: BaseType
-  allowedTypes: (BaseType | string)[]
-  fieldOptions?: { enum?: Array<{ label: string; value: string }>; fieldReference?: string }
-  allowConstant?: boolean
-}
-
-/**
- * Renders multiple VarEditor instances for "in" / "not in" operators
- */
-function MultipleVarEditor({
-  value,
-  onChange,
-  disabled,
-  placeholder,
-  className,
-  nodeId,
-  varType,
-  allowedTypes,
-  fieldOptions,
-  allowConstant,
-}: MultipleVarEditorProps) {
-  // Normalize value to array
-  const values = useMemo(() => {
-    if (Array.isArray(value)) {
-      return value.length > 0 ? value : ['']
-    }
-    if (typeof value === 'string' && value) return [value]
-    return ['']
-  }, [value])
-
-  const handleAddValue = useCallback(() => {
-    onChange([...values, ''])
-  }, [values, onChange])
-
-  const handleUpdateValue = useCallback(
-    (index: number, newValue: unknown, isConstantMode?: boolean) => {
-      const updated = [...values]
-      updated[index] = newValue
-      onChange(updated, isConstantMode)
-    },
-    [values, onChange]
-  )
-
-  const handleRemoveValue = useCallback(
-    (index: number) => {
-      const updated = values.filter((_, i) => i !== index)
-      onChange(updated)
-    },
-    [values, onChange]
-  )
-
-  return (
-    <div className={cn('flex flex-col gap-1', className)}>
-      {values.map((val, index) => (
-        <div key={index} className='flex items-center gap-1'>
-          <VarEditor
-            value={val}
-            onChange={(newValue, isConstantMode) =>
-              handleUpdateValue(index, newValue, isConstantMode)
-            }
-            onBlur={(newValue) => handleUpdateValue(index, newValue)}
-            nodeId={nodeId}
-            placeholder={placeholder || `Value ${index + 1}`}
-            disabled={disabled}
-            varType={varType}
-            className='flex-1'
-            allowConstant={allowConstant}
-            defaultIsConstantMode={true}
-            fieldOptions={fieldOptions}
-            allowedTypes={allowedTypes}
-          />
-          <Button
-            variant='destructive-hover'
-            className='rounded-lg'
-            size='icon-xs'
-            onClick={() => handleRemoveValue(index)}
-            disabled={disabled || values.length === 1}>
-            <Trash2 />
-          </Button>
-        </div>
-      ))}
-      <Button
-        variant='outline'
-        size='xs'
-        onClick={handleAddValue}
-        disabled={disabled}
-        className='w-fit'>
-        <Plus />
-        Add Value
-      </Button>
-    </div>
   )
 }

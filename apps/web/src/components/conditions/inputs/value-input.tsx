@@ -50,7 +50,7 @@ const ValueInput = ({
       field={field}
       value={value}
       nodeId={nodeId}
-      onChange={onChange}
+      onChange={(val, isConstantMode, metadata) => onChange(val, isConstantMode, metadata)}
       disabled={disabled}
       placeholder={placeholder}
       className={className}

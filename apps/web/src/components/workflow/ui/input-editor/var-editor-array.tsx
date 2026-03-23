@@ -39,6 +39,8 @@ interface VarEditorArrayProps {
   placeholderConstant?: string
   /** Current constant modes for each item */
   modes?: boolean[]
+  /** Field options passed through to VarEditor (e.g., enum options, fieldReference) */
+  fieldOptions?: Record<string, any>
 }
 
 /**
@@ -124,6 +126,7 @@ function ArrayItemRow({
   allowVariable,
   placeholder,
   placeholderConstant,
+  fieldOptions,
   onChange,
   onRemove,
 }: {
@@ -136,6 +139,7 @@ function ArrayItemRow({
   allowVariable?: boolean
   placeholder?: string
   placeholderConstant?: string
+  fieldOptions?: Record<string, any>
   onChange: (value: string, isConstant: boolean) => void
   onRemove: () => void
 }) {
@@ -153,6 +157,8 @@ function ArrayItemRow({
           isConstantMode={mode}
           placeholder={placeholder}
           placeholderConstant={placeholderConstant}
+          fieldOptions={fieldOptions}
+          hideClearButton
         />
       </div>
 
@@ -188,6 +194,7 @@ export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
   placeholder = 'Enter value or use variables',
   placeholderConstant = 'Enter value',
   modes: externalModes,
+  fieldOptions,
 }) => {
   const [open, setOpen] = useState(false)
 
@@ -222,9 +229,13 @@ export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
     }
   }
 
-  // Handle popover open/close — commit on close
+  // Handle popover open/close — auto-fill one item on open if empty, commit on close
   const handleOpenChange = useCallback(
     (isOpen: boolean) => {
+      if (isOpen && localValuesRef.current.length === 0) {
+        setLocalValues([''])
+        setLocalModes([false])
+      }
       if (!isOpen) {
         onChange(localValuesRef.current, localModesRef.current)
       }
@@ -328,6 +339,7 @@ export const VarEditorArray: React.FC<VarEditorArrayProps> = ({
                   allowVariable={allowVariable}
                   placeholder={placeholder}
                   placeholderConstant={placeholderConstant}
+                  fieldOptions={fieldOptions}
                   onChange={(v, isConstant) => handleItemChange(index, v, isConstant)}
                   onRemove={() => handleRemoveItem(index)}
                 />

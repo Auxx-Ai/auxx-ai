@@ -63,7 +63,7 @@ export const EnumInput = createNodeInput<EnumInputProps>(
 
     // Normalize options to EnumOption format and filter out empty values
     // (Radix Select reserves empty string for "no selection" state)
-    const normalizedOptions: EnumOption[] = options
+    const normalizedOptions: EnumOption[] = (options || [])
       .map((opt) => (typeof opt === 'string' ? { value: opt, label: opt } : opt))
       .filter((opt) => opt.value !== '')
     const placeholderText = placeholder || 'Select an option'

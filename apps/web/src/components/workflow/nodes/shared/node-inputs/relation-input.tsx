@@ -74,8 +74,8 @@ export const RelationInput = createNodeInput<RelationInputProps>(
         return fieldReference
       }
 
-      // Lookup field to get relationship target
-      const field = fields.find((f) => f.key === fieldKey)
+      // Lookup field to get relationship target (fieldKey may be a key or an id)
+      const field = fields.find((f) => f.key === fieldKey || f.id === fieldKey)
       return field?.relationship
         ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
         : null

@@ -730,7 +730,7 @@ export class FindProcessor extends BaseNodeProcessor {
     // Build base query with organization and entity filters
     const baseWhere = (instances: any, { eq, and, isNull }: any) => {
       const baseConditions = [
-        eq(instances.entityDefinitionId, entityDef.id),
+        eq(instances.entityDefinitionId, entityDefinitionId),
         eq(instances.organizationId, organizationId),
         isNull(instances.archivedAt),
       ]
