@@ -714,7 +714,7 @@ export class CommentService {
       // Get the comment first to check permissions
       const comment = await this.db.query.Comment.findFirst({
         where: eq(schema.Comment.id, commentId),
-        columns: { entityId: true, entityType: true, createdById: true },
+        columns: { entityId: true, entityDefinitionId: true, createdById: true },
       })
       if (!comment) {
         throw new Error('Comment not found')

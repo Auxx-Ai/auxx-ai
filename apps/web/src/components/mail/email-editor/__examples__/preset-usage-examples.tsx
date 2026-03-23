@@ -1,16 +1,18 @@
 // apps/web/src/components/mail/email-editor/__examples__/preset-usage-examples.tsx
 /**
- * Examples of how to use the preset values feature in ReplyComposeEditor and NewMessageDialog
+ * Examples of how to use the preset values feature with useCompose hook
  */
 'use client'
 import { Button } from '@auxx/ui/components/button'
-import NewMessageDialog from '../new-message-dialog'
+import { useCompose } from '~/hooks/use-compose'
 import type { EditorPresetValues } from '../types'
 
 /**
  * Example 1: Preset TO recipient (Reply to Contact)
  */
 export const PresetToRecipientExample = () => {
+  const { openCompose } = useCompose()
+
   const presetValues: EditorPresetValues = {
     to: [
       {
@@ -22,19 +24,15 @@ export const PresetToRecipientExample = () => {
     ],
   }
 
-  return (
-    <NewMessageDialog
-      trigger={<Button>Email Contact</Button>}
-      presetValues={presetValues}
-      onSendSuccess={() => console.log('Message sent!')}
-    />
-  )
+  return <Button onClick={() => openCompose({ presetValues })}>Email Contact</Button>
 }
 
 /**
  * Example 2: Preset multiple recipients with CC/BCC
  */
 export const PresetMultipleRecipientsExample = () => {
+  const { openCompose } = useCompose()
+
   const presetValues: EditorPresetValues = {
     to: [
       {
@@ -62,19 +60,15 @@ export const PresetMultipleRecipientsExample = () => {
     ],
   }
 
-  return (
-    <NewMessageDialog
-      trigger={<Button>Email with CC/BCC</Button>}
-      presetValues={presetValues}
-      onSendSuccess={() => console.log('Message sent!')}
-    />
-  )
+  return <Button onClick={() => openCompose({ presetValues })}>Email with CC/BCC</Button>
 }
 
 /**
  * Example 3: Preset subject and content (Template)
  */
 export const PresetTemplateExample = () => {
+  const { openCompose } = useCompose()
+
   const presetValues: EditorPresetValues = {
     subject: 'Order Confirmation #12345',
     contentHtml: `
@@ -85,38 +79,30 @@ export const PresetTemplateExample = () => {
     `,
   }
 
-  return (
-    <NewMessageDialog
-      trigger={<Button>Use Template</Button>}
-      presetValues={presetValues}
-      onSendSuccess={() => console.log('Message sent!')}
-    />
-  )
+  return <Button onClick={() => openCompose({ presetValues })}>Use Template</Button>
 }
 
 /**
  * Example 4: Preset sender integration and signature
  */
 export const PresetSenderExample = () => {
+  const { openCompose } = useCompose()
+
   const presetValues: EditorPresetValues = {
     integrationId: 'integration-support-email',
     signatureId: 'signature-professional',
     subject: 'Support Response',
   }
 
-  return (
-    <NewMessageDialog
-      trigger={<Button>Reply from Support</Button>}
-      presetValues={presetValues}
-      onSendSuccess={() => console.log('Message sent!')}
-    />
-  )
+  return <Button onClick={() => openCompose({ presetValues })}>Reply from Support</Button>
 }
 
 /**
  * Example 5: Complete preset (all fields)
  */
 export const CompletePresetExample = () => {
+  const { openCompose } = useCompose()
+
   const presetValues: EditorPresetValues = {
     to: [
       {
@@ -144,19 +130,15 @@ export const CompletePresetExample = () => {
     signatureId: 'signature-sales-team',
   }
 
-  return (
-    <NewMessageDialog
-      trigger={<Button>Complete Preset Example</Button>}
-      presetValues={presetValues}
-      onSendSuccess={() => console.log('Message sent!')}
-    />
-  )
+  return <Button onClick={() => openCompose({ presetValues })}>Complete Preset Example</Button>
 }
 
 /**
  * Example 6: Preset with attachments (must reference existing files)
  */
 export const PresetWithAttachmentsExample = () => {
+  const { openCompose } = useCompose()
+
   const presetValues: EditorPresetValues = {
     to: [
       {
@@ -170,14 +152,14 @@ export const PresetWithAttachmentsExample = () => {
     contentHtml: '<p>Please find the requested documents attached.</p>',
     attachments: [
       {
-        id: 'file-123', // Must be an existing file ID
+        id: 'file-123',
         name: 'invoice.pdf',
         size: 50000,
         mimeType: 'application/pdf',
         type: 'file',
       },
       {
-        id: 'asset-456', // Must be an existing asset ID
+        id: 'asset-456',
         name: 'product-catalog.pdf',
         size: 120000,
         mimeType: 'application/pdf',
@@ -186,13 +168,7 @@ export const PresetWithAttachmentsExample = () => {
     ],
   }
 
-  return (
-    <NewMessageDialog
-      trigger={<Button>Send with Attachments</Button>}
-      presetValues={presetValues}
-      onSendSuccess={() => console.log('Message sent!')}
-    />
-  )
+  return <Button onClick={() => openCompose({ presetValues })}>Send with Attachments</Button>
 }
 
 /**
@@ -207,6 +183,8 @@ export const DynamicPresetExample = ({
   contactName: string
   orderId: string
 }) => {
+  const { openCompose } = useCompose()
+
   const presetValues: EditorPresetValues = {
     to: [
       {
@@ -224,42 +202,27 @@ export const DynamicPresetExample = ({
     `,
   }
 
-  return (
-    <NewMessageDialog
-      trigger={<Button>Send Order Update</Button>}
-      presetValues={presetValues}
-      onSendSuccess={() => console.log('Message sent!')}
-    />
-  )
+  return <Button onClick={() => openCompose({ presetValues })}>Send Order Update</Button>
 }
 
 /**
  * Example 8: Empty preset values (default behavior)
  */
 export const NoPresetExample = () => {
-  return (
-    <NewMessageDialog
-      trigger={<Button>Compose New</Button>}
-      // No presetValues - uses default empty state
-      onSendSuccess={() => console.log('Message sent!')}
-    />
-  )
+  const { openCompose } = useCompose()
+
+  return <Button onClick={() => openCompose()}>Compose New</Button>
 }
 
 /**
  * Example 9: Partial preset (only some fields)
  */
 export const PartialPresetExample = () => {
+  const { openCompose } = useCompose()
+
   const presetValues: EditorPresetValues = {
-    // Only preset the subject, leave everything else empty
     subject: 'Quick question',
   }
 
-  return (
-    <NewMessageDialog
-      trigger={<Button>Quick Question</Button>}
-      presetValues={presetValues}
-      onSendSuccess={() => console.log('Message sent!')}
-    />
-  )
+  return <Button onClick={() => openCompose({ presetValues })}>Quick Question</Button>
 }

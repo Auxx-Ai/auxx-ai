@@ -11,6 +11,7 @@ import { FilesystemProvider } from '~/components/files/provider/filesystem-provi
 import { Dashboard } from '~/components/global/dashboard'
 import KBar from '~/components/kbar'
 import { SimpleLayout } from '~/components/layouts/simple-layout'
+import { FloatingComposeRoot } from '~/components/mail/email-editor/floating-compose-root'
 import { ResourceProvider } from '~/components/resources'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
 import { ThreadDataProvider } from '~/components/threads'
@@ -77,6 +78,7 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
                 <KBar>
                   <TooltipProvider>
                     <Dashboard user={user}>{children}</Dashboard>
+                    <FloatingComposeRoot />
                   </TooltipProvider>
                 </KBar>
               </ThreadDataProvider>

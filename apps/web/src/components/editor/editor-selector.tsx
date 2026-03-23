@@ -18,6 +18,8 @@ type EditorSelectorProps = {
   placeholder?: string
   placeholderIcon?: React.ReactNode
   className?: string
+  /** className forwarded to SelectContent (e.g. for z-index override) */
+  contentClassName?: string
   disabled?: boolean
 }
 
@@ -29,6 +31,7 @@ const EditorSelector = ({
   placeholder = 'Select...',
   placeholderIcon,
   className = '',
+  contentClassName,
   disabled = false,
 }: EditorSelectorProps) => {
   // Try to get active state context if available
@@ -66,7 +69,7 @@ const EditorSelector = ({
           }
         />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className={contentClassName}>
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
             {option.label}

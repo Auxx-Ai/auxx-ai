@@ -25,7 +25,6 @@ import {
 } from 'react'
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { EmptyState } from '~/components/global/empty-state'
-import NewMessageDialog from '~/components/mail/email-editor/new-message-dialog'
 import {
   MailFilterProvider,
   type SortDirection,
@@ -46,6 +45,7 @@ import {
   useThreadSelectionStore,
   useViewMode,
 } from '~/components/threads'
+import { useCompose } from '~/hooks/use-compose'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
@@ -148,6 +148,7 @@ function MailboxInner({
   initialStatusSlug = 'open',
   initialSearchQuery = '',
 }: MailboxProps) {
+  const { openCompose } = useCompose()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -361,13 +362,13 @@ function MailboxInner({
         <MainPage loading={true}>
           <MainPageHeader
             action={
-              <NewMessageDialog
-                trigger={
-                  <Button variant='info' size='sm' className='h-7 rounded-lg'>
-                    Compose
-                  </Button>
-                }
-              />
+              <Button
+                variant='info'
+                size='sm'
+                className='h-7 rounded-lg'
+                onClick={() => openCompose()}>
+                Compose
+              </Button>
             }>
             <MainPageBreadcrumb>
               <MainPageBreadcrumbItem title='Mail' href='/app/mail' />

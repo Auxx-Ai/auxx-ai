@@ -110,7 +110,7 @@ export const Tooltip = ({
         sideOffset={sideOffset}
         side={side}
         align={align}
-        className={className}
+        className={cn('z-[200]', className)}
         variant={variant}
         onPointerDownOutside={handlePointerDownOutside}>
         {contentComponent || (

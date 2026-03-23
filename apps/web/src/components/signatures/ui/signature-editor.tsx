@@ -16,6 +16,8 @@ interface SignatureEditorProps {
   selectedSignatureId: string | null
   onSignatureChange: (signatureId: string | null) => void
   disabled?: boolean
+  /** className forwarded to the signature picker's PopoverContent (e.g. for z-index override) */
+  className?: string
 }
 
 /**
@@ -25,6 +27,7 @@ function SignatureEditor({
   selectedSignatureId,
   onSignatureChange,
   disabled = false,
+  className,
 }: SignatureEditorProps) {
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const { trackPopoverOpen, trackPopoverClose } = useEditorActiveStateContext()
@@ -94,7 +97,8 @@ function SignatureEditor({
           open={isPickerOpen}
           onOpenChange={setIsPickerOpen}
           disabled={disabled}
-          align='start'>
+          align='start'
+          className={className}>
           <Button
             variant='ghost'
             size='xs'
@@ -127,7 +131,8 @@ function SignatureEditor({
             open={isPickerOpen}
             onOpenChange={setIsPickerOpen}
             disabled={disabled}
-            align='end'>
+            align='end'
+            className={className}>
             <button
               title='Change signature'
               className='flex size-5 items-center justify-center rounded-full bg-foreground/30 text-xs text-background hover:bg-foreground/50 disabled:cursor-not-allowed disabled:opacity-50'

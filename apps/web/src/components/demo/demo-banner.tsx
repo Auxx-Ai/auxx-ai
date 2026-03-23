@@ -48,8 +48,8 @@ export function DemoBanner() {
   if (remaining === 'expired') return null
 
   return (
-    <div className='relative z-50 px-3 pt-2  bg-neutral-100 dark:bg-primary-100'>
-      <div className='h-10 relative rounded-2xl ring-info/20 ring-1 flex items-center justify-center gap-3 bg-blue-100 dark:bg-blue-600/10 px-4 py-2 text-sm text-info '>
+    <div className='relative z-10 '>
+      <div className='h-10 relative flex items-center justify-center gap-3 bg-blue-100 dark:bg-blue-600/10 px-4 py-2 text-sm text-info '>
         <span className='font-medium'>You're exploring a demo</span>
         <span className='text-blue-200'>·</span>
         <span className='tabular-nums'>{remaining} remaining</span>
@@ -71,6 +71,7 @@ export function DemoBanner() {
           <X />
         </Button>
       </div>
+      <div className='pointer-events-none absolute bottom-0 inset-x-0 z-20 h-2 shrink-0 border-b border-black/20 bg-gradient-to-t from-black/10 to-transparent transition-opacity duration-300' />
     </div>
   )
 }
