@@ -805,6 +805,18 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       )`
     }
 
+    // Handle 'empty' for option/relationship fields — no FieldValue row means empty.
+    // These field types store values as separate rows (optionId, relatedEntityId),
+    // so "empty" = no row exists, not "row exists with null value".
+    const columnName = this.getTypedColumnName(dbFieldType)
+    if (operator === 'empty' && (columnName === 'optionId' || columnName === 'relatedEntityId')) {
+      return sql`NOT EXISTS (
+        SELECT 1 FROM "FieldValue"
+        WHERE "FieldValue"."entityId" = ${outerTableId}
+          AND "FieldValue"."fieldId" = ${fieldId}
+      )`
+    }
+
     // Build value condition for other operators
     const valueCondition = this.buildTypedValueCondition(operator, rawValue, dbFieldType)
     if (!valueCondition) return undefined

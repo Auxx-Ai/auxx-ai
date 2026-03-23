@@ -2,6 +2,7 @@
 
 import type { FieldType } from '@auxx/database/types'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import type { BaseType } from '@auxx/lib/workflow-engine/client'
 import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { NavigationItem } from '@auxx/ui/components/command'
 import type React from 'react'
@@ -79,6 +80,10 @@ export interface FieldPickerNavigationItem extends NavigationItem {
   resourceFieldId: ResourceFieldId
   /** Target entity we navigated into */
   targetEntityDefinitionId: string
+  /** BaseType of the relationship field (e.g., BaseType.RELATION) */
+  type?: BaseType
+  /** FieldType of the relationship field (e.g., FieldType.RELATIONSHIP) */
+  fieldType?: FieldType
 }
 
 /**

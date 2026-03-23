@@ -241,11 +241,6 @@ export function getVariableOptions(
     }
   }
 
-  // Fallback: use enum values as both label and value
-  if (variable.enum) {
-    return variable.enum.map((v) => ({ label: String(v), value: String(v) }))
-  }
-
   return undefined
 }
 

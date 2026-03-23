@@ -181,6 +181,8 @@ export function FieldPickerInnerContent({
         label: field.label,
         resourceFieldId: field.resourceFieldId,
         targetEntityDefinitionId: relatedEntityDefId,
+        type: field.type,
+        fieldType: field.fieldType,
       })
       setSearch('')
     },
@@ -198,10 +200,13 @@ export function FieldPickerInnerContent({
     const fieldReference = toFieldPath(pathIds)
 
     // Create a minimal field representation for the callback
+    // Include type/fieldType so operator resolution works correctly
     onSelect(fieldReference, {
       id: current.id,
       label: current.label,
       resourceFieldId: current.resourceFieldId,
+      type: current.type,
+      fieldType: current.fieldType,
     } as ResourceField)
 
     if (closeOnSelect && onClose) {

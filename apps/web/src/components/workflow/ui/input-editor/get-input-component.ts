@@ -137,7 +137,7 @@ export function getSpecificPropsForType(
         return { options: fieldOptions.enum || [] }
       }
       return {
-        options: fieldOptions?.enum || fieldOptions?.options,
+        options: fieldOptions?.enum || fieldOptions?.options || [],
         selectVariant: fieldOptions?.selectVariant,
         loading: fieldOptions?.loading,
       }

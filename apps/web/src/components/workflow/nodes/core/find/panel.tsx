@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { generateId } from '@auxx/utils'
 import { produce } from 'immer'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
@@ -136,9 +137,17 @@ const FindPanelComponent: React.FC<FindPanelProps> = ({ nodeId, data }) => {
     setNodeData({
       ...nodeData,
       resourceType,
-      conditions: [], // Clear conditions when resource type changes
-      conditionGroups: [], // Clear groups when resource type changes
-      orderBy: undefined, // Clear sorting
+      conditions: [],
+      conditionGroups: [
+        {
+          id: generateId(),
+          conditions: [],
+          logicalOperator: 'OR',
+          order: 0,
+          metadata: { name: 'Group' },
+        },
+      ],
+      orderBy: undefined,
     })
   }
   // Show loading state while fields are loading

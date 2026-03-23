@@ -60,9 +60,6 @@ export interface UnifiedVariable {
   // For objects: property definitions with key preservation
   properties?: Record<string, UnifiedVariable> // Object properties by key
 
-  // For enums: allowed values
-  enum?: (string | number)[]
-
   // ─────────────────────────────────────────────────────────────
   // METADATA
   // ─────────────────────────────────────────────────────────────

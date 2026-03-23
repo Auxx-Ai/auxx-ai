@@ -137,6 +137,7 @@ function createNestedVariable(config: {
       items?: any
       fieldReference?: ResourceFieldId
       resourceId?: string
+      options?: { options: Array<{ label: string; value: string }> }
     }
   >
   items?: {
@@ -146,6 +147,7 @@ function createNestedVariable(config: {
     properties?: any
     fieldReference?: ResourceFieldId
     resourceId?: string
+    options?: { options: Array<{ label: string; value: string }> }
   }
 }): UnifiedVariable {
   const fullPath = `${config.nodeId}.${config.basePath}`
@@ -161,6 +163,7 @@ function createNestedVariable(config: {
     // Typed field references
     ...(config.fieldReference && { fieldReference: config.fieldReference }),
     ...(config.resourceId && { resourceId: config.resourceId }),
+    ...(config.options && { options: config.options }),
   }
 
   // Recursively create property variables with full paths
@@ -563,18 +566,9 @@ function convertFieldToVariableProperty(
     type: field.type,
     label: field.label,
     description: field.description || `${field.label} of the resource`,
-    // Include enum values if this is an enum field with options
     ...(fieldOptions &&
       fieldOptions.length > 0 && {
-        enum: fieldOptions.map((opt) => opt.value),
-        // Optional: Add enum labels for UI
-        enumLabels: fieldOptions.reduce(
-          (acc, opt) => {
-            acc[opt.value] = opt.label
-            return acc
-          },
-          {} as Record<string, string>
-        ),
+        options: { options: fieldOptions },
       }),
   }
 }
