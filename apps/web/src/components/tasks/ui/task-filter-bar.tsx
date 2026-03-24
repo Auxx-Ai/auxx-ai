@@ -131,7 +131,7 @@ export function TaskFilterBar({
   const hasFilters = filterCount > 0
 
   return (
-    <div className='flex items-center border-b gap-1.5 py-2 px-3 bg-background overflow-x-auto no-scrollbar w-full'>
+    <div className='flex items-center border-b gap-1.5 py-2 px-3 bg-background/80 overflow-x-auto no-scrollbar w-full'>
       {/* Filter Popover */}
       <Popover open={isFilterOpen} onOpenChange={handleFilterOpenChange}>
         <PopoverTrigger asChild>

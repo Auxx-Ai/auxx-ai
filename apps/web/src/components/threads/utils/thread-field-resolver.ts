@@ -1,6 +1,6 @@
 // apps/web/src/components/threads/utils/thread-field-resolver.ts
 
-import type { FieldResolver } from '@auxx/lib/conditions/client'
+import { FIELD_NOT_RESOLVABLE, type FieldResolver } from '@auxx/lib/conditions/client'
 import { parseRecordId } from '@auxx/types/resource'
 import type { ThreadMeta } from '../store'
 
@@ -68,6 +68,9 @@ export const threadFieldResolver: FieldResolver<ThreadMeta> = (thread, fieldId) 
       return thread.draftIds && thread.draftIds.length > 0
 
     default:
-      return undefined
+      // Field not available on ThreadMeta (e.g. freeText, from, to, hasAttachments)
+      // — these require server-side SQL joins. Return sentinel so the evaluator
+      // treats the condition as "pass" (the server already filtered for it).
+      return FIELD_NOT_RESOLVABLE
   }
 }

@@ -36,7 +36,7 @@ export function WorkflowsFilterBar() {
   }))
 
   return (
-    <div className='px-3 py-2 border-b bg-background'>
+    <div className='px-3 py-2 border-b bg-background/80'>
       <div className='flex flex-col sm:flex-row gap-1.5'>
         <Select
           value={selectedTriggerType || 'ALL'}

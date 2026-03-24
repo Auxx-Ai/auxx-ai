@@ -22,7 +22,7 @@ export function DatasetsFilterBar() {
     useDatasets()
 
   return (
-    <div className='flex items-center border-b gap-1.5 py-2 px-3 bg-background overflow-x-auto no-scrollbar w-full'>
+    <div className='flex items-center border-b gap-1.5 py-2 px-3 bg-background/80 overflow-x-auto no-scrollbar w-full'>
       {/* Status Filter */}
       <Select value={selectedStatus} onValueChange={(value: any) => setSelectedStatus(value)}>
         <SelectTrigger className='w-[140px]' size='sm' variant='outline'>

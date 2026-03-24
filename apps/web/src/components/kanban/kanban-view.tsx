@@ -8,7 +8,7 @@ import { getModelType, toRecordId } from '@auxx/lib/resources/client'
 import type { SelectOption as RawSelectOption, RelationshipConfig } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
-import { ScrollArea, ScrollBar } from '@auxx/ui/components/scroll-area'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import {
   DndContext,
   type DragEndEvent,
@@ -555,7 +555,7 @@ export function KanbanView<TData extends KanbanRow>({
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}>
-        <ScrollArea className='h-full'>
+        <ScrollArea className='h-full' orientation='both'>
           <div ref={containerRef} className='flex p-2 min-w-max flex-1 h-full'>
             {/* Sortable columns */}
             <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
@@ -635,7 +635,6 @@ export function KanbanView<TData extends KanbanRow>({
               </KanbanColumnSettings>
             </div>
           </div>
-          <ScrollBar orientation='horizontal' />
         </ScrollArea>
 
         {/* Drag overlay */}

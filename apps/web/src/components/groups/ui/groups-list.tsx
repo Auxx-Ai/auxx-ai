@@ -51,7 +51,7 @@ export function GroupsList({
     : groups
 
   return (
-    <div className='space-y-4'>
+    <div className='space-y-4 flex-1 min-h-0 flex flex-col'>
       <div className='flex items-center'>
         <div className='relative flex-1'>
           <InputSearch
@@ -68,10 +68,9 @@ export function GroupsList({
         </div>
       </div>
 
-      <div className='space-y-3'>
-        {isLoading ? (
-          // Loading skeletons
-          Array.from({ length: 3 }).map((_, i) => (
+      {isLoading ? (
+        <div className='space-y-3'>
+          {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className='flex items-center justify-between rounded-2xl border py-2 px-3'>
               <div className='flex flex-row items-center gap-3'>
                 <Skeleton className='size-8 rounded-lg shrink-0' />
@@ -89,25 +88,27 @@ export function GroupsList({
                 <Skeleton className='h-7 w-7 rounded' />
               </div>
             </div>
-          ))
-        ) : filteredGroups.length === 0 ? (
-          <div className='flex flex-col items-center justify-center py-8'>
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant='icon'>
-                  <Users />
-                </EmptyMedia>
-                <EmptyTitle>No groups found</EmptyTitle>
-                <EmptyDescription>
-                  {searchQuery
-                    ? 'Try adjusting your search terms'
-                    : 'Create your first group to organize your team'}
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          </div>
-        ) : (
-          filteredGroups.map((group) => (
+          ))}
+        </div>
+      ) : filteredGroups.length === 0 ? (
+        <div className='flex-1 flex flex-col items-center justify-center py-8'>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <Users />
+              </EmptyMedia>
+              <EmptyTitle>No groups found</EmptyTitle>
+              <EmptyDescription>
+                {searchQuery
+                  ? 'Try adjusting your search terms'
+                  : 'Create your first group to organize your team'}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </div>
+      ) : (
+        <div className='space-y-3'>
+          {filteredGroups.map((group) => (
             <GroupItem
               key={group.id}
               group={group}
@@ -115,9 +116,9 @@ export function GroupsList({
               onEdit={onEdit}
               onDelete={onDelete}
             />
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

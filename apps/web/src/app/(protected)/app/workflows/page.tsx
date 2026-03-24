@@ -9,6 +9,7 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { Key, Lock, Workflow } from 'lucide-react'
 import { useQueryState } from 'nuqs'
@@ -28,13 +29,15 @@ function WorkflowsTabContent() {
       {/* Stats Cards */}
       <WorkflowsStatsCards />
 
-      {/* Filters and View Options */}
-      <WorkflowsFilterBar />
-
-      {/* Workflows Content */}
-      <div className='p-3 flex-1 overflow-y-auto'>
-        <WorkflowsList />
-      </div>
+      {/* Filters + Workflows List */}
+      <ScrollArea className='flex-1 min-h-0'>
+        <div className='sticky top-0 z-10 backdrop-blur-sm'>
+          <WorkflowsFilterBar />
+        </div>
+        <div className='p-3'>
+          <WorkflowsList />
+        </div>
+      </ScrollArea>
     </>
   )
 }

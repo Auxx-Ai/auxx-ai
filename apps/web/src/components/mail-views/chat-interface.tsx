@@ -5,7 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { ScrollArea } from '@auxx/ui/components/scroll-area' // Import ScrollBar if needed
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'

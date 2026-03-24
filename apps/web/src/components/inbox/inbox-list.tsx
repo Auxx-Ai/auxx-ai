@@ -93,67 +93,65 @@ export function InboxList() {
           Create Inbox
         </Button>
       }>
-      <div className='flex h-full'>
-        {isLoadingInboxes ? (
-          <EmptyState
-            icon={RefreshCw}
-            iconClassName='animate-spin'
-            title='Loading inboxes...'
-            description={<>Hang on tight while we load your inboxes...</>}
-            button={<div className='h-12'></div>}
-          />
-        ) : inboxes?.length ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className='w-[300px]'>Inbox</TableHead>
-                <TableHead>Access</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {inboxes.map((inbox) => (
-                <TableRow
-                  key={inbox.id}
-                  onClick={() => handleRowClick(inbox.id)}
-                  className='cursor-pointer hover:bg-muted'>
-                  <TableCell>
-                    <div className='flex items-center space-x-3'>
-                      {/* Colored dot based on inbox color */}
-                      <div
-                        className={cn(
-                          'h-3 w-3 rounded-full',
-                          getOptionColor((inbox.color || 'indigo') as SelectOptionColor).swatch
-                        )}
-                      />
-                      <div>
-                        <div className='font-medium'>{inbox.name}</div>
-                        {inbox.description && (
-                          <div className='text-sm text-muted-foreground'>{inbox.description}</div>
-                        )}
-                      </div>
+      {isLoadingInboxes ? (
+        <EmptyState
+          icon={RefreshCw}
+          iconClassName='animate-spin'
+          title='Loading inboxes...'
+          description={<>Hang on tight while we load your inboxes...</>}
+          button={<div className='h-12'></div>}
+        />
+      ) : inboxes?.length ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className='w-[300px]'>Inbox</TableHead>
+              <TableHead>Access</TableHead>
+              <TableHead>Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {inboxes.map((inbox) => (
+              <TableRow
+                key={inbox.id}
+                onClick={() => handleRowClick(inbox.id)}
+                className='cursor-pointer hover:bg-muted'>
+                <TableCell>
+                  <div className='flex items-center space-x-3'>
+                    {/* Colored dot based on inbox color */}
+                    <div
+                      className={cn(
+                        'h-3 w-3 rounded-full',
+                        getOptionColor((inbox.color || 'indigo') as SelectOptionColor).swatch
+                      )}
+                    />
+                    <div>
+                      <div className='font-medium'>{inbox.name}</div>
+                      {inbox.description && (
+                        <div className='text-sm text-muted-foreground'>{inbox.description}</div>
+                      )}
                     </div>
-                  </TableCell>
-                  <TableCell>{getAccessDisplay(inbox.visibility)}</TableCell>
-                  <TableCell>{getStatusBadge(inbox.status)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <EmptyState
-            icon={InboxIcon}
-            title='Create your first inbox'
-            description={<>Inboxes help you organize your messages.</>}
-            button={
-              <Button size='sm' variant='outline' onClick={handleCreateInbox}>
-                <PlusIcon />
-                Create Inbox
-              </Button>
-            }
-          />
-        )}
-      </div>
+                  </div>
+                </TableCell>
+                <TableCell>{getAccessDisplay(inbox.visibility)}</TableCell>
+                <TableCell>{getStatusBadge(inbox.status)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <EmptyState
+          icon={InboxIcon}
+          title='Create your first inbox'
+          description={<>Inboxes help you organize your messages.</>}
+          button={
+            <Button size='sm' variant='outline' onClick={handleCreateInbox}>
+              <PlusIcon />
+              Create Inbox
+            </Button>
+          }
+        />
+      )}
 
       {/* Dialog only renders when open */}
       {dialogOpen && (

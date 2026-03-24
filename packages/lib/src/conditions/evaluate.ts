@@ -4,8 +4,16 @@ import type { Operator } from './operator-definitions'
 import type { Condition, ConditionGroup } from './types'
 
 /**
+ * Sentinel value returned by a FieldResolver when a field cannot be evaluated
+ * client-side (e.g. freeText search requires server-side SQL joins).
+ * The evaluator treats this as "pass" — the server already filtered for it.
+ */
+export const FIELD_NOT_RESOLVABLE = Symbol.for('FIELD_NOT_RESOLVABLE')
+
+/**
  * Field value resolver function.
  * Given an entity and fieldId, returns the value for that field.
+ * Return `FIELD_NOT_RESOLVABLE` for fields that can't be evaluated client-side.
  */
 export type FieldResolver<T> = (entity: T, fieldId: string) => unknown
 
@@ -69,6 +77,9 @@ function evaluateCondition<T>(
   // Extract simple field ID from ResourceFieldId format if needed
   const simpleFieldId = extractFieldId(fieldId)
   const fieldValue = resolver(entity, simpleFieldId)
+
+  // Field can't be evaluated client-side — trust the server's filtering
+  if (fieldValue === FIELD_NOT_RESOLVABLE) return true
 
   return evaluateOperator(fieldValue, operator as Operator, value)
 }

@@ -2,7 +2,7 @@
 'use client'
 
 import { toRecordId } from '@auxx/lib/field-values/client'
-import { ScrollArea } from '@auxx/ui/components/scroll-area-v2'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { useEffect, useRef } from 'react'
 import { useThread } from '~/components/threads/hooks'
 import { useCompose } from '~/hooks/use-compose'
@@ -138,7 +138,7 @@ export default function ThreadDetails() {
   }
 
   return (
-    <ScrollArea className='relative flex h-full flex-col flex-1 w-full'>
+    <ScrollArea className='relative flex h-full flex-col flex-1 w-full' scrollbarClassName='w-1!'>
       <ThreadHeader />
 
       <div className='flex-1 '>

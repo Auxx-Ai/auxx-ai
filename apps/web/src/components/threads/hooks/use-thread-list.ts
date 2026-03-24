@@ -137,19 +137,12 @@ export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadLi
     refetch()
   }, [contextKey, invalidateContext, refetch])
 
-  // Fetch next page
+  // Fetch next page — only trust React Query's hasNextPage to avoid stale store state
   const fetchNextPage = useCallback(() => {
-    console.log('[useThreadList] fetchNextPage called', {
-      isFetchingNextPage,
-      queryHasNextPage,
-      contextHasMore: contextPagination?.hasMore,
-      pageCount: data?.pages?.length ?? 0,
-    })
-    if (!isFetchingNextPage && (queryHasNextPage || contextPagination?.hasMore)) {
-      console.log('[useThreadList] → calling fetchMore')
+    if (!isFetchingNextPage && queryHasNextPage) {
       fetchMore()
     }
-  }, [fetchMore, isFetchingNextPage, queryHasNextPage, contextPagination, data?.pages?.length])
+  }, [fetchMore, isFetchingNextPage, queryHasNextPage])
 
   return {
     recordIds,
@@ -158,7 +151,7 @@ export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadLi
     total: contextPagination?.total ?? data?.pages?.[0]?.total ?? threads.length,
     isLoading,
     isFetchingNextPage,
-    hasNextPage: queryHasNextPage ?? contextPagination?.hasMore ?? false,
+    hasNextPage: queryHasNextPage ?? false,
     fetchNextPage,
     refresh,
   }
