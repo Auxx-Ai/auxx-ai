@@ -120,8 +120,8 @@ export function useWorkflowShortcuts() {
     { preventDefault: false }
   )
 
-  // Paste: Mod+V
-  useHotkey('Mod+V', () => handleNodesPaste())
+  // Paste: Mod+V — ignore in inputs so native/TipTap paste works
+  useHotkey('Mod+V', () => handleNodesPaste(), { ignoreInputs: true })
 
   // Duplicate: Mod+D (currently no-op)
   useHotkey('Mod+D', () => {

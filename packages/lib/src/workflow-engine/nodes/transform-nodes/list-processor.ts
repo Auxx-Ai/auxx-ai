@@ -531,11 +531,15 @@ export class ListProcessor extends BaseNodeProcessor {
   /**
    * Helper: Get nested value from object using dot notation
    * Supports custom entity instances which store fields in `fieldValues`
+   * Handles ResourceFieldId format (entityDefId:fieldId) by resolving to fieldId
    */
   private getNestedValue(obj: any, path: string): any {
     if (!path) return obj
 
-    const parts = path.split('.')
+    // Resolve ResourceFieldId format (e.g., "entityDefId:fieldId") to just the fieldId
+    const resolvedPath = path.includes(':') ? this.resolveFilterField(path) : path
+
+    const parts = resolvedPath.split('.')
     let current = obj
 
     for (const part of parts) {

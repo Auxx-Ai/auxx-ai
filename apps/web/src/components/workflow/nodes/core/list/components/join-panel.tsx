@@ -60,10 +60,16 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
     inputListValue: config.inputList,
   })
 
-  // Filter to only string/number fields for joining
-  const joinableFields = pluckableFields.filter(
-    (f) => f.type === BaseType.STRING || f.type === BaseType.NUMBER
-  )
+  // Exclude structural types that don't have a meaningful string representation
+  const NON_JOINABLE_TYPES = new Set([
+    BaseType.OBJECT,
+    BaseType.ARRAY,
+    BaseType.RELATION,
+    BaseType.REFERENCE,
+    BaseType.FILE,
+    BaseType.JSON,
+  ])
+  const joinableFields = pluckableFields.filter((f) => !NON_JOINABLE_TYPES.has(f.type))
 
   /**
    * Handle delimiter preset selection
@@ -144,27 +150,29 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
       {/* Field Selector (only for object arrays) */}
       {hasPluckableFields && joinableFields.length > 0 && (
         <VarEditorFieldRow title='Field to Join' className='border-t'>
-          <Select
-            value={currentField || 'none'}
-            onValueChange={handleFieldChange}
-            disabled={isReadOnly}>
-            <SelectTrigger className='w-full' variant='transparent' size='xs'>
-              <SelectValue placeholder='Use whole item' />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='none'>
-                <span className='text-muted-foreground'>Use whole item</span>
-              </SelectItem>
-              {joinableFields.map((field) => (
-                <SelectItem key={field.id} value={field.id}>
-                  <div className='flex items-center gap-1.5'>
-                    <VarTypeIcon type={field.type} className='size-3' />
-                    <span>{field.label}</span>
-                  </div>
+          <div className='flex items-center  h-8'>
+            <Select
+              value={currentField || 'none'}
+              onValueChange={handleFieldChange}
+              disabled={isReadOnly}>
+              <SelectTrigger className='w-full' variant='transparent' size='xs'>
+                <SelectValue placeholder='Use whole item' />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='none'>
+                  <span className='text-muted-foreground'>Use whole item</span>
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                {joinableFields.map((field) => (
+                  <SelectItem key={field.id} value={field.id}>
+                    <div className='flex items-center gap-1.5'>
+                      <VarTypeIcon type={field.type} className='size-3' />
+                      <span>{field.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </VarEditorFieldRow>
       )}
 
@@ -180,7 +188,11 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
             {currentField && (
               <span>
                 {' '}
-                using <span className='font-medium'>{currentField}</span> field
+                using{' '}
+                <span className='font-medium'>
+                  {joinableFields.find((f) => f.id === currentField)?.label ?? currentField}
+                </span>{' '}
+                field
               </span>
             )}
           </div>

@@ -9,6 +9,12 @@
       "source": "./src/index.ts",
       "import": "./dist/index.mjs",
       "default": "./src/index.ts"
+    },
+    "./run-log": {
+      "types": "./src/run-log.ts",
+      "source": "./src/run-log.ts",
+      "import": "./dist/run-log.mjs",
+      "default": "./src/run-log.ts"
     }
   },
   "scripts": {

@@ -11,6 +11,7 @@ import {
   isValidFieldOptionValue,
   isValidOperatorForField,
   RESOURCE_FIELD_REGISTRY,
+  setEntityVariables,
 } from '../../../resources/registry'
 import type { TableId } from '../../../resources/registry/field-registry'
 import { getFieldOutputKey } from '../../../resources/registry/field-types'
@@ -539,11 +540,40 @@ export class FindProcessor extends BaseNodeProcessor {
 
       // Store outputs as variables based on findMode and resource plural name
       if (findMode === 'findOne') {
-        // Singular: ticket, contact, vendor, etc. (use resource singular label)
-        contextManager.setNodeVariable(node.nodeId, resource.label.toLowerCase(), result)
+        if (isCustomResourceId(resourceType) && result) {
+          // Store ResourceReference under entityDefinitionId key (matches frontend variable paths)
+          // Field values load lazily when downstream nodes access them
+          const entityData = {
+            id: result.id,
+            entityDefinitionId: resourceType,
+            createdAt: result.createdAt,
+            updatedAt: result.updatedAt,
+          }
+          setEntityVariables(resourceType, entityData, contextManager, node.nodeId)
+        } else {
+          // System resources or null custom entity result
+          contextManager.setNodeVariable(node.nodeId, resource.label.toLowerCase(), result)
+        }
       } else {
-        // Plural: tickets, contacts, vendors, etc. (use resource plural name)
-        contextManager.setNodeVariable(node.nodeId, pluralName, result)
+        if (isCustomResourceId(resourceType) && Array.isArray(result)) {
+          // Store ResourceReferences for each item in the array
+          for (const item of result) {
+            if (item?.id) {
+              const entityData = {
+                id: item.id,
+                entityDefinitionId: resourceType,
+                createdAt: item.createdAt,
+                updatedAt: item.updatedAt,
+              }
+              setEntityVariables(resourceType, entityData, contextManager, node.nodeId)
+            }
+          }
+          // Also store the full array under plural name for iteration/loops
+          contextManager.setNodeVariable(node.nodeId, pluralName, result)
+        } else {
+          // System resources
+          contextManager.setNodeVariable(node.nodeId, pluralName, result)
+        }
       }
 
       // Always store count and query_info
@@ -749,6 +779,14 @@ export class FindProcessor extends BaseNodeProcessor {
       orderBy: orderByClause,
       limit: findMode === 'findOne' ? 1 : limit,
     })
+
+    // For findMany, batch-hydrate field values onto all results in a single query
+    // findOne uses lazy loading via ResourceReference instead
+    if (findMode === 'findMany' && results.length > 0) {
+      const { batchHydrateFieldValues } = await import('../../../resources/batch-hydrate')
+      const hydrated = await batchHydrateFieldValues(results, entityDefinitionId, organizationId)
+      return { results: hydrated, count: hydrated.length }
+    }
 
     return {
       results: findMode === 'findOne' ? (results[0] ?? null) : results,

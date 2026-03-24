@@ -1,5 +1,27 @@
 // packages/logger/src/index.ts
 
+// ---------------------------------------------------------------------------
+// Run-scoped file sink hook (set by @auxx/logger/run-log on import)
+// ---------------------------------------------------------------------------
+
+type WriteToRunLogFn = (message: string) => void
+
+let _writeToRunLog: WriteToRunLogFn | undefined
+
+/**
+ * Register the run-log writer. Called by `@auxx/logger/run-log` on import.
+ * Keeps the main entry point free of Node.js imports (browser-safe).
+ */
+export function _registerRunLogWriter(fn: WriteToRunLogFn): void {
+  _writeToRunLog = fn
+}
+
+function writeToRunLog(message: string): void {
+  _writeToRunLog?.(message)
+}
+
+// ---------------------------------------------------------------------------
+
 /** Log levels supported by the scoped logger helpers. */
 type LogLevel = 'info' | 'error' | 'warn' | 'trace' | 'debug'
 
@@ -180,18 +202,29 @@ export function createScopedLogger(scope: string, options?: { color?: ColorName 
       return msg
     }
 
+    const logAndWrite = (
+      consoleFn: (...args: unknown[]) => void,
+      level: LogLevel,
+      message: string,
+      args: unknown[]
+    ) => {
+      const formatted = formatMessage(level, message, args)
+      consoleFn(formatted)
+      writeToRunLog(formatted)
+    }
+
     return {
       info: (message: string, ...args: unknown[]) =>
-        console.log(formatMessage('info', message, args)),
+        logAndWrite(console.log, 'info', message, args),
       debug: (message: string, ...args: unknown[]) =>
-        console.debug(formatMessage('debug', message, args)),
+        logAndWrite(console.debug, 'debug', message, args),
       error: (message: string, ...args: unknown[]) =>
-        console.error(formatMessage('error', message, args)),
+        logAndWrite(console.error, 'error', message, args),
       warn: (message: string, ...args: unknown[]) =>
-        console.warn(formatMessage('warn', message, args)),
+        logAndWrite(console.warn, 'warn', message, args),
       trace: (message: string, ...args: unknown[]) => {
         if (process.env.NODE_ENV !== 'production') {
-          console.log(formatMessage('trace', message, args))
+          logAndWrite(console.log, 'trace', message, args)
         }
       },
       with: (newFields: Record<string, unknown>) => createLogger({ ...fields, ...newFields }),
