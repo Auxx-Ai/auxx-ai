@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.100](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.99...auxx-v0.1.100) (2026-03-24)
+
+
+### Features
+
+* add batch hydration for field values and enhance logging capabilities in workflow execution ([#325](https://github.com/Auxx-Ai/auxx-ai/issues/325)) ([cf00828](https://github.com/Auxx-Ai/auxx-ai/commit/cf0082878b450100ff95105dc68f52298957442d))
+* enhance condition item and input components to support metadata in value change callbacks ([#324](https://github.com/Auxx-Ai/auxx-ai/issues/324)) ([9892211](https://github.com/Auxx-Ai/auxx-ai/commit/98922110d4efdf067f12b2e5e54eb6a539a914fd))
+* implement meteors component and enhance layout responsiveness in mail section ([#322](https://github.com/Auxx-Ai/auxx-ai/issues/322)) ([538efb5](https://github.com/Auxx-Ai/auxx-ai/commit/538efb5d1efa38914a57122f4592145ff2ce0074))
+* implement record field caching and lazy loading for improved performance ([#326](https://github.com/Auxx-Ai/auxx-ai/issues/326)) ([f4ffc2a](https://github.com/Auxx-Ai/auxx-ai/commit/f4ffc2aba387a31a36e1f7bec98c06a2743d53f8))
+
 ## [0.1.99](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.98...auxx-v0.1.99) (2026-03-23)
 
 
