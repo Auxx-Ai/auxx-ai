@@ -1,7 +1,7 @@
 // apps/web/src/components/ui/tags-view.tsx
 'use client'
 
-import type { SelectOption } from '@auxx/types/custom-field'
+import type { SelectOption, SelectOptionColor } from '@auxx/types/custom-field'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { useMemo } from 'react'
 import { ItemsCellView, type ItemsListItem, ItemsListView } from './items-list-view'
@@ -26,6 +26,7 @@ export interface TagsViewProps {
 interface TagItem extends ItemsListItem {
   id: string
   label: string
+  color?: SelectOptionColor
 }
 
 /**
@@ -45,7 +46,7 @@ export function resolveTagItems(
   return selectedIds
     .map((id, index) => {
       const option = options.find((opt) => opt.value === id)
-      if (option) return { id: `${id}-${index}`, label: option.label }
+      if (option) return { id: `${id}-${index}`, label: option.label, color: option.color }
       // If not a UUID, show as-is (legacy data)
       if (!id.includes('-') || id.length < 36) return { id: `${id}-${index}`, label: id }
       return null
@@ -73,7 +74,7 @@ export function TagsView({ value, options, variant = 'pill', className }: TagsVi
     <ItemsListView
       items={tags}
       renderItem={(tag) => (
-        <Badge variant={variant} shape='tag'>
+        <Badge variant={tag.color ?? variant} shape='tag'>
           {tag.label}
         </Badge>
       )}
@@ -92,7 +93,7 @@ export function TagsCellView({ value, options, variant = 'pill', className }: Ta
     <ItemsCellView
       items={tags}
       renderItem={(tag) => (
-        <Badge variant={variant} shape='tag'>
+        <Badge variant={tag.color ?? variant} shape='tag'>
           {tag.label}
         </Badge>
       )}

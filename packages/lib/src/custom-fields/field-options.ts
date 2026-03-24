@@ -1,7 +1,12 @@
 // packages/lib/src/custom-fields/field-options.ts
 
 import type { FieldType } from '@auxx/database/types'
-import type { ActorOptions, CurrencyOptions, RelationshipConfig } from '@auxx/types/custom-field'
+import type {
+  ActorOptions,
+  CurrencyOptions,
+  RelationshipConfig,
+  SelectOptionColor,
+} from '@auxx/types/custom-field'
 
 /**
  * Unified field options interface.
@@ -62,7 +67,7 @@ export interface FieldOptions {
     id?: string
     value: string
     label: string
-    color?: string
+    color?: SelectOptionColor
     /** Target time for items in this status (kanban time tracking) */
     targetTimeInStatus?: { value: number; unit: 'days' | 'months' | 'years' }
     /** Trigger celebration when moving to this status (kanban) */

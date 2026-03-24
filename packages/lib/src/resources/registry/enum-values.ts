@@ -19,15 +19,15 @@ export const TicketType = {
   OTHER: 'OTHER',
 
   values: [
-    { value: 'GENERAL', label: 'General Support' },
-    { value: 'MISSING_ITEM', label: 'Missing Item' },
-    { value: 'RETURN', label: 'Return Request' },
-    { value: 'REFUND', label: 'Refund Request' },
-    { value: 'PRODUCT_ISSUE', label: 'Product Issue' },
-    { value: 'SHIPPING_ISSUE', label: 'Shipping Issue' },
-    { value: 'BILLING', label: 'Billing Issue' },
-    { value: 'TECHNICAL', label: 'Technical Support' },
-    { value: 'OTHER', label: 'Other' },
+    { value: 'GENERAL', label: 'General Support', color: 'blue' },
+    { value: 'MISSING_ITEM', label: 'Missing Item', color: 'orange' },
+    { value: 'RETURN', label: 'Return Request', color: 'purple' },
+    { value: 'REFUND', label: 'Refund Request', color: 'amber' },
+    { value: 'PRODUCT_ISSUE', label: 'Product Issue', color: 'red' },
+    { value: 'SHIPPING_ISSUE', label: 'Shipping Issue', color: 'teal' },
+    { value: 'BILLING', label: 'Billing Issue', color: 'indigo' },
+    { value: 'TECHNICAL', label: 'Technical Support', color: 'pink' },
+    { value: 'OTHER', label: 'Other', color: 'gray' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -47,14 +47,14 @@ export const TicketStatus = {
   MERGED: 'MERGED',
 
   values: [
-    { value: 'OPEN', label: 'Open' },
-    { value: 'IN_PROGRESS', label: 'In Progress' },
-    { value: 'WAITING_FOR_CUSTOMER', label: 'Waiting for Customer' },
-    { value: 'WAITING_FOR_THIRD_PARTY', label: 'Waiting for Third Party' },
-    { value: 'RESOLVED', label: 'Resolved' },
-    { value: 'CLOSED', label: 'Closed' },
-    { value: 'CANCELLED', label: 'Cancelled' },
-    { value: 'MERGED', label: 'Merged' },
+    { value: 'OPEN', label: 'Open', color: 'blue' },
+    { value: 'IN_PROGRESS', label: 'In Progress', color: 'amber' },
+    { value: 'WAITING_FOR_CUSTOMER', label: 'Waiting for Customer', color: 'orange' },
+    { value: 'WAITING_FOR_THIRD_PARTY', label: 'Waiting for Third Party', color: 'purple' },
+    { value: 'RESOLVED', label: 'Resolved', color: 'green' },
+    { value: 'CLOSED', label: 'Closed', color: 'gray' },
+    { value: 'CANCELLED', label: 'Cancelled', color: 'red' },
+    { value: 'MERGED', label: 'Merged', color: 'indigo' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -70,10 +70,10 @@ export const TicketPriority = {
   URGENT: 'URGENT',
 
   values: [
-    { value: 'LOW', label: 'Low' },
-    { value: 'MEDIUM', label: 'Medium' },
-    { value: 'HIGH', label: 'High' },
-    { value: 'URGENT', label: 'Urgent' },
+    { value: 'LOW', label: 'Low', color: 'gray' },
+    { value: 'MEDIUM', label: 'Medium', color: 'blue' },
+    { value: 'HIGH', label: 'High', color: 'orange' },
+    { value: 'URGENT', label: 'Urgent', color: 'red' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -89,10 +89,10 @@ export const ContactStatus = {
   MERGED: 'MERGED',
 
   values: [
-    { value: 'ACTIVE', label: 'Active' },
-    { value: 'INACTIVE', label: 'Inactive' },
-    { value: 'SPAM', label: 'Spam' },
-    { value: 'MERGED', label: 'Merged' },
+    { value: 'ACTIVE', label: 'Active', color: 'green' },
+    { value: 'INACTIVE', label: 'Inactive', color: 'gray' },
+    { value: 'SPAM', label: 'Spam', color: 'red' },
+    { value: 'MERGED', label: 'Merged', color: 'indigo' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -110,12 +110,12 @@ export const CustomerSourceType = {
   FACEBOOK_PSID: 'FACEBOOK_PSID',
 
   values: [
-    { value: 'EMAIL', label: 'Email' },
-    { value: 'TICKET_SYSTEM', label: 'Ticket System' },
-    { value: 'SHOPIFY', label: 'Shopify' },
-    { value: 'MANUAL', label: 'Manual' },
-    { value: 'OTHER', label: 'Other' },
-    { value: 'FACEBOOK_PSID', label: 'Facebook PSID' },
+    { value: 'EMAIL', label: 'Email', color: 'blue' },
+    { value: 'TICKET_SYSTEM', label: 'Ticket System', color: 'purple' },
+    { value: 'SHOPIFY', label: 'Shopify', color: 'green' },
+    { value: 'MANUAL', label: 'Manual', color: 'gray' },
+    { value: 'OTHER', label: 'Other', color: 'gray' },
+    { value: 'FACEBOOK_PSID', label: 'Facebook PSID', color: 'indigo' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -129,8 +129,8 @@ export const ThreadType = {
   CHAT: 'CHAT',
 
   values: [
-    { value: 'EMAIL', label: 'Email' },
-    { value: 'CHAT', label: 'Chat' },
+    { value: 'EMAIL', label: 'Email', color: 'blue' },
+    { value: 'CHAT', label: 'Chat', color: 'green' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -150,14 +150,14 @@ export const ThreadStatus = {
   TRASH: 'TRASH',
 
   values: [
-    { value: 'OPEN', label: 'Open' },
-    { value: 'ARCHIVED', label: 'Archived' },
-    { value: 'ACTIVE', label: 'Active' },
-    { value: 'RESOLVED', label: 'Resolved' },
-    { value: 'PENDING', label: 'Pending' },
-    { value: 'CLOSED', label: 'Closed' },
-    { value: 'SPAM', label: 'Spam' },
-    { value: 'TRASH', label: 'Trash' },
+    { value: 'OPEN', label: 'Open', color: 'blue' },
+    { value: 'ARCHIVED', label: 'Archived', color: 'gray' },
+    { value: 'ACTIVE', label: 'Active', color: 'green' },
+    { value: 'RESOLVED', label: 'Resolved', color: 'teal' },
+    { value: 'PENDING', label: 'Pending', color: 'amber' },
+    { value: 'CLOSED', label: 'Closed', color: 'gray' },
+    { value: 'SPAM', label: 'Spam', color: 'red' },
+    { value: 'TRASH', label: 'Trash', color: 'red' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -176,13 +176,13 @@ export const MessageType = {
   CHAT: 'CHAT',
 
   values: [
-    { value: 'EMAIL', label: 'Email' },
-    { value: 'FACEBOOK', label: 'Facebook' },
-    { value: 'SMS', label: 'SMS' },
-    { value: 'WHATSAPP', label: 'WhatsApp' },
-    { value: 'INSTAGRAM', label: 'Instagram' },
-    { value: 'OPENPHONE', label: 'OpenPhone' },
-    { value: 'CHAT', label: 'Chat' },
+    { value: 'EMAIL', label: 'Email', color: 'blue' },
+    { value: 'FACEBOOK', label: 'Facebook', color: 'indigo' },
+    { value: 'SMS', label: 'SMS', color: 'green' },
+    { value: 'WHATSAPP', label: 'WhatsApp', color: 'teal' },
+    { value: 'INSTAGRAM', label: 'Instagram', color: 'pink' },
+    { value: 'OPENPHONE', label: 'OpenPhone', color: 'purple' },
+    { value: 'CHAT', label: 'Chat', color: 'amber' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -196,8 +196,8 @@ export const ReadStatus = {
   UNREAD: 'UNREAD',
 
   values: [
-    { value: 'READ', label: 'Mark as Read' },
-    { value: 'UNREAD', label: 'Mark as Unread' },
+    { value: 'READ', label: 'Mark as Read', color: 'green' },
+    { value: 'UNREAD', label: 'Mark as Unread', color: 'blue' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -212,9 +212,9 @@ export const TagOperation = {
   SET: 'set',
 
   values: [
-    { value: 'add', label: 'Add tags' },
-    { value: 'remove', label: 'Remove tags' },
-    { value: 'set', label: 'Replace all tags' },
+    { value: 'add', label: 'Add tags', color: 'green' },
+    { value: 'remove', label: 'Remove tags', color: 'red' },
+    { value: 'set', label: 'Replace all tags', color: 'blue' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -230,10 +230,10 @@ export const DatasetStatusEnum = {
   ERROR: 'ERROR',
 
   values: [
-    { value: 'ACTIVE', label: 'Active' },
-    { value: 'INACTIVE', label: 'Inactive' },
-    { value: 'PROCESSING', label: 'Processing' },
-    { value: 'ERROR', label: 'Error' },
+    { value: 'ACTIVE', label: 'Active', color: 'green' },
+    { value: 'INACTIVE', label: 'Inactive', color: 'gray' },
+    { value: 'PROCESSING', label: 'Processing', color: 'amber' },
+    { value: 'ERROR', label: 'Error', color: 'red' },
   ] satisfies FieldOptionItem[],
 } as const
 
@@ -251,11 +251,11 @@ export const VectorDbTypeEnum = {
   MILVUS: 'MILVUS',
 
   values: [
-    { value: 'POSTGRESQL', label: 'PostgreSQL' },
-    { value: 'CHROMA', label: 'Chroma' },
-    { value: 'QDRANT', label: 'Qdrant' },
-    { value: 'WEAVIATE', label: 'Weaviate' },
-    { value: 'PINECONE', label: 'Pinecone' },
-    { value: 'MILVUS', label: 'Milvus' },
+    { value: 'POSTGRESQL', label: 'PostgreSQL', color: 'blue' },
+    { value: 'CHROMA', label: 'Chroma', color: 'orange' },
+    { value: 'QDRANT', label: 'Qdrant', color: 'purple' },
+    { value: 'WEAVIATE', label: 'Weaviate', color: 'green' },
+    { value: 'PINECONE', label: 'Pinecone', color: 'teal' },
+    { value: 'MILVUS', label: 'Milvus', color: 'indigo' },
   ] satisfies FieldOptionItem[],
 } as const

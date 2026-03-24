@@ -15,6 +15,7 @@ import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq, sql } from 'drizzle-orm'
 import { findCachedResource } from '../cache'
+import type { FieldOptions } from '../custom-fields/field-options'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
@@ -838,6 +839,19 @@ export async function getFieldTypeFromRegistry(
   entityDefinitionId: string,
   fieldId: string
 ): Promise<FieldType> {
+  const info = await getFieldInfoFromRegistry(organizationId, entityDefinitionId, fieldId)
+  return info.fieldType
+}
+
+/**
+ * Get field type and options from org cache for a specific field.
+ * Used by the record field cache to store formatting metadata alongside typed values.
+ */
+export async function getFieldInfoFromRegistry(
+  organizationId: string,
+  entityDefinitionId: string,
+  fieldId: string
+): Promise<{ fieldType: FieldType; fieldOptions?: FieldOptions }> {
   const resource = await findCachedResource(organizationId, entityDefinitionId)
   if (!resource) {
     throw new Error(`Entity "${entityDefinitionId}" not found`)
@@ -848,5 +862,5 @@ export async function getFieldTypeFromRegistry(
     throw new Error(`Field "${fieldId}" not found or missing fieldType`)
   }
 
-  return field.fieldType
+  return { fieldType: field.fieldType, fieldOptions: field.options }
 }

@@ -82,6 +82,7 @@ export const converters: Record<FieldType, FieldValueConverter> = {
   EMAIL: textConverter,
   URL: textConverter,
   PHONE_INTL: phoneConverter,
+  PHONE: phoneConverter,
   ADDRESS: textConverter,
   RICH_TEXT: textConverter,
 

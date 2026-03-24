@@ -4,6 +4,7 @@ import type { FieldType } from '@auxx/database/types'
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
+import type { FieldOptions } from '../custom-fields/field-options'
 
 // Re-export for convenience
 export type { FieldReference, FieldPath, ResourceFieldId }
@@ -178,6 +179,12 @@ export interface TypedFieldValueResult {
    * - Array for has_many paths or multi-value fields
    */
   value: TypedFieldValue | TypedFieldValue[] | null
+
+  /** The terminal field's FieldType (e.g., TEXT, RELATIONSHIP, CURRENCY) — for converter dispatch */
+  fieldType: FieldType
+
+  /** Field options from CustomField.options — for display formatting (decimals, currency, etc.) */
+  fieldOptions?: FieldOptions
 
   /** Issues found during fetch (optional) */
   issues?: string[]

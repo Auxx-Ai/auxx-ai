@@ -14,11 +14,12 @@ import {
 } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq, inArray } from 'drizzle-orm'
-import type { NameFieldOptions } from '../custom-fields/field-options'
+import type { FieldOptions, NameFieldOptions } from '../custom-fields/field-options'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import {
   type FieldValueContext,
   getField,
+  getFieldInfoFromRegistry,
   getFieldTypeFromRegistry,
   rowsToTypedValues,
   rowToTypedValue,
@@ -239,16 +240,14 @@ async function batchGetAllDirectFieldValues(
     allFieldIds.push(fieldId)
   }
 
-  // Resolve field types from registry (all direct refs share the same entity definition)
+  // Resolve field types + options from registry
   const fieldTypeMap = new Map<string, FieldType>()
+  const fieldOptionsMap = new Map<string, FieldOptions | undefined>()
   for (const ref of fieldRefs) {
     const { entityDefinitionId, fieldId } = parseResourceFieldId(ref)
-    const fieldType = await getFieldTypeFromRegistry(
-      ctx.organizationId,
-      entityDefinitionId,
-      fieldId
-    )
-    fieldTypeMap.set(fieldId, fieldType)
+    const info = await getFieldInfoFromRegistry(ctx.organizationId, entityDefinitionId, fieldId)
+    fieldTypeMap.set(fieldId, info.fieldType)
+    fieldOptionsMap.set(fieldId, info.fieldOptions)
   }
 
   // Check for NAME fields — they need special resolution
@@ -295,8 +294,9 @@ async function batchGetAllDirectFieldValues(
         rowToTypedValue(row as unknown as FieldValueRow, fieldType)
       )
       const value = isMulti ? typedValues : typedValues[0]!
+      const fieldOptions = fieldOptionsMap.get(fieldId)
 
-      results.push({ recordId, fieldRef, value })
+      results.push({ recordId, fieldRef, value, fieldType, fieldOptions })
     }
   }
 
@@ -304,9 +304,17 @@ async function batchGetAllDirectFieldValues(
   for (const nameFieldId of nameFieldIds) {
     const nameValues = await resolveNameFieldValues(ctx, recordIds, nameFieldId)
     const ref = fieldIdToRef.get(nameFieldId)!
+    const nameFieldType = fieldTypeMap.get(nameFieldId)!
+    const nameFieldOptions = fieldOptionsMap.get(nameFieldId)
 
     for (const [recordId, value] of nameValues) {
-      results.push({ recordId, fieldRef: ref, value })
+      results.push({
+        recordId,
+        fieldRef: ref,
+        value,
+        fieldType: nameFieldType,
+        fieldOptions: nameFieldOptions,
+      })
     }
   }
 
@@ -370,12 +378,14 @@ async function resolveFieldReference(
   const { entityDefinitionId: terminalEntityId, fieldId: terminalFieldId } =
     parseResourceFieldId(terminalResourceFieldId)
 
-  // Get field type for the terminal field
-  const terminalFieldType = await getFieldTypeFromRegistry(
+  // Get field type + options for the terminal field
+  const terminalFieldInfo = await getFieldInfoFromRegistry(
     ctx.organizationId,
     terminalEntityId,
     terminalFieldId
   )
+  const terminalFieldType = terminalFieldInfo.fieldType
+  const terminalFieldOptions = terminalFieldInfo.fieldOptions
 
   // Handle NAME fields — compose from source fields (firstName + lastName)
   if (terminalFieldType === FieldTypeEnum.NAME && currentRecordIds.length > 0) {
@@ -385,7 +395,8 @@ async function resolveFieldReference(
       traversalMaps,
       terminalValues,
       ref,
-      terminalFieldType
+      terminalFieldType,
+      terminalFieldOptions
     )
   }
 
@@ -395,7 +406,14 @@ async function resolveFieldReference(
       : new Map()
 
   // Map terminal values back to source records
-  return mapResultsToSources(sourceRecordIds, traversalMaps, terminalValues, ref, terminalFieldType)
+  return mapResultsToSources(
+    sourceRecordIds,
+    traversalMaps,
+    terminalValues,
+    ref,
+    terminalFieldType,
+    terminalFieldOptions
+  )
 }
 
 /**
@@ -517,7 +535,8 @@ function mapResultsToSources(
   traversalMaps: Map<RecordId, RecordId[]>[],
   terminalValues: Map<RecordId, TypedFieldValue | TypedFieldValue[]>,
   fieldRef: FieldReference,
-  terminalFieldType: FieldType
+  terminalFieldType: FieldType,
+  terminalFieldOptions?: FieldOptions
 ): TypedFieldValueResult[] {
   const results: TypedFieldValueResult[] = []
 
@@ -530,6 +549,8 @@ function mapResultsToSources(
           recordId: sourceRecordId,
           fieldRef,
           value,
+          fieldType: terminalFieldType,
+          fieldOptions: terminalFieldOptions,
         })
       }
     }
@@ -577,6 +598,8 @@ function mapResultsToSources(
         recordId: sourceRecordId,
         fieldRef,
         value: shouldBeArray ? values : (values[0] ?? null),
+        fieldType: terminalFieldType,
+        fieldOptions: terminalFieldOptions,
       })
     }
   }
