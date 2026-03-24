@@ -133,12 +133,12 @@ export function SearchFilterInput({
   return (
     <ScrollArea
       orientation='horizontal'
-      scrollbarClassName='h-1.5!'
+      scrollbarClassName='h-0.5! mb-0!'
       className={cn('flex-1', className)}>
       <div
         ref={containerRef}
         onClick={handleContainerClick}
-        className='flex items-center gap-1 h-8 cursor-text pt-0.5 pb-1'>
+        className='flex items-center gap-1 h-8 cursor-text pt-0.5'>
         {/* Condition badges - full editable badges with field/operator/value/remove */}
         {conditions.map((condition, index) => {
           const isScopeBadge = condition.fieldId === SEARCH_SCOPE_FIELD_ID

@@ -10,6 +10,7 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { useState } from 'react'
 import type { Condition } from '~/components/conditions'
 import { CreateTaskButton } from './create-task-button'
@@ -45,18 +46,18 @@ export function TasksPage() {
         {/* Stats Cards */}
         <TasksStatsCards stats={stats} />
 
-        {/* Filter Bar */}
-        <TaskFilterBar
-          filters={filters}
-          onFiltersChange={setFilters}
-          sort={sort}
-          onSortChange={setSort}
-          includeCompleted={includeCompleted}
-          onIncludeCompletedChange={setIncludeCompleted}
-        />
-
-        {/* Task List */}
-        <div className='flex-1 flex flex-col h-full overflow-y-auto bg-muted dark:bg-[#1e2227] @container'>
+        {/* Filter Bar + Task List */}
+        <ScrollArea className='flex-1 min-h-0 bg-muted dark:bg-[#1e2227] @container'>
+          <div className='sticky top-0 z-10 backdrop-blur-sm'>
+            <TaskFilterBar
+              filters={filters}
+              onFiltersChange={setFilters}
+              sort={sort}
+              onSortChange={setSort}
+              includeCompleted={includeCompleted}
+              onIncludeCompletedChange={setIncludeCompleted}
+            />
+          </div>
           <TasksList
             viewMode='global'
             filters={filters}
@@ -65,7 +66,7 @@ export function TasksPage() {
             showEntityReferences
             className='p-3'
           />
-        </div>
+        </ScrollArea>
       </MainPageContent>
     </MainPage>
   )

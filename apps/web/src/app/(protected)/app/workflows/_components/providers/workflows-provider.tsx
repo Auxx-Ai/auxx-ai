@@ -2,6 +2,7 @@
 'use client'
 
 import React, { createContext, useCallback, useContext, useState } from 'react'
+import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { api } from '~/trpc/react'
 
 interface WorkflowsContextValue {
@@ -43,7 +44,13 @@ export function WorkflowsProvider({ children }: WorkflowsProviderProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedTriggerType, setSelectedTriggerType] = useState<string | null>(null)
   const [enabledFilter, setEnabledFilter] = useState<boolean | null>(null)
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
+  const [viewMode, _setViewMode] = useState<'grid' | 'table'>(
+    () => (safeLocalStorage.get('workflows-view-mode') as 'grid' | 'table') || 'grid'
+  )
+  const setViewMode = (mode: 'grid' | 'table') => {
+    _setViewMode(mode)
+    safeLocalStorage.set('workflows-view-mode', mode)
+  }
 
   // Build filter object for API call
   const filters = {

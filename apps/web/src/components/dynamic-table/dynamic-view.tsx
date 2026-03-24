@@ -143,7 +143,9 @@ function DynamicViewInner<TData extends object>({
   const isInitialLoading = !isViewsLoaded || (isLoading && !hasData)
 
   return (
-    <div ref={scrollContainerRef} className='flex flex-col relative h-full flex-1 overflow-auto'>
+    <div
+      ref={scrollContainerRef}
+      className={cn('flex flex-col relative h-full flex-1', !isKanbanView && 'overflow-auto')}>
       {/* Toolbar */}
       {!hideToolbar && (
         <div className='sticky top-0 z-20 bg-background left-0'>

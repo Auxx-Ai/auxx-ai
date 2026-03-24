@@ -6,6 +6,7 @@ import type { DatasetStatus, DatasetWithRelations } from '@auxx/lib/datasets'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { useDebounce } from '~/hooks/use-debounced-value'
+import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { api } from '~/trpc/react'
 
 /**
@@ -72,7 +73,13 @@ interface DatasetsProviderProps {
 export function DatasetsProvider({ children }: DatasetsProviderProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStatus, setSelectedStatus] = useState<DatasetStatus | 'all'>('all')
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
+  const [viewMode, _setViewMode] = useState<'grid' | 'table'>(
+    () => (safeLocalStorage.get('datasets-view-mode') as 'grid' | 'table') || 'grid'
+  )
+  const setViewMode = (mode: 'grid' | 'table') => {
+    _setViewMode(mode)
+    safeLocalStorage.set('datasets-view-mode', mode)
+  }
 
   const debouncedSearch = useDebounce(searchQuery, 300)
 

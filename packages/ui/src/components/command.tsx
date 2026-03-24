@@ -7,6 +7,7 @@ import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Switch } from '@auxx/ui/components/switch'
 import { cn } from '@auxx/ui/lib/utils'
+import { ScrollArea as BaseScrollArea } from '@base-ui-components/react/scroll-area'
 import {
   closestCenter,
   DndContext,
@@ -367,10 +368,30 @@ function CommandInput({
 
 function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>) {
   return (
-    <CommandPrimitive.List
-      className={cn('max-h-[300px] overflow-y-auto overflow-x-hidden outline-none', className)}
-      {...props}
-    />
+    <BaseScrollArea.Root className='relative max-h-[300px] overflow-hidden'>
+      <BaseScrollArea.Viewport
+        className='h-full max-h-[300px] w-full overscroll-contain scroll-area-fade outline-none'
+        style={{ overflowX: 'hidden' }}>
+        <BaseScrollArea.Content style={{ minWidth: undefined }}>
+          <CommandPrimitive.List
+            className={cn('outline-none', className)}
+            style={{ overflow: 'visible', maxHeight: 'none' }}
+            {...props}
+          />
+        </BaseScrollArea.Content>
+      </BaseScrollArea.Viewport>
+      <BaseScrollArea.Scrollbar
+        orientation='vertical'
+        className={cn(
+          'flex justify-center w-1 rounded-md my-1 mr-0.5',
+          'opacity-0 transition-opacity duration-150',
+          'data-[scrolling]:opacity-100 data-[scrolling]:transition-none',
+          'data-[hovering]:opacity-100',
+          'before:content-[""] before:absolute before:w-5 before:h-full'
+        )}>
+        <BaseScrollArea.Thumb className='w-full rounded-[inherit] bg-foreground/20' />
+      </BaseScrollArea.Scrollbar>
+    </BaseScrollArea.Root>
   )
 }
 

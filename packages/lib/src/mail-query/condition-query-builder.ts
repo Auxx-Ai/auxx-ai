@@ -116,6 +116,21 @@ function buildConditionQuery(condition: Condition, organizationId: string): SQL<
         return buildHasDraftQuery(op, value)
       case 'sent':
         return buildSentQuery(op, value)
+      // Direct-column fields (needed by find node)
+      case 'id':
+        return buildDirectColumnQuery(op, value, Thread.id)
+      case 'externalId':
+        return buildDirectColumnQuery(op, value, Thread.externalId)
+      case 'messageCount':
+        return buildDirectNumberColumnQuery(op, value, Thread.messageCount)
+      case 'firstMessageAt':
+        return buildDateQuery(op, value, 'firstMessageAt')
+      case 'closedAt':
+        return buildDateQuery(op, value, 'closedAt')
+      case 'createdAt':
+        return buildDateQuery(op, value, 'createdAt')
+      case 'lastMessageAt':
+        return buildDateQuery(op, value, 'lastMessageAt')
       default:
         logger.warn(`Unknown fieldId: ${fieldId}`)
         return null
@@ -654,13 +669,16 @@ function buildToQuery(operator: Operator, value: any): SQL<unknown> | null {
 function buildBodyQuery(operator: Operator, value: any): SQL<unknown> | null {
   const { Message } = schema
 
+  const searchTerm = `%${value}%`
+  const bodyMatch = or(ilike(Message.textPlain, searchTerm), ilike(Message.textHtml, searchTerm))
+
   switch (operator) {
     case 'contains':
       return exists(
         db
           .select({ id: sql`1` })
           .from(Message)
-          .where(and(eq(Message.threadId, Thread.id), ilike(Message.bodyText, `%${value}%`)))
+          .where(and(eq(Message.threadId, Thread.id), bodyMatch))
       )
     case 'not contains':
       return not(
@@ -668,7 +686,7 @@ function buildBodyQuery(operator: Operator, value: any): SQL<unknown> | null {
           db
             .select({ id: sql`1` })
             .from(Message)
-            .where(and(eq(Message.threadId, Thread.id), ilike(Message.bodyText, `%${value}%`)))
+            .where(and(eq(Message.threadId, Thread.id), bodyMatch))
         )
       )
     default:
@@ -697,28 +715,15 @@ function buildAfterQuery(operator: Operator, value: any): SQL<unknown> | null {
  * Filters threads that have at least one message with attachments.
  */
 function buildHasAttachmentsQuery(operator: Operator, value: any): SQL<unknown> | null {
-  const { Message, MessageAttachment } = schema
+  const { Message } = schema
   const hasAttachments = value === true || value === 'true'
 
-  if (hasAttachments) {
-    return exists(
-      db
-        .select({ id: sql`1` })
-        .from(Message)
-        .innerJoin(MessageAttachment, eq(MessageAttachment.messageId, Message.id))
-        .where(eq(Message.threadId, Thread.id))
-    )
-  } else {
-    return not(
-      exists(
-        db
-          .select({ id: sql`1` })
-          .from(Message)
-          .innerJoin(MessageAttachment, eq(MessageAttachment.messageId, Message.id))
-          .where(eq(Message.threadId, Thread.id))
-      )
-    )
-  }
+  const subquery = db
+    .select({ id: sql`1` })
+    .from(Message)
+    .where(and(eq(Message.threadId, Thread.id), eq(Message.hasAttachments, true)))
+
+  return hasAttachments ? exists(subquery) : not(exists(subquery))
 }
 
 /**
@@ -731,14 +736,19 @@ function buildFreeTextQuery(operator: Operator, value: any): SQL<unknown> | null
   const { Message } = schema
   const searchTerm = `%${value}%`
 
-  // Search in subject OR body
+  // Search in subject OR body (textPlain / textHtml)
   return or(
     ilike(Thread.subject, searchTerm),
     exists(
       db
         .select({ id: sql`1` })
         .from(Message)
-        .where(and(eq(Message.threadId, Thread.id), ilike(Message.bodyText, searchTerm)))
+        .where(
+          and(
+            eq(Message.threadId, Thread.id),
+            or(ilike(Message.textPlain, searchTerm), ilike(Message.textHtml, searchTerm))
+          )
+        )
     )
   )
 }
@@ -783,5 +793,88 @@ function buildSentQuery(operator: Operator, value: any): SQL<unknown> | null {
           .where(and(eq(Message.threadId, Thread.id), eq(Message.isInbound, false)))
       )
     )
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DIRECT COLUMN BUILDERS (for find node — simple single-column filters)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build condition for a direct string/ID column on Thread.
+ * Supports: is, is not, contains, not contains, starts with, ends with,
+ * in, not in, empty, not empty, exists, not exists
+ */
+function buildDirectColumnQuery(
+  operator: Operator,
+  value: any,
+  column: typeof Thread.id
+): SQL<unknown> | null {
+  switch (operator) {
+    case 'is':
+      if (value === null || value === undefined) return isNull(column)
+      return eq(column, String(value))
+    case 'is not':
+      if (value === null || value === undefined) return isNotNull(column)
+      return not(eq(column, String(value)))
+    case 'contains':
+      return ilike(column, `%${value}%`)
+    case 'not contains':
+      return not(ilike(column, `%${value}%`))
+    case 'starts with':
+      return ilike(column, `${value}%`)
+    case 'ends with':
+      return ilike(column, `%${value}`)
+    case 'in': {
+      const values = Array.isArray(value) ? value.map(String) : [String(value)]
+      return values.length > 0 ? inArray(column, values) : null
+    }
+    case 'not in': {
+      const values = Array.isArray(value) ? value.map(String) : [String(value)]
+      return values.length > 0 ? not(inArray(column, values)) : null
+    }
+    case 'empty':
+    case 'not exists':
+      return or(isNull(column), eq(column, ''))
+    case 'not empty':
+    case 'exists':
+      return and(isNotNull(column), not(eq(column, '')))
+    default:
+      return null
+  }
+}
+
+/**
+ * Build condition for a direct numeric column on Thread.
+ * Supports: is, is not, >, <, >=, <=, empty, not empty
+ */
+function buildDirectNumberColumnQuery(
+  operator: Operator,
+  value: any,
+  column: typeof Thread.messageCount
+): SQL<unknown> | null {
+  const numValue = value !== null && value !== undefined ? Number(value) : null
+
+  switch (operator) {
+    case 'is':
+      if (numValue === null || Number.isNaN(numValue)) return isNull(column)
+      return eq(column, numValue)
+    case 'is not':
+      if (numValue === null || Number.isNaN(numValue)) return isNotNull(column)
+      return not(eq(column, numValue))
+    case '>':
+      return numValue !== null && !Number.isNaN(numValue) ? gt(column, numValue) : null
+    case '<':
+      return numValue !== null && !Number.isNaN(numValue) ? lt(column, numValue) : null
+    case '>=':
+      return numValue !== null && !Number.isNaN(numValue) ? gte(column, numValue) : null
+    case '<=':
+      return numValue !== null && !Number.isNaN(numValue) ? lte(column, numValue) : null
+    case 'empty':
+      return isNull(column)
+    case 'not empty':
+      return isNotNull(column)
+    default:
+      return null
   }
 }

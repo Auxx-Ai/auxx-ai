@@ -4,6 +4,8 @@ import { type Database, database, schema } from '@auxx/database'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { SQL } from 'drizzle-orm'
 import { getCachedResource, getCachedResourceFields } from '../../../cache'
+import type { Condition, ConditionGroup as MailConditionGroup } from '../../../conditions/types'
+import { buildConditionGroupsQuery } from '../../../mail-query/condition-query-builder'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
 import {
   getFieldOperators,
@@ -50,6 +52,57 @@ type BuiltQuery = {
   where?: SQL<unknown>
   orderBy?: SQL<unknown>[]
   limit?: number
+}
+
+/**
+ * Normalize conditions from find-node format to mail-builder format.
+ *
+ * Handles three mismatches:
+ * 1. Strips resource prefix from fieldId ("thread:inbox" → "inbox")
+ * 2. Unwraps { referenceId } objects to plain ID strings
+ * 3. Extracts .id from full entity objects resolved from variables
+ */
+function normalizeConditionsForMailBuilder(conditions: GenericCondition[]): Condition[] {
+  return conditions.map((c) => {
+    // Strip resource prefix
+    const rawFieldId = Array.isArray(c.fieldId) ? c.fieldId[0] : c.fieldId
+    const fieldId = rawFieldId?.includes(':')
+      ? parseResourceFieldId(rawFieldId as ResourceFieldId).fieldId
+      : rawFieldId
+
+    // Normalize value
+    let value = c.value
+
+    // Unwrap { referenceId } objects (from relation picker UI)
+    if (typeof value === 'object' && value !== null && 'referenceId' in value) {
+      value = value.referenceId
+    }
+    if (Array.isArray(value)) {
+      value = value.map((v: any) =>
+        typeof v === 'object' && v !== null && 'referenceId' in v ? v.referenceId : v
+      )
+    }
+
+    // Extract .id from full entity objects (from variable resolution)
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      'id' in value &&
+      !('referenceId' in value)
+    ) {
+      value = value.id
+    }
+
+    return { ...c, fieldId, value }
+  })
+}
+
+function normalizeGroupsForMailBuilder(groups: ConditionGroup[]): MailConditionGroup[] {
+  return groups.map((g) => ({
+    ...g,
+    conditions: normalizeConditionsForMailBuilder(g.conditions),
+  }))
 }
 
 /**
@@ -488,8 +541,21 @@ export class FindProcessor extends BaseNodeProcessor {
         )
         result = queryResult.results
         resultCount = queryResult.count
+      } else if (resourceType === 'thread') {
+        // Thread queries use the dedicated mail condition builder which supports
+        // cross-table joins (sender, recipients, body, tags, attachments, etc.)
+        const queryResult = await this.executeThreadQuery(
+          organizationId,
+          conditions,
+          conditionGroups,
+          orderBy,
+          limit,
+          findMode
+        )
+        result = queryResult.results
+        resultCount = queryResult.count
       } else {
-        // Handle system resource query (existing logic)
+        // Handle other system resource queries (message, user, dataset, etc.)
         const query = this.buildQuery(
           resourceType as TableId,
           conditions,
@@ -720,6 +786,58 @@ export class FindProcessor extends BaseNodeProcessor {
     organizationId: string | undefined
   ) {
     return executeResourceQuery(resourceType, organizationId, query, 'findMany')
+  }
+
+  /**
+   * Execute thread query using the dedicated mail condition builder.
+   * Supports cross-table joins for sender, recipients, body, tags, attachments, etc.
+   */
+  private async executeThreadQuery(
+    organizationId: string,
+    conditions: GenericCondition[],
+    conditionGroups: ConditionGroup[],
+    orderBy: FindNodeData['orderBy'] | undefined,
+    limit: number | undefined,
+    findMode: 'findOne' | 'findMany'
+  ): Promise<{ results: any[] | any; count: number }> {
+    // Normalize conditions: strip fieldId prefix, unwrap { referenceId }, extract .id
+    const normalizedGroups =
+      conditionGroups.length > 0
+        ? normalizeGroupsForMailBuilder(conditionGroups)
+        : conditions.length > 0
+          ? [
+              {
+                id: 'flat',
+                conditions: normalizeConditionsForMailBuilder(conditions),
+                logicalOperator: 'AND' as const,
+              },
+            ]
+          : []
+
+    // Build WHERE clause via mail builder (includes org scoping internally)
+    const whereClause = buildConditionGroupsQuery(normalizedGroups, organizationId)
+
+    // Build ORDER BY (fall back to SystemConditionBuilder for column resolution)
+    const orderByClause = orderBy
+      ? ConditionQueryBuilder.buildOrderBySql(
+          this.stripFieldPrefix(orderBy.field),
+          orderBy.direction || 'asc',
+          'thread'
+        )
+      : undefined
+
+    // Execute query directly — mail builder already handles org scoping
+    const baseQuery = database.select().from(schema.Thread).$dynamic()
+    let q = baseQuery.where(whereClause).orderBy(...(orderByClause ?? []))
+
+    if (findMode === 'findOne') {
+      const [row] = await q.limit(1)
+      return { results: row ?? null, count: row ? 1 : 0 }
+    }
+
+    if (limit) q = q.limit(limit)
+    const rows = await q
+    return { results: rows, count: rows.length }
   }
 
   /**

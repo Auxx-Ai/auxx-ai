@@ -1,72 +1,92 @@
+// packages/ui/src/components/scroll-area.tsx
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui'
+import { ScrollArea as BaseScrollArea } from '@base-ui-components/react/scroll-area'
 import type * as React from 'react'
 
-/**
- * Props for ScrollArea component.
- */
-interface ScrollAreaProps extends React.ComponentProps<typeof ScrollAreaPrimitive.Root> {
+interface ScrollAreaProps {
+  children: React.ReactNode
   /** Scroll orientation: vertical (default), horizontal, or both */
   orientation?: 'vertical' | 'horizontal' | 'both'
-  /** Additional classes for the scrollbar (use to override thickness, colors, etc.) */
-  scrollbarClassName?: string
   /** Ref to the internal scroll viewport element (useful for IntersectionObserver root) */
   viewportRef?: React.Ref<HTMLDivElement>
+  /** Additional classes for the root container */
+  className?: string
+  /** Additional classes for the scrollbar */
+  scrollbarClassName?: string
+  /** Custom fade classes applied to viewport pseudo-elements. When set, uses sticky gradient overlays instead of the default mask-image fade. */
+  fadeClassName?: string
 }
 
-/**
- * ScrollArea component with configurable scroll orientation.
- * Use scrollbarClassName to customize scrollbar appearance (e.g., "w-1" for thinner vertical scrollbar).
- */
 function ScrollArea({
-  className,
   children,
   orientation = 'vertical',
-  scrollbarClassName,
   viewportRef,
-  ...props
+  className,
+  scrollbarClassName,
+  fadeClassName,
 }: ScrollAreaProps) {
+  const showVertical = orientation === 'vertical' || orientation === 'both'
+  const showHorizontal = orientation === 'horizontal' || orientation === 'both'
+
   return (
-    <ScrollAreaPrimitive.Root className={cn('relative overflow-hidden', className)} {...props}>
-      <ScrollAreaPrimitive.Viewport
+    <BaseScrollArea.Root className={cn('relative box-border overflow-hidden', className)}>
+      <BaseScrollArea.Viewport
         ref={viewportRef}
         className={cn(
-          'h-full w-full rounded-[inherit]',
-          orientation !== 'horizontal' && '[&>div]:h-full [&>div]:!flex [&>div]:!flex-col'
-        )}>
-        {children}
-      </ScrollAreaPrimitive.Viewport>
-      {(orientation === 'vertical' || orientation === 'both') && (
-        <ScrollBar orientation='vertical' className={scrollbarClassName} />
+          'h-full w-full overscroll-contain outline-none',
+          fadeClassName ? 'scroll-area-fade-custom' : 'scroll-area-fade',
+          fadeClassName
+        )}
+        style={
+          orientation !== 'both'
+            ? {
+                overflowX: showHorizontal ? undefined : 'hidden',
+                overflowY: showVertical ? undefined : 'hidden',
+              }
+            : undefined
+        }>
+        <BaseScrollArea.Content
+          className={showVertical ? 'min-h-full flex flex-col' : undefined}
+          style={!showHorizontal ? { minWidth: undefined } : undefined}>
+          {children}
+        </BaseScrollArea.Content>
+      </BaseScrollArea.Viewport>
+
+      {showVertical && (
+        <BaseScrollArea.Scrollbar
+          orientation='vertical'
+          className={cn(
+            'flex justify-center w-2 rounded-md my-2 mr-1.5 bg-foreground/10',
+            'opacity-0 transition-opacity duration-150',
+            'data-[scrolling]:opacity-100 data-[scrolling]:transition-none',
+            'data-[hovering]:opacity-100',
+            'before:content-[""] before:absolute before:w-5 before:h-full',
+            scrollbarClassName
+          )}>
+          <BaseScrollArea.Thumb className='w-full rounded-[inherit] bg-foreground/20' />
+        </BaseScrollArea.Scrollbar>
       )}
-      {(orientation === 'horizontal' || orientation === 'both') && (
-        <ScrollBar orientation='horizontal' className={scrollbarClassName} />
+
+      {showHorizontal && (
+        <BaseScrollArea.Scrollbar
+          orientation='horizontal'
+          className={cn(
+            'flex justify-center h-2 rounded-md mx-2 mb-1.5 bg-foreground/10',
+            'opacity-0 transition-opacity duration-150',
+            'data-[scrolling]:opacity-100 data-[scrolling]:transition-none',
+            'data-[hovering]:opacity-100',
+            'before:content-[""] before:absolute before:h-5 before:w-full',
+            scrollbarClassName
+          )}>
+          <BaseScrollArea.Thumb className='h-full rounded-[inherit] bg-foreground/20' />
+        </BaseScrollArea.Scrollbar>
       )}
-      <ScrollAreaPrimitive.Corner />
-    </ScrollAreaPrimitive.Root>
+
+      <BaseScrollArea.Corner />
+    </BaseScrollArea.Root>
   )
 }
 
-function ScrollBar({
-  className,
-  orientation = 'vertical',
-  ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
-  return (
-    <ScrollAreaPrimitive.ScrollAreaScrollbar
-      orientation={orientation}
-      className={cn(
-        'flex touch-none select-none transition-colors',
-        orientation === 'vertical' && 'h-full w-2.5 border-l border-l-transparent p-px',
-        orientation === 'horizontal' && 'h-2.5 flex-col border-t border-t-transparent p-px',
-        className
-      )}
-      {...props}>
-      <ScrollAreaPrimitive.ScrollAreaThumb className='relative flex-1 rounded-full bg-border' />
-    </ScrollAreaPrimitive.ScrollAreaScrollbar>
-  )
-}
-
-export { ScrollArea, ScrollBar }
+export { ScrollArea }

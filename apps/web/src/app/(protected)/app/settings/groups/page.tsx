@@ -69,7 +69,7 @@ export default function GroupsPage() {
       title='Member groups'
       description='View and edit your workgroup members'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Groups' }]}>
-      <div className='p-6'>
+      <div className='p-6 flex-col flex flex-1 min-h-0'>
         <GroupsList
           groups={groups ?? []}
           isLoading={isLoading}

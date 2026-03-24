@@ -42,23 +42,21 @@ export default function WebhooksPage() {
         </Button>
       }
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Webhooks' }]}>
-      <div className='h-full flex'>
-        <WebhookList
-          empty={
-            <EmptyState
-              icon={Webhook}
-              title='No webhooks found.'
-              description={<>Create your first webhook to get started.</>}
-              button={
-                <Button size='sm' variant='outline' onClick={() => setCreateDialogOpen(true)}>
-                  <PlusCircle />
-                  Create Webhook
-                </Button>
-              }
-            />
-          }
-        />
-      </div>
+      <WebhookList
+        empty={
+          <EmptyState
+            icon={Webhook}
+            title='No webhooks found.'
+            description={<>Create your first webhook to get started.</>}
+            button={
+              <Button size='sm' variant='outline' onClick={() => setCreateDialogOpen(true)}>
+                <PlusCircle />
+                Create Webhook
+              </Button>
+            }
+          />
+        }
+      />
 
       <DialogWebhook
         open={createDialogOpen}

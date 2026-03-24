@@ -7,6 +7,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@auxx/ui/components/breadcrumb'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
@@ -44,11 +45,13 @@ export default function SettingsPage({
   // Track scroll state for shadow effect
   const [isScrolled, setIsScrolled] = useState(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
 
   // Use Intersection Observer for efficient scroll detection
   useEffect(() => {
     const sentinel = sentinelRef.current
-    if (!sentinel) return
+    const viewport = viewportRef.current
+    if (!sentinel || !viewport) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -57,6 +60,7 @@ export default function SettingsPage({
         setIsScrolled(!entry.isIntersecting)
       },
       {
+        root: viewport,
         threshold: 1.0, // Trigger when fully visible/hidden
         rootMargin: '0px',
       }
@@ -70,7 +74,7 @@ export default function SettingsPage({
   }, [])
 
   return (
-    <div data-slot='settings-page' className='relative h-full w-full overflow-auto flex flex-col'>
+    <ScrollArea viewportRef={viewportRef} className='h-full w-full'>
       {breadcrumbs.length > 0 && (
         <header className='w-full flex-none border-b overflow-hidden'>
           <div className='flex items-center gap-2 px-3 py-1.5 no-scrollbar overflow-x-auto'>
@@ -132,6 +136,6 @@ export default function SettingsPage({
       {/* Sentinel element for Intersection Observer */}
       <div ref={sentinelRef} className='h-px shrink-0' aria-hidden='true' />
       {children}
-    </div>
+    </ScrollArea>
   )
 }

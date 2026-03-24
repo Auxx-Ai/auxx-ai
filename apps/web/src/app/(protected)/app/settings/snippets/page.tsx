@@ -84,8 +84,11 @@ function SnippetsPageContent() {
           New Snippet
         </Button>
       }>
-      <div className='flex h-full w-full overflow-hidden'>
-        <ResizablePanelGroup id='snippets-layout' direction='horizontal'>
+      <div className='flex flex-1 min-h-0 w-full overflow-hidden flex-col'>
+        <ResizablePanelGroup
+          id='snippets-layout'
+          direction='horizontal'
+          className='flex flex-col flex-1 min-h-0'>
           <ResizablePanel
             id='snippets-folders'
             ref={folderPanelRef}

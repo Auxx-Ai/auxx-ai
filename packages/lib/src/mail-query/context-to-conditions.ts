@@ -1,6 +1,5 @@
 // packages/lib/src/mail-query/context-to-conditions.ts
 
-import { nanoid } from 'nanoid'
 import type { Condition, ConditionGroup } from '../conditions/types'
 import { SEARCH_SCOPE_FIELD_ID } from '../mail-views/mail-view-field-definitions'
 
@@ -47,7 +46,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       // Personal contexts filter by assignee = current user
       if (params.userId) {
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-assignee',
           fieldId: 'assignee',
           operator: 'is',
           value: params.userId,
@@ -59,7 +58,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       // Specific inbox filters by inbox ID
       if (params.contextId) {
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-inbox',
           fieldId: 'inbox',
           operator: 'is',
           value: params.contextId,
@@ -71,7 +70,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       // Tag context filters by tag ID
       if (params.contextId) {
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-tag',
           fieldId: 'tag',
           operator: 'in',
           value: [params.contextId],
@@ -82,7 +81,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
     case 'drafts':
       // Drafts context filters for threads with drafts
       conditions.push({
-        id: nanoid(8),
+        id: 'ctx-hasDraft',
         fieldId: 'hasDraft',
         operator: 'is',
         value: true,
@@ -92,7 +91,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
     case 'sent':
       // Sent context filters for threads with outbound messages
       conditions.push({
-        id: nanoid(8),
+        id: 'ctx-sent',
         fieldId: 'sent',
         operator: 'is',
         value: true,
@@ -107,7 +106,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
     switch (params.statusSlug.toLowerCase()) {
       case 'open':
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-status',
           fieldId: 'status',
           operator: 'is',
           value: 'OPEN',
@@ -118,7 +117,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       case 'resolved':
       case 'archived':
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-status',
           fieldId: 'status',
           operator: 'is',
           value: 'ARCHIVED',
@@ -128,7 +127,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       case 'trash':
       case 'trashed':
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-status',
           fieldId: 'status',
           operator: 'is',
           value: 'TRASH',
@@ -137,7 +136,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
 
       case 'spam':
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-status',
           fieldId: 'status',
           operator: 'is',
           value: 'SPAM',
@@ -147,13 +146,13 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       case 'assigned':
         // Assigned = has assignee + OPEN status
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-assignee-filter',
           fieldId: 'assignee',
           operator: 'not empty',
           value: null,
         })
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-status',
           fieldId: 'status',
           operator: 'is',
           value: 'OPEN',
@@ -163,13 +162,13 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       case 'unassigned':
         // Unassigned = no assignee + OPEN status
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-assignee-filter',
           fieldId: 'assignee',
           operator: 'empty',
           value: null,
         })
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-status',
           fieldId: 'status',
           operator: 'is',
           value: 'OPEN',
@@ -179,7 +178,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
       default:
         // Unknown slug - pass through as status value
         conditions.push({
-          id: nanoid(8),
+          id: 'ctx-status',
           fieldId: 'status',
           operator: 'is',
           value: params.statusSlug,
@@ -191,7 +190,7 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
   const slug = params.statusSlug?.toLowerCase()
   if (!slug || !['trash', 'trashed', 'spam'].includes(slug)) {
     conditions.push({
-      id: nanoid(8),
+      id: 'ctx-status-exclude',
       fieldId: 'status',
       operator: 'not in',
       value: ['TRASH', 'SPAM'],
@@ -245,7 +244,7 @@ export function buildConditionGroups(
       logicalOperator: 'AND',
       conditions: [
         {
-          id: nanoid(8),
+          id: 'ctx-status-exclude',
           fieldId: 'status',
           operator: 'not in',
           value: ['TRASH', 'SPAM'],

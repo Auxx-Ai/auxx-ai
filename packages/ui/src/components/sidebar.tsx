@@ -2,7 +2,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
-import { ScrollArea } from '@auxx/ui/components/scroll-area-v2'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { Sheet, SheetContent } from '@auxx/ui/components/sheet'
 import { Skeleton } from '@auxx/ui/components/skeleton'

@@ -10,6 +10,7 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Lock } from 'lucide-react'
 import {
@@ -19,6 +20,7 @@ import {
   DatasetsGridView,
   DatasetsProvider,
   DatasetsStatsCards,
+  DatasetsTableView,
   useDatasets,
 } from '~/components/datasets'
 import { EmptyState } from '~/components/global/empty-state'
@@ -42,11 +44,11 @@ function DatasetsPageContent() {
         {/* Stats Cards */}
         <DatasetsStatsCards stats={stats} />
 
-        {/* Filters and View Options */}
-        <DatasetsFilterBar />
-
-        {/* Datasets Content */}
-        <div className='flex-1 flex flex-col h-full overflow-y-auto bg-muted @container'>
+        {/* Filters + Datasets Content */}
+        <ScrollArea className='flex-1 min-h-0 bg-muted @container'>
+          <div className='sticky top-0 z-10 backdrop-blur-sm'>
+            <DatasetsFilterBar />
+          </div>
           {isLoading ? (
             <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 p-3'>
               {[...Array(8)].map((_, i) => (
@@ -62,10 +64,9 @@ function DatasetsPageContent() {
           ) : viewMode === 'grid' ? (
             <DatasetsGridView />
           ) : (
-            // TODO: Implement table view
-            <div className='text-center text-muted-foreground'>Table view coming soon...</div>
+            <DatasetsTableView />
           )}
-        </div>
+        </ScrollArea>
       </MainPageContent>
     </MainPage>
   )

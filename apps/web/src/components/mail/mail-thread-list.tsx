@@ -17,7 +17,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@auxx/ui/components/empty'
-import { ScrollArea } from '@auxx/ui/components/scroll-area-v2'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, Mail, User } from 'lucide-react'
@@ -104,8 +104,7 @@ export const ThreadList = memo(function ThreadList({
     }
   }, [isLoading, isFetchingNextPage, onLoadingChange])
 
-  // Infinite scroll: IntersectionObserver with ScrollAreaV2 viewport as root.
-  // Use state so the observer re-creates when the viewport mounts.
+  // Infinite scroll: IntersectionObserver with viewport as root.
   const [scrollViewport, setScrollViewport] = useState<HTMLDivElement | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const fetchNextPageRef = useRef(fetchNextPage)
@@ -114,38 +113,76 @@ export const ThreadList = memo(function ThreadList({
   hasNextPageRef.current = hasNextPage
   const isFetchingRef = useRef(isFetchingNextPage)
   isFetchingRef.current = isFetchingNextPage
-  const inViewRef = useRef(false)
+  const observerRef = useRef<IntersectionObserver | null>(null)
+  // Guard: count consecutive auto-fetches without user scroll; reset on scroll
+  const autoFetchCount = useRef(0)
+  const MAX_AUTO_FETCHES = 5
 
   // Callback ref to capture the viewport element via state
   const viewportRefCallback = useCallback((el: HTMLDivElement | null) => {
     setScrollViewport(el)
   }, [])
 
+  // Reset auto-fetch counter on user scroll
+  useEffect(() => {
+    if (!scrollViewport) return
+    const reset = () => {
+      autoFetchCount.current = 0
+    }
+    scrollViewport.addEventListener('scroll', reset, { passive: true })
+    return () => scrollViewport.removeEventListener('scroll', reset)
+  }, [scrollViewport])
+
+  // Create IntersectionObserver
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!scrollViewport || !sentinel) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        const inView = entry?.isIntersecting ?? false
-        inViewRef.current = inView
-        if (inView && hasNextPageRef.current && !isFetchingRef.current) {
+        if (
+          entry?.isIntersecting &&
+          hasNextPageRef.current &&
+          !isFetchingRef.current &&
+          autoFetchCount.current < MAX_AUTO_FETCHES
+        ) {
+          autoFetchCount.current++
           fetchNextPageRef.current()
         }
       },
       { root: scrollViewport, threshold: 0 }
     )
 
+    observerRef.current = observer
     observer.observe(sentinel)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      observerRef.current = null
+    }
   }, [scrollViewport])
 
-  // Re-check after fetch completes in case sentinel is still visible
+  // After a fetch completes, re-observe sentinel to trigger a fresh
+  // intersection check (the observer only fires on state *changes*,
+  // so we need to disconnect + re-observe to re-evaluate).
   useEffect(() => {
-    if (inViewRef.current && hasNextPage && !isFetchingNextPage) {
-      fetchNextPageRef.current()
+    if (isFetchingNextPage || !hasNextPage) return
+    const observer = observerRef.current
+    const sentinel = sentinelRef.current
+    if (!observer || !sentinel) return
+
+    if (autoFetchCount.current >= MAX_AUTO_FETCHES) {
+      console.warn('[ThreadList] Auto-fetch limit reached — waiting for user scroll.', {
+        pages: recordIds.length,
+        autoFetchCount: autoFetchCount.current,
+      })
+      return
     }
-  }, [isFetchingNextPage, hasNextPage])
+
+    // Disconnect + re-observe forces the observer callback to fire
+    // with the sentinel's current intersection state.
+    observer.unobserve(sentinel)
+    observer.observe(sentinel)
+  }, [isFetchingNextPage, hasNextPage, recordIds.length])
 
   // Loading state
   if (isLoading) {
@@ -165,6 +202,7 @@ export const ThreadList = memo(function ThreadList({
       <ThreadListMenu threadIds={threadIds} />
       <ScrollArea
         viewportRef={viewportRefCallback}
+        scrollbarClassName='w-1!'
         className={cn('flex-1 min-h-0', isEmpty && 'flex flex-col')}>
         <div
           className={cn('relative flex flex-col gap-2 p-4 pt-0', isEmpty && 'flex-1')}
