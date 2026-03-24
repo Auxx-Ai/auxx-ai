@@ -43,6 +43,21 @@ export function useSortFieldResolver({ nodeId, inputListValue }: UseSortFieldRes
   const expandedFields = useMemo((): FieldDefinition[] => {
     const result: FieldDefinition[] = []
 
+    if (fieldDefinitions.length > 0) {
+      const relationFields = fieldDefinitions.filter(
+        (f) => f.type === BaseType.RELATION || f.type === BaseType.REFERENCE
+      )
+      console.debug(
+        `[SortFieldResolver] ${fieldDefinitions.length} fields, ${relationFields.length} relation/reference`,
+        relationFields.map((f) => ({
+          id: f.id,
+          type: f.type,
+          targetEntityDefinitionId: f.targetEntityDefinitionId,
+          fieldReference: f.fieldReference,
+        }))
+      )
+    }
+
     fieldDefinitions.forEach((field) => {
       // Direct sortable field (STRING, NUMBER, DATE, etc.)
       if (SORTABLE_TYPES.includes(field.type)) {
@@ -50,14 +65,27 @@ export function useSortFieldResolver({ nodeId, inputListValue }: UseSortFieldRes
       }
 
       // RELATION field - expand to show sortable subfields
-      else if (field.type === BaseType.RELATION && field.fieldReference) {
-        // Parse reference using typed parsing: "ticket:contact" or just "contact"
-        const targetTable = isResourceFieldId(field.fieldReference)
-          ? parseResourceFieldId(field.fieldReference as ResourceFieldId).fieldId
-          : field.fieldReference
+      else if (
+        field.type === BaseType.RELATION &&
+        (field.targetEntityDefinitionId || field.fieldReference)
+      ) {
+        const targetTable =
+          field.targetEntityDefinitionId ??
+          (isResourceFieldId(field.fieldReference!)
+            ? parseResourceFieldId(field.fieldReference as ResourceFieldId).fieldId
+            : field.fieldReference!)
 
         // Get sortable subfields from resource store
         const resource = useResourceStore.getState().resourceMap.get(targetTable)
+        if (!resource) {
+          console.warn(
+            `[SortFieldResolver] RELATION field "${field.id}" → resource "${targetTable}" not found in store.`,
+            {
+              targetEntityDefinitionId: field.targetEntityDefinitionId,
+              fieldReference: field.fieldReference,
+            }
+          )
+        }
         if (resource) {
           resource.fields
             .filter(
@@ -76,11 +104,23 @@ export function useSortFieldResolver({ nodeId, inputListValue }: UseSortFieldRes
       }
 
       // REFERENCE field (direct resource object) - expand subfields
-      else if (field.type === BaseType.REFERENCE && field.fieldReference) {
-        const targetTable = field.fieldReference
+      else if (
+        field.type === BaseType.REFERENCE &&
+        (field.targetEntityDefinitionId || field.fieldReference)
+      ) {
+        const targetTable = field.targetEntityDefinitionId ?? field.fieldReference!
 
         // Get sortable subfields from resource store
         const resource = useResourceStore.getState().resourceMap.get(targetTable)
+        if (!resource) {
+          console.warn(
+            `[SortFieldResolver] REFERENCE field "${field.id}" → resource "${targetTable}" not found in store.`,
+            {
+              targetEntityDefinitionId: field.targetEntityDefinitionId,
+              fieldReference: field.fieldReference,
+            }
+          )
+        }
         if (resource) {
           resource.fields
             .filter(

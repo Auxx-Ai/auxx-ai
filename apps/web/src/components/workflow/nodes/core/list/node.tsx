@@ -1,6 +1,8 @@
 // apps/web/src/components/workflow/nodes/core/list/node.tsx
 
-import { type FC, memo } from 'react'
+import type { ResourceFieldId } from '@auxx/types/field'
+import { type FC, memo, useMemo } from 'react'
+import { useFields } from '~/components/resources/hooks/use-field'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { getIcon } from '~/components/workflow/utils/icon-helper'
 import { NodeSourceHandle, NodeTargetHandle } from '../../../ui/node-handle'
@@ -14,6 +16,19 @@ export const ListNode: FC<ListNodeType> = memo((props) => {
   const { data, id, selected } = props
   const operation = data.operation
   const operationMeta = OPERATION_METADATA[operation]
+
+  // Collect ResourceFieldIds that need label resolution
+  const fieldIdsToResolve = useMemo((): (ResourceFieldId | null)[] => {
+    const uniqueField = data.uniqueConfig?.field
+    if (operation === 'unique' && uniqueField) {
+      if (Array.isArray(uniqueField)) return uniqueField as ResourceFieldId[]
+      if (typeof uniqueField === 'string' && uniqueField.includes(':'))
+        return [uniqueField as ResourceFieldId]
+    }
+    return []
+  }, [operation, data.uniqueConfig?.field])
+
+  const resolvedFields = useFields(fieldIdsToResolve)
 
   // Get operation summary based on configuration
   const getOperationSummary = () => {
@@ -31,10 +46,12 @@ export const ListNode: FC<ListNodeType> = memo((props) => {
         }
         return sliceMode || ''
       }
-      case 'unique':
-        return data.uniqueConfig?.by === 'field'
-          ? `by ${data.uniqueConfig?.field || 'field'}`
-          : 'whole items'
+      case 'unique': {
+        if (data.uniqueConfig?.by !== 'field') return 'whole items'
+        const labels = resolvedFields.filter(Boolean).map((f) => f!.label)
+        if (labels.length > 0) return `by ${labels.join(' → ')}`
+        return 'by field'
+      }
       case 'join':
         return data.joinConfig?.type || ''
       case 'pluck': {

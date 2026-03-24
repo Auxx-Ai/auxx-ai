@@ -135,7 +135,7 @@ export function NavigableFieldSelector({
                 )}
               </div>
             ) : (
-              <span className='text-muted-foreground'>{placeholder}</span>
+              <span className='text-muted-foreground text-sm'>{placeholder}</span>
             )}
           </div>
         )}

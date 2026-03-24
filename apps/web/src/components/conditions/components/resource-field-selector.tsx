@@ -93,7 +93,7 @@ const ResourceFieldSelector = ({
                 </div>
               </div>
             ) : (
-              <span className='text-muted-foreground'>{placeholder}</span>
+              <span className='text-muted-foreground text-sm'>{placeholder}</span>
             )}
           </div>
         )}

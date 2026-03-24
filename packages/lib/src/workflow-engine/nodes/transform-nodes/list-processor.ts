@@ -1,9 +1,18 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/list-processor.ts
 
-import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import {
+  type FieldPath,
+  type FieldReference,
+  parseResourceFieldId,
+  type ResourceFieldId,
+  toResourceFieldId,
+} from '@auxx/types/field'
+import { getCachedResourceFields } from '../../../cache'
+import type { ResourceField } from '../../../resources/registry/field-types'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { isResourceReference, type ResourceReference } from '../../types/resource-reference'
 import { BaseNodeProcessor } from '../base-node'
 import type { SortConfig } from '../types/list-types'
 
@@ -26,18 +35,83 @@ export class ListProcessor extends BaseNodeProcessor {
         throw new Error(`Input is not an array: ${typeof inputList}`)
       }
 
+      // If the array contains ResourceReferences, prefetch needed fields and resolve to plain objects
+      let resolvedList = inputList
+      if (inputList.length > 0 && isResourceReference(inputList[0])) {
+        const firstRef = inputList[0] as ResourceReference
+        const entityDefId = firstRef.resourceType
+        const orgId = firstRef.organizationId
+
+        contextManager.log('DEBUG', node.name, 'Detected ResourceReference array', {
+          count: inputList.length,
+          entityDefId,
+          operation: node.data.operation,
+        })
+
+        // Look up entity fields to resolve plain field keys to ResourceFieldIds
+        const entityFields = await getCachedResourceFields(orgId, entityDefId)
+        const neededFieldRefs = this.getRequiredFieldRefs(node.data, entityDefId, entityFields)
+
+        contextManager.log('DEBUG', node.name, 'Resolved field refs for prefetch', {
+          neededFieldRefs: neededFieldRefs.map((r) => (Array.isArray(r) ? r.join('::') : r)),
+          entityFieldCount: entityFields.length,
+        })
+
+        if (neededFieldRefs.length > 0) {
+          await contextManager.prefetchFields(inputList, neededFieldRefs)
+          resolvedList = await contextManager.resolveRecordArray(
+            inputList,
+            neededFieldRefs,
+            entityFields
+          )
+
+          contextManager.log('DEBUG', node.name, 'Resolved ResourceReference array', {
+            resolvedCount: resolvedList.length,
+            sampleItem: resolvedList[0]
+              ? {
+                  hasFieldValues: !!resolvedList[0].fieldValues,
+                  fieldValueKeys: resolvedList[0].fieldValues
+                    ? Object.keys(resolvedList[0].fieldValues)
+                    : [],
+                  sampleValues: resolvedList[0].fieldValues
+                    ? Object.fromEntries(
+                        Object.entries(resolvedList[0].fieldValues).map(([k, v]) => [
+                          k,
+                          typeof v === 'object' ? `[object ${typeof v}]` : v,
+                        ])
+                      )
+                    : {},
+                }
+              : null,
+          })
+        } else {
+          contextManager.log(
+            'WARN',
+            node.name,
+            'No field refs resolved — ResourceRefs not resolved',
+            {
+              operation: node.data.operation,
+              configField:
+                node.data.joinConfig?.field ??
+                node.data.filterConfig?.conditions?.[0]?.fieldId ??
+                'unknown',
+            }
+          )
+        }
+      }
+
       // Execute the appropriate operation
       let result: any
       const metadata: Record<string, any> = {}
 
       switch (node.data.operation) {
         case 'filter':
-          result = await this.executeFilter(inputList, node.data.filterConfig, contextManager)
+          result = await this.executeFilter(resolvedList, node.data.filterConfig, contextManager)
           metadata.count = result.length
           break
 
         case 'sort':
-          result = await this.executeSort(inputList, node.data.sortConfig)
+          result = await this.executeSort(resolvedList, node.data.sortConfig)
           break
 
         // case 'map':
@@ -52,12 +126,12 @@ export class ListProcessor extends BaseNodeProcessor {
         //   break
 
         case 'slice':
-          result = await this.executeSlice(inputList, node.data.sliceConfig, contextManager)
+          result = await this.executeSlice(resolvedList, node.data.sliceConfig, contextManager)
           metadata.count = Array.isArray(result) ? result.length : 1
           break
 
         case 'unique':
-          result = await this.executeUnique(inputList, node.data.uniqueConfig)
+          result = await this.executeUnique(resolvedList, node.data.uniqueConfig)
           metadata.count = result.length
           break
 
@@ -72,11 +146,11 @@ export class ListProcessor extends BaseNodeProcessor {
         //   break
 
         case 'join':
-          result = await this.executeJoin(inputList, node.data.joinConfig)
+          result = await this.executeJoin(resolvedList, node.data.joinConfig)
           break
 
         case 'pluck':
-          result = await this.executePluck(inputList, node.data.pluckConfig)
+          result = await this.executePluck(resolvedList, node.data.pluckConfig)
           break
 
         // case 'flatten':
@@ -84,7 +158,7 @@ export class ListProcessor extends BaseNodeProcessor {
         //   break
 
         case 'reverse':
-          result = [...inputList].reverse()
+          result = [...resolvedList].reverse()
           break
 
         default:
@@ -405,34 +479,46 @@ export class ListProcessor extends BaseNodeProcessor {
   private async executeUnique(list: any[], config: any): Promise<any[]> {
     if (!config) return list
 
+    if (config.by === 'whole') {
+      const seen = new Set()
+      const result: any[] = []
+      const iterate = config.keepFirst === false ? [...list].reverse() : list
+      for (const item of iterate) {
+        if (!seen.has(item)) {
+          seen.add(item)
+          result.push(item)
+        }
+      }
+      return config.keepFirst === false ? result.reverse() : result
+    }
+
+    // Field-based dedup — resolve FieldPath/ResourceFieldId to dot-separated keys
+    const resolvedField = this.resolveFilterField(config.field)
     const seen = new Set()
     const unique: any[] = []
+    const iterate = config.keepFirst === false ? [...list].reverse() : list
 
-    for (const item of list) {
-      const key =
-        config.by === 'field' && config.field
-          ? this.getNestedValue(item, config.field)
-          : JSON.stringify(item)
+    for (const item of iterate) {
+      let key = this.getNestedValue(item, resolvedField)
+
+      // undefined key = field doesn't exist on this item, pass through
+      if (key === undefined) {
+        unique.push(item)
+        continue
+      }
+
+      // case-insensitive comparison for strings
+      if (!config.caseSensitive && typeof key === 'string') {
+        key = key.toLowerCase()
+      }
 
       if (!seen.has(key)) {
         seen.add(key)
         unique.push(item)
-      } else if (!config.keepFirst) {
-        // If not keeping first, replace with latest
-        const index = unique.findIndex((u) => {
-          const uKey =
-            config.by === 'field' && config.field
-              ? this.getNestedValue(u, config.field)
-              : JSON.stringify(u)
-          return uKey === key
-        })
-        if (index !== -1) {
-          unique[index] = item
-        }
       }
     }
 
-    return unique
+    return config.keepFirst === false ? unique.reverse() : unique
   }
 
   /**
@@ -569,6 +655,11 @@ export class ListProcessor extends BaseNodeProcessor {
     compareValue: any,
     caseSensitive?: boolean
   ): boolean {
+    // If value is an array (from has_many relationship), check if ANY element matches
+    if (Array.isArray(value) && operator !== 'is_empty' && operator !== 'is_not_empty') {
+      return value.some((v) => this.evaluateCondition(v, operator, compareValue, caseSensitive))
+    }
+
     // Handle null/undefined checks first
     if (operator === 'is_null') return value == null
     if (operator === 'is_not_null') return value != null
@@ -621,6 +712,103 @@ export class ListProcessor extends BaseNodeProcessor {
       default:
         return false
     }
+  }
+
+  /**
+   * Determine which FieldReferences this list operation needs.
+   * Used to batch-prefetch field values before operating on ResourceReference arrays.
+   *
+   * @param entityDefId - Entity definition ID from the ResourceReference
+   * @param entityFields - Cached entity field definitions for resolving plain field keys
+   */
+  private getRequiredFieldRefs(
+    data: any,
+    entityDefId: string,
+    entityFields: ResourceField[]
+  ): FieldReference[] {
+    const refs: FieldReference[] = []
+
+    switch (data.operation) {
+      case 'join':
+        if (data.joinConfig?.field) {
+          const ref = this.toFieldRef(data.joinConfig.field, entityDefId, entityFields)
+          if (ref) refs.push(ref)
+        }
+        break
+      case 'pluck':
+        if (data.pluckConfig?.field) {
+          const ref = this.toFieldRef(data.pluckConfig.field, entityDefId, entityFields)
+          if (ref) refs.push(ref)
+        }
+        break
+      case 'sort':
+        if (data.sortConfig?.field) {
+          const ref = this.toFieldRef(data.sortConfig.field, entityDefId, entityFields)
+          if (ref) refs.push(ref)
+        }
+        break
+      case 'unique':
+        if (data.uniqueConfig?.by === 'field' && data.uniqueConfig?.field) {
+          const ref = this.toFieldRef(data.uniqueConfig.field, entityDefId, entityFields)
+          if (ref) refs.push(ref)
+        }
+        break
+      case 'filter':
+        refs.push(...this.extractFilterFieldRefs(data.filterConfig, entityDefId, entityFields))
+        break
+    }
+
+    return refs
+  }
+
+  /**
+   * Extract FieldReferences from filter conditions.
+   * Preserves full FieldPath for relationship traversal conditions.
+   */
+  private extractFilterFieldRefs(
+    config: any,
+    entityDefId: string,
+    entityFields: ResourceField[]
+  ): FieldReference[] {
+    if (!config?.conditions) return []
+
+    return config.conditions
+      .map((c: any) => {
+        const fieldId = c.fieldId ?? c.field
+        if (!fieldId) return null
+        return this.toFieldRef(fieldId, entityDefId, entityFields)
+      })
+      .filter(Boolean) as FieldReference[]
+  }
+
+  /**
+   * Convert a raw field identifier to a FieldReference.
+   * - Array (FieldPath): pass through as-is
+   * - String with colon (ResourceFieldId): pass through as-is
+   * - Plain string (field key or UUID): resolve to ResourceFieldId using entity fields
+   */
+  private toFieldRef(
+    fieldId: string | string[],
+    entityDefId: string,
+    entityFields: ResourceField[]
+  ): FieldReference | null {
+    // FieldPath (relationship traversal)
+    if (Array.isArray(fieldId)) {
+      return fieldId as FieldPath
+    }
+
+    // Already a ResourceFieldId (has colon separator)
+    if (fieldId.includes(':')) {
+      return fieldId as ResourceFieldId
+    }
+
+    // Plain field key or UUID — resolve via entity field definitions
+    const field = entityFields.find((f) => f.key === fieldId || f.id === fieldId)
+    if (field?.id) {
+      return toResourceFieldId(entityDefId, field.id)
+    }
+
+    return null
   }
 
   /**
@@ -718,6 +906,12 @@ export class ListProcessor extends BaseNodeProcessor {
       case 'pluck':
         if (!node.data.pluckConfig?.field) {
           errors.push('Pluck field is required')
+        }
+        break
+
+      case 'unique':
+        if (node.data.uniqueConfig?.by === 'field' && !node.data.uniqueConfig?.field) {
+          errors.push('Unique field is required when deduplicating by field')
         }
         break
     }

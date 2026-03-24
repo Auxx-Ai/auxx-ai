@@ -25,11 +25,11 @@ import Section from '~/components/workflow/ui/section'
 
 // Import operation-specific components
 import { FilterPanel } from './components/filter-panel'
-// import { UniquePanel } from './components/unique-panel'
 import { JoinPanel } from './components/join-panel'
 import { PluckPanel } from './components/pluck-panel'
 import { SlicePanel } from './components/slice-panel'
 import { SortPanel } from './components/sort-panel'
+import { UniquePanel } from './components/unique-panel'
 import { computeListOutputVariables } from './output-variables'
 import { type ListNodeData, type ListOperation, OPERATION_METADATA } from './types'
 
@@ -73,6 +73,10 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
     nodeData?.pluckConfig?.flatten,
     nodeData?.joinConfig?.delimiter,
     nodeData?.joinConfig?.field,
+    nodeData?.uniqueConfig?.by,
+    nodeData?.uniqueConfig?.field,
+    nodeData?.uniqueConfig?.keepFirst,
+    nodeData?.uniqueConfig?.caseSensitive,
     inputArrayVariable,
     nodeId,
   ])
@@ -91,7 +95,7 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
         draft.filterConfig = undefined
         draft.sortConfig = undefined
         draft.sliceConfig = undefined
-        // draft.uniqueConfig = undefined
+        draft.uniqueConfig = undefined
         draft.joinConfig = undefined
         draft.pluckConfig = undefined
 
@@ -116,9 +120,9 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
           case 'slice':
             draft.sliceConfig = { mode: 'first', count: 10 }
             break
-          // case 'unique':
-          //   draft.uniqueConfig = { by: 'whole', keepFirst: true }
-          //   break
+          case 'unique':
+            draft.uniqueConfig = { by: 'whole', keepFirst: true, caseSensitive: true }
+            break
           case 'join':
             draft.joinConfig = { delimiter: ', ' }
             break
@@ -178,8 +182,8 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
         return <SortPanel {...commonProps} />
       case 'slice':
         return <SlicePanel {...commonProps} />
-      // case 'unique':
-      //   return <UniquePanel {...commonProps} />
+      case 'unique':
+        return <UniquePanel {...commonProps} />
       case 'join':
         return <JoinPanel {...commonProps} />
       case 'pluck':

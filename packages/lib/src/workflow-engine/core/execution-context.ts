@@ -1,10 +1,28 @@
 // packages/lib/src/workflow-engine/core/execution-context.ts
 
 import { type Database, database } from '@auxx/database'
+import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { toRecordId } from '@auxx/types/resource'
+import type { TypedFieldValue } from '@auxx/types'
+import type { ActorId } from '@auxx/types/actor'
+import {
+  type FieldReference,
+  fieldRefToKey,
+  isFieldPath,
+  parseResourceFieldId,
+  type ResourceFieldId,
+  toResourceFieldId,
+} from '@auxx/types/field'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { LRUCache } from 'lru-cache'
 import { getCachedResourceFields } from '../../cache'
+import type { FieldOptions } from '../../custom-fields/field-options'
+import {
+  createFieldValueContext,
+  type FieldValueContext,
+} from '../../field-values/field-value-helpers'
+import { batchGetValues } from '../../field-values/field-value-queries'
+import { formatToDisplayValue, formatToRawValue } from '../../field-values/formatter'
 import {
   analyzePathForRelationships,
   fetchResourceWithRelationships,
@@ -46,6 +64,29 @@ const LAZY_LOAD_CACHE_CONFIG = {
   ttl: 1000 * 60 * 5,
 }
 
+// =============================================================================
+// RECORD FIELD CACHE TYPES
+// =============================================================================
+
+/** Cached field value with metadata for formatting */
+interface CachedFieldValue {
+  typed: TypedFieldValue | TypedFieldValue[] | null
+  fieldType: FieldType
+  fieldOptions?: FieldOptions
+}
+
+/** Cache entry for a single record (entity instance) */
+interface RecordFieldEntry {
+  base: {
+    id: string
+    entityDefinitionId: string
+    createdAt?: Date
+    updatedAt?: Date
+  }
+  fields: Map<string, CachedFieldValue> // fieldRefKey -> cached value
+  allFieldsFetched: boolean
+}
+
 /**
  * Manages workflow execution context including variables, state, and logging
  */
@@ -69,6 +110,10 @@ export class ExecutionContextManager {
   // Performance optimization: Cache path analysis results
   // Key: `${resourceType}:${remainingPath}` → relationshipsNeeded[]
   private pathAnalysisCache: Map<string, string[]> = new Map()
+
+  // Record field cache: stores TypedFieldValues per record, keyed by RecordId
+  // Unified cache for field value access — replaces per-field lazy loading for custom entities
+  private recordFieldCache: Map<string, RecordFieldEntry> = new Map()
 
   constructor(
     workflowId: string,
@@ -263,7 +308,14 @@ export class ExecutionContextManager {
         // Map over array
         if (rest) {
           const restPath = rest.startsWith('.') ? rest.slice(1) : rest
-          return baseValue.map((item) => this.resolveNestedObject(item, restPath))
+          // Check if items are ResourceReferences — resolve via recordFieldCache
+          return Promise.all(
+            baseValue.map((item) =>
+              isResourceReference(item) && restPath
+                ? this.resolveFieldFromResourceRef(item, restPath)
+                : this.resolveNestedObject(item, restPath)
+            )
+          )
         }
         return baseValue
       } else {
@@ -276,6 +328,10 @@ export class ExecutionContextManager {
         const item = baseValue[idx]
         if (rest) {
           const restPath = rest.startsWith('.') ? rest.slice(1) : rest
+          // Check if item is a ResourceReference — resolve via recordFieldCache
+          if (isResourceReference(item) && restPath) {
+            return this.resolveFieldFromResourceRef(item, restPath)
+          }
           return this.resolveNestedObject(item, restPath)
         }
         return item
@@ -298,6 +354,10 @@ export class ExecutionContextManager {
 
       if (this.context.variables[basePath] !== undefined) {
         const baseValue = this.context.variables[basePath]
+        // Check if base value is a ResourceReference — resolve field via recordFieldCache
+        if (isResourceReference(baseValue) && remainingPath) {
+          return this.resolveFieldFromResourceRef(baseValue, remainingPath)
+        }
         return this.resolveNestedObject(baseValue, remainingPath)
       }
     }
@@ -424,7 +484,7 @@ export class ExecutionContextManager {
       // String.replace() treats $& $' $` $n specially in replacement strings
       let replacement: string
       if (typeof value === 'object') {
-        replacement = JSON.stringify(value)
+        replacement = this.toDisplayString(value, path)
       } else {
         replacement = String(value)
       }
@@ -436,6 +496,30 @@ export class ExecutionContextManager {
     }
 
     return result
+  }
+
+  /**
+   * Convert an object value to a display string for interpolation.
+   * Checks the recordFieldCache for display values when the path resolved through a ResourceReference.
+   * Falls back to heuristics (name/label properties) or JSON.stringify for non-entity objects.
+   */
+  private toDisplayString(value: unknown, variablePath: string): string {
+    if (value == null) return ''
+    if (typeof value !== 'object') return String(value)
+
+    // For arrays, join elements
+    if (Array.isArray(value)) {
+      return value.map((v) => this.toDisplayString(v, '')).join(', ')
+    }
+
+    // Try common display-friendly properties
+    const obj = value as Record<string, unknown>
+    if ('name' in obj && typeof obj.name === 'string') return obj.name
+    if ('label' in obj && typeof obj.label === 'string') return obj.label
+    if ('displayName' in obj && typeof obj.displayName === 'string') return obj.displayName
+    if ('value' in obj && typeof obj.value === 'string') return obj.value
+
+    return JSON.stringify(value)
   }
 
   /**
@@ -653,6 +737,7 @@ export class ExecutionContextManager {
     this.lazyLoadCache.clear()
     this.loadingStack.clear()
     this.pathAnalysisCache.clear()
+    this.recordFieldCache.clear()
   }
 
   /**
@@ -677,6 +762,431 @@ export class ExecutionContextManager {
 
     this.pathAnalysisCache.set(cacheKey, relationships)
     return relationships
+  }
+
+  // =============================================================================
+  // RECORD FIELD CACHE
+  // =============================================================================
+
+  /** Create a FieldValueContext for batchGetValues calls */
+  private createFieldValueContext(): FieldValueContext {
+    const db = this.context.db ?? database
+    return createFieldValueContext(this.context.organizationId, this.context.userId, db)
+  }
+
+  /**
+   * Cache base entity data (id, entityDefinitionId, timestamps) for a record.
+   * Called by find nodes when storing ResourceReference arrays to avoid re-fetching base data.
+   */
+  cacheRecordBase(
+    recordId: RecordId,
+    base: { id: string; entityDefinitionId: string; createdAt?: Date; updatedAt?: Date }
+  ): void {
+    const existing = this.recordFieldCache.get(recordId)
+    if (existing) {
+      existing.base = base
+    } else {
+      this.recordFieldCache.set(recordId, {
+        base,
+        fields: new Map(),
+        allFieldsFetched: false,
+      })
+    }
+  }
+
+  /**
+   * Batch prefetch field values for multiple records.
+   * Delegates to batchGetValues, stores results in recordFieldCache.
+   *
+   * @param refs - ResourceReference array (from findMany output)
+   * @param fieldRefs - FieldReference array (direct fields or relationship paths)
+   */
+  async prefetchFields(refs: ResourceReference[], fieldRefs: FieldReference[]): Promise<void> {
+    if (refs.length === 0 || fieldRefs.length === 0) return
+
+    const recordIds = refs.map((ref) => toRecordId(ref.resourceType, ref.resourceId))
+
+    this.log('DEBUG', undefined, 'prefetchFields: calling batchGetValues', {
+      recordCount: recordIds.length,
+      fieldRefCount: fieldRefs.length,
+      fieldRefs: fieldRefs.map((r) => (Array.isArray(r) ? r.join('::') : r)),
+    })
+
+    const ctx = this.createFieldValueContext()
+    const result = await batchGetValues(ctx, { recordIds, fieldReferences: fieldRefs })
+
+    this.log('DEBUG', undefined, 'prefetchFields: batchGetValues returned', {
+      valueCount: result.values.length,
+      sampleValues: result.values.slice(0, 3).map((v) => ({
+        recordId: v.recordId,
+        fieldRef: Array.isArray(v.fieldRef) ? v.fieldRef.join('::') : v.fieldRef,
+        fieldType: v.fieldType,
+        hasValue: v.value !== null,
+      })),
+    })
+
+    // Store results in cache
+    for (const entry of result.values) {
+      const key = fieldRefToKey(entry.fieldRef)
+      let record = this.recordFieldCache.get(entry.recordId)
+      if (!record) {
+        const parsed = parseRecordId(entry.recordId)
+        record = {
+          base: { id: parsed.entityInstanceId, entityDefinitionId: parsed.entityDefinitionId },
+          fields: new Map(),
+          allFieldsFetched: false,
+        }
+        this.recordFieldCache.set(entry.recordId, record)
+      }
+      record.fields.set(key, {
+        typed: entry.value,
+        fieldType: entry.fieldType,
+        fieldOptions: entry.fieldOptions,
+      })
+    }
+  }
+
+  /**
+   * Get a single cached field value, falling back to lazy batchGetValues on cache miss.
+   *
+   * @param recordId - RecordId of the record
+   * @param fieldRef - FieldReference (direct field or relationship path)
+   * @returns CachedFieldValue or null if field has no value
+   */
+  async getFieldValue(
+    recordId: RecordId,
+    fieldRef: FieldReference
+  ): Promise<CachedFieldValue | null> {
+    const key = fieldRefToKey(fieldRef)
+    const record = this.recordFieldCache.get(recordId)
+
+    // Cache hit
+    if (record?.fields.has(key)) {
+      return record.fields.get(key)!
+    }
+
+    // Cache miss — lazy fetch via batchGetValues for 1 record, 1 field
+    const ctx = this.createFieldValueContext()
+    const result = await batchGetValues(ctx, {
+      recordIds: [recordId],
+      fieldReferences: [fieldRef],
+    })
+
+    const entry = result.values[0]
+    if (!entry) {
+      return null
+    }
+
+    // Cache the result
+    let cacheEntry = this.recordFieldCache.get(recordId)
+    if (!cacheEntry) {
+      const parsed = parseRecordId(recordId)
+      cacheEntry = {
+        base: { id: parsed.entityInstanceId, entityDefinitionId: parsed.entityDefinitionId },
+        fields: new Map(),
+        allFieldsFetched: false,
+      }
+      this.recordFieldCache.set(recordId, cacheEntry)
+    }
+
+    const cached: CachedFieldValue = {
+      typed: entry.value,
+      fieldType: entry.fieldType,
+      fieldOptions: entry.fieldOptions,
+    }
+    cacheEntry.fields.set(key, cached)
+    return cached
+  }
+
+  /**
+   * Get the raw value for a field on a record.
+   * Raw values are stripped of metadata (e.g., "john@example.com" instead of TypedFieldValue).
+   */
+  async getFieldRawValue(recordId: RecordId, fieldRef: FieldReference): Promise<unknown> {
+    const cached = await this.getFieldValue(recordId, fieldRef)
+    if (!cached) return undefined
+    return formatToRawValue(cached.typed, cached.fieldType)
+  }
+
+  /**
+   * Get the display-formatted value for a field on a record.
+   * Display values are human-readable strings (e.g., "$1,234.50", "Jan 15, 2024").
+   */
+  async getFieldDisplayValue(recordId: RecordId, fieldRef: FieldReference): Promise<unknown> {
+    const cached = await this.getFieldValue(recordId, fieldRef)
+    if (!cached) return undefined
+    return formatToDisplayValue(cached.typed, cached.fieldType, cached.fieldOptions)
+  }
+
+  /**
+   * Materialize cached field values into plain objects for downstream consumption.
+   * Builds objects with { ...base, fieldValues, displayValues } structure.
+   *
+   * Values are keyed by the field's output key (systemAttribute ?? key) to match
+   * what getNestedValue and list operations expect (e.g., "name", "email").
+   * Also keyed by fieldId (UUID) for ResourceFieldId-based lookups.
+   *
+   * @param refs - ResourceReference array
+   * @param fieldRefs - FieldReference array (must already be prefetched)
+   * @param entityFields - Optional entity field definitions for resolving output keys
+   * @returns Array of plain objects with fieldValues and displayValues
+   */
+  async resolveRecordArray(
+    refs: ResourceReference[],
+    fieldRefs: FieldReference[],
+    entityFields?: { id?: string; key: string; systemAttribute?: string }[]
+  ): Promise<any[]> {
+    // Build lookup: fieldId → output key (systemAttribute ?? key)
+    const fieldOutputKeyMap = new Map<string, string>()
+    if (entityFields) {
+      for (const f of entityFields) {
+        if (f.id) {
+          fieldOutputKeyMap.set(f.id, f.systemAttribute ?? f.key)
+        }
+      }
+    }
+
+    // Enrich ACTOR typed values with displayName before formatting
+    await this.enrichActorDisplayNames(refs, fieldRefs)
+
+    return refs.map((ref) => {
+      const recordId = toRecordId(ref.resourceType, ref.resourceId)
+      const entry = this.recordFieldCache.get(recordId)
+      if (!entry) return ref // Fallback: return ref as-is
+
+      const fieldValues: Record<string, any> = {}
+      const displayValues: Record<string, string> = {}
+
+      for (const fieldRef of fieldRefs) {
+        const cached = entry.fields.get(fieldRefToKey(fieldRef))
+        if (!cached) continue
+
+        const rawValue = formatToRawValue(cached.typed, cached.fieldType)
+        const displayStr = stringifyDisplayValue(
+          formatToDisplayValue(cached.typed, cached.fieldType, cached.fieldOptions)
+        )
+
+        // For field types where rawValue is an object (ACTOR, NAME), use the display
+        // string so String() calls in join/pluck produce readable output
+        const fieldValue =
+          rawValue !== null && typeof rawValue === 'object' && !Array.isArray(rawValue)
+            ? displayStr
+            : rawValue
+
+        if (isFieldPath(fieldRef)) {
+          const dotPath = fieldRef
+            .map(
+              (rfId) =>
+                fieldOutputKeyMap.get(parseResourceFieldId(rfId).fieldId) ??
+                parseResourceFieldId(rfId).fieldId
+            )
+            .join('.')
+          setNestedValue(fieldValues, dotPath, fieldValue)
+          setNestedValue(displayValues, dotPath, displayStr)
+        } else {
+          const { fieldId } = parseResourceFieldId(fieldRef as ResourceFieldId)
+          const outputKey = fieldOutputKeyMap.get(fieldId) ?? fieldId
+          fieldValues[outputKey] = fieldValue
+          displayValues[outputKey] = displayStr
+          if (fieldId !== outputKey) {
+            fieldValues[fieldId] = fieldValue
+            displayValues[fieldId] = displayStr
+          }
+        }
+      }
+
+      return { ...entry.base, fieldValues, displayValues }
+    })
+  }
+
+  /**
+   * Batch-resolve actor display names and enrich cached TypedFieldValues.
+   * After this, formatToDisplayValue on ACTOR fields returns the real name.
+   */
+  private async enrichActorDisplayNames(
+    refs: ResourceReference[],
+    fieldRefs: FieldReference[]
+  ): Promise<void> {
+    // Collect all actorIds from ACTOR-type cached values
+    const actorIdSet = new Set<string>()
+    const actorEntries: { entry: RecordFieldEntry; cacheKey: string; cached: CachedFieldValue }[] =
+      []
+
+    for (const ref of refs) {
+      const recordId = toRecordId(ref.resourceType, ref.resourceId)
+      const entry = this.recordFieldCache.get(recordId)
+      if (!entry) continue
+
+      for (const fieldRef of fieldRefs) {
+        const cacheKey = fieldRefToKey(fieldRef)
+        const cached = entry.fields.get(cacheKey)
+        if (!cached || cached.fieldType !== 'ACTOR' || !cached.typed) continue
+
+        const raw = formatToRawValue(cached.typed, cached.fieldType) as any
+        if (raw?.actorId) {
+          actorIdSet.add(raw.actorId)
+          actorEntries.push({ entry, cacheKey, cached })
+        }
+      }
+    }
+
+    if (actorIdSet.size === 0) return
+
+    try {
+      const { ActorService } = await import('../../actors/actor-service')
+      const actorService = new ActorService({
+        db: this.context.db!,
+        organizationId: this.context.organizationId,
+        userId: this.context.userId ?? '',
+      })
+      const actors = await actorService.getByIds([...actorIdSet] as ActorId[])
+
+      // Patch displayName onto cached TypedFieldValues so formatToDisplayValue uses it
+      for (const { cached } of actorEntries) {
+        const typed = cached.typed as any
+        if (!typed) continue
+        const raw = formatToRawValue(typed, cached.fieldType) as any
+        const actor = raw?.actorId ? actors.get(raw.actorId) : undefined
+        if (actor) {
+          typed.displayName = actor.name
+        }
+      }
+    } catch (err) {
+      this.log('WARN', undefined, 'Failed to batch-resolve actor names', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  /**
+   * Resolve a field value from a ResourceReference using a remaining dot-path.
+   * Converts the dot-path to a FieldReference and fetches via getFieldValue.
+   *
+   * Used by resolveVariablePath when it encounters a ResourceReference
+   * and needs to resolve a field access (e.g., "find1.contacts[0].email").
+   */
+  private async resolveFieldFromResourceRef(ref: ResourceReference, dotPath: string): Promise<any> {
+    const recordId = toRecordId(ref.resourceType, ref.resourceId)
+
+    this.log('DEBUG', undefined, 'resolveFieldFromResourceRef', {
+      resourceType: ref.resourceType,
+      resourceId: ref.resourceId,
+      dotPath,
+    })
+
+    // Single-segment path = direct field access (e.g., "email")
+    // Multi-segment path = could be relationship path or nested object access
+    const segments = dotPath.split('.')
+
+    // Try as direct field first (single segment)
+    if (segments.length === 1) {
+      const fieldRef = await this.resolveFieldKeyToRef(ref.resourceType, segments[0]!)
+      this.log('DEBUG', undefined, 'resolveFieldFromResourceRef: single segment', {
+        segment: segments[0],
+        resolvedFieldRef: fieldRef,
+      })
+      if (fieldRef) {
+        const cached = await this.getFieldValue(recordId, fieldRef)
+        if (cached) {
+          const result = cachedToFriendlyValue(cached)
+          this.log('DEBUG', undefined, 'resolveFieldFromResourceRef: resolved', {
+            fieldRef,
+            fieldType: cached.fieldType,
+            resultType: typeof result,
+            result: typeof result === 'string' ? result.slice(0, 100) : String(result),
+          })
+          return result
+        }
+      }
+      this.log('DEBUG', undefined, 'resolveFieldFromResourceRef: field not found', {
+        segment: segments[0],
+        fieldRef,
+      })
+      return undefined
+    }
+
+    // Multi-segment: try as relationship path first
+    // Build FieldPath by querying the resource registry for field definitions
+    const fieldPath = await this.buildFieldPath(ref.resourceType, segments)
+    if (fieldPath) {
+      const pathCached = await this.getFieldValue(recordId, fieldPath)
+      if (pathCached) {
+        return cachedToFriendlyValue(pathCached)
+      }
+    }
+
+    // Fallback: try first segment as direct field, navigate rest as nested object
+    const directRef = await this.resolveFieldKeyToRef(ref.resourceType, segments[0]!)
+    if (directRef) {
+      const directCached = await this.getFieldValue(recordId, directRef)
+      if (directCached) {
+        const rawValue = formatToRawValue(directCached.typed, directCached.fieldType)
+        if (typeof rawValue === 'object' && rawValue !== null && segments.length > 1) {
+          return this.resolveNestedObject(rawValue, segments.slice(1).join('.'))
+        }
+        return cachedToFriendlyValue(directCached)
+      }
+    }
+
+    return undefined
+  }
+
+  /**
+   * Resolve a field key or UUID to a ResourceFieldId by looking up the entity field registry.
+   * Field keys (e.g., "name", "email") need to be mapped to their UUID for batchGetValues.
+   */
+  private async resolveFieldKeyToRef(
+    entityDefId: string,
+    fieldKeyOrId: string
+  ): Promise<ResourceFieldId | null> {
+    try {
+      const fields = await getCachedResourceFields(this.context.organizationId, entityDefId)
+      const field = fields?.find((f) => f.key === fieldKeyOrId || f.id === fieldKeyOrId)
+      if (field?.id) {
+        return toResourceFieldId(entityDefId, field.id) as ResourceFieldId
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Try to build a FieldPath from dot-separated segments by checking the resource registry.
+   * Returns null if the segments don't form a valid relationship path.
+   */
+  private async buildFieldPath(
+    startEntityId: string,
+    segments: string[]
+  ): Promise<FieldReference | null> {
+    try {
+      const fields = await getCachedResourceFields(this.context.organizationId, startEntityId)
+
+      if (!fields || fields.length === 0) return null
+
+      // Check if first segment is a relationship field
+      const firstField = fields.find(
+        (f) => (f.key === segments[0] || f.id === segments[0]) && f.fieldType === 'RELATIONSHIP'
+      )
+      if (!firstField || !firstField.id) return null
+
+      // For single remaining segment after relationship, build 2-element path
+      if (segments.length === 2) {
+        const relConfig = (firstField.options as any)?.relationship
+        const targetEntityId = relConfig?.relatedEntityDefinitionId
+        if (!targetEntityId) return null
+
+        const firstRef = toResourceFieldId(startEntityId, firstField.id) as ResourceFieldId
+        const secondRef = toResourceFieldId(targetEntityId, segments[1]!) as ResourceFieldId
+        return [firstRef, secondRef]
+      }
+
+      // For deeper paths, recursively build
+      // (simplified: only handle 2-deep for now)
+      return null
+    } catch {
+      return null
+    }
   }
 
   /**
@@ -1555,4 +2065,44 @@ export class ExecutionContextManager {
 
     return this.getFileService().getContent(fileRef, options || {})
   }
+}
+
+// =============================================================================
+// RECORD FIELD CACHE HELPERS (module-level)
+// =============================================================================
+
+/** Convert a display value (unknown) to a string suitable for interpolation */
+function stringifyDisplayValue(displayValue: unknown): string {
+  if (displayValue == null) return ''
+  if (typeof displayValue === 'string') return displayValue
+  if (Array.isArray(displayValue)) {
+    return displayValue.map((v) => stringifyDisplayValue(v)).join(', ')
+  }
+  return String(displayValue)
+}
+
+/**
+ * Get a friendly value from a cached field value.
+ * For field types where formatToRawValue returns an object (ACTOR, NAME),
+ * returns the display string instead so String() calls produce readable output.
+ */
+function cachedToFriendlyValue(cached: CachedFieldValue): unknown {
+  const raw = formatToRawValue(cached.typed, cached.fieldType)
+  if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+    return stringifyDisplayValue(
+      formatToDisplayValue(cached.typed, cached.fieldType, cached.fieldOptions)
+    )
+  }
+  return raw
+}
+
+/** Set a value at a dot-separated path on an object, creating intermediate objects as needed */
+function setNestedValue(obj: Record<string, any>, dotPath: string, value: any): void {
+  const parts = dotPath.split('.')
+  let current = obj
+  for (let i = 0; i < parts.length - 1; i++) {
+    current[parts[i]!] ??= {}
+    current = current[parts[i]!]
+  }
+  current[parts[parts.length - 1]!] = value
 }

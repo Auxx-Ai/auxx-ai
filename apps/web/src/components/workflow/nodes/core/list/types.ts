@@ -6,7 +6,7 @@ import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
 /**
  * Available list operations
  */
-export type ListOperation = 'filter' | 'sort' | 'slice' | 'pluck' | 'reverse' | 'join'
+export type ListOperation = 'filter' | 'sort' | 'slice' | 'pluck' | 'reverse' | 'join' | 'unique'
 
 /**
  * Sort direction
@@ -69,11 +69,12 @@ export interface SliceConfig {
 /**
  * Unique configuration
  */
-// export interface UniqueConfig {
-//   by: UniqueBy
-//   field?: string
-//   keepFirst?: boolean
-// }
+export interface UniqueConfig {
+  by: UniqueBy
+  field?: string | string[]
+  keepFirst?: boolean
+  caseSensitive?: boolean
+}
 
 /**
  * Join configuration - converts array to string with delimiter
@@ -102,7 +103,7 @@ export interface ListNodeData extends BaseNodeData {
   filterConfig?: FilterConfig
   sortConfig?: SortConfig
   sliceConfig?: SliceConfig
-  // uniqueConfig?: UniqueConfig
+  uniqueConfig?: UniqueConfig
   joinConfig?: JoinConfig
   pluckConfig?: PluckConfig
 }
@@ -145,12 +146,12 @@ export const OPERATION_METADATA: Record<ListOperation, OperationMetadata> = {
     icon: 'scissors',
     outputType: 'array',
   },
-  // unique: {
-  //   label: 'Unique',
-  //   description: 'Remove duplicate items',
-  //   icon: 'Fingerprint',
-  //   outputType: 'array',
-  // },
+  unique: {
+    label: 'Unique',
+    description: 'Remove duplicate items',
+    icon: 'fingerprint',
+    outputType: 'array',
+  },
   join: {
     label: 'Join',
     description: 'Convert array to string with delimiter',

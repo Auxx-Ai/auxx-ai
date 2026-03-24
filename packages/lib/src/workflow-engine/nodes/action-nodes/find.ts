@@ -16,6 +16,7 @@ import {
 import type { TableId } from '../../../resources/registry/field-registry'
 import { getFieldOutputKey } from '../../../resources/registry/field-types'
 import { executeResourceQuery } from '../../../resources/resource-fetcher'
+import { toRecordId } from '../../../resources/resource-id'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -556,7 +557,9 @@ export class FindProcessor extends BaseNodeProcessor {
         }
       } else {
         if (isCustomResourceId(resourceType) && Array.isArray(result)) {
-          // Store ResourceReferences for each item in the array
+          // Store ResourceReferences for each item + cache base entity data
+          const { createResourceReference } = await import('../../types/resource-reference')
+          const refs = []
           for (const item of result) {
             if (item?.id) {
               const entityData = {
@@ -566,10 +569,15 @@ export class FindProcessor extends BaseNodeProcessor {
                 updatedAt: item.updatedAt,
               }
               setEntityVariables(resourceType, entityData, contextManager, node.nodeId)
+
+              // Cache base data for recordFieldCache (field values load lazily)
+              const recordId = toRecordId(resourceType, item.id)
+              contextManager.cacheRecordBase(recordId, entityData)
+              refs.push(createResourceReference(resourceType as any, item.id, organizationId))
             }
           }
-          // Also store the full array under plural name for iteration/loops
-          contextManager.setNodeVariable(node.nodeId, pluralName, result)
+          // Store ResourceReference array under plural name for downstream consumption
+          contextManager.setNodeVariable(node.nodeId, pluralName, refs)
         } else {
           // System resources
           contextManager.setNodeVariable(node.nodeId, pluralName, result)
@@ -731,11 +739,24 @@ export class FindProcessor extends BaseNodeProcessor {
     // Import EntityConditionBuilder
     const { entityConditionBuilder } = await import('../../query-builder/entity-condition-builder')
 
+    // Pre-fetch related entity fields for relationship path conditions
+    const relatedEntityFields: Record<string, any[]> = {}
+    if (conditionGroups.length > 0) {
+      const { extractRequiredRelatedEntities } = await import(
+        '../../../resources/crud/unified-handler-queries'
+      )
+      const requiredRelated = extractRequiredRelatedEntities(conditionGroups, fields)
+      for (const relatedId of requiredRelated) {
+        relatedEntityFields[relatedId] = await getCachedResourceFields(organizationId, relatedId)
+      }
+    }
+
     // Build query context for entity
     // outerTable provides direct column reference for proper Drizzle table context in subqueries
     const entityContext = {
       fields,
       outerTable: schema.EntityInstance,
+      relatedEntityFields,
     }
 
     // Build WHERE clause using EntityConditionBuilder
@@ -780,14 +801,8 @@ export class FindProcessor extends BaseNodeProcessor {
       limit: findMode === 'findOne' ? 1 : limit,
     })
 
-    // For findMany, batch-hydrate field values onto all results in a single query
-    // findOne uses lazy loading via ResourceReference instead
-    if (findMode === 'findMany' && results.length > 0) {
-      const { batchHydrateFieldValues } = await import('../../../resources/batch-hydrate')
-      const hydrated = await batchHydrateFieldValues(results, entityDefinitionId, organizationId)
-      return { results: hydrated, count: hydrated.length }
-    }
-
+    // For findMany, return bare instances — field values load lazily via recordFieldCache
+    // findOne also uses lazy loading via ResourceReference
     return {
       results: findMode === 'findOne' ? (results[0] ?? null) : results,
       count: results.length,
