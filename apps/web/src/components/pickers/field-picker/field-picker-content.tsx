@@ -199,14 +199,24 @@ export function FieldPickerInnerContent({
     const pathIds: ResourceFieldId[] = stack.map((item) => item.resourceFieldId)
     const fieldReference = toFieldPath(pathIds)
 
-    // Create a minimal field representation for the callback
+    // Create a field representation for the callback
     // Include type/fieldType so operator resolution works correctly
+    // Reconstruct relationship from targetEntityDefinitionId so the value input
+    // can derive the related entity for record picking
+    const targetEntityDefId = current.targetEntityDefinitionId
     onSelect(fieldReference, {
       id: current.id,
       label: current.label,
       resourceFieldId: current.resourceFieldId,
       type: current.type,
       fieldType: current.fieldType,
+      ...(targetEntityDefId && {
+        relationship: {
+          inverseResourceFieldId: `${targetEntityDefId}:_inverse` as ResourceFieldId,
+          relationshipType: 'belongs_to',
+          isInverse: false,
+        },
+      }),
     } as ResourceField)
 
     if (closeOnSelect && onClose) {

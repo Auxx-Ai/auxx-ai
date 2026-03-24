@@ -368,7 +368,7 @@ function CommandInput({
 function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>) {
   return (
     <CommandPrimitive.List
-      className={cn('max-h-[300px] overflow-y-auto overflow-x-hidden', className)}
+      className={cn('max-h-[300px] overflow-y-auto overflow-x-hidden outline-none', className)}
       {...props}
     />
   )

@@ -255,6 +255,8 @@ export interface SelectFieldInputProps {
   open?: boolean
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
+  /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
+  shouldPreventDismiss?: (target: HTMLElement) => boolean
 }
 
 /**
@@ -274,6 +276,7 @@ export function SelectFieldInput({
   triggerProps,
   open: controlledOpen,
   onOpenChange,
+  shouldPreventDismiss,
 }: SelectFieldInputProps) {
   // Normalize value — callers may pass a single string when switching operators
   const normalizedValue = Array.isArray(value) ? value : value ? [value] : []
@@ -341,7 +344,15 @@ export function SelectFieldInput({
           <TagsView value={normalizedValue} options={options} className='flex-1' />
         </PickerTrigger>
       </PopoverTrigger>
-      <PopoverContent className='min-w-[var(--radix-popover-trigger-width)] p-0' align='start'>
+      <PopoverContent
+        className='min-w-[var(--radix-popover-trigger-width)] p-0'
+        align='start'
+        onPointerDownOutside={(e) => {
+          if (shouldPreventDismiss?.(e.target as HTMLElement)) e.preventDefault()
+        }}
+        onFocusOutside={(e) => {
+          if (shouldPreventDismiss?.(e.target as HTMLElement)) e.preventDefault()
+        }}>
         <MultiSelectPicker
           options={options}
           value={normalizedValue}

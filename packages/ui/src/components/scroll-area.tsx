@@ -12,6 +12,8 @@ interface ScrollAreaProps extends React.ComponentProps<typeof ScrollAreaPrimitiv
   orientation?: 'vertical' | 'horizontal' | 'both'
   /** Additional classes for the scrollbar (use to override thickness, colors, etc.) */
   scrollbarClassName?: string
+  /** Ref to the internal scroll viewport element (useful for IntersectionObserver root) */
+  viewportRef?: React.Ref<HTMLDivElement>
 }
 
 /**
@@ -23,11 +25,13 @@ function ScrollArea({
   children,
   orientation = 'vertical',
   scrollbarClassName,
+  viewportRef,
   ...props
 }: ScrollAreaProps) {
   return (
     <ScrollAreaPrimitive.Root className={cn('relative overflow-hidden', className)} {...props}>
       <ScrollAreaPrimitive.Viewport
+        ref={viewportRef}
         className={cn(
           'h-full w-full rounded-[inherit]',
           orientation !== 'horizontal' && '[&>div]:h-full [&>div]:!flex [&>div]:!flex-col'

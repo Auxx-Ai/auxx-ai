@@ -97,6 +97,8 @@ export interface FieldInputAdapterProps {
   onOpenChange?: (open: boolean) => void
   /** Enable auto-grow for text inputs */
   autoGrow?: AutoGrowOptions
+  /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
+  shouldPreventDismiss?: (target: HTMLElement) => boolean
 }
 
 /**
@@ -117,6 +119,7 @@ export function FieldInputAdapter({
   open,
   onOpenChange,
   autoGrow,
+  shouldPreventDismiss,
 }: FieldInputAdapterProps) {
   // For NodeInputProps-compatible components
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -219,6 +222,7 @@ export function FieldInputAdapter({
             triggerProps={triggerProps}
             open={open}
             onOpenChange={onOpenChange}
+            shouldPreventDismiss={shouldPreventDismiss}
           />
           {createDialogOpen && createEntityDefinitionId && (
             <EntityInstanceDialog
@@ -256,6 +260,7 @@ export function FieldInputAdapter({
           triggerProps={triggerProps}
           open={open}
           onOpenChange={onOpenChange}
+          shouldPreventDismiss={shouldPreventDismiss}
         />
       )
     }
@@ -287,6 +292,7 @@ export function FieldInputAdapter({
           triggerProps={triggerProps}
           open={open}
           onOpenChange={onOpenChange}
+          shouldPreventDismiss={shouldPreventDismiss}
         />
       )
     }
@@ -339,6 +345,7 @@ export function FieldInputAdapter({
             triggerProps={triggerProps}
             open={open}
             onOpenChange={onOpenChange}
+            shouldPreventDismiss={shouldPreventDismiss}
           />
         )
       }

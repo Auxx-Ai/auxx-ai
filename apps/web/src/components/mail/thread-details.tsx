@@ -2,7 +2,7 @@
 'use client'
 
 import { toRecordId } from '@auxx/lib/field-values/client'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { ScrollArea } from '@auxx/ui/components/scroll-area-v2'
 import { useEffect, useRef } from 'react'
 import { useThread } from '~/components/threads/hooks'
 import { useCompose } from '~/hooks/use-compose'
@@ -66,13 +66,11 @@ export default function ThreadDetails() {
         closeCompose(instanceIdRef.current)
       }
       const id = openInline({ mode: editorMode, thread, sourceMessage, draft }, portalTargetId)
-      console.log('[ThreadDetails] opened inline', id)
       instanceIdRef.current = id
       justCreatedRef.current = true
     }
 
     if (!isShowReplyBox && instanceIdRef.current) {
-      console.log('[ThreadDetails] replyBox closed, closing instance', instanceIdRef.current)
       closeCompose(instanceIdRef.current)
       instanceIdRef.current = null
     }
@@ -86,7 +84,6 @@ export default function ThreadDetails() {
       return
     }
     if (instanceIdRef.current && !instances.find((i) => i.id === instanceIdRef.current)) {
-      console.log('[ThreadDetails] sync: instance gone, closing replyBox', instanceIdRef.current)
       instanceIdRef.current = null
       if (isShowReplyBox) {
         handlers.closeReplyBox()
@@ -101,7 +98,6 @@ export default function ThreadDetails() {
         i.thread?.id === threadId && i.displayMode === 'inline' && i.id !== instanceIdRef.current
     )
     if (docked) {
-      console.log('[ThreadDetails] adopting docked instance', docked.id)
       instanceIdRef.current = docked.id
       if (!isShowReplyBox) {
         handlers.openReplyBox('generic')
@@ -113,13 +109,8 @@ export default function ThreadDetails() {
   const findByThread = useComposeStore((s) => s.findByThread)
   useEffect(() => {
     return () => {
-      console.log('[ThreadDetails] unmount cleanup', {
-        instanceId: instanceIdRef.current,
-        threadId,
-      })
       if (instanceIdRef.current) {
         const inst = findByThread(threadId)
-        console.log('[ThreadDetails] unmount: instance displayMode =', inst?.displayMode)
         if (inst?.displayMode === 'inline') {
           closeCompose(instanceIdRef.current)
         }

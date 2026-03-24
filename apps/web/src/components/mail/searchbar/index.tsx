@@ -65,6 +65,7 @@ export function MailSearchBar({
 }: MailSearchBarProps) {
   const inputRef = useRef<AutosizeInputRef>(null)
   const filterButtonRef = useRef<HTMLButtonElement>(null)
+  const searchBarContainerRef = useRef<HTMLDivElement>(null)
   const searchInputRowRef = useRef<HTMLDivElement>(null)
 
   // Local UI state
@@ -180,15 +181,27 @@ export function MailSearchBar({
   /** Handle input keydown for suggestion navigation and condition creation */
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      console.log('[SearchBar] keydown:', e.key, {
+        suggestionsCount: suggestions.length,
+        highlightedIndex: highlightedSuggestionIndex,
+        inputValue,
+        isOpen,
+        showAdvanced,
+      })
+
       // Arrow navigation in suggestions
       if (e.key === 'ArrowDown' && suggestions.length > 0) {
         e.preventDefault()
-        setHighlightedSuggestionIndex((i) => Math.min(i + 1, suggestions.length - 1))
+        const next = Math.min(highlightedSuggestionIndex + 1, suggestions.length - 1)
+        console.log('[SearchBar] ArrowDown: moving from', highlightedSuggestionIndex, 'to', next)
+        setHighlightedSuggestionIndex(next)
         return
       }
       if (e.key === 'ArrowUp' && suggestions.length > 0) {
         e.preventDefault()
-        setHighlightedSuggestionIndex((i) => Math.max(i - 1, -1))
+        const next = Math.max(highlightedSuggestionIndex - 1, -1)
+        console.log('[SearchBar] ArrowUp: moving from', highlightedSuggestionIndex, 'to', next)
+        setHighlightedSuggestionIndex(next)
         return
       }
 
@@ -198,23 +211,31 @@ export function MailSearchBar({
 
         // Select highlighted suggestion
         if (highlightedSuggestionIndex >= 0 && suggestions[highlightedSuggestionIndex]) {
+          console.log(
+            '[SearchBar] Enter: selecting suggestion at index',
+            highlightedSuggestionIndex,
+            suggestions[highlightedSuggestionIndex]
+          )
           handleSuggestionSelect(suggestions[highlightedSuggestionIndex])
           return
         }
 
         // Add typed value as free text condition
         if (inputValue.trim()) {
+          console.log('[SearchBar] Enter: adding free text condition:', inputValue.trim())
           actions.addCondition('freeText', 'contains', inputValue.trim())
           setInputValue('')
         }
 
         // Execute search
+        console.log('[SearchBar] Enter: executing search')
         executeSearch()
         return
       }
 
       // Escape to close or clear
       if (e.key === 'Escape') {
+        console.log('[SearchBar] Escape:', inputValue ? 'clearing input' : 'closing')
         if (inputValue) {
           setInputValue('')
         } else {
@@ -301,7 +322,7 @@ export function MailSearchBar({
       }}
       getFieldDefinition={(fieldId) => getMailViewFieldDefinition(fieldId) as any}
       onConditionsChange={handleConditionsChange}>
-      <div className={cn('w-full min-w-[20rem] ', className)}>
+      <div ref={searchBarContainerRef} className={cn('w-full min-w-[20rem] ', className)}>
         {/* Search input row - always visible, outside popover */}
         <div
           ref={searchInputRowRef}
@@ -322,6 +343,7 @@ export function MailSearchBar({
             onFocus={handleInputFocus}
             placeholder='Search...'
             className='flex-1'
+            searchBarRef={searchBarContainerRef}
           />
 
           {/* Loading indicator */}
@@ -397,6 +419,7 @@ export function MailSearchBar({
             ) : (
               <SearchSuggestionsList
                 suggestions={suggestions}
+                highlightedIndex={highlightedSuggestionIndex}
                 onSelect={handleSuggestionSelect}
                 showEmpty={!inputValue && chips.length === 0}
               />

@@ -22,6 +22,7 @@ const ConditionOperator = ({
   triggerProps,
   open: controlledOpen,
   onOpenChange,
+  shouldPreventDismiss,
 }: OperatorSelectorProps) => {
   const [internalOpen, setInternalOpen] = useState(false)
   const { getAvailableOperators } = useConditionContext()
@@ -57,7 +58,14 @@ const ConditionOperator = ({
           {selectedOption?.label}
         </PickerTrigger>
       </PopoverTrigger>
-      <PopoverContent className='w-48 p-0'>
+      <PopoverContent
+        className='w-48 p-0'
+        onPointerDownOutside={(e) => {
+          if (shouldPreventDismiss?.(e.target as HTMLElement)) e.preventDefault()
+        }}
+        onFocusOutside={(e) => {
+          if (shouldPreventDismiss?.(e.target as HTMLElement)) e.preventDefault()
+        }}>
         <MultiSelectPicker
           options={options}
           value={value}

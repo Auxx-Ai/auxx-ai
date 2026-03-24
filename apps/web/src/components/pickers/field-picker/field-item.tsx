@@ -4,6 +4,7 @@
 
 import type { FieldType } from '@auxx/database/types'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { CommandItem } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -48,8 +49,11 @@ export const FieldItem = memo(function FieldItem({
       )
     }
 
-    // Regular field - use fieldType icon
-    const iconId = fieldTypeOptions[field.fieldType as FieldType]?.iconId ?? 'circle'
+    // Regular field - use fieldType icon, fall back to BaseType → FieldType mapping for system fields
+    const effectiveFieldType =
+      (field.fieldType as FieldType) ||
+      (field.type ? mapBaseTypeToFieldType(field.type as any) : undefined)
+    const iconId = (effectiveFieldType && fieldTypeOptions[effectiveFieldType]?.iconId) ?? 'circle'
     return <EntityIcon iconId={iconId} size='xs' className='text-muted-foreground' />
   }
 

@@ -50,6 +50,9 @@ export interface ActorPickerProps
 
   /** Trigger customization options */
   triggerProps?: PickerTriggerOptions
+
+  /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
+  shouldPreventDismiss?: (target: HTMLElement) => boolean
 }
 
 /**
@@ -73,6 +76,7 @@ export function ActorPicker({
   sideOffset = 5,
   contentClassName,
   triggerProps,
+  shouldPreventDismiss,
   value,
   onChange,
   multi = true,
@@ -180,8 +184,10 @@ export function ActorPicker({
           }
         }}
         onFocusOutside={(e) => {
-          // Prevent closing on focus changes when using anchorRef
-          if (anchorRef) e.preventDefault()
+          if (anchorRef || shouldPreventDismiss?.(e.target as HTMLElement)) e.preventDefault()
+        }}
+        onPointerDownOutside={(e) => {
+          if (shouldPreventDismiss?.(e.target as HTMLElement)) e.preventDefault()
         }}>
         <ActorPickerContent
           value={normalizedValue}

@@ -17,13 +17,12 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@auxx/ui/components/empty'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { ScrollArea } from '@auxx/ui/components/scroll-area-v2'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, Mail, User } from 'lucide-react'
-import { memo, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 // import { useAutoAnimate } from '@formkit/auto-animate/react'
-import { useInView } from 'react-intersection-observer'
 // NEW: Import selection hooks from threads module
 import {
   useSelectionReset,
@@ -105,15 +104,48 @@ export const ThreadList = memo(function ThreadList({
     }
   }, [isLoading, isFetchingNextPage, onLoadingChange])
 
-  // Infinite scroll trigger
+  // Infinite scroll: IntersectionObserver with ScrollAreaV2 viewport as root.
+  // Use state so the observer re-creates when the viewport mounts.
+  const [scrollViewport, setScrollViewport] = useState<HTMLDivElement | null>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const fetchNextPageRef = useRef(fetchNextPage)
+  fetchNextPageRef.current = fetchNextPage
+  const hasNextPageRef = useRef(hasNextPage)
+  hasNextPageRef.current = hasNextPage
+  const isFetchingRef = useRef(isFetchingNextPage)
+  isFetchingRef.current = isFetchingNextPage
+  const inViewRef = useRef(false)
 
-  const { ref, inView } = useInView({ threshold: 0 })
+  // Callback ref to capture the viewport element via state
+  const viewportRefCallback = useCallback((el: HTMLDivElement | null) => {
+    setScrollViewport(el)
+  }, [])
 
   useEffect(() => {
-    if (inView && hasNextPage && !isFetchingNextPage) {
-      fetchNextPage()
+    const sentinel = sentinelRef.current
+    if (!scrollViewport || !sentinel) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const inView = entry?.isIntersecting ?? false
+        inViewRef.current = inView
+        if (inView && hasNextPageRef.current && !isFetchingRef.current) {
+          fetchNextPageRef.current()
+        }
+      },
+      { root: scrollViewport, threshold: 0 }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [scrollViewport])
+
+  // Re-check after fetch completes in case sentinel is still visible
+  useEffect(() => {
+    if (inViewRef.current && hasNextPage && !isFetchingNextPage) {
+      fetchNextPageRef.current()
     }
-  }, [inView, fetchNextPage, hasNextPage, isFetchingNextPage])
+  }, [isFetchingNextPage, hasNextPage])
 
   // Loading state
   if (isLoading) {
@@ -130,9 +162,10 @@ export const ThreadList = memo(function ThreadList({
 
   return (
     <div className={cn('relative flex h-full w-full flex-col', isEmpty && 'flex-1')}>
-      <ScrollArea className={cn(isEmpty && 'flex-1 flex flex-col')}>
-        <ThreadListMenu threadIds={threadIds} />
-
+      <ThreadListMenu threadIds={threadIds} />
+      <ScrollArea
+        viewportRef={viewportRefCallback}
+        className={cn('flex-1 min-h-0', isEmpty && 'flex flex-col')}>
         <div
           className={cn('relative flex flex-col gap-2 p-4 pt-0', isEmpty && 'flex-1')}
           ref={parent}>
@@ -177,7 +210,7 @@ export const ThreadList = memo(function ThreadList({
           )}
         </div>
 
-        <div ref={ref} className='h-1' />
+        <div ref={sentinelRef} className='h-1' />
         {!hasNextPage && recordIds.length > 0 && !isFetchingNextPage && (
           <div className='pb-8 pt-4 text-center text-sm text-muted-foreground'>End of list.</div>
         )}

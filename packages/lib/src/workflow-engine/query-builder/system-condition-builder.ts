@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import {
   type AnyColumn,
   and,
@@ -36,6 +37,16 @@ const logger = createScopedLogger('system-condition-builder')
  * Uses Drizzle ORM column references for query building
  */
 export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
+  /**
+   * Strip resource prefix from fieldId if present (e.g., "message:from" → "from").
+   * UI stores ResourceFieldId format but registry keys are plain field names.
+   */
+  private stripFieldPrefix(fieldId: string): string {
+    return fieldId.includes(':')
+      ? parseResourceFieldId(fieldId as ResourceFieldId).fieldId
+      : fieldId
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // ABSTRACT IMPLEMENTATIONS
   // ─────────────────────────────────────────────────────────────────
@@ -45,20 +56,24 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
     resourceType: TableId
   ): SQL<unknown> | undefined {
     // Handle custom fields (custom_xxx) with subquery
-    if (condition.fieldId.startsWith('custom_')) {
+    const rawFieldId = Array.isArray(condition.fieldId) ? condition.fieldId[0] : condition.fieldId
+    if (rawFieldId?.startsWith('custom_')) {
       return this.buildCustomFieldSubquery(resourceType, condition)
     }
 
-    const fieldMeta = this.resolveFieldMetadata(resourceType, condition.fieldId)
+    // Strip resource prefix for registry lookups (e.g., "message:from" → "from")
+    const fieldId = this.stripFieldPrefix(rawFieldId)
+
+    const fieldMeta = this.resolveFieldMetadata(resourceType, fieldId)
     if (!fieldMeta) {
-      logger.warn(`Unable to resolve metadata for field '${condition.fieldId}' on ${resourceType}`)
+      logger.warn(`Unable to resolve metadata for field '${fieldId}' on ${resourceType}`)
       return undefined
     }
 
     // Extract ID from object format and transform option labels
     let rawValue = this.extractReferenceId(condition.value)
     if (fieldMeta.type === 'enum') {
-      const fieldOpts = this.getFieldOptions(condition.fieldId, resourceType)
+      const fieldOpts = this.getFieldOptions(fieldId, resourceType)
       if (fieldOpts && fieldOpts.length > 0) {
         rawValue = this.labelToStoredValue(fieldOpts, rawValue)
       }
@@ -72,7 +87,7 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
       fieldMeta.columns,
       normalizedType,
       resourceType,
-      condition.fieldId
+      fieldId
     )
   }
 
@@ -81,7 +96,7 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
     direction: 'asc' | 'desc',
     resourceType: TableId
   ): SQL<unknown>[] | undefined {
-    const fieldDef = RESOURCE_FIELD_REGISTRY[resourceType]?.[field]
+    const fieldDef = RESOURCE_FIELD_REGISTRY[resourceType]?.[this.stripFieldPrefix(field)]
     if (!fieldDef?.capabilities.sortable || !fieldDef.dbColumn) {
       return undefined
     }
@@ -102,14 +117,14 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
       return 'string'
     }
 
-    const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldId]
+    const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[this.stripFieldPrefix(fieldId)]
     if (!field) return undefined
 
     return this.baseTypeToQueryType(field.type)
   }
 
   protected getFieldOptions(fieldId: string, resourceType: TableId): FieldOptionItem[] | undefined {
-    const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldId]
+    const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[this.stripFieldPrefix(fieldId)]
     return getFieldOptions(field)
   }
 
@@ -293,7 +308,7 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
     resourceType: TableId,
     fieldId: string
   ): { columns: AnyColumn[]; type: string } | undefined {
-    const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldId]
+    const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[this.stripFieldPrefix(fieldId)]
     if (!field || !field.capabilities.filterable || !field.dbColumn) {
       return undefined
     }

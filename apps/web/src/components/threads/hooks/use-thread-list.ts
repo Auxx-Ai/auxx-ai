@@ -139,10 +139,17 @@ export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadLi
 
   // Fetch next page
   const fetchNextPage = useCallback(() => {
+    console.log('[useThreadList] fetchNextPage called', {
+      isFetchingNextPage,
+      queryHasNextPage,
+      contextHasMore: contextPagination?.hasMore,
+      pageCount: data?.pages?.length ?? 0,
+    })
     if (!isFetchingNextPage && (queryHasNextPage || contextPagination?.hasMore)) {
+      console.log('[useThreadList] → calling fetchMore')
       fetchMore()
     }
-  }, [fetchMore, isFetchingNextPage, queryHasNextPage, contextPagination])
+  }, [fetchMore, isFetchingNextPage, queryHasNextPage, contextPagination, data?.pages?.length])
 
   return {
     recordIds,

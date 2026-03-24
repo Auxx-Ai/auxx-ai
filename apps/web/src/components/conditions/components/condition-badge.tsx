@@ -21,6 +21,8 @@ interface ConditionBadgeProps extends ConditionItemProps {
   isHighlighted?: boolean
   /** Prevents field selection, shows label as static text */
   lockField?: boolean
+  /** Callback to check if a dismiss event should be prevented. Receives the event target. Return true to prevent closing. */
+  shouldPreventDismiss?: (target: HTMLElement) => boolean
 }
 
 /**
@@ -38,6 +40,7 @@ export const ConditionBadge = ({
   compactMode = false,
   isHighlighted = false,
   lockField = false,
+  shouldPreventDismiss,
   className,
   onUpdate,
   onRemove,
@@ -190,6 +193,7 @@ export const ConditionBadge = ({
         value={condition.operator}
         onChange={handleOperatorChange}
         disabled={!condition.fieldId || readOnly}
+        shouldPreventDismiss={shouldPreventDismiss}
         className={cn(
           'h-6 hover:bg-primary-200/50 px-1.5 text-xs rounded-none border-r',
           isHovered && 'border-destructive/20'
@@ -220,6 +224,7 @@ export const ConditionBadge = ({
         value={condition.value}
         onChange={handleValueChange}
         disabled={readOnly}
+        shouldPreventDismiss={shouldPreventDismiss}
         autoGrow={{ minWidth: 30, placeholderIsMinWidth: true }}
         triggerProps={{
           size: 'sm',
