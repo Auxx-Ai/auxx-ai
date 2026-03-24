@@ -174,14 +174,14 @@ ul[data-type="taskList"] li[data-checked="true"] > div > p {
 }
 
 /* Custom Youtube Video CSS */
-iframe {
+/* iframe {
   border: 8px solid #ffd00027;
   border-radius: 4px;
   min-width: 200px;
   min-height: 200px;
   display: block;
   outline: 0px solid transparent;
-}
+} */
 
 div[data-youtube-video] > iframe {
   cursor: move;

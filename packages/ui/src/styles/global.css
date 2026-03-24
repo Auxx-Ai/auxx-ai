@@ -826,6 +826,56 @@
     rgba(255, 255, 255, 0.32) 0px 0.25px 0.25px inset;
 }
 
+/* Base UI ScrollArea — gradient scroll fade using mask-image on viewport edges */
+.scroll-area-fade {
+  --scroll-area-overflow-y-start: inherit;
+  --scroll-area-overflow-y-end: inherit;
+  --_fade-start: min(24px, var(--scroll-area-overflow-y-start, 0px));
+  --_fade-end: min(24px, var(--scroll-area-overflow-y-end, 0px));
+
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black var(--_fade-start),
+    black calc(100% - var(--_fade-end)),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black var(--_fade-start),
+    black calc(100% - var(--_fade-end)),
+    transparent 100%
+  );
+}
+
+/* Base UI ScrollArea — custom gradient overlay fade (for darker shadows etc.) */
+.scroll-area-fade-custom {
+  &::before,
+  &::after {
+    content: '';
+    display: block;
+    left: 0;
+    width: 100%;
+    position: sticky;
+    pointer-events: none;
+    z-index: 1;
+    transition: height 0.1s ease-out;
+  }
+
+  &::before {
+    --scroll-area-overflow-y-start: inherit;
+    top: 0;
+    height: min(8px, var(--scroll-area-overflow-y-start, 0px));
+  }
+
+  &::after {
+    --scroll-area-overflow-y-end: inherit;
+    bottom: 0;
+    height: min(8px, var(--scroll-area-overflow-y-end, 0px));
+  }
+}
+
 @layer components {
   .timeline-events .emphasis {
     color: rgb(var(--primary-700));

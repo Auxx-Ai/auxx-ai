@@ -32,6 +32,8 @@ export interface ParticipantPickerProps {
   open?: boolean
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
+  /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
+  shouldPreventDismiss?: (target: HTMLElement) => boolean
 }
 
 export function ParticipantPicker({
@@ -45,6 +47,7 @@ export function ParticipantPicker({
   triggerProps,
   open: controlledOpen,
   onOpenChange,
+  shouldPreventDismiss,
 }: ParticipantPickerProps) {
   const normalizedValue = Array.isArray(value) ? value : value ? [value] : []
 
@@ -151,7 +154,13 @@ export function ParticipantPicker({
       </PopoverTrigger>
       <PopoverContent
         className='p-0 min-w-[max(var(--radix-popover-trigger-width),18rem)]'
-        align='start'>
+        align='start'
+        onPointerDownOutside={(e) => {
+          if (shouldPreventDismiss?.(e.target as HTMLElement)) e.preventDefault()
+        }}
+        onFocusOutside={(e) => {
+          if (shouldPreventDismiss?.(e.target as HTMLElement)) e.preventDefault()
+        }}>
         <MultiSelectPicker
           options={selectOptions}
           value={normalizedValue}

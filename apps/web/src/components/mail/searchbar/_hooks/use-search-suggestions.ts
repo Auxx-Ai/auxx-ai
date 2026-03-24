@@ -117,7 +117,11 @@ export function useDeleteRecentSearch() {
  * Hook to save search query - now saves conditions instead of text
  */
 export function useSaveSearchQuery() {
+  const utils = api.useUtils()
   const { mutate } = api.search.saveSearch.useMutation({
+    onSuccess: () => {
+      utils.search.recentSearches.invalidate()
+    },
     onError: (error) => {
       console.error('Failed to save search:', error)
     },

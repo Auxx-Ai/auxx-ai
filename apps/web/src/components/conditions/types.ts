@@ -221,6 +221,8 @@ export interface OperatorSelectorProps {
   open?: boolean
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
+  /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
+  shouldPreventDismiss?: (target: HTMLElement) => boolean
 }
 
 /**

@@ -436,7 +436,7 @@ export function MultiSelectPicker({
                           )}
 
                           {/* Option label */}
-                          <span>{opt.label}</span>
+                          <span className='truncate'>{opt.label}</span>
                         </div>
                         <div className='flex items-center gap-1'>
                           <div className='flex items-center justify-center'>

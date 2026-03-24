@@ -414,7 +414,13 @@ function buildSenderQuery(operator: Operator, value: any): SQL<unknown> | null {
           .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
           .where(and(eq(Message.threadId, Thread.id), eq(MessageParticipant.role, 'FROM')))
       )
-    case 'is':
+    case 'is': {
+      const emails = Array.isArray(value) ? value : [value]
+      if (emails.length === 0) return null
+      const identifierMatch =
+        emails.length === 1
+          ? ilike(Participant.identifier, emails[0])
+          : or(...emails.map((e: string) => ilike(Participant.identifier, e)))!
       return exists(
         db
           .select({ id: sql`1` })
@@ -425,11 +431,18 @@ function buildSenderQuery(operator: Operator, value: any): SQL<unknown> | null {
             and(
               eq(Message.threadId, Thread.id),
               eq(MessageParticipant.role, 'FROM'),
-              ilike(Participant.identifier, value)
+              identifierMatch
             )
           )
       )
-    case 'is not':
+    }
+    case 'is not': {
+      const excludeEmails = Array.isArray(value) ? value : [value]
+      if (excludeEmails.length === 0) return null
+      const excludeMatch =
+        excludeEmails.length === 1
+          ? ilike(Participant.identifier, excludeEmails[0])
+          : or(...excludeEmails.map((e: string) => ilike(Participant.identifier, e)))!
       return not(
         exists(
           db
@@ -441,11 +454,12 @@ function buildSenderQuery(operator: Operator, value: any): SQL<unknown> | null {
               and(
                 eq(Message.threadId, Thread.id),
                 eq(MessageParticipant.role, 'FROM'),
-                ilike(Participant.identifier, value)
+                excludeMatch
               )
             )
         )
       )
+    }
     case 'contains':
       return exists(
         db
@@ -550,7 +564,13 @@ function buildToQuery(operator: Operator, value: any): SQL<unknown> | null {
             )
           )
       )
-    case 'is':
+    case 'is': {
+      const emails = Array.isArray(value) ? value : [value]
+      if (emails.length === 0) return null
+      const identifierMatch =
+        emails.length === 1
+          ? ilike(Participant.identifier, emails[0])
+          : or(...emails.map((e: string) => ilike(Participant.identifier, e)))!
       return exists(
         db
           .select({ id: sql`1` })
@@ -561,11 +581,18 @@ function buildToQuery(operator: Operator, value: any): SQL<unknown> | null {
             and(
               eq(Message.threadId, Thread.id),
               inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-              ilike(Participant.identifier, value)
+              identifierMatch
             )
           )
       )
-    case 'is not':
+    }
+    case 'is not': {
+      const excludeEmails = Array.isArray(value) ? value : [value]
+      if (excludeEmails.length === 0) return null
+      const excludeMatch =
+        excludeEmails.length === 1
+          ? ilike(Participant.identifier, excludeEmails[0])
+          : or(...excludeEmails.map((e: string) => ilike(Participant.identifier, e)))!
       return not(
         exists(
           db
@@ -577,11 +604,12 @@ function buildToQuery(operator: Operator, value: any): SQL<unknown> | null {
               and(
                 eq(Message.threadId, Thread.id),
                 inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-                ilike(Participant.identifier, value)
+                excludeMatch
               )
             )
         )
       )
+    }
     case 'contains':
       return exists(
         db

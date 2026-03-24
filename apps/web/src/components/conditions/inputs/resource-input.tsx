@@ -35,6 +35,8 @@ interface ResourceInputProps {
   onOpenChange?: (open: boolean) => void
   /** Enable auto-grow for text inputs */
   autoGrow?: AutoGrowOptions
+  /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
+  shouldPreventDismiss?: (target: HTMLElement) => boolean
 }
 
 /**
@@ -52,6 +54,7 @@ export function ResourceInput({
   open,
   onOpenChange,
   autoGrow,
+  shouldPreventDismiss,
 }: ResourceInputProps) {
   // Resolve input configuration based on field type and operator
   const inputConfig = useMemo(() => {
@@ -76,6 +79,7 @@ export function ResourceInput({
       open={open}
       onOpenChange={onOpenChange}
       autoGrow={autoGrow}
+      shouldPreventDismiss={shouldPreventDismiss}
     />
   )
 }

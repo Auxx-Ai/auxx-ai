@@ -29,6 +29,8 @@ interface SearchFilterInputProps {
   inputRef?: React.RefObject<AutosizeInputRef | null>
   /** Callback when input receives focus */
   onFocus?: () => void
+  /** Ref to the searchbar container — used to prevent badge popovers from closing when clicking inside the searchbar */
+  searchBarRef?: React.RefObject<HTMLElement | null>
 }
 
 /**
@@ -45,6 +47,7 @@ export function SearchFilterInput({
   className,
   inputRef: externalInputRef,
   onFocus,
+  searchBarRef,
 }: SearchFilterInputProps) {
   const internalInputRef = useRef<AutosizeInputRef>(null)
   const inputRef = externalInputRef || internalInputRef
@@ -59,6 +62,25 @@ export function SearchFilterInput({
   const removeCondition = useSearchStore((s) => s.removeCondition)
   const updateCondition = useSearchStore((s) => s.updateCondition)
 
+  /** Check if a dismiss target is inside the searchbar boundary */
+  const shouldPreventDismiss = useCallback(
+    (target: HTMLElement) => {
+      // Inside the searchbar container
+      if (searchBarRef?.current?.contains(target)) return true
+      // Inside a portaled popover whose trigger is inside the searchbar
+      const popoverWrapper = target.closest('[data-radix-popper-content-wrapper]')
+      if (popoverWrapper && searchBarRef?.current) {
+        const contentEl = popoverWrapper.querySelector('[id]')
+        if (contentEl) {
+          const trigger = document.querySelector(`[aria-controls="${contentEl.id}"]`)
+          if (trigger && searchBarRef.current.contains(trigger)) return true
+        }
+      }
+      return false
+    },
+    [searchBarRef]
+  )
+
   /** Focus input when clicking container background */
   const handleContainerClick = useCallback(
     (e: React.MouseEvent) => {
@@ -72,6 +94,13 @@ export function SearchFilterInput({
   /** Handle input keydown for badge navigation */
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      console.log('[SearchFilterInput] keydown:', e.key, {
+        inputValue,
+        conditionsCount: conditions.length,
+        highlightedIndex,
+        defaultPrevented: e.defaultPrevented,
+      })
+
       // Backspace on empty input — skip scope condition
       if (e.key === 'Backspace' && inputValue === '' && conditions.length > 0) {
         const lastRealIndex = conditions.findLastIndex((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
@@ -95,6 +124,7 @@ export function SearchFilterInput({
       }
 
       // Forward to parent for suggestion navigation
+      console.log('[SearchFilterInput] forwarding to parent, defaultPrevented:', e.defaultPrevented)
       onInputKeyDown(e)
     },
     [inputValue, conditions, highlightedIndex, removeCondition, setHighlightedIndex, onInputKeyDown]
@@ -121,6 +151,7 @@ export function SearchFilterInput({
               isHighlighted={highlightedIndex === index}
               showRemoveButton={!isScopeBadge}
               lockField={isScopeBadge}
+              shouldPreventDismiss={shouldPreventDismiss}
               className={isScopeBadge ? 'bg-accent/30 border-accent/40' : undefined}
               onUpdate={(updates) => updateCondition(condition.id, updates)}
               onRemove={() => {

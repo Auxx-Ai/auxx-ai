@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/find.ts
 
 import { type Database, database, schema } from '@auxx/database'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { SQL } from 'drizzle-orm'
 import { getCachedResource, getCachedResourceFields } from '../../../cache'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
@@ -57,6 +58,13 @@ type BuiltQuery = {
 export class FindProcessor extends BaseNodeProcessor {
   readonly type = WorkflowNodeType.FIND
 
+  /** Strip resource prefix from fieldId if present (e.g., "message:from" → "from") */
+  private stripFieldPrefix(fieldId: string): string {
+    return fieldId.includes(':')
+      ? parseResourceFieldId(fieldId as ResourceFieldId).fieldId
+      : fieldId
+  }
+
   /**
    * Validate condition values against registry (especially enums and operators)
    * For custom entities, validation is skipped - EntityConditionBuilder handles it at execution time
@@ -72,7 +80,9 @@ export class FindProcessor extends BaseNodeProcessor {
 
     for (const condition of conditions) {
       // Handle custom fields separately (for system resources with custom_ prefixed fields)
-      if (condition.fieldId.startsWith('custom_')) {
+      const rawFieldId = Array.isArray(condition.fieldId) ? condition.fieldId[0] : condition.fieldId
+      if (!rawFieldId) continue
+      if (rawFieldId.startsWith('custom_')) {
         // Custom fields are loaded dynamically, so we can't validate against registry
         // Just validate that value is provided when needed
         if (this.isValueRequiredOperator(condition.operator)) {
@@ -85,10 +95,12 @@ export class FindProcessor extends BaseNodeProcessor {
         continue
       }
 
-      const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[condition.fieldId]
+      // Strip resource prefix for registry lookups (e.g., "message:from" → "from")
+      const fieldId = this.stripFieldPrefix(rawFieldId)
+      const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldId]
 
       if (!field) {
-        errors.push(`Unknown field: ${condition.fieldId}`)
+        errors.push(`Unknown field: ${fieldId}`)
         continue
       }
 
@@ -104,13 +116,7 @@ export class FindProcessor extends BaseNodeProcessor {
 
       // ✅ Validate option values (updated to use 'is' operator)
       if (field.type === BaseType.ENUM && condition.operator === 'is') {
-        if (
-          !isValidFieldOptionValue(
-            resourceType as TableId,
-            condition.fieldId,
-            String(condition.value)
-          )
-        ) {
+        if (!isValidFieldOptionValue(resourceType as TableId, fieldId, String(condition.value))) {
           const validValues = getFieldOptions(field)
             .map((opt) => opt.value)
             .join(', ')
@@ -634,23 +640,29 @@ export class FindProcessor extends BaseNodeProcessor {
           index: i,
           logicalOp: g.logicalOperator,
           conditionCount: g.conditions.length,
-          conditions: g.conditions.map((c) => ({
-            fieldId: c.fieldId,
-            operator: c.operator,
-            value: c.value,
-            isCustomField: c.fieldId.startsWith('custom_'),
-          })),
+          conditions: g.conditions.map((c) => {
+            const fId = Array.isArray(c.fieldId) ? c.fieldId[0] : c.fieldId
+            return {
+              fieldId: c.fieldId,
+              operator: c.operator,
+              value: c.value,
+              isCustomField: fId?.startsWith('custom_') ?? false,
+            }
+          }),
         })),
       })
       whereClause = this.buildGroupedQuery(conditionGroups, resourceType)
     } else if (conditions.length > 0) {
       console.log('🔍 [FindProcessor] Building flat query with conditions:', {
-        conditions: conditions.map((c) => ({
-          fieldId: c.fieldId,
-          operator: c.operator,
-          value: c.value,
-          isCustomField: c.fieldId.startsWith('custom_'),
-        })),
+        conditions: conditions.map((c) => {
+          const fId = Array.isArray(c.fieldId) ? c.fieldId[0] : c.fieldId
+          return {
+            fieldId: c.fieldId,
+            operator: c.operator,
+            value: c.value,
+            isCustomField: fId?.startsWith('custom_') ?? false,
+          }
+        }),
       })
       whereClause = ConditionQueryBuilder.buildWhereSql(conditions, resourceType)
     }
@@ -913,7 +925,11 @@ export class FindProcessor extends BaseNodeProcessor {
 
       config.conditions?.forEach((condition, index) => {
         // Skip validation for custom fields (they're loaded dynamically)
-        if (condition.fieldId.startsWith('custom_')) {
+        const rawFlatFieldId = Array.isArray(condition.fieldId)
+          ? condition.fieldId[0]
+          : condition.fieldId
+        if (!rawFlatFieldId) return
+        if (rawFlatFieldId.startsWith('custom_')) {
           // Just validate value is provided when needed
           if (
             this.isValueRequiredOperator(condition.operator) &&
@@ -926,12 +942,14 @@ export class FindProcessor extends BaseNodeProcessor {
           return
         }
 
+        // Strip resource prefix for registry lookups (e.g., "message:from" → "from")
+        const flatFieldId = this.stripFieldPrefix(rawFlatFieldId)
         const field = resourceConfig.filterableFields.find(
-          (f: any) => getFieldOutputKey(f) === condition.fieldId || f.key === condition.fieldId
+          (f: any) => getFieldOutputKey(f) === flatFieldId || f.key === flatFieldId
         )
         if (!field) {
           errors.push(
-            `Flat Condition ${index + 1}: Invalid field "${condition.fieldId}" for ${config.resourceType}`
+            `Flat Condition ${index + 1}: Invalid field "${flatFieldId}" for ${config.resourceType}`
           )
         } else {
           if (!isValidOperatorForField(field, condition.operator)) {
@@ -990,7 +1008,11 @@ export class FindProcessor extends BaseNodeProcessor {
 
         group.conditions.forEach((condition, condIndex) => {
           // Skip validation for custom fields (they're loaded dynamically)
-          if (condition.fieldId.startsWith('custom_')) {
+          const rawGroupFieldId = Array.isArray(condition.fieldId)
+            ? condition.fieldId[0]
+            : condition.fieldId
+          if (!rawGroupFieldId) return
+          if (rawGroupFieldId.startsWith('custom_')) {
             // Just validate value is provided when needed
             if (
               this.isValueRequiredOperator(condition.operator) &&
@@ -1003,12 +1025,14 @@ export class FindProcessor extends BaseNodeProcessor {
             return
           }
 
+          // Strip resource prefix for registry lookups (e.g., "message:from" → "from")
+          const groupFieldId = this.stripFieldPrefix(rawGroupFieldId)
           const field = resourceConfig.filterableFields.find(
-            (f: any) => getFieldOutputKey(f) === condition.fieldId || f.key === condition.fieldId
+            (f: any) => getFieldOutputKey(f) === groupFieldId || f.key === groupFieldId
           )
           if (!field) {
             errors.push(
-              `Group ${groupIndex + 1}, Condition ${condIndex + 1}: Invalid field "${condition.fieldId}" for ${config.resourceType}`
+              `Group ${groupIndex + 1}, Condition ${condIndex + 1}: Invalid field "${groupFieldId}" for ${config.resourceType}`
             )
           } else {
             if (!isValidOperatorForField(field, condition.operator)) {
@@ -1060,9 +1084,9 @@ export class FindProcessor extends BaseNodeProcessor {
     // Validate orderBy field
     if (config.orderBy && config.resourceType && isSystemResource) {
       const resourceConfig = FIND_RESOURCE_CONFIGS[config.resourceType as TableId]!
+      const strippedOrderField = this.stripFieldPrefix(config.orderBy.field)
       const sortableField = resourceConfig.sortableFields.find(
-        (f: any) =>
-          getFieldOutputKey(f) === config.orderBy!.field || f.key === config.orderBy!.field
+        (f: any) => getFieldOutputKey(f) === strippedOrderField || f.key === strippedOrderField
       )
       if (!sortableField) {
         errors.push(

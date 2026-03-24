@@ -91,27 +91,12 @@ export function VariableInput({
 
   // Resolve input configuration based on field type and operator
   const inputConfig = useMemo(() => {
-    const config = resolveInputConfig(field.type as BaseType, condition.operator)
-    console.log('[VariableInput] resolveInputConfig', {
-      fieldType: field.type,
-      fieldLabel: field.label,
-      operator: condition.operator,
-      result: config,
-    })
-    return config
+    return resolveInputConfig(field.type as BaseType, condition.operator)
   }, [field.type, field.label, condition.operator])
 
   // Pre-compute fieldOptions
   const fieldOptions = useMemo(() => {
-    const opts = buildFieldOptions(field)
-    console.log('[VariableInput] buildFieldOptions', {
-      fieldLabel: field.label,
-      fieldType: field.type,
-      hasActor: !!field.options?.actor,
-      hasFieldReference: !!field.fieldReference,
-      result: opts,
-    })
-    return opts
+    return buildFieldOptions(field)
   }, [field])
 
   // Skip rendering if no input needed

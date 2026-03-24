@@ -2,6 +2,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
+import { ScrollArea } from '@auxx/ui/components/scroll-area-v2'
 import { Separator } from '@auxx/ui/components/separator'
 import { Sheet, SheetContent } from '@auxx/ui/components/sheet'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -351,80 +352,22 @@ function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof S
 
 /**
  * Scrollable content area for the sidebar with automatic scroll shadows.
- * Shows top shadow when scrolled down, bottom shadow when more content below.
- * No shadows when content fits without scrolling.
+ * Uses ScrollArea v2 with custom darker fade overlays and a thin scrollbar.
  */
 function SidebarContent({ className, children, ...props }: React.ComponentProps<'div'>) {
-  const [showTopShadow, setShowTopShadow] = React.useState(false)
-  const [showBottomShadow, setShowBottomShadow] = React.useState(false)
-  const topSentinelRef = React.useRef<HTMLDivElement>(null)
-  const bottomSentinelRef = React.useRef<HTMLDivElement>(null)
-
-  // Use Intersection Observer for efficient scroll shadow detection
-  React.useEffect(() => {
-    const topSentinel = topSentinelRef.current
-    const bottomSentinel = bottomSentinelRef.current
-    if (!topSentinel || !bottomSentinel) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.target === topSentinel) {
-            // When top sentinel is NOT visible, show top shadow
-            setShowTopShadow(!entry.isIntersecting)
-          } else if (entry.target === bottomSentinel) {
-            // When bottom sentinel is NOT visible, show bottom shadow
-            setShowBottomShadow(!entry.isIntersecting)
-          }
-        })
-      },
-      { threshold: 1.0 }
-    )
-
-    observer.observe(topSentinel)
-    observer.observe(bottomSentinel)
-
-    return () => observer.disconnect()
-  }, [])
-
   return (
-    <div
-      data-sidebar='content'
+    <ScrollArea
       className={cn(
-        'relative flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-x-hidden',
+        'relative min-h-0 flex-1 group-data-[collapsible=icon]:overflow-x-hidden',
         className
       )}
+      fadeClassName='before:bg-gradient-to-b before:from-black/10 before:border-t before:border-black/10 after:bg-gradient-to-t after:from-black/10 after:border-b after:border-black/10'
+      scrollbarClassName='w-1'
       {...props}>
-      {/* Top sentinel for intersection observer */}
-      <div ref={topSentinelRef} className='h-px w-full shrink-0' aria-hidden='true' />
-
-      {/* Top shadow overlay - uses -mb-6 to not take up space */}
-      <div
-        className={cn(
-          'pointer-events-none sticky top-0 z-10 -mt-px -mb-2 h-2 shrink-0 border-t border-black/10',
-          'bg-gradient-to-b from-black/10  to-transparent',
-          'transition-opacity duration-300',
-          showTopShadow ? 'opacity-100' : 'opacity-0'
-        )}
-        aria-hidden='true'
-      />
-
-      {children}
-
-      {/* Bottom sentinel for intersection observer - must be before sticky shadow */}
-      <div ref={bottomSentinelRef} className='h-px w-full shrink-0' aria-hidden='true' />
-
-      {/* Bottom shadow overlay */}
-      <div
-        className={cn(
-          'pointer-events-none sticky bottom-0 z-10 h-2 shrink-0 border-b border-black/10',
-          'bg-gradient-to-t from-black/10  to-transparent',
-          'transition-opacity duration-300',
-          showBottomShadow ? 'opacity-100' : 'opacity-0'
-        )}
-        aria-hidden='true'
-      />
-    </div>
+      <div data-sidebar='content' className='flex flex-col gap-2 py-2 pe-2'>
+        {children}
+      </div>
+    </ScrollArea>
   )
 }
 

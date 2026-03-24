@@ -76,9 +76,13 @@ export const RelationInput = createNodeInput<RelationInputProps>(
 
       // Lookup field to get relationship target (fieldKey may be a key or an id)
       const field = fields.find((f) => f.key === fieldKey || f.id === fieldKey)
-      return field?.relationship
+      const resolved = field?.relationship
         ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
         : null
+
+      // Fall back to relatedEntityDefinitionId when field lookup can't resolve the target
+      // (e.g. when inverseResourceFieldId is null in the registry)
+      return resolved || relatedEntityDefinitionId || null
     }, [fieldReference, fields, fieldKey, relatedEntityDefinitionId])
 
     // Get current value from inputs

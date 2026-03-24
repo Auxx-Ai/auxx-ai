@@ -257,7 +257,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: null,
+      inverseResourceFieldId: 'user:createdMessages' as ResourceFieldId,
       relationshipType: 'belongs_to',
       isInverse: false,
     },
@@ -279,7 +279,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: null,
+      inverseResourceFieldId: 'participant:sentMessages' as ResourceFieldId,
       relationshipType: 'belongs_to',
       isInverse: false,
     },
@@ -301,7 +301,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: null,
+      inverseResourceFieldId: 'participant:replyToMessages' as ResourceFieldId,
       relationshipType: 'belongs_to',
       isInverse: false,
     },
