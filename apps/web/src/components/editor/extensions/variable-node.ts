@@ -2,6 +2,7 @@
 // Variable node for rendering workflow variables as styled tags in Tiptap editor
 
 import { mergeAttributes, Node, nodeInputRule } from '@tiptap/core'
+import { Fragment, Slice } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import VariableNodeView from './variable-node-view'
@@ -110,43 +111,38 @@ export const VariableNode = Node.create({
             // Prevent default paste and handle custom parsing
             event.preventDefault()
 
-            // Parse the text and create appropriate nodes
-            const { tr } = view.state
-            const { from } = view.state.selection
+            const schema = view.state.schema
 
-            let currentPos = from
-            let lastIndex = 0
-            let match
+            // Build inline content for a single line, parsing {{varId}} patterns
+            function buildLineContent(line: string) {
+              const nodes: any[] = []
+              const pattern = /\{\{([^}]+)\}\}/g
+              let lastIdx = 0
+              let m
 
-            tagPattern.lastIndex = 0 // Reset regex
-
-            while ((match = tagPattern.exec(text)) !== null) {
-              // Insert text before the tag
-              if (match.index > lastIndex) {
-                const textBefore = text.slice(lastIndex, match.index)
-                if (textBefore) {
-                  tr.insertText(textBefore, currentPos)
-                  currentPos += textBefore.length
+              while ((m = pattern.exec(line)) !== null) {
+                if (m.index > lastIdx) {
+                  nodes.push(schema.text(line.slice(lastIdx, m.index)))
                 }
+                nodes.push(schema.nodes['variable-node'].create({ variableId: m[1] }))
+                lastIdx = m.index + m[0].length
               }
-
-              // Insert the tag node
-              const tagNode = view.state.schema.nodes['variable-node'].create({
-                variableId: match[1],
-              })
-              tr.insert(currentPos, tagNode)
-              currentPos += 1
-
-              lastIndex = match.index + match[0].length
+              if (lastIdx < line.length) {
+                nodes.push(schema.text(line.slice(lastIdx)))
+              }
+              return nodes
             }
 
-            // Insert remaining text after last tag
-            if (lastIndex < text.length) {
-              const textAfter = text.slice(lastIndex)
-              if (textAfter) {
-                tr.insertText(textAfter, currentPos)
-              }
-            }
+            // Split on \n\n (ProseMirror paragraph separator) to get paragraphs
+            const paragraphs = text
+              .split('\n\n')
+              .map((para) => schema.nodes.paragraph.create(null, buildLineContent(para)))
+
+            const { tr } = view.state
+            const { from, to } = view.state.selection
+            const fragment = Fragment.from(paragraphs)
+            // openStart/openEnd = 1 so the first/last paragraph merges into surrounding content
+            tr.replace(from, to, new Slice(fragment, 1, 1))
 
             view.dispatch(tr)
             return true

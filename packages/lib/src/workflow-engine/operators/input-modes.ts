@@ -134,6 +134,32 @@ export function resolveInputConfig(fieldType: BaseType, operator: Operator): Inp
     }
   }
 
+  // ===== ACTOR FIELD HANDLING =====
+  if (fieldType === BaseType.ACTOR) {
+    if (['is', 'is not'].includes(operator)) {
+      return {
+        mode: InputMode.SINGLE,
+        varType: BaseType.ACTOR,
+        allowVarEditor: true,
+        placeholder: 'Select user',
+      }
+    }
+    if (['contains', 'not contains', 'starts with', 'ends with'].includes(operator)) {
+      return {
+        mode: InputMode.TEXT,
+        varType: BaseType.STRING,
+        allowVarEditor: true,
+        placeholder: 'Enter text to search',
+      }
+    }
+    return {
+      mode: InputMode.SINGLE,
+      varType: BaseType.ACTOR,
+      allowVarEditor: true,
+      placeholder: 'Select user',
+    }
+  }
+
   // ===== STRING FIELD HANDLING =====
   if ([BaseType.STRING, BaseType.EMAIL, BaseType.URL, BaseType.PHONE].includes(fieldType)) {
     return {

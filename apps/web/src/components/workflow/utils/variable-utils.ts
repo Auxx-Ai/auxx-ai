@@ -323,12 +323,12 @@ export function getVariableFieldDefinition(variable: UnifiedVariable): FieldDefi
 
   return {
     ...variable,
+    type: actualType,
     displayType,
-    actualType,
     operators: getOperatorsForBaseType(actualType).map((op) => op.key),
     options: options ? { options } : undefined,
     fieldReference: variable.fieldReference,
-    relatedEntityDefinitionId: relationship?.relatedEntityDefinitionId,
+    targetEntityDefinitionId: relationship?.relatedEntityDefinitionId,
   }
 }
 

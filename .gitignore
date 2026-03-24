@@ -75,3 +75,6 @@ cdk.out
 
 # backups
 .backups.bundles/
+
+# dev workflow run logs
+.logs/

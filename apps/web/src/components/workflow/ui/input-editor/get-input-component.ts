@@ -94,6 +94,8 @@ export interface FieldOptions {
   }
   /** For RELATION/REFERENCE types - reference to field in registry */
   fieldReference?: string
+  /** For RELATION types - direct target entity when fieldReference is absent (e.g. "ticket", "contact") */
+  relatedEntityDefinitionId?: string
   /** For RELATION types - relationship cardinality (has_many, belongs_to, etc.) */
   relationshipType?: RelationshipType
   /** For ACTOR type — actor picker configuration */
@@ -155,14 +157,17 @@ export function getSpecificPropsForType(
       return {
         target: fieldOptions?.actor?.target ?? 'user',
         multi: fieldOptions?.actor?.multiple ?? false,
+        showClear: false,
       }
 
     case BaseType.RELATION:
     case BaseType.REFERENCE:
       // For RELATION types, pass fieldReference and relationshipType from fieldOptions
+      // relatedEntityDefinitionId is the fallback for direct resource references (no fieldReference)
       // Hide clear button since VarEditor already provides its own
       return {
         fieldReference: fieldOptions?.fieldReference,
+        relatedEntityDefinitionId: fieldOptions?.relatedEntityDefinitionId,
         relationshipType: fieldOptions?.relationshipType,
         showClear: false,
       }

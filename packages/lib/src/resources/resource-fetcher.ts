@@ -221,10 +221,14 @@ export async function fetchResourceById(
 
       // Extract field values from the values relation
       // The 'values' array contains FieldValue entries with a 'field' relation
+      // Key by getFieldOutputKey-equivalent (systemAttribute ?? id) to match variable paths
+      // This aligns with how fetchHasManyRelationship already keys fieldValues
       if (instance.values && Array.isArray(instance.values)) {
         for (const value of instance.values as any[]) {
-          if (value.field?.name) {
-            fieldValues[value.field.name] = extractTypedFieldValue(value)
+          const field = value.field
+          if (field) {
+            const outputKey = field.systemAttribute ?? field.id
+            fieldValues[outputKey] = extractTypedFieldValue(value)
           }
         }
       }
@@ -348,14 +352,15 @@ export async function fetchResourceWithRelationships(
   recordId: RecordId,
   relationships: string[],
   organizationId: string | undefined,
-  db?: Database
+  db?: Database,
+  cachedResource?: any
 ): Promise<any | null> {
   // Parse RecordId to extract both components
   const { entityDefinitionId } = parseRecordId(recordId)
   const resourceType = entityDefinitionId
 
-  // 1. Fetch base resource
-  const resource = await fetchResourceById(recordId, organizationId)
+  // 1. Use cached resource if provided, otherwise fetch from DB
+  const resource = cachedResource ?? (await fetchResourceById(recordId, organizationId))
   if (!resource) return null
 
   // If no relationships requested or no DB for custom entity lookups, return base resource
@@ -481,14 +486,20 @@ function getRelatedIdForBelongsTo(
   }
 
   // Custom entities store relationship values in fieldValues
-  // The value is the related entity instance ID
+  // Use getFieldOutputKey (systemAttribute ?? key) to match how fieldValues are keyed
+  const outputKey = getFieldOutputKey(fieldDef)
+  if (resource.fieldValues?.[outputKey]) {
+    return resource.fieldValues[outputKey]
+  }
+
+  // Fallback: try fieldDef.key directly (UUID)
   if (resource.fieldValues?.[fieldDef.key]) {
     return resource.fieldValues[fieldDef.key]
   }
 
   // Try direct access (in case fieldValues was flattened)
-  if (resource[fieldDef.key] && typeof resource[fieldDef.key] === 'string') {
-    return resource[fieldDef.key]
+  if (resource[outputKey] && typeof resource[outputKey] === 'string') {
+    return resource[outputKey]
   }
 
   return null

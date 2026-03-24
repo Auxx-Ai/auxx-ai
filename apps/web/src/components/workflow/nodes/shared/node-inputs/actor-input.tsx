@@ -16,6 +16,8 @@ interface ActorInputProps extends NodeInputProps {
   target?: 'user' | 'group' | 'both'
   /** Multi-select mode */
   multi?: boolean
+  /** Whether to show the clear button on the picker trigger */
+  showClear?: boolean
 }
 
 /**
@@ -24,7 +26,16 @@ interface ActorInputProps extends NodeInputProps {
  * and ActorId format (used by ActorPicker).
  */
 export const ActorInput = createNodeInput<ActorInputProps>(
-  ({ inputs, onChange, isLoading, name, placeholder, target = 'user', multi = false }) => {
+  ({
+    inputs,
+    onChange,
+    isLoading,
+    name,
+    placeholder,
+    target = 'user',
+    multi = false,
+    showClear,
+  }) => {
     const value = inputs[name] ?? ''
 
     /** Convert stored value (raw UUID or ActorId) to ActorId[] for the picker */
@@ -65,7 +76,10 @@ export const ActorInput = createNodeInput<ActorInputProps>(
         multi={multi}
         disabled={isLoading}
         emptyLabel={placeholder ?? 'Select...'}
-        triggerProps={{ className: 'w-full pe-1 ps-0', showClear: actorIds.length > 0 }}
+        triggerProps={{
+          className: 'w-full pe-1 ps-0',
+          showClear: showClear ?? actorIds.length > 0,
+        }}
       />
     )
   }

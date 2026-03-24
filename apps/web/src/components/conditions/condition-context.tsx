@@ -154,11 +154,11 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         return
       }
 
-      // Use fieldType to get operators (fieldType is now required)
+      // Use fieldType to get operators, fall back to resolved type
       const availableOperators = getOperatorsForFieldType(
         resolvedFieldDef.fieldType ?? resolvedFieldDef.type
       )
-      const defaultOperator = availableOperators[0]?.key || 'equals'
+      const defaultOperator = availableOperators[0]?.key || 'is'
 
       const newCondition: Condition = {
         id: generateId(),

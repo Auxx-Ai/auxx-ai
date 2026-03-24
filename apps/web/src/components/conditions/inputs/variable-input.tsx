@@ -35,12 +35,23 @@ interface VariableInputProps {
  * Builds fieldOptions object for VarEditor from field definition
  */
 function buildFieldOptions(field: FieldDefinition) {
-  const opts: { enum?: Array<{ label: string; value: string }>; fieldReference?: string } = {}
+  const opts: {
+    enum?: Array<{ label: string; value: string }>
+    fieldReference?: string
+    relatedEntityDefinitionId?: string
+    actor?: { target?: string; multiple?: boolean }
+  } = {}
   if (field.options?.options?.length) {
     opts.enum = field.options.options
   }
   if (field.fieldReference) {
     opts.fieldReference = field.fieldReference
+  }
+  if (field.targetEntityDefinitionId) {
+    opts.relatedEntityDefinitionId = field.targetEntityDefinitionId
+  }
+  if (field.options?.actor) {
+    opts.actor = field.options.actor
   }
   return Object.keys(opts).length > 0 ? opts : undefined
 }
@@ -80,11 +91,28 @@ export function VariableInput({
 
   // Resolve input configuration based on field type and operator
   const inputConfig = useMemo(() => {
-    return resolveInputConfig(field.type as BaseType, condition.operator)
-  }, [field.type, condition.operator])
+    const config = resolveInputConfig(field.type as BaseType, condition.operator)
+    console.log('[VariableInput] resolveInputConfig', {
+      fieldType: field.type,
+      fieldLabel: field.label,
+      operator: condition.operator,
+      result: config,
+    })
+    return config
+  }, [field.type, field.label, condition.operator])
 
   // Pre-compute fieldOptions
-  const fieldOptions = useMemo(() => buildFieldOptions(field), [field])
+  const fieldOptions = useMemo(() => {
+    const opts = buildFieldOptions(field)
+    console.log('[VariableInput] buildFieldOptions', {
+      fieldLabel: field.label,
+      fieldType: field.type,
+      hasActor: !!field.options?.actor,
+      hasFieldReference: !!field.fieldReference,
+      result: opts,
+    })
+    return opts
+  }, [field])
 
   // Skip rendering if no input needed
   if (inputConfig.mode === InputMode.NONE) {

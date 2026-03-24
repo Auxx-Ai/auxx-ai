@@ -23,6 +23,14 @@ const ValueInput = ({
 }: ValueInputProps) => {
   const { config } = useConditionContext()
 
+  console.log('[ValueInput] routing', {
+    mode: config.mode,
+    nodeId,
+    fieldType: field.type,
+    fieldLabel: field.label,
+    operator: condition.operator,
+  })
+
   // Resource mode - use FieldInputAdapter directly
   if (config.mode === 'resource' && !nodeId) {
     return (

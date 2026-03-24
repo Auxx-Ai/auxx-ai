@@ -565,6 +565,11 @@ export class ExecutionContextManager {
       )
 
       if (missingRelationships.length === 0) {
+        this.log('DEBUG', undefined, `lazyLoad: cache hit (all relationships loaded)`, {
+          cacheKey,
+          relationshipsRequested: relationshipsNeeded,
+          fetchedRelationships: [...cached.fetchedRelationships],
+        })
         return cached.data // All relationships already loaded
       }
 
@@ -587,13 +592,14 @@ export class ExecutionContextManager {
         relationshipsNeeded,
       })
 
-      // Fetch resource with relationships from org cache
+      // Fetch resource with relationships, passing cached data to avoid redundant base fetch
       const recordId = toRecordId(ref.resourceType, ref.resourceId)
       const resource = await fetchResourceWithRelationships(
         recordId,
         relationshipsNeeded,
         ref.organizationId ?? this.context.organizationId,
-        database
+        database,
+        cached?.data
       )
 
       if (!resource) {

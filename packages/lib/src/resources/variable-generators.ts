@@ -445,6 +445,7 @@ function convertFieldToVariableProperty(
         description: field.description,
         properties,
         fieldReference: toResourceFieldId(tableId, getFieldOutputKey(field)),
+        resourceId: relatedEntityDefinitionId,
       }
     }
 
@@ -560,8 +561,9 @@ function convertFieldToVariableProperty(
     }
   }
 
-  // Handle other types (STRING, EMAIL, ENUM, etc.)
+  // Handle other types (STRING, EMAIL, ENUM, ACTOR, etc.)
   const fieldOptions = field.options?.options
+  const actorOptions = field.options?.actor
   return {
     type: field.type,
     label: field.label,
@@ -570,6 +572,13 @@ function convertFieldToVariableProperty(
       fieldOptions.length > 0 && {
         options: { options: fieldOptions },
       }),
+    ...(actorOptions && {
+      options: { ...field.options, actor: actorOptions },
+    }),
+    // Include fieldReference for ACTOR fields so condition system can resolve metadata
+    ...(field.type === BaseType.ACTOR && {
+      fieldReference: toResourceFieldId(tableId, getFieldOutputKey(field)),
+    }),
   }
 }
 

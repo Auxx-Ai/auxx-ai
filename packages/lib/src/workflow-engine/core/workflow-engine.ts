@@ -1,7 +1,10 @@
 // packages/lib/src/workflow-engine/core/workflow-engine.ts
+
+import path from 'node:path'
 import { database as db, schema } from '@auxx/database'
 import { NodeTriggerSource } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
+import { stopCurrentRunLog, withRunLog } from '@auxx/logger/run-log'
 import { and, eq } from 'drizzle-orm'
 import type { WorkflowExecutionReporter } from '../execution-reporter'
 import { WorkflowEventType } from '../shared/types'
@@ -135,6 +138,30 @@ export class WorkflowEngine {
     options: WorkflowExecutionOptions = {}
   ): Promise<WorkflowExecutionResult> {
     const executionId = this.generateExecutionId()
+
+    // Dev only: tee all logs to a per-run file
+    if (process.env.NODE_ENV === 'development') {
+      const logFile = path.join(
+        process.cwd(),
+        '.logs',
+        'workflow-runs',
+        workflow.id,
+        `${executionId}.log`
+      )
+      return withRunLog(executionId, logFile, () =>
+        this.executeWorkflowInternal(workflow, executionId, triggerEvent, options)
+      )
+    }
+
+    return this.executeWorkflowInternal(workflow, executionId, triggerEvent, options)
+  }
+
+  private async executeWorkflowInternal(
+    workflow: any,
+    executionId: string,
+    triggerEvent: WorkflowTriggerEvent,
+    options: WorkflowExecutionOptions = {}
+  ): Promise<WorkflowExecutionResult> {
     // Reset execution tracking for new workflow run
     this.resetExecutionTracking()
     // Build graph - handles ALL transformation
@@ -307,6 +334,8 @@ export class WorkflowEngine {
       this.cancellationManager.cleanup(executionId, options.workflowRunId)
       // Reset current graph
       this.currentGraph = null
+      // Close run log file stream
+      stopCurrentRunLog()
     }
   }
   /**

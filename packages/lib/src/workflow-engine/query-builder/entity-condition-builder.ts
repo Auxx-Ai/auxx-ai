@@ -740,6 +740,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         return 'SINGLE_SELECT'
       case BaseType.RELATION:
         return 'RELATIONSHIP'
+      case BaseType.ACTOR:
+        return 'ACTOR'
       default:
         return 'TEXT'
     }
@@ -769,6 +771,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         return 'optionId' // MULTI_SELECT, TAGS (multi-row storage)
       case 'relationship':
         return 'relatedEntityId'
+      case 'actor':
+        return 'actorId'
       default:
         return 'valueText'
     }
