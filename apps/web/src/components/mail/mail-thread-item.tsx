@@ -19,6 +19,7 @@ import { useDraggable } from '@dnd-kit/core'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
 import { Archive, MailWarning, MoreVertical, Trash2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
@@ -212,113 +213,118 @@ export const MailThreadItem = memo(function MailThreadItem({
     return <ThreadItemSkeleton />
   }
 
-  // --- Client-side filter check (for optimistic updates) ---
-  // Thread was loaded but doesn't match current filter (e.g., just archived)
-  if (!matchesFilter) {
-    return null
-  }
-
   return (
-    <div className='flex flex-row items-stretch relative' style={{ contain: 'layout style' }}>
-      <div
-        ref={setNodeRef}
-        {...listeners}
-        {...attributes}
-        id={`thread-${threadId}`}
-        className={cn(
-          'z-2 hover:bg-accent hover:text-accent-foreground dark:border-slate-700 group relative flex w-full cursor-grab flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3 text-left text-sm active:cursor-grabbing dark:bg-slate-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-          isMultiSelected &&
-            'bg-info hover:bg-info-100! text-background shadow-md dark:bg-info dark:hover:bg-info-100 border-info/50'
-        )}
-        aria-selected={isMultiSelected}
-        onClick={handleClick}
-        onDragStart={(e) => e.preventDefault()}>
-        {/* Status indicator dot: red for draft, blue for unread */}
-        {(hasDraft || isUnread) && (
+    <AnimatePresence initial={false}>
+      {!matchesFilter ? null : (
+        <motion.div
+          key={threadId}
+          className='flex flex-row items-stretch relative outline-none! dark:focus-visible:ring-0!'
+          style={{ contain: 'layout style' }}
+          initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+          animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
+          exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}>
           <div
+            ref={setNodeRef}
+            {...listeners}
+            {...attributes}
+            id={`thread-${threadId}`}
             className={cn(
-              'absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full',
-              hasDraft ? 'bg-red-500' : 'bg-blue-500',
-              isMultiSelected && 'bg-white'
+              'z-2 hover:bg-accent hover:text-accent-foreground dark:border-[#1e2227] group relative flex w-full cursor-grab flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3 text-left text-sm active:cursor-grabbing dark:bg-[#2c313c] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:focus-visible:ring-0 dark:focus-visible:ring-offset-0',
+              isMultiSelected &&
+                'bg-info hover:bg-info-100! text-background shadow-md dark:bg-info dark:hover:bg-info-100 border-info/50'
             )}
-            aria-label={hasDraft ? 'Has draft' : 'Unread message'}
-          />
-        )}
+            aria-selected={isMultiSelected}
+            onClick={handleClick}
+            onDragStart={(e) => e.preventDefault()}>
+            {/* Status indicator dot: red for draft, blue for unread */}
+            {(hasDraft || isUnread) && (
+              <div
+                className={cn(
+                  'absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full',
+                  hasDraft ? 'bg-red-500' : 'bg-blue-500',
+                  isMultiSelected && 'bg-white'
+                )}
+                aria-label={hasDraft ? 'Has draft' : 'Unread message'}
+              />
+            )}
 
-        <div className='absolute top-3 left-1'>
-          {viewMode === 'edit' ? (
-            <div
-              onClick={(e) => {
-                e.stopPropagation()
-                toggleSelection(threadId)
-                setActiveThread(threadId)
-              }}>
-              <Checkbox checked={isMultiSelected} />
+            <div className='absolute top-3 left-1'>
+              {viewMode === 'edit' ? (
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggleSelection(threadId)
+                    setActiveThread(threadId)
+                  }}>
+                  <Checkbox checked={isMultiSelected} />
+                </div>
+              ) : (
+                <div className='flex-none rounded-full border p-0.5 text-blue-500 group-aria-selected:bg-background group-aria-selected:border-info/90'>
+                  {getIntegrationIcon(thread.integrationProvider)}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className='flex-none rounded-full border p-0.5 text-blue-500 group-aria-selected:bg-background group-aria-selected:border-info/90'>
-              {getIntegrationIcon(thread.integrationProvider)}
-            </div>
-          )}
-        </div>
 
-        {/* Content */}
-        <div className='flex w-full flex-col gap-1'>
-          <div className='flex items-center'>
-            <div className='flex items-center ms-0.5 gap-0.5 overflow-hidden'>
-              <div className='flex-1 truncate font-semibold group-aria-selected:text-white'>
-                {senderName}
+            {/* Content */}
+            <div className='flex w-full flex-col gap-1'>
+              <div className='flex items-center'>
+                <div className='flex items-center ms-0.5 gap-0.5 overflow-hidden'>
+                  <div className='flex-1 truncate font-semibold group-aria-selected:text-white'>
+                    {senderName}
+                  </div>
+                </div>
+                <div className='ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground group-aria-selected:text-background/50'>
+                  {formattedDate}
+                </div>
+              </div>
+
+              {/* Subject */}
+              <div className='flex w-full items-center gap-1 min-w-0'>
+                <div
+                  className={cn(
+                    'min-w-0 truncate text-xs font-medium group-aria-selected:text-background/80',
+                    hasTags && 'max-w-[60%] shrink-0'
+                  )}>
+                  {thread.subject || '(no subject)'}
+                </div>
+                <div className='min-w-0 flex-1'>
+                  <OverflowRow collapseSlot='text' className='justify-end' gap={4}>
+                    {thread.tagIds?.map((tagId) => (
+                      <TagBadge
+                        key={tagId}
+                        recordId={tagId}
+                        size='sm'
+                        className={cn(
+                          isMultiSelected &&
+                            'text-background/80 border-black/20 bg-background/50 border-black/3 dark:bg-background/50 dark:border-black/10 dark:text-foreground/80'
+                        )}
+                      />
+                    ))}
+                  </OverflowRow>
+                </div>
               </div>
             </div>
-            <div className='ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground group-aria-selected:text-background/50'>
-              {formattedDate}
-            </div>
-          </div>
 
-          {/* Subject */}
-          <div className='flex w-full items-center gap-1 min-w-0'>
             <div
-              className={cn(
-                'min-w-0 truncate text-xs font-medium group-aria-selected:text-background/80',
-                hasTags && 'max-w-[60%] shrink-0'
-              )}>
-              {thread.subject || '(no subject)'}
-            </div>
-            <div className='min-w-0 flex-1'>
-              <OverflowRow collapseSlot='text' className='justify-end' gap={4}>
-                {thread.tagIds?.map((tagId) => (
-                  <TagBadge
-                    key={tagId}
-                    recordId={tagId}
-                    size='sm'
-                    className={cn(
-                      isMultiSelected &&
-                        'text-background/80 border-black/20 bg-background/50 border-black/3'
-                    )}
-                  />
-                ))}
-              </OverflowRow>
+              className='line-clamp-2 w-full break-words text-xs text-muted-foreground group-aria-selected:text-background/50'
+              dangerouslySetInnerHTML={{ __html: snippet }}
+            />
+          </div>
+
+          {/* Processing menu */}
+          <div className='z-1 me-0.5 relative border-primary-500 rounded-r-lg -ms-1.5 ps-2 py-0.5 pe-0.5 bg-primary-200 dark:bg-[#252931] flex flex-row shrink-0'>
+            <div
+              className='absolute inset-0 rounded-r-lg pointer-events-none mask-y-from-98% mask-y-to-100%'
+              style={{ boxShadow: 'inset 25px 0 25px -25px #000, 1px 1px 3px rgba(0,0,0,0.2)' }}
+            />
+            <div className='flex flex-col justify-start h-full'>
+              <ProcessingMenu threadId={threadId} update={update} isUpdating={isUpdating} />
             </div>
           </div>
-        </div>
-
-        <div
-          className='line-clamp-2 w-full break-words text-xs text-muted-foreground group-aria-selected:text-background/50'
-          dangerouslySetInnerHTML={{ __html: snippet }}
-        />
-      </div>
-
-      {/* Processing menu */}
-      <div className='z-1 me-0.5 relative border-primary-500 rounded-r-lg -ms-1.5 ps-2 py-0.5 pe-0.5 bg-primary-200 dark:bg-slate-800 flex flex-row shrink-0'>
-        <div
-          className='absolute inset-0 rounded-r-lg pointer-events-none mask-y-from-98% mask-y-to-100%'
-          style={{ boxShadow: 'inset 25px 0 25px -25px #000, 1px 1px 3px rgba(0,0,0,0.2)' }}
-        />
-        <div className='flex flex-col justify-start h-full'>
-          <ProcessingMenu threadId={threadId} update={update} isUpdating={isUpdating} />
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 })
 

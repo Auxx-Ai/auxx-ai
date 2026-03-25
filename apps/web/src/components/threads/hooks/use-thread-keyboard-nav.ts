@@ -45,6 +45,7 @@ export function useThreadKeyboardNav({
       if (!nextId || nextIndex === currentIndex) return
 
       store.setActiveThread(nextId)
+      document.getElementById(`thread-${nextId}`)?.scrollIntoView({ block: 'nearest' })
 
       if (extendSelection) {
         store.addToSelection(nextId)
@@ -79,6 +80,7 @@ export function useThreadKeyboardNav({
       const store = useThreadSelectionStore.getState()
       if (threadIds.length > 0 && threadIds[0]) {
         store.setActiveThread(threadIds[0])
+        document.getElementById(`thread-${threadIds[0]}`)?.scrollIntoView({ block: 'nearest' })
         if (store.viewMode !== 'edit') {
           store.setSelectedThreads([threadIds[0]])
         }
@@ -95,6 +97,7 @@ export function useThreadKeyboardNav({
       const lastId = threadIds[threadIds.length - 1]
       if (threadIds.length > 0 && lastId) {
         store.setActiveThread(lastId)
+        document.getElementById(`thread-${lastId}`)?.scrollIntoView({ block: 'nearest' })
         if (store.viewMode !== 'edit') {
           store.setSelectedThreads([lastId])
         }

@@ -10,6 +10,7 @@ export interface InputSearchProps extends React.InputHTMLAttributes<HTMLInputEle
   className?: string
   placeholder?: string
   onClear?: () => void
+  ref?: React.Ref<HTMLInputElement>
 }
 
 /**
@@ -21,6 +22,7 @@ function InputSearch({
   className,
   placeholder = 'Search...',
   onClear,
+  ref,
   ...props
 }: InputSearchProps) {
   const handleClear = () => {
@@ -36,6 +38,7 @@ function InputSearch({
     <div className='group/search relative flex flex-1 gap-2'>
       <Search className='pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground' />
       <input
+        ref={ref}
         placeholder={placeholder}
         value={value}
         onChange={onChange}

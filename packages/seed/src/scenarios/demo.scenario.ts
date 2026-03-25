@@ -10,13 +10,13 @@ export const demoScenario: SeedingScenarioDefinition = {
   globalCount: 20,
   scales: {
     organizations: 1,
-    users: 1,
+    users: 2,
     customers: 15,
     products: 0,
     orders: 0,
-    threads: 8,
-    messages: 30,
-    tickets: 10,
+    threads: 50,
+    messages: 200,
+    tickets: 100,
     datasets: 1,
   },
   features: {

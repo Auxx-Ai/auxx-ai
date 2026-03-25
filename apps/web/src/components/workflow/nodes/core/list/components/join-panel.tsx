@@ -2,7 +2,7 @@
 
 'use client'
 
-import { BaseType } from '@auxx/lib/workflow-engine/client'
+import type { FieldReference } from '@auxx/types/field'
 import { Input } from '@auxx/ui/components/input'
 import {
   Select,
@@ -12,10 +12,11 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import type React from 'react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import type { FieldDefinition } from '~/components/conditions'
+import { NavigableFieldSelector } from '~/components/conditions/components/navigable-field-selector'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { VarTypeIcon } from '~/components/workflow/utils/icon-helper'
-import { usePluckFieldResolver } from '../hooks/use-pluck-field-resolver'
+import { useFilterFieldResolver } from '../hooks/use-filter-field-resolver'
 import type { ListNodeData } from '../types'
 
 interface JoinPanelProps {
@@ -54,22 +55,11 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
   const [isCustomMode, setIsCustomMode] = useState(!matchesPreset)
   const selectValue = isCustomMode ? 'custom' : currentDelimiter
 
-  // Get pluckable fields if input is an object array
-  const { pluckableFields, hasPluckableFields } = usePluckFieldResolver({
+  // Get field definitions and entityDefinitionId for NavigableFieldSelector
+  const { entityDefinitionId, hasFields } = useFilterFieldResolver({
     nodeId,
     inputListValue: config.inputList,
   })
-
-  // Exclude structural types that don't have a meaningful string representation
-  const NON_JOINABLE_TYPES = new Set([
-    BaseType.OBJECT,
-    BaseType.ARRAY,
-    BaseType.RELATION,
-    BaseType.REFERENCE,
-    BaseType.FILE,
-    BaseType.JSON,
-  ])
-  const joinableFields = pluckableFields.filter((f) => !NON_JOINABLE_TYPES.has(f.type))
 
   /**
    * Handle delimiter preset selection
@@ -95,16 +85,19 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
   }
 
   /**
-   * Handle field selection for object arrays
+   * Handle field selection from NavigableFieldSelector
    */
-  const handleFieldChange = (field: string) => {
-    onChange({
-      joinConfig: {
-        ...joinConfig,
-        field: field === 'none' ? undefined : field,
-      },
-    })
-  }
+  const handleFieldSelect = useCallback(
+    (fieldReference: FieldReference, _fieldDef: FieldDefinition) => {
+      onChange({
+        joinConfig: {
+          ...joinConfig,
+          field: fieldReference as string | string[],
+        },
+      })
+    },
+    [joinConfig, onChange]
+  )
 
   return (
     <VarEditorField className='p-0'>
@@ -147,31 +140,17 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
         </div>
       </div>
 
-      {/* Field Selector (only for object arrays) */}
-      {hasPluckableFields && joinableFields.length > 0 && (
+      {/* Field Selector (only for object arrays with entityDefinitionId) */}
+      {hasFields && entityDefinitionId && (
         <VarEditorFieldRow title='Field to Join' className='border-t'>
-          <div className='flex items-center  h-8'>
-            <Select
-              value={currentField || 'none'}
-              onValueChange={handleFieldChange}
-              disabled={isReadOnly}>
-              <SelectTrigger className='w-full' variant='transparent' size='xs'>
-                <SelectValue placeholder='Use whole item' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='none'>
-                  <span className='text-muted-foreground'>Use whole item</span>
-                </SelectItem>
-                {joinableFields.map((field) => (
-                  <SelectItem key={field.id} value={field.id}>
-                    <div className='flex items-center gap-1.5'>
-                      <VarTypeIcon type={field.type} className='size-3' />
-                      <span>{field.label}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className='flex items-center h-8'>
+            <NavigableFieldSelector
+              value={currentField as FieldReference | undefined}
+              onSelect={handleFieldSelect}
+              entityDefinitionId={entityDefinitionId}
+              disabled={isReadOnly}
+              placeholder='Use whole item'
+            />
           </div>
         </VarEditorFieldRow>
       )}
@@ -184,17 +163,7 @@ export const JoinPanel: React.FC<JoinPanelProps> = ({ config, onChange, isReadOn
             <code className='bg-background px-1 rounded'>
               {currentDelimiter === '\n' ? '\\n' : currentDelimiter}
             </code>
-            "
-            {currentField && (
-              <span>
-                {' '}
-                using{' '}
-                <span className='font-medium'>
-                  {joinableFields.find((f) => f.id === currentField)?.label ?? currentField}
-                </span>{' '}
-                field
-              </span>
-            )}
+            "{currentField && <span> using a selected field</span>}
           </div>
         </div>
       </div>

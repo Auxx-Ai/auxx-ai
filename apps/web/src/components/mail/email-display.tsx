@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Kbd } from '@auxx/ui/components/kbd'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
@@ -50,13 +51,15 @@ interface EmailDisplayProps {
   messageActions: EmailActions
   /** Whether message is expanded by default */
   isOpen: boolean
+  /** Whether this is the last message in the thread (shows keyboard shortcut hints) */
+  isLastMessage?: boolean
 }
 
 /**
  * Displays a single email message.
  * Fetches its own data from stores.
  */
-const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) => {
+const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: EmailDisplayProps) => {
   const letterRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState(isOpen)
   const utils = api.useUtils()
@@ -402,11 +405,16 @@ const EmailDisplay = ({ messageId, messageActions, isOpen }: EmailDisplayProps) 
             </Button>
             <Button
               variant='info'
-              className='rounded-full'
+              className='rounded-full pr-3!'
               size='sm'
               onClick={handleDirectReplyAllClick}>
               <ReplyAll className='opacity-70' />
               Reply All
+              {isLastMessage && (
+                <Kbd variant='default' size='sm'>
+                  R
+                </Kbd>
+              )}
             </Button>
           </div>
         </div>

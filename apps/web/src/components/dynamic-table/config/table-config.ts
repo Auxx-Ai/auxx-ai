@@ -12,7 +12,7 @@ export const DYNAMIC_TABLE_CONFIG = {
    * Set to false to require manual save.
    * Set to true to enable auto-save.
    */
-  AUTO_SAVE_ENABLED: false,
+  AUTO_SAVE_ENABLED: true,
 
   /**
    * Debounce delay in ms for auto-save (when enabled).

@@ -3,10 +3,12 @@
 
 import { toRecordId } from '@auxx/lib/field-values/client'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { useEffect, useRef } from 'react'
-import { useThread } from '~/components/threads/hooks'
+import { useHotkey } from '@tanstack/react-hotkeys'
+import { useEffect, useMemo, useRef } from 'react'
+import { useMessageParticipants, useMessages, useThread } from '~/components/threads/hooks'
 import { useCompose } from '~/hooks/use-compose'
 import { CommentList } from '../global/comments/comment-list'
+import type { MessageType } from './email-editor/types'
 import { useComposeStore } from './store/compose-store'
 import { ThreadFooter } from './thread-footer'
 import { ThreadHeader } from './thread-header'
@@ -18,11 +20,13 @@ import { useThreadContext } from './thread-provider'
  * Includes messages, reply functionality, and comments.
  */
 export default function ThreadDetails() {
-  const { threadId, replyBox, handlers } = useThreadContext()
+  const { threadId, replyBox, handlers, emailActions } = useThreadContext()
   const { thread, isLoading, isNotFound } = useThread({ threadId })
   const { openInline, close: closeCompose } = useCompose()
   const instanceIdRef = useRef<string | null>(null)
   const justCreatedRef = useRef(false)
+
+  const { messages } = useMessages({ threadId, enabled: !!thread })
 
   const portalTargetId = `reply-portal-${threadId}`
 
@@ -118,6 +122,86 @@ export default function ThreadDetails() {
       }
     }
   }, [closeCompose, findByThread, threadId])
+
+  // Resolve last message participants for hotkey handlers
+  // (EmailDisplay does this per-message; we only need the last one for hotkeys)
+  const lastMessage = messages.at(-1)
+  const { from, to, cc } = useMessageParticipants(lastMessage?.participants ?? [])
+
+  const lastEditorMessage: MessageType | null = useMemo(() => {
+    if (!lastMessage) return null
+    return {
+      id: lastMessage.id,
+      threadId: lastMessage.threadId,
+      subject: lastMessage.subject,
+      snippet: lastMessage.snippet,
+      textHtml: lastMessage.textHtml,
+      textPlain: lastMessage.textPlain,
+      isInbound: lastMessage.isInbound,
+      sentAt: lastMessage.sentAt ? new Date(lastMessage.sentAt) : null,
+      createdAt: new Date(lastMessage.createdAt),
+      messageType: lastMessage.messageType as MessageType['messageType'],
+      from: from
+        ? {
+            id: from.id,
+            identifier: from.identifier,
+            identifierType: from.identifierType,
+            name: from.name,
+            displayName: from.displayName,
+          }
+        : null,
+      participants: [
+        ...(from
+          ? [
+              {
+                role: 'FROM',
+                participant: {
+                  id: from.id,
+                  identifier: from.identifier,
+                  identifierType: from.identifierType,
+                  name: from.name,
+                },
+              },
+            ]
+          : []),
+        ...to.map((p) => ({
+          role: 'TO',
+          participant: {
+            id: p.id,
+            identifier: p.identifier,
+            identifierType: p.identifierType,
+            name: p.name,
+          },
+        })),
+        ...cc.map((p) => ({
+          role: 'CC',
+          participant: {
+            id: p.id,
+            identifier: p.identifier,
+            identifierType: p.identifierType,
+            name: p.name,
+          },
+        })),
+      ],
+    }
+  }, [lastMessage, from, to, cc])
+
+  // Keyboard shortcuts: R to reply, F to forward the last message
+  useHotkey(
+    'R',
+    () => {
+      if (lastEditorMessage) emailActions.onReplyAll(lastEditorMessage)
+    },
+    { enabled: !!thread && !isShowReplyBox }
+  )
+
+  useHotkey(
+    'F',
+    () => {
+      if (lastEditorMessage) emailActions.onForward(lastEditorMessage)
+    },
+    { enabled: !!thread && !isShowReplyBox }
+  )
 
   if (!thread) {
     if (isLoading) {
