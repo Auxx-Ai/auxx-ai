@@ -37,7 +37,7 @@ export function ThreadMessages() {
   }
 
   return (
-    <div className='flex flex-col overflow-y-auto'>
+    <div className='flex flex-col overflow-y-auto animate-in fade-in-0 slide-in-from-bottom-1 duration-300'>
       <div className='flex flex-1 flex-col space-y-4'>
         {/* Email messages */}
         <div
@@ -55,6 +55,7 @@ export function ThreadMessages() {
                     messageId={message.id}
                     messageActions={messageActions}
                     isOpen={isLastMessage}
+                    isLastMessage={isLastMessage}
                   />
                 )
               default:

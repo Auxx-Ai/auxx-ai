@@ -47,6 +47,7 @@ import {
 import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
+import { DYNAMIC_TABLE_CONFIG } from '../../config/table-config'
 import { useViewMutations } from '../../hooks/use-view-mutations'
 import type { TableView, ViewAction, ViewConfig } from '../../types'
 import { CreateViewDialog, RenameViewDialog } from '../dialogs'
@@ -208,7 +209,9 @@ export function ViewSelector({
 
   const isDefaultView = activeView?.isDefault || false
   const canSave = Boolean(activeView && hasUnsavedChanges && !isSaving)
-  const showUnsavedBadge = Boolean(activeView && hasUnsavedChanges && !isSaving)
+  const showUnsavedBadge = Boolean(
+    activeView && hasUnsavedChanges && !isSaving && !DYNAMIC_TABLE_CONFIG.AUTO_SAVE_ENABLED
+  )
 
   return (
     <>

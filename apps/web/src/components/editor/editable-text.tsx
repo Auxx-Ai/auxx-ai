@@ -139,7 +139,7 @@ export const EditableText = ({
           ref={textRef}
           onClick={handleClick}
           className={cn(
-            `cursor-pointer whitespace-pre-wrap break-words rounded border border-transparent px-2 py-1 hover:border-gray-300`,
+            `cursor-pointer whitespace-pre-wrap break-words rounded border border-transparent px-2 py-1 hover:border-gray-300 hover:dark:border-primary-300`,
             className, // Apply user-provided class names
             // Apply placeholderColor class only when placeholder is shown
             showPlaceholder && placeholderColor

@@ -93,9 +93,53 @@ export default function BulkActionToolbar() {
   useHotkey(
     'D',
     () => {
-      if (selectionCount > 0 && !isBulkUpdating) {
-        handleArchive()
+      if (selectionCount > 0 && !isBulkUpdating) handleArchive()
+    },
+    { enabled: open }
+  )
+
+  useHotkey(
+    'Shift+3',
+    () => {
+      if (selectionCount > 0 && !isBulkUpdating) handleTrash()
+    },
+    { enabled: open }
+  )
+
+  useHotkey(
+    'Shift+1',
+    () => {
+      if (selectionCount > 0 && !isBulkUpdating) handleSpam()
+    },
+    { enabled: open }
+  )
+
+  useHotkey(
+    'L',
+    () => {
+      if (selectionCount > 0) {
+        const btn = document.querySelector<HTMLButtonElement>('[data-action-id="tags"] button')
+        btn?.click()
       }
+    },
+    { enabled: open }
+  )
+
+  useHotkey(
+    'A',
+    () => {
+      if (selectionCount > 0) {
+        const btn = document.querySelector<HTMLButtonElement>('[data-action-id="assign"] button')
+        btn?.click()
+      }
+    },
+    { enabled: open }
+  )
+
+  useHotkey(
+    'W',
+    () => {
+      if (selectionCount > 0) setWorkflowDialogOpen(true)
     },
     { enabled: open }
   )
@@ -145,6 +189,7 @@ export default function BulkActionToolbar() {
         icon: Trash2,
         onClick: handleTrash,
         disabled: isBulkUpdating || disabled,
+        shortcut: '#',
         tooltip: 'Move selected to trash',
       },
       {
@@ -153,6 +198,7 @@ export default function BulkActionToolbar() {
         icon: Ban,
         onClick: handleSpam,
         disabled: isBulkUpdating || disabled,
+        shortcut: '!',
         tooltip: 'Mark selected as spam',
       },
       {
@@ -160,6 +206,7 @@ export default function BulkActionToolbar() {
         label: 'Tags',
         icon: Tags,
         disabled: tagBulk.isPending || disabled,
+        shortcut: 'L',
         tooltip: 'Apply tags',
         picker: {
           component: TagPicker,
@@ -177,6 +224,7 @@ export default function BulkActionToolbar() {
         icon: Play,
         onClick: () => setWorkflowDialogOpen(true),
         disabled: disabled,
+        shortcut: 'W',
         tooltip: 'Run workflow',
       },
       {
@@ -184,6 +232,7 @@ export default function BulkActionToolbar() {
         label: 'Assign',
         icon: UserPlus,
         disabled: isBulkUpdating || disabled,
+        shortcut: 'A',
         tooltip: 'Assign to team member',
         picker: {
           component: ActorPicker,

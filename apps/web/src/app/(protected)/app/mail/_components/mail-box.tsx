@@ -11,8 +11,8 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { PanelResizeHandle } from '@auxx/ui/components/panel-resize-handle'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@auxx/ui/components/resizable'
 import { Mail, MailIcon, Play, Plus, Waypoints } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -42,9 +42,9 @@ import type { ThreadsFilterInput } from '~/components/mail/types'
 import { useSelectedThreadIds, useThreadSelectionStore, useViewMode } from '~/components/threads'
 import { useCompose } from '~/hooks/use-compose'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useIsMobile } from '~/hooks/use-mobile'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
 import { useUser } from '~/hooks/use-user'
+import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import {
@@ -320,10 +320,17 @@ function MailboxInner({
     [] // No dependencies needed if only setting state
   )
 
-  // Default layout configuration for ResizablePanelGroup
-  const isMobile = useIsMobile()
   const isSmallScreen = useIsSmallScreen()
-  const defaultLayout = isMobile ? [100, 0] : [25, 60]
+
+  // Thread list width in pixels, persisted to localStorage
+  const [threadListWidth, setThreadListWidth] = useState(() => {
+    const stored = safeLocalStorage.get('mail-thread-list-width')
+    return stored ? Number(stored) : 350
+  })
+  const handleThreadListResize = useCallback((width: number) => {
+    setThreadListWidth(width)
+    safeLocalStorage.set('mail-thread-list-width', String(width))
+  }, [])
 
   // Handles navigation back to thread list on mobile
   const handleBackToList = useCallback(() => {
@@ -461,44 +468,37 @@ function MailboxInner({
               )}
             </div>
           ) : (
-            // Desktop: Keep existing ResizablePanelGroup
-            <ResizablePanelGroup
-              id='mail-layout'
-              direction='horizontal'
-              // Ensure the group fills the available height and prevents internal overflow issues
-              className='h-full  flex-1 grow overflow-hidden bg-secondary dark:bg-muted-50'>
-              {/* Left Panel: Contains Tabs (if applicable), Search, and ThreadList */}
-              <ResizablePanel
-                id='mail-thread-list'
-                defaultSize={defaultLayout[0]}
-                // minSize={20} // Minimum width for the list panel
-                // maxSize={40} // Maximum width for the list panel
-                collapsible={true}
-                className='flex flex-col overflow-y-hidden! border-none'>
+            // Desktop: Flex layout with fixed-width thread list
+            <div className='flex flex-row h-full flex-1 overflow-hidden bg-secondary dark:bg-muted-50'>
+              {/* Left Panel: Thread list with fixed pixel width */}
+              <div
+                style={{ width: threadListWidth }}
+                className='shrink-0 flex flex-col overflow-y-hidden border-none'>
                 <div className='flex flex-1 flex-col items-stretch h-full'>
-                  <div className=' overflow-hidden flex-1 min-h-0'>
+                  <div className='overflow-hidden flex-1 min-h-0'>
                     <ThreadList
-                      filter={threadFilterForHook} // Filter uses deferred search query
+                      filter={threadFilterForHook}
                       basePath={basePathForList}
                       selectedThreadId={selectedThreadId}
-                      // Callback to receive loading state changes from ThreadList
                       onLoadingChange={setIsListLoading}
                     />
                   </div>
                 </div>
-              </ResizablePanel>
+              </div>
 
-              <ResizableHandle withHandle />
+              <PanelResizeHandle
+                side='left'
+                currentWidth={threadListWidth}
+                onWidthChange={handleThreadListResize}
+                minWidth={250}
+                maxWidth={500}
+              />
 
-              {/* Right Panel: Displays the selected thread details */}
-              <ResizablePanel
-                id='mail-thread-display'
-                defaultSize={defaultLayout[1]}
-                minSize={30}
-                collapsible>
+              {/* Right Panel: Thread display fills remaining space */}
+              <div className='flex-1 min-w-0'>
                 <ThreadDisplay />
-              </ResizablePanel>
-            </ResizablePanelGroup>
+              </div>
+            </div>
           )}
         </MainPageContent>
       </MainPage>

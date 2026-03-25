@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/list/output-variables.ts
 
+import { getFieldId, isResourceFieldId } from '@auxx/types/field'
 import type { UnifiedVariable } from '~/components/workflow/types'
 import { BaseType } from '~/components/workflow/types'
 import type { OutputVariableContext } from '~/components/workflow/types/output-variables'
@@ -9,6 +10,22 @@ import {
 } from '~/components/workflow/utils/variable-cloning'
 import { inferPluckOutputType } from '~/components/workflow/utils/variable-utils'
 import type { ListNodeData, ListOperation } from './types'
+
+/**
+ * Convert a FieldReference (string or string[]) to a dot-separated field key path.
+ * - "ticket:email" → "email"
+ * - ["ticket:contact", "contact:firstName"] → "contact.firstName"
+ * - "email" → "email" (plain key passthrough)
+ */
+function fieldRefToKeyPath(field: string | string[]): string {
+  if (Array.isArray(field)) {
+    return field.map((rfId) => getFieldId(rfId)).join('.')
+  }
+  if (isResourceFieldId(field)) {
+    return getFieldId(field)
+  }
+  return field
+}
 
 /**
  * Validate that the input variable is an array type
@@ -125,16 +142,17 @@ export function computeListOutputVariables(
 
     case 'pluck': {
       // Infer type from plucked field
-      const pluckField = data.pluckConfig?.field
+      const pluckFieldRef = data.pluckConfig?.field
       const flatten = data.pluckConfig?.flatten || false
 
-      if (pluckField && inputArrayVar) {
-        const inferredType = inferPluckOutputType(inputArrayVar, pluckField, flatten)
+      if (pluckFieldRef && inputArrayVar) {
+        const pluckKeyPath = fieldRefToKeyPath(pluckFieldRef)
+        const inferredType = inferPluckOutputType(inputArrayVar, pluckKeyPath, flatten)
         if (inferredType) {
           // Build the base result items structure
           const baseStructure: Partial<UnifiedVariable> = {
             type: inferredType.type,
-            label: pluckField.split('.').pop() || 'Value',
+            label: pluckKeyPath.split('.').pop() || 'Value',
             category: 'node' as const,
             ...(inferredType.items && { items: inferredType.items }),
             ...(inferredType.resourceId && { resourceId: inferredType.resourceId }),

@@ -82,15 +82,16 @@ export interface UniqueConfig {
 export interface JoinConfig {
   /** Delimiter to join elements with (e.g., ", " or "\n") */
   delimiter: string
-  /** Optional field to extract from objects before joining */
-  field?: string
+  /** Optional field to extract from objects before joining (FieldReference: single or path) */
+  field?: string | string[]
 }
 
 /**
  * Pluck configuration
  */
 export interface PluckConfig {
-  field: string
+  /** Field to pluck (FieldReference: single ResourceFieldId or FieldPath array) */
+  field: string | string[]
   flatten?: boolean
 }
 

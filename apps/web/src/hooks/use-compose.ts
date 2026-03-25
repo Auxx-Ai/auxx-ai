@@ -21,6 +21,9 @@ export function useCompose() {
   const dockAction = useComposeStore((s) => s.dock)
   const undockAction = useComposeStore((s) => s.undock)
   const findByThread = useComposeStore((s) => s.findByThread)
+  const findByDraft = useComposeStore((s) => s.findByDraft)
+  const maximize = useComposeStore((s) => s.maximize)
+  const bringToFront = useComposeStore((s) => s.bringToFront)
 
   /** Open a new floating compose editor */
   const openCompose = useCallback(
@@ -33,9 +36,18 @@ export function useCompose() {
   /** Open a draft in a floating compose editor */
   const openDraft = useCallback(
     (draft: DraftMessageType) => {
+      const existing = findByDraft(draft.id)
+      if (existing) {
+        if (existing.displayMode === 'minimized') {
+          maximize(existing.id)
+        } else {
+          bringToFront(existing.id)
+        }
+        return existing.id
+      }
       return open({ mode: 'draft', draft, displayMode: 'floating' })
     },
-    [open]
+    [open, findByDraft, maximize, bringToFront]
   )
 
   /** Open a reply/replyAll/forward in a floating compose editor */

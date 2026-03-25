@@ -58,14 +58,14 @@ function ScrollArea({
         <BaseScrollArea.Scrollbar
           orientation='vertical'
           className={cn(
-            'flex justify-center w-2 rounded-md my-2 mr-1.5 bg-foreground/10',
+            'flex justify-center w-2 rounded-md my-2 mr-1.5 bg-foreground/10 dark:bg-primary-100',
             'opacity-0 transition-opacity duration-150',
             'data-[scrolling]:opacity-100 data-[scrolling]:transition-none',
             'data-[hovering]:opacity-100',
             'before:content-[""] before:absolute before:w-5 before:h-full',
             scrollbarClassName
           )}>
-          <BaseScrollArea.Thumb className='w-full rounded-[inherit] bg-foreground/20' />
+          <BaseScrollArea.Thumb className='w-full rounded-[inherit] bg-foreground/20 dark:bg-primary-50' />
         </BaseScrollArea.Scrollbar>
       )}
 
@@ -73,14 +73,14 @@ function ScrollArea({
         <BaseScrollArea.Scrollbar
           orientation='horizontal'
           className={cn(
-            'flex justify-center h-2 rounded-md mx-2 mb-1.5 bg-foreground/10',
+            'flex justify-center h-2 rounded-md mx-2 mb-1.5 bg-foreground/10 dark:bg-primary-100',
             'opacity-0 transition-opacity duration-150',
             'data-[scrolling]:opacity-100 data-[scrolling]:transition-none',
             'data-[hovering]:opacity-100',
             'before:content-[""] before:absolute before:h-5 before:w-full',
             scrollbarClassName
           )}>
-          <BaseScrollArea.Thumb className='h-full rounded-[inherit] bg-foreground/20' />
+          <BaseScrollArea.Thumb className='h-full rounded-[inherit] bg-foreground/20 dark:bg-primary-50' />
         </BaseScrollArea.Scrollbar>
       )}
 

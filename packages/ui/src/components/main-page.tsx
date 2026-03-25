@@ -11,8 +11,9 @@ import {
 import { SidebarTrigger } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
 import Link from 'next/link'
-import React, { useCallback, useState } from 'react'
+import React from 'react'
 import { PanelFrame } from './panel-frame'
+import { PanelResizeHandle } from './panel-resize-handle'
 
 /**
  * apps/web/src/components/ui/main-page.tsx
@@ -320,66 +321,6 @@ function MainPageContent({
 }
 MainPageContent.displayName = 'MainPageContent'
 
-/**
- * Resize handle rendered in the gap between panels
- */
-function PanelResizeHandle({
-  currentWidth,
-  onWidthChange,
-  minWidth = 350,
-  maxWidth = 800,
-}: {
-  currentWidth: number
-  onWidthChange?: (width: number) => void
-  minWidth?: number
-  maxWidth?: number
-}) {
-  const [isDragging, setIsDragging] = useState(false)
-
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (!onWidthChange) return
-      e.preventDefault()
-      setIsDragging(true)
-
-      const startX = e.clientX
-      const startWidth = currentWidth
-
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        const deltaX = startX - moveEvent.clientX
-        const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + deltaX))
-        onWidthChange(newWidth)
-      }
-
-      const handleMouseUp = () => {
-        setIsDragging(false)
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
-
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-    },
-    [currentWidth, onWidthChange, minWidth, maxWidth]
-  )
-
-  return (
-    <div
-      className={cn(
-        'w-2 shrink-0 cursor-ew-resize flex items-center justify-center group',
-        !onWidthChange && 'cursor-default'
-      )}
-      onMouseDown={onWidthChange ? handleMouseDown : undefined}>
-      <div
-        className={cn(
-          'w-1 h-12 rounded-full transition-colors',
-          onWidthChange && 'bg-primary-200 group-hover:bg-primary-400',
-          isDragging && 'bg-primary-500'
-        )}
-      />
-    </div>
-  )
-}
 // function MainPageContent({ children }: { children: React.ReactNode }) {
 //   return (
 //     <div className="flex flex-1 flex-col w-full h-full border rounded-lg overflow-hidden">

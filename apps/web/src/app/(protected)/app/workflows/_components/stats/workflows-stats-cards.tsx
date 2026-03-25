@@ -48,7 +48,7 @@ export function WorkflowsStatsCards() {
         // md: 'md:grid-cols-4',
         md: 'md:grid-cols-2',
       }}
-      className='border-b bg-primary-50'
+      className='border-b bg-primary-50 h-[95px]'
     />
   )
 }

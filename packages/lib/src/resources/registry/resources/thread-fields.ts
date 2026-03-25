@@ -383,14 +383,14 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   // VIRTUAL COMPUTED FIELDS (for find node — resolved by mail condition builder)
   // ============================================================================
 
-  sender: {
-    id: toFieldId('sender'),
-    key: 'sender',
-    label: 'Sender',
+  from: {
+    id: toFieldId('from'),
+    key: 'from',
+    label: 'From',
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
     isSystem: true,
-    systemAttribute: 'sender',
+    systemAttribute: 'from',
     dbColumn: undefined, // Resolved via cross-table join
     nullable: true,
     capabilities: {

@@ -341,7 +341,7 @@ export function MailSearchBar({
             onInputChange={setInputValue}
             onInputKeyDown={handleInputKeyDown}
             onFocus={handleInputFocus}
-            placeholder='Search...'
+            placeholder='Search (/)...'
             className='flex-1'
             searchBarRef={searchBarContainerRef}
           />

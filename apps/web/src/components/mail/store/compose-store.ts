@@ -50,6 +50,7 @@ interface ComposeStore {
   dock: (id: string, portalTargetId: string) => void
   undock: (id: string) => void
   findByThread: (threadId: string) => ComposeInstance | undefined
+  findByDraft: (draftId: string) => ComposeInstance | undefined
 }
 
 let idCounter = 0
@@ -179,5 +180,9 @@ export const useComposeStore = create<ComposeStore>((set, get) => ({
 
   findByThread: (threadId) => {
     return get().instances.find((i) => i.thread?.id === threadId)
+  },
+
+  findByDraft: (draftId) => {
+    return get().instances.find((i) => i.draft?.id === draftId)
   },
 }))

@@ -153,7 +153,7 @@ export const ConditionBadge = ({
     <div
       data-slot='condition-badge'
       className={cn(
-        'flex flex-row h-6 items-center rounded-xl bg-primary-200/30 border shrink-0 [&>*:last-child]:rounded-r-xl',
+        'flex flex-row h-6 items-center rounded-xl bg-primary-200/30 border shrink-0 focus-within:outline-none [&>*:last-child]:rounded-r-xl',
         isHighlighted && 'ring-2 ring-info',
         isHovered && 'bg-destructive/10 border-destructive/20',
         className

@@ -45,7 +45,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useResources } from '~/components/resources/hooks'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
@@ -98,6 +98,7 @@ export function EntityTemplateDialog({
   const { getLimit } = useFeatureFlags()
   const entityLimit = getLimit(FeatureKey.entities)
   const userCreatedEntityCount = customResources?.filter((r) => !r.entityType).length ?? 0
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [searchQuery, setSearchQuery] = useState('')
@@ -492,6 +493,10 @@ export function EntityTemplateDialog({
           innerClassName='p-0'
           position='tc'
           size='3xl'
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            searchInputRef.current?.focus()
+          }}
           {...guardProps}>
           <div className='flex flex-col flex-1 min-h-0'>
             {viewMode === 'list' ? (
@@ -552,6 +557,7 @@ export function EntityTemplateDialog({
                   <div className='flex-1 overflow-hidden flex flex-col'>
                     <div className='py-3 px-6'>
                       <InputSearch
+                        ref={searchInputRef}
                         placeholder='Search templates...'
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}

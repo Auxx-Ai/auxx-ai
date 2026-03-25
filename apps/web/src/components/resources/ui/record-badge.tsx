@@ -21,33 +21,36 @@ import { type GetRecordLinkOptions, useRecordLink } from '../utils/get-record-li
 /**
  * Variants for the RecordBadge component
  */
-export const recordBadgeVariants = cva('flex items-center rounded-[5px] ring-1 py-0', {
-  variants: {
-    variant: {
-      default:
-        'cursor-default ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800',
-      link: 'cursor-pointer ring-transparent hover:ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 [&_[data-slot=record-display]]:underline hover:[&_[data-slot=record-display]]:no-underline',
+export const recordBadgeVariants = cva(
+  'flex items-center rounded-[5px] ring-1 py-0 focus-visible:outline-none',
+  {
+    variants: {
+      variant: {
+        default:
+          'cursor-default ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800',
+        link: 'cursor-pointer ring-transparent hover:ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 [&_[data-slot=record-display]]:underline hover:[&_[data-slot=record-display]]:no-underline',
+      },
+      size: {
+        default: [
+          'h-5 gap-1.5 ps-0.5 pe-1.5 text-sm',
+          '[&_[data-slot=avatar-fallback]]:text-[10px]',
+          '[&_[data-slot=skeleton]:first-child]:size-4 [&_[data-slot=skeleton]:first-child]:rounded-full',
+          '[&_[data-slot=skeleton]:last-child]:h-4 [&_[data-slot=skeleton]:last-child]:w-20 [&_[data-slot=skeleton]:last-child]:rounded-full',
+        ].join(' '),
+        sm: [
+          'h-4 gap-1 ps-0.5 pe-1 text-xs',
+          '[&_[data-slot=avatar-fallback]]:text-[8px]',
+          '[&_[data-slot=skeleton]:first-child]:size-3 [&_[data-slot=skeleton]:first-child]:rounded-full',
+          '[&_[data-slot=skeleton]:last-child]:h-3 [&_[data-slot=skeleton]:last-child]:w-14 [&_[data-slot=skeleton]:last-child]:rounded-full',
+        ].join(' '),
+      },
     },
-    size: {
-      default: [
-        'h-5 gap-1.5 ps-0.5 pe-1.5 text-sm',
-        '[&_[data-slot=avatar-fallback]]:text-[10px]',
-        '[&_[data-slot=skeleton]:first-child]:size-4 [&_[data-slot=skeleton]:first-child]:rounded-full',
-        '[&_[data-slot=skeleton]:last-child]:h-4 [&_[data-slot=skeleton]:last-child]:w-20 [&_[data-slot=skeleton]:last-child]:rounded-full',
-      ].join(' '),
-      sm: [
-        'h-4 gap-1 ps-0.5 pe-1 text-xs',
-        '[&_[data-slot=avatar-fallback]]:text-[8px]',
-        '[&_[data-slot=skeleton]:first-child]:size-3 [&_[data-slot=skeleton]:first-child]:rounded-full',
-        '[&_[data-slot=skeleton]:last-child]:h-3 [&_[data-slot=skeleton]:last-child]:w-14 [&_[data-slot=skeleton]:last-child]:rounded-full',
-      ].join(' '),
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
     },
-  },
-  defaultVariants: {
-    variant: 'default',
-    size: 'default',
-  },
-})
+  }
+)
 
 /**
  * Props for the RecordBadge component.
