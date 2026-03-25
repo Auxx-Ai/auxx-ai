@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.101](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.100...auxx-v0.1.101) (2026-03-25)
+
+
+### Features
+
+* add resolvers for system relationships and virtual fields ([#331](https://github.com/Auxx-Ai/auxx-ai/issues/331)) ([9efa52f](https://github.com/Auxx-Ai/auxx-ai/commit/9efa52ff96a5540f582f84fe65a43d696c73bee0))
+* enhance system condition builder and UI components ([#327](https://github.com/Auxx-Ai/auxx-ai/issues/327)) ([3f2937d](https://github.com/Auxx-Ai/auxx-ai/commit/3f2937d43fc4884f819558b3a77c08fb677f9ac0))
+* enhance UI components and improve accessibility ([#330](https://github.com/Auxx-Ai/auxx-ai/issues/330)) ([980b595](https://github.com/Auxx-Ai/auxx-ai/commit/980b595936711d9d29ed68ae2811e4af9cd63e00))
+* replace scroll-area-v2 with scroll-area component across the application ([#329](https://github.com/Auxx-Ai/auxx-ai/issues/329)) ([5d04328](https://github.com/Auxx-Ai/auxx-ai/commit/5d0432828f24c449c2ae44ef3c95e8c766ea0d1c))
+
 ## [0.1.100](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.99...auxx-v0.1.100) (2026-03-24)
 
 
