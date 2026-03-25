@@ -36,13 +36,13 @@ export const constants = {
 
   /** Workflow template categories */
   workflowCategories: [
-    { value: 'all', label: 'All Templates', icon: 'LayoutGrid' },
-    { value: 'customer-service', label: 'Customer Service', icon: 'Headphones' },
-    { value: 'shopify', label: 'Shopify', icon: 'ShoppingBag' },
-    { value: 'automation', label: 'Automation', icon: 'Zap' },
-    { value: 'routing', label: 'Routing & Assignment', icon: 'GitBranch' },
-    { value: 'ai', label: 'AI-Powered', icon: 'Sparkles' },
-    { value: 'sales', label: 'Sales & Marketing', icon: 'TrendingUp' },
+    { value: 'all', label: 'All Templates', icon: 'LayoutGrid', color: 'zinc' },
+    { value: 'customer-service', label: 'Customer Service', icon: 'Headphones', color: 'blue' },
+    { value: 'shopify', label: 'Shopify', icon: 'ShoppingBag', color: 'green' },
+    { value: 'automation', label: 'Automation', icon: 'Zap', color: 'amber' },
+    { value: 'routing', label: 'Routing & Assignment', icon: 'GitBranch', color: 'purple' },
+    { value: 'ai', label: 'AI-Powered', icon: 'Sparkles', color: 'violet' },
+    { value: 'sales', label: 'Sales & Marketing', icon: 'TrendingUp', color: 'teal' },
   ] as const,
 
   /** Entity definition template categories */

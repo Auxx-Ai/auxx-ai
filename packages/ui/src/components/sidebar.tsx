@@ -361,7 +361,7 @@ function SidebarContent({ className, children, ...props }: React.ComponentProps<
         'relative min-h-0 flex-1 group-data-[collapsible=icon]:overflow-x-hidden',
         className
       )}
-      fadeClassName='before:bg-gradient-to-b before:from-black/10 before:border-t before:border-black/10 after:bg-gradient-to-t after:from-black/10 after:border-b after:border-black/10'
+      fadeClassName='before:bg-gradient-to-b before:from-black/10 before:shadow-[inset_0_1px_0_rgba(0,0,0,0.1)] after:bg-gradient-to-t after:from-black/10 after:shadow-[inset_0_-1px_0_rgba(0,0,0,0.1)]'
       scrollbarClassName='w-1'
       {...props}>
       <div data-sidebar='content' className='flex flex-col gap-2 py-2 pe-2'>

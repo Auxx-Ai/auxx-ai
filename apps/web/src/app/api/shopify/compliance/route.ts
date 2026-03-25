@@ -42,48 +42,53 @@ function verifyHmac(body: string, hmacHeader: string, secret: string): boolean {
 }
 
 export const POST = async (req: NextRequest) => {
-  const topic = req.headers.get('x-shopify-topic') as ComplianceTopic | null
-  const hmacHeader = req.headers.get('x-shopify-hmac-sha256')
-  const shopDomain = req.headers.get('x-shopify-shop-domain')
+  try {
+    const topic = req.headers.get('x-shopify-topic') as ComplianceTopic | null
+    const hmacHeader = req.headers.get('x-shopify-hmac-sha256')
+    const shopDomain = req.headers.get('x-shopify-shop-domain')
 
-  if (!topic || !hmacHeader || !shopDomain) {
-    logger.error('Missing required headers', { topic, shopDomain, hasHmac: !!hmacHeader })
-    return new Response(null, { status: 400 })
-  }
+    if (!topic || !hmacHeader || !shopDomain) {
+      logger.error('Missing required headers', { topic, shopDomain, hasHmac: !!hmacHeader })
+      return new Response(null, { status: 401 })
+    }
 
-  if (!COMPLIANCE_TOPICS.includes(topic)) {
-    logger.error('Unknown compliance topic', { topic })
-    return new Response(null, { status: 400 })
-  }
+    if (!COMPLIANCE_TOPICS.includes(topic)) {
+      logger.error('Unknown compliance topic', { topic })
+      return new Response(null, { status: 401 })
+    }
 
-  const body = await req.text()
+    const body = await req.text()
 
-  const shopifySecret = configService.get<string>('SHOPIFY_API_SECRET') as string
-  if (!shopifySecret) {
-    logger.error('SHOPIFY_API_SECRET not configured')
-    return new Response(null, { status: 500 })
-  }
+    const shopifySecret = configService.get<string>('SHOPIFY_API_SECRET') as string
+    if (!shopifySecret) {
+      logger.error('SHOPIFY_API_SECRET not configured')
+      return new Response(null, { status: 401 })
+    }
 
-  if (!verifyHmac(body, hmacHeader, shopifySecret)) {
-    logger.error('HMAC verification failed', { topic, shopDomain })
+    if (!verifyHmac(body, hmacHeader, shopifySecret)) {
+      logger.error('HMAC verification failed', { topic, shopDomain })
+      return new Response(null, { status: 401 })
+    }
+
+    const payload = JSON.parse(body)
+
+    switch (topic) {
+      case 'customers/data_request':
+        handleCustomerDataRequest(shopDomain, payload as CustomerDataRequestPayload)
+        break
+      case 'customers/redact':
+        handleCustomerRedact(shopDomain, payload as CustomerRedactPayload)
+        break
+      case 'shop/redact':
+        handleShopRedact(shopDomain, payload as ShopRedactPayload)
+        break
+    }
+
+    return new Response(null, { status: 200 })
+  } catch (error) {
+    logger.error('Unhandled error in compliance webhook', { error })
     return new Response(null, { status: 401 })
   }
-
-  const payload = JSON.parse(body)
-
-  switch (topic) {
-    case 'customers/data_request':
-      handleCustomerDataRequest(shopDomain, payload as CustomerDataRequestPayload)
-      break
-    case 'customers/redact':
-      handleCustomerRedact(shopDomain, payload as CustomerRedactPayload)
-      break
-    case 'shop/redact':
-      handleShopRedact(shopDomain, payload as ShopRedactPayload)
-      break
-  }
-
-  return new Response(null, { status: 200 })
 }
 
 function handleCustomerDataRequest(shopDomain: string, payload: CustomerDataRequestPayload) {

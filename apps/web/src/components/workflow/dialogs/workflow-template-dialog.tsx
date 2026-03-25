@@ -43,6 +43,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useTheme } from 'next-themes'
 import { useCallback, useMemo, useState } from 'react'
 
 import { InlineAppInstallButton } from '~/components/apps/app-install-button'
@@ -55,6 +56,11 @@ import { EntityRequirementsStep } from './entity-requirements-step'
 import { SingleEntityInstallDialog } from './single-entity-install-dialog'
 
 export type WorkflowCategory = (typeof constants.workflowCategories)[number]['value']
+
+/** Color map for workflow category badges */
+const categoryColorMap = Object.fromEntries(
+  constants.workflowCategories.map((c) => [c.value, c.color])
+) as Record<string, (typeof constants.workflowCategories)[number]['color']>
 
 /**
  * Icon map for workflow categories
@@ -97,6 +103,7 @@ export function WorkflowTemplateDialog({
   organizationId,
 }: WorkflowTemplateDialogProps) {
   const router = useRouter()
+  const { theme } = useTheme()
   const { appInstallations } = useExtensionsContext()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [searchQuery, setSearchQuery] = useState('')
@@ -365,7 +372,7 @@ export function WorkflowTemplateDialog({
                             <div
                               key={template.id}
                               onClick={() => handleSelectTemplate(template)}
-                              className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
+                              className='group flex items-center justify-between gap-3 rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
                               <div className='flex items-start gap-3 flex-1 min-w-0'>
                                 <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
                                   {template.imgUrl ? (
@@ -396,10 +403,14 @@ export function WorkflowTemplateDialog({
                                 </div>
                               </div>
                               {(template.categories as string[])?.length > 0 && (
-                                <div className='flex gap-1 shrink-0'>
+                                <div className='flex gap-2 shrink-0 flex-col'>
                                   {(template.categories as string[]).slice(0, 2).map((cat) => (
-                                    <Badge key={cat} variant='outline' className='text-xs'>
-                                      {cat}
+                                    <Badge
+                                      key={cat}
+                                      variant={categoryColorMap[cat] ?? 'zinc'}
+                                      className='text-xs items-center'>
+                                      {constants.workflowCategories.find((c) => c.value === cat)
+                                        ?.label ?? cat}
                                     </Badge>
                                   ))}
                                 </div>
@@ -470,6 +481,7 @@ export function WorkflowTemplateDialog({
                     ) : workflowViewerData ? (
                       <WorkflowViewer
                         workflow={workflowViewerData}
+                        theme={theme as 'light' | 'dark' | 'system'}
                         options={{
                           showTitle: false,
                           showMinimap: true,
@@ -500,8 +512,12 @@ export function WorkflowTemplateDialog({
                           </p>
                           <div className='flex gap-1 flex-wrap mt-2'>
                             {(selectedTemplate?.categories as string[])?.map((cat) => (
-                              <Badge key={cat} variant='outline' className='text-xs'>
-                                {cat}
+                              <Badge
+                                key={cat}
+                                variant={categoryColorMap[cat] ?? 'zinc'}
+                                className='text-xs'>
+                                {constants.workflowCategories.find((c) => c.value === cat)?.label ??
+                                  cat}
                               </Badge>
                             ))}
                           </div>

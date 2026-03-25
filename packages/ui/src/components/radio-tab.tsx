@@ -33,7 +33,10 @@ import { useId, useState } from 'react'
  * Variants for the RadioTab container component using class-variance-authority
  */
 const radioTabVariants = cva('inline-flex rounded-md p-0.5', {
-  variants: { variant: { default: 'bg-input/50' }, size: { default: 'h-9', sm: 'h-8', xs: 'h-6' } },
+  variants: {
+    variant: { default: 'bg-input/50 dark:bg-[#1e2227]' },
+    size: { default: 'h-9', sm: 'h-8', xs: 'h-6' },
+  },
   defaultVariants: { variant: 'default', size: 'default' },
 })
 

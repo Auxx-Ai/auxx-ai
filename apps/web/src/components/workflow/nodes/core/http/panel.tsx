@@ -203,7 +203,7 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
                     setInputs({ ...inputs, authorization: auth })
                   }}
                 />
-                <Button
+                {/* <Button
                   variant='ghost'
                   size='xs'
                   onClick={() => {
@@ -212,7 +212,7 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
                   }}>
                   <FileJson />
                   From cURL
-                </Button>
+                </Button> */}
               </>
             }>
             <div className='space-y-2'>

@@ -294,10 +294,18 @@ export default function TeamOnboardingPage() {
         </motion.div>
       </div>
 
-      {/* Right column: Illustration - hidden on mobile */}
-      <div className='hidden md:flex items-center justify-center p-14'>
+      {/* Right column: Video - hidden on mobile */}
+      <div className='hidden md:flex relative overflow-hidden items-center justify-center'>
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className='absolute inset-0 h-full w-full opacity-40 object-cover mask-radial-from-10% mask-radial-to-100% mask-ellipse'
+          src='/videos/signup-5.mp4'
+        />
         <motion.div
-          className='text-center'
+          className='relative z-10 text-center p-14'
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' }}>

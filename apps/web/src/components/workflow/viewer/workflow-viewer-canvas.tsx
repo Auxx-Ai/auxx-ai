@@ -147,13 +147,13 @@ export const WorkflowViewerCanvas = React.memo<WorkflowViewerCanvasProps>(
           fitView
           fitViewOptions={{ padding: 0.3, maxZoom: 0.8 }}
           // Styling
-          className='bg-primary-50! dark:bg-primary-100!'>
+          className='bg-primary-50! '>
           {/* Background dots */}
           <Background
             variant={BackgroundVariant.Dots}
             gap={20}
             size={1}
-            color={options.theme === 'dark' ? '#3f3f46' : '#d4d4d8'}
+            color={options.theme === 'dark' ? '#737881' : '#d4d4d8'}
           />
 
           {/* Minimap */}
