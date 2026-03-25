@@ -3,10 +3,11 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
+import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
-import { Clock, ListChecks, Medal, Play, Route, TextCursorInput, X } from 'lucide-react'
+import { Clock, ListChecks, Medal, Play, Route, TextCursorInput } from 'lucide-react'
 import { memo, useCallback, useState } from 'react'
 import { useDockPortal } from '~/components/global/dock-portal-provider'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
@@ -98,33 +99,23 @@ export const WorkflowRunPanel = memo(function WorkflowRunPanel({
       title='Run Panel'
       portalTarget={portalRef}
       panelType='run'>
-      <div className='border-b ps-2 pe-1 py-1 sticky top-0 backdrop-blur-sm dark:bg-black/40 bg-white/40 z-10 rounded-t-xl'>
-        <div className='flex items-center justify-between '>
-          <div className='flex items-center gap-2'>
-            <Play className='h-4 w-4 text-muted-foreground' />
-            <h3 className='font-medium text-sm'>Test Workflow</h3>
-            {isRunning && (
-              <Badge
-                variant='secondary'
-                className='ml-1 h-5 px-2 text-xs font-normal border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950'>
-                <div className='size-2 bg-blue-500 rounded-full animate-pulse mr-1.5' />
-                <span className='text-blue-700 dark:text-blue-300'>
-                  Running... {executionProgress}%
-                </span>
-              </Badge>
-            )}
-          </div>
-          <Button
-            variant='ghost'
-            size='icon'
-            onClick={() => {
-              closeRunPanel()
-            }}
-            className='hover:bg-secondary/80 rounded-full'>
-            <X />
-          </Button>
-        </div>
-      </div>
+      <DrawerHeader
+        icon={<Play className='size-4 text-muted-foreground' />}
+        title='Test Workflow'
+        onClose={closeRunPanel}
+        actions={
+          isRunning ? (
+            <Badge
+              variant='secondary'
+              className='ml-1 h-5 px-2 text-xs font-normal border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950'>
+              <div className='size-2 bg-blue-500 rounded-full animate-pulse mr-1.5' />
+              <span className='text-blue-700 dark:text-blue-300'>
+                Running... {executionProgress}%
+              </span>
+            </Badge>
+          ) : undefined
+        }
+      />
       <div className='flex-1 overflow-y-auto'>
         <Tabs
           value={runPanelTab}

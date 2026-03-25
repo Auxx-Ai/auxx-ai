@@ -25,6 +25,7 @@ import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import { useCountUpdates } from '~/components/mail/hooks'
+import { useComposeStore } from '~/components/mail/store/compose-store'
 import { SignatureEditor } from '~/components/signatures/ui'
 import { getMessageListStoreState } from '~/components/threads/store/message-list-store'
 import { getThreadStoreState } from '~/components/threads/store/thread-store'
@@ -102,6 +103,7 @@ function ReplyComposeEditorComponent({
   onMinimize,
   onDockBack,
   onSubjectChange,
+  instanceId,
 }: ReplyComposeEditorProps) {
   // Z-index override for popovers when editor is in floating mode (above compose at z-101+)
   const popoverZIndex = isDialogMode ? 'z-[200]' : undefined
@@ -109,6 +111,19 @@ function ReplyComposeEditorComponent({
   const utils = api.useUtils()
   const { editor } = useEditorContext()
   const activeState = useEditorActiveStateContext()
+  const pendingFocus = useComposeStore((s) =>
+    instanceId ? (s.instances.find((i) => i.id === instanceId)?.pendingFocus ?? false) : false
+  )
+  const clearPendingFocus = useComposeStore((s) => s.clearPendingFocus)
+
+  // Auto-focus editor when opened via reply action (not draft auto-open)
+  useEffect(() => {
+    if (pendingFocus && editor && !editor.isDestroyed && instanceId) {
+      editor.commands.focus('end')
+      clearPendingFocus(instanceId)
+    }
+  }, [pendingFocus, editor, instanceId, clearPendingFocus])
+
   const [confirm, ConfirmDialog] = useConfirm()
   const posthog = useAnalytics()
   const { onSendDraft } = useCountUpdates()

@@ -429,7 +429,7 @@ export default function LoginForm({
                           }}
                         />
                         <GeneralSubmitButton
-                          icon={<GithubIcon className='mr-2 size-4 text-foreground' />} // Add margin if needed
+                          icon={<GithubIcon className='mr-2 size-4 text-black' />} // Add margin if needed
                           width='w-full'
                           variant='translucent'
                           text='Login with Github'

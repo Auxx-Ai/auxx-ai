@@ -136,6 +136,7 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
       onMinimize={instance.displayMode === 'floating' ? handleMinimize : undefined}
       onDockBack={canDockBack ? handleDockBack : undefined}
       onSubjectChange={handleSubjectChange}
+      instanceId={instance.id}
     />
   )
 

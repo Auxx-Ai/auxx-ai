@@ -14,17 +14,26 @@ import {
 } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq, inArray } from 'drizzle-orm'
+import { findCachedResource } from '../cache'
 import type { FieldOptions, NameFieldOptions } from '../custom-fields/field-options'
+import type { TableId } from '../resources/registry/field-registry'
+import { isSystemResourceId } from '../resources/registry/types'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import {
   type FieldValueContext,
   getField,
   getFieldInfoFromRegistry,
-  getFieldTypeFromRegistry,
   rowsToTypedValues,
   rowToTypedValue,
   validateFieldReferences,
 } from './field-value-helpers'
+import {
+  batchFetchSystemRelationships,
+  isVirtualField,
+  resolveSystemTableFields,
+  resolveVirtualFields,
+  type SystemFieldDescriptor,
+} from './resolvers'
 import type {
   BatchFieldValueResult,
   BatchGetValuesInput,
@@ -214,8 +223,9 @@ export async function batchGetValues(
 }
 
 /**
- * Batch fetch all direct field values in a single query.
- * Replaces N per-field queries with 1 query using fieldId IN (...allFieldIds).
+ * Batch fetch all direct field values.
+ * Categorizes fields into system table, virtual, FieldValue-backed, and NAME,
+ * then delegates to the appropriate resolver.
  */
 async function batchGetAllDirectFieldValues(
   ctx: FieldValueContext,
@@ -250,57 +260,60 @@ async function batchGetAllDirectFieldValues(
     fieldOptionsMap.set(fieldId, info.fieldOptions)
   }
 
-  // Check for NAME fields — they need special resolution
+  // Separate NAME fields
   const nameFieldIds = allFieldIds.filter((fid) => fieldTypeMap.get(fid) === FieldTypeEnum.NAME)
-  const directFieldIds = allFieldIds.filter((fid) => fieldTypeMap.get(fid) !== FieldTypeEnum.NAME)
+
+  // Categorize remaining fields into system vs FieldValue-backed
+  const { entityDefinitionId } = parseRecordId(recordIds[0]!)
+  const categorized = await categorizeFields(
+    ctx,
+    fieldRefs,
+    entityDefinitionId,
+    fieldTypeMap,
+    fieldOptionsMap
+  )
 
   const results: TypedFieldValueResult[] = []
 
-  // Fetch all non-NAME field values in a single query
-  if (directFieldIds.length > 0) {
-    const rows = await ctx.db
-      .select()
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.organizationId, ctx.organizationId),
-          inArray(schema.FieldValue.fieldId, directFieldIds),
-          inArray(schema.FieldValue.entityId, entityInstanceIds)
-        )
-      )
-      .orderBy(asc(schema.FieldValue.sortKey))
-
-    // Group by (entityId, fieldId)
-    const grouped = new Map<string, (typeof rows)[number][]>()
-    for (const row of rows) {
-      const key = `${row.entityId}:${row.fieldId}`
-      const existing = grouped.get(key) ?? []
-      existing.push(row)
-      grouped.set(key, existing)
-    }
-
-    // Convert grouped rows to typed results
-    for (const [, fieldRows] of grouped) {
-      const entityId = fieldRows[0]!.entityId
-      const fieldId = fieldRows[0]!.fieldId
-      const recordId = instanceToRecordId.get(entityId)
-      const fieldRef = fieldIdToRef.get(fieldId)
-      const fieldType = fieldTypeMap.get(fieldId)
-
-      if (!recordId || !fieldRef || !fieldType) continue
-
-      const isMulti = isArrayReturnFieldType(fieldType)
-      const typedValues = fieldRows.map((row) =>
-        rowToTypedValue(row as unknown as FieldValueRow, fieldType)
-      )
-      const value = isMulti ? typedValues : typedValues[0]!
-      const fieldOptions = fieldOptionsMap.get(fieldId)
-
-      results.push({ recordId, fieldRef, value, fieldType, fieldOptions })
-    }
+  // FieldValue-backed fields (custom resource fields + system fields stored in FieldValue)
+  if (categorized.fieldValueFieldIds.length > 0) {
+    const fvResults = await fetchFieldValueResults(
+      ctx,
+      entityInstanceIds,
+      categorized.fieldValueFieldIds,
+      instanceToRecordId,
+      fieldIdToRef,
+      fieldTypeMap,
+      fieldOptionsMap
+    )
+    results.push(...fvResults)
   }
 
-  // Handle NAME fields via existing resolveNameFieldValues
+  // System table fields (Layer 1)
+  if (categorized.systemDbFields.length > 0) {
+    const systemResults = await resolveSystemTableFields(
+      ctx,
+      entityDefinitionId as TableId,
+      entityInstanceIds,
+      categorized.systemDbFields
+    )
+    results.push(...systemResults)
+  }
+
+  // Virtual fields (Layer 2)
+  if (categorized.virtualFields.length > 0) {
+    const virtualResults = await fetchVirtualFieldResults(
+      ctx,
+      entityDefinitionId,
+      entityInstanceIds,
+      categorized.virtualFields,
+      categorized.fieldIdToKeyMap,
+      instanceToRecordId
+    )
+    results.push(...virtualResults)
+  }
+
+  // NAME fields
   for (const nameFieldId of nameFieldIds) {
     const nameValues = await resolveNameFieldValues(ctx, recordIds, nameFieldId)
     const ref = fieldIdToRef.get(nameFieldId)!
@@ -322,6 +335,194 @@ async function batchGetAllDirectFieldValues(
 }
 
 // =============================================================================
+// FIELD CATEGORIZATION
+// =============================================================================
+
+interface CategorizedFields {
+  systemDbFields: SystemFieldDescriptor[]
+  virtualFields: Array<{
+    fieldKey: string
+    fieldId: string
+    fieldRef: ResourceFieldId
+    fieldType: FieldType
+    fieldOptions?: FieldOptions
+  }>
+  fieldValueFieldIds: string[]
+  fieldIdToKeyMap: Map<string, string>
+}
+
+/**
+ * Categorize field refs into system table, virtual, or FieldValue-backed.
+ * Uses the org-scoped cached resource to resolve field metadata.
+ */
+async function categorizeFields(
+  ctx: FieldValueContext,
+  fieldRefs: ResourceFieldId[],
+  entityDefinitionId: string,
+  fieldTypeMap: Map<string, FieldType>,
+  fieldOptionsMap: Map<string, FieldOptions | undefined>
+): Promise<CategorizedFields> {
+  const isSystem = isSystemResourceId(entityDefinitionId)
+  const cachedResource = isSystem
+    ? await findCachedResource(ctx.organizationId, entityDefinitionId)
+    : null
+
+  const systemDbFields: SystemFieldDescriptor[] = []
+  const virtualFields: CategorizedFields['virtualFields'] = []
+  const fieldValueFieldIds: string[] = []
+  const fieldIdToKeyMap = new Map<string, string>()
+
+  for (const ref of fieldRefs) {
+    const { fieldId } = parseResourceFieldId(ref)
+    const fieldType = fieldTypeMap.get(fieldId)
+
+    // Skip NAME fields (handled separately)
+    if (!fieldType || fieldType === FieldTypeEnum.NAME) continue
+
+    if (isSystem && cachedResource) {
+      const cachedField = cachedResource.fields.find((f) => f.id === fieldId || f.key === fieldId)
+
+      if (cachedField?.dbColumn) {
+        systemDbFields.push({
+          fieldKey: cachedField.key,
+          fieldId,
+          fieldRef: ref,
+          fieldType,
+          fieldOptions: fieldOptionsMap.get(fieldId),
+          dbColumn: cachedField.dbColumn,
+          relationship: cachedField.relationship,
+        })
+      } else if (cachedField && isVirtualField(entityDefinitionId, cachedField.key)) {
+        virtualFields.push({
+          fieldKey: cachedField.key,
+          fieldId,
+          fieldRef: ref,
+          fieldType,
+          fieldOptions: fieldOptionsMap.get(fieldId),
+        })
+        fieldIdToKeyMap.set(cachedField.key, fieldId)
+      } else {
+        // System field stored in FieldValue (e.g. tags) or unknown
+        fieldValueFieldIds.push(fieldId)
+      }
+    } else {
+      fieldValueFieldIds.push(fieldId)
+    }
+  }
+
+  return { systemDbFields, virtualFields, fieldValueFieldIds, fieldIdToKeyMap }
+}
+
+// =============================================================================
+// FIELD VALUE TABLE QUERY
+// =============================================================================
+
+/**
+ * Fetch field values from the FieldValue table and convert to typed results.
+ * This is the original FieldValue query, extracted into its own function.
+ */
+async function fetchFieldValueResults(
+  ctx: FieldValueContext,
+  entityInstanceIds: string[],
+  fieldIds: string[],
+  instanceToRecordId: Map<string, RecordId>,
+  fieldIdToRef: Map<string, ResourceFieldId>,
+  fieldTypeMap: Map<string, FieldType>,
+  fieldOptionsMap: Map<string, FieldOptions | undefined>
+): Promise<TypedFieldValueResult[]> {
+  const rows = await ctx.db
+    .select()
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, ctx.organizationId),
+        inArray(schema.FieldValue.fieldId, fieldIds),
+        inArray(schema.FieldValue.entityId, entityInstanceIds)
+      )
+    )
+    .orderBy(asc(schema.FieldValue.sortKey))
+
+  // Group by (entityId, fieldId)
+  const grouped = new Map<string, (typeof rows)[number][]>()
+  for (const row of rows) {
+    const key = `${row.entityId}:${row.fieldId}`
+    const existing = grouped.get(key) ?? []
+    existing.push(row)
+    grouped.set(key, existing)
+  }
+
+  const results: TypedFieldValueResult[] = []
+
+  for (const [, fieldRows] of grouped) {
+    const entityId = fieldRows[0]!.entityId
+    const fieldId = fieldRows[0]!.fieldId
+    const recordId = instanceToRecordId.get(entityId)
+    const fieldRef = fieldIdToRef.get(fieldId)
+    const fieldType = fieldTypeMap.get(fieldId)
+
+    if (!recordId || !fieldRef || !fieldType) continue
+
+    const isMulti = isArrayReturnFieldType(fieldType)
+    const typedValues = fieldRows.map((row) =>
+      rowToTypedValue(row as unknown as FieldValueRow, fieldType)
+    )
+    const value = isMulti ? typedValues : typedValues[0]!
+    const fieldOptions = fieldOptionsMap.get(fieldId)
+
+    results.push({ recordId, fieldRef, value, fieldType, fieldOptions })
+  }
+
+  return results
+}
+
+// =============================================================================
+// VIRTUAL FIELD RESOLUTION
+// =============================================================================
+
+/**
+ * Fetch virtual field values and map them to TypedFieldValueResult[].
+ */
+async function fetchVirtualFieldResults(
+  ctx: FieldValueContext,
+  entityDefinitionId: string,
+  entityInstanceIds: string[],
+  virtualFields: CategorizedFields['virtualFields'],
+  fieldIdToKeyMap: Map<string, string>,
+  instanceToRecordId: Map<string, RecordId>
+): Promise<TypedFieldValueResult[]> {
+  const fieldKeys = virtualFields.map((f) => f.fieldKey)
+  const virtualValues = await resolveVirtualFields(
+    ctx,
+    entityDefinitionId,
+    entityInstanceIds,
+    fieldKeys,
+    fieldIdToKeyMap
+  )
+
+  const results: TypedFieldValueResult[] = []
+
+  for (const [entityId, fieldMap] of virtualValues) {
+    const recordId = instanceToRecordId.get(entityId)
+    if (!recordId) continue
+
+    for (const entry of virtualFields) {
+      const value = fieldMap.get(entry.fieldKey)
+      if (value) {
+        results.push({
+          recordId,
+          fieldRef: entry.fieldRef,
+          value,
+          fieldType: entry.fieldType,
+          fieldOptions: entry.fieldOptions,
+        })
+      }
+    }
+  }
+
+  return results
+}
+
+// =============================================================================
 // FIELD PATH RESOLUTION
 // =============================================================================
 
@@ -330,6 +531,9 @@ async function batchGetAllDirectFieldValues(
  *
  * - Direct field "product:price": fetch directly
  * - Path ["product:vendor", "vendor:name"]: traverse relationships, then fetch terminal
+ *
+ * System-aware: handles both FieldValue-backed and system table-backed fields
+ * at every hop and at the terminal read.
  */
 async function resolveFieldReference(
   ctx: FieldValueContext,
@@ -344,17 +548,13 @@ async function resolveFieldReference(
   }
 
   // Track source → intermediate mappings for final result assembly
-  // Map: sourceRecordId → relatedRecordIds at each depth
   let currentRecordIds = sourceRecordIds
   const traversalMaps: Map<RecordId, RecordId[]>[] = []
 
   // Process all hops except the last (which is the terminal field)
   for (let depth = 0; depth < path.length - 1; depth++) {
     const resourceFieldId = path[depth]
-    const { fieldId } = parseResourceFieldId(resourceFieldId)
-
-    // Fetch relationships at this depth
-    const relationshipMap = await batchFetchRelationships(ctx, currentRecordIds, fieldId)
+    const relationshipMap = await fetchRelationshipHop(ctx, currentRecordIds, resourceFieldId)
 
     traversalMaps.push(relationshipMap)
 
@@ -364,10 +564,8 @@ async function resolveFieldReference(
       nextRecordIds.push(...relatedIds)
     }
 
-    // Dedupe for efficiency
     currentRecordIds = [...new Set(nextRecordIds)]
 
-    // Early exit if no records to fetch
     if (currentRecordIds.length === 0) {
       break
     }
@@ -378,7 +576,6 @@ async function resolveFieldReference(
   const { entityDefinitionId: terminalEntityId, fieldId: terminalFieldId } =
     parseResourceFieldId(terminalResourceFieldId)
 
-  // Get field type + options for the terminal field
   const terminalFieldInfo = await getFieldInfoFromRegistry(
     ctx.organizationId,
     terminalEntityId,
@@ -387,7 +584,7 @@ async function resolveFieldReference(
   const terminalFieldType = terminalFieldInfo.fieldType
   const terminalFieldOptions = terminalFieldInfo.fieldOptions
 
-  // Handle NAME fields — compose from source fields (firstName + lastName)
+  // Handle NAME fields
   if (terminalFieldType === FieldTypeEnum.NAME && currentRecordIds.length > 0) {
     const terminalValues = await resolveNameFieldValues(ctx, currentRecordIds, terminalFieldId)
     return mapResultsToSources(
@@ -402,10 +599,17 @@ async function resolveFieldReference(
 
   const terminalValues =
     currentRecordIds.length > 0
-      ? await batchFetchFieldValues(ctx, currentRecordIds, terminalFieldId, terminalFieldType)
+      ? await fetchTerminalFieldValues(
+          ctx,
+          currentRecordIds,
+          terminalEntityId,
+          terminalFieldId,
+          terminalResourceFieldId,
+          terminalFieldType,
+          terminalFieldOptions
+        )
       : new Map()
 
-  // Map terminal values back to source records
   return mapResultsToSources(
     sourceRecordIds,
     traversalMaps,
@@ -414,6 +618,112 @@ async function resolveFieldReference(
     terminalFieldType,
     terminalFieldOptions
   )
+}
+
+/**
+ * Fetch a single relationship hop — system-aware.
+ * For system resources with dbColumn, reads FK from the DB table directly.
+ * For FieldValue-backed relationships, uses the existing FieldValue query.
+ */
+async function fetchRelationshipHop(
+  ctx: FieldValueContext,
+  recordIds: RecordId[],
+  resourceFieldId: ResourceFieldId
+): Promise<Map<RecordId, RecordId[]>> {
+  const { entityDefinitionId: hopEntityDefId, fieldId } = parseResourceFieldId(resourceFieldId)
+
+  if (isSystemResourceId(hopEntityDefId)) {
+    const hopResource = await findCachedResource(ctx.organizationId, hopEntityDefId)
+    const cachedField = hopResource?.fields.find((f) => f.id === fieldId || f.key === fieldId)
+
+    if (cachedField?.dbColumn && cachedField.relationship) {
+      return batchFetchSystemRelationships(ctx, recordIds, cachedField, hopEntityDefId)
+    }
+  }
+
+  return batchFetchRelationships(ctx, recordIds, fieldId)
+}
+
+/**
+ * Fetch terminal field values — system-aware.
+ * Delegates to system table resolver, virtual field resolver, or FieldValue query.
+ */
+async function fetchTerminalFieldValues(
+  ctx: FieldValueContext,
+  recordIds: RecordId[],
+  terminalEntityId: string,
+  terminalFieldId: string,
+  terminalResourceFieldId: ResourceFieldId,
+  terminalFieldType: FieldType,
+  terminalFieldOptions?: FieldOptions
+): Promise<Map<RecordId, TypedFieldValue | TypedFieldValue[]>> {
+  if (!isSystemResourceId(terminalEntityId)) {
+    return batchFetchFieldValues(ctx, recordIds, terminalFieldId, terminalFieldType)
+  }
+
+  const termResource = await findCachedResource(ctx.organizationId, terminalEntityId)
+  const cachedField = termResource?.fields.find(
+    (f) => f.id === terminalFieldId || f.key === terminalFieldId
+  )
+
+  if (cachedField?.dbColumn) {
+    // System table field — use Layer 1 resolver
+    const entityInstanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
+    const systemResults = await resolveSystemTableFields(
+      ctx,
+      terminalEntityId as TableId,
+      entityInstanceIds,
+      [
+        {
+          fieldKey: cachedField.key,
+          fieldId: terminalFieldId,
+          fieldRef: terminalResourceFieldId,
+          fieldType: terminalFieldType,
+          fieldOptions: terminalFieldOptions,
+          dbColumn: cachedField.dbColumn,
+          relationship: cachedField.relationship,
+        },
+      ]
+    )
+
+    const resultMap = new Map<RecordId, TypedFieldValue | TypedFieldValue[]>()
+    for (const r of systemResults) {
+      resultMap.set(r.recordId, r.value!)
+    }
+    return resultMap
+  }
+
+  if (cachedField && isVirtualField(terminalEntityId, cachedField.key)) {
+    // Virtual field — use Layer 2 resolver
+    const entityInstanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
+    const fieldIdMap = new Map([[cachedField.key, terminalFieldId]])
+    const virtualValues = await resolveVirtualFields(
+      ctx,
+      terminalEntityId,
+      entityInstanceIds,
+      [cachedField.key],
+      fieldIdMap
+    )
+
+    // Build instanceId → RecordId lookup
+    const instanceToRecordId = new Map<string, RecordId>()
+    for (const rid of recordIds) {
+      const { entityInstanceId } = parseRecordId(rid)
+      instanceToRecordId.set(entityInstanceId, rid)
+    }
+
+    const resultMap = new Map<RecordId, TypedFieldValue | TypedFieldValue[]>()
+    for (const [entityId, fieldMap] of virtualValues) {
+      const rid = instanceToRecordId.get(entityId)
+      if (!rid) continue
+      const val = fieldMap.get(cachedField.key)
+      if (val) resultMap.set(rid, val)
+    }
+    return resultMap
+  }
+
+  // FieldValue-backed — existing path
+  return batchFetchFieldValues(ctx, recordIds, terminalFieldId, terminalFieldType)
 }
 
 /**

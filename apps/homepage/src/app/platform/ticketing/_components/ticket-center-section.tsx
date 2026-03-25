@@ -1,5 +1,4 @@
 // apps/homepage/src/app/platform/ticketing/_components/ticket-center-section.tsx
-import Image from 'next/image'
 
 /**
  * TicketCenterSection component displays the ticketing system interface
@@ -17,11 +16,12 @@ export default function TicketCenterSection() {
                 <strong className='text-foreground font-semibold'>one unified inbox</strong>
               </h2>
               <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
-                <Image
-                  src='/images/platform/ticketing/tickets.png'
-                  width={3070}
-                  height={1994}
-                  alt='Ticketing system interface showing organized customer support tickets'
+                <video
+                  src='/videos/data-model-ticket-normal.mp4'
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
                   className='h-full w-full object-cover'
                 />
               </div>

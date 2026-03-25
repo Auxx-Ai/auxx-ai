@@ -2,7 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import type { EmailFieldOptions, FieldOptions } from '@auxx/lib/field-values/client'
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
@@ -12,7 +12,6 @@ import {
   type RelationshipConfig,
   type SelectOption,
 } from '@auxx/types/custom-field'
-import type { RecordId } from '@auxx/types/resource'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
@@ -327,8 +326,8 @@ export function FieldInputAdapter({
       )
 
     case FieldType.EMAIL: {
-      const emailOpts = fieldOptions?.email as EmailFieldOptions | undefined
-      console.log('Rendering EMAIL input with options:', emailOpts, value)
+      const emailOpts = fieldOptions?.email
+
       // If email options with participantType exist, use ParticipantPicker
       if (emailOpts?.participantType) {
         const multi = allowMultiple ?? true

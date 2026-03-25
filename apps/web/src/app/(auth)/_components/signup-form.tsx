@@ -307,7 +307,7 @@ export function SignUpForm() {
                           }}
                         />
                         <GeneralSubmitButton
-                          icon={<GithubIcon className='mr-2 size-4 text-foreground' />}
+                          icon={<GithubIcon className='mr-2 size-4 text-black' />}
                           width='w-full'
                           variant='translucent'
                           text='Login with Github'

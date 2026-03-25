@@ -17,7 +17,7 @@ import {
   setEntityVariables,
 } from '../../../resources/registry'
 import type { TableId } from '../../../resources/registry/field-registry'
-import { getFieldOutputKey } from '../../../resources/registry/field-types'
+import { getFieldOutputKey, type ResourceField } from '../../../resources/registry/field-types'
 import { executeResourceQuery } from '../../../resources/resource-fetcher'
 import { toRecordId } from '../../../resources/resource-id'
 import type { ExecutionContextManager } from '../../core/execution-context'
@@ -122,7 +122,11 @@ export class FindProcessor extends BaseNodeProcessor {
    * Validate condition values against registry (especially enums and operators)
    * For custom entities, validation is skipped - EntityConditionBuilder handles it at execution time
    */
-  private validateConditionValues(resourceType: string, conditions: GenericCondition[]): string[] {
+  private validateConditionValues(
+    resourceType: string,
+    conditions: GenericCondition[],
+    cachedFields?: ResourceField[]
+  ): string[] {
     const errors: string[] = []
 
     // Skip validation for custom entities - field IDs are UUIDs, not static registry keys
@@ -150,7 +154,10 @@ export class FindProcessor extends BaseNodeProcessor {
 
       // Strip resource prefix for registry lookups (e.g., "message:from" → "from")
       const fieldId = this.stripFieldPrefix(rawFieldId)
-      const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldId]
+      // Look up in static registry first, then fall back to cached resource fields (UUID match)
+      const field =
+        RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldId] ??
+        cachedFields?.find((f) => f.id === fieldId || f.key === fieldId)
 
       if (!field) {
         errors.push(`Unknown field: ${fieldId}`)
@@ -491,11 +498,19 @@ export class FindProcessor extends BaseNodeProcessor {
         throw new Error(`Unknown resource type: ${resourceType}`)
       }
 
-      // Validate conditions using dynamic fields
-      const flatConditionErrors = this.validateConditionValues(resourceType, conditions)
+      // Validate conditions using dynamic fields (pass cached resource for UUID matching)
+      const flatConditionErrors = this.validateConditionValues(
+        resourceType,
+        conditions,
+        resource.fields
+      )
       const groupConditionErrors: string[] = []
       for (const group of conditionGroups) {
-        const groupErrors = this.validateConditionValues(resourceType, group.conditions)
+        const groupErrors = this.validateConditionValues(
+          resourceType,
+          group.conditions,
+          resource.fields
+        )
         groupConditionErrors.push(...groupErrors)
       }
 
@@ -1063,7 +1078,8 @@ export class FindProcessor extends BaseNodeProcessor {
         // Strip resource prefix for registry lookups (e.g., "message:from" → "from")
         const flatFieldId = this.stripFieldPrefix(rawFlatFieldId)
         const field = resourceConfig.filterableFields.find(
-          (f: any) => getFieldOutputKey(f) === flatFieldId || f.key === flatFieldId
+          (f: any) =>
+            getFieldOutputKey(f) === flatFieldId || f.key === flatFieldId || f.id === flatFieldId
         )
         if (!field) {
           errors.push(
@@ -1146,7 +1162,10 @@ export class FindProcessor extends BaseNodeProcessor {
           // Strip resource prefix for registry lookups (e.g., "message:from" → "from")
           const groupFieldId = this.stripFieldPrefix(rawGroupFieldId)
           const field = resourceConfig.filterableFields.find(
-            (f: any) => getFieldOutputKey(f) === groupFieldId || f.key === groupFieldId
+            (f: any) =>
+              getFieldOutputKey(f) === groupFieldId ||
+              f.key === groupFieldId ||
+              f.id === groupFieldId
           )
           if (!field) {
             errors.push(

@@ -234,4 +234,6 @@ export interface ReplyComposeEditorProps {
   onDockBack?: () => void
   /** Called when the subject field changes (for tracking in minimized bar) */
   onSubjectChange?: (subject: string) => void
+  /** Compose instance ID for store interactions (e.g. pending focus) */
+  instanceId?: string
 }

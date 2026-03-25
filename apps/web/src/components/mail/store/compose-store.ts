@@ -24,13 +24,15 @@ export interface ComposeInstance {
   position: { x: number; y: number }
   zIndex: number
   subject: string
+  pendingFocus: boolean
 }
 
 type OpenConfig = Omit<
   ComposeInstance,
-  'id' | 'displayMode' | 'portalTargetId' | 'position' | 'zIndex' | 'subject'
+  'id' | 'displayMode' | 'portalTargetId' | 'position' | 'zIndex' | 'subject' | 'pendingFocus'
 > & {
   displayMode?: DisplayMode
+  pendingFocus?: boolean
 }
 
 const MAX_INSTANCES = 3
@@ -49,6 +51,7 @@ interface ComposeStore {
   updateSubject: (id: string, subject: string) => void
   dock: (id: string, portalTargetId: string) => void
   undock: (id: string) => void
+  clearPendingFocus: (id: string) => void
   findByThread: (threadId: string) => ComposeInstance | undefined
   findByDraft: (draftId: string) => ComposeInstance | undefined
 }
@@ -94,6 +97,7 @@ export const useComposeStore = create<ComposeStore>((set, get) => ({
       position,
       zIndex: state.nextZIndex,
       subject: config.draft?.subject || config.presetValues?.subject || '',
+      pendingFocus: config.pendingFocus ?? false,
     }
 
     console.log('[ComposeStore] open', id, instance.displayMode, instance.mode)
@@ -176,6 +180,12 @@ export const useComposeStore = create<ComposeStore>((set, get) => ({
       ),
       nextZIndex: state.nextZIndex + 1,
     })
+  },
+
+  clearPendingFocus: (id) => {
+    set((state) => ({
+      instances: state.instances.map((i) => (i.id === id ? { ...i, pendingFocus: false } : i)),
+    }))
   },
 
   findByThread: (threadId) => {
