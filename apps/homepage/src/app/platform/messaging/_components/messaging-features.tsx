@@ -17,7 +17,7 @@ const previews: PreviewItem[] = [
   {
     name: 'intuitive',
     label: 'Intuitive',
-    video: '/videos/mail-reply-message.mp4',
+    video: '/videos/mail-flow.mp4',
     icon: <Smile />,
   },
   {
@@ -29,7 +29,7 @@ const previews: PreviewItem[] = [
   {
     name: 'sharing',
     label: 'Data Model',
-    video: '/videos/data-model.mp4',
+    video: '/videos/entity-template.mp4',
     icon: <Database />,
   },
   {

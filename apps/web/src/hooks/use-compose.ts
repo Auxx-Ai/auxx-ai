@@ -77,7 +77,7 @@ export function useCompose() {
           return existing.id
         }
       }
-      const id = open({ ...config, displayMode: 'inline' })
+      const id = open({ ...config, displayMode: 'inline', pendingFocus: true })
       dockAction(id, portalTargetId)
       return id
     },

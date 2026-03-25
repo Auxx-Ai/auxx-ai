@@ -76,12 +76,32 @@ export function mapCapabilities(capabilities?: FieldCapabilities) {
 }
 
 /**
- * Check if a field should be created as a CustomField
- * Skips EntityInstance columns (id, created_at, updated_at)
+ * Check if a field should be created as a CustomField.
+ *
+ * Skips:
+ * - Fields without systemAttribute
+ * - EntityInstance columns (id, created_at, updated_at)
+ * - Virtual/computed fields (dbColumn: undefined) that don't store data in FieldValue.
+ *   These are resolved via cross-table joins at query time (e.g., thread from/to/body).
+ *   RELATIONSHIP and NAME fields with dbColumn: undefined are kept — they store data
+ *   in FieldValue or need CustomField records for linking.
  */
 export function shouldCreateField(
   field: ResourceField,
   entityInstanceColumns: readonly string[]
 ): boolean {
-  return Boolean(field.systemAttribute && !entityInstanceColumns.includes(field.systemAttribute))
+  if (!field.systemAttribute) return false
+  if (entityInstanceColumns.includes(field.systemAttribute)) return false
+
+  // Virtual fields with no storage don't need CustomField records.
+  // RELATIONSHIP fields store in FieldValue, NAME fields need linking — keep both.
+  if (
+    field.dbColumn === undefined &&
+    field.fieldType !== FieldTypeEnum.RELATIONSHIP &&
+    field.fieldType !== FieldTypeEnum.NAME
+  ) {
+    return false
+  }
+
+  return true
 }

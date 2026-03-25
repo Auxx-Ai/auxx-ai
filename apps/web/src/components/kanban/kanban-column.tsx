@@ -277,7 +277,7 @@ export function KanbanColumn({
         })()}
 
         {/* Column content - scrollable */}
-        <ScrollArea className='flex-1 min-h-0'>
+        <ScrollArea className='flex-1 min-h-0' allowScrollChaining>
           <div className='p-2 space-y-2'>
             {children}
 

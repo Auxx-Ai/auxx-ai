@@ -37,7 +37,7 @@ export function ThreadMessages() {
   }
 
   return (
-    <div className='flex flex-col overflow-y-auto animate-in fade-in-0 slide-in-from-bottom-1 duration-300'>
+    <div className='flex flex-col'>
       <div className='flex flex-1 flex-col space-y-4'>
         {/* Email messages */}
         <div
@@ -47,27 +47,36 @@ export function ThreadMessages() {
             const isLastMessage = index === messages.length - 1
 
             // Route to appropriate component based on message type
-            switch (message.messageType) {
-              case 'EMAIL':
-                return (
-                  <EmailDisplay
-                    key={message.id}
-                    messageId={message.id}
-                    messageActions={messageActions}
-                    isOpen={isLastMessage}
-                    isLastMessage={isLastMessage}
-                  />
-                )
-              default:
-                return (
-                  <MessageDisplay
-                    key={message.id}
-                    messageId={message.id}
-                    messageActions={messageActions}
-                    isOpen={isLastMessage}
-                  />
-                )
-            }
+            const component = (() => {
+              switch (message.messageType) {
+                case 'EMAIL':
+                  return (
+                    <EmailDisplay
+                      messageId={message.id}
+                      messageActions={messageActions}
+                      isOpen={isLastMessage}
+                      isLastMessage={isLastMessage}
+                    />
+                  )
+                default:
+                  return (
+                    <MessageDisplay
+                      messageId={message.id}
+                      messageActions={messageActions}
+                      isOpen={isLastMessage}
+                    />
+                  )
+              }
+            })()
+
+            return (
+              <div
+                key={message.id}
+                className='animate-in fade-in-0 slide-in-from-bottom-1 duration-300'
+                style={{ animationDelay: `${index * 75}ms`, animationFillMode: 'backwards' }}>
+                {component}
+              </div>
+            )
           })}
         </div>
       </div>
