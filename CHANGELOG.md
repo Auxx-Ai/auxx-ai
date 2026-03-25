@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.102](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.101...auxx-v0.1.102) (2026-03-25)
+
+
+### Features
+
+* add new signup videos and update onboarding pages with video backgrounds ([#332](https://github.com/Auxx-Ai/auxx-ai/issues/332)) ([a2d07a9](https://github.com/Auxx-Ai/auxx-ai/commit/a2d07a95da32988345ecded0218d95d0101a5a2a))
+
 ## [0.1.101](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.100...auxx-v0.1.101) (2026-03-25)
 
 
