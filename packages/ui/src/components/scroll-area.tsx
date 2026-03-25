@@ -69,7 +69,7 @@ function ScrollArea({
             'before:content-[""] before:absolute before:w-5 before:h-full',
             scrollbarClassName
           )}>
-          <BaseScrollArea.Thumb className='w-full rounded-[inherit] bg-foreground/20 dark:bg-primary-50' />
+          <BaseScrollArea.Thumb className='w-full rounded-[inherit] bg-foreground/20 dark:bg-white/10' />
         </BaseScrollArea.Scrollbar>
       )}
 
@@ -84,7 +84,7 @@ function ScrollArea({
             'before:content-[""] before:absolute before:h-5 before:w-full',
             scrollbarClassName
           )}>
-          <BaseScrollArea.Thumb className='h-full rounded-[inherit] bg-foreground/20 dark:bg-primary-50' />
+          <BaseScrollArea.Thumb className='h-full rounded-[inherit] bg-foreground/20 dark:bg-white/10' />
         </BaseScrollArea.Scrollbar>
       )}
 

@@ -126,7 +126,7 @@ export default function PersonalOnboardingPage() {
                       <FormItem>
                         <FormLabel>First Name</FormLabel>
                         <FormControl>
-                          <Input variant='translucent' placeholder='John' {...field} />
+                          <Input variant='translucent' size='lg' placeholder='John' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -143,7 +143,7 @@ export default function PersonalOnboardingPage() {
                       <FormItem>
                         <FormLabel>Last Name</FormLabel>
                         <FormControl>
-                          <Input variant='translucent' placeholder='Doe' {...field} />
+                          <Input variant='translucent' size='lg' placeholder='Doe' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -166,10 +166,18 @@ export default function PersonalOnboardingPage() {
         </motion.div>
       </div>
 
-      {/* Right column: Illustration - hidden on mobile */}
-      <div className='hidden md:flex items-center justify-center p-14'>
+      {/* Right column: Video - hidden on mobile */}
+      <div className='hidden md:flex relative overflow-hidden items-center justify-center'>
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className='absolute inset-0 h-full w-full opacity-40 backdrop-blur-sm object-cover mask-radial-from-10% mask-radial-to-100% mask-ellipse'
+          src='/videos/signup-2.mp4'
+        />
         <motion.div
-          className='text-center'
+          className='relative z-10 text-center p-14'
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' }}>
@@ -178,7 +186,7 @@ export default function PersonalOnboardingPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.5 }}>
-            Welcome to Auxx.ai! 🚀
+            Welcome to Auxx.ai
           </motion.h2>
           <motion.p
             className='text-white/50'

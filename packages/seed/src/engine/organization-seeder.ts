@@ -502,6 +502,17 @@ export class OrganizationSeeder {
         }
       }
 
+      // Invalidate caches so dehydration returns fresh data on first /app load
+      logger.info('seedOrganizationDirectly: Invalidating caches')
+      const { onCacheEvent } = await import('@auxx/lib/cache')
+      await Promise.all([
+        onCacheEvent('channel.connected', { orgId: organizationId }),
+        onCacheEvent('org.updated', { orgId: organizationId }),
+        onCacheEvent('inbox.created', { orgId: organizationId }),
+        onCacheEvent('custom-field.created', { orgId: organizationId }),
+        onCacheEvent('entity-def.created', { orgId: organizationId }),
+      ])
+
       console.log('✅ Organization seeding complete')
       logger.info('seedOrganizationDirectly: Complete')
     } catch (error) {

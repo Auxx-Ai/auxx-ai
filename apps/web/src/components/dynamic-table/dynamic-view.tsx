@@ -8,6 +8,7 @@ import { FloatingBulkActionBar } from './components/floating-bulk-action-bar'
 import { KanbanViewBody } from './components/kanban-view-body'
 import { TableBody } from './components/table-body'
 import { TableContentSkeleton } from './components/table-content-skeleton'
+import { TableScrollArea } from './components/table-scroll-area'
 import { TableToolbar } from './components/table-toolbar'
 import { ToolbarSkeleton } from './components/toolbar-skeleton'
 import { CellSelectionConfigProvider, useCellSelection } from './context/cell-selection-context'
@@ -142,40 +143,27 @@ function DynamicViewInner<TData extends object>({
   // Unified initial loading state
   const isInitialLoading = !isViewsLoaded || (isLoading && !hasData)
 
-  return (
-    <div
-      ref={scrollContainerRef}
-      className={cn('flex flex-col relative h-full flex-1', !isKanbanView && 'overflow-auto')}>
-      {/* Toolbar */}
-      {!hideToolbar && (
-        <div className='sticky top-0 z-20 bg-background left-0'>
-          {isViewsLoaded ? (
-            <TableToolbar
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              isSavingView={isSavingView}
-              hasUnsavedViewChanges={hasUnsavedViewChanges}
-              saveCurrentView={saveCurrentView}
-              resetViewChanges={resetViewChanges}
-            />
-          ) : (
-            <ToolbarSkeleton showSearch={enableSearch} />
-          )}
-        </div>
-      )}
-
-      {/* Content */}
-      {isInitialLoading ? (
-        <TableContentSkeleton rowCount={12} showCheckbox={enableCheckbox} columnCount={5} />
-      ) : isKanbanView ? (
-        <KanbanViewBody />
+  // Toolbar rendered outside the scroll area so it never scrolls
+  const toolbar = !hideToolbar && (
+    <div className='z-20 bg-background'>
+      {isViewsLoaded ? (
+        <TableToolbar
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          isSavingView={isSavingView}
+          hasUnsavedViewChanges={hasUnsavedViewChanges}
+          saveCurrentView={saveCurrentView}
+          resetViewChanges={resetViewChanges}
+        />
       ) : (
-        <>
-          <TableBody hideToolbar={hideToolbar} scrollContainerRef={scrollContainerRef} />
-          <div className='grow' />
-        </>
+        <ToolbarSkeleton showSearch={enableSearch} />
       )}
+    </div>
+  )
 
+  // Shared overlays (rendered outside scroll area so they cover the full container)
+  const overlays = (
+    <>
       {/* Inline loading indicator */}
       {!isInitialLoading && isLoading && hasData && (
         <div className='absolute inset-0 bg-background/50 flex items-center justify-center pointer-events-none z-10'>
@@ -186,9 +174,6 @@ function DynamicViewInner<TData extends object>({
         </div>
       )}
 
-      {/* Footer */}
-      {!isInitialLoading && !isKanbanView && footerElement}
-
       {/* Floating Bulk Action Bar */}
       {bulkActions.length > 0 && (
         <FloatingBulkActionBar
@@ -197,6 +182,45 @@ function DynamicViewInner<TData extends object>({
           onClearSelection={handleClearSelection}
         />
       )}
+    </>
+  )
+
+  // Kanban view manages its own ScrollArea — no wrapper needed
+  if (isKanbanView) {
+    return (
+      <div className='flex flex-col relative h-full flex-1'>
+        {toolbar}
+        {isInitialLoading ? (
+          <TableContentSkeleton rowCount={12} showCheckbox={enableCheckbox} columnCount={5} />
+        ) : (
+          <KanbanViewBody />
+        )}
+        {overlays}
+      </div>
+    )
+  }
+
+  // Table view — toolbar outside, table body inside TableScrollArea
+  return (
+    <div className='flex flex-col relative h-full flex-1'>
+      {toolbar}
+
+      <TableScrollArea viewportRef={scrollContainerRef}>
+        {isInitialLoading ? (
+          <TableContentSkeleton rowCount={12} showCheckbox={enableCheckbox} columnCount={5} />
+        ) : (
+          <>
+            {/* hideToolbar forced true — toolbar is outside the scroll container */}
+            <TableBody hideToolbar scrollContainerRef={scrollContainerRef} />
+            <div className='grow' />
+          </>
+        )}
+
+        {/* Footer */}
+        {!isInitialLoading && footerElement}
+      </TableScrollArea>
+
+      {overlays}
     </div>
   )
 }

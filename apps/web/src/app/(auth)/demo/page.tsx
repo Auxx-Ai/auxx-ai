@@ -65,7 +65,7 @@ export default function DemoPage() {
               status: i < step ? 'done' : i === step ? 'active' : 'pending',
             }))
           )
-        }, step * 800)
+        }, step * 1500)
       )
     }
 
@@ -94,7 +94,7 @@ export default function DemoPage() {
     timers.push(
       setTimeout(() => {
         setSteps((prev) => prev.map((s) => ({ ...s, status: 'done' as const })))
-      }, STEP_LABELS.length * 800)
+      }, STEP_LABELS.length * 1500)
     )
   }, [])
 

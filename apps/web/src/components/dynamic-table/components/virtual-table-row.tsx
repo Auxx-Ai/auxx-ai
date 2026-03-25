@@ -11,9 +11,9 @@ import { SelectableTableCell } from './selectable-table-cell'
 import { VirtualTableCell } from './virtual-table-cell'
 
 const CELL_DEFAULT =
-  'group/tablecell h-full bg-primary-50/80 dark:bg-background group-hover/tablerow:bg-primary-100/80 group-hover/tablerow:dark:bg-primary-100/80'
+  'group/tablecell h-full bg-primary-50/80 dark:bg-background group-hover/tablerow:bg-primary-100/80 group-hover/tablerow:dark:bg-primary-100/80 text-primary-600'
 const CELL_SELECTED =
-  'bg-blue-50 dark:bg-blue-950 group-hover/tablerow:bg-blue-100 dark:group-hover/tablerow:bg-blue-900'
+  'bg-blue-50 dark:bg-blue-950 group-hover/tablerow:bg-blue-100 dark:group-hover/tablerow:bg-blue-900 text-primary-900'
 const CELL_LAST_CLICKED = 'bg-primary-150 group-hover/tablerow:bg-primary-200'
 
 interface VirtualTableRowProps<TData> {

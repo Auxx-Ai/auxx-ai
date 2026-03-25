@@ -11,7 +11,7 @@ const badgeVariants = cva(
   {
     variants: {
       shape: {
-        default: 'rounded-lg',
+        default: 'rounded-[5px]',
         tag: 'rounded-[5px]',
       },
       variant: {
