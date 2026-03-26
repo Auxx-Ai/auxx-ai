@@ -1,7 +1,10 @@
 // packages/lib/src/workflow-engine/nodes/utils/ai-node-utils.ts
 
+import type { Database } from '@auxx/database'
 import type { Message, Tool } from '../../../ai/clients/base/types'
 import type { AICallbacks } from '../../../ai/orchestrator/types'
+import { SystemModelService } from '../../../ai/providers/system-model-service'
+import { ModelType } from '../../../ai/providers/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
 
 /**
@@ -55,17 +58,61 @@ export async function extractOrgUserContext(
 }
 
 /**
- * Extract model provider and name from config
- * Pure function - provides defaults for missing values
+ * Extract model provider and name from config.
+ * When useDefault is true, returns empty strings — call resolveModelConfig() before invocation.
  *
  * @param modelConfig - The model configuration
- * @returns Provider and model name with defaults
+ * @returns Provider, model name, and useDefault flag
  */
-export function extractModelConfig(modelConfig: any): { provider: string; model: string } {
-  return {
-    provider: modelConfig?.provider || 'openai',
-    model: modelConfig?.name || 'gpt-4o-mini',
+export function extractModelConfig(modelConfig: any): {
+  provider: string
+  model: string
+  useDefault: boolean
+} {
+  if (modelConfig?.useDefault) {
+    return { provider: '', model: '', useDefault: true }
   }
+  return {
+    provider: modelConfig?.provider || '',
+    model: modelConfig?.name || '',
+    useDefault: false,
+  }
+}
+
+/**
+ * Resolve the actual model provider and name.
+ * When useDefault is true, fetches the org's system default for the given model type.
+ *
+ * @param modelConfig - Output from extractModelConfig()
+ * @param db - Database instance
+ * @param organizationId - The organization ID
+ * @param modelType - The model type to resolve defaults for (defaults to 'llm')
+ * @returns Resolved provider and model name
+ * @throws Error if no default is configured and useDefault is true
+ */
+export async function resolveModelConfig(
+  modelConfig: { provider: string; model: string; useDefault: boolean },
+  db: Database,
+  organizationId: string,
+  modelType: ModelType = ModelType.LLM
+): Promise<{ provider: string; model: string }> {
+  if (modelConfig.useDefault || (!modelConfig.provider && !modelConfig.model)) {
+    const systemModelService = new SystemModelService(db, organizationId)
+    const defaultModel = await systemModelService.getDefault(modelType)
+    if (defaultModel) {
+      return { provider: defaultModel.provider, model: defaultModel.model }
+    }
+    throw new Error(
+      `No default ${modelType} model configured for organization. ` +
+        'Please set a default model in AI Settings or select a specific model on the node.'
+    )
+  }
+
+  if (!modelConfig.provider || !modelConfig.model) {
+    throw new Error('Model provider and name are required when useDefault is not set.')
+  }
+
+  return { provider: modelConfig.provider, model: modelConfig.model }
 }
 
 /**
@@ -321,12 +368,14 @@ export function validateModelConfig(config: any): { valid: boolean; errors: stri
     return { valid: false, errors }
   }
 
-  if (!config.provider) {
-    errors.push('Model provider is required')
-  }
+  if (!config.useDefault) {
+    if (!config.provider) {
+      errors.push('Model provider is required')
+    }
 
-  if (!config.name) {
-    errors.push('Model name is required')
+    if (!config.name) {
+      errors.push('Model name is required')
+    }
   }
 
   // Validate temperature if provided

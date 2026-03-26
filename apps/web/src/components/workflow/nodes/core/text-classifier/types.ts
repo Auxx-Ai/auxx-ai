@@ -35,6 +35,7 @@ export enum AiModelMode {
  * Model configuration interface
  */
 export interface ModelConfig {
+  useDefault?: boolean
   provider: string
   name: string
   mode: AiModelMode

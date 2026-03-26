@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/onboarding/personal/page.tsx
+// apps/web/src/app/(protected)/onboarding/personal/page.tsx
 'use client'
 
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'

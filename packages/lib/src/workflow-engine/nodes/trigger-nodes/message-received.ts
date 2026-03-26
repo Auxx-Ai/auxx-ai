@@ -3,7 +3,7 @@
 import { toRecordId } from '@auxx/types/resource'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { NodeRunningStatus, TEST_RECORD_ID, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 
 /**
@@ -85,24 +85,14 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
       )
     }
 
-    // Set thread-related variables if available
-    if (context.message.threadId) {
-      contextManager.setVariable('threadId', context.message.threadId)
-    }
+    // Set thread-related variables — use TEST_RECORD_ID as fallback for test/manual mode
+    const threadId = context.message.threadId || TEST_RECORD_ID
+    const messageId = context.message.id || TEST_RECORD_ID
+    contextManager.setVariable('threadId', threadId)
 
     // Set RELATION output variables using RecordId format (entityDefinitionId:entityInstanceId)
-    if (context.message.threadId) {
-      contextManager.setNodeVariable(
-        node.nodeId,
-        'thread',
-        toRecordId('thread', context.message.threadId)
-      )
-    }
-    contextManager.setNodeVariable(
-      node.nodeId,
-      'message_ref',
-      toRecordId('message', context.message.id)
-    )
+    contextManager.setNodeVariable(node.nodeId, 'thread', toRecordId('thread', threadId))
+    contextManager.setNodeVariable(node.nodeId, 'message_ref', toRecordId('message', messageId))
 
     // Set organization context
     contextManager.setVariable('organizationId', context.organizationId)

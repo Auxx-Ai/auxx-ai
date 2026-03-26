@@ -156,4 +156,5 @@ export interface DehydratedOrganization {
 
   // Integration flags
   hasIntegrations: boolean
+  hasOnlyForwardingChannel: boolean
 }

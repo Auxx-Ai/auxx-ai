@@ -45,8 +45,9 @@ const completionParamsSchema = z.object({
  * Zod schema for AI model
  */
 const modelSchema = z.object({
-  provider: z.string().min(1),
-  name: z.string().min(1),
+  useDefault: z.boolean().optional(),
+  provider: z.string(),
+  name: z.string(),
   mode: z.enum(AiModelMode).default(AiModelMode.CHAT),
   completion_params: completionParamsSchema,
 })
@@ -122,6 +123,7 @@ export const createAiDefaultData = (): Partial<AiNodeData> => ({
   title: 'AI',
   desc: 'AI-powered text generation',
   model: {
+    useDefault: true,
     provider: '',
     name: '',
     mode: AiModelMode.CHAT,
@@ -144,13 +146,15 @@ export const validateAiData = (data: Partial<AiNodeData>): ValidationResult => {
     errors.push({ field: 'title', message: 'Title is required', type: 'error' })
   }
 
-  // Validate model
-  if (!data.model?.provider?.trim()) {
-    errors.push({ field: 'model.provider', message: 'Model provider is required', type: 'error' })
-  }
+  // Validate model — only require provider/name when NOT using default
+  if (!data.model?.useDefault) {
+    if (!data.model?.provider?.trim()) {
+      errors.push({ field: 'model.provider', message: 'Model provider is required', type: 'error' })
+    }
 
-  if (!data.model?.name?.trim()) {
-    errors.push({ field: 'model.name', message: 'Model name is required', type: 'error' })
+    if (!data.model?.name?.trim()) {
+      errors.push({ field: 'model.name', message: 'Model name is required', type: 'error' })
+    }
   }
 
   // Validate temperature

@@ -32,7 +32,7 @@ interface WorkflowToolbarProps {
  */
 export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
   const [confirm, ConfirmDialog] = useConfirm()
-  const [isShowVersions, setShowVersions] = useState(false)
+  const isShowVersions = useCanvasStore((state) => state.showVersions)
   // Workflow store - memoized selectors to prevent re-renders
   const workflow = useWorkflowStore((state) => state.workflow)
   const isDirty = useWorkflowStore((state) => state.isDirty)
@@ -275,7 +275,7 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
           </Tooltip>
           <WorkflowVersionsPopover
             open={isShowVersions}
-            onOpenChange={setShowVersions}
+            onOpenChange={(open) => useCanvasStore.setState({ showVersions: open })}
             workflowId={workflow?.id || ''}
           />
         </div>

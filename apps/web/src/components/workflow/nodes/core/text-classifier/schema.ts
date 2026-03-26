@@ -45,7 +45,8 @@ const completionParamsSchema = z.object({
  * Zod schema for model configuration
  */
 const modelSchema = z.object({
-  provider: z.string().min(1),
+  useDefault: z.boolean().optional(),
+  provider: z.string(),
   name: z.string(),
   mode: z.enum(AiModelMode).default(AiModelMode.CHAT),
   completion_params: completionParamsSchema.optional(),
@@ -102,6 +103,7 @@ export const createTextClassifierDefaultData = (): Partial<TextClassifierNodeDat
   title: 'Text Classifier',
   desc: 'Classify text into predefined categories',
   model: {
+    useDefault: true,
     provider: '',
     name: '',
     mode: AiModelMode.CHAT,
@@ -133,13 +135,15 @@ export const validateTextClassifierData = (data: TextClassifierNodeData): Valida
     errors.push({ field: 'title', message: 'Title is required', type: 'error' })
   }
 
-  // Validate model
-  if (!data.model?.provider?.trim()) {
-    errors.push({ field: 'model.provider', message: 'Model provider is required', type: 'error' })
-  }
+  // Validate model — only require provider/name when NOT using default
+  if (!data.model?.useDefault) {
+    if (!data.model?.provider?.trim()) {
+      errors.push({ field: 'model.provider', message: 'Model provider is required', type: 'error' })
+    }
 
-  if (!data.model?.name?.trim()) {
-    errors.push({ field: 'model.name', message: 'Model name is required', type: 'error' })
+    if (!data.model?.name?.trim()) {
+      errors.push({ field: 'model.name', message: 'Model name is required', type: 'error' })
+    }
   }
 
   // Validate text to classify

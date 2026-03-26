@@ -14,7 +14,7 @@ import { ProviderRegistryService } from '../../../providers/provider-registry-se
 import { executeResourceQuery } from '../../../resources/resource-fetcher'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
-import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { NodeRunningStatus, TEST_RECORD_ID, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 
 /**
@@ -80,7 +80,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
       if (!rawRecordId) {
         throw new Error('Reply target (recordId) is required for reply messages')
       }
-      const resolvedRecordId = await this.interpolateVariables(rawRecordId, contextManager)
+      const resolvedRecordId = String(await this.resolveVariableValue(rawRecordId, contextManager))
 
       // Parse recordId to get entity type and instance id
       let resourceType: 'thread' | 'message'
@@ -100,46 +100,72 @@ export class AnswerProcessor extends BaseNodeProcessor {
         resourceInstanceId = resolvedRecordId
       }
 
-      // Fetch the resource
-      const resource = await this.getResource(
-        resourceInstanceId,
-        resourceType,
-        context.organizationId,
-        context.db
-      )
+      // Check for test sentinel — skip DB lookup and use context.message data
+      if (resourceInstanceId === TEST_RECORD_ID) {
+        contextManager.log('INFO', node.name, 'Test mode: using trigger message data for reply')
+        threadId = undefined
+        integrationId = context.message?.integrationId || config.integrationId || 'unknown'
+        const baseSubject = context.message?.subject || 'Test message'
 
-      if (!resource) {
-        throw new Error(`${resourceType} not found: ${resourceInstanceId}`)
-      }
+        if (config.subjectIsAuto !== false) {
+          resolvedSubject = baseSubject.startsWith('Re:') ? baseSubject : `Re: ${baseSubject}`
+        } else if (config.subject) {
+          resolvedSubject = await this.interpolateVariables(config.subject, contextManager)
+        }
 
-      // Extract threadId and integrationId
-      threadId = resourceType === 'thread' ? resource.id : resource.threadId
-      integrationId = resource.integrationId
+        if (config.toIsAuto !== false) {
+          resolvedTo = context.message?.from?.identifier ? [context.message.from.identifier] : []
+        }
 
-      // Auto-resolve subject
-      if (config.subjectIsAuto !== false) {
-        resolvedSubject = resource.subject?.startsWith('Re:')
-          ? resource.subject
-          : `Re: ${resource.subject || 'Your message'}`
-      } else if (config.subject) {
-        resolvedSubject = await this.interpolateVariables(config.subject, contextManager)
-      }
-
-      // Auto-resolve recipients from thread
-      if (config.toIsAuto !== false || (messageType === 'replyAll' && config.ccIsAuto !== false)) {
-        const participants = await this.getThreadParticipants(
-          threadId,
-          integrationId,
+        if (messageType === 'replyAll' && config.ccIsAuto !== false) {
+          // Use cc from context.message participants if available
+          resolvedCc = []
+        }
+      } else {
+        // Production path: fetch the real resource from DB
+        const resource = await this.getResource(
+          resourceInstanceId,
+          resourceType,
           context.organizationId,
           context.db
         )
 
-        if (config.toIsAuto !== false) {
-          resolvedTo = participants.sender ? [participants.sender] : []
+        if (!resource) {
+          throw new Error(`${resourceType} not found: ${resourceInstanceId}`)
         }
 
-        if (messageType === 'replyAll' && config.ccIsAuto !== false) {
-          resolvedCc = participants.otherRecipients
+        // Extract threadId and integrationId
+        threadId = resourceType === 'thread' ? resource.id : resource.threadId
+        integrationId = resource.integrationId
+
+        // Auto-resolve subject
+        if (config.subjectIsAuto !== false) {
+          resolvedSubject = resource.subject?.startsWith('Re:')
+            ? resource.subject
+            : `Re: ${resource.subject || 'Your message'}`
+        } else if (config.subject) {
+          resolvedSubject = await this.interpolateVariables(config.subject, contextManager)
+        }
+
+        // Auto-resolve recipients from thread
+        if (
+          config.toIsAuto !== false ||
+          (messageType === 'replyAll' && config.ccIsAuto !== false)
+        ) {
+          const participants = await this.getThreadParticipants(
+            threadId,
+            integrationId,
+            context.organizationId,
+            context.db
+          )
+
+          if (config.toIsAuto !== false) {
+            resolvedTo = participants.sender ? [participants.sender] : []
+          }
+
+          if (messageType === 'replyAll' && config.ccIsAuto !== false) {
+            resolvedCc = participants.otherRecipients
+          }
         }
       }
 
@@ -214,8 +240,8 @@ export class AnswerProcessor extends BaseNodeProcessor {
           }))
         : undefined
 
-    // 5. Check dry run mode
-    const isDryRun = contextManager.getOptions()?.dryRun
+    // 5. Check debug mode — skip actual send in test runs
+    const isDryRun = contextManager.isDebugMode()
 
     if (isDryRun) {
       contextManager.log('INFO', node.name, 'DryRun: Skipping message send', {
@@ -243,9 +269,16 @@ export class AnswerProcessor extends BaseNodeProcessor {
         status: NodeRunningStatus.Succeeded,
         output: {
           sent: true,
+          dryRun: true,
           messageId: fakeMessageId,
           threadId: fakeThreadId,
-          dryRun: true,
+          messageType,
+          integrationId,
+          subject: resolvedSubject || undefined,
+          to: resolvedTo,
+          cc: resolvedCc.length > 0 ? resolvedCc : undefined,
+          bcc: resolvedBcc.length > 0 ? resolvedBcc : undefined,
+          text: resolvedText,
         },
         outputHandle: 'source',
       }

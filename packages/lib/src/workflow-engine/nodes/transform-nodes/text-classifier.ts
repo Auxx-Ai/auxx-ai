@@ -205,13 +205,15 @@ export class TextClassifierProcessor extends BaseAiNodeProcessor {
       return { valid: false, errors, warnings }
     }
 
-    // Validate model
-    if (!config.model?.provider) {
-      errors.push('Model provider is required')
-    }
+    // Validate model — only require provider/name when NOT using default
+    if (!config.model?.useDefault) {
+      if (!config.model?.provider) {
+        errors.push('Model provider is required')
+      }
 
-    if (!config.model?.name) {
-      errors.push('Model name is required')
+      if (!config.model?.name) {
+        errors.push('Model name is required')
+      }
     }
 
     // Validate text

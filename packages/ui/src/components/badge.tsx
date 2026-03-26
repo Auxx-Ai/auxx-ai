@@ -21,7 +21,7 @@ const badgeVariants = cva(
         destructive:
           'ring-1 ring-transparent bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/80',
         outline: 'ring-1 ring-border text-foreground',
-        pill: 'ring-1 ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800 px-2  py-0',
+        pill: 'ring-1 ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-primary-100 dark:ring-primary-100 px-2  py-0',
         user: 'ring-1 ring-info/20 bg-[#f2f4f7] shadow-xs gap-1 text-foreground/80 dark:bg-[#204684] cursor-pointer py-0',
 
         // Color variants matching Tailwind design system

@@ -39,7 +39,9 @@ const EmptyState: React.FC<EmptyStateProps> = ({
         <h3 className='text-medium mb-2'>{title}</h3>
 
         {/* description, if provided */}
-        {description && <div className='text-sm text-muted-foreground mb-4'>{description}</div>}
+        {description && (
+          <div className='text-sm text-muted-foreground mb-4 max-w-sm'>{description}</div>
+        )}
 
         {/* button or whatever action you passed */}
         {button && button}

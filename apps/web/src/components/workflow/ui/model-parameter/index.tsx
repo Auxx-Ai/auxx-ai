@@ -1,6 +1,8 @@
 // apps/web/src/components/workflow/ui/model-parameter/index.tsx
 
+import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Switch } from '@auxx/ui/components/switch'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowLeft } from 'lucide-react'
 import type { FC } from 'react'
@@ -44,6 +46,8 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
   readonly,
   isInWorkflow,
   defaultModelType,
+  useDefault,
+  onUseDefaultChange,
 }) => {
   const [open, setOpen] = useState(false)
   const [localCompletionParams, setLocalCompletionParams] = useState(completionParams)
@@ -57,20 +61,26 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
   const unifiedData = modelData
   const isLoading = !modelData // Loading if no model data yet
 
-  // Auto-apply system default when no model is selected
-  useEffect(() => {
-    if (modelId || provider) return
-    if (!defaultModelType || !modelData?.defaultModels) return
+  // Resolve the org's default model for display purposes
+  const resolvedDefault = useMemo(() => {
+    if (!defaultModelType || !modelData?.defaultModels) return null
+    return modelData.defaultModels[defaultModelType] ?? null
+  }, [defaultModelType, modelData?.defaultModels])
 
-    const defaultModel = modelData.defaultModels[defaultModelType]
-    if (!defaultModel) return
+  // When useDefault is on, derive display values from the resolved default
+  const displayProvider = useDefault && resolvedDefault ? resolvedDefault.provider : provider
+  const displayModelId = useDefault && resolvedDefault ? resolvedDefault.model : modelId
 
-    setModel({
-      modelId: defaultModel.model,
-      provider: defaultModel.provider,
-      mode: 'chat',
-    })
-  }, [modelId, provider, defaultModelType, modelData?.defaultModels, setModel])
+  // Resolve default provider and model data for trigger display
+  const resolvedDefaultProvider = useMemo(() => {
+    if (!useDefault || !resolvedDefault || !unifiedData) return null
+    return unifiedData.providers.find((p) => p.provider === resolvedDefault.provider) || null
+  }, [useDefault, resolvedDefault, unifiedData])
+
+  const resolvedDefaultModel = useMemo(() => {
+    if (!resolvedDefaultProvider || !resolvedDefault) return null
+    return resolvedDefaultProvider.models.find((m) => m.modelId === resolvedDefault.model) || null
+  }, [resolvedDefaultProvider, resolvedDefault])
 
   // Get current provider and model from combined ID
   const { provider: localProvider, modelId: localModelId } = useMemo(() => {
@@ -121,8 +131,11 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
 
   // Model selection handler
   const handleModelSelection = (model: ModelPickerItem | null) => {
-    console.log('Model selected:', model)
     if (model) {
+      // Explicit model pick clears useDefault
+      if (useDefault) {
+        onUseDefaultChange?.(false)
+      }
       setLocalModelValue(combineModelId(model.provider, model.modelId))
       setSelectedModel(model)
     } else {
@@ -144,6 +157,10 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
       const { provider: newProvider, modelId: newModelId } = splitModelId(localModelValue)
 
       if (newProvider !== provider || newModelId !== modelId) {
+        // Explicit model pick clears useDefault
+        if (useDefault) {
+          onUseDefaultChange?.(false)
+        }
         // Use selectedModel data if available, otherwise find from unified data
         const targetModel = selectedModel || currentModelData
 
@@ -200,24 +217,24 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
           {renderTrigger ? (
             renderTrigger({
               open,
-              disabled,
-              modelDisabled,
-              hasDeprecated,
-              currentProvider,
-              currentModel,
-              providerName: localProvider,
-              modelId: localModelId,
+              disabled: useDefault ? false : disabled,
+              modelDisabled: useDefault ? false : modelDisabled,
+              hasDeprecated: useDefault ? false : hasDeprecated,
+              currentProvider: useDefault ? resolvedDefaultProvider : currentProvider,
+              currentModel: useDefault ? resolvedDefaultModel : currentModel,
+              providerName: displayProvider,
+              modelId: displayModelId,
             })
           ) : (
             <Trigger
-              disabled={disabled}
+              disabled={useDefault ? false : disabled}
               isInWorkflow={isInWorkflow}
-              modelDisabled={modelDisabled}
-              hasDeprecated={hasDeprecated}
-              currentProvider={currentProvider}
-              currentModel={currentModel}
-              providerName={localProvider}
-              modelId={localModelId}
+              modelDisabled={useDefault ? false : modelDisabled}
+              hasDeprecated={useDefault ? false : hasDeprecated}
+              currentProvider={useDefault ? resolvedDefaultProvider : currentProvider}
+              currentModel={useDefault ? resolvedDefaultModel : currentModel}
+              providerName={displayProvider}
+              modelId={displayModelId}
             />
           )}
         </PopoverTrigger>
@@ -231,21 +248,62 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
             <div className='relative'>
               <div
                 className={cn(
-                  'text-sm font-semibold mb-1 flex h-6 items-center text-muted-foreground'
+                  'text-sm font-semibold mb-1 flex h-6 items-center justify-between text-muted-foreground'
                 )}>
-                MODEL
+                <span>MODEL</span>
+                {onUseDefaultChange && (
+                  <div className='flex items-center gap-1.5'>
+                    <span className='text-xs font-normal'>Use Default</span>
+                    <Switch
+                      size='sm'
+                      checked={useDefault ?? false}
+                      disabled={readonly}
+                      onCheckedChange={(checked) => {
+                        onUseDefaultChange(checked)
+                        if (checked && resolvedDefault) {
+                          // Show resolved default in local state for display
+                          setLocalModelValue(
+                            combineModelId(resolvedDefault.provider, resolvedDefault.model)
+                          )
+                        }
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
+              {/* Default model badge */}
+              {useDefault && (
+                <div className='mb-2'>
+                  {resolvedDefault ? (
+                    <div className='flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2'>
+                      <span className='text-xs text-foreground'>
+                        {resolvedDefaultModel?.label || resolvedDefault.model}
+                      </span>
+                      <Badge variant='secondary' className='text-[10px] px-1.5 py-0'>
+                        Default
+                      </Badge>
+                    </div>
+                  ) : (
+                    <div className='rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2'>
+                      <span className='text-xs text-destructive'>No default model configured</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Model Selection with AI Model Picker */}
-              <div className='space-y-2' onClick={(e) => e.stopPropagation()}>
-                <AiModelPicker
-                  value={localModelValue}
-                  onChange={handleModelSelection}
-                  showUnconfigured={false}
-                  className='z-[80]'
-                  triggerClassName='w-full'
-                />
-              </div>
+              {!useDefault && (
+                <div className='space-y-2' onClick={(e) => e.stopPropagation()}>
+                  <AiModelPicker
+                    value={localModelValue}
+                    onChange={handleModelSelection}
+                    showUnconfigured={false}
+                    className='z-[80]'
+                    triggerClassName='w-full'
+                  />
+                </div>
+              )}
             </div>
 
             {!!parameterRules.length && <div className='my-3 h-[1px] bg-border' />}

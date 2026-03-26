@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/onboarding/connections/page.tsx
+// apps/web/src/app/(protected)/onboarding/connections/page.tsx
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
@@ -9,7 +9,6 @@ import { Check, Mail } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { useChannels } from '~/components/channels/hooks/use-channels'
 import { PROVIDER_ICONS } from '~/constants/icons'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
@@ -39,14 +38,6 @@ const GoogleIcon = () => (
 )
 
 const OutlookIcon = PROVIDER_ICONS.outlook
-// const MicrosoftIcon = () => (
-//   <svg className="size-5" viewBox="0 0 23 23">
-//     <path fill="#f25022" d="M0 0h11v11H0z" />
-//     <path fill="#00a4ef" d="M12 0h11v11H12z" />
-//     <path fill="#7fba00" d="M0 12h11v11H0z" />
-//     <path fill="#ffb900" d="M12 12h11v11H12z" />
-//   </svg>
-// )
 
 export default function ConnectionsOnboardingPage() {
   const router = useRouter()
@@ -54,7 +45,13 @@ export default function ConnectionsOnboardingPage() {
   const { state, updateConnections, markStepCompleted, setCurrentStep } = useOnboarding()
   const [isConnecting, setIsConnecting] = useState<string | null>(null)
 
-  const channels = useChannels()
+  // Fetch channels directly since we're outside the ChannelProvider
+  const { data: channelsData } = api.channel.list.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const channels = channelsData?.channels ?? []
+
   const getAuthUrl = api.channel.getAuthUrl.useMutation({
     onError: (error) => {
       toastError({
@@ -63,30 +60,18 @@ export default function ConnectionsOnboardingPage() {
       })
     },
   })
-  const integrations = channels
-
-  // Optionally, update integrations if initialIntegrations changes
-  // (e.g., if useIntegration fetches new data)
-  // useEffect(() => {
-  //   setIntegrations(initialIntegrations)
-  // }, [initialIntegrations])
 
   // Check if already connected - only trust database, not local state
-  // Local state can be falsely set if user navigates back from OAuth
-  const isGoogleConnected = integrations?.some((i) => i.provider === 'google' && i.enabled) ?? false
-
-  const isOutlookConnected =
-    integrations?.some((i) => i.provider === 'outlook' && i.enabled) ?? false
+  const isGoogleConnected = channels.some((i) => i.provider === 'google' && i.enabled)
+  const isOutlookConnected = channels.some((i) => i.provider === 'outlook' && i.enabled)
 
   // Sync local state with actual integrations from database
-  // This ensures state reflects reality after OAuth completion or browser back
   // biome-ignore lint/correctness/useExhaustiveDependencies: state.connections and updateConnections are intentionally excluded to avoid loops
   useEffect(() => {
-    if (integrations) {
-      const actualGoogleStatus = integrations.some((i) => i.provider === 'google' && i.enabled)
-      const actualOutlookStatus = integrations.some((i) => i.provider === 'outlook' && i.enabled)
+    if (channels.length > 0) {
+      const actualGoogleStatus = channels.some((i) => i.provider === 'google' && i.enabled)
+      const actualOutlookStatus = channels.some((i) => i.provider === 'outlook' && i.enabled)
 
-      // Update local state to match database reality
       if (
         actualGoogleStatus !== state.connections.google ||
         actualOutlookStatus !== state.connections.outlook
@@ -97,7 +82,7 @@ export default function ConnectionsOnboardingPage() {
         })
       }
     }
-  }, [integrations])
+  }, [channels])
 
   const handleOAuthConnect = async (provider: 'google' | 'outlook') => {
     setIsConnecting(provider)
@@ -106,13 +91,11 @@ export default function ConnectionsOnboardingPage() {
       await getAuthUrl.mutateAsync(
         {
           provider: provider as any,
-          redirectPath: '/app/onboarding/connections',
+          redirectPath: '/onboarding/connections',
         },
         {
           onSuccess: (data) => {
             if (data.authUrl) {
-              // Don't update state here - only update after successful OAuth completion
-              // This prevents false positives when user clicks back button
               window.location.href = data.authUrl
             }
           },

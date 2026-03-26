@@ -1,11 +1,14 @@
 // apps/web/src/components/mail/thread-display.tsx
 
 import { Button } from '@auxx/ui/components/button'
-import { Mail, Plus } from 'lucide-react'
+import { AtSignIcon } from '@auxx/ui/components/icons/at-sign-icon'
+import { Mail, Plus, Waypoints } from 'lucide-react'
+import Link from 'next/link'
 import { useThread } from '~/components/threads/hooks'
 import { useFirstSelectedThreadId, useHasMultipleSelected } from '~/components/threads/store'
 import type { ChannelProvider } from '~/components/threads/store/thread-store'
 import { useCompose } from '~/hooks/use-compose'
+import { useUser } from '~/hooks/use-user'
 import { EmptyState } from '../global/empty-state'
 import ChatInterface from '../mail-views/chat-interface'
 import BulkActionToolbar from './bulk-action-toolbar'
@@ -27,6 +30,7 @@ function isChatThread(provider: ChannelProvider | null): boolean {
  */
 export function ThreadDisplay() {
   const { openCompose } = useCompose()
+  const { hasOnlyForwardingChannel } = useUser()
   const { viewMode } = useMailFilter()
 
   // Granular selectors for minimal re-renders
@@ -58,14 +62,27 @@ export function ThreadDisplay() {
           </div>
         ) : (
           <EmptyState
-            icon={Mail}
+            icon={hasOnlyForwardingChannel ? Waypoints : AtSignIcon}
             title='No message selected'
-            description='Select a message to view its details.'
+            description={
+              hasOnlyForwardingChannel
+                ? 'Connect a channel like Gmail or Outlook to start receiving messages.'
+                : 'Select a message to view its details.'
+            }
             button={
-              <Button variant='outline' onClick={() => openCompose()}>
-                <Plus size={16} />
-                <span>Compose Message</span>
-              </Button>
+              hasOnlyForwardingChannel ? (
+                <Link href='/app/settings/channels/new'>
+                  <Button variant='outline'>
+                    <Plus size={16} />
+                    <span>Setup Channel</span>
+                  </Button>
+                </Link>
+              ) : (
+                <Button variant='outline' onClick={() => openCompose()}>
+                  <Plus size={16} />
+                  <span>Compose Message</span>
+                </Button>
+              )
             }
           />
         ))}

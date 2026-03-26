@@ -228,18 +228,48 @@ export class TemplateGraphTransformer {
   }
 
   /**
+   * Populate default assignees for human-confirmation nodes.
+   * If a node has no assignees configured (no userIds, groups, or variable),
+   * set the given userId as the default approver.
+   */
+  populateDefaultAssignees(graph: WorkflowGraph, userId: string): void {
+    for (const node of graph.nodes) {
+      if (node.data.type !== 'human-confirmation') continue
+
+      const assignees = node.data.assignees
+      const hasAssignees =
+        assignees?.userIds?.length > 0 || assignees?.groups?.length > 0 || assignees?.variable
+
+      if (!hasAssignees) {
+        if (!node.data.assignees) {
+          node.data.assignees = { userIds: [], groups: [] }
+        }
+        node.data.assignees.userIds = [userId]
+      }
+    }
+  }
+
+  /**
    * Complete template transformation
    * Transforms all aspects of a template into a new workflow
    */
-  transformTemplate(template: {
-    graph: WorkflowGraph
-    triggerType?: string
-    triggerConfig?: Record<string, any>
-    entityDefinitionId?: string
-    envVars?: any[]
-    variables?: any[]
-  }) {
+  transformTemplate(
+    template: {
+      graph: WorkflowGraph
+      triggerType?: string
+      triggerConfig?: Record<string, any>
+      entityDefinitionId?: string
+      envVars?: any[]
+      variables?: any[]
+    },
+    options?: { userId?: string }
+  ) {
     const { graph: clonedGraph, idMapping } = this.cloneGraph(template.graph)
+
+    // Auto-assign workflow creator as default approver
+    if (options?.userId) {
+      this.populateDefaultAssignees(clonedGraph, options.userId)
+    }
 
     return {
       graph: clonedGraph,

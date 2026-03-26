@@ -210,7 +210,7 @@ export const WorkflowOperators = memo(function WorkflowOperators({
             <MousePointer2 />
           </Button>
         </Tooltip>
-        <Tooltip content='Pan Mode' shortcut={['H', '␣']}>
+        <Tooltip content='Pan Mode' shortcut={['V', '␣']}>
           <Button
             variant={interactionMode === 'pan' ? 'secondary' : 'ghost'}
             size='icon-sm'

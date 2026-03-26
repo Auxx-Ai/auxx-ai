@@ -15,6 +15,7 @@ import type {
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import { extractModelConfig, resolveModelConfig } from '../utils/ai-node-utils'
 
 const logger = createScopedLogger('information-extractor-processor')
 
@@ -25,6 +26,7 @@ interface InformationExtractorConfig {
   title?: string
   desc?: string
   model: {
+    useDefault?: boolean
     provider: string
     name: string
     mode?: 'chat' | 'completion'
@@ -145,7 +147,11 @@ export class InformationExtractorProcessor extends BaseNodeProcessor {
 
     // 7. Schema is handled by the orchestrator, no need for provider-specific preparation
 
-    // 8. Extract variable references for debugging
+    // 8. Resolve model config (handles useDefault flag)
+    const extracted = extractModelConfig(config.model)
+    const resolvedModel = await resolveModelConfig(extracted, db, organizationId)
+
+    // 9. Extract variable references for debugging
     const usedVariables = new Set<string>()
     this.extractVariableIds(config.text || '').forEach((v) => usedVariables.add(v))
     if (config.instruction?.text) {
@@ -160,10 +166,10 @@ export class InformationExtractorProcessor extends BaseNodeProcessor {
         completionParams,
         schema: config.structured_output.schema,
 
-        // Model configuration
+        // Model configuration (resolved)
         model: {
-          provider: config.model.provider,
-          name: config.model.name,
+          provider: resolvedModel.provider,
+          name: resolvedModel.model,
           mode: config.model.mode,
         },
 
@@ -348,9 +354,18 @@ export class InformationExtractorProcessor extends BaseNodeProcessor {
         presence_penalty: config.model?.completion_params?.presence_penalty,
       }
 
+      // 5.5. Resolve model config (handles useDefault flag)
+      const extracted = extractModelConfig(config.model)
+      const resolvedModel = await resolveModelConfig(extracted, db, organizationId)
+      const resolvedModelConfig = {
+        provider: resolvedModel.provider,
+        name: resolvedModel.model,
+        mode: config.model.mode,
+      }
+
       // 6. Call AI with structured output using orchestrator
       const response = await this.generateExtractionWithOrchestrator(
-        config.model,
+        resolvedModelConfig,
         messages,
         completionParams,
         config.structured_output.schema,
@@ -426,8 +441,8 @@ export class InformationExtractorProcessor extends BaseNodeProcessor {
     structured_output?: Record<string, any>
     usage?: any
   }> {
-    const provider = modelConfig.provider || 'openai'
-    const model = modelConfig.name || 'gpt-4o-mini'
+    const provider = modelConfig.provider
+    const model = modelConfig.name
 
     contextManager.log('DEBUG', nodeId, 'Using LLM orchestrator for information extraction', {
       provider,
@@ -575,7 +590,7 @@ IMPORTANT INSTRUCTIONS:
       }
     }
 
-    if (!config.model?.provider || !config.model?.name) {
+    if (!config.model?.useDefault && (!config.model?.provider || !config.model?.name)) {
       return {
         valid: false,
         errors: ['Please select an AI model'],

@@ -99,7 +99,7 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
     <>
       <ConfirmDialog />
       <div
-        className='rounded-2xl bg-background dark:bg-primary-50 hover:bg-primary-50/50 hover:outline-5 dark:hover:outline-primary-50 hover:outline-primary-100 flex flex-col p-3 gap-2 border cursor-pointer group/workflow-card relative'
+        className='rounded-2xl bg-background dark:bg-primary-50 hover:bg-primary-50/50 hover:outline-5 dark:hover:outline-primary-50/50 hover:outline-primary-100 flex flex-col p-3 gap-2 border cursor-pointer group/workflow-card relative'
         onClick={handleCardClick}>
         {/* Top row: Icon + Title + Badge */}
         <div className='flex flex-row items-start gap-2 w-full'>

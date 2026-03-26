@@ -7,7 +7,7 @@ const cardVariants = cva('rounded-xl border text-card-foreground shadow-xs', {
     variant: {
       default: 'bg-card [&_[data-slot=card-description]]:text-muted-foreground',
       translucent:
-        'bg-translucent text-white/90 border-transparent [&_[data-slot=card-title]]:text-white/80 [&_[data-slot=card-description]]:text-white/70',
+        'bg-translucent text-white/90 border-transparent [&_[data-slot=card-title]]:text-white/80 [&_[data-slot=card-description]]:text-white/50',
     },
   },
   defaultVariants: { variant: 'default' },

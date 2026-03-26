@@ -1,63 +1,6 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/thread-input.tsx
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
-import { formatDistanceToNowStrict } from 'date-fns'
-import { useThreadList } from '~/components/threads/hooks'
 import type { MessageMeta, ParticipantMeta, ThreadMeta } from '~/components/threads/store'
-import type { NodeInputProps } from './base-node-input'
-
-/**
- * Input component for thread selection.
- * Only sets threadId - the parent component (InputTab) handles loading
- * full thread/message data via store hooks.
- */
-export function ThreadInput({ inputs, onChange, isLoading }: NodeInputProps) {
-  const { threads, isLoading: threadsLoading } = useThreadList({
-    contextType: 'all',
-    sortBy: 'newest',
-  })
-
-  const selectedThreadId = inputs.threadId as string | undefined
-  const selectedThread = threads.find((t) => t.id === selectedThreadId)
-
-  return (
-    <div className='space-y-2'>
-      <Select
-        value={inputs.threadId || ''}
-        onValueChange={(value) => onChange('threadId', value)}
-        disabled={threadsLoading || isLoading}>
-        <SelectTrigger id='threadId'>
-          <SelectValue placeholder={threadsLoading ? 'Loading threads...' : 'Select a thread'}>
-            <div>{selectedThread && (selectedThread.subject || 'No subject')}</div>
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent className='max-w-100'>
-          {threads.map((thread) => {
-            const dateStr = thread.lastMessageAt
-              ? formatDistanceToNowStrict(new Date(thread.lastMessageAt), { addSuffix: true })
-              : ''
-            return (
-              <SelectItem key={thread.id} value={thread.id}>
-                <div className='flex flex-col gap-1'>
-                  <span className='font-medium line-clamp-1'>{thread.subject || 'No subject'}</span>
-                  <span className='text-sm text-muted-foreground line-clamp-1'>
-                    {thread.messageCount} message{thread.messageCount !== 1 ? 's' : ''} · {dateStr}
-                  </span>
-                </div>
-              </SelectItem>
-            )
-          })}
-        </SelectContent>
-      </Select>
-    </div>
-  )
-}
 
 interface TransformInput {
   thread: ThreadMeta
@@ -68,8 +11,10 @@ interface TransformInput {
 }
 
 /**
- * Transform thread data to workflow input format.
- * Accepts separated thread, message, and participant data from store hooks.
+ * Transform thread data to workflow trigger input format.
+ * Output shape matches what MessageReceivedProcessor expects on the backend:
+ * - from.identifier (not from.email)
+ * - textPlain / textHtml (not content.text / content.html)
  */
 export function transformThreadToWorkflowInput({
   thread,
@@ -79,41 +24,31 @@ export function transformThreadToWorkflowInput({
   cc,
 }: TransformInput): Record<string, any> {
   return {
-    thread: {
-      id: thread.id,
-      subject: thread.subject,
-      status: thread.status,
-      messageCount: thread.messageCount,
-      lastMessageAt: thread.lastMessageAt,
-    },
     message: {
       id: latestMessage.id,
+      threadId: thread.id,
+      integrationId: thread.integrationId || '',
       subject: latestMessage.subject || thread.subject || '',
-      content: {
-        text: latestMessage.textPlain || '',
-        html: latestMessage.textHtml || '',
-      },
+      textPlain: latestMessage.textPlain || '',
+      textHtml: latestMessage.textHtml || '',
+      snippet: latestMessage.snippet || '',
+      isInbound: latestMessage.isInbound,
+      hasAttachments: latestMessage.hasAttachments ?? false,
+      receivedAt: latestMessage.sentAt || new Date().toISOString(),
       from: from
         ? {
-            email: from.identifier || '',
+            identifier: from.identifier || '',
             name: from.name || from.displayName || '',
-            contact: from.entityInstanceId || null,
           }
         : null,
       to: to.map((p) => ({
-        email: p.identifier || '',
+        identifier: p.identifier || '',
         name: p.name || p.displayName || '',
-        contact: p.entityInstanceId || null,
       })),
       cc: cc.map((p) => ({
-        email: p.identifier || '',
+        identifier: p.identifier || '',
         name: p.name || p.displayName || '',
-        contact: p.entityInstanceId || null,
       })),
-      isInbound: latestMessage.isInbound,
-      threadId: thread.id,
-      snippet: latestMessage.snippet || '',
-      receivedAt: latestMessage.sentAt || new Date().toISOString(),
     },
   }
 }

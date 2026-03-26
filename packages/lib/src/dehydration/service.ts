@@ -132,7 +132,9 @@ export class DehydrationService {
     ])
 
     const { features, subscription, orgProfile, overages, channelProviders } = orgData
-    const hasIntegrations = Object.keys(channelProviders).length > 0
+    const providers = Object.values(channelProviders)
+    const hasIntegrations = providers.length > 0
+    const hasOnlyForwardingChannel = hasIntegrations && providers.every((p) => p === 'email')
 
     return {
       id: orgProfile.id,
@@ -149,6 +151,7 @@ export class DehydrationService {
       overages,
       settings: userData.userSettings,
       hasIntegrations,
+      hasOnlyForwardingChannel,
     }
   }
 

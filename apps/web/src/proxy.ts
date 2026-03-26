@@ -15,6 +15,7 @@ import { NextResponse } from 'next/server'
 const KNOWN_ROUTE_PREFIXES = new Set([
   // (protected) routes
   'app',
+  'onboarding',
   'organizations',
   'preview',
   'subscription',

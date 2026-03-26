@@ -21,6 +21,7 @@ export {
   NodeRunningStatus,
   RESOURCE_OPERATION_TO_TRIGGER_TYPE,
   type ResourceTriggerOperation,
+  TEST_RECORD_ID,
   TRIGGER_NAME_MAP,
   type ValidationResult,
   type Workflow,

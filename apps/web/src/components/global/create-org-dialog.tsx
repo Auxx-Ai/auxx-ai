@@ -151,7 +151,7 @@ export function CreateOrganizationDialog({ open, onOpenChange }: CreateOrganizat
 
       // Full navigation to onboarding — server will fetch fresh dehydrated state
       // with the new org already set as default
-      window.location.href = '/app/onboarding'
+      window.location.href = '/onboarding'
     },
     onError: (error) => {
       toastError({

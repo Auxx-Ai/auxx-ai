@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/onboarding/page.tsx
+// apps/web/src/app/(protected)/onboarding/page.tsx
 
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
@@ -22,7 +22,7 @@ export default async function OnboardingPage() {
   // Read defaultOrganizationId directly from DB instead of the session cookie cache.
   // The session cookie is cached for 5 minutes (cookieCache.maxAge) and can serve a stale
   // org ID after switching organizations, causing an infinite redirect loop between
-  // /app/onboarding (which checks the old org) and /app (which checks the new org).
+  // /onboarding (which checks the old org) and /app (which checks the new org).
   const [freshUser] = await database
     .select({
       defaultOrganizationId: schema.User.defaultOrganizationId,
@@ -48,22 +48,33 @@ export default async function OnboardingPage() {
     org = result ?? null
   }
 
+  const userCompletedOnboarding = freshUser?.completedOnboarding ?? false
+
+  console.log('[Onboarding] Entry page routing decision:', {
+    userId: session.user.id,
+    organizationId,
+    orgCompletedOnboarding: org?.completedOnboarding,
+    orgHandle: org?.handle,
+    userCompletedOnboarding,
+  })
+
   // If organization onboarding is complete, go to dashboard
   if (org?.completedOnboarding) {
+    console.log('[Onboarding] Org onboarding complete, redirecting to /app')
     redirect('/app')
   }
 
-  // Determine starting step based on user and org status
-  const userCompletedOnboarding = freshUser?.completedOnboarding ?? false
-
   if (!userCompletedOnboarding) {
     // User hasn't completed personal info - start at step 1
-    redirect('/app/onboarding/personal')
+    console.log('[Onboarding] Redirecting to /onboarding/personal')
+    redirect('/onboarding/personal')
   } else if (!org?.handle) {
     // User completed personal but org needs handle - start at step 2
-    redirect('/app/onboarding/organization')
+    console.log('[Onboarding] Redirecting to /onboarding/organization')
+    redirect('/onboarding/organization')
   } else {
     // Both user personal and org handle done - skip to connections (step 3)
-    redirect('/app/onboarding/connections')
+    console.log('[Onboarding] Redirecting to /onboarding/connections')
+    redirect('/onboarding/connections')
   }
 }

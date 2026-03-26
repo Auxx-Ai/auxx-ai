@@ -148,6 +148,10 @@ export type ModelParameterModalProps = {
   scope?: string
   /** Which ModelType to use for auto-populating the org's system default. */
   defaultModelType?: ModelTypeEnum
+  /** When true, the node uses the org's default model resolved at execution time. */
+  useDefault?: boolean
+  /** Callback to toggle useDefault on/off. */
+  onUseDefaultChange?: (useDefault: boolean) => void
 }
 
 // export type AgentModelTriggerProps = {

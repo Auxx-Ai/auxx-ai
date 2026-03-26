@@ -352,13 +352,16 @@ export const workflowRouter = createTRPCRouter({
 
         // Transform the template graph and data
         const transformer = new TemplateGraphTransformer()
-        const transformed = transformer.transformTemplate({
-          graph: template.graph as any,
-          triggerType: template.triggerType ?? undefined,
-          entityDefinitionId: (template as any).entityDefinitionId ?? undefined,
-          envVars: template.envVars ?? undefined,
-          variables: template.variables ?? undefined,
-        })
+        const transformed = transformer.transformTemplate(
+          {
+            graph: template.graph as any,
+            triggerType: template.triggerType ?? undefined,
+            entityDefinitionId: (template as any).entityDefinitionId ?? undefined,
+            envVars: template.envVars ?? undefined,
+            variables: template.variables ?? undefined,
+          },
+          { userId: ctx.session.userId }
+        )
 
         // Resolve app slugs (@slug:blockId → realAppId:blockId) using caches
         const requiredApps = (template as any).requiredApps as

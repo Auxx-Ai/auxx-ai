@@ -1,17 +1,15 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/human-confirmation.ts
 
-// packages/lib/src/workflow-engine/nodes/action-nodes/human-confirmation.ts
-
 import { WEBAPP_URL } from '@auxx/config/server'
-import { database as db, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
+import { getCachedWorkflowApp } from '../../../cache/workflow-app-queries'
 import { publisher } from '../../../events/publisher'
 import { enqueueEmailJob } from '../../../jobs/email'
 import { getQueue, Queues } from '../../../jobs/queues'
 import { NotificationService } from '../../../notifications/notification-service'
-import { getUserById } from '../../../users'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -92,10 +90,12 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     preprocessedData?: PreprocessedNodeData
   ): Promise<Partial<NodeExecutionResult>> {
     const config = node.data as unknown as HumanConfirmationNodeData
+    const context = contextManager.getContext()
+    const options = contextManager.getOptions()
     // Get the main workflow run ID from options (not the branch execution ID)
-    const workflowRunId =
-      contextManager.getOptions()?.workflowRunId || contextManager.getContext().executionId
-    const organizationId = contextManager.getContext().organizationId
+    const workflowRunId = options?.workflowRunId || context.executionId
+    const organizationId = context.organizationId
+    const db = context.db ?? database
     const isDryRun = contextManager.isDebugMode()
     try {
       // Handle test/dry run mode (except for 'live' which acts like production)
@@ -132,40 +132,23 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       if (assignees.userIds.length === 0 && assignees.groups.length === 0) {
         throw new Error('No valid assignees found for manual confirmation')
       }
-      // Get workflow info for context
-      const [workflowRun] = await db
-        .select()
-        .from(schema.WorkflowRun)
-        .where(
-          and(
-            eq(schema.WorkflowRun.id, workflowRunId),
-            eq(schema.WorkflowRun.organizationId, organizationId)
-          )
-        )
-        .limit(1)
-      if (!workflowRun) {
-        throw new Error('Workflow run not found')
-      }
+      // Workflow name from cache (no DB query needed)
+      const workflowAppId = options?.workflowAppId
+      const cached = workflowAppId
+        ? await getCachedWorkflowApp(workflowAppId, organizationId)
+        : null
+      const workflowName = cached?.name ?? 'Workflow'
+
+      // createdById from context (no DB query needed)
+      const createdById = context.userId ?? 'system'
+
       // Create approval request in database
-      // Fetch additional data for names
-      const [wf] = await db
-        .select()
-        .from(schema.Workflow)
-        .where(
-          and(
-            eq(schema.Workflow.id, workflowRun.workflowId),
-            eq(schema.Workflow.organizationId, organizationId)
-          )
-        )
-        .limit(1)
-      const createdByUser = await getUserById(workflowRun.createdBy)
-      const createdById = (createdByUser?.id ?? 'system') as string
       const [approvalRequest] = await db
         .insert(schema.ApprovalRequest)
         .values({
           id: uuidv4(),
           organizationId,
-          workflowId: workflowRun.workflowId,
+          workflowId: context.workflowId,
           workflowRunId,
           nodeId: node.nodeId,
           nodeName: node.name,
@@ -173,7 +156,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
           message,
           assigneeUsers: assignees.userIds,
           assigneeGroups: assignees.groups,
-          workflowName: wf?.name ?? 'Workflow',
+          workflowName,
           createdById,
           expiresAt,
           metadata: {
@@ -364,34 +347,18 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     },
     contextManager: ExecutionContextManager
   ): Promise<void> {
-    contextManager.log('DEBUG', approvalRequest.nodeId, 'Starting sendNotifications', {
-      assignees,
-      methods,
-      approvalRequestId: approvalRequest.id,
-    })
+    const db = contextManager.getContext().db ?? database
     const notificationService = new NotificationService(db)
     // Get all users (direct + from groups)
     const allUserIds = await this.getAllAssigneeUserIds(
-      assignees.userIds,
-      assignees.groups,
+      db,
+      assignees,
       approvalRequest.organizationId
     )
-    contextManager.log('DEBUG', approvalRequest.nodeId, 'Resolved assignee user IDs', {
-      allUserIds,
-      userCount: allUserIds.length,
-    })
     // Send in-app notifications
     if (methods.in_app) {
-      contextManager.log('DEBUG', approvalRequest.nodeId, 'Sending in-app notifications', {
-        userCount: allUserIds.length,
-        userIds: allUserIds,
-      })
       for (const userId of allUserIds) {
         try {
-          contextManager.log('DEBUG', approvalRequest.nodeId, 'Sending notification to user', {
-            userId,
-            approvalRequestId: approvalRequest.id,
-          })
           const result = await notificationService.sendNotification({
             type: 'WORKFLOW_APPROVAL_REQUIRED' as any,
             userId,
@@ -407,7 +374,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
               expiresAt: approvalRequest.expiresAt.toISOString(),
             },
           })
-          contextManager.log('INFO', approvalRequest.nodeId, 'Successfully sent notification', {
+          contextManager.log('INFO', approvalRequest.nodeId, 'Sent approval notification', {
             userId,
             notificationId: result.id,
           })
@@ -416,26 +383,18 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
             'ERROR',
             approvalRequest.nodeId,
             `Failed to send in-app notification to user ${userId}`,
-            {
-              error: error instanceof Error ? error.message : String(error),
-              stack: error instanceof Error ? error.stack : undefined,
-              userId,
-              approvalRequestId: approvalRequest.id,
-            }
+            { error: error instanceof Error ? error.message : String(error) }
           )
         }
       }
-    } else {
-      contextManager.log('DEBUG', approvalRequest.nodeId, 'In-app notifications disabled', {
-        methods,
-      })
     }
     // Send email notifications
     if (methods.email) {
-      await this.sendEmailNotifications(approvalRequest, allUserIds, contextManager)
+      await this.sendEmailNotifications(db, approvalRequest, allUserIds, contextManager)
     }
   }
   private async sendEmailNotifications(
+    db: Database,
     approvalRequest: any,
     userIds: string[],
     contextManager: ExecutionContextManager
@@ -473,19 +432,17 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     }
   }
   private async getAllAssigneeUserIds(
-    userIds: string[],
-    groupIds: string[],
+    db: Database,
+    assignees: { userIds: string[]; groups: string[] },
     organizationId: string
   ): Promise<string[]> {
-    const allUserIds = new Set(userIds)
-    if (groupIds.length > 0) {
-      // Note: This query may need adjustment based on your exact schema for groups relationship
-      // Assuming there's a junction table for organization members and groups
+    const allUserIds = new Set(assignees.userIds)
+    if (assignees.groups.length > 0) {
+      // TODO: Filter by group when group membership schema is finalized
       const groupMembers = await db
         .select({ userId: schema.OrganizationMember.userId })
         .from(schema.OrganizationMember)
         .where(eq(schema.OrganizationMember.organizationId, organizationId))
-      // TODO: Add proper join for groups relationship when schema is clarified
       groupMembers.forEach((member) => allUserIds.add(member.userId))
     }
     return Array.from(allUserIds)
@@ -566,6 +523,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     approvalRequestId: string,
     contextManager: ExecutionContextManager
   ): Promise<void> {
+    const db = contextManager.getContext().db ?? database
     // Update workflow run status to WAITING
     await db
       .update(schema.WorkflowRun)

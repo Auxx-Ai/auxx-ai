@@ -62,17 +62,6 @@ const InformationExtractorPanelContentComponent: React.FC<
   } = useInformationExtractor()
 
   const [isSchemaOpen, setIsSchemaOpen] = useState(false)
-  // console.log(availableVariables)
-  // Handle model parameter update
-  const handleModelUpdate = (updatedModel: any) => {
-    updateModel({
-      provider: updatedModel.provider,
-      name: updatedModel.modelId || updatedModel.name,
-      mode: updatedModel.mode || 'chat',
-      completion_params: config.model.completion_params,
-    })
-  }
-
   // Handle instruction change from editor
   const handleInstructionChange = (text: string) => {
     updateInstruction(true, text)
@@ -104,8 +93,24 @@ const InformationExtractorPanelContentComponent: React.FC<
           mode={config.model.mode}
           modelId={config.model.name}
           provider={config.model.provider}
+          useDefault={config.model.useDefault ?? false}
+          onUseDefaultChange={(useDefault) => {
+            if (useDefault) {
+              updateModel({ ...config.model, useDefault: true, provider: '', name: '' })
+            } else {
+              updateModel({ ...config.model, useDefault: false })
+            }
+          }}
           readonly={isReadOnly}
-          setModel={handleModelUpdate}
+          setModel={(model) => {
+            updateModel({
+              useDefault: false,
+              provider: model.provider,
+              name: model.modelId || model.name,
+              mode: model.mode || 'chat',
+              completion_params: config.model.completion_params,
+            })
+          }}
           completionParams={config.model.completion_params || { temperature: 0.7 }}
           onCompletionParamsChange={(params) =>
             updateModel({

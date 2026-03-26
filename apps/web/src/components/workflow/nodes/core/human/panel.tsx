@@ -13,7 +13,7 @@ import {
 import { Switch } from '@auxx/ui/components/switch'
 import { useUpdateNodeInternals } from '@xyflow/react'
 import { produce } from 'immer'
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
 import { MemberGroupPicker } from '~/components/pickers/member-group-picker'
 import { useEdgeInteractions, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
@@ -23,6 +23,7 @@ import Field from '~/components/workflow/ui/field'
 import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import Section from '~/components/workflow/ui/section'
+import { useUser } from '~/hooks/use-user'
 import type { HumanConfirmationNodeData } from './types'
 
 interface HumanConfirmationNodePanelProps {
@@ -39,6 +40,27 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
     const { inputs, setInputs } = useNodeCrud<HumanConfirmationNodeData>(nodeId, data!)
     const { handleEdgeDeleteByDeleteBranch } = useEdgeInteractions()
     const updateNodeInternals = useUpdateNodeInternals()
+    const { userId } = useUser()
+
+    // Auto-assign current user as default approver when assignees are empty (mount only)
+    const didAutoAssign = useRef(false)
+    useEffect(() => {
+      if (didAutoAssign.current || isReadOnly || !userId) return
+      didAutoAssign.current = true
+      const hasAssignees =
+        inputs.assignees?.userIds?.length ||
+        inputs.assignees?.groups?.length ||
+        inputs.assignees?.variable
+      if (!hasAssignees) {
+        const newData = produce(inputs, (draft) => {
+          if (!draft.assignees) {
+            draft.assignees = {}
+          }
+          draft.assignees.userIds = [userId]
+        })
+        setInputs(newData)
+      }
+    }, [inputs, setInputs, userId, isReadOnly])
 
     /**
      * Update inputs helper using produce for immutable updates
