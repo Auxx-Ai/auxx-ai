@@ -2,6 +2,7 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { DraftService } from '../drafts/draft-service'
 import type { JobContext } from '../jobs/types/job-context'
 import { MessageSenderService } from '../messages/message-sender.service'
 import type { SendMessageInput } from '../messages/types/message-sending.types'
@@ -62,6 +63,21 @@ export async function sendScheduledMessageJob(
     await updateScheduledMessageStatus(db, scheduledMessageId, 'SENT', {
       attempts: scheduled.attempts + 1,
     })
+
+    // 6. Clean up draft after successful send
+    if (scheduled.draftId) {
+      try {
+        const draftService = new DraftService(db, organizationId, scheduled.createdById)
+        await draftService.markAsSent(scheduled.draftId)
+      } catch (draftError) {
+        // Non-fatal: message was sent, draft cleanup failure is acceptable
+        logger.warn('Failed to clean up draft after scheduled send', {
+          scheduledMessageId,
+          draftId: scheduled.draftId,
+          error: draftError instanceof Error ? draftError.message : String(draftError),
+        })
+      }
+    }
 
     logger.info('Scheduled message sent successfully', {
       scheduledMessageId,

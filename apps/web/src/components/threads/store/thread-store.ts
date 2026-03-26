@@ -66,6 +66,21 @@ export interface ThreadMeta {
 
   /** Draft RecordIds for the requesting user on this thread (format: "draft:draftId") */
   draftIds: RecordId[]
+
+  /** Number of pending scheduled messages on this thread */
+  scheduledMessageCount: number
+}
+
+/** Scheduled message metadata for display in thread conversation view */
+export interface ScheduledMessageMeta {
+  id: string
+  threadId: string | null
+  draftId: string | null
+  scheduledAt: string // ISO date
+  status: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED' | 'CANCELLED'
+  createdById: string
+  sendPayload: Record<string, unknown>
+  createdAt: string
 }
 
 /** Sorting options for thread lists */
@@ -125,6 +140,13 @@ interface ThreadStoreState {
   batchTimer: ReturnType<typeof setTimeout> | null
 
   // ═══════════════════════════════════════════════════════════════
+  // SCHEDULED MESSAGE STATE
+  // ═══════════════════════════════════════════════════════════════
+
+  /** All loaded scheduled messages (keyed by scheduled message ID) */
+  scheduledMessages: Map<string, ScheduledMessageMeta>
+
+  // ═══════════════════════════════════════════════════════════════
   // STANDALONE DRAFT STATE
   // ═══════════════════════════════════════════════════════════════
 
@@ -175,6 +197,11 @@ interface ThreadStoreState {
   startBatch: () => string[]
   completeBatch: (threads: ThreadMeta[], notFoundIds: string[]) => void
 
+  // Scheduled message CRUD
+  setScheduledMessages: (messages: ScheduledMessageMeta[]) => void
+  removeScheduledMessage: (id: string) => void
+  getScheduledMessagesForThread: (threadId: string) => ScheduledMessageMeta[]
+
   // Standalone draft CRUD
   setDrafts: (drafts: StandaloneDraftMeta[]) => void
   updateDraft: (id: string, updates: Partial<StandaloneDraftMeta>) => void
@@ -223,6 +250,11 @@ export const useThreadStore = create<ThreadStoreState>()(
       loadingIds: new Set(),
       notFoundIds: new Set(),
       batchTimer: null,
+
+      // ═══════════════════════════════════════════════════════════════
+      // SCHEDULED MESSAGE STATE
+      // ═══════════════════════════════════════════════════════════════
+      scheduledMessages: new Map(),
 
       // ═══════════════════════════════════════════════════════════════
       // STANDALONE DRAFT STATE
@@ -441,6 +473,44 @@ export const useThreadStore = create<ThreadStoreState>()(
         }),
 
       // ═══════════════════════════════════════════════════════════════
+      // SCHEDULED MESSAGE ACTIONS
+      // ═══════════════════════════════════════════════════════════════
+
+      setScheduledMessages: (messages) =>
+        set((state) => {
+          // Clear existing messages for the same thread(s) being updated
+          const threadIds = new Set(messages.map((m) => m.threadId).filter(Boolean))
+          if (threadIds.size > 0) {
+            for (const [id, msg] of state.scheduledMessages) {
+              if (msg.threadId && threadIds.has(msg.threadId)) {
+                state.scheduledMessages.delete(id)
+              }
+            }
+          }
+          for (const message of messages) {
+            state.scheduledMessages.set(message.id, message)
+          }
+        }),
+
+      removeScheduledMessage: (id) =>
+        set((state) => {
+          state.scheduledMessages.delete(id)
+        }),
+
+      getScheduledMessagesForThread: (threadId) => {
+        const messages: ScheduledMessageMeta[] = []
+        for (const msg of get().scheduledMessages.values()) {
+          if (
+            msg.threadId === threadId &&
+            (msg.status === 'PENDING' || msg.status === 'PROCESSING')
+          ) {
+            messages.push(msg)
+          }
+        }
+        return messages
+      },
+
+      // ═══════════════════════════════════════════════════════════════
       // STANDALONE DRAFT CRUD ACTIONS
       // ═══════════════════════════════════════════════════════════════
 
@@ -568,6 +638,9 @@ export const useThreadStore = create<ThreadStoreState>()(
           state.loadingIds.clear()
           state.notFoundIds.clear()
           state.batchTimer = null
+
+          // Clear scheduled message state
+          state.scheduledMessages.clear()
 
           // Clear draft state
           state.standaloneDrafts.clear()

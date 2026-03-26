@@ -183,7 +183,6 @@ export const WorkflowAccessSettings = memo(function WorkflowAccessSettings({
       if (data?.shareToken) {
         setShareToken(data.shareToken)
         toastSuccess({ description: 'Share link generated' })
-        utils.workflow.getById.invalidate({ id: workflowAppId })
       }
     },
     onError: (error) => {

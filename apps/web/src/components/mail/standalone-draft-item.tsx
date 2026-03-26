@@ -4,6 +4,7 @@
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
+import { Clock } from 'lucide-react'
 import { useMemo } from 'react'
 import { useThreadStore } from '~/components/threads/store'
 import { useCompose } from '~/hooks/use-compose'
@@ -71,11 +72,17 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
             'z-2 hover:bg-accent hover:text-accent-foreground dark:border-slate-700 group relative flex w-full cursor-pointer flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3 text-left text-sm dark:bg-slate-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
           )}
           onClick={handleClick}>
-          {/* Draft indicator dot */}
-          <div
-            className='absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full bg-red-500'
-            aria-label='Draft'
-          />
+          {/* Status indicator: amber clock for scheduled, red dot for draft */}
+          {draft.scheduledAt ? (
+            <div className='absolute left-1.5 top-8 text-amber-500' aria-label='Scheduled'>
+              <Clock className='size-3' />
+            </div>
+          ) : (
+            <div
+              className='absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full bg-red-500'
+              aria-label='Draft'
+            />
+          )}
 
           <div className='absolute top-3 left-1'>
             <div className='flex-none rounded-full border p-0.5 text-blue-500'>
@@ -92,7 +99,14 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
                 </div>
               </div>
               <div className='ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground'>
-                {formattedDate}
+                {draft.scheduledAt ? (
+                  <span className='flex items-center gap-1 text-amber-600 dark:text-amber-400'>
+                    <Clock className='size-3' />
+                    {formatScheduledTime(new Date(draft.scheduledAt))}
+                  </span>
+                ) : (
+                  formattedDate
+                )}
               </div>
             </div>
 
@@ -114,6 +128,17 @@ export function StandaloneDraftItem({ draftId }: StandaloneDraftItemProps) {
       </div>
     </>
   )
+}
+
+/** Format a scheduled date for display. */
+function formatScheduledTime(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date)
 }
 
 /**

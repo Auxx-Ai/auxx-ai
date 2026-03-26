@@ -230,8 +230,8 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
     fetchHtml,
   } = useHtmlBody(messageId)
 
-  // Content mode: 'text' or 'html'
-  const [contentMode, setContentMode] = useState<'text' | 'html'>(hasInlineHtml ? 'html' : 'text')
+  // Content mode: default to text view
+  const [contentMode, setContentMode] = useState<'text' | 'html'>('text')
 
   // When switching to HTML mode, trigger fetch if needed
   const handleSwitchToHtml = useCallback(() => {

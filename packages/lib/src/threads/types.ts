@@ -121,6 +121,9 @@ export interface ThreadMeta {
 
   /** Draft RecordIds for the requesting user on this thread (format: "draft:draftId") */
   draftIds: RecordId[]
+
+  /** Number of pending scheduled messages on this thread */
+  scheduledMessageCount: number
 }
 
 /**

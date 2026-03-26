@@ -6,7 +6,9 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { useEffect, useMemo, useRef } from 'react'
 import { useMessageParticipants, useMessages, useThread } from '~/components/threads/hooks'
+import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { useCompose } from '~/hooks/use-compose'
+import { api } from '~/trpc/react'
 import { CommentList } from '../global/comments/comment-list'
 import type { MessageType } from './email-editor/types'
 import { useComposeStore } from './store/compose-store'
@@ -27,6 +29,47 @@ export default function ThreadDetails() {
   const justCreatedRef = useRef(false)
 
   const { messages } = useMessages({ threadId, enabled: !!thread })
+  const utils = api.useUtils()
+
+  // Fetch scheduled messages for this thread
+  const { data: scheduledMessagesData } = api.thread.getScheduledMessages.useQuery(
+    { threadId },
+    {
+      enabled: !!thread,
+      // Poll every 30s if there are pending scheduled messages
+      refetchInterval: (query) => {
+        const data = query.state.data
+        return data?.some((m) => m.status === 'PENDING') ? 30_000 : false
+      },
+    }
+  )
+
+  // Sync scheduled messages to store
+  useEffect(() => {
+    if (scheduledMessagesData) {
+      const prev = getThreadStoreState().getScheduledMessagesForThread(threadId)
+      const prevPending = prev.filter((m) => m.status === 'PENDING').length
+      const nowPending = scheduledMessagesData.filter((m) => m.status === 'PENDING').length
+
+      // If a scheduled message was just sent, refresh the message list
+      if (nowPending < prevPending) {
+        utils.message.listByThread.invalidate({ threadId })
+      }
+
+      getThreadStoreState().setScheduledMessages(
+        scheduledMessagesData.map((m) => ({
+          id: m.id,
+          threadId: m.threadId,
+          draftId: m.draftId,
+          scheduledAt: m.scheduledAt.toISOString(),
+          status: m.status,
+          createdById: m.createdById,
+          sendPayload: m.sendPayload as Record<string, unknown>,
+          createdAt: m.createdAt.toISOString(),
+        }))
+      )
+    }
+  }, [scheduledMessagesData, threadId, utils])
 
   const portalTargetId = `reply-portal-${threadId}`
 

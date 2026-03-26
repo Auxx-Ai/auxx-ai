@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 
 const logger = createScopedLogger('scheduled-message')
 
@@ -74,6 +74,46 @@ export async function updateScheduledMessageStatus(
     .where(eq(schema.ScheduledMessage.id, id))
     .returning()
   return row
+}
+
+/** Fetch all pending/processing scheduled messages for a thread. */
+export async function findScheduledMessagesByThreadId(
+  db: Database,
+  threadId: string,
+  organizationId: string
+): Promise<ScheduledMessageSelect[]> {
+  return db
+    .select()
+    .from(schema.ScheduledMessage)
+    .where(
+      and(
+        eq(schema.ScheduledMessage.threadId, threadId),
+        eq(schema.ScheduledMessage.organizationId, organizationId),
+        inArray(schema.ScheduledMessage.status, ['PENDING', 'PROCESSING'])
+      )
+    )
+    .orderBy(schema.ScheduledMessage.scheduledAt)
+}
+
+/** Update a pending scheduled message's time or payload. */
+export async function updateScheduledMessage(
+  db: Database,
+  id: string,
+  organizationId: string,
+  updates: { scheduledAt?: Date; sendPayload?: Record<string, unknown> }
+): Promise<ScheduledMessageSelect | undefined> {
+  const [updated] = await db
+    .update(schema.ScheduledMessage)
+    .set(updates)
+    .where(
+      and(
+        eq(schema.ScheduledMessage.id, id),
+        eq(schema.ScheduledMessage.organizationId, organizationId),
+        eq(schema.ScheduledMessage.status, 'PENDING')
+      )
+    )
+    .returning()
+  return updated
 }
 
 /** Cancel a scheduled message. Only works if current status is PENDING. */

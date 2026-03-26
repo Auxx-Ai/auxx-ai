@@ -14,6 +14,7 @@ import {
   WorkflowEventType,
   WorkflowExecutionStatus,
   WorkflowGraphBuilder,
+  WorkflowPausedException,
   type WorkflowRateLimitConfig,
   type WorkflowTriggerEvent,
   WorkflowTriggerType,
@@ -400,6 +401,25 @@ export async function POST(
               .where(eq(schema.WorkflowRun.id, workflowRun!.id))
           })
           .catch(async (error) => {
+            // Handle workflow pause — expected behavior, not an error
+            if (error instanceof WorkflowPausedException) {
+              await database
+                .update(schema.WorkflowRun)
+                .set({
+                  status: WorkflowRunStatus.WAITING,
+                  pausedAt: new Date(),
+                  pausedNodeId: error.state.currentNodeId,
+                })
+                .where(eq(schema.WorkflowRun.id, workflowRun!.id))
+
+              logger.info('Shared workflow execution paused', {
+                workflowRunId: workflowRun!.id,
+                nodeId: error.state.currentNodeId,
+                reason: error.state.pauseReason?.type,
+              })
+              return // Engine already emitted WORKFLOW_PAUSED via reporter
+            }
+
             logger.error('Shared workflow execution failed', {
               error: error instanceof Error ? error.message : String(error),
               workflowRunId: workflowRun!.id,

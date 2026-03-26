@@ -14,7 +14,9 @@ import {
   eq,
   gt,
   inArray,
+  isNotNull,
   lt,
+  notInArray,
   or,
   type SQL,
   sql,
@@ -760,7 +762,19 @@ export class ThreadQueryService {
       readStatuses.map((s) => [s.threadId, { isRead: s.isRead, lastReadAt: s.lastReadAt }])
     )
 
-    // Fetch draft IDs for all threads for this user
+    // Subquery: draft IDs that have a pending scheduled message (exclude from draftIds)
+    const scheduledDraftIds = this.db
+      .select({ draftId: schema.ScheduledMessage.draftId })
+      .from(schema.ScheduledMessage)
+      .where(
+        and(
+          eq(schema.ScheduledMessage.organizationId, this.organizationId),
+          eq(schema.ScheduledMessage.status, 'PENDING'),
+          isNotNull(schema.ScheduledMessage.draftId)
+        )
+      )
+
+    // Fetch draft IDs for all threads for this user (excluding scheduled drafts)
     const drafts = await this.db
       .select({
         threadId: schema.Draft.threadId,
@@ -771,9 +785,30 @@ export class ThreadQueryService {
         and(
           inArray(schema.Draft.threadId, ids),
           eq(schema.Draft.createdById, userId),
-          eq(schema.Draft.organizationId, this.organizationId)
+          eq(schema.Draft.organizationId, this.organizationId),
+          notInArray(schema.Draft.id, scheduledDraftIds)
         )
       )
+
+    // Fetch pending scheduled message counts per thread
+    const scheduledCounts = await this.db
+      .select({
+        threadId: schema.ScheduledMessage.threadId,
+        count: count(),
+      })
+      .from(schema.ScheduledMessage)
+      .where(
+        and(
+          inArray(schema.ScheduledMessage.threadId, ids),
+          eq(schema.ScheduledMessage.organizationId, this.organizationId),
+          eq(schema.ScheduledMessage.status, 'PENDING')
+        )
+      )
+      .groupBy(schema.ScheduledMessage.threadId)
+
+    const scheduledCountMap = new Map<string, number>(
+      scheduledCounts.map((s) => [s.threadId!, s.count])
+    )
 
     // Build draft IDs lookup (threadId → RecordId[])
     const draftIdsByThread = new Map<string, RecordId[]>()
@@ -829,6 +864,7 @@ export class ThreadQueryService {
           tagIds,
           isUnread,
           draftIds: draftIdsByThread.get(id) ?? [],
+          scheduledMessageCount: scheduledCountMap.get(id) ?? 0,
         } satisfies ThreadMeta
       })
       .filter(Boolean) as ThreadMeta[]

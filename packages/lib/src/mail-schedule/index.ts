@@ -6,8 +6,10 @@ export {
   createScheduledMessage,
   findPendingByDraftId,
   findScheduledMessageById,
+  findScheduledMessagesByThreadId,
   type ScheduledMessageSelect,
   type ScheduledMessageStatus,
+  updateScheduledMessage,
   updateScheduledMessageStatus,
 } from './scheduled-message'
 export {
