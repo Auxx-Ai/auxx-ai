@@ -1,6 +1,7 @@
-// apps/web/src/app/(website)/platform/crm/_components/crm-hero.tsx
+// apps/homepage/src/app/platform/crm/_components/crm-hero.tsx
 
 import Link from 'next/link'
+import { AutoplayVideo } from '~/components/autoplay-video'
 import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'
 
@@ -61,11 +62,10 @@ export default function CrmHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
                 </div>
               </div>
               <div className='max-lg:max-w-[calc(100vw-3rem)] lg:-mr-6 h-[550px] z-100'>
-                <video
+                <AutoplayVideo
                   autoPlay
                   loop
                   muted
-                  playsInline
                   className='size-full rounded-xl object-cover shadow-lg'
                   src='/videos/contact-crm.mp4'
                 />

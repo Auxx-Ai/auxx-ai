@@ -2,6 +2,7 @@
 import { Database, Smile, Sparkles, SquaresUnite } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
+import { AutoplayVideo } from '~/components/autoplay-video'
 import { cn } from '~/lib/utils'
 
 type Preview = 'intuitive' | 'unified' | 'sharing' | 'ai-copilot'
@@ -86,11 +87,10 @@ const MessagingFeatures = () => {
                     exit={{ opacity: 0, scale: 0.995 }}
                     transition={{ duration: 0.2 }}
                     className='bg-background ring-border-illustration sm:aspect-3/2 relative aspect-square origin-top overflow-hidden rounded-xl border-4 border-l-8 border-transparent dark:border-zinc-900 shadow ring-1'>
-                    <video
+                    <AutoplayVideo
                       autoPlay
                       loop
                       muted
-                      playsInline
                       className='size-full object-cover object-top-left'
                       src={currentPreview.video}
                     />

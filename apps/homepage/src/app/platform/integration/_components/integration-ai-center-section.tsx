@@ -1,5 +1,7 @@
 // apps/homepage/src/app/platform/integration/_components/integration-ai-center-section.tsx
 
+import { AutoplayVideo } from '~/components/autoplay-video'
+
 /**
  * IntegrationAiCenterSection component displays AI provider integrations
  * with description of multi-provider support and flexibility
@@ -16,11 +18,10 @@ export default function IntegrationAiCenterSection() {
                 <strong className='text-foreground font-semibold'>leading AI providers</strong>
               </h2>
               <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
-                <video
+                <AutoplayVideo
                   autoPlay
                   loop
                   muted
-                  playsInline
                   className='h-full w-full object-cover'
                   src='/videos/ai-model-choose.mp4'
                 />

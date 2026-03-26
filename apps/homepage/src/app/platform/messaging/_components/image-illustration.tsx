@@ -2,6 +2,7 @@
 import { Play, X } from 'lucide-react'
 import { motion, useScroll, useTransform } from 'motion/react'
 import { useState } from 'react'
+import { AutoplayVideo } from '~/components/autoplay-video'
 import { Button } from '~/components/ui/button'
 
 export const ImageIllustration = () => {
@@ -76,10 +77,10 @@ export const ImageIllustration = () => {
               className='absolute -top-10 right-0 text-white/70 hover:text-white transition-colors'>
               <X className='size-6' />
             </button>
-            <video
+            <AutoplayVideo
               autoPlay
               controls
-              playsInline
+              playOnView={false}
               className='w-full rounded-2xl shadow-2xl'
               src='/videos/hero-video-1.mp4'
             />

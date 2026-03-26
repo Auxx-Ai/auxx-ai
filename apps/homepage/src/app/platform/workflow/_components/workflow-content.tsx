@@ -1,5 +1,7 @@
 // apps/homepage/src/app/platform/workflow/_components/workflow-content.tsx
 
+import { AutoplayVideo } from '~/components/autoplay-video'
+
 /**
  * WorkflowContent component displays the visual workflow routing section
  * with description of intelligent routing capabilities for customer support
@@ -18,11 +20,10 @@ export default function WorkflowContent() {
                 </strong>
               </h2>
               <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
-                <video
+                <AutoplayVideo
                   autoPlay
                   loop
                   muted
-                  playsInline
                   className='h-full w-full object-cover'
                   src='/videos/workflow-zoom.mp4'
                 />
