@@ -2,6 +2,7 @@
 
 'use client'
 
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import type React from 'react'
 import EditorHeightResizeWrap from '../editor-height-resize-wrap'
 import { usePromptEditorContext } from './prompt-editor-context'
@@ -25,9 +26,13 @@ const PromptEditorContent: React.FC = () => {
   if (isExpanded) {
     return (
       <div className='h-full pb-0'>
-        <div className='relative h-full min-h-0 overflow-y-auto px-3 flex-1 flex'>
+        <ScrollArea
+          className='relative h-full min-h-0 px-3 flex-1 flex'
+          fadeClassName=''
+          allowScrollChaining
+          scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
           <TiptapPromptEditor />
-        </div>
+        </ScrollArea>
       </div>
     )
   }

@@ -125,6 +125,9 @@ function RecipientBadge({
             <button
               type='button'
               disabled={disabled}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+              }}
               onClick={(e) => {
                 e.stopPropagation()
                 onRemove(person.id)

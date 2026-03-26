@@ -6,6 +6,7 @@ import type { WorkflowRunEntity } from '@auxx/database/types'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import { ListChecks, Loader2, Medal, Route } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -80,7 +81,7 @@ export function WorkflowExecutionDetailDrawer({
       portalTarget={primaryPanelRef}
       title={`Workflow Run #${run.sequenceNumber}`}>
       {/* Content */}
-      <div className='flex-1 overflow-y-auto min-h-0 flex flex-col rounded-t-xl'>
+      <div className='flex-1 min-h-0 flex flex-col rounded-t-xl'>
         {/* Header */}
         <DrawerHeader
           icon={<EntityIcon iconId='activity' color='purple' className='size-6' />}
@@ -103,7 +104,10 @@ export function WorkflowExecutionDetailDrawer({
 
         {/* Tabs - reusing existing components */}
         {!isLoading && completeRun && (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className='flex-1 flex flex-col'>
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className='flex-1 flex flex-col min-h-0'>
             <OverflowTabsList
               tabs={[
                 { value: 'detail', label: 'Details', icon: ListChecks },
@@ -115,18 +119,40 @@ export function WorkflowExecutionDetailDrawer({
               variant='outline'
             />
 
-            <TabsContent value='detail' className='flex-1 overflow-auto p-4'>
-              <div className='rounded-lg border bg-secondary/10 p-4'>
-                <DetailTab />
-              </div>
+            <TabsContent value='detail' className='flex-1 min-h-0 overflow-hidden p-0 m-0'>
+              <ScrollArea
+                className='h-full'
+                fadeClassName=''
+                allowScrollChaining
+                scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+                <div className='p-4'>
+                  <div className='rounded-lg border bg-secondary/10 p-4'>
+                    <DetailTab />
+                  </div>
+                </div>
+              </ScrollArea>
             </TabsContent>
 
-            <TabsContent value='result' className='flex-1 overflow-auto'>
-              <ResultTab />
+            <TabsContent value='result' className='flex-1 min-h-0 overflow-hidden p-0 m-0'>
+              <ScrollArea
+                className='h-full'
+                fadeClassName=''
+                allowScrollChaining
+                scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+                <ResultTab />
+              </ScrollArea>
             </TabsContent>
 
-            <TabsContent value='tracing' className='flex-1 overflow-auto p-3'>
-              <ExecutionTracingView />
+            <TabsContent value='tracing' className='flex-1 min-h-0 overflow-hidden p-0 m-0'>
+              <ScrollArea
+                className='h-full'
+                fadeClassName=''
+                allowScrollChaining
+                scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+                <div className='p-3'>
+                  <ExecutionTracingView />
+                </div>
+              </ScrollArea>
             </TabsContent>
           </Tabs>
         )}

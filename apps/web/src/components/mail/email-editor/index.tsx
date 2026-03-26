@@ -345,6 +345,19 @@ function ReplyComposeEditorComponent({
     onSettled: () => setIsSending(false),
   })
 
+  const scheduleMessageMutation = api.thread.sendMessage.useMutation({
+    onMutate: () => setIsSending(true),
+    onSuccess: () => {
+      toastSuccess({ description: 'Message scheduled' })
+      onSendSuccess()
+      onClose()
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to schedule message', description: error.message })
+    },
+    onSettled: () => setIsSending(false),
+  })
+
   // Debounced delete to prevent double-click issues
   const debouncedDelete = useDebouncedCallback(
     (draftId: string) => {
@@ -727,6 +740,96 @@ function ReplyComposeEditorComponent({
     upsert,
     isUpserting,
   ])
+  const handleScheduleClick = useCallback(
+    async (scheduledAt: Date) => {
+      if (isSending || !editor?.isEditable) return
+      flushSync(() => {
+        toInputRef.current?.commitPendingInput()
+        ccInputRef.current?.commitPendingInput()
+        bccInputRef.current?.commitPendingInput()
+      })
+      setIsSending(true)
+      draftAutosave.abort()
+      try {
+        if (isUpserting) {
+          try {
+            const result = await upsert(draftPayload)
+            if (result?.id) {
+              setState((prev) => ({
+                ...prev,
+                draftId: result.id,
+                threadId: result.threadId || prev.threadId,
+              }))
+            }
+          } catch (error) {
+            console.warn('Draft save failed during schedule, continuing without draft ID', error)
+          }
+        }
+        if (!state.integrationId) {
+          toastError({
+            title: 'Missing Integration',
+            description: 'Please select an integration to send from.',
+          })
+          setIsSending(false)
+          return
+        }
+        const allRecipients = [...recipients.TO, ...recipients.CC, ...recipients.BCC]
+        if (allRecipients.length === 0) {
+          toastError({
+            title: 'Missing Recipient',
+            description: 'Please add at least one recipient (To, Cc, or Bcc).',
+          })
+          setIsSending(false)
+          return
+        }
+        if (!state.subject.trim()) {
+          toastError({ title: 'Missing Subject', description: 'Please enter a subject.' })
+          setIsSending(false)
+          return
+        }
+        const plainContent = editor?.getText()?.trim() ?? ''
+        if (!plainContent) {
+          toastError({
+            title: 'Empty Message',
+            description: 'Please enter some content before sending.',
+          })
+          setIsSending(false)
+          return
+        }
+        scheduleMessageMutation.mutate({
+          threadId: thread?.id,
+          integrationId: state.integrationId,
+          draftMessageId: state.draftId,
+          subject: state.subject,
+          textHtml: content,
+          signatureId: state.signatureId,
+          to: toPayload(recipients.TO),
+          cc: toPayload(recipients.CC),
+          bcc: toPayload(recipients.BCC),
+          attachments: draftPayload.attachments,
+          includePreviousMessage: state.includePrev,
+          linkTicketId: presetValues?.linkTicketId,
+          scheduledAt,
+        })
+      } catch (error) {
+        setIsSending(false)
+        throw error
+      }
+    },
+    [
+      isSending,
+      editor,
+      state,
+      recipients,
+      content,
+      thread?.id,
+      scheduleMessageMutation,
+      draftPayload,
+      draftAutosave,
+      upsert,
+      isUpserting,
+    ]
+  )
   const handleDiscardClick = useCallback(async () => {
     if (isSending || isDeleting) return
 
@@ -1167,10 +1270,11 @@ function ReplyComposeEditorComponent({
 
           {/* Toolbar with integrated AI Tools */}
           <div className='editor-toolbar-wrapper px-2 py-1 '>
-            <div className='flex items-center gap-1 overflow-x-auto no-scrollbar md:gap-2'>
+            <div className='flex items-center gap-1 shrink-0 no-scrollbar md:gap-2'>
               <EditorToolbar
                 editor={editor}
                 onSend={handleSendClick}
+                onSchedule={handleScheduleClick}
                 isSending={isSending}
                 disabled={isSending || !editor?.isEditable || aiToolsState.isProcessing}
                 fileSelect={fileSelect}

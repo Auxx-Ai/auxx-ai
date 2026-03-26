@@ -96,12 +96,36 @@ export function useWorkflowShortcuts() {
 
   // === HISTORY OPERATIONS ===
 
-  // Undo: Mod+Z
-  useHotkey('Mod+Z', () => historyManager.undo())
+  // Undo: Mod+Z — allow native undo in text elements
+  useHotkey(
+    'Mod+Z',
+    (event) => {
+      if (isTextInput(event)) return
+      event.preventDefault()
+      historyManager.undo()
+    },
+    { preventDefault: false }
+  )
 
-  // Redo: Mod+Shift+Z or Mod+Y
-  useHotkey('Mod+Shift+Z', () => historyManager.redo())
-  useHotkey('Mod+Y', () => historyManager.redo())
+  // Redo: Mod+Shift+Z or Mod+Y — allow native redo in text elements
+  useHotkey(
+    'Mod+Shift+Z',
+    (event) => {
+      if (isTextInput(event)) return
+      event.preventDefault()
+      historyManager.redo()
+    },
+    { preventDefault: false }
+  )
+  useHotkey(
+    'Mod+Y',
+    (event) => {
+      if (isTextInput(event)) return
+      event.preventDefault()
+      historyManager.redo()
+    },
+    { preventDefault: false }
+  )
 
   // === SELECTION OPERATIONS ===
 

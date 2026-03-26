@@ -37,6 +37,8 @@ export const answerNodeDataSchema = baseNodeDataSchema.extend({
   attachments: z.array(z.object({ name: z.string(), url: z.string() })).optional(),
   attachmentFiles: z.array(z.string()).optional(),
   attachmentFilesModes: z.array(z.boolean()).optional(),
+  saveAsDraft: z.boolean().optional(),
+  fieldModes: z.record(z.string(), z.boolean()).optional(),
 })
 
 /**
@@ -61,6 +63,7 @@ export const answerDefaultData: Partial<AnswerNodeData> = {
   attachments: [],
   attachmentFiles: [],
   attachmentFilesModes: [],
+  saveAsDraft: false,
 }
 
 /**
@@ -152,6 +155,18 @@ const getAnswerOutputVariables = (data: AnswerNodeData, nodeId: string): any[] =
       path: 'message_type',
       type: BaseType.STRING,
       description: 'Type of message sent (new, reply, or replyAll)',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'is_draft',
+      type: BaseType.BOOLEAN,
+      description: 'Whether the message was saved as draft',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'draft_id',
+      type: BaseType.STRING,
+      description: 'Draft ID (empty if sent directly)',
     }),
   ]
 }

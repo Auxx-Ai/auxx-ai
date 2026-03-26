@@ -35,6 +35,8 @@ export interface AnswerNodeData extends BaseNodeData {
   }>
   attachmentFiles?: string[]
   attachmentFilesModes?: boolean[]
+  saveAsDraft?: boolean // When true, creates a draft instead of sending
+  fieldModes?: Record<string, boolean> // Track constant/variable mode per field
 }
 
 /**
