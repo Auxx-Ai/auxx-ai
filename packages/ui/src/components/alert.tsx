@@ -21,6 +21,7 @@ const alertVariants = cva(
           'border-comparison-200 bg-comparison-100 dark:bg-black/20 text-comparison-500 [&>svg]:text-comparison-500',
         bad: 'border-bad-200 bg-bad-50 dark:bg-black/20 text-bad-500 [&>svg]:text-bad-500',
         accent: 'border-accent-200 bg-accent-50 text-accent-500 [&>svg]:text-accent-500',
+        translucent: 'border-transparent bg-white/10 text-white/80 [&>svg]:text-white/80',
       },
     },
     defaultVariants: { variant: 'default' },

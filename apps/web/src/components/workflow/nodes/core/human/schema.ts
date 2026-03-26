@@ -19,8 +19,7 @@ export const humanConfirmationNodeDataSchema = baseNodeDataSchema
   .extend({
     message: z.string().optional(),
     assignees: z.object({
-      userIds: z.array(z.string()).optional(),
-      groups: z.array(z.string()).optional(),
+      actorIds: z.array(z.string()).optional(),
       variable: z.any().optional(), // UnifiedVariable
     }),
     notification_methods: z.object({ in_app: z.boolean(), email: z.boolean() }),
@@ -48,11 +47,7 @@ export const humanConfirmationNodeDataSchema = baseNodeDataSchema
   .refine(
     (data) => {
       // At least one assignee method required
-      return (
-        data.assignees?.userIds?.length > 0 ||
-        data.assignees?.groups?.length > 0 ||
-        data.assignees?.variable !== undefined
-      )
+      return data.assignees?.actorIds?.length > 0 || data.assignees?.variable !== undefined
     },
     { message: 'At least one assignee is required' }
   )
@@ -64,7 +59,7 @@ export const humanConfirmationDefaultData: Partial<HumanConfirmationNodeData> = 
   title: 'Human Review',
   description: 'Wait for human approval before proceeding',
   message: '',
-  assignees: { userIds: [], groups: [] },
+  assignees: { actorIds: [] },
   notification_methods: { in_app: true, email: true },
   timeout: { enabled: true, duration: 24, unit: 'hours' },
   require_login: true,
@@ -86,11 +81,10 @@ export const validateHumanConfirmationConfig = (
   }
 
   // Check assignees
-  const hasUsers = data.assignees?.userIds?.length > 0
-  const hasGroups = data.assignees?.groups?.length > 0
+  const hasActorIds = data.assignees?.actorIds?.length > 0
   const hasVariable = !!data.assignees?.variable
 
-  if (!hasUsers && !hasGroups && !hasVariable) {
+  if (!hasActorIds && !hasVariable) {
     errors.push({ field: 'assignees', message: 'At least one assignee is required', type: 'error' })
   }
 

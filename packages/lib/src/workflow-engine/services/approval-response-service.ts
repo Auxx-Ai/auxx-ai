@@ -5,6 +5,7 @@ import crypto from 'crypto'
 import { and, count, eq, sql } from 'drizzle-orm'
 import { publisher } from '../../events/publisher'
 import { getQueue, Queues } from '../../jobs/queues'
+import { NotificationService } from '../../notifications/notification-service'
 import { WorkflowExecutionService } from '../../workflows/workflow-execution-service'
 
 const logger = createScopedLogger('approval-response-service')
@@ -28,8 +29,9 @@ export class ApprovalResponseService {
     comment?: string,
     ipAddress?: string
   ): Promise<ApprovalResponseResult> {
+    let organizationId: string | undefined
     // Start transaction
-    return await this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       // Get the approval request with responses using relational query API
       const approvalRequest = await tx.query.ApprovalRequest.findFirst({
         where: (t, { eq }) => eq(t.id, approvalRequestId),
@@ -40,6 +42,7 @@ export class ApprovalResponseService {
       if (!approvalRequest) {
         throw new Error('Approval request not found')
       }
+      organizationId = approvalRequest.organizationId
       const responses = approvalRequest.responses
       if (approvalRequest.status !== 'pending') {
         return {
@@ -121,6 +124,23 @@ export class ApprovalResponseService {
         nextPath,
       }
     })
+    // Clean up approval notifications after successful response (non-critical)
+    if (result.success) {
+      try {
+        const notificationService = new NotificationService(this.db)
+        await notificationService.deleteNotificationsByEntity(
+          'approval_request',
+          approvalRequestId,
+          organizationId
+        )
+      } catch (error) {
+        logger.warn('Failed to clean up approval notifications', {
+          approvalRequestId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    return result
   }
   /**
    * Process approval via email link (with token validation)
@@ -202,6 +222,21 @@ export class ApprovalResponseService {
         organizationId: approvalRequest.organizationId,
       },
     })
+    // Clean up notifications
+    try {
+      const notificationService = new NotificationService(this.db)
+      await notificationService.deleteNotificationsByEntity(
+        'approval_request',
+        approvalRequestId,
+        approvalRequest.organizationId
+      )
+    } catch (error) {
+      logger.warn('Failed to clean up approval notifications', {
+        approvalRequestId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+
     logger.info('Approval request cancelled', {
       approvalRequestId,
       cancelledBy,
@@ -245,6 +280,16 @@ export class ApprovalResponseService {
     }
     return { successful, failed }
   }
+  /**
+   * Validate an approval token (public wrapper for tRPC endpoints)
+   */
+  async validateToken(
+    approvalRequestId: string,
+    token: string
+  ): Promise<{ valid: boolean; userId?: string; message?: string }> {
+    return this.validateApprovalToken(approvalRequestId, token)
+  }
+
   /**
    * Generate approval token for email links
    */

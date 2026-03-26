@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/human/panel.tsx
 
+import { toActorId } from '@auxx/types/actor'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { Button } from '@auxx/ui/components/button'
 import { Label } from '@auxx/ui/components/label'
 import {
   Select,
@@ -13,8 +13,7 @@ import {
 import { Switch } from '@auxx/ui/components/switch'
 import { useUpdateNodeInternals } from '@xyflow/react'
 import { produce } from 'immer'
-import { memo, useCallback, useEffect, useRef } from 'react'
-import { MemberGroupPicker } from '~/components/pickers/member-group-picker'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useEdgeInteractions, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import type { TargetBranch } from '~/components/workflow/types'
@@ -47,16 +46,13 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
     useEffect(() => {
       if (didAutoAssign.current || isReadOnly || !userId) return
       didAutoAssign.current = true
-      const hasAssignees =
-        inputs.assignees?.userIds?.length ||
-        inputs.assignees?.groups?.length ||
-        inputs.assignees?.variable
+      const hasAssignees = inputs.assignees?.actorIds?.length || inputs.assignees?.variable
       if (!hasAssignees) {
         const newData = produce(inputs, (draft) => {
           if (!draft.assignees) {
             draft.assignees = {}
           }
-          draft.assignees.userIds = [userId]
+          draft.assignees.actorIds = [toActorId('user', userId)]
         })
         setInputs(newData)
       }
@@ -71,6 +67,32 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
         setInputs(newData)
       },
       [inputs, setInputs]
+    )
+
+    /** Compute VarEditor value from stored actorIds or variable */
+    const assigneesValue = useMemo(() => {
+      if (inputs.assignees?.variable) return inputs.assignees.variable.id
+      const actorIds = inputs.assignees?.actorIds || []
+      return actorIds.length > 0 ? JSON.stringify(actorIds) : ''
+    }, [inputs.assignees])
+
+    const isAssigneesConstantMode = !inputs.assignees?.variable
+
+    /** Parse VarEditor value back to storage format */
+    const handleAssigneesChange = useCallback(
+      (value: string, isConstant: boolean) => {
+        updateInputs((draft) => {
+          if (!draft.assignees) draft.assignees = {}
+          if (isConstant) {
+            draft.assignees.actorIds = value ? JSON.parse(value) : []
+            draft.assignees.variable = undefined
+          } else {
+            draft.assignees.variable = { id: value } as any
+            draft.assignees.actorIds = undefined
+          }
+        })
+      },
+      [updateInputs]
     )
 
     const handleTimeoutEnable = useCallback(
@@ -150,29 +172,31 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
             {/* Assignees Section */}
 
             <Field title='Approver' description='Who can approve or deny' isRequired>
-              <div className='space-y-1 flex flex-row gap-2 items-center'>
-                {/* Member/Group picker */}
-                <MemberGroupPicker
-                  selectedMembers={inputs.assignees?.userIds || []}
-                  selectedGroups={inputs.assignees?.groups || []}
-                  useUserIds={true}
-                  onChange={useCallback(
-                    (selection) =>
-                      updateInputs((draft) => {
-                        if (!draft.assignees) {
-                          draft.assignees = {}
-                        }
-                        draft.assignees.userIds = selection.userIds // User IDs for notifications and approvals
-                        draft.assignees.groups = selection.groupIds
-                      }),
-                    [updateInputs]
-                  )}
-                  disabled={isReadOnly}>
-                  <Button variant='outline' size='sm'>
-                    Select Users/Groups
-                  </Button>
-                </MemberGroupPicker>
-              </div>
+              <VarEditorField className='pe-1'>
+                <VarEditor
+                  value={assigneesValue}
+                  nodeId={nodeId}
+                  onChange={handleAssigneesChange}
+                  varType={BaseType.ACTOR}
+                  fieldOptions={{ actor: { target: 'both', multiple: true } }}
+                  allowConstant
+                  allowVariable
+                  isConstantMode={isAssigneesConstantMode}
+                  onConstantModeChange={(isConstant) => {
+                    updateInputs((draft) => {
+                      if (!draft.assignees) draft.assignees = {}
+                      if (isConstant) {
+                        draft.assignees.variable = undefined
+                      } else {
+                        draft.assignees.actorIds = undefined
+                      }
+                    })
+                  }}
+                  placeholder='Select variable...'
+                  placeholderConstant='Select users or groups...'
+                  disabled={isReadOnly}
+                />
+              </VarEditorField>
             </Field>
             {/* Notification Methods */}
             <Field title='Notification Methods' description='How to notify assignees'>

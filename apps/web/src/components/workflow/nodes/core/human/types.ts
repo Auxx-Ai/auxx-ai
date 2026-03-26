@@ -13,10 +13,8 @@ export interface HumanConfirmationNodeData extends BaseNodeData {
 
   /** Assignees who can approve or deny the request */
   assignees: {
-    /** User IDs for notifications and approvals */
-    userIds?: string[]
-    /** Group IDs whose members can respond */
-    groups?: string[]
+    /** ActorId format: ["user:abc", "group:xyz"] */
+    actorIds?: string[]
     /** Dynamic assignee from workflow variable */
     variable?: UnifiedVariable
   }
