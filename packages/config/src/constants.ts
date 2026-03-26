@@ -57,7 +57,7 @@ export const constants = {
   PRIVACY_URL: `${HOMEPAGE_URL}/privacy-policy`,
   IMPRINT_URL: `${HOMEPAGE_URL}/imprint`,
   TOS_URL: `${HOMEPAGE_URL}/terms-of-service`,
-  IMPRINT_ADDRESS: '8811 S Test Drive, Inglewood, CA 90305',
+  IMPRINT_ADDRESS: '5160 Gabbert Rd, Moorpark, CA 93021',
 } as const
 
 /**

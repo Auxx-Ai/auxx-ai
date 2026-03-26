@@ -8,15 +8,25 @@ interface LoaderProps extends React.HTMLAttributes<HTMLDivElement> {
   title?: string
   subtitle?: string
   size?: 'sm' | 'md' | 'lg'
+  variant?: 'default' | 'translucent'
 }
 
 export default function Loader({
   title = 'Configuring your account...',
   subtitle = 'Please wait while we prepare everything for you',
   size = 'md',
+  variant = 'default',
   className,
   ...props
 }: LoaderProps) {
+  const isTranslucent = variant === 'translucent'
+  // translucent: always show white rings, default: light/dark mode swap
+  const lightRingClass = isTranslucent
+    ? 'absolute inset-0 rounded-full hidden'
+    : 'absolute inset-0 rounded-full dark:hidden'
+  const darkRingClass = isTranslucent
+    ? 'absolute inset-0 rounded-full'
+    : 'absolute inset-0 rounded-full hidden dark:block'
   const sizeConfig = {
     sm: {
       container: 'size-20',
@@ -60,7 +70,7 @@ export default function Loader({
         }}>
         {/* Outer elegant ring with shimmer */}
         <motion.div
-          className='absolute inset-0 rounded-full dark:hidden'
+          className={lightRingClass}
           style={{
             background:
               'conic-gradient(from 0deg, transparent 0deg, rgb(0, 0, 0) 90deg, transparent 180deg)',
@@ -81,7 +91,7 @@ export default function Loader({
 
         {/* Primary animated ring with gradient */}
         <motion.div
-          className='absolute inset-0 rounded-full dark:hidden'
+          className={lightRingClass}
           style={{
             background:
               'conic-gradient(from 0deg, transparent 0deg, rgb(0, 0, 0) 120deg, rgba(0, 0, 0, 0.5) 240deg, transparent 360deg)',
@@ -102,7 +112,7 @@ export default function Loader({
 
         {/* Secondary elegant ring - counter rotation */}
         <motion.div
-          className='absolute inset-0 rounded-full dark:hidden'
+          className={lightRingClass}
           style={{
             background:
               'conic-gradient(from 180deg, transparent 0deg, rgba(0, 0, 0, 0.6) 45deg, transparent 90deg)',
@@ -123,7 +133,7 @@ export default function Loader({
 
         {/* Accent particles */}
         <motion.div
-          className='absolute inset-0 rounded-full dark:hidden'
+          className={lightRingClass}
           style={{
             background:
               'conic-gradient(from 270deg, transparent 0deg, rgba(0, 0, 0, 0.4) 20deg, transparent 40deg)',
@@ -144,7 +154,7 @@ export default function Loader({
 
         {/* Dark mode variants */}
         <motion.div
-          className='absolute inset-0 rounded-full hidden dark:block'
+          className={darkRingClass}
           style={{
             background:
               'conic-gradient(from 0deg, transparent 0deg, rgb(255, 255, 255) 90deg, transparent 180deg)',
@@ -164,7 +174,7 @@ export default function Loader({
         />
 
         <motion.div
-          className='absolute inset-0 rounded-full hidden dark:block'
+          className={darkRingClass}
           style={{
             background:
               'conic-gradient(from 0deg, transparent 0deg, rgb(255, 255, 255) 120deg, rgba(255, 255, 255, 0.5) 240deg, transparent 360deg)',
@@ -184,7 +194,7 @@ export default function Loader({
         />
 
         <motion.div
-          className='absolute inset-0 rounded-full hidden dark:block'
+          className={darkRingClass}
           style={{
             background:
               'conic-gradient(from 180deg, transparent 0deg, rgba(255, 255, 255, 0.6) 45deg, transparent 90deg)',
@@ -204,7 +214,7 @@ export default function Loader({
         />
 
         <motion.div
-          className='absolute inset-0 rounded-full hidden dark:block'
+          className={darkRingClass}
           style={{
             background:
               'conic-gradient(from 270deg, transparent 0deg, rgba(255, 255, 255, 0.4) 20deg, transparent 40deg)',
@@ -240,7 +250,9 @@ export default function Loader({
         <motion.h1
           className={cn(
             config.titleClass,
-            'text-black/90 dark:text-white/90 font-medium tracking-[-0.02em] leading-[1.15] antialiased'
+            isTranslucent
+              ? 'text-white/90 font-medium tracking-[-0.02em] leading-[1.15] antialiased'
+              : 'text-black/90 dark:text-white/90 font-medium tracking-[-0.02em] leading-[1.15] antialiased'
           )}
           initial={{ opacity: 0, y: 12 }}
           animate={{
@@ -268,7 +280,9 @@ export default function Loader({
         <motion.p
           className={cn(
             config.subtitleClass,
-            'text-black/60 dark:text-white/60 font-normal tracking-[-0.01em] leading-[1.45] antialiased'
+            isTranslucent
+              ? 'text-white/60 font-normal tracking-[-0.01em] leading-[1.45] antialiased'
+              : 'text-black/60 dark:text-white/60 font-normal tracking-[-0.01em] leading-[1.45] antialiased'
           )}
           initial={{ opacity: 0, y: 8 }}
           animate={{
@@ -282,7 +296,7 @@ export default function Loader({
           }}>
           <motion.span
             animate={{
-              opacity: [0.6, 0.4, 0.6],
+              opacity: isTranslucent ? [1, 0.5, 1] : [0.6, 0.4, 0.6],
             }}
             transition={{
               duration: 4,

@@ -1445,8 +1445,9 @@ export class ExecutionContextManager {
    * Serialize context for persistence
    */
   serialize(): string {
+    const { db, ...serializableContext } = this.context
     return safeJsonStringify({
-      ...this.context,
+      ...serializableContext,
       visitedNodes: Array.from(this.context.visitedNodes),
       options: this.options,
     })

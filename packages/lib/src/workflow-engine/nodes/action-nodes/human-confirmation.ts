@@ -3,6 +3,7 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { type Database, database, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
+import { type ActorId, parseActorId } from '@auxx/types/actor'
 import { eq, inArray } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { getCachedWorkflowApp } from '../../../cache/workflow-app-queries'
@@ -18,14 +19,15 @@ import type {
   WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
+import { ApprovalResponseService } from '../../services/approval-response-service'
 import { BaseNodeProcessor } from '../base-node'
 
 interface HumanConfirmationNodeData {
   // Basic configuration
   message?: string
   assignees: {
-    userIds?: string[]
-    groups?: string[]
+    actorIds?: string[] // ActorId format: ["user:abc", "group:xyz"]
+    variable?: { id: string } // Variable reference (resolved at execution time)
   }
   // Notification settings
   notification_methods: {
@@ -180,7 +182,8 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         approvalRequest,
         assignees,
         config.notification_methods,
-        contextManager
+        contextManager,
+        config.require_login
       )
       // Schedule timeout job
       await this.scheduleTimeout(approvalRequest.id, workflowRunId, node.nodeId, expiresAt)
@@ -297,16 +300,30 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
   }> {
     const userIds: string[] = []
     const groups: string[] = []
-    // Add direct users
-    if (assigneeConfig.userIds?.length) {
-      userIds.push(...assigneeConfig.userIds)
-    }
-    // Add direct groups
-    if (assigneeConfig.groups?.length) {
-      groups.push(...assigneeConfig.groups)
+
+    // Resolve variable reference if present
+    if (assigneeConfig.variable?.id) {
+      const resolved = await this.resolveVariableValue(assigneeConfig.variable.id, contextManager)
+      // Variable may resolve to a single ActorId string or an array of ActorIds
+      const resolvedIds: string[] = Array.isArray(resolved) ? resolved : resolved ? [resolved] : []
+      for (const id of resolvedIds) {
+        if (typeof id === 'string' && id.includes(':')) {
+          const { type, id: rawId } = parseActorId(id as ActorId)
+          if (type === 'user') userIds.push(rawId)
+          else if (type === 'group') groups.push(rawId)
+        }
+      }
     }
 
-    // Remove duplicates
+    // Parse static actorIds
+    if (assigneeConfig.actorIds?.length) {
+      for (const actorId of assigneeConfig.actorIds) {
+        const { type, id } = parseActorId(actorId as ActorId)
+        if (type === 'user') userIds.push(id)
+        else if (type === 'group') groups.push(id)
+      }
+    }
+
     return { userIds: [...new Set(userIds)], groups: [...new Set(groups)] }
   }
   private async calculateTimeoutMs(
@@ -345,7 +362,8 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       in_app: boolean
       email: boolean
     },
-    contextManager: ExecutionContextManager
+    contextManager: ExecutionContextManager,
+    requireLogin: boolean
   ): Promise<void> {
     const db = contextManager.getContext().db ?? database
     const notificationService = new NotificationService(db)
@@ -390,14 +408,21 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     }
     // Send email notifications
     if (methods.email) {
-      await this.sendEmailNotifications(db, approvalRequest, allUserIds, contextManager)
+      await this.sendEmailNotifications(
+        db,
+        approvalRequest,
+        allUserIds,
+        contextManager,
+        requireLogin
+      )
     }
   }
   private async sendEmailNotifications(
     db: Database,
     approvalRequest: any,
     userIds: string[],
-    contextManager: ExecutionContextManager
+    contextManager: ExecutionContextManager,
+    requireLogin: boolean
   ): Promise<void> {
     // Get user details
     const users = await db
@@ -408,10 +433,19 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       })
       .from(schema.User)
       .where(inArray(schema.User.id, userIds))
-    // Generate approval URL
-    const approvalUrl = `${WEBAPP_URL}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
+
+    const responseService = new ApprovalResponseService(db)
+    const baseUrl = `${WEBAPP_URL}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
+
     for (const user of users) {
       try {
+        let approvalUrl = baseUrl
+
+        if (!requireLogin) {
+          const token = await responseService.generateApprovalToken(approvalRequest.id, user.id)
+          approvalUrl += `?token=${encodeURIComponent(token)}`
+        }
+
         await enqueueEmailJob('approval-request', {
           recipient: { email: user.email!, name: user.name || 'User' },
           workflowName: approvalRequest.workflowName,
@@ -548,8 +582,8 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     }
 
     // Extract from assignees variable if used
-    if ((config.assignees as any)?.variable) {
-      variables.add((config.assignees as any).variable)
+    if (config.assignees?.variable?.id) {
+      variables.add(config.assignees.variable.id)
     }
 
     return Array.from(variables)
@@ -560,10 +594,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     const warnings: string[] = []
     const config = node.data as unknown as HumanConfirmationNodeData
     // Validate assignees
-    if (
-      !config.assignees ||
-      (!config.assignees.userIds?.length && !config.assignees.groups?.length)
-    ) {
+    if (!config.assignees?.actorIds?.length && !config.assignees?.variable) {
       errors.push('At least one assignee (user, group, or variable) is required')
     }
     // Validate notification methods

@@ -11,8 +11,8 @@ export type SiteConfig = typeof config
 export const config = {
   name: 'Auxx AI',
   shortName: 'auxx.Ai',
-  description: 'Connect AI with Shopify',
-  address: '5345 N Commerce Ave, Suite #8, Moorpark, CA 93021',
+  description: 'Connect AI with your small business',
+  address: '5160 Gabbert Rd, Moorpark, CA 93021',
   emails: {
     privacy: 'privacy@auxx.ai',
     support: 'support@auxx.ai',

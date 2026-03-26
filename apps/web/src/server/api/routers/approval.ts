@@ -1,9 +1,23 @@
 // apps/web/src/server/api/routers/approval.ts
 
+import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter'
 import { ApprovalQueryService, ApprovalResponseService } from '@auxx/lib/workflow-engine'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, protectedProcedure, publicProcedure } from '~/server/api/trpc'
+
+const approvalPublicRateLimiter = new RedisRateLimiter({
+  name: 'approval-public',
+  maxTokens: 10,
+  refillRate: 10,
+  perInterval: 60_000,
+})
+
+function getIpFromHeaders(headers: Headers): string {
+  return (
+    headers.get('x-forwarded-for')?.split(',')[0]?.trim() || headers.get('x-real-ip') || 'unknown'
+  )
+}
 
 /**
  * tRPC router for manual confirmation approval management
@@ -177,5 +191,85 @@ export const approvalRouter = createTRPCRouter({
         message: `Cleaned up ${count} approval requests for workflow run`,
         count,
       }
+    }),
+
+  /**
+   * Get approval details by token (no auth required)
+   */
+  getByToken: publicProcedure
+    .input(z.object({ approvalId: z.string(), token: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const ip = getIpFromHeaders(ctx.headers)
+      const allowed = await approvalPublicRateLimiter.acquire(`approval:public:${ip}`, 1)
+      if (!allowed) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many requests.' })
+      }
+
+      const responseService = new ApprovalResponseService(ctx.db)
+      const tokenResult = await responseService.validateToken(input.approvalId, input.token)
+      if (!tokenResult.valid) {
+        await approvalPublicRateLimiter.acquire(`approval:public:${ip}`, 3)
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: tokenResult.message || 'Invalid token',
+        })
+      }
+
+      const queryService = new ApprovalQueryService(ctx.db)
+      return await queryService.getApprovalRequestWithContext(input.approvalId)
+    }),
+
+  /**
+   * Approve via token (no auth required)
+   */
+  approveByToken: publicProcedure
+    .input(z.object({ approvalId: z.string(), token: z.string(), comment: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const ip = getIpFromHeaders(ctx.headers)
+      const allowed = await approvalPublicRateLimiter.acquire(`approval:public:${ip}`, 1)
+      if (!allowed) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many requests.' })
+      }
+
+      const responseService = new ApprovalResponseService(ctx.db)
+      const result = await responseService.processEmailApproval(
+        input.approvalId,
+        'approve',
+        input.token,
+        ip
+      )
+
+      if (!result.success) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: result.message })
+      }
+
+      return result
+    }),
+
+  /**
+   * Deny via token (no auth required)
+   */
+  denyByToken: publicProcedure
+    .input(z.object({ approvalId: z.string(), token: z.string(), comment: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const ip = getIpFromHeaders(ctx.headers)
+      const allowed = await approvalPublicRateLimiter.acquire(`approval:public:${ip}`, 1)
+      if (!allowed) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many requests.' })
+      }
+
+      const responseService = new ApprovalResponseService(ctx.db)
+      const result = await responseService.processEmailApproval(
+        input.approvalId,
+        'deny',
+        input.token,
+        ip
+      )
+
+      if (!result.success) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: result.message })
+      }
+
+      return result
     }),
 })
