@@ -7,6 +7,7 @@ import { OrganizationRole, type OrganizationType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, isNull, sql } from 'drizzle-orm'
+import { flushOrganization } from '../cache'
 import { DehydrationService } from '../dehydration'
 import type { ForwardingIntegrationMetadata } from '../email/inbound'
 import { MessageService } from '../email/message-service'
@@ -633,6 +634,9 @@ export class OrganizationService {
         handle,
         userEmail,
       })
+      // Bust caches so dehydration picks up seeded channels, inboxes, etc.
+      await flushOrganization(organizationId)
+      await dehydrationService.invalidateUser(userId)
       logger.info('Organization seeding complete', { organizationId })
     } catch (error) {
       logger.error('Failed to complete organization seeding', { organizationId, error })

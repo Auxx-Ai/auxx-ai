@@ -7,10 +7,8 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useStoreApi } from '@xyflow/react'
 import { AlertCircle, AlertTriangle, Play } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { useMessageParticipants, useMessages, useThread } from '~/components/threads/hooks'
 import { useWorkflowTrigger } from '~/components/workflow/hooks'
 import { initializeTriggers } from '~/components/workflow/nodes/initialize-triggers'
-import { transformThreadToWorkflowInput } from '~/components/workflow/nodes/shared/node-inputs'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useRunStore } from '~/components/workflow/store/run-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
@@ -45,30 +43,6 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
 
   const [inputs, setInputs] = useState<Record<string, any>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
-
-  // Get thread and messages when a thread is selected (for MESSAGE_RECEIVED)
-  const selectedThreadId = inputs.threadId as string | undefined
-  const isMessageReceivedTrigger = triggerType === WorkflowTriggerType.MESSAGE_RECEIVED
-
-  const { thread, isLoading: threadLoading } = useThread({
-    threadId: selectedThreadId,
-    enabled: !!selectedThreadId && isMessageReceivedTrigger,
-  })
-
-  const { messages, isLoading: messagesLoading } = useMessages({
-    threadId: selectedThreadId,
-    enabled: !!selectedThreadId && isMessageReceivedTrigger,
-  })
-
-  // Get the latest message (messages are ordered by sentAt desc)
-  const latestMessage = messages[0]
-
-  // Resolve participants for the latest message
-  const participantIds = latestMessage?.participants ?? []
-  const { from, to, cc, isLoading: participantsLoading } = useMessageParticipants(participantIds)
-
-  // Combined loading state
-  const threadDataLoading = threadLoading || messagesLoading || participantsLoading
 
   // Initialize inputs based on workflow and trigger
   useEffect(() => {
@@ -191,6 +165,19 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
     return formatted
   }
 
+  /**
+   * Strip internal fields (prefixed with _) from inputs before sending to workflow
+   */
+  const stripInternalFields = (inputs: Record<string, any>): Record<string, any> => {
+    const cleaned: Record<string, any> = {}
+    for (const [key, value] of Object.entries(inputs)) {
+      if (!key.startsWith('_')) {
+        cleaned[key] = value
+      }
+    }
+    return cleaned
+  }
+
   const handleStartRun = async () => {
     // Check if workflow has a trigger
     if (!hasTrigger) {
@@ -210,34 +197,13 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
       return
     }
 
-    // If thread is selected but details are still loading, wait
-    if (isMessageReceivedTrigger && inputs.threadId && threadDataLoading) {
-      toastError({
-        title: 'Loading thread details',
-        description: 'Please wait while we load the thread information',
-      })
-      return
-    }
-
     try {
       // Prepare inputs based on trigger type
-      let finalInputs = { ...inputs }
-
-      // Transform inputs for MESSAGE_RECEIVED trigger
-      if (isMessageReceivedTrigger && inputs.threadId && thread && latestMessage) {
-        const transformedInputs = transformThreadToWorkflowInput({
-          thread,
-          latestMessage,
-          from,
-          to,
-          cc,
-        })
-        finalInputs = { ...finalInputs, ...transformedInputs }
-      }
+      let finalInputs = stripInternalFields(inputs)
 
       // Format inputs for MANUAL trigger to ensure file data is properly structured
       if (triggerType === WorkflowTriggerType.MANUAL) {
-        finalInputs = formatManualTriggerInputs(inputs)
+        finalInputs = formatManualTriggerInputs(finalInputs)
       }
 
       // Transform inputs for app triggers — parse JSON triggerData and spread as top-level inputs
@@ -261,7 +227,7 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
 
         if (resourceTriggerNode?.data?.resourceType) {
           const resourceType = resourceTriggerNode.data.resourceType
-          const { resourceData, selectedResourceId, ...otherInputs } = inputs
+          const { resourceData, selectedResourceId, ...otherInputs } = finalInputs
 
           // Transform: move resourceData to [resourceType] key and add timestamp
           finalInputs = {
@@ -326,7 +292,7 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
 
         {/* Error summary */}
         {Object.keys(errors).length > 0 && (
-          <Alert variant='destructive'>
+          <Alert variant='destructive' className='mb-3'>
             <AlertCircle className='size-4' />
             <AlertDescription>
               Please fix the errors above before running the workflow.
@@ -337,11 +303,7 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
         {/* Run button */}
         <Button
           onClick={handleStartRun}
-          disabled={
-            !hasTrigger ||
-            (isRunning && activeRun?.status === 'RUNNING') ||
-            (isMessageReceivedTrigger && inputs.threadId && threadDataLoading)
-          }
+          disabled={!hasTrigger || (isRunning && activeRun?.status === 'RUNNING')}
           loading={isRunning && activeRun?.status === 'RUNNING'}
           loadingText='Running...'
           className='w-full'

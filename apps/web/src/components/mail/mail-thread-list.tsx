@@ -208,7 +208,7 @@ export const ThreadList = memo(function ThreadList({
           className={cn('relative flex flex-col gap-2 p-4 pt-0', isEmpty && 'flex-1')}
           ref={parent}>
           {isEmpty && (
-            <div className='p-4 text-center text-muted-foreground h-full flex items-center justify-center border rounded-2xl ring-inset ring-1 ring-muted/10'>
+            <div className='p-4 text-center flex-1 flex items-center justify-center border rounded-2xl ring-inset ring-1 ring-muted/10'>
               <Empty className=' md:p-3'>
                 <EmptyHeader className='gap-0'>
                   <EmptyMedia variant='icon'>

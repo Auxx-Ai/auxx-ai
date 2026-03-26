@@ -11,7 +11,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, notDemo, protectedProcedure, publicProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-organization')
 
@@ -260,8 +260,8 @@ export const organizationRouter = createTRPCRouter({
     }
   }),
 
-  /** Check if a handle is available */
-  checkHandleAvailability: protectedProcedure
+  /** Check if a handle is available (uses publicProcedure — no org context needed, just auth) */
+  checkHandleAvailability: publicProcedure
     .input(
       z.object({
         handle: z
@@ -272,6 +272,9 @@ export const organizationRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      if (!ctx.session?.user) {
+        throw new TRPCError({ code: 'UNAUTHORIZED' })
+      }
       // Check if handle is reserved
       if (RESERVED_ORGANIZATION_HANDLES.includes(input.handle as any)) {
         return {

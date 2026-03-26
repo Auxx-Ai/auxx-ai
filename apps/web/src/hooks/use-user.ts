@@ -74,6 +74,7 @@ interface UseUserResult {
   isSuperAdmin: boolean
   features: FeatureMapObject | null
   hasIntegrations: boolean | null
+  hasOnlyForwardingChannel: boolean | null
   settings: Settings | null
 }
 /**
@@ -141,9 +142,10 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
     // Skip for auth pages
     if (pathname === '/login' || pathname === '/register' || pathname === '/forgot-password') return
 
-    // Redirect to onboarding if required but not completed
+    // Redirect to onboarding if required but not completed.
+    // Uses full navigation since onboarding is in a separate route group.
     if (requireOnboarding && !dehydratedUser.completedOnboarding) {
-      router.push('/app/onboarding')
+      window.location.href = '/onboarding'
       return
     }
 
@@ -237,5 +239,6 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
     settings: org?.settings || null,
     features: org?.features || null,
     hasIntegrations: org?.hasIntegrations ?? null,
+    hasOnlyForwardingChannel: org?.hasOnlyForwardingChannel ?? null,
   }
 }

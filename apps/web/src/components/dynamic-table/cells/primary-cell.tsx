@@ -59,7 +59,7 @@ export function PrimaryCell({
       <div className='flex items-center justify-between w-full pl-3 pr-2 text-sm group/primary'>
         <button
           className={cn(
-            'flex items-center gap-2 text-left underline decoration-muted-foreground/50 hover:decoration-primary truncate max-w-[calc(100%-40px)]',
+            'flex items-center gap-2 text-left underline decoration-muted-foreground/50 hover:decoration-muted-foreground truncate max-w-[calc(100%-40px)]',
             fontWeightClass,
             titleClassName
           )}

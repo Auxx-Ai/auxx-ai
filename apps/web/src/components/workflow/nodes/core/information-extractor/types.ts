@@ -16,6 +16,7 @@ export interface StructuredOutputConfig {
  * Model configuration
  */
 export interface InformationExtractorModel {
+  useDefault?: boolean
   provider: string
   name: string
   mode: 'chat' | 'completion'

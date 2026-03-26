@@ -68,21 +68,17 @@ export const Dashboard = ({
     setActiveDndItem(event.active)
   }, [])
 
-  // Redirect to onboarding if org hasn't completed it (client-side only)
+  // Redirect to onboarding if org hasn't completed it.
+  // Uses full navigation since onboarding is in a separate route group.
   React.useEffect(() => {
-    if (!orgCompletedOnboarding && !pathname.includes('/app/onboarding')) {
-      router.push('/app/onboarding')
+    if (!orgCompletedOnboarding) {
+      window.location.href = '/onboarding'
     }
-  }, [orgCompletedOnboarding, pathname, router])
+  }, [orgCompletedOnboarding])
 
-  // Check organization's onboarding status (not user's)
+  // Show nothing while redirecting to onboarding
   if (!orgCompletedOnboarding) {
-    if (!pathname.includes('/app/onboarding')) {
-      // Show nothing while redirecting
-      return null
-    } else {
-      return <div className='onboarding'>{children}</div>
-    }
+    return null
   }
 
   // Use unified mutation hook for optimistic updates

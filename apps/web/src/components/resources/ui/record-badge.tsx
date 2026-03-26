@@ -27,8 +27,8 @@ export const recordBadgeVariants = cva(
     variants: {
       variant: {
         default:
-          'cursor-default ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800',
-        link: 'cursor-pointer ring-transparent hover:ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-neutral-800 dark:ring-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 [&_[data-slot=record-display]]:underline hover:[&_[data-slot=record-display]]:no-underline',
+          'cursor-default ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-muted dark:ring-neutral-800',
+        link: 'cursor-pointer ring-transparent hover:ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-muted dark:ring-muted hover:bg-neutral-200 dark:hover:bg-muted/60 [&_[data-slot=record-display]]:underline hover:[&_[data-slot=record-display]]:no-underline',
       },
       size: {
         default: [

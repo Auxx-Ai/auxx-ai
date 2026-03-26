@@ -45,6 +45,7 @@ export interface AiCompletionParams {
  * AI model configuration
  */
 export interface AiModel {
+  useDefault?: boolean
   provider: string
   name: string
   mode: AiModelMode

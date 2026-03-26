@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/onboarding/_components/onboarding-navigation.tsx
+// apps/web/src/app/(protected)/onboarding/_components/onboarding-navigation.tsx
 'use client'
 
 import { Button } from '@auxx/ui/components/button'

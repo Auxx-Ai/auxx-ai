@@ -46,7 +46,8 @@ export const completionParamsSchema = z.object({
  * Zod schema for model configuration
  */
 const modelSchema = z.object({
-  provider: z.string().min(1),
+  useDefault: z.boolean().optional(),
+  provider: z.string(),
   name: z.string(),
   mode: z.enum(['chat', 'completion']).default('chat'),
   completion_params: completionParamsSchema.optional(),
@@ -116,7 +117,13 @@ export const createInformationExtractorDefaultData = (defaultModel?: {
           ...defaultModel.completionParams,
         },
       }
-    : { provider: '', name: '', mode: 'chat', completion_params: { temperature: 0.3 } },
+    : {
+        useDefault: true,
+        provider: '',
+        name: '',
+        mode: 'chat',
+        completion_params: { temperature: 0.3 },
+      },
   text: '',
   // textEditorContent: undefined,
   structured_output: { enabled: false, schema: undefined },
@@ -131,8 +138,8 @@ export function validateInformationExtractor(data: InformationExtractorNodeData)
   try {
     informationExtractorSchema.parse(data)
 
-    // Additional validation
-    if (!data.model.provider || !data.model.name) {
+    // Validate model — only require provider/name when NOT using default
+    if (!data.model.useDefault && (!data.model.provider || !data.model.name)) {
       return {
         isValid: false,
         errors: [{ field: 'model', message: 'Please select an AI model', type: 'error' as const }],

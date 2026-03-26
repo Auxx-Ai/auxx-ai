@@ -32,7 +32,12 @@ export interface InputProps
 
 function Input({ className, type, variant, size, ...props }: InputProps) {
   return (
-    <input type={type} className={cn(inputVariants({ variant, size, className }))} {...props} />
+    <input
+      type={type}
+      data-variant={variant}
+      className={cn(inputVariants({ variant, size, className }))}
+      {...props}
+    />
   )
 }
 Input.displayName = 'Input'

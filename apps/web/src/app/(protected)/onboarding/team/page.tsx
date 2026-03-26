@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/onboarding/team/page.tsx
+// apps/web/src/app/(protected)/onboarding/team/page.tsx
 'use client'
 import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
@@ -155,7 +155,7 @@ export default function TeamOnboardingPage() {
   const handleBack = () => {
     // Save current invites to state
     updateTeam({ invites })
-    router.push('/app/onboarding/connections')
+    router.push('/onboarding/connections')
   }
   const hasValidInvites = invites.some((i) => i.email)
   // Animation variants

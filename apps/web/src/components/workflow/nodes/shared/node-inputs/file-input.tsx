@@ -138,14 +138,37 @@ export const FileInput = createNodeInput<FileInputProps>(
 
     const inputId = `input-${name}`
 
+    const pickerProps = {
+      selectedFiles: fileIds,
+      selectedFolders: [] as string[],
+      onChange: handleSelectionChange,
+      allowFiles: true,
+      showPath: true,
+      allowFolders: false,
+      allowMultiple,
+      fileExtensions,
+      maxFileSize,
+      enableGlobalSearch: true,
+      width: 450,
+      maxHeight: 400,
+    }
+
     return (
-      <div className='flex gap-2 w-full group' id={inputId}>
+      <div className='flex gap-2 w-full group min-h-8 items-center' id={inputId}>
         {/* Left: Selected files display */}
         <div className='flex-1 min-w-0'>
           {selectedFiles.length === 0 ? (
-            <span className='text-sm text-primary-400 truncate pointer-events-none'>
-              {placeholder}
-            </span>
+            <FilesPicker
+              trigger={
+                <button
+                  type='button'
+                  disabled={isLoading}
+                  className='w-full text-left text-sm text-primary-400 truncate cursor-pointer'>
+                  {placeholder}
+                </button>
+              }
+              {...pickerProps}
+            />
           ) : (
             <div className='flex flex-row gap-1 max-h-[200px] overflow-y-auto'>
               {selectedFiles.map((file) => (
@@ -175,18 +198,7 @@ export const FileInput = createNodeInput<FileInputProps>(
               <FileIcon />
             </Button>
           }
-          selectedFiles={fileIds}
-          selectedFolders={[]}
-          onChange={handleSelectionChange}
-          allowFiles
-          showPath
-          allowFolders={false}
-          allowMultiple={allowMultiple}
-          fileExtensions={fileExtensions}
-          maxFileSize={maxFileSize}
-          enableGlobalSearch
-          width={450}
-          maxHeight={400}
+          {...pickerProps}
         />
       </div>
     )

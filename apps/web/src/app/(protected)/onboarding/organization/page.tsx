@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/onboarding/organization/page.tsx
+// apps/web/src/app/(protected)/onboarding/organization/page.tsx
 'use client'
 
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
@@ -147,9 +147,6 @@ export default function OrganizationOnboardingPage() {
 
       // If handle is different from what we last checked, we need to verify
       if (values.handle !== debouncedHandle && values.handle !== org?.handle) {
-        // For safety, we could refetch here, but since we're using real-time checking,
-        // this scenario should be rare. The form validation should prevent submission
-        // if the handle is invalid.
         toastError({
           title: 'Error',
           description: 'Please wait for handle availability check to complete.',

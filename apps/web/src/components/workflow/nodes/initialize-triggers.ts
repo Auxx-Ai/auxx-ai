@@ -3,7 +3,7 @@
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ValidationResult } from '../types'
 import { ManualTriggerInput } from './shared/manual-trigger-input'
-import { ThreadInput } from './shared/node-inputs'
+import { MessageReceivedTriggerInput } from './shared/message-received-trigger-input'
 import { ResourceTriggerInput } from './shared/resource-trigger-input'
 import { ScheduledTriggerInput } from './shared/scheduled-trigger-input'
 import { WebhookTriggerInput } from './shared/webhook-trigger-input'
@@ -21,17 +21,28 @@ export function initializeTriggers() {
     return
   }
 
-  // Register MESSAGE_RECEIVED trigger input using ThreadInput
+  // Register MESSAGE_RECEIVED trigger input
   registerTriggerInput(WorkflowTriggerType.MESSAGE_RECEIVED, {
-    component: ThreadInput,
+    component: MessageReceivedTriggerInput,
     description: 'Triggered when a new message is received',
-    requiredData: ['threadId'],
+    requiredData: ['thread', 'message'],
 
     validate: (inputs: Record<string, any>): ValidationResult => {
       const errors: Array<{ field: string; message: string }> = []
 
-      if (!inputs.threadId) {
-        errors.push({ field: 'threadId', message: 'Please select a thread to test with' })
+      if (inputs._isAutoMode ?? true) {
+        // Auto mode: require thread selection
+        if (!inputs._threadId) {
+          errors.push({ field: '_threadId', message: 'Please select a thread' })
+        }
+      } else {
+        // Manual mode: require from email and inbox
+        if (!inputs.fromEmail) {
+          errors.push({ field: 'fromEmail', message: 'From email is required' })
+        }
+        if (!inputs.integrationId) {
+          errors.push({ field: 'integrationId', message: 'Please select an integration' })
+        }
       }
 
       return {
@@ -41,7 +52,16 @@ export function initializeTriggers() {
     },
 
     getDefaultInputs: () => ({
-      threadId: '',
+      _isAutoMode: true,
+      _threadId: '',
+      integrationId: '',
+      fromEmail: '',
+      fromName: '',
+      ccEmails: '',
+      bccEmails: '',
+      subject: '',
+      body: '',
+      isInbound: true,
     }),
   })
 

@@ -45,6 +45,7 @@ function InputGroup({
   return (
     <div
       data-slot='input-group'
+      data-variant={variant}
       role='group'
       className={cn(inputGroupVariants({ variant, className }))}
       {...props}

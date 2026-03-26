@@ -38,6 +38,12 @@ export enum BaseType {
 }
 
 /**
+ * Sentinel ID used in test/dry-run mode when no real entity exists.
+ * Downstream nodes (e.g. Answer) check for this to skip DB lookups.
+ */
+export const TEST_RECORD_ID = '__test__'
+
+/**
  * Grouped BaseType values for UI pickers
  * Used for workflow form-input nodes
  */

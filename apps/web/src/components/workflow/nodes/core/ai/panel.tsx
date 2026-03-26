@@ -219,9 +219,18 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
           mode={nodeData.model?.mode || AiModelMode.CHAT}
           modelId={nodeData.model?.name || ''}
           provider={nodeData.model?.provider || ''}
+          useDefault={nodeData.model?.useDefault ?? false}
+          onUseDefaultChange={(useDefault) => {
+            if (useDefault) {
+              updateModel({ useDefault: true, provider: '', name: '' })
+            } else {
+              updateModel({ useDefault: false })
+            }
+          }}
           readonly={isReadOnly}
           setModel={(model) =>
             updateModel({
+              useDefault: false,
               provider: model.provider,
               name: model.modelId,
               mode: (model.mode as any) || 'chat',

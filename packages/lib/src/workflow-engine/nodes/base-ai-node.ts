@@ -25,6 +25,7 @@ import {
   createAICallbacks,
   extractModelConfig,
   extractOrgUserContext,
+  resolveModelConfig,
 } from './utils/ai-node-utils'
 
 const logger = createScopedLogger('base-ai-node')
@@ -33,6 +34,7 @@ const logger = createScopedLogger('base-ai-node')
  * Model configuration interface shared across AI nodes
  */
 export interface BaseAiModelConfig {
+  useDefault?: boolean
   provider: string
   name: string
   mode?: 'chat' | 'completion'
@@ -114,9 +116,10 @@ export abstract class BaseAiNodeProcessor extends BaseNodeProcessor {
       // Step 1: Build messages from node configuration (subclass-specific)
       const messages = await this.buildMessages(node, data, contextManager)
 
-      // Step 2: Get model configuration
+      // Step 2: Get model configuration (resolve useDefault at execution time)
       const modelConfig = data.model as BaseAiModelConfig
-      const { provider, model } = extractModelConfig(modelConfig)
+      const extracted = extractModelConfig(modelConfig)
+      const { provider, model } = await resolveModelConfig(extracted, db, organizationId)
 
       // Step 3: Build completion parameters with defaults
       const completionParams = buildCompletionParams(modelConfig, {

@@ -62,9 +62,18 @@ const TextClassifierPanelContent: React.FC<TextClassifierPanelProps> = ({ data, 
           mode={data.model.mode}
           modelId={data.model.name}
           provider={data.model.provider}
+          useDefault={data.model.useDefault ?? false}
+          onUseDefaultChange={(useDefault) => {
+            if (useDefault) {
+              updateModel({ useDefault: true, provider: '', name: '', mode: data.model.mode })
+            } else {
+              updateModel({ ...data.model, useDefault: false })
+            }
+          }}
           readonly={isReadOnly}
           setModel={(model) =>
             updateModel({
+              useDefault: false,
               provider: model.provider,
               name: model.modelId,
               mode: (model.mode as any) || 'chat',

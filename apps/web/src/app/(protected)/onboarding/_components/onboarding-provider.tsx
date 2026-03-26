@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/onboarding/_components/onboarding-provider.tsx
+// apps/web/src/app/(protected)/onboarding/_components/onboarding-provider.tsx
 'use client'
 import { OrganizationRole as OrganizationRoleEnum } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
@@ -93,19 +93,19 @@ interface OnboardingProviderProps {
  * Maps route paths to step numbers
  */
 const pathToStep: Record<string, 1 | 2 | 3 | 4> = {
-  '/app/onboarding/personal': 1,
-  '/app/onboarding/organization': 2,
-  '/app/onboarding/connections': 3,
-  '/app/onboarding/team': 4,
+  '/onboarding/personal': 1,
+  '/onboarding/organization': 2,
+  '/onboarding/connections': 3,
+  '/onboarding/team': 4,
 }
 /**
  * Maps step numbers to route paths
  */
 const stepToPath: Record<number, string> = {
-  1: '/app/onboarding/personal',
-  2: '/app/onboarding/organization',
-  3: '/app/onboarding/connections',
-  4: '/app/onboarding/team',
+  1: '/onboarding/personal',
+  2: '/onboarding/organization',
+  3: '/onboarding/connections',
+  4: '/onboarding/team',
 }
 /**
  * Onboarding provider component

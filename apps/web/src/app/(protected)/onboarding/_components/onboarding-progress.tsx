@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/onboarding/_components/onboarding-progress.tsx
+// apps/web/src/app/(protected)/onboarding/_components/onboarding-progress.tsx
 'use client'
 
 import {

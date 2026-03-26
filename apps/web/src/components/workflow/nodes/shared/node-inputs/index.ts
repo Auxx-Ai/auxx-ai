@@ -24,4 +24,4 @@ export { RelationInput } from './relation-input'
 // Export input components
 export { StringInput } from './string-input'
 export { TagsInput } from './tags-input'
-export { ThreadInput, transformThreadToWorkflowInput } from './thread-input'
+export { transformThreadToWorkflowInput } from './thread-input'

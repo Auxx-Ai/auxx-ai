@@ -330,7 +330,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
           <div>
-            <Tooltip content='Version History' shortcut='⌘⇧+H'>
+            <Tooltip content='Version History' shortcut='⌘⇧+V'>
               <Button variant={open ? 'secondary' : 'ghost'} size='icon-sm' data-selected={open}>
                 <GitBranch />
               </Button>

@@ -2,7 +2,7 @@
 
 import type { VariantProps } from 'class-variance-authority'
 import { CommandLoading } from 'cmdk'
-import { Check, ChevronsUpDown, Loader2, Plus } from 'lucide-react'
+import { Check, ChevronDown, ChevronsUpDown, Loader2, Plus } from 'lucide-react'
 // packages/ui/src/components/combobox.tsx
 import * as React from 'react'
 import { cn } from '../lib/utils'
@@ -91,10 +91,12 @@ export function Combobox(props: ComboboxProps) {
       aria-expanded={open}
       disabled={disabled}
       className={cn('justify-between', className)}>
-      {(value && props.options.find((option) => option.value === value)?.label) ||
-        value ||
-        placeholder}
-      <ChevronsUpDown className='shrink-0 opacity-50' />
+      <span className='truncate'>
+        {(value && props.options.find((option) => option.value === value)?.label) ||
+          value ||
+          placeholder}
+      </span>
+      <ChevronDown className='shrink-0 opacity-50' />
     </Button>
   )
 

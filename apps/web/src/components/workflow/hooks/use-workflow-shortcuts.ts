@@ -14,6 +14,20 @@ import { useWorkflowOrganize } from './use-workflow-organize'
 import { useWorkflowSave } from './use-workflow-save'
 
 /**
+ * Check if the event target is a text input element where native keyboard behavior should be preserved
+ */
+function isTextInput(event: KeyboardEvent): boolean {
+  const target = event.target as HTMLElement
+  return (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.contentEditable === 'true' ||
+    target.getAttribute('role') === 'textbox' ||
+    target.closest('[contenteditable="true"]') !== null
+  )
+}
+
+/**
  * Centralized hook for handling all keyboard shortcuts in the workflow editor
  */
 export function useWorkflowShortcuts() {
@@ -52,11 +66,11 @@ export function useWorkflowShortcuts() {
 
   // Panel management
   const toggleLeftSidebar = usePanelStore((state) => state.toggleLeftSidebar)
-  const openPanel = usePanelStore((state) => state.openPanel)
-  const closePanel = usePanelStore((state) => state.closePanel)
-  const activePanel = usePanelStore((state) => state.activePanel)
   const openRunPanel = usePanelStore((state) => state.openRunPanel)
   const setRunPanelTab = usePanelStore((state) => state.setRunPanelTab)
+  const settingsPanelOpen = usePanelStore((state) => state.settingsPanelOpen)
+  const openSettingsPanel = usePanelStore((state) => state.openSettingsPanel)
+  const closeSettingsPanel = usePanelStore((state) => state.closeSettingsPanel)
 
   // Get selected nodes and edges from ReactFlow
   const getSelectedNodeIds = React.useCallback(() => {
@@ -92,17 +106,33 @@ export function useWorkflowShortcuts() {
   // === SELECTION OPERATIONS ===
 
   // Select All: Mod+A — allow native select-all in text elements
-  useHotkey('Mod+A', (event) => {
-    const target = event.target as HTMLElement
-    const isTextElement =
-      target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.contentEditable === 'true' ||
-      target.getAttribute('role') === 'textbox' ||
-      target.closest('[contenteditable="true"]') !== null
-    if (isTextElement) return
-    handleSelectAll(true)
-  })
+  useHotkey(
+    'Mod+A',
+    (event) => {
+      if (isTextInput(event)) return
+      event.preventDefault()
+      handleSelectAll(true)
+    },
+    { preventDefault: false }
+  )
+
+  // Deselect All: Escape — deselect nodes, close block selector
+  useHotkey(
+    'Escape',
+    (event) => {
+      if (isTextInput(event)) return
+
+      // Close block selector first if open
+      if (useCanvasStore.getState().blockSelectorOpen) {
+        useCanvasStore.getState().setBlockSelectorOpen(false)
+        return
+      }
+
+      // Deselect all nodes
+      handleSelectAll(false)
+    },
+    { preventDefault: false }
+  )
 
   // === NODE OPERATIONS ===
 
@@ -165,29 +195,31 @@ export function useWorkflowShortcuts() {
   // Toggle Left Sidebar: Mod+B
   useHotkey('Mod+B', () => toggleLeftSidebar())
 
-  // Toggle Properties Panel: Mod+P
+  // Toggle Settings Panel: Mod+P
   useHotkey('Mod+P', () => {
-    if (activePanel === 'properties') {
-      closePanel()
+    if (settingsPanelOpen) {
+      closeSettingsPanel()
     } else {
-      openPanel('properties')
+      openSettingsPanel()
     }
   })
 
-  // Toggle Version History: Mod+Shift+H
-  useHotkey('Mod+Shift+H', () => toggleVersions())
+  // Toggle Version History: Mod+Shift+V
+  // Note: Mod+Shift+H was intercepted by Chrome (Home shortcut on macOS)
+  useHotkey('Mod+Shift+V', () => {
+    console.log('[shortcut] Mod+Shift+V — toggling version history')
+    toggleVersions()
+  })
 
   // === INTERACTION MODE SHORTCUTS (single keys — ignored in inputs by smart default) ===
 
-  // Pointer Mode: V
+  // Toggle Pointer/Pan Mode: V
   useHotkey('V', () => {
     if (!isTemporaryPan) {
-      setInteractionMode('pointer')
+      const currentMode = useInteractionStore.getState().mode
+      setInteractionMode(currentMode === 'pointer' ? 'pan' : 'pointer')
     }
   })
-
-  // Pan Mode: H
-  useHotkey('H', () => setInteractionMode('pan'))
 
   // Temporary Pan Mode: Space (hold to pan, release to stop)
   useHotkey('Space', () => startTemporaryPan())
