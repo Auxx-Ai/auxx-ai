@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.103](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.102...auxx-v0.1.103) (2026-03-26)
+
+
+### Features
+
+* enhance template transform with default assignees for human-confirmation nodes ([#334](https://github.com/Auxx-Ai/auxx-ai/issues/334)) ([a2e58ba](https://github.com/Auxx-Ai/auxx-ai/commit/a2e58ba0c4f47b0fb848b3354c715cfe7e4d9c7f))
+
 ## [0.1.102](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.101...auxx-v0.1.102) (2026-03-25)
 
 
