@@ -5,9 +5,9 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@auxx/ui/components/breadcrumb'
+import Loader from '@auxx/ui/components/loader'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { LoadingSpinner } from '~/components/global/loading-content'
 
 export default function Loading() {
   return (
@@ -41,7 +41,7 @@ export default function Loading() {
         </div>
         <Separator />
       </div>
-      <LoadingSpinner />
+      <Loader size='sm' title='Loading settings...' subtitle='Please wait' />
     </div>
   )
 }

@@ -5,6 +5,13 @@ import { IdentifierType } from '@auxx/database/enums'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { DraftService } from '@auxx/lib/drafts'
 import { getUserOrganizationId } from '@auxx/lib/email' // Adjust import path if needed
+import {
+  cancelScheduledMessage,
+  createScheduledMessage,
+  enqueueScheduledMessageJob,
+  findPendingByDraftId,
+  updateScheduledMessageStatus,
+} from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
 import { ProviderRegistryService, whereThreadMessageType } from '@auxx/lib/providers'
 import {
@@ -51,6 +58,7 @@ const SendMessageInputSchema = z.object({
   draftMessageId: z.string().nullish(), // Optional ID of draft being sent
   includePreviousMessage: z.boolean().optional(), // Include previous message content
   linkTicketId: z.string().nullish(), // Auto-link new thread to ticket after send
+  scheduledAt: z.date().optional(), // Schedule send for a future time
 })
 // --- Helper Functions ---
 /**
@@ -307,6 +315,65 @@ export const threadRouter = createTRPCRouter({
           })),
           attachmentIds: attachments?.map((att) => att.id) || undefined, // Map attachments to IDs
         }
+        // --- Schedule send path ---
+        if (input.scheduledAt) {
+          const scheduledAt = input.scheduledAt
+          if (scheduledAt <= new Date()) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Scheduled time must be in the future.',
+            })
+          }
+
+          // If draft already has a pending schedule, cancel it first
+          if (draftMessageId) {
+            const existing = await findPendingByDraftId(ctx.db, draftMessageId, organizationId)
+            if (existing) {
+              await cancelScheduledMessage(ctx.db, existing.id, organizationId)
+              if (existing.jobId) {
+                try {
+                  const { getQueue } = await import('@auxx/lib/jobs/queues')
+                  const { Queues } = await import('@auxx/lib/jobs/queues/types')
+                  const queue = getQueue(Queues.messageProcessingQueue)
+                  await queue.remove(existing.jobId)
+                } catch {
+                  // Job may already be gone — non-fatal
+                }
+              }
+            }
+          }
+
+          // Create the scheduled message record
+          const scheduled = await createScheduledMessage(ctx.db, {
+            organizationId,
+            draftId: draftMessageId ?? undefined,
+            integrationId,
+            threadId: threadId ?? undefined,
+            createdById: userId,
+            scheduledAt,
+            sendPayload: senderInput,
+          })
+
+          // Enqueue delayed BullMQ job
+          const jobId = await enqueueScheduledMessageJob(
+            { scheduledMessageId: scheduled.id, organizationId },
+            scheduledAt
+          )
+
+          // Store the job ID on the record for cancellation
+          await updateScheduledMessageStatus(ctx.db, scheduled.id, 'PENDING', { jobId })
+
+          logger.info('Message scheduled', {
+            scheduledMessageId: scheduled.id,
+            scheduledAt,
+            jobId,
+            userId,
+          })
+
+          return { scheduled: true, scheduledMessageId: scheduled.id, scheduledAt } as any
+        }
+
+        // --- Immediate send path ---
         logger.info('API: Sending message via MessageSenderService', {
           userId,
           threadId: input.threadId,
@@ -359,6 +426,53 @@ export const threadRouter = createTRPCRouter({
         })
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to send message.' })
       }
+    }),
+  /**
+   * Cancel a previously scheduled message.
+   * Returns the associated draft so the editor can re-open it.
+   */
+  cancelScheduledMessage: protectedProcedure
+    .input(z.object({ scheduledMessageId: z.string() }))
+    .use(notDemo('cancel scheduled emails'))
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      if (!organizationId) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'User organization context not found.',
+        })
+      }
+
+      const cancelled = await cancelScheduledMessage(
+        ctx.db,
+        input.scheduledMessageId,
+        organizationId
+      )
+      if (!cancelled) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Scheduled message not found or already processed.',
+        })
+      }
+
+      // Remove the BullMQ job
+      if (cancelled.jobId) {
+        try {
+          const { getQueue } = await import('@auxx/lib/jobs/queues')
+          const { Queues } = await import('@auxx/lib/jobs/queues/types')
+          const queue = getQueue(Queues.messageProcessingQueue)
+          await queue.remove(cancelled.jobId)
+        } catch {
+          // Job may already be gone — non-fatal
+        }
+      }
+
+      logger.info('Cancelled scheduled message', {
+        scheduledMessageId: input.scheduledMessageId,
+        draftId: cancelled.draftId,
+      })
+
+      return { cancelled: true, draftId: cancelled.draftId }
     }),
   /**
    * Tag multiple threads in bulk

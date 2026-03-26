@@ -330,7 +330,10 @@ export const BasePanel = memo<BasePanelProps>(
     }, [nodeType])
 
     return (
-      <div className='flex-1 h-full w-full flex flex-col [--sticky-offset:89px] overflow-y-auto'>
+      <ScrollArea
+        className='flex-1 h-full w-full flex flex-col [--sticky-offset:89px]'
+        fadeClassName=''
+        scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
         <DrawerHeader
           icon={
             <AppIcon
@@ -550,7 +553,7 @@ export const BasePanel = memo<BasePanelProps>(
             )}
           </div>
         </Tabs>
-      </div>
+      </ScrollArea>
     )
   }
 )

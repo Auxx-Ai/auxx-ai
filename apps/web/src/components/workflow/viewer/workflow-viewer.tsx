@@ -2,9 +2,9 @@
 
 'use client'
 
+import Loader from '@auxx/ui/components/loader'
 import { cn } from '@auxx/ui/lib/utils'
 import { ReactFlowProvider, type Viewport } from '@xyflow/react'
-import { Loader2 } from 'lucide-react'
 import { memo, useEffect, useRef } from 'react'
 import { setupNodeRegistry } from '../nodes/registry-setup'
 import { useWorkflowStore } from '../store/workflow-store'
@@ -159,10 +159,7 @@ export const WorkflowViewer = memo<WorkflowViewerProps>(
             // mergedOptions.theme === 'dark' && 'dark',
             className
           )}>
-          <div className='text-center'>
-            <Loader2 className='w-8 h-8 animate-spin mx-auto mb-4 text-muted-foreground' />
-            <p className='text-sm text-muted-foreground'>Loading workflow...</p>
-          </div>
+          <Loader size='sm' title='Loading workflow...' subtitle='Please wait' />
         </div>
       )
     }

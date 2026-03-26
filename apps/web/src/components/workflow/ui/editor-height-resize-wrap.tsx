@@ -2,6 +2,7 @@
 
 'use client'
 
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -13,6 +14,8 @@ interface EditorHeightResizeWrapProps {
   children: React.ReactNode
   footer?: React.ReactNode
   hideResize?: boolean
+  /** Skip ScrollArea wrapping (e.g. Monaco manages its own scroll) */
+  nativeScroll?: boolean
 }
 
 /** Stores drag state to avoid stale closures in event handlers */
@@ -34,6 +37,7 @@ const EditorHeightResizeWrap: React.FC<EditorHeightResizeWrapProps> = ({
   children,
   footer,
   hideResize,
+  nativeScroll,
 }) => {
   const dragStateRef = useRef<DragState | null>(null)
   const [isResizing, setIsResizing] = useState(false)
@@ -91,8 +95,20 @@ const EditorHeightResizeWrap: React.FC<EditorHeightResizeWrapProps> = ({
 
   return (
     <div className='relative'>
-      <div className={cn('overflow-y-auto flex min-h-0 flex-1', className)} style={{ height }}>
-        {children}
+      <div
+        className={cn('flex min-h-0 flex-1', nativeScroll && 'overflow-y-auto', className)}
+        style={{ height }}>
+        {nativeScroll ? (
+          children
+        ) : (
+          <ScrollArea
+            className='h-full w-full'
+            fadeClassName=''
+            allowScrollChaining
+            scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+            {children}
+          </ScrollArea>
+        )}
       </div>
 
       {/* Footer content */}

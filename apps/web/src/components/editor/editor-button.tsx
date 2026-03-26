@@ -12,12 +12,10 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
 import type { Editor } from '@tiptap/react'
 import {
   Bold,
-  CornerDownLeft,
   File,
   Italic,
   LetterText,
@@ -34,8 +32,8 @@ import type { UseFileSelectReturn } from '~/components/file-select/types'
 import { Tooltip } from '~/components/global/tooltip'
 import { AITools } from '~/components/mail/email-editor/ai-tools'
 import { useEditorActiveStateContext } from '~/components/mail/email-editor/editor-active-state-context'
+import { ScheduleSendButton } from '~/components/mail/email-editor/schedule-send-button'
 import { FileSelectPicker } from '~/components/pickers/file-select-picker'
-import { MetaIcon } from '~/constants/icons'
 import { useEditorContext } from './editor-context'
 import EditorSelector from './editor-selector'
 
@@ -91,6 +89,7 @@ const colorOptions = [
 interface EditorButtonsProps {
   editor: Editor | null
   onSend?: () => void
+  onSchedule?: (scheduledAt: Date) => void
   isSending?: boolean
   disabled?: boolean
   /** className forwarded to popover/dropdown content elements (e.g. for z-index override) */
@@ -488,6 +487,7 @@ interface EditorButtonGroup {
 export const EditorToolbar = ({
   editor: propEditor,
   onSend,
+  onSchedule,
   isSending,
   disabled,
   fileSelect,
@@ -692,20 +692,14 @@ export const EditorToolbar = ({
 
         {/* File attachment button - always visible */}
       </div>
-      {showSend && (
-        <Button
-          className='min-w-[80px] gap-0 ms-2'
-          onClick={onSend}
-          size='sm'
-          // Disable if sending, saving draft via mutation, or editor isn't ready
+      {showSend && onSend && (
+        <ScheduleSendButton
+          onSend={onSend}
+          onSchedule={onSchedule ?? (() => {})}
+          isSending={isSending}
           disabled={disabled}
-          loading={isSending}
-          loadingText='Sending...'>
-          Send
-          <Separator orientation='vertical' className='mx-1.5 h-3 opacity-50' />
-          <MetaIcon className='size-3! opacity-80' />
-          <CornerDownLeft className='size-3! opacity-80' />
-        </Button>
+          popoverClassName={popoverClassName}
+        />
       )}
     </div>
   )

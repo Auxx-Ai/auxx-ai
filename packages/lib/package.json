@@ -328,6 +328,12 @@
       "import": "./dist/jobs/queues/index.mjs",
       "default": "./src/jobs/queues/index.ts"
     },
+    "./jobs/queues/types": {
+      "types": "./src/jobs/queues/types.ts",
+      "source": "./src/jobs/queues/types.ts",
+      "import": "./dist/jobs/queues/types.mjs",
+      "default": "./src/jobs/queues/types.ts"
+    },
     "./kb": {
       "types": "./src/kb/index.ts",
       "source": "./src/kb/index.ts",
@@ -351,6 +357,12 @@
       "source": "./src/mail-query/client.ts",
       "import": "./dist/mail-query/client.mjs",
       "default": "./src/mail-query/client.ts"
+    },
+    "./mail-schedule": {
+      "types": "./src/mail-schedule/index.ts",
+      "source": "./src/mail-schedule/index.ts",
+      "import": "./dist/mail-schedule/index.mjs",
+      "default": "./src/mail-schedule/index.ts"
     },
     "./mail-views": {
       "types": "./src/mail-views/index.ts",

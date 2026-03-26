@@ -64,6 +64,7 @@ export function ResultTab() {
               value={JSON.stringify(activeRun.outputs, null, 2)}
               language={CodeLanguage.json}
               readOnly
+              className='flex-1'
               minHeight={120}
               title='OUTPUT'
               gradientBorder={false}

@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/editor/workflow-editor.tsx
 
+import Loader from '@auxx/ui/components/loader'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ReactFlowProvider, type Viewport } from '@xyflow/react'
-import { Loader2 } from 'lucide-react'
 import { memo, useEffect, useRef } from 'react'
 import { WorkflowCanvas } from '../canvas/workflow-canvas'
 import { WorkflowToolbar } from '../canvas/workflow-toolbar'
@@ -160,12 +160,7 @@ export const WorkflowEditor = memo<WorkflowEditorProps>(
             <Skeleton className='h-7 w-[78px]' />
             <Skeleton className='h-7 w-7' />
           </div>
-          <div className='flex-1 flex items-center justify-center'>
-            <div className='text-center'>
-              <Loader2 className='w-8 h-8 animate-spin mx-auto mb-4' />
-              <p className='text-sm text-muted-foreground'>Loading workflow...</p>
-            </div>
-          </div>
+          <Loader size='sm' title='Loading workflow...' subtitle='Please wait' />
         </div>
       )
     }

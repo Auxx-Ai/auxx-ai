@@ -343,6 +343,13 @@ export const returnStatus = pgEnum('RETURN_STATUS', [
   'REQUESTED',
 ])
 export const recipientRole = pgEnum('RecipientRole', ['FROM', 'TO', 'CC', 'BCC'])
+export const scheduledMessageStatus = pgEnum('ScheduledMessageStatus', [
+  'PENDING',
+  'PROCESSING',
+  'SENT',
+  'FAILED',
+  'CANCELLED',
+])
 export const responseStatus = pgEnum('ResponseStatus', [
   'DRAFT',
   'PENDING_APPROVAL',

@@ -128,6 +128,32 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
         }>
         {/* Email Fields and conditional fields */}
         <VarEditorField className='p-0'>
+          <VarEditorFieldRow
+            className=''
+            title='Save as draft'
+            description='Create a draft instead of sending immediately'
+            type={BaseType.BOOLEAN}>
+            <VarEditor
+              nodeId={nodeId}
+              value={nodeData.saveAsDraft ?? false}
+              onChange={(value, isConstantMode) => {
+                const fieldModes = { ...nodeData.fieldModes, saveAsDraft: isConstantMode }
+                setNodeData({
+                  ...nodeData,
+                  saveAsDraft: value === true || value === 'true',
+                  fieldModes,
+                })
+              }}
+              fieldOptions={{ variant: 'switch' }}
+              varType={BaseType.BOOLEAN}
+              mode={VAR_MODE.PICKER}
+              allowedTypes={[BaseType.BOOLEAN]}
+              allowConstant
+              isConstantMode={nodeData.fieldModes?.saveAsDraft ?? true}
+              hideClearButton
+            />
+          </VarEditorFieldRow>
+
           {nodeData.messageType === 'new' && (
             <VarEditorFieldRow
               className=''

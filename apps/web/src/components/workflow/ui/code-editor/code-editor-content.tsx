@@ -239,7 +239,8 @@ const CodeEditorContent: React.FC = () => {
         height={editorHeight}
         minHeight={editorContentMinHeight}
         onHeightChange={setContentHeight}
-        hideResize={false}>
+        hideResize={false}
+        nativeScroll>
         <div className='h-full pb-4 px-2 flex-1 min-h-0 flex'>
           <div className='relative h-full flex-1'>
             <Editor

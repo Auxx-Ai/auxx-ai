@@ -9,6 +9,7 @@ import { startDocumentProcessingWorker } from './worker-definitions/document-pro
 import { startEmailWorker } from './worker-definitions/email-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
 import { startMaintenanceWorker } from './worker-definitions/maintenance-worker'
+import { startMessageProcessingWorker } from './worker-definitions/message-processing-worker'
 import { startMessageSyncWorker } from './worker-definitions/message-sync-worker'
 import { startOAuth2RefreshWorker } from './worker-definitions/oauth2-refresh-worker'
 import { startPollingSyncWorker } from './worker-definitions/polling-sync-worker'
@@ -60,6 +61,9 @@ export async function startWorkers() {
   // Email delivery worker (transactional/system emails)
   const emailWorker = startEmailWorker()
 
+  // Message processing worker (scheduled sends, etc.)
+  const messageProcessingWorker = startMessageProcessingWorker()
+
   // App trigger dispatch worker (webhook → workflow)
   const appTriggerWorker = startAppTriggerWorker()
 
@@ -84,6 +88,7 @@ export async function startWorkers() {
     dataImportWorker,
     pollingSyncWorker,
     emailWorker,
+    messageProcessingWorker,
     appTriggerWorker,
     pollingTriggerWorker,
   ]

@@ -31,7 +31,11 @@ const PromptEditorWrapper: React.FC = () => {
             : 'bg-transparent',
           '!rounded-[9px] p-0.5 w-full'
         )}>
-        <div className={cn(isFocused ? 'bg-background' : 'bg-primary-200/30', 'rounded-lg border')}>
+        <div
+          className={cn(
+            isFocused ? 'bg-background' : 'bg-primary-200/30',
+            'pb-2 rounded-lg border'
+          )}>
           <PromptEditorHeader />
           {!isExpanded && <PromptEditorContent />}
         </div>

@@ -5,6 +5,7 @@ import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
 import { Clock, ListChecks, Medal, Play, Route, TextCursorInput } from 'lucide-react'
@@ -116,11 +117,11 @@ export const WorkflowRunPanel = memo(function WorkflowRunPanel({
           ) : undefined
         }
       />
-      <div className='flex-1 overflow-y-auto'>
+      <div className='flex-1 flex-col flex min-h-0'>
         <Tabs
           value={runPanelTab}
           onValueChange={(value) => setRunPanelTab(value as any)}
-          className='flex-1 flex flex-col'>
+          className='flex-1 flex flex-col min-h-0'>
           <div className='w-full border-b bg-secondary/20 backdrop-blur-sm'>
             <TabsList className='justify-start h-auto gap-1 rounded-none bg-primary-100 px-2 py-1 w-full'>
               {(runViewMode === 'single-node' || runViewMode === null) && (
@@ -143,22 +144,52 @@ export const WorkflowRunPanel = memo(function WorkflowRunPanel({
               </TabsTrigger>
             </TabsList>
           </div>
-          <TabsContent value='input' className='flex-1 overflow-auto p-0 m-0'>
-            <InputTab workflowId={workflowId} workflowAppId={workflowAppId} />
+          <TabsContent value='input' className='flex-1 min-h-0 overflow-hidden p-0 m-0'>
+            <ScrollArea
+              className='h-full'
+              fadeClassName=''
+              allowScrollChaining
+              scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+              <InputTab workflowId={workflowId} workflowAppId={workflowAppId} />
+            </ScrollArea>
           </TabsContent>
 
-          <TabsContent value='result' className='flex-1 overflow-auto p-0 m-0'>
-            <ResultTab />
+          <TabsContent
+            value='result'
+            className='flex-1 min-h-0 overflow-hidden p-0 m-0 flex-col flex'>
+            <ScrollArea
+              className='h-full'
+              fadeClassName=''
+              allowScrollChaining
+              scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+              <ResultTab />
+            </ScrollArea>
           </TabsContent>
 
-          <TabsContent value='detail' className='flex-1 overflow-auto p-3 m-0'>
-            <div className='rounded-lg border-[0.5px] border-border bg-secondary/10 p-4'>
-              <DetailTab />
-            </div>
+          <TabsContent value='detail' className='flex-1 min-h-0 overflow-hidden p-0 m-0'>
+            <ScrollArea
+              className='h-full'
+              fadeClassName=''
+              allowScrollChaining
+              scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+              <div className='p-3'>
+                <div className='rounded-lg border-[0.5px] border-border bg-secondary/10 p-4'>
+                  <DetailTab />
+                </div>
+              </div>
+            </ScrollArea>
           </TabsContent>
 
-          <TabsContent value='tracing' className='flex-1 overflow-auto p-3 m-0'>
-            <TracingTab />
+          <TabsContent value='tracing' className='flex-1 min-h-0 overflow-hidden p-0 m-0'>
+            <ScrollArea
+              className='h-full'
+              fadeClassName=''
+              allowScrollChaining
+              scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+              <div className='p-3'>
+                <TracingTab />
+              </div>
+            </ScrollArea>
           </TabsContent>
         </Tabs>
       </div>

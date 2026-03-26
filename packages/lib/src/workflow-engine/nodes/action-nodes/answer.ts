@@ -5,6 +5,7 @@ import { IdentifierType, ParticipantRole } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/types/resource'
 import { getDefinitionId, getInstanceId, isRecordId } from '@auxx/types/resource'
 import { and, desc, eq } from 'drizzle-orm'
+import { DraftService } from '../../../drafts/draft-service'
 import { MessageSenderService } from '../../../messages/message-sender.service'
 import type {
   ParticipantInput,
@@ -39,6 +40,7 @@ interface AnswerNodeData {
   attachments?: Array<{ name: string; url: string }>
   attachmentFiles?: string[]
   attachmentFilesModes?: boolean[]
+  saveAsDraft?: boolean
 }
 
 /**
@@ -240,10 +242,96 @@ export class AnswerProcessor extends BaseNodeProcessor {
           }))
         : undefined
 
-    // 5. Check debug mode — skip actual send in test runs
+    // 5. Check modes
+    const saveAsDraft = config.saveAsDraft ?? false
     const isDryRun = contextManager.isDebugMode()
 
-    if (isDryRun) {
+    // Draft path — runs even in dry-run mode (drafts are safe, non-destructive)
+    if (saveAsDraft) {
+      try {
+        const draftService = new DraftService(context.db, context.organizationId, context.userId)
+
+        // resolvedText is plain text (tiptap stringified with \n line breaks).
+        // Convert to simple HTML paragraphs for the draft editor (which renders bodyHtml).
+        const bodyHtml = resolvedText
+          .split('\n')
+          .map((line) => `<p>${line || '<br>'}</p>`)
+          .join('')
+
+        const draftContent = {
+          subject: resolvedSubject || null,
+          bodyHtml,
+          bodyText: resolvedText,
+          recipients: {
+            to: resolvedTo.map((email) => ({
+              identifier: email,
+              identifierType: IdentifierType.EMAIL,
+            })),
+            cc: resolvedCc.map((email) => ({
+              identifier: email,
+              identifierType: IdentifierType.EMAIL,
+            })),
+            bcc: resolvedBcc.map((email) => ({
+              identifier: email,
+              identifierType: IdentifierType.EMAIL,
+            })),
+          },
+          attachments: [],
+        }
+
+        contextManager.log('INFO', node.name, 'Creating draft', {
+          messageType,
+          integrationId,
+          threadId,
+          subject: resolvedSubject,
+          recipientCount: resolvedTo.length,
+        })
+
+        const draft = await draftService.upsert({
+          integrationId,
+          threadId: threadId || null,
+          content: draftContent,
+        })
+
+        contextManager.log('INFO', node.name, 'Draft created successfully', {
+          draftId: draft.id,
+          threadId,
+        })
+
+        contextManager.setNodeVariable(node.nodeId, 'sent', false)
+        contextManager.setNodeVariable(node.nodeId, 'message_id', draft.id)
+        contextManager.setNodeVariable(node.nodeId, 'thread_id', threadId || '')
+        contextManager.setNodeVariable(node.nodeId, 'timestamp', new Date().toISOString())
+        contextManager.setNodeVariable(node.nodeId, 'integration_id', integrationId)
+        contextManager.setNodeVariable(node.nodeId, 'message_type', messageType)
+        contextManager.setNodeVariable(node.nodeId, 'is_draft', true)
+        contextManager.setNodeVariable(node.nodeId, 'draft_id', draft.id)
+
+        return {
+          status: NodeRunningStatus.Succeeded,
+          output: {
+            sent: false,
+            isDraft: true,
+            draftId: draft.id,
+            threadId: threadId || undefined,
+            timestamp: new Date().toISOString(),
+            recipientCount: resolvedTo.length + resolvedCc.length + resolvedBcc.length,
+          },
+          metadata: {
+            messageType,
+            integrationId,
+            saveAsDraft: true,
+          },
+          outputHandle: 'source',
+        }
+      } catch (error) {
+        contextManager.log('ERROR', node.name, 'Failed to create draft', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
+    } else if (isDryRun) {
+      // Dry run send path (existing behavior)
       contextManager.log('INFO', node.name, 'DryRun: Skipping message send', {
         messageType,
         integrationId,
@@ -264,6 +352,8 @@ export class AnswerProcessor extends BaseNodeProcessor {
       contextManager.setNodeVariable(node.nodeId, 'timestamp', new Date().toISOString())
       contextManager.setNodeVariable(node.nodeId, 'integration_id', integrationId)
       contextManager.setNodeVariable(node.nodeId, 'message_type', messageType)
+      contextManager.setNodeVariable(node.nodeId, 'is_draft', false)
+      contextManager.setNodeVariable(node.nodeId, 'draft_id', '')
 
       return {
         status: NodeRunningStatus.Succeeded,
@@ -330,6 +420,8 @@ export class AnswerProcessor extends BaseNodeProcessor {
       contextManager.setNodeVariable(node.nodeId, 'timestamp', new Date().toISOString())
       contextManager.setNodeVariable(node.nodeId, 'integration_id', integrationId)
       contextManager.setNodeVariable(node.nodeId, 'message_type', messageType)
+      contextManager.setNodeVariable(node.nodeId, 'is_draft', false)
+      contextManager.setNodeVariable(node.nodeId, 'draft_id', '')
 
       return {
         status: NodeRunningStatus.Succeeded,

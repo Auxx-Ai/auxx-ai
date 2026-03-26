@@ -1,5 +1,11 @@
 // Billing
 
+// Mail schedule
+export {
+  enqueueScheduledMessageJob,
+  type SendScheduledMessageJobData,
+  sendScheduledMessageJob,
+} from '../mail-schedule'
 // Usage
 export { type RecordUsageEventJobData, recordUsageEventJob } from '../usage'
 export {
