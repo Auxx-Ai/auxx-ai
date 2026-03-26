@@ -1,5 +1,7 @@
 // apps/homepage/src/app/platform/integration/_components/integration-center-section.tsx
 
+import { AutoplayVideo } from '~/components/autoplay-video'
+
 /**
  * IntegrationCenterSection component displays the integration marketplace
  * showcasing the platform's extensive integration capabilities
@@ -12,11 +14,10 @@ export default function IntegrationCenterSection() {
           <div className='bg-muted/25 py-16 md:py-24'>
             <div className='mx-auto max-w-5xl px-6'>
               <div className='aspect-3/2  mx-auto max-w-3xl'>
-                <video
+                <AutoplayVideo
                   autoPlay
                   loop
                   muted
-                  playsInline
                   className='rounded-(--radius)'
                   src='/videos/app-install.mp4'
                 />

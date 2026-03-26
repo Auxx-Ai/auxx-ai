@@ -1,5 +1,7 @@
 // apps/homepage/src/app/platform/manufacturing/_components/manufacturing-hero-illustration.tsx
 
+import { AutoplayVideo } from '~/components/autoplay-video'
+
 export const ManufacturingHeroIllustration = () => {
   return (
     <div className='relative z-10 mt-16 md:mt-24'>
@@ -36,11 +38,10 @@ export const ManufacturingHeroIllustration = () => {
           <div className='mask-radial-from-60% mask-radial-at-top mask-radial-[95%_100%] px-6 pt-6 max-md:pt-2'>
             <div className='bg-background/60 ring-border-illustration mx-auto max-w-4xl rounded-2xl p-1 shadow-xl shadow-black/20 ring-1'>
               <div className='bg-background relative origin-top overflow-hidden rounded-xl border-4 border-l-8 border-transparent aspect-4/3'>
-                <video
+                <AutoplayVideo
                   autoPlay
                   loop
                   muted
-                  playsInline
                   className='size-full object-cover object-top-left'
                   src='/videos/new-part.mp4'
                 />

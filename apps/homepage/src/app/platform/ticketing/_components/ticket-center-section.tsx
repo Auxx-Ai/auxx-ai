@@ -1,5 +1,7 @@
 // apps/homepage/src/app/platform/ticketing/_components/ticket-center-section.tsx
 
+import { AutoplayVideo } from '~/components/autoplay-video'
+
 /**
  * TicketCenterSection component displays the ticketing system interface
  * with description of ticket management and automation capabilities
@@ -16,12 +18,11 @@ export default function TicketCenterSection() {
                 <strong className='text-foreground font-semibold'>one unified inbox</strong>
               </h2>
               <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
-                <video
+                <AutoplayVideo
                   src='/videos/data-model-ticket-normal.mp4'
                   autoPlay
                   loop
                   muted
-                  playsInline
                   className='h-full w-full object-cover'
                 />
               </div>
