@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.104](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.103...auxx-v0.1.104) (2026-03-26)
+
+
+### Features
+
+* add public approval page with token-based and authenticated flows ([#338](https://github.com/Auxx-Ai/auxx-ai/issues/338)) ([3067e1d](https://github.com/Auxx-Ai/auxx-ai/commit/3067e1d19d1ef012f3a837ba34419998c01422f1))
+* add scheduled message functionality ([#339](https://github.com/Auxx-Ai/auxx-ai/issues/339)) ([f18dfe7](https://github.com/Auxx-Ai/auxx-ai/commit/f18dfe7bcf514764ee3b60b9722c1cb5df33f7f9))
+* add scheduled message functionality with enqueue and send jobs ([#336](https://github.com/Auxx-Ai/auxx-ai/issues/336)) ([7c5e58f](https://github.com/Auxx-Ai/auxx-ai/commit/7c5e58fc25631248a9a49f6d6a9dbdf568a860f4))
+* implement AutoplayVideo component and replace video tags across multiple sections ([#340](https://github.com/Auxx-Ai/auxx-ai/issues/340)) ([9efd0d1](https://github.com/Auxx-Ai/auxx-ai/commit/9efd0d18d037c938e90b6b3b0e015e13b3adff22))
+
 ## [0.1.103](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.102...auxx-v0.1.103) (2026-03-26)
 
 
