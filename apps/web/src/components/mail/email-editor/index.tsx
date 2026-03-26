@@ -347,8 +347,42 @@ function ReplyComposeEditorComponent({
 
   const scheduleMessageMutation = api.thread.sendMessage.useMutation({
     onMutate: () => setIsSending(true),
-    onSuccess: () => {
+    onSuccess: (data) => {
       toastSuccess({ description: 'Message scheduled' })
+
+      const threadId = thread?.id ?? state.threadId
+
+      // Optimistically increment scheduledMessageCount on thread
+      if (threadId) {
+        const currentThread = getThreadStoreState().getThread(threadId)
+        if (currentThread) {
+          getThreadStoreState().updateThread(threadId, {
+            scheduledMessageCount: (currentThread.scheduledMessageCount ?? 0) + 1,
+          })
+        }
+
+        // Invalidate detail query so conversation view refreshes
+        utils.thread.getScheduledMessages.invalidate({ threadId })
+      }
+
+      // Remove draft from thread's draftIds (scheduled drafts shouldn't show as active drafts)
+      if (state.draftId && threadId) {
+        const currentThread = getThreadStoreState().getThread(threadId)
+        if (currentThread) {
+          const recordId = `draft:${state.draftId}`
+          getThreadStoreState().updateThread(threadId, {
+            draftIds: currentThread.draftIds.filter((id) => id !== recordId),
+          })
+        }
+      }
+
+      // For standalone drafts, update scheduledAt on the draft item
+      if (state.draftId && !threadId && (data as any)?.scheduledAt) {
+        getThreadStoreState().updateDraft(state.draftId, {
+          scheduledAt: new Date((data as any).scheduledAt).toISOString(),
+        })
+      }
+
       onSendSuccess()
       onClose()
     },

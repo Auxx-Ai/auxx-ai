@@ -10,6 +10,8 @@ import {
   createScheduledMessage,
   enqueueScheduledMessageJob,
   findPendingByDraftId,
+  findScheduledMessagesByThreadId,
+  updateScheduledMessage,
   updateScheduledMessageStatus,
 } from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
@@ -473,6 +475,77 @@ export const threadRouter = createTRPCRouter({
       })
 
       return { cancelled: true, draftId: cancelled.draftId }
+    }),
+  /**
+   * Get pending/processing scheduled messages for a thread.
+   * Used in the thread detail view to display scheduled message cards.
+   */
+  getScheduledMessages: protectedProcedure
+    .input(z.object({ threadId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      if (!organizationId) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'User organization context not found.',
+        })
+      }
+      return findScheduledMessagesByThreadId(ctx.db, input.threadId, organizationId)
+    }),
+  /**
+   * Update a pending scheduled message (reschedule time or update payload).
+   */
+  updateScheduledMessage: protectedProcedure
+    .input(
+      z.object({
+        scheduledMessageId: z.string(),
+        scheduledAt: z.date().optional(),
+      })
+    )
+    .use(notDemo('update scheduled emails'))
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      if (!organizationId) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'User organization context not found.',
+        })
+      }
+
+      const updated = await updateScheduledMessage(
+        ctx.db,
+        input.scheduledMessageId,
+        organizationId,
+        {
+          scheduledAt: input.scheduledAt,
+        }
+      )
+      if (!updated) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Scheduled message not found or already processed.',
+        })
+      }
+
+      // If scheduledAt changed, remove old BullMQ job and enqueue new one
+      if (input.scheduledAt && updated.jobId) {
+        try {
+          const { getQueue } = await import('@auxx/lib/jobs/queues')
+          const { Queues } = await import('@auxx/lib/jobs/queues/types')
+          const queue = getQueue(Queues.messageProcessingQueue)
+          await queue.remove(updated.jobId)
+        } catch {
+          // Job may already be gone — non-fatal
+        }
+
+        const jobId = await enqueueScheduledMessageJob(
+          { scheduledMessageId: updated.id, organizationId },
+          input.scheduledAt
+        )
+        await updateScheduledMessageStatus(ctx.db, updated.id, 'PENDING', { jobId })
+      }
+
+      return updated
     }),
   /**
    * Tag multiple threads in bulk

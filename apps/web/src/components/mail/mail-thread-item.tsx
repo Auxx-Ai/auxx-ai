@@ -18,7 +18,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useDraggable } from '@dnd-kit/core'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Archive, MailWarning, MoreVertical, Trash2 } from 'lucide-react'
+import { Archive, Clock, MailWarning, MoreVertical, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
@@ -146,6 +146,7 @@ export const MailThreadItem = memo(function MailThreadItem({
 
   // Draft status is now embedded in ThreadMeta
   const hasDraft = (thread?.draftIds?.length ?? 0) > 0
+  const hasScheduledMessage = (thread?.scheduledMessageCount ?? 0) > 0
 
   // --- Selection state ---
   const isMultiSelected = useMemo(
@@ -237,17 +238,27 @@ export const MailThreadItem = memo(function MailThreadItem({
             aria-selected={isMultiSelected}
             onClick={handleClick}
             onDragStart={(e) => e.preventDefault()}>
-            {/* Status indicator dot: red for draft, blue for unread */}
-            {(hasDraft || isUnread) && (
-              <div
-                className={cn(
-                  'absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full',
-                  hasDraft ? 'bg-red-500' : 'bg-blue-500',
-                  isMultiSelected && 'bg-white'
-                )}
-                aria-label={hasDraft ? 'Has draft' : 'Unread message'}
-              />
-            )}
+            {/* Status indicator dot: red for draft, amber clock for scheduled, blue for unread */}
+            {(hasDraft || hasScheduledMessage || isUnread) &&
+              (hasScheduledMessage && !hasDraft ? (
+                <div
+                  className={cn(
+                    'absolute left-1.5 top-8 text-amber-500',
+                    isMultiSelected && 'text-white'
+                  )}
+                  aria-label='Has scheduled message'>
+                  <Clock className='size-3' />
+                </div>
+              ) : (
+                <div
+                  className={cn(
+                    'absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full',
+                    hasDraft ? 'bg-red-500' : 'bg-blue-500',
+                    isMultiSelected && 'bg-white'
+                  )}
+                  aria-label={hasDraft ? 'Has draft' : 'Unread message'}
+                />
+              ))}
 
             <div className='absolute top-3 left-1'>
               {viewMode === 'edit' ? (

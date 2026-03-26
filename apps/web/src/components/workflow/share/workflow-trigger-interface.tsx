@@ -114,7 +114,7 @@ export function WorkflowTriggerInterface() {
         {!site.hideBranding && (
           <div className='absolute bottom-0 left-0 right-0 z-10 flex h-10 px-4 items-center border-t bg-background/50 text-sm text-muted-foreground backdrop-blur-sm'>
             Powered by{' '}
-            <a href='https://auxx.ai' className='underline'>
+            <a href='https://auxx.ai' className='underline ms-1'>
               Auxx.ai
             </a>
           </div>

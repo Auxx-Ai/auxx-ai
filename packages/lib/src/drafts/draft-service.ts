@@ -297,13 +297,32 @@ export class DraftService {
       },
     })
 
-    return drafts.map((d) => this.toStandaloneDraftMeta(d))
+    // Fetch pending scheduled times for these drafts
+    const scheduledRows = await this.db
+      .select({
+        draftId: schema.ScheduledMessage.draftId,
+        scheduledAt: schema.ScheduledMessage.scheduledAt,
+      })
+      .from(schema.ScheduledMessage)
+      .where(
+        and(
+          inArray(schema.ScheduledMessage.draftId, ids),
+          eq(schema.ScheduledMessage.organizationId, this.organizationId),
+          eq(schema.ScheduledMessage.status, 'PENDING')
+        )
+      )
+
+    const scheduledAtMap = new Map<string, Date>(
+      scheduledRows.filter((r) => r.draftId).map((r) => [r.draftId!, r.scheduledAt])
+    )
+
+    return drafts.map((d) => this.toStandaloneDraftMeta(d, scheduledAtMap.get(d.id) ?? null))
   }
 
   /**
    * Converts a draft database row to StandaloneDraftMeta.
    */
-  private toStandaloneDraftMeta(draft: any): StandaloneDraftMeta {
+  private toStandaloneDraftMeta(draft: any, scheduledAt: Date | null = null): StandaloneDraftMeta {
     const content = (draft.content as DraftContent) || DEFAULT_DRAFT_CONTENT
 
     return {
@@ -315,6 +334,7 @@ export class DraftService {
       recipientSummary: this.buildRecipientSummary(content),
       updatedAt: draft.updatedAt.toISOString(),
       createdAt: draft.createdAt.toISOString(),
+      scheduledAt: scheduledAt?.toISOString() ?? null,
     }
   }
 

@@ -164,4 +164,6 @@ export interface StandaloneDraftMeta {
   updatedAt: string
   /** Creation time (ISO date string) */
   createdAt: string
+  /** If this draft has a pending scheduled send, the ISO date it's scheduled for */
+  scheduledAt: string | null
 }
