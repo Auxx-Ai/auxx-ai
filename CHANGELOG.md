@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.105](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.104...auxx-v0.1.105) (2026-03-27)
+
+
+### Features
+
+* enhance workflow components with improved event handling and UI updates ([#341](https://github.com/Auxx-Ai/auxx-ai/issues/341)) ([90c5748](https://github.com/Auxx-Ai/auxx-ai/commit/90c5748674d2c0b5600ecf2a1b03c9851abcacb7))
+* variableTag component to allow array ([4bd196e](https://github.com/Auxx-Ai/auxx-ai/commit/4bd196e7468eee433f9e509308d2e8ba38e10af2))
+
 ## [0.1.104](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.103...auxx-v0.1.104) (2026-03-26)
 
 
