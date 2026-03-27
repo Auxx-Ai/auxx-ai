@@ -257,7 +257,11 @@ export function ViewsGroup({
     if (!isEditMode) {
       if (visibleViews.length === 0) {
         return (
-          <SidebarMenuButton variant='dashed' size='sm' onClick={() => setShowCreateView(true)}>
+          <SidebarMenuButton
+            variant='dashed'
+            size='sm'
+            onClick={() => setShowCreateView(true)}
+            className='group-data-[collapsible=icon]:hidden'>
             Create a view
           </SidebarMenuButton>
         )
@@ -317,7 +321,9 @@ export function ViewsGroup({
 
   const additionalOptions = (
     <>
-      <DropdownMenuItem onClick={() => setShowCreateView(true)}>
+      <DropdownMenuItem
+        onClick={() => setShowCreateView(true)}
+        className='group-data-[collapsible=icon]:hidden!'>
         <TableProperties />
         Create view
       </DropdownMenuItem>

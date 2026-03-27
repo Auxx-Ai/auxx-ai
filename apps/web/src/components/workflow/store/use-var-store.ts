@@ -765,7 +765,19 @@ export const useVarStore = create<VarStoreState>()(
           }
 
           // Check variable index (includes node outputs + loop vars)
-          return get().variableIndex.get(variableId)
+          const direct = get().variableIndex.get(variableId)
+          if (direct) return direct
+
+          // If ID contains numeric accessors [0], [-1], [n], resolve via [*] equivalent
+          const normalized = variableId.replace(/\[-?\d+\]/g, '[*]')
+          if (normalized !== variableId) {
+            const starVar = get().variableIndex.get(normalized)
+            if (starVar) {
+              return { ...starVar, id: variableId }
+            }
+          }
+
+          return undefined
         },
 
         getAvailableVariables: (nodeId: string) => {

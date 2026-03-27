@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/hooks/use-variable.ts
 
 import { useStore } from '@xyflow/react'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { shallow } from 'zustand/shallow'
 import { useVarStore } from '../store/use-var-store'
 import type { UnifiedVariable } from '../types'
@@ -30,11 +30,27 @@ export function useVariable(
 } {
   const variableId = variableIdIn !== undefined && variableIdIn !== null ? String(variableIdIn) : ''
 
-  // O(1) lookup from variableIndex (stable reference from Map.get)
-  const variable = useVarStore((state) => {
+  // Normalize numeric array accessors [0], [-1], [n] → [*] for store lookup
+  const normalizedId = useMemo(() => variableId.replace(/\[-?\d+\]/g, '[*]'), [variableId])
+  const needsNormalization = normalizedId !== variableId
+
+  // O(1) lookup from variableIndex — always returns a stable Map reference (no new objects)
+  const storeVariable = useVarStore((state) => {
     if (!variableId) return undefined
-    return state.variableIndex.get(variableId)
+    return (
+      state.variableIndex.get(variableId) ??
+      (needsNormalization ? state.variableIndex.get(normalizedId) : undefined)
+    )
   })
+
+  // If we resolved via normalization, patch the ID outside the selector to avoid infinite loop
+  const variable = useMemo(() => {
+    if (!storeVariable) return undefined
+    if (needsNormalization && storeVariable.id !== variableId) {
+      return { ...storeVariable, id: variableId }
+    }
+    return storeVariable
+  }, [storeVariable, variableId, needsNormalization])
 
   // Check availability if nodeId provided
   const isAvailable = useVarStore((state) => {
@@ -42,7 +58,9 @@ export function useVariable(
     if (variableId.startsWith('env.') || variableId.startsWith('sys.')) return true
     const availability = state.availability.get(nodeId)
     if (!availability) return true
-    return availability.variables.some((v) => v.id === variableId)
+    // Check both the exact ID and the [*] normalized form
+    const normalized = variableId.replace(/\[-?\d+\]/g, '[*]')
+    return availability.variables.some((v) => v.id === variableId || v.id === normalized)
   })
 
   if (!variable) {

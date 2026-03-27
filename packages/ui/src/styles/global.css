@@ -352,7 +352,8 @@
   --primary-50: 44 49 58;
   --primary-100: 38 42 50;
   --primary-150: 32 36 43;
-  --primary-200: var(--zinc-800);
+  --primary-200: 30 34 39;
+  /* --primary-200: var(--zinc-800); */
   --primary-300: var(--zinc-700);
   --primary-400: var(--zinc-600);
   --primary-500: var(--zinc-500);

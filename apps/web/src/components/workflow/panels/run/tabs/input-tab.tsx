@@ -8,13 +8,15 @@ import { toastError } from '@auxx/ui/components/toast'
 import { isMac } from '@auxx/utils'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { useStoreApi } from '@xyflow/react'
-import { AlertCircle, AlertTriangle, Play } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Play, Workflow } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useWorkflowTrigger } from '~/components/workflow/hooks'
 import { initializeTriggers } from '~/components/workflow/nodes/initialize-triggers'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useRunStore } from '~/components/workflow/store/run-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { useDemo } from '~/hooks/use-demo'
 import { useWorkflowRun } from '~/hooks/use-workflow-run'
 
 // Initialize triggers once
@@ -33,6 +35,8 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
   const isRunning = useRunStore((state) => state.isRunning)
   const activeRun = useRunStore((state) => state.activeRun)
   const setRunPanelTab = usePanelStore((state) => state.setRunPanelTab)
+  const { isDemo } = useDemo()
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false)
 
   // Get ReactFlow store for reading current node data
   const reactFlowStore = useStoreApi()
@@ -182,6 +186,12 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
   }
 
   const handleStartRun = async () => {
+    // Show limit dialog for demo users
+    if (isDemo) {
+      setLimitDialogOpen(true)
+      return
+    }
+
     // Check if workflow has a trigger
     if (!hasTrigger) {
       toastError({
@@ -263,13 +273,15 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
     <div className='space-y-4'>
       {/* No trigger warning */}
       {!hasTrigger && (
-        <Alert variant='destructive'>
-          <AlertTriangle className='h-4 w-4' />
-          <AlertDescription>
-            This workflow doesn't have a trigger node. Add a trigger node (like "Message Received")
-            to enable workflow execution.
-          </AlertDescription>
-        </Alert>
+        <div className='pt-10 px-3'>
+          <Alert variant='destructive'>
+            <AlertTriangle />
+            <AlertDescription>
+              This workflow doesn't have a trigger node. Add a trigger node (like "Message
+              Received") to enable workflow execution.
+            </AlertDescription>
+          </Alert>
+        </div>
       )}
 
       {/* Trigger-specific inputs */}
@@ -324,6 +336,14 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
           </KbdGroup>
         </Button>
       </div>
+
+      <LimitReachedDialog
+        open={limitDialogOpen}
+        onOpenChange={setLimitDialogOpen}
+        icon={Workflow}
+        title='Demo Limit Reached'
+        description='Running workflows is not available in demo mode. Sign up to start automating your workflows.'
+      />
     </div>
   )
 }

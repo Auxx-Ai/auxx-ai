@@ -12,6 +12,10 @@ import { InlinePickerPopover } from '~/components/editor/inline-picker'
 import { Tooltip, TooltipExplanation } from '~/components/global/tooltip'
 import { type BaseType, type UnifiedVariable, VAR_MODE } from '~/components/workflow/types'
 import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
+import {
+  VariableTagContextMenu,
+  VariableTagDropdown,
+} from '~/components/workflow/ui/variables/variable-tag-context-menu'
 import { containsVariableReference } from '~/components/workflow/utils/variable-utils'
 import { VarTypeIcon } from '../../utils'
 import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
@@ -328,7 +332,16 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
       [onChange, setContent]
     )
 
-    // Extract variable from content for picker mode display
+    // Handle variable ID change from context menu (e.g., array accessor update)
+    const handleVariableIdChange = useCallback(
+      (newId: string) => {
+        setTimeout(() => {
+          setContent(newId)
+          onChange?.(newId, false)
+        }, 0)
+      },
+      [onChange, setContent]
+    )
 
     return (
       <div
@@ -376,7 +389,18 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             popoverHeight={500}>
             <div className='w-full h-8 flex items-center'>
               {value ? (
-                <VariableTag variableId={value} nodeId={nodeId} isShort />
+                <VariableTagDropdown variableId={value} onVariableIdChange={handleVariableIdChange}>
+                  <VariableTagContextMenu
+                    variableId={value}
+                    onVariableIdChange={handleVariableIdChange}>
+                    <VariableTag
+                      variableId={value}
+                      nodeId={nodeId}
+                      isShort
+                      onVariableIdChange={handleVariableIdChange}
+                    />
+                  </VariableTagContextMenu>
+                </VariableTagDropdown>
               ) : (
                 <span className='text-sm text-primary-400 truncate pointer-events-none'>
                   {placeholder}

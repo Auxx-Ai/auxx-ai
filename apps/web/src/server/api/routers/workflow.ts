@@ -416,9 +416,14 @@ export const workflowRouter = createTRPCRouter({
    * Update an existing workflow app (updates active workflow)
    */
   update: protectedProcedure.input(updateWorkflowSchema).mutation(async ({ ctx, input }) => {
+    // Block demo users from enabling workflows
+    if (input.enabled) {
+      const { DemoGuard } = await import('@auxx/lib/demo')
+      await DemoGuard.requireNotDemo(ctx.session.organizationId, 'enable workflows')
+    }
+
     const workflowService = new WorkflowService(ctx.db)
 
-    console.log('[workflow.update] Updating workflow with input:', input)
     try {
       return await workflowService.update(ctx.session.organizationId, input)
     } catch (error) {

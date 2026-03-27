@@ -54,12 +54,11 @@ const DrawerComments = ({
     { recordId },
     { enabled: !!recordId }
   )
-  console.log('Fetched comments for recordId', recordId, commentsData?.comments)
 
   // Loading state
   if (isLoading) {
     return (
-      <div className='flex items-center justify-center h-full w-full'>
+      <div className='flex items-center justify-center h-full w-full flex-1'>
         <EmptyState
           icon={MessagesSquare}
           iconClassName='animate-spin'
@@ -72,7 +71,7 @@ const DrawerComments = ({
 
   // Content state (including empty state)
   return (
-    <div className='relative h-full w-full flex flex-col'>
+    <div className='relative h-full w-full flex flex-col flex-1'>
       <div className='flex items-center justify-between px-4 sticky top-0 z-1 pt-3'>
         <h2 className='text-base flex items-center space-x-2 gap-2 text-[14px]'>
           <MessagesSquare className='size-4 text-muted-foreground/50' />

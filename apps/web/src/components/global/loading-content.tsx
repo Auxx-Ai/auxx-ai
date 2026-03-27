@@ -1,7 +1,9 @@
 import type React from 'react'
+
 // import { Loading } from './Loading'
 // import { ErrorDisplay } from './ErrorDisplay'
 
+import Loader from '@auxx/ui/components/loader'
 import { Loader2Icon } from 'lucide-react'
 
 export function Loading() {
@@ -41,7 +43,8 @@ export function LoadingSpinner() {
   return (
     <div className='absolute inset-0 grid place-items-center'>
       <div className='flex flex-col items-center gap-2'>
-        <Loader2Icon className='mx-auto size-8 animate-spin' />
+        <Loader size='sm' title='Loading items...' subtitle='Please wait' />
+        {/* <Loader2Icon className='mx-auto size-8 animate-spin' /> */}
       </div>
     </div>
   )

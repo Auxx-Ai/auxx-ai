@@ -15,6 +15,92 @@ import type { FieldDefinition } from '~/components/conditions'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
 
+/** Info about a single array segment within a variable ID */
+export interface ArraySegmentInfo {
+  /** The property name before the bracket (e.g., "to" from "to[*]") */
+  path: string
+  /** The current accessor value (e.g., "*", "0", "-1") */
+  accessor: string
+  /** The full segment string (e.g., "to[*]") */
+  fullSegment: string
+  /** Human-readable label for the property */
+  label: string
+}
+
+/** Pattern matching array bracket notation in variable IDs */
+const ARRAY_SEGMENT_PATTERN = /([^.[]+)\[(-?\d+|\*)\]/g
+
+/**
+ * Parse all array segments from a variable ID
+ * @example
+ * parseArraySegmentsFromId("nodeId.message.to[*].items[0].name")
+ * // → [{ path: "to", accessor: "*", fullSegment: "to[*]", label: "to" },
+ * //    { path: "items", accessor: "0", fullSegment: "items[0]", label: "items" }]
+ */
+export function parseArraySegmentsFromId(variableId: string): ArraySegmentInfo[] {
+  const segments: ArraySegmentInfo[] = []
+  let match: RegExpExecArray | null
+
+  // Reset lastIndex for global regex
+  ARRAY_SEGMENT_PATTERN.lastIndex = 0
+  while ((match = ARRAY_SEGMENT_PATTERN.exec(variableId)) !== null) {
+    segments.push({
+      path: match[1]!,
+      accessor: match[2]!,
+      fullSegment: match[0],
+      label: match[1]!,
+    })
+  }
+  return segments
+}
+
+/**
+ * Replace the accessor for a specific array segment in a variable ID
+ * @example
+ * replaceArrayAccessor("nodeId.msg.to[*].name", "to", "0")
+ * // → "nodeId.msg.to[0].name"
+ */
+export function replaceArrayAccessor(
+  variableId: string,
+  segmentPath: string,
+  newAccessor: string
+): string {
+  // Match the specific segment[accessor] and replace the accessor
+  const pattern = new RegExp(`(${escapeRegExp(segmentPath)})\\[(-?\\d+|\\*)\\]`)
+  return variableId.replace(pattern, `$1[${newAccessor}]`)
+}
+
+/**
+ * Get display label for an accessor — verbose format for context menu items
+ */
+export function getArrayAccessorMenuLabel(accessor: string): string {
+  if (accessor === '*') return 'All items'
+  const idx = Number.parseInt(accessor, 10)
+  if (idx === 0) return 'First item'
+  if (idx === -1) return 'Last item'
+  if (idx < -1) return `${ordinal(Math.abs(idx))} to last`
+  return `${ordinal(idx + 1)} item`
+}
+
+/**
+ * Get compact label for an accessor — for inline display in variable tags
+ */
+export function getArrayAccessorCompactLabel(accessor: string): string {
+  return `[${accessor}]`
+}
+
+/** Get ordinal suffix for a number (1st, 2nd, 3rd, etc.) */
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`
+}
+
+/** Escape special regex characters in a string */
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /**
  * Regular expression pattern for matching workflow variables in the format {{variable-name}}
  * Note: This has the 'g' flag for global matching (finding all occurrences)
@@ -96,19 +182,27 @@ export function buildVariableLabelPath(
   for (let i = 1; i < parts.length; i++) {
     const segment = parts[i]
 
-    // If segment contains [*], first resolve the array parent (without [*]),
-    // then resolve the items variable (with [*])
-    if (segment.includes('[*]')) {
-      const baseSegment = segment.replace('[*]', '')
+    // Check for bracket notation: [*], [0], [-1], [n]
+    const bracketMatch = segment.match(/^(.+?)\[(.+)\]$/)
+    if (bracketMatch) {
+      const baseSegment = bracketMatch[1]!
+      const accessor = bracketMatch[2]!
+
+      // Resolve the array parent (without bracket)
       const baseId = [...parts.slice(0, i), baseSegment].join('.')
       const baseVariable = resolveVariable(baseId)
       labels.push(baseVariable?.label || baseSegment)
 
-      // Now resolve the items variable (with [*])
-      const currentId = parts.slice(0, i + 1).join('.')
-      const itemsVariable = resolveVariable(currentId)
-      if (itemsVariable?.label) {
-        labels.push(itemsVariable.label)
+      if (accessor === '*') {
+        // For [*], also resolve the items variable label
+        const currentId = parts.slice(0, i + 1).join('.')
+        const itemsVariable = resolveVariable(currentId)
+        if (itemsVariable?.label) {
+          labels.push(itemsVariable.label)
+        }
+      } else {
+        // For [0], [-1], [n], show compact accessor in the label
+        labels.push(`[${accessor}]`)
       }
     } else {
       const currentId = parts.slice(0, i + 1).join('.')

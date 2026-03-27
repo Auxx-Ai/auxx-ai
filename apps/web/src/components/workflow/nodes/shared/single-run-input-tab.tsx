@@ -3,8 +3,9 @@
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { useStoreApi } from '@xyflow/react'
-import { AlertCircle, Play } from 'lucide-react'
+import { AlertCircle, Play, Workflow } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { BaseType, type FlowNode, type UnifiedVariable } from '~/components/workflow/types'
 import Section from '~/components/workflow/ui/section'
 import { getUpstreamNodeIds } from '~/components/workflow/utils/graph-utils'
@@ -12,6 +13,7 @@ import {
   getNodeIdFromVariableId,
   getVariableRelationship,
 } from '~/components/workflow/utils/variable-utils'
+import { useDemo } from '~/hooks/use-demo'
 import { useRunSingleNode } from '../../hooks'
 import { useTestInputStore } from '../../store/test-input-store'
 import { useVarStore } from '../../store/use-var-store'
@@ -37,6 +39,9 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
   data,
   onRun,
 }: SingleRunInputTabProps) {
+  const { isDemo } = useDemo()
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false)
+
   // Track if we've initialized to prevent re-initialization
   const initializedRef = useRef(false)
 
@@ -231,7 +236,13 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
 
         {/* Run button */}
         <Button
-          onClick={onRun}
+          onClick={() => {
+            if (isDemo) {
+              setLimitDialogOpen(true)
+              return
+            }
+            onRun()
+          }}
           disabled={!canRun}
           loading={isLoading}
           loadingText='Running...'
@@ -239,6 +250,14 @@ export const SingleRunInputTab = memo(function SingleRunInputTab({
           <Play />
           Run Node
         </Button>
+
+        <LimitReachedDialog
+          open={limitDialogOpen}
+          onOpenChange={setLimitDialogOpen}
+          icon={Workflow}
+          title='Demo Limit Reached'
+          description='Running nodes is not available in demo mode. Sign up to start automating your workflows.'
+        />
       </div>
     </Section>
   )

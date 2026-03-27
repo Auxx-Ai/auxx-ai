@@ -289,7 +289,7 @@ export class ExecutionContextManager {
     // No resource reference - use existing synchronous logic
 
     // Handle array syntax
-    const arrayMatch = path.match(/^(.+?)\[(\d+|\*)\](.*)$/)
+    const arrayMatch = path.match(/^(.+?)\[(-?\d+|\*)\](.*)$/)
     if (arrayMatch) {
       const basePath = arrayMatch[1]
       const index = arrayMatch[2]
@@ -319,13 +319,14 @@ export class ExecutionContextManager {
         }
         return baseValue
       } else {
-        // Access specific index
+        // Access specific index (supports negative: -1 = last, -2 = second to last)
         const idx = parseInt(index, 10)
-        if (idx < 0 || idx >= baseValue.length) {
+        const resolvedIdx = idx < 0 ? baseValue.length + idx : idx
+        if (resolvedIdx < 0 || resolvedIdx >= baseValue.length) {
           this.log('WARN', undefined, `Array index out of bounds: ${path}`)
           return undefined
         }
-        const item = baseValue[idx]
+        const item = baseValue[resolvedIdx]
         if (rest) {
           const restPath = rest.startsWith('.') ? rest.slice(1) : rest
           // Check if item is a ResourceReference — resolve via recordFieldCache
@@ -410,8 +411,8 @@ export class ExecutionContextManager {
         continue
       }
 
-      // Handle [n] array access within nested path (e.g., "items[0]" or "items[*]")
-      const arrayMatch = segment.match(/^(.+?)\[(\d+|\*)\]$/)
+      // Handle [n] array access within nested path (e.g., "items[0]", "items[-1]", or "items[*]")
+      const arrayMatch = segment.match(/^(.+?)\[(-?\d+|\*)\]$/)
       if (arrayMatch) {
         const key = arrayMatch[1]
         const index = arrayMatch[2]
@@ -428,7 +429,7 @@ export class ExecutionContextManager {
           return current // Return the array itself
         } else {
           const idx = parseInt(index, 10)
-          current = current[idx]
+          current = idx < 0 ? current[current.length + idx] : current[idx]
         }
       } else {
         if (typeof current !== 'object') {

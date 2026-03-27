@@ -2,8 +2,14 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { isEntityDefinitionType } from '@auxx/types/resource'
 import type { SQL } from 'drizzle-orm'
-import { findCachedResource, getCachedResource, getCachedResourceFields } from '../../../cache'
+import {
+  findCachedResource,
+  getCachedResource,
+  getCachedResourceFields,
+  requireCachedEntityDefId,
+} from '../../../cache'
 import type { Condition, ConditionGroup as MailConditionGroup } from '../../../conditions/types'
 import { buildConditionGroupsQuery } from '../../../mail-query/condition-query-builder'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
@@ -497,6 +503,13 @@ export class FindProcessor extends BaseNodeProcessor {
       const resource = await findCachedResource(organizationId, resourceType)
       if (!resource) {
         throw new Error(`Unknown resource type: ${resourceType}`)
+      }
+
+      // Entity definition types (contact, ticket, part, etc.) store data in EntityInstance/FieldValue.
+      // Resolve the entityType string to the actual entityDefinitionId UUID so all downstream code
+      // (condition building, variable setting) treats them as custom entities.
+      if (isEntityDefinitionType(resourceType)) {
+        resourceType = await requireCachedEntityDefId(organizationId, resourceType)
       }
 
       // Validate conditions using dynamic fields (pass cached resource for UUID matching)

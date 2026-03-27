@@ -108,23 +108,21 @@ export function NavUser({ user }: Prop) {
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
                 size='lg'
-                className='ps-1 pe-1.5  h-10 rounded-2xl ring-1 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'>
-                <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>
+                className='ps-1 w-auto pe-1.5  h-8 rounded-2xl ring-0 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:pe-0'>
+                <Avatar className='size-6 rounded-full ring-1 ring-ring/20 group-data-[collapsible=icon]:mx-auto'>
                   <AvatarImage src={displayImage!} alt={displayName} />
                   <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
                 </Avatar>
-                <div className='grid flex-1 text-left text-sm leading-tight'>
-                  <span className='truncate font-semibold'>{displayName}</span>
-                  <span className='truncate text-xs'>{displayEmail}</span>
+                <div className='grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden pe-2'>
+                  <span className='truncate'>{displayName}</span>
                 </div>
-                <ChevronsUpDown className='ml-auto size-4' />
               </SidebarMenuButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              className='w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg'
+              className='w-(--radix-dropdown-menu-trigger-width) min-w-56'
               // side={isMobile ? 'bottom' : 'right'}
               align='start'
-              sideOffset={-42}>
+              sideOffset={-32}>
               <DropdownMenuLabel className='p-0 font-normal'>
                 <div className='flex items-center gap-2 px-1 py-1.5 text-left text-sm'>
                   <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>

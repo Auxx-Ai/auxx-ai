@@ -5,13 +5,23 @@ import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { AlertCircle, AlertTriangle, CheckCircle2, Clock, Play, XCircle } from 'lucide-react'
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Play,
+  Workflow,
+  XCircle,
+} from 'lucide-react'
 import { memo, useState } from 'react'
+import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Section from '~/components/workflow/ui/section'
 import StructuredOutputGenerator from '~/components/workflow/ui/structured-output-generator'
 import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
 import { jsonToSchema } from '~/components/workflow/utils/schema-to-variable'
+import { useDemo } from '~/hooks/use-demo'
 import { useRunSingleNode } from '../../hooks'
 import { useRunStore } from '../../store/run-store'
 
@@ -36,6 +46,8 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
   inferredSchema,
 }: SingleRunResultTabProps) {
   const [isSchemaEditorOpen, setIsSchemaEditorOpen] = useState(false)
+  const { isDemo } = useDemo()
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   // Get data from hooks inside the component
   const { result: runResult, isRunning } = useRunSingleNode(nodeId)
   const nodeExecution = useRunStore((state) => state.getNodeExecution(nodeId))
@@ -148,10 +160,27 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
           <AlertCircle className='mb-2 size-8 text-muted-foreground' />
           <h3 className='text-medium mb-0'>No execution results yet.</h3>
           <div className='text-sm text-muted-foreground mb-2'>Run the node to see output.</div>
-          <Button variant='outline' size='sm' onClick={onRun} disabled={isRunning || !onRun}>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              if (isDemo) {
+                setLimitDialogOpen(true)
+                return
+              }
+              onRun?.()
+            }}
+            disabled={isRunning || !onRun}>
             <Play />
             Run this node
           </Button>
+          <LimitReachedDialog
+            open={limitDialogOpen}
+            onOpenChange={setLimitDialogOpen}
+            icon={Workflow}
+            title='Demo Limit Reached'
+            description='Running nodes is not available in demo mode. Sign up to start automating your workflows.'
+          />
         </div>
       </div>
     )

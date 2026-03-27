@@ -422,7 +422,7 @@ function MailboxInner({
 
                 {/* Show pending actions badge in mail mode */}
               </div>
-              <div className='flex items-center shrink-0 gap-2'>
+              <div className='hidden items-center shrink-0 gap-2 sm:flex'>
                 <RadioTab
                   value={mode}
                   onValueChange={setMode}

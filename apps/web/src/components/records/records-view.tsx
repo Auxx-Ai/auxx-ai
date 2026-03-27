@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import Loader from '@auxx/ui/components/loader'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -571,7 +572,8 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
     const loadingContent = (
       <MainPageContent>
         <div className='flex h-full items-center justify-center'>
-          <div className='h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent' />
+          <Loader size='sm' title='Loading records...' subtitle='Please wait' />
+          {/* <div className='h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent' /> */}
         </div>
       </MainPageContent>
     )

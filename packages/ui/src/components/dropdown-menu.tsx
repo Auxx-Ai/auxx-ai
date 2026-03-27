@@ -1,22 +1,24 @@
+// packages/ui/src/components/dropdown-menu.tsx
+
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { cva, type VariantProps } from 'class-variance-authority'
+import type { VariantProps } from 'class-variance-authority'
 import { Check, ChevronRight } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import type * as React from 'react'
-
-const dropdownVariants = cva('', {
-  variants: {
-    variant: {
-      default: 'focus:bg-accent/50 focus:text-accent-foreground',
-      destructive: 'text-bad-500 focus:bg-bad-50 focus:text-bad-500',
-    },
-  },
-  defaultVariants: {
-    variant: 'default',
-  },
-})
+import {
+  menuCheckboxItemStyles,
+  menuContentStyles,
+  menuItemStyles,
+  menuLabelStyles,
+  menuRadioItemStyles,
+  menuSeparatorStyles,
+  menuShortcutStyles,
+  menuSubContentStyles,
+  menuSubTriggerStyles,
+  menuVariants,
+} from './menu-styles'
 
 const DropdownMenu = DropdownMenuPrimitive.Root
 
@@ -38,16 +40,11 @@ function DropdownMenuSubTrigger({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger> & {
   inset?: boolean
-  variant?: VariantProps<typeof dropdownVariants>['variant']
+  variant?: VariantProps<typeof menuVariants>['variant']
 }) {
   return (
     <DropdownMenuPrimitive.SubTrigger
-      className={cn(
-        dropdownVariants({ variant }),
-        'flex cursor-default select-none items-center gap-2 rounded-full px-2 py-1 text-sm outline-hidden data-[state=open]:bg-accent/50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
-        inset && 'pl-8',
-        className
-      )}
+      className={cn(menuVariants({ variant }), menuSubTriggerStyles, inset && 'pl-8', className)}
       {...props}>
       {children}
       <ChevronRight className='ml-auto' />
@@ -61,11 +58,7 @@ function DropdownMenuSubContent({
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
   return (
     <DropdownMenuPrimitive.SubContent
-      className={cn(
-        'z-50 min-w-32 overflow-hidden rounded-2xl border border-foreground/15 bg-popover/70 p-1 text-popover-foreground shadow-sm shadow-black/10 dark:shadow-black/50  inset-shadow-2xs inset-shadow-white/25 backdrop-blur-lg',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
-        className
-      )}
+      className={cn(...menuSubContentStyles, className)}
       {...props}
     />
   )
@@ -82,11 +75,7 @@ function DropdownMenuContent({
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
-        className={cn(
-          'z-50 min-w-32 rounded-2xl border border-foreground/15 dark:border-popover bg-popover/70 p-1 text-popover-foreground shadow-sm shadow-black/10 dark:shadow-black/50  inset-shadow-2xs inset-shadow-white/25 backdrop-blur-lg ',
-          'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
-          className
-        )}
+        className={cn(...menuContentStyles, className)}
         {...props}
       />
     </DropdownMenuPrimitive.Portal>
@@ -100,16 +89,11 @@ function DropdownMenuItem({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Item> & {
   inset?: boolean
-  variant?: VariantProps<typeof dropdownVariants>['variant']
+  variant?: VariantProps<typeof menuVariants>['variant']
 }) {
   return (
     <DropdownMenuPrimitive.Item
-      className={cn(
-        dropdownVariants({ variant }),
-        'relative flex cursor-default select-none items-center gap-2 rounded-2xl px-2 py-1 text-sm outline-hidden transition-colors data-disabled:pointer-events-none data-disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0',
-        inset && 'pl-8',
-        className
-      )}
+      className={cn(menuVariants({ variant }), menuItemStyles, inset && 'pl-8', className)}
       {...props}
     />
   )
@@ -122,15 +106,11 @@ function DropdownMenuCheckboxItem({
   variant,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem> & {
-  variant?: VariantProps<typeof dropdownVariants>['variant']
+  variant?: VariantProps<typeof menuVariants>['variant']
 }) {
   return (
     <DropdownMenuPrimitive.CheckboxItem
-      className={cn(
-        dropdownVariants({ variant }),
-        'relative flex cursor-default select-none items-center rounded-full py-1 pl-8 pr-2 text-sm outline-hidden transition-colors data-disabled:pointer-events-none data-disabled:opacity-50',
-        className
-      )}
+      className={cn(menuVariants({ variant }), menuCheckboxItemStyles, className)}
       checked={checked}
       {...props}>
       <span className='absolute left-2 flex h-3.5 w-3.5 items-center justify-center'>
@@ -149,15 +129,11 @@ function DropdownMenuRadioItem({
   variant,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem> & {
-  variant?: VariantProps<typeof dropdownVariants>['variant']
+  variant?: VariantProps<typeof menuVariants>['variant']
 }) {
   return (
     <DropdownMenuPrimitive.RadioItem
-      className={cn(
-        dropdownVariants({ variant }),
-        'relative flex cursor-default select-none items-center rounded-full py-1 pl-8 pr-2 text-sm outline-hidden transition-colors data-disabled:pointer-events-none data-disabled:opacity-50',
-        className
-      )}
+      className={cn(menuVariants({ variant }), menuRadioItemStyles, className)}
       {...props}>
       {children}
       <span className='absolute right-2 flex h-3.5 w-3.5 items-center justify-center'>
@@ -176,7 +152,7 @@ function DropdownMenuLabel({
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Label> & { inset?: boolean }) {
   return (
     <DropdownMenuPrimitive.Label
-      className={cn('px-2 py-1.5 text-sm font-semibold', inset && 'pl-8', className)}
+      className={cn(menuLabelStyles, inset && 'pl-8', className)}
       {...props}
     />
   )
@@ -187,15 +163,12 @@ function DropdownMenuSeparator({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
   return (
-    <DropdownMenuPrimitive.Separator
-      className={cn('-mx-1 my-1 h-px bg-foreground/5', className)}
-      {...props}
-    />
+    <DropdownMenuPrimitive.Separator className={cn(menuSeparatorStyles, className)} {...props} />
   )
 }
 
 const DropdownMenuShortcut = ({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) => {
-  return <span className={cn('ml-auto text-xs tracking-widest opacity-60', className)} {...props} />
+  return <span className={cn(menuShortcutStyles, className)} {...props} />
 }
 DropdownMenuShortcut.displayName = 'DropdownMenuShortcut'
 
@@ -215,5 +188,5 @@ export {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuRadioGroup,
-  dropdownVariants,
+  menuVariants as dropdownVariants,
 }

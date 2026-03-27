@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/nodes/components/variable-tag.tsx
+// apps/web/src/components/workflow/ui/variables/variable-tag.tsx
 
 import {
   Tooltip,
@@ -9,7 +9,7 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, Globe, Settings } from 'lucide-react'
 import type React from 'react'
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useNodeTitle } from '~/components/workflow/hooks'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
 import { useVarStore } from '~/components/workflow/store/use-var-store'
@@ -21,12 +21,7 @@ import {
   getPathFromVariableId,
 } from '~/components/workflow/utils/variable-utils'
 
-// apps/web/src/components/workflow/ui/variables/line3-icon.tsx
-
-/**
- * Line3Icon
- * SVG icon representing a diagonal line, used as a divider in variable tags.
- */
+/** Slash SVG separator between node title and variable path */
 const Slash: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg
     width='5'
@@ -42,11 +37,13 @@ const Slash: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 )
 
-type VariableTagProps = {
-  variableId: string // Variable ID to fetch from store
-  nodeId?: string // Node ID to calculate upstream variables for validation
+export type VariableTagProps = {
+  variableId: string
+  nodeId?: string
   isShort?: boolean
-  selected?: boolean // Optional prop to indicate if the tag is selected
+  selected?: boolean
+  /** Callback when variable ID changes (e.g., array accessor updated via context menu) */
+  onVariableIdChange?: (newId: string) => void
 }
 
 const VariableTag = ({
@@ -54,132 +51,39 @@ const VariableTag = ({
   nodeId,
   isShort = true,
   selected = false,
+  onVariableIdChange,
 }: VariableTagProps) => {
-  // Fetch variable from store using the proper hook
-  // Pass nodeId to verify variable is available upstream
   const { variable, isValid, isSystemVar, isEnvVar, isNodeVar } = useVariable(variableId, nodeId)
-  // Extract node ID from variable ID using helper
+
   const variableNodeId = useMemo(
     () => (variable ? getNodeIdFromVariableId(variable.id) : undefined),
     [variable]
   )
 
-  // Get the node title for node variables
   const nodeTitle = useNodeTitle(isNodeVar ? variableNodeId : undefined)
   const typeIcon = (
     <VarTypeIcon type={variable?.type ?? BaseType.STRING} className='mr-0.5 size-3.5 shrink-0' />
   )
   const varTypeTitle = getVarTypeName(variable?.type ?? BaseType.STRING)
 
-  // Get the display name for the variable using helper functions
   const variableName = useMemo(() => {
     if (!variable) return ''
-    // For system variables, show the full ID (e.g., "sys.userId")
     if (isSystemVar) return variable.id
-    // For env variables, show the path (e.g., "API_KEY")
     if (isEnvVar) return getPathFromVariableId(variable.id)
-    // For node variables, build a label-based path (e.g., "Contact.first_name" instead of "cm1abc.first_name")
     const resolveVar = useVarStore.getState().actions.getVariableById
     return buildVariableLabelPath(variable.id, resolveVar) || getPathFromVariableId(variable.id)
   }, [variable, isSystemVar, isEnvVar])
 
-  // Calculate error message for invalid variables
+  const pathSegments = useMemo(() => variableName.split('.').filter(Boolean), [variableName])
+
   const errorMessage = useMemo(() => {
-    if (!variable) {
-      return 'Variable not found'
-    }
-
-    // For node variables without a nodeId context
-    if (isNodeVar && !nodeId) {
-      return 'Cannot validate variable - no context node'
-    }
-
-    // If we have a valid variable from store but upstream check fails
-    // if (
-    //   isNodeVar &&
-    //   variableNodeId &&
-    //   upstreamNodeIds &&
-    //   !upstreamNodeIds.has(variableNodeId)
-    // ) {
-    //   return 'Node is not connected (upstream)'
-    // }
-
-    // If variable doesn't have a nodeId in its ID
-    if (isNodeVar && !variableNodeId) {
-      return 'Variable missing source node information'
-    }
-
+    if (!variable) return 'Variable not found'
+    if (isNodeVar && !nodeId) return 'Cannot validate variable - no context node'
+    if (isNodeVar && !variableNodeId) return 'Variable missing source node information'
     return 'Invalid variable reference'
   }, [variable, isNodeVar, nodeId, variableNodeId])
 
-  const renderContent = useCallback(
-    (withMaxWidth: boolean = true) => (
-      <div
-        className={cn(
-          'inline-flex shrink-0 h-5 max-w-full items-center rounded-md border-[0.5px] border-border bg-background px-1.5 text-xs shadow-xs cursor-pointer',
-          !isValid && 'border-destructive bg-destructive/10',
-          // Use group-aria-selected to style based on parent's aria-selected state
-          'group-aria-selected/var:border-transparent group-aria-selected/var:bg-info group-aria-selected/var:text-background group-aria-selected/var:ring-0 group-aria-selected/var:ring-info/90',
-          isEnvVar && 'group-aria-selected/var:bg-violet-500',
-          isSystemVar && 'group-aria-selected/var:bg-gray-500',
-          !isValid && 'group-aria-selected/var:bg-destructive' // Override selected color for invalid vars
-        )}
-        onClick={(e) => {
-          if ((e.metaKey || e.ctrlKey) && isNodeVar) {
-            e.stopPropagation()
-            // handleVariableJump()
-          }
-        }}>
-        {isNodeVar && (
-          <>
-            {nodeTitle && (
-              <>
-                <div
-                  className={cn(
-                    'truncate shrink-0 font-medium text-muted-foreground group-aria-selected/var:text-white/90',
-                    withMaxWidth && 'max-w-[50px]'
-                  )}
-                  title={nodeTitle}>
-                  {nodeTitle}
-                </div>
-                <Slash className='mx-0.5 size-3 shrink-0 text-muted-foreground group-aria-selected/var:text-white/90' />
-              </>
-            )}
-            <span title={varTypeTitle} className='shrink-0'>
-              {typeIcon}
-            </span>
-          </>
-        )}
-        {isSystemVar && (
-          <Settings className='mr-0.5 size-3.5 shrink-0 text-gray-500 group-aria-selected/var:text-white/50' />
-        )}
-        {isEnvVar && (
-          <Globe className='mr-0.5 size-3.5 shrink-0 text-violet-600 group-aria-selected/var:text-white/50' />
-        )}
-        <div
-          className={cn(
-            'truncate font-medium ',
-            isSystemVar && 'text-gray-500',
-            isEnvVar && 'text-violet-600',
-            isNodeVar && 'text-green-500',
-            !isValid && 'text-destructive',
-            'group-aria-selected/var:text-white'
-          )}
-          title={variableName}>
-          {variableName}
-        </div>
-
-        {!isValid && (
-          <AlertTriangle className='ml-0.5 size-3 text-destructive group-aria-selected/var:text-white/90' />
-        )}
-      </div>
-    ),
-    [isValid, isEnvVar, isSystemVar, isNodeVar, nodeTitle, typeIcon, varTypeTitle, variableName]
-  )
-
-  const content = renderContent(true)
-
-  // If variable not found in store, show error
+  // Variable not found — show error state
   if (!variable) {
     return (
       <div
@@ -191,11 +95,88 @@ const VariableTag = ({
     )
   }
 
+  /** Render variable path with segment collapsing for long node variable paths */
+  const renderPath = () => {
+    // For non-short mode, system/env vars, or short paths — show full text
+    if (!isShort || !isNodeVar || pathSegments.length <= 2) {
+      return <span className='truncate'>{variableName}</span>
+    }
+
+    // 3+ segments: collapse middle into ellipsis
+    const first = pathSegments[0]
+    const last = pathSegments[pathSegments.length - 1]
+    const middle = pathSegments.slice(1, -1)
+
+    return (
+      <>
+        <span className='truncate shrink-[2]'>{first}</span>
+        <span className='shrink-0 opacity-60' title={middle.join(' > ')}>
+          .….
+        </span>
+        <span className='truncate'>{last}</span>
+      </>
+    )
+  }
+
+  const tag = (
+    <div
+      className={cn(
+        'inline-flex shrink-0 h-5 max-w-full items-center rounded-md border-[0.5px] border-border bg-background px-1.5 text-xs shadow-xs cursor-pointer',
+        !isValid && 'border-destructive bg-destructive/10',
+        'group-aria-selected/var:border-transparent group-aria-selected/var:bg-info group-aria-selected/var:text-background group-aria-selected/var:ring-0 group-aria-selected/var:ring-info/90',
+        isEnvVar && 'group-aria-selected/var:bg-violet-500',
+        isSystemVar && 'group-aria-selected/var:bg-gray-500',
+        !isValid && 'group-aria-selected/var:bg-destructive'
+      )}
+      onClick={(e) => {
+        if ((e.metaKey || e.ctrlKey) && isNodeVar) {
+          e.stopPropagation()
+        }
+      }}>
+      {isNodeVar && (
+        <>
+          {nodeTitle && (
+            <>
+              <div className='truncate shrink-[2] min-w-[16px] font-medium text-muted-foreground group-aria-selected/var:text-white/90'>
+                {nodeTitle}
+              </div>
+              <Slash className='mx-0.5 size-3 shrink-0 text-muted-foreground group-aria-selected/var:text-white/90' />
+            </>
+          )}
+          <span title={varTypeTitle} className='shrink-0'>
+            {typeIcon}
+          </span>
+        </>
+      )}
+      {isSystemVar && (
+        <Settings className='mr-0.5 size-3.5 shrink-0 text-gray-500 group-aria-selected/var:text-white/50' />
+      )}
+      {isEnvVar && (
+        <Globe className='mr-0.5 size-3.5 shrink-0 text-violet-600 group-aria-selected/var:text-white/50' />
+      )}
+      <div
+        className={cn(
+          'inline-flex items-center min-w-0 font-medium',
+          isSystemVar && 'text-gray-500',
+          isEnvVar && 'text-violet-600',
+          isNodeVar && 'text-green-500',
+          !isValid && 'text-destructive',
+          'group-aria-selected/var:text-white'
+        )}>
+        {renderPath()}
+      </div>
+      {!isValid && (
+        <AlertTriangle className='ml-0.5 size-3 text-destructive group-aria-selected/var:text-white/90' />
+      )}
+    </div>
+  )
+
+  // Invalid variable — show error tooltip
   if (!isValid) {
     return (
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>{content}</TooltipTrigger>
+          <TooltipTrigger asChild>{tag}</TooltipTrigger>
           <TooltipContent>
             <p>{errorMessage}</p>
           </TooltipContent>
@@ -204,13 +185,17 @@ const VariableTag = ({
     )
   }
 
+  // Valid variable — show path info on hover
   return (
-    <div className='group/variable relative'>
-      <div className='flex justify-center'>{content}</div>
-      <div className='flex opacity-0 group-hover/variable:opacity-100 pointer-events-none group-hover/variable:pointer-events-auto absolute top-0 left-0 z-[1000]'>
-        {renderContent(false)}
-      </div>
-    </div>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{tag}</TooltipTrigger>
+        <TooltipContent side='bottom' className='text-xs'>
+          {nodeTitle && <span className='text-muted-foreground'>{nodeTitle} &middot; </span>}
+          {variableName}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
