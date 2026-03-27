@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.106](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.105...auxx-v0.1.106) (2026-03-27)
+
+
+### Features
+
+* implement CDN video URL handling and block demo users from accessing developer portal ([#343](https://github.com/Auxx-Ai/auxx-ai/issues/343)) ([45f0045](https://github.com/Auxx-Ai/auxx-ai/commit/45f0045747e490ceb47bceeae046a1528283fb54))
+
 ## [0.1.105](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.104...auxx-v0.1.105) (2026-03-27)
 
 
