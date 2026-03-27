@@ -4,6 +4,7 @@ import { motion, useScroll, useTransform } from 'motion/react'
 import { useState } from 'react'
 import { AutoplayVideo } from '~/components/autoplay-video'
 import { Button } from '~/components/ui/button'
+import { videoUrl } from '~/lib/cdn'
 
 export const ImageIllustration = () => {
   const [showVideo, setShowVideo] = useState(false)
@@ -82,7 +83,7 @@ export const ImageIllustration = () => {
               controls
               playOnView={false}
               className='w-full rounded-2xl shadow-2xl'
-              src='/videos/hero-video-1.mp4'
+              src={videoUrl('hero-video-1.mp4')}
             />
           </div>
         </div>

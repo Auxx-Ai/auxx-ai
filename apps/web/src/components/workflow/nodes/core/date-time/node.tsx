@@ -14,10 +14,15 @@ export const DateTimeNode = memo<DateTimeNodeType>(({ id, data, selected }) => {
   // Generate description based on operation
   const getOperationDescription = () => {
     switch (data.operation) {
-      case 'add_subtract':
-        return data.addSubtract
-          ? `${data.addSubtract.action === 'add' ? 'Add' : 'Subtract'} ${data.addSubtract.duration} ${data.addSubtract.unit}`
-          : 'Add/Subtract'
+      case 'add_subtract': {
+        if (!data.addSubtract) return 'Add/Subtract'
+        const action = data.addSubtract.action === 'add' ? 'Add' : 'Subtract'
+        const isDurationVar = data.fieldModes?.['duration'] === false
+        const isUnitVar = data.fieldModes?.['unit'] === false
+        const duration = isDurationVar ? '{x}' : (data.addSubtract.duration ?? '')
+        const unit = isUnitVar ? '{x}' : (data.addSubtract.unit ?? '')
+        return `${action} ${duration} ${unit}`
+      }
       case 'format':
         return data.format?.type === 'custom' && data.format.customFormat
           ? `Format: ${data.format.customFormat}`

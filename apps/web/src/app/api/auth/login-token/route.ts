@@ -2,6 +2,7 @@
 
 import { WEBAPP_URL } from '@auxx/config/server'
 import { issueLoginToken } from '@auxx/credentials/login-token'
+import { getDemoEmailDomain } from '@auxx/lib/demo'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
@@ -20,6 +21,14 @@ export async function POST(request: NextRequest) {
 
   if (!callbackApp || typeof callbackApp !== 'string') {
     return NextResponse.json({ error: 'Missing callbackApp' }, { status: 400 })
+  }
+
+  // Block demo users from accessing the developer portal
+  if (callbackApp === 'build' && session.user.email.endsWith(`@${getDemoEmailDomain()}`)) {
+    return NextResponse.json(
+      { error: 'Demo accounts cannot access the developer portal' },
+      { status: 403 }
+    )
   }
 
   // 3. Resolve app ID to origin

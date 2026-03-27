@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { AutoplayVideo } from '~/components/autoplay-video'
 import { Button } from '~/components/ui/button'
+import { videoUrl } from '~/lib/cdn'
 import { config } from '~/lib/config'
 
 export default function CrmHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
@@ -67,7 +68,7 @@ export default function CrmHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
                   loop
                   muted
                   className='size-full rounded-xl object-cover shadow-lg'
-                  src='/videos/contact-crm.mp4'
+                  src={videoUrl('contact-crm.mp4')}
                 />
               </div>
             </div>

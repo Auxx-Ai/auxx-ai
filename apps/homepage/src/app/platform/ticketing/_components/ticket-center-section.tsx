@@ -1,6 +1,7 @@
 // apps/homepage/src/app/platform/ticketing/_components/ticket-center-section.tsx
 
 import { AutoplayVideo } from '~/components/autoplay-video'
+import { videoUrl } from '~/lib/cdn'
 
 /**
  * TicketCenterSection component displays the ticketing system interface
@@ -19,7 +20,7 @@ export default function TicketCenterSection() {
               </h2>
               <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
                 <AutoplayVideo
-                  src='/videos/data-model-ticket-normal.mp4'
+                  src={videoUrl('data-model-ticket-normal.mp4')}
                   autoPlay
                   loop
                   muted

@@ -1,6 +1,7 @@
 // apps/homepage/src/app/platform/workflow/_components/workflow-content.tsx
 
 import { AutoplayVideo } from '~/components/autoplay-video'
+import { videoUrl } from '~/lib/cdn'
 
 /**
  * WorkflowContent component displays the visual workflow routing section
@@ -25,7 +26,7 @@ export default function WorkflowContent() {
                   loop
                   muted
                   className='h-full w-full object-cover'
-                  src='/videos/workflow-zoom.mp4'
+                  src={videoUrl('workflow-zoom.mp4')}
                 />
               </div>
               <div className='grid gap-6 md:grid-cols-2 md:gap-12'>

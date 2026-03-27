@@ -16,7 +16,11 @@ import { memo, useCallback, useMemo } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
-import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import {
+  VarEditor,
+  VarEditorField,
+  VarEditorFieldRow,
+} from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
 import {
@@ -102,6 +106,55 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
       setInputs(newData)
     },
     [nodeData, setInputs]
+  )
+
+  const handleDurationChange = useCallback(
+    (value: any, isConstantMode: boolean) => {
+      const newData = produce(nodeData, (draft) => {
+        if (!draft.addSubtract) return
+        const wasConstantMode = draft.fieldModes?.['duration'] ?? true
+        const modeChanged = wasConstantMode !== isConstantMode
+
+        if (modeChanged) {
+          draft.addSubtract.duration = undefined
+        } else if (isConstantMode) {
+          const numValue = typeof value === 'number' ? value : parseInt(value, 10)
+          draft.addSubtract.duration = Number.isNaN(numValue) ? undefined : numValue
+        } else {
+          draft.addSubtract.duration = value as string
+        }
+        if (!draft.fieldModes) draft.fieldModes = {}
+        draft.fieldModes['duration'] = isConstantMode
+      })
+      setInputs(newData)
+    },
+    [nodeData, setInputs]
+  )
+
+  const handleUnitChange = useCallback(
+    (value: string, isConstantMode: boolean) => {
+      const newData = produce(nodeData, (draft) => {
+        if (!draft.addSubtract) return
+        const wasConstantMode = draft.fieldModes?.['unit'] ?? true
+        const modeChanged = wasConstantMode !== isConstantMode
+
+        if (modeChanged) {
+          draft.addSubtract.unit = isConstantMode ? TimeUnit.DAYS : ('' as string)
+        } else {
+          draft.addSubtract.unit = value
+        }
+        if (!draft.fieldModes) draft.fieldModes = {}
+        draft.fieldModes['unit'] = isConstantMode
+      })
+      setInputs(newData)
+    },
+    [nodeData, setInputs]
+  )
+
+  // Memoized enum options for time unit VarEditor
+  const timeUnitEnumOptions = useMemo(
+    () => TIME_UNIT_OPTIONS.map((o) => ({ label: o.label, value: o.value })),
+    []
   )
 
   return (
@@ -283,13 +336,13 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
 
           {/* Add/Subtract Operation */}
           {nodeData.operation === DateTimeOperation.ADD_SUBTRACT && data?.addSubtract && (
-            <div className='border-t p-1'>
-              <div className='flex items-center gap-2'>
-                {/* Action Selector */}
+            <div className='border-t'>
+              {/* Action Selector (static) */}
+              <div className='flex items-center gap-2 p-1'>
                 <Select
                   value={nodeData.addSubtract?.action}
                   onValueChange={(value: 'add' | 'subtract') => {
-                    const newData = produce(data, (draft) => {
+                    const newData = produce(nodeData, (draft) => {
                       if (draft.addSubtract) {
                         draft.addSubtract.action = value
                       }
@@ -310,50 +363,60 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
 
-                {/* Duration Input */}
-                <Input
-                  type='number'
-                  value={nodeData.addSubtract?.duration || ''}
-                  onChange={(e) => {
-                    const newData = produce(data, (draft) => {
-                      if (draft.addSubtract) {
-                        draft.addSubtract.duration = parseInt(e.target.value, 10) || 0
-                      }
-                    })
-                    setInputs(newData)
-                  }}
-                  min={0}
-                  className='w-[100px] h-6'
+              {/* Duration (supports variables) */}
+              <VarEditorFieldRow
+                title='Duration'
+                type={BaseType.NUMBER}
+                isRequired
+                onClear={
+                  nodeData.addSubtract?.duration != null && nodeData.addSubtract?.duration !== ''
+                    ? () => handleDurationChange('', nodeData.fieldModes?.['duration'] ?? true)
+                    : undefined
+                }>
+                <VarEditor
+                  nodeId={nodeId}
+                  value={nodeData.addSubtract?.duration}
+                  onChange={handleDurationChange}
+                  varType={BaseType.NUMBER}
+                  mode={VAR_MODE.PICKER}
+                  allowedTypes={[BaseType.NUMBER]}
+                  placeholder='Pick variable'
+                  placeholderConstant='Enter duration'
+                  allowConstant
+                  isConstantMode={nodeData.fieldModes?.['duration'] ?? true}
+                  hideClearButton
                   disabled={isReadOnly}
                 />
+              </VarEditorFieldRow>
 
-                {/* Time Unit Selector */}
-                <Select
-                  value={nodeData.addSubtract?.unit}
-                  onValueChange={(value: TimeUnit) => {
-                    const newData = produce(data, (draft) => {
-                      if (draft.addSubtract) {
-                        draft.addSubtract.unit = value
-                      }
-                    })
-                    setInputs(newData)
-                  }}>
-                  <SelectTrigger
-                    variant='transparent'
-                    className='px-2 h-6 text-sm font-medium'
-                    disabled={isReadOnly}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_UNIT_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Time Unit (supports variables) */}
+              <VarEditorFieldRow
+                title='Unit'
+                type={BaseType.ENUM}
+                isRequired
+                onClear={
+                  nodeData.addSubtract?.unit
+                    ? () => handleUnitChange('', nodeData.fieldModes?.['unit'] ?? true)
+                    : undefined
+                }>
+                <VarEditor
+                  nodeId={nodeId}
+                  value={nodeData.addSubtract?.unit || ''}
+                  onChange={handleUnitChange}
+                  varType={BaseType.ENUM}
+                  mode={VAR_MODE.PICKER}
+                  allowedTypes={[BaseType.ENUM, BaseType.STRING]}
+                  fieldOptions={{ enum: timeUnitEnumOptions }}
+                  placeholder='Pick variable'
+                  placeholderConstant='Select unit'
+                  allowConstant
+                  isConstantMode={nodeData.fieldModes?.['unit'] ?? true}
+                  hideClearButton
+                  disabled={isReadOnly}
+                />
+              </VarEditorFieldRow>
             </div>
           )}
 

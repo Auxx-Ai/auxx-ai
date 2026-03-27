@@ -3,6 +3,7 @@ import { Database, Smile, Sparkles, SquaresUnite } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { AutoplayVideo } from '~/components/autoplay-video'
+import { videoUrl } from '~/lib/cdn'
 import { cn } from '~/lib/utils'
 
 type Preview = 'intuitive' | 'unified' | 'sharing' | 'ai-copilot'
@@ -18,25 +19,25 @@ const previews: PreviewItem[] = [
   {
     name: 'intuitive',
     label: 'Intuitive',
-    video: '/videos/mail-flow.mp4',
+    video: videoUrl('mail-flow.mp4'),
     icon: <Smile />,
   },
   {
     name: 'unified',
     label: 'Unified',
-    video: '/videos/app-install.mp4',
+    video: videoUrl('app-install.mp4'),
     icon: <SquaresUnite />,
   },
   {
     name: 'sharing',
     label: 'Data Model',
-    video: '/videos/entity-template.mp4',
+    video: videoUrl('entity-template.mp4'),
     icon: <Database />,
   },
   {
     name: 'ai-copilot',
     label: 'AI Copilot',
-    video: '/videos/ai-model-choose.mp4',
+    video: videoUrl('ai-model-choose.mp4'),
     icon: <Sparkles />,
   },
 ]

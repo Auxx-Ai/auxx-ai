@@ -1,6 +1,7 @@
 // apps/homepage/src/app/platform/integration/_components/integration-ai-center-section.tsx
 
 import { AutoplayVideo } from '~/components/autoplay-video'
+import { videoUrl } from '~/lib/cdn'
 
 /**
  * IntegrationAiCenterSection component displays AI provider integrations
@@ -23,7 +24,7 @@ export default function IntegrationAiCenterSection() {
                   loop
                   muted
                   className='h-full w-full object-cover'
-                  src='/videos/ai-model-choose.mp4'
+                  src={videoUrl('ai-model-choose.mp4')}
                 />
               </div>
               <div className='grid gap-6 md:grid-cols-2 md:gap-12'>
