@@ -14,6 +14,8 @@ export interface VariableFieldSelectorProps extends FieldSelectorProps {
   nodeId: string
   /** Custom render function for trigger - when provided, uses VariablePicker directly */
   renderTrigger?: (props: { isOpen: boolean; onClick: () => void }) => React.ReactNode
+  /** Callback for array accessor changes (right-click context menu) — updates ID without resetting operator/value */
+  onAccessorChange?: (newVariableId: string) => void
 }
 
 /**
@@ -31,6 +33,7 @@ const VariableFieldSelector = ({
   popoverHeight = 500,
   nodeId,
   renderTrigger,
+  onAccessorChange,
 }: VariableFieldSelectorProps) => {
   /** Handle variable selection and call onChange with variable id */
   const handleVariableSelect = (variable: UnifiedVariable) => {
@@ -57,6 +60,7 @@ const VariableFieldSelector = ({
     <VariableInput
       variableId={value}
       onVariableSelect={handleVariableSelect}
+      onVariableIdChange={onAccessorChange}
       disabled={disabled}
       nodeId={nodeId}
       placeholder={placeholder}
