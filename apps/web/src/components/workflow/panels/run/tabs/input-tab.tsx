@@ -3,10 +3,13 @@
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { Alert, AlertDescription, AlertIcon } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
+import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
+import { isMac } from '@auxx/utils'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { useStoreApi } from '@xyflow/react'
 import { AlertCircle, AlertTriangle, Play } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWorkflowTrigger } from '~/components/workflow/hooks'
 import { initializeTriggers } from '~/components/workflow/nodes/initialize-triggers'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
@@ -251,6 +254,11 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
     }
   }
 
+  // Mod+Enter to run workflow when panel is open
+  const handleStartRunRef = useRef(handleStartRun)
+  handleStartRunRef.current = handleStartRun
+  useHotkey('Mod+Enter', () => handleStartRunRef.current())
+
   return (
     <div className='space-y-4'>
       {/* No trigger warning */}
@@ -310,6 +318,10 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
           title={!hasTrigger ? 'Workflow needs a trigger node to run' : undefined}>
           <Play />
           Run Workflow
+          <KbdGroup size='sm'>
+            <Kbd shortcut={isMac() ? 'cmd' : 'ctrl'} />
+            <Kbd shortcut='enter' />
+          </KbdGroup>
         </Button>
       </div>
     </div>

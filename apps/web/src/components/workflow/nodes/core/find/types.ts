@@ -1,4 +1,5 @@
 // apps/web/src/components/workflow/nodes/core/find/types.ts
+import { generateId } from '@auxx/utils'
 import { z } from 'zod'
 import type { Condition, ConditionGroup } from '~/components/conditions'
 import type { ExecutionResult } from '~/components/workflow/types'
@@ -150,7 +151,15 @@ export function createFindNodeDefaultData(): Partial<FindNodeData> {
     resourceType: 'contact', // Default to contact
     findMode: 'findMany',
     conditions: [], // Keep for backward compatibility
-    conditionGroups: [], // Primary grouping system
+    conditionGroups: [
+      {
+        id: generateId(),
+        conditions: [],
+        logicalOperator: 'OR',
+        order: 0,
+        metadata: { name: 'Group' },
+      },
+    ],
     orderBy: undefined,
     limit: 10, // Default limit of 10 records
     fieldModes: {

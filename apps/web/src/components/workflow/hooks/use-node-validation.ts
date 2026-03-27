@@ -73,7 +73,6 @@ export function useNodeValidation() {
       'false', // if-else node's else handle
       'true', // if-else node's true handle
       LOOP_HANDLES.LOOP_START,
-      LOOP_HANDLES.LOOP_BACK, // Loop exit handle (early exit from loop)
     ]
 
     // Define target handles (inputs)
@@ -209,11 +208,16 @@ export function useNodeValidation() {
       }
     }
 
-    // Check if node inside loop tries to connect outside (except to LOOP_BACK)
+    // Check if node inside loop tries to connect outside (except to LOOP_BACK or the loop's own exit)
     if (sourceNode.data?.loopId && targetNode.data?.loopId !== sourceNode.data.loopId) {
-      if (connection.targetHandle !== LOOP_HANDLES.LOOP_BACK) {
+      const isOwnLoopNode = targetNode.id === sourceNode.data.loopId
+
+      if (isOwnLoopNode) {
+        // Allow connecting to the parent loop node (LOOP_BACK for iteration, or exit handle)
+      } else if (connection.targetHandle !== LOOP_HANDLES.LOOP_BACK) {
         return false
       }
+
       // If connecting to LOOP_BACK, verify it's the correct loop
       if (
         connection.targetHandle === LOOP_HANDLES.LOOP_BACK &&
@@ -282,10 +286,7 @@ export function useNodeValidation() {
       connection.targetHandle === LOOP_HANDLES.LOOP_BACK ||
       connection.targetHandle === 'source' // changed from LOOP_EXIT
     ) {
-      console.log(
-        '[isValidConnection] Skipping cycle check for loop handle:',
-        connection.targetHandle
-      )
+      // Intentional cycle — skip check
     } else if (hasCycle(targetNode)) {
       return false
     }

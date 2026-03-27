@@ -57,7 +57,8 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
     },
   })
 
-  const handleToggleEnabled = async () => {
+  const handleToggleEnabled = async (e: React.MouseEvent) => {
+    e.stopPropagation()
     await updateWorkflow.mutateAsync({ id: workflow.id, enabled: !workflow.enabled })
   }
 
@@ -152,16 +153,10 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
                 <MoreVertical />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align='end'>
+            <DropdownMenuContent align='end' onClick={(e) => e.stopPropagation()}>
               <DropdownMenuItem onClick={handleEditClick}>
                 <Edit />
                 Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href={`/app/workflows/${workflow.id}/test`}>
-                  <TestTube />
-                  Test
-                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleDuplicateClick}>
                 <Copy />

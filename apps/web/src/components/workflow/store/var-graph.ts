@@ -3,6 +3,25 @@
 import { BaseType } from '../types/unified-types'
 import type { LoopContext } from './use-var-store'
 
+/**
+ * Filter out edges that form intentional cycles in loops:
+ * - Edges marked as isLoopBackEdge
+ * - Edges from a node inside a loop back to its parent loop node
+ */
+function getForwardEdges(edges: EdgeMeta[], nodes: NodeMeta[]): EdgeMeta[] {
+  const loopNodeIds = new Set(nodes.filter((n) => n.type === 'loop').map((n) => n.id))
+  return edges.filter((e) => {
+    if (e.data?.isLoopBackEdge) return false
+    if (loopNodeIds.has(e.target)) {
+      const sourceNode = nodes.find((n) => n.id === e.source)
+      if (sourceNode?.parentId === e.target || sourceNode?.data?.loopId === e.target) {
+        return false
+      }
+    }
+    return true
+  })
+}
+
 /** Lightweight node representation for graph computation */
 export interface NodeMeta {
   id: string
@@ -33,12 +52,15 @@ export function buildUpstreamMap(edges: EdgeMeta[], nodes: NodeMeta[]): Map<stri
     upstreamMap.set(nodeId, new Set())
   }
 
-  // Build direct predecessors from edges
+  // Filter out loop-back edges to prevent cycles in upstream computation
+  const forwardEdges = getForwardEdges(edges, nodes)
+
+  // Build direct predecessors from forward edges only
   const directPredecessors = new Map<string, Set<string>>()
   for (const nodeId of nodeIds) {
     directPredecessors.set(nodeId, new Set())
   }
-  for (const edge of edges) {
+  for (const edge of forwardEdges) {
     if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
       directPredecessors.get(edge.target)!.add(edge.source)
     }
@@ -134,7 +156,7 @@ export function topologicalSort(nodes: NodeMeta[], edges: EdgeMeta[]): string[] 
   const nodeIds = new Set(nodes.map((n) => n.id))
 
   // Filter out loop-back edges to break intentional cycles
-  const forwardEdges = edges.filter((e) => !e.data?.isLoopBackEdge)
+  const forwardEdges = getForwardEdges(edges, nodes)
 
   // Build in-degree map from forward edges only
   const inDegree = new Map<string, number>()

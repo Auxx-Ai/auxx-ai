@@ -3,7 +3,7 @@
 import { type Database, database, schema } from '@auxx/database'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { SQL } from 'drizzle-orm'
-import { getCachedResource, getCachedResourceFields } from '../../../cache'
+import { findCachedResource, getCachedResource, getCachedResourceFields } from '../../../cache'
 import type { Condition, ConditionGroup as MailConditionGroup } from '../../../conditions/types'
 import { buildConditionGroupsQuery } from '../../../mail-query/condition-query-builder'
 import { FIND_RESOURCE_CONFIGS } from '../../../resources/find-definitions'
@@ -493,7 +493,8 @@ export class FindProcessor extends BaseNodeProcessor {
       const db = database
 
       // Resolve resource from org cache (system or custom)
-      const resource = await getCachedResource(organizationId, resourceType)
+      // Use findCachedResource to match by id, entityType, or apiSlug
+      const resource = await findCachedResource(organizationId, resourceType)
       if (!resource) {
         throw new Error(`Unknown resource type: ${resourceType}`)
       }

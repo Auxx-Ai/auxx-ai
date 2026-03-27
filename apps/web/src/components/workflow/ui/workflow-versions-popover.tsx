@@ -12,6 +12,7 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { isMac } from '@auxx/utils'
 import { useReactFlow } from '@xyflow/react'
 import { GitBranch } from 'lucide-react'
 import React from 'react'
@@ -37,6 +38,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
   onOpenChange,
   workflowId,
 }) => {
+  const mod = isMac() ? '⌘' : 'Ctrl'
   const [confirm, ConfirmDialog] = useConfirm()
   const [searchQuery, setSearchQuery] = React.useState('')
 
@@ -314,7 +316,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
   // Early return if no workflow ID
   if (!workflowId) {
     return (
-      <Tooltip content='Version History (Cmd+Shift+H)'>
+      <Tooltip content='Version History' shortcut={[mod, '⇧', 'V']}>
         <Button
           variant='ghost'
           size='icon'
@@ -330,7 +332,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
           <div>
-            <Tooltip content='Version History' shortcut='⌘⇧+V'>
+            <Tooltip content='Version History' shortcut={[mod, '⇧', 'V']}>
               <Button variant={open ? 'secondary' : 'ghost'} size='icon-sm' data-selected={open}>
                 <GitBranch />
               </Button>

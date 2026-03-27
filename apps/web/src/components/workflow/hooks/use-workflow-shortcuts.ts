@@ -71,6 +71,8 @@ export function useWorkflowShortcuts() {
   const settingsPanelOpen = usePanelStore((state) => state.settingsPanelOpen)
   const openSettingsPanel = usePanelStore((state) => state.openSettingsPanel)
   const closeSettingsPanel = usePanelStore((state) => state.closeSettingsPanel)
+  const toggleHistoryPopover = usePanelStore((state) => state.toggleHistoryPopover)
+  const toggleVariableEditor = usePanelStore((state) => state.toggleVariableEditor)
 
   // Get selected nodes and edges from ReactFlow
   const getSelectedNodeIds = React.useCallback(() => {
@@ -88,10 +90,12 @@ export function useWorkflowShortcuts() {
   // Save: Mod+S (fires in inputs too via smart default for Mod+ combos)
   useHotkey('Mod+S', () => save())
 
-  // Test: Mod+Enter
+  // Test: Mod+Enter — opens run panel if closed (when open, input-tab handles run)
   useHotkey('Mod+Enter', () => {
-    openRunPanel()
-    setRunPanelTab('input')
+    if (!usePanelStore.getState().runPanelOpen) {
+      openRunPanel()
+      setRunPanelTab('input')
+    }
   })
 
   // === HISTORY OPERATIONS ===
@@ -234,6 +238,18 @@ export function useWorkflowShortcuts() {
     console.log('[shortcut] Mod+Shift+V — toggling version history')
     toggleVersions()
   })
+
+  // Test: T
+  useHotkey('T', () => {
+    openRunPanel()
+    setRunPanelTab('input')
+  })
+
+  // Run History: H
+  useHotkey('H', () => toggleHistoryPopover())
+
+  // Environment Variables: E
+  useHotkey('E', () => toggleVariableEditor())
 
   // === INTERACTION MODE SHORTCUTS (single keys — ignored in inputs by smart default) ===
 

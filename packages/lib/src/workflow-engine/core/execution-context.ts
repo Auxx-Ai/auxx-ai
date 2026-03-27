@@ -477,7 +477,8 @@ export class ExecutionContextManager {
 
       if (value === undefined || value === null) {
         this.log('WARN', undefined, `Variable not found during interpolation: ${path}`)
-        continue // Keep original {{...}} if not found
+        result = result.replace(match[0], '')
+        continue
       }
 
       // Convert value to string, escaping $ characters to prevent special replacement patterns
