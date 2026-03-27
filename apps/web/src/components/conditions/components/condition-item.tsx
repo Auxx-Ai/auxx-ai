@@ -103,6 +103,31 @@ const ConditionItem = ({
     [getFieldDefinition, handleUpdate, config.mode, condition.variableId]
   )
 
+  /** Handle array accessor change from right-click context menu (don't reset operator/value) */
+  const handleFieldAccessorChange = useCallback(
+    (newFieldId: string) => {
+      // Re-register field def under the new key so operators keep working.
+      // The cache is keyed by exact fieldId, so [0] and [*] are different entries.
+      const normalizedId = newFieldId.replace(/\[-?\d+\]/g, '[*]')
+      const existingDef = getFieldDefinition(normalizedId) || getFieldDefinition(condition.fieldId)
+      if (existingDef) {
+        registerFieldDefinition(newFieldId, existingDef)
+      }
+      handleUpdate({
+        fieldId: newFieldId,
+        variableId: config.mode === 'variable' ? newFieldId : condition.variableId,
+      })
+    },
+    [
+      handleUpdate,
+      config.mode,
+      condition.variableId,
+      condition.fieldId,
+      getFieldDefinition,
+      registerFieldDefinition,
+    ]
+  )
+
   const handleOperatorChange = useCallback(
     (operator: Operator) => {
       const oldOperator = condition.operator
@@ -176,6 +201,7 @@ const ConditionItem = ({
               <VariableFieldSelector
                 value={resolvedFieldId}
                 onChange={handleFieldChange}
+                onAccessorChange={handleFieldAccessorChange}
                 disabled={readOnly}
                 placeholder='Select field'
                 className='h-6 w-full border-0 px-0 text-xs'

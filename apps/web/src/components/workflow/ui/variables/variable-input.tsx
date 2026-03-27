@@ -9,6 +9,7 @@ import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
 import type { BaseType, UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { VariablePicker } from './variable-picker'
 import VariableTag from './variable-tag'
+import { VariableTagContextMenu } from './variable-tag-context-menu'
 
 /**
  * Props for the VariableInput component
@@ -38,6 +39,8 @@ interface VariableInputProps {
   searchPlaceholder?: string
 
   allowedTypes?: BaseType[] // Array of allowed BaseType values (e.g., [BaseType.STRING])
+  /** Callback for variable ID changes (e.g., array accessor updates via right-click context menu) */
+  onVariableIdChange?: (newId: string) => void
 }
 
 /**
@@ -58,6 +61,7 @@ const VariableInput = React.memo<VariableInputProps>(
     showRecent = true,
     searchPlaceholder = 'Search variables...',
     allowedTypes = [],
+    onVariableIdChange,
   }) => {
     // Track the selected variable ID internally if not controlled
     // const [internalVariableId, setInternalVariableId] = useState(variableId)
@@ -100,14 +104,16 @@ const VariableInput = React.memo<VariableInputProps>(
       ({ isOpen, onClick }: { isOpen: boolean; onClick: () => void }) => (
         <div className={triggerClassName} onClick={onClick}>
           {selectedVariable ? (
-            <VariableTag variableId={variableId} nodeId={nodeId} isShort />
+            <VariableTagContextMenu variableId={variableId} onVariableIdChange={onVariableIdChange}>
+              <VariableTag variableId={variableId} nodeId={nodeId} isShort />
+            </VariableTagContextMenu>
           ) : (
             <span className='text-muted-foreground text-xs'>{placeholder}</span>
           )}
           <Variable className='h-4 w-4 text-muted-foreground' />
         </div>
       ),
-      [triggerClassName, selectedVariable, variableId, nodeId, placeholder]
+      [triggerClassName, selectedVariable, variableId, nodeId, placeholder, onVariableIdChange]
     )
 
     // If disabled, render as simple display

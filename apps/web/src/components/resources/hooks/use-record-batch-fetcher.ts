@@ -70,6 +70,9 @@ export function useRecordBatchFetcher() {
         createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
         updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
         ...item.data,
+        displayName: item.displayName,
+        secondaryInfo: item.secondaryInfo,
+        avatarUrl: item.avatarUrl,
       }
 
       const entityDefinitionId = getDefinitionId(item.recordId)

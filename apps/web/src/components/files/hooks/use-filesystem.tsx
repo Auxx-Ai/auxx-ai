@@ -4,7 +4,7 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { keepPreviousData } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
 import { useUploadStore } from '~/components/file-upload/stores'
 import { api } from '~/trpc/react'
@@ -66,10 +66,7 @@ function mergeFileItems(serverFiles: FileItem[], uploadFiles: FileItem[]): FileI
 export function useFilesystem() {
   // React Query utils for optimistic updates
   const utils = api.useUtils()
-  const movingIdsRef = useRef<Set<string>>(new Set())
-  const setMovingIds = (s: Set<string>) => {
-    movingIdsRef.current = s
-  }
+  const [movingIds, setMovingIds] = useState<Set<string>>(new Set())
 
   // Use specific selectors to avoid unnecessary re-renders
   const setFileSystemData = useFileSystemStore((state) => state.setFileSystemData)
@@ -136,10 +133,10 @@ export function useFilesystem() {
     if (flatIds === lastIdsRef.current) return
 
     lastIdsRef.current = flatIds
-    const allItems = fileSystemData.pages.flatMap((p) => p.items || [])
-
-    // Debug: Check if optimistic data is flowing through
-    const optimisticItems = allItems.filter((item) => item.isOptimisticMove)
+    // Shallow-clone items to avoid React Query's frozen cache objects
+    const allItems = fileSystemData.pages.flatMap((p) =>
+      (p.items || []).map((item) => ({ ...item }))
+    )
 
     setFileSystemData(allItems)
   }, [fileSystemData?.pages, flatIds, setFileSystemData])
@@ -209,9 +206,26 @@ export function useFilesystem() {
     entityType: 'FILE',
     entityId: currentFolderId || undefined, // Current folder or undefined for root
     autoStart: false, // Manual control
-    onComplete: (results) => {
-      // Refresh file system to show new files
-      refetchFileSystem()
+    onComplete: async (results) => {
+      // Refresh file system to show new server files
+      await refetchFileSystem()
+      // Clear completed uploads from the upload store so they don't
+      // shadow the server files in mergeFileItems
+      const completedIds = results.results
+        .filter((r) => r.success)
+        .map((r) => r.fileId)
+        .filter(Boolean)
+      if (completedIds.length > 0) {
+        useUploadStore.setState((s) => {
+          for (const id of completedIds) {
+            delete s.files[id]
+          }
+          // Also remove from session fileIds
+          for (const session of Object.values(s.sessions)) {
+            session.fileIds = session.fileIds.filter((fid) => !completedIds.includes(fid))
+          }
+        })
+      }
     },
     onError: (error) => {
       toastError({ title: 'Upload failed', description: error })
@@ -377,7 +391,7 @@ export function useFilesystem() {
       })
 
       // Set UI state for additional visual feedback
-      setMovingIds(new Set([...movingIdsRef.current, ...movingIds]))
+      setMovingIds((prev) => new Set([...prev, ...movingIds]))
 
       return { previousData, movingIds }
     },
@@ -689,12 +703,11 @@ export function useFilesystem() {
     getItemDescendants,
 
     // Optimistic move helpers
-    isMoving: useCallback((id: string) => {
-      const isCurrentlyMoving = movingIdsRef.current.has(id)
-      if (isCurrentlyMoving) {
-        console.log('🎯 isMoving check for', id, ':', isCurrentlyMoving)
-      }
-      return isCurrentlyMoving
-    }, []),
+    isMoving: useCallback(
+      (id: string) => {
+        return movingIds.has(id)
+      },
+      [movingIds]
+    ),
   }
 }

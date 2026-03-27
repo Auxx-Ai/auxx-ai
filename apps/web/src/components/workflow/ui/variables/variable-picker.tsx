@@ -107,9 +107,15 @@ export const VariablePicker = React.memo<VariablePickerProps>(
     // Handle controlled/uncontrolled state
     const [internalOpen, setInternalOpen] = useState(false)
     const open = controlledOpen !== undefined ? controlledOpen : internalOpen
-    const onOpenChange = useMemo(
-      () => controlledOnOpenChange || setInternalOpen,
-      [controlledOnOpenChange]
+    const onOpenChange = useCallback(
+      (newOpen: boolean) => {
+        if (controlledOnOpenChange) {
+          controlledOnOpenChange(newOpen)
+        } else {
+          setInternalOpen(newOpen)
+        }
+      },
+      [controlledOnOpenChange, open]
     )
     /**
      * Handle variable selection from the explorer

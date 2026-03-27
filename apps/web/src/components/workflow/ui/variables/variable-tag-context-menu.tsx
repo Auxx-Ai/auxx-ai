@@ -64,15 +64,17 @@ export function VariableTagContextMenu({
         <span className='inline-flex'>{children}</span>
       </ContextMenuTrigger>
       <ContextMenuContent className='w-56'>
-        {arraySegments.map((seg, i) => (
-          <ContextMenuSegmentSection
-            key={`${seg.path}-${i}`}
-            segment={seg}
-            variableId={variableId}
-            onVariableIdChange={onVariableIdChange}
-            showSeparator={i < arraySegments.length - 1}
-          />
-        ))}
+        <div onClick={(e) => e.stopPropagation()}>
+          {arraySegments.map((seg, i) => (
+            <ContextMenuSegmentSection
+              key={`${seg.path}-${i}`}
+              segment={seg}
+              variableId={variableId}
+              onVariableIdChange={onVariableIdChange}
+              showSeparator={i < arraySegments.length - 1}
+            />
+          ))}
+        </div>
       </ContextMenuContent>
     </ContextMenu>
   )
