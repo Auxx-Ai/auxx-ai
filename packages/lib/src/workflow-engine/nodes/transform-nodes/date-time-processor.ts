@@ -106,7 +106,12 @@ interface DateTimeNodeConfig {
   operation: DateTimeOperation
   inputDate?: string
   isInputDateConstant?: boolean
-  addSubtract?: { action: 'add' | 'subtract'; duration: number; unit: TimeUnit }
+  addSubtract?: {
+    action: 'add' | 'subtract'
+    duration: number | string | undefined
+    unit: TimeUnit | string
+  }
+  fieldModes?: Record<string, boolean>
   format?: { type: DateFormatType; customFormat?: string }
   timeBetween?: { endDate?: string; isEndDateConstant?: boolean; unit: TimeUnit }
   round?: { direction: 'up' | 'down' | 'nearest'; unit: TimeUnit }
@@ -468,7 +473,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
 
         switch (config.operation) {
           case DateTimeOperation.ADD_SUBTRACT:
-            result = await this.executeAddSubtract(inputDate, node)
+            result = await this.executeAddSubtract(inputDate, node, contextManager)
             break
 
           case DateTimeOperation.FORMAT:
@@ -556,13 +561,41 @@ export class DateTimeProcessor extends BaseNodeProcessor {
   /**
    * Execute add/subtract operation
    */
-  private async executeAddSubtract(date: Date, node: WorkflowNode): Promise<Date> {
+  private async executeAddSubtract(
+    date: Date,
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager
+  ): Promise<Date> {
     const config = node.data as unknown as DateTimeNodeConfig
     if (!config.addSubtract) {
       throw new Error('Add/subtract configuration is required')
     }
 
-    const duration = this.convertDuration(config.addSubtract.duration, config.addSubtract.unit)
+    // Resolve duration — may be a variable reference (string) or a constant (number)
+    let resolvedDuration: number
+    const isDurationConstant = config.fieldModes?.['duration'] ?? true
+    if (!isDurationConstant && typeof config.addSubtract.duration === 'string') {
+      const resolved = await this.resolveVariablePath(config.addSubtract.duration, contextManager)
+      resolvedDuration = typeof resolved === 'number' ? resolved : parseInt(String(resolved), 10)
+      if (Number.isNaN(resolvedDuration)) {
+        throw new Error(`Invalid duration value resolved from variable: ${resolved}`)
+      }
+    } else {
+      resolvedDuration =
+        typeof config.addSubtract.duration === 'number' ? config.addSubtract.duration : 0
+    }
+
+    // Resolve unit — may be a variable reference (string) or a constant TimeUnit
+    let resolvedUnit: TimeUnit
+    const isUnitConstant = config.fieldModes?.['unit'] ?? true
+    if (!isUnitConstant) {
+      const resolved = await this.resolveVariablePath(config.addSubtract.unit, contextManager)
+      resolvedUnit = String(resolved) as TimeUnit
+    } else {
+      resolvedUnit = config.addSubtract.unit as TimeUnit
+    }
+
+    const duration = this.convertDuration(resolvedDuration, resolvedUnit)
 
     if (config.addSubtract.action === 'add') {
       return add(date, duration)

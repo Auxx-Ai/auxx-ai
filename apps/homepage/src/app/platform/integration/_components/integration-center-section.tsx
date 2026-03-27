@@ -1,6 +1,7 @@
 // apps/homepage/src/app/platform/integration/_components/integration-center-section.tsx
 
 import { AutoplayVideo } from '~/components/autoplay-video'
+import { videoUrl } from '~/lib/cdn'
 
 /**
  * IntegrationCenterSection component displays the integration marketplace
@@ -19,7 +20,7 @@ export default function IntegrationCenterSection() {
                   loop
                   muted
                   className='rounded-(--radius)'
-                  src='/videos/app-install.mp4'
+                  src={videoUrl('app-install.mp4')}
                 />
               </div>
               <div className='mx-auto max-w-xl space-y-6 text-center pt-10'>

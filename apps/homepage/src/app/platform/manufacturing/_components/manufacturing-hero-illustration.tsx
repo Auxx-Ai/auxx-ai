@@ -1,6 +1,7 @@
 // apps/homepage/src/app/platform/manufacturing/_components/manufacturing-hero-illustration.tsx
 
 import { AutoplayVideo } from '~/components/autoplay-video'
+import { videoUrl } from '~/lib/cdn'
 
 export const ManufacturingHeroIllustration = () => {
   return (
@@ -43,7 +44,7 @@ export const ManufacturingHeroIllustration = () => {
                   loop
                   muted
                   className='size-full object-cover object-top-left'
-                  src='/videos/new-part.mp4'
+                  src={videoUrl('new-part.mp4')}
                 />
               </div>
             </div>

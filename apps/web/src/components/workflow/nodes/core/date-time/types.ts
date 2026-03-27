@@ -77,7 +77,11 @@ export interface DateTimeNodeData extends BaseNodeData {
   isInputDateConstant: boolean
   // inputDateType?:
   // Operation-specific fields
-  addSubtract?: { action: 'add' | 'subtract'; duration: number; unit: TimeUnit }
+  addSubtract?: {
+    action: 'add' | 'subtract'
+    duration: number | string | undefined // string when variable ref
+    unit: TimeUnit | string // string when variable ref
+  }
 
   format?: {
     type: DateFormatType
@@ -96,6 +100,9 @@ export interface DateTimeNodeData extends BaseNodeData {
     formatType: ParseDateFormatType
     customFormat?: string
   }
+
+  // Field mode tracking (true = constant, false = variable)
+  fieldModes?: Record<string, boolean>
 
   // Additional settings
   timezone?: string // Default to user's timezone

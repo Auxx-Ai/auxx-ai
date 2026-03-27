@@ -126,7 +126,7 @@ export function useFilesystem() {
     if (!fileSystemData?.pages?.length) return ''
     return fileSystemData.pages
       .flatMap((p) => p.items || [])
-      .map((i) => i.id)
+      .map((i) => `${i.id}:${i.parentId ?? ''}`)
       .join('|')
   }, [fileSystemData?.pages])
 
