@@ -94,9 +94,27 @@ export function buildVariableLabelPath(
   const labels: string[] = []
   // Skip first segment (node ID), resolve labels for remaining segments
   for (let i = 1; i < parts.length; i++) {
-    const currentId = parts.slice(0, i + 1).join('.')
-    const variable = resolveVariable(currentId)
-    labels.push(variable?.label || parts[i])
+    const segment = parts[i]
+
+    // If segment contains [*], first resolve the array parent (without [*]),
+    // then resolve the items variable (with [*])
+    if (segment.includes('[*]')) {
+      const baseSegment = segment.replace('[*]', '')
+      const baseId = [...parts.slice(0, i), baseSegment].join('.')
+      const baseVariable = resolveVariable(baseId)
+      labels.push(baseVariable?.label || baseSegment)
+
+      // Now resolve the items variable (with [*])
+      const currentId = parts.slice(0, i + 1).join('.')
+      const itemsVariable = resolveVariable(currentId)
+      if (itemsVariable?.label) {
+        labels.push(itemsVariable.label)
+      }
+    } else {
+      const currentId = parts.slice(0, i + 1).join('.')
+      const variable = resolveVariable(currentId)
+      labels.push(variable?.label || segment)
+    }
   }
 
   return labels.join('.')

@@ -5,8 +5,9 @@ import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
+import { isMac } from '@auxx/utils'
 import { ClockArrowUp, Play, Plus, Save, Settings, Upload, Variable } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { VariableEditorDialog } from '~/components/workflow/dialogs/variable-editor-dialog'
@@ -31,6 +32,7 @@ interface WorkflowToolbarProps {
  * Toolbar for workflow editor
  */
 export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
+  const mod = isMac() ? '⌘' : 'Ctrl'
   const [confirm, ConfirmDialog] = useConfirm()
   const isShowVersions = useCanvasStore((state) => state.showVersions)
   // Workflow store - memoized selectors to prevent re-renders
@@ -51,13 +53,16 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
   // Automatically subscribes to registry updates so app blocks appear when they're loaded
   const availableBlocks = useNonTriggerDefinitions().map((node) => node.id)
 
-  // History popover state
-  const [historyPopoverOpen, setHistoryPopoverOpen] = useState(false)
+  // History popover state (lifted to store for keyboard shortcut access)
+  const historyPopoverOpen = usePanelStore((state) => state.historyPopoverOpen)
+  const setHistoryPopoverOpen = usePanelStore((state) => state.setHistoryPopoverOpen)
 
-  // Variable editor state
-  const [variableEditorOpen, setVariableEditorOpen] = useState(false)
+  // Variable editor state (lifted to store for keyboard shortcut access)
+  const variableEditorOpen = usePanelStore((state) => state.variableEditorOpen)
+  const setVariableEditorOpen = usePanelStore((state) => state.setVariableEditorOpen)
 
   // Settings panel state
+  const runPanelOpen = usePanelStore((state) => state.runPanelOpen)
   const settingsPanelOpen = usePanelStore((state) => state.settingsPanelOpen)
   const openSettingsPanel = usePanelStore((state) => state.openSettingsPanel)
   const closeSettingsPanel = usePanelStore((state) => state.closeSettingsPanel)
@@ -165,7 +170,9 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
         )}>
         <div className='flex items-center p-1 gap-1 overflow-x-auto overflow-y-visible no-scrollbar shrink-0 flex-1'>
           {/* File operations */}
-          <Tooltip content={isReadOnly ? 'Save disabled in read-only mode' : 'Save (Cmd/Ctrl + S)'}>
+          <Tooltip
+            content={isReadOnly ? 'Save disabled in read-only mode' : 'Save'}
+            shortcut={[mod, 'S']}>
             <Button
               variant='ghost'
               size='icon-sm'
@@ -204,7 +211,8 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
             </Tooltip>
           )}
           <Tooltip
-            content={isReadOnly ? 'Variables disabled in read-only mode' : 'Environment Variables'}>
+            content={isReadOnly ? 'Variables disabled in read-only mode' : 'Environment Variables'}
+            shortcut='E'>
             <Button
               variant='ghost'
               size='sm'
@@ -221,8 +229,14 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
 
           {/* Actions */}
           <WorkflowChecklist />
-          <Tooltip content={isReadOnly ? 'Test disabled in read-only mode' : 'Test this workflow'}>
-            <Button size='sm' variant='ghost' onClick={handleTest} disabled={isReadOnly}>
+          <Tooltip
+            content={isReadOnly ? 'Test disabled in read-only mode' : 'Test this workflow'}
+            shortcut='T'>
+            <Button
+              size='sm'
+              variant={runPanelOpen ? 'secondary' : 'ghost'}
+              onClick={handleTest}
+              disabled={isReadOnly}>
               <Play />
               Test
             </Button>
@@ -230,8 +244,11 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
           <Popover open={historyPopoverOpen} onOpenChange={setHistoryPopoverOpen}>
             <PopoverTrigger asChild>
               <div className='shrink-0'>
-                <Tooltip content='View your run history'>
-                  <Button size='sm' variant='ghost' className='shrink-0'>
+                <Tooltip content='View your run history' shortcut='H'>
+                  <Button
+                    size='sm'
+                    variant={historyPopoverOpen ? 'secondary' : 'ghost'}
+                    className='shrink-0'>
                     <ClockArrowUp />
                     History
                   </Button>
@@ -240,7 +257,7 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
             </PopoverTrigger>
             <RunHistory onRunSelect={handleRunSelect} />
           </Popover>
-          <Tooltip content='Workflow settings'>
+          <Tooltip content='Workflow settings' shortcut={[mod, 'P']}>
             <Button
               size='sm'
               variant={settingsPanelOpen ? 'secondary' : 'ghost'}

@@ -79,6 +79,13 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
     }
   )
 
+  const utils = api.useUtils()
+
+  const invalidateNotifications = () => {
+    utils.notification.getNotifications.invalidate()
+    utils.notification.getUnreadCount.invalidate()
+  }
+
   // Mutations
   const approveMutation = api.approval.approve.useMutation({
     onSuccess: (result) => {
@@ -87,6 +94,7 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
         description: result.message || 'Workflow approved successfully',
       })
       refetchRequests()
+      invalidateNotifications()
       setComment('')
       onOpenChange(false)
     },
@@ -102,6 +110,7 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
         description: result.message || 'Workflow denied successfully',
       })
       refetchRequests()
+      invalidateNotifications()
       setComment('')
       onOpenChange(false)
     },
@@ -114,6 +123,7 @@ export const HumanConfirmationDialog: React.FC<HumanConfirmationDialogProps> = (
     onSuccess: (result) => {
       toastSuccess({ title: 'Cleanup Complete', description: result.message })
       refetchRequests()
+      invalidateNotifications()
     },
     onError: (error) => {
       toastError({ title: 'Error cleaning up', description: error.message })

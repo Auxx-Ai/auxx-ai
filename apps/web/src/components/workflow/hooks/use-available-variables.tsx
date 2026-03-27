@@ -37,6 +37,7 @@ export function useAvailableVariables({
   includeLoops = true,
 }: UseAvailableVariablesOptions) {
   const availableVariables = useNodeAvailableVariables(nodeId)
+  const upstreamMap = useVarStore((state) => state.upstreamMap)
 
   // Get loop detection info from node data directly
   const isInLoop = useStore(
@@ -134,8 +135,7 @@ export function useAvailableVariables({
       }
     })
 
-    // Create groups for node variables
-    let order = 0
+    // Create groups for node variables, ordered by upstream depth (fewer ancestors = earlier)
     nodeGroups.forEach((variables, sourceNodeId) => {
       const nodeInfo = nodeTitlesMap[sourceNodeId]
       const nodeTitle = nodeInfo?.title || sourceNodeId
@@ -149,7 +149,7 @@ export function useAvailableVariables({
         type: 'node',
         nodeType,
         icon: nodeDef?.icon ? getIcon(nodeDef.icon) : undefined,
-        order: order++,
+        order: upstreamMap.get(sourceNodeId)?.size ?? 0,
         variables,
         color: nodeDef?.color || '#6B7280',
       })
@@ -226,8 +226,18 @@ export function useAvailableVariables({
       })
     }
 
-    // Sort groups by order
-    return groups.sort((a, b) => a.order - b.order)
+    // Sort: node groups descending by upstream depth (closest upstream first),
+    // loop variables at top, system/environment at bottom
+    return groups.sort((a, b) => {
+      // Loop variables always first
+      if (a.type === 'loop') return -1
+      if (b.type === 'loop') return 1
+      // System/environment always last
+      if (a.type === 'system' || a.type === 'environment') return 1
+      if (b.type === 'system' || b.type === 'environment') return -1
+      // Node groups: descending by upstream depth (most ancestors = closest to current node)
+      return b.order - a.order
+    })
   }, [
     filteredVariables,
     envVariables,
@@ -238,6 +248,7 @@ export function useAvailableVariables({
     nodeTitlesMap,
     includeSystem,
     includeLoops,
+    upstreamMap,
   ])
 
   // Flatten top-level variables for easy access

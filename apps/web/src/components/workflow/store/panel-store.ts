@@ -53,6 +53,16 @@ interface PanelStore extends PanelState {
   getSettingsPanelWidth: () => number
   getSettingsPanelNested: () => boolean
 
+  // History popover
+  historyPopoverOpen: boolean
+  setHistoryPopoverOpen: (open: boolean) => void
+  toggleHistoryPopover: () => void
+
+  // Variable editor dialog
+  variableEditorOpen: boolean
+  setVariableEditorOpen: (open: boolean) => void
+  toggleVariableEditor: () => void
+
   // Base panel tab state
   basePanelActiveTab: 'settings' | 'input' | 'result'
   setBasePanelTab: (tab: 'settings' | 'input' | 'result') => void
@@ -99,6 +109,10 @@ export const usePanelStore = create<PanelStore>()(
     runPanelTab: 'input',
 
     settingsPanelOpen: false,
+
+    historyPopoverOpen: false,
+
+    variableEditorOpen: false,
 
     basePanelActiveTab: 'settings',
 
@@ -281,6 +295,22 @@ export const usePanelStore = create<PanelStore>()(
 
     setRunPanelTab: (tab) => {
       set({ runPanelTab: tab })
+    },
+
+    setHistoryPopoverOpen: (open) => {
+      set({ historyPopoverOpen: open })
+    },
+
+    toggleHistoryPopover: () => {
+      set((state) => ({ historyPopoverOpen: !state.historyPopoverOpen }))
+    },
+
+    setVariableEditorOpen: (open) => {
+      set({ variableEditorOpen: open })
+    },
+
+    toggleVariableEditor: () => {
+      set((state) => ({ variableEditorOpen: !state.variableEditorOpen }))
     },
 
     openSettingsPanel: () => {

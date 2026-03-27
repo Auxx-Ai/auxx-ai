@@ -126,14 +126,14 @@ export const BlockSelector = memo(
     const selectorContent = (
       <div className={cn(inline ? 'w-full' : '', inline && 'bg-background')}>
         {/* Tab Headers */}
-        <div className='flex border-b bg-background/50 rounded-t-md'>
+        <div className='flex border-b bg-background/50 rounded-t-[16px]'>
           <button
             data-state={activeTab === 'nodes' ? 'active' : undefined}
             className={cn(
-              'group relative flex-1 px-3 py-1.5 text-sm font-medium transition-colors  rounded-tl-lg focus-within:outline-none',
+              'group relative flex-1 px-3 py-1.5 text-sm font-medium transition-colors  rounded-tl-[16px] focus-within:outline-none',
               'hover:bg-background/10 text-primary-400',
               'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px]',
-              'after:bg-blue-500 after:opacity-0 after:transition-opacity',
+              'after:bg-blue-500 after:opacity-0 after:transition-opacity after:rounded-tl-[16px]',
               'data-[state=active]:after:opacity-100',
               'data-[state=active]:text-blue-600 data-[state=active]:bg-accent-100/50'
             )}
@@ -151,12 +151,12 @@ export const BlockSelector = memo(
           <button
             data-state={activeTab === 'apps' ? 'active' : undefined}
             className={cn(
-              'group relative flex-1 px-3 py-1.5 text-sm font-medium transition-colors rounded-tr-lg focus-within:outline-none',
+              'group relative flex-1 px-3 py-1.5 text-sm font-medium transition-colors rounded-tr-[16px] focus-within:outline-none',
               'hover:bg-background/10 text-primary-400',
               'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px]',
               'after:bg-blue-500 after:opacity-0 after:transition-opacity',
               'data-[state=active]:after:opacity-100',
-              'data-[state=active]:text-blue-600 data-[state=active]:bg-accent-100/50'
+              'data-[state=active]:text-blue-600 data-[state=active]:bg-accent-100/50 after:rounded-tr-[16px]'
             )}
             onClick={() => setActiveTab('apps')}>
             Apps

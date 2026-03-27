@@ -38,6 +38,8 @@ export class ApprovalQueryService {
         id: schema.ApprovalRequest.id,
         organizationId: schema.ApprovalRequest.organizationId,
         status: schema.ApprovalRequest.status,
+        message: schema.ApprovalRequest.message,
+        workflowName: schema.ApprovalRequest.workflowName,
         expiresAt: schema.ApprovalRequest.expiresAt,
         assigneeUsers: schema.ApprovalRequest.assigneeUsers,
         assigneeGroups: schema.ApprovalRequest.assigneeGroups,
@@ -51,7 +53,6 @@ export class ApprovalQueryService {
         workflowRun: {
           status: schema.WorkflowRun.status,
         },
-        // Note: responses would need a separate query or additional join
       })
       .from(schema.ApprovalRequest)
       .leftJoin(schema.Workflow, eq(schema.ApprovalRequest.workflowId, schema.Workflow.id))

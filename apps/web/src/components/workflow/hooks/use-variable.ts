@@ -33,7 +33,7 @@ export function useVariable(
   // O(1) lookup from variableIndex (stable reference from Map.get)
   const variable = useVarStore((state) => {
     if (!variableId) return undefined
-    return state.actions.getVariableById(variableId)
+    return state.variableIndex.get(variableId)
   })
 
   // Check availability if nodeId provided

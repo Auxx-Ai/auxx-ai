@@ -143,7 +143,8 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
         {/* Thread row with auto/manual toggle */}
         <VarEditorFieldRow
           title='Thread'
-          description='Select a thread to auto-fill or enter info manually'>
+          description='Select a thread to auto-fill or enter info manually'
+          validationError={errors._threadId}>
           <div className='relative'>
             <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
               <AutoResolveBadge isAuto={isAutoMode} onChange={handleModeChange} />
