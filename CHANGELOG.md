@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.107](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.106...auxx-v0.1.107) (2026-03-28)
+
+
+### Features
+
+* add array accessor handling and context menu updates for variable selection ([#345](https://github.com/Auxx-Ai/auxx-ai/issues/345)) ([aecdaee](https://github.com/Auxx-Ai/auxx-ai/commit/aecdaee6f67f11d4963516fc0e431ee77eb5b74b))
+* add FormatProcessor for various text and number formatting operations ([#347](https://github.com/Auxx-Ai/auxx-ai/issues/347)) ([4391859](https://github.com/Auxx-Ai/auxx-ai/commit/439185972bef6516e9c2428950a8ad9b47b9b4fe))
+* enhance AIProcessorV2 to support file attachments and improve file handling ([#348](https://github.com/Auxx-Ai/auxx-ai/issues/348)) ([b35dbb1](https://github.com/Auxx-Ai/auxx-ai/commit/b35dbb12cd017b668b182588d4f95de448591d19))
+
 ## [0.1.106](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.105...auxx-v0.1.106) (2026-03-27)
 
 
