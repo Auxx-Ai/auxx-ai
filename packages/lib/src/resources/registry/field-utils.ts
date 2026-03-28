@@ -5,7 +5,7 @@ import { getOperatorsForType } from '../../workflow-engine/operators/type-operat
 import { createResourceReference } from '../../workflow-engine/types/resource-reference'
 import { BaseType } from '../types'
 import { RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
-import type { ResourceField } from './field-types'
+import { getFieldOutputKey, type ResourceField } from './field-types'
 import { isCustomResourceId } from './types'
 
 /**
@@ -72,9 +72,12 @@ export function setResourceVariables(
 
   // Store commonly accessed scalar fields directly to avoid lazy loading overhead
   // This includes all non-RELATION fields from the registry
-  // IMPORTANT: Store at nodeId.resourceType.fieldKey to match UI variable paths
+  // Use getFieldOutputKey (systemAttribute ?? key) to match frontend variable paths
   Object.entries(fields).forEach(([fieldKey, fieldDef]) => {
-    const fieldValue = resourceData[fieldKey]
+    // Look up by registry key (camelCase, matches Drizzle query results)
+    // Also try outputKey as fallback (for RecordMeta from test/debug path)
+    const outputKey = getFieldOutputKey(fieldDef)
+    const fieldValue = resourceData[fieldKey] ?? resourceData[outputKey]
 
     // Skip undefined values
     if (fieldValue === undefined) {
@@ -84,7 +87,7 @@ export function setResourceVariables(
     // Only store scalar fields directly (not relationships)
     // Relationships will be lazy-loaded when accessed
     if (fieldDef.type !== BaseType.RELATION) {
-      contextManager.setVariable(`${nodeId}.${resourceType}.${fieldKey}`, fieldValue)
+      contextManager.setVariable(`${nodeId}.${resourceType}.${outputKey}`, fieldValue)
     }
   })
 }

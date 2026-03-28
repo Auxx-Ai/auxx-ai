@@ -90,7 +90,7 @@ export function WorkflowsTableView() {
                 <div>
                   <Link
                     href={`/app/workflows/${workflow.id}`}
-                    className='font-medium hover:text-primary hover:underline'>
+                    className='font-medium hover:text-info hover:underline'>
                     {workflow.name}
                   </Link>
                   {workflow.description && (

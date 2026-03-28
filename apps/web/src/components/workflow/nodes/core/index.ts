@@ -7,6 +7,7 @@ import { AnswerNode, AnswerPanel } from '~/components/workflow/nodes/core/answer
 import { CodeNode, CodePanel } from '~/components/workflow/nodes/core/code'
 import { DateTimeNode, DateTimePanel } from '~/components/workflow/nodes/core/date-time'
 import { EndNode, EndPanel } from '~/components/workflow/nodes/core/end'
+import { FormatNode, FormatPanel } from '~/components/workflow/nodes/core/format'
 import { HttpNode, HttpNodePanel } from '~/components/workflow/nodes/core/http'
 import {
   HumanConfirmationNode,
@@ -47,6 +48,7 @@ import {
 } from './document-extractor'
 import { endDefinition } from './end'
 import { FindNode, FindPanel, findDefinition } from './find'
+import { formatNodeDefinition } from './format'
 import { httpNodeDefinition } from './http'
 import { humanConfirmationDefinition } from './human'
 import { ifElseDefinition } from './if-else'
@@ -109,6 +111,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { ...httpNodeDefinition, component: HttpNode, panel: HttpNodePanel },
   { ...waitDefinition, component: WaitNode, panel: WaitNodePanel },
   { ...listNodeDefinition, component: ListNode, panel: ListPanel as any },
+  { ...formatNodeDefinition, component: FormatNode, panel: FormatPanel },
   { ...loopDefinition, component: LoopNode, panel: LoopPanel },
   {
     ...humanConfirmationDefinition,
@@ -156,6 +159,7 @@ export const NODE_TYPES: Record<string, ComponentType<NodeProps>> = {
   [NodeType.HTTP]: HttpNode as ComponentType<NodeProps>,
   [NodeType.WAIT]: WaitNode as ComponentType<NodeProps>,
   [NodeType.LIST]: ListNode as ComponentType<NodeProps>,
+  [NodeType.FORMAT]: FormatNode as ComponentType<NodeProps>,
   [NodeType.LOOP]: LoopNode as ComponentType<NodeProps>,
   [NodeType.HUMAN_CONFIRMATION]: HumanConfirmationNode as ComponentType<NodeProps>,
   [NodeType.FIND]: FindNode as ComponentType<NodeProps>,

@@ -63,6 +63,11 @@ interface PanelStore extends PanelState {
   setVariableEditorOpen: (open: boolean) => void
   toggleVariableEditor: () => void
 
+  // Help overlay
+  helpOverlayOpen: boolean
+  setHelpOverlayOpen: (open: boolean) => void
+  toggleHelpOverlay: () => void
+
   // Base panel tab state
   basePanelActiveTab: 'settings' | 'input' | 'result'
   setBasePanelTab: (tab: 'settings' | 'input' | 'result') => void
@@ -113,6 +118,8 @@ export const usePanelStore = create<PanelStore>()(
     historyPopoverOpen: false,
 
     variableEditorOpen: false,
+
+    helpOverlayOpen: false,
 
     basePanelActiveTab: 'settings',
 
@@ -311,6 +318,14 @@ export const usePanelStore = create<PanelStore>()(
 
     toggleVariableEditor: () => {
       set((state) => ({ variableEditorOpen: !state.variableEditorOpen }))
+    },
+
+    setHelpOverlayOpen: (open) => {
+      set({ helpOverlayOpen: open })
+    },
+
+    toggleHelpOverlay: () => {
+      set((state) => ({ helpOverlayOpen: !state.helpOverlayOpen }))
     },
 
     openSettingsPanel: () => {

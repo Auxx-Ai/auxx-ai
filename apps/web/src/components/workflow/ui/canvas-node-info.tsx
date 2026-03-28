@@ -14,6 +14,8 @@ const CanvasNodeInfo = memo(() => {
   const selectedNodes = useStore(selectedNodesSelector)
   const selectedEdges = useStore(selectedEdgesSelector)
 
+  console.log('Selected nodes:', selectedNodes, 'Selected edges:', selectedEdges)
+
   if (selectedNodes === 0 && selectedEdges === 0) return null
   return (
     <Panel position='bottom-center'>

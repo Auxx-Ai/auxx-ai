@@ -73,6 +73,8 @@ export function useWorkflowShortcuts() {
   const closeSettingsPanel = usePanelStore((state) => state.closeSettingsPanel)
   const toggleHistoryPopover = usePanelStore((state) => state.toggleHistoryPopover)
   const toggleVariableEditor = usePanelStore((state) => state.toggleVariableEditor)
+  const toggleHelpOverlay = usePanelStore((state) => state.toggleHelpOverlay)
+  const setHelpOverlayOpen = usePanelStore((state) => state.setHelpOverlayOpen)
 
   // Get selected nodes and edges from ReactFlow
   const getSelectedNodeIds = React.useCallback(() => {
@@ -144,11 +146,17 @@ export function useWorkflowShortcuts() {
     { preventDefault: false }
   )
 
-  // Deselect All: Escape — deselect nodes, close block selector
+  // Deselect All: Escape — deselect nodes, close block selector, close help overlay
   useHotkey(
     'Escape',
     (event) => {
       if (isTextInput(event)) return
+
+      // Close help overlay first if open
+      if (usePanelStore.getState().helpOverlayOpen) {
+        setHelpOverlayOpen(false)
+        return
+      }
 
       // Close block selector first if open
       if (useCanvasStore.getState().blockSelectorOpen) {
@@ -287,4 +295,9 @@ export function useWorkflowShortcuts() {
 
   // Toggle Collapse: K
   useHotkey('K', () => handleToggleCollapse())
+
+  // === HELP OVERLAY ===
+
+  // Toggle Help: ?
+  useHotkey('Shift+/', () => toggleHelpOverlay())
 }

@@ -65,7 +65,7 @@ export function ResultTab() {
               language={CodeLanguage.json}
               readOnly
               className='flex-1'
-              minHeight={120}
+              minHeight={300}
               title='OUTPUT'
               gradientBorder={false}
               downloadFilename={`workflow-run-${activeRun.sequenceNumber}-results.json`}

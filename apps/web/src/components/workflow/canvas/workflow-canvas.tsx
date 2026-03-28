@@ -40,8 +40,10 @@ import { FLOW_NODE_TYPES } from '~/components/workflow/nodes'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'
 import { storeEventBus } from '~/components/workflow/store/event-bus'
 import { useInteractionStore } from '~/components/workflow/store/interaction-store'
+import { usePanelStore } from '~/components/workflow/store/panel-store'
 import type { FlowEdge, FlowNode } from '~/components/workflow/types'
 import { EmptyTriggerButton } from '~/components/workflow/ui/empty-trigger-button'
+import { GettingStartedOverlay } from '~/components/workflow/ui/getting-started-overlay'
 import HelpLine from '~/components/workflow/ui/helpline'
 import { createCenterOnNodeHandler } from '~/components/workflow/utils'
 import { useContextMenu } from '../hooks/use-context-menu'
@@ -88,6 +90,10 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
 
     // Determine final read-only state
     const readOnly = propReadOnly || canvasReadOnly
+
+    // Help overlay state
+    const helpOverlayOpen = usePanelStore((state) => state.helpOverlayOpen)
+    const setHelpOverlayOpen = usePanelStore((state) => state.setHelpOverlayOpen)
 
     // Use only FLOW_NODE_TYPES - StandardNode handles dynamic lookup
     const nodeTypes = useMemo(() => FLOW_NODE_TYPES, [])
@@ -352,8 +358,8 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
 
           {/* Custom panels */}
           <Panel position='top-left' className='space-y-2 flex flex-row space-x-2'>
-            {/* Read-only mode indicator */}
-            {!readOnly && <EmptyTriggerButton />}
+            {/* Empty trigger button — hidden when getting started overlay is showing */}
+            {!readOnly && nodeCount > 0 && <EmptyTriggerButton />}
             <RunInfo />
             {readOnly && (
               <div>
@@ -383,6 +389,9 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
 
         {/* Helplines for alignment - positioned outside ReactFlow for proper coordinate system */}
         <HelpLine />
+
+        {/* Getting started overlay — auto mode (empty canvas) or manual mode (help button) */}
+        <GettingStartedOverlay open={helpOverlayOpen} onClose={() => setHelpOverlayOpen(false)} />
       </div>
     )
   }

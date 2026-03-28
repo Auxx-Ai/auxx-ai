@@ -28,6 +28,7 @@ import DrawerComments from '~/components/global/comments/drawer-comments'
 import { useRecord, useResource } from '~/components/resources'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { TimelineTab } from '~/components/timeline'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { getTabCardComponent, getTabComponent } from './drawer-tab-registry'
 
 interface BaseEntityDrawerProps {
@@ -85,6 +86,7 @@ export function BaseEntityDrawer({
   maxWidth = 800,
 }: BaseEntityDrawerProps) {
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
+  const { hasAccess } = useFeatureFlags()
 
   // Parse recordId
   const { entityDefinitionId, entityInstanceId } = recordId
@@ -126,14 +128,16 @@ export function BaseEntityDrawer({
       { value: 'tasks', label: 'Tasks', icon: ListTodo },
     ]
 
-    const additionalTabs = drawerConfig.additionalTabs.map((tab) => ({
-      value: tab.value,
-      label: tab.label,
-      icon: getIconComponent(tab.icon),
-    }))
+    const additionalTabs = drawerConfig.additionalTabs
+      .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
+      .map((tab) => ({
+        value: tab.value,
+        label: tab.label,
+        icon: getIconComponent(tab.icon),
+      }))
 
     return [...baseTabs, ...additionalTabs]
-  }, [drawerConfig])
+  }, [drawerConfig, hasAccess])
 
   /** Handle close */
   const handleClose = React.useCallback(() => {
@@ -231,19 +235,21 @@ export function BaseEntityDrawer({
                 </TabsContent>
 
                 {/* Dynamic tabs from registry */}
-                {drawerConfig.additionalTabs.map((tab) => (
-                  <TabsContent key={tab.value} value={tab.value} className='w-full'>
-                    <ScrollArea className='flex-1'>
-                      <LazyTabComponent
-                        entityType={entityType}
-                        tabValue={tab.value}
-                        entityInstanceId={entityInstanceId!}
-                        recordId={recordId}
-                        record={record}
-                      />
-                    </ScrollArea>
-                  </TabsContent>
-                ))}
+                {drawerConfig.additionalTabs
+                  .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
+                  .map((tab) => (
+                    <TabsContent key={tab.value} value={tab.value} className='w-full'>
+                      <ScrollArea className='flex-1'>
+                        <LazyTabComponent
+                          entityType={entityType}
+                          tabValue={tab.value}
+                          entityInstanceId={entityInstanceId!}
+                          recordId={recordId}
+                          record={record}
+                        />
+                      </ScrollArea>
+                    </TabsContent>
+                  ))}
               </div>
             </div>
           </div>

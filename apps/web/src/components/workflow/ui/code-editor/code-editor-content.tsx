@@ -2,7 +2,7 @@
 
 'use client'
 
-import { Spinner } from '@auxx/ui/components/spinner'
+import Loader from '@auxx/ui/components/loader'
 import { useReactFlow } from '@xyflow/react'
 import type { IDisposable } from 'monaco-editor'
 import dynamic from 'next/dynamic'
@@ -22,7 +22,7 @@ const Editor = dynamic(() => import('@monaco-editor/react').then((m) => m.defaul
   ssr: false,
   loading: () => (
     <div className='flex h-full items-center justify-center'>
-      <Spinner className='size-5 text-muted-foreground' />
+      <Loader size='sm' title='Loading...' subtitle='Summoning the syntax highlighter' />
     </div>
   ),
 })
@@ -125,8 +125,28 @@ const CodeEditorContent: React.FC = () => {
         setIsFocused(false)
       })
 
+      // Define custom themes with sticky scroll styling
+      monaco.editor.defineTheme('auxx-light', {
+        base: 'vs',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editorStickyScroll.background': '#ffffffcc',
+        },
+      })
+      monaco.editor.defineTheme('auxx-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editorStickyScroll.background': '#1e2227',
+          'editorStickyScroll.shadow': '#00000020',
+        },
+      })
+
       // Set theme
-      monaco.editor.setTheme(theme)
+      const customTheme = theme === 'vs-dark' ? 'auxx-dark' : 'auxx-light'
+      monaco.editor.setTheme(customTheme)
 
       // Update overflow container classes from the actual Monaco editor
       if (overflowContainerRef.current && editor.getDomNode) {
@@ -209,9 +229,17 @@ const CodeEditorContent: React.FC = () => {
           <div className='relative h-full flex-1 pt-1'>
             <Editor
               language={languageMap[language]}
-              theme={isMounted ? theme : 'vs'}
+              theme={isMounted ? (theme === 'vs-dark' ? 'auxx-dark' : 'auxx-light') : 'vs'}
               value={value}
-              loading={<span className=''>Loading...</span>}
+              loading={
+                <div className='flex h-full items-center justify-center'>
+                  <Loader
+                    size='sm'
+                    title='Loading...'
+                    subtitle='Summoning the syntax highlighter'
+                  />
+                </div>
+              }
               onChange={handleEditorChange}
               options={editorOptions}
               onMount={handleEditorDidMount}
@@ -245,9 +273,17 @@ const CodeEditorContent: React.FC = () => {
           <div className='relative h-full flex-1'>
             <Editor
               language={languageMap[language]}
-              theme={isMounted ? theme : 'vs'}
+              theme={isMounted ? (theme === 'vs-dark' ? 'auxx-dark' : 'auxx-light') : 'vs'}
               value={value}
-              loading={<span className=''>Loading...</span>}
+              loading={
+                <div className='flex h-full items-center justify-center'>
+                  <Loader
+                    size='sm'
+                    title='Loading...'
+                    subtitle='Summoning the syntax highlighter'
+                  />
+                </div>
+              }
               onChange={handleEditorChange}
               options={editorOptions}
               onMount={handleEditorDidMount}

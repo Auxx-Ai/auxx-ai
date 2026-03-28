@@ -4,6 +4,9 @@ import type React from 'react'
 import { NodeCategory, type NodeDefinition, type ValidationResult } from '../types'
 import { getIcon } from '../utils/icon-helper'
 
+/** Whether trigger nodes can be deleted, copied, collapsed, or disabled */
+export const ALLOW_TRIGGER_DELETE = true
+
 /**
  * Unified node registry for managing node definitions
  */

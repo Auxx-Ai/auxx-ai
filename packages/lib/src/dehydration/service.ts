@@ -132,6 +132,7 @@ export class DehydrationService {
     ])
 
     const { features, subscription, orgProfile, overages, channelProviders } = orgData
+
     const providers = Object.values(channelProviders)
     const hasIntegrations = providers.length > 0
     const hasOnlyForwardingChannel = hasIntegrations && providers.every((p) => p === 'email')

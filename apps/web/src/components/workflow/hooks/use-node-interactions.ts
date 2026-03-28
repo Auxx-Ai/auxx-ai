@@ -23,7 +23,10 @@ import {
   useSelectionActions,
   useWorkflowSave,
 } from '~/components/workflow/hooks'
-import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
+import {
+  ALLOW_TRIGGER_DELETE,
+  unifiedNodeRegistry,
+} from '~/components/workflow/nodes/unified-registry'
 import { storeEventBus } from '~/components/workflow/store/event-bus'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import type { FlowNode } from '~/components/workflow/store/types'
@@ -207,7 +210,9 @@ export const useNodesInteractions = () => {
         // If no nodeId is provided, copy all selected nodes
         nodesToCopy = nodes.filter((node) => node.selected)
       }
-      nodesToCopy = nodesToCopy.filter((node) => !unifiedNodeRegistry.isTrigger(node.data.type))
+      nodesToCopy = nodesToCopy.filter(
+        (node) => ALLOW_TRIGGER_DELETE || !unifiedNodeRegistry.isTrigger(node.data.type)
+      )
 
       if (nodesToCopy.length === 0) {
         toastInfo({ title: 'Nothing to copy', description: 'No nodes selected' })
@@ -303,7 +308,7 @@ export const useNodesInteractions = () => {
           zIndex,
         }
 
-        if (!unifiedNodeRegistry.isTrigger(node.data.type)) {
+        if (ALLOW_TRIGGER_DELETE || !unifiedNodeRegistry.isTrigger(node.data.type)) {
           nodesToPaste.push(newNode)
         }
 
@@ -380,7 +385,7 @@ export const useNodesInteractions = () => {
       console.log('Deleting node', nodeId, currentNode)
       if (!currentNode) return
 
-      if (unifiedNodeRegistry.isTrigger(currentNode.data.type)) {
+      if (!ALLOW_TRIGGER_DELETE && unifiedNodeRegistry.isTrigger(currentNode.data.type)) {
         return false
       }
 
@@ -835,7 +840,10 @@ export const useNodesInteractions = () => {
       const newNodes = produce(nodes, (draft) => {
         draft.forEach((n) => {
           // Select/deselect all nodes except triggers
-          if (n.data?.type && !unifiedNodeRegistry.isTrigger(n.data.type)) {
+          if (
+            n.data?.type &&
+            (ALLOW_TRIGGER_DELETE || !unifiedNodeRegistry.isTrigger(n.data.type))
+          ) {
             n.selected = selectAll
           }
         })
@@ -1074,16 +1082,18 @@ export const useNodesInteractions = () => {
       if (selectedNodes.length === 0) return
 
       // Check if any of the selected nodes are triggers
-      const hasTriggerNode = selectedNodes.some((node) =>
-        unifiedNodeRegistry.isTrigger(node.data.type)
-      )
+      if (!ALLOW_TRIGGER_DELETE) {
+        const hasTriggerNode = selectedNodes.some((node) =>
+          unifiedNodeRegistry.isTrigger(node.data.type)
+        )
 
-      if (hasTriggerNode) {
-        toastError({
-          title: 'Cannot disable trigger nodes',
-          description: 'Trigger nodes cannot be disabled or enabled',
-        })
-        return
+        if (hasTriggerNode) {
+          toastError({
+            title: 'Cannot disable trigger nodes',
+            description: 'Trigger nodes cannot be disabled or enabled',
+          })
+          return
+        }
       }
 
       // If toggle is undefined, use the first node's disabled state
@@ -1148,7 +1158,7 @@ export const useNodesInteractions = () => {
         draft.forEach((node) => {
           if (targetNodeIds!.includes(node.id)) {
             // Don't allow collapsing trigger nodes
-            if (unifiedNodeRegistry.isTrigger(node.data.type)) return
+            if (!ALLOW_TRIGGER_DELETE && unifiedNodeRegistry.isTrigger(node.data.type)) return
             node.data.collapsed = anyExpanded
           }
         })

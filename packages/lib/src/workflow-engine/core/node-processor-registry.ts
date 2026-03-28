@@ -23,6 +23,7 @@ import { EndProcessor } from '../nodes/flow-nodes/end'
 import { LoopProcessor } from '../nodes/flow-nodes/loop'
 import { FormInputNodeProcessor } from '../nodes/form-input'
 import { DateTimeProcessor } from '../nodes/transform-nodes/date-time-processor'
+import { FormatProcessor } from '../nodes/transform-nodes/format-processor'
 import { InformationExtractorProcessor } from '../nodes/transform-nodes/information-extractor'
 import { ListProcessor } from '../nodes/transform-nodes/list-processor'
 // JoinNode removed - merging now handled in workflow-engine.ts
@@ -198,6 +199,7 @@ export class NodeProcessorRegistry {
         new VarAssignProcessor(),
         new DateTimeProcessor(),
         new ListProcessor(),
+        new FormatProcessor(),
         new WaitNodeProcessor(),
         new LoopProcessor(),
         new DocumentExtractorProcessor(),

@@ -180,6 +180,7 @@ export enum WorkflowActionType {
   VAR_ASSIGN = 'var-assign',
   DATE_TIME = 'date-time',
   LIST = 'list',
+  FORMAT = 'format',
 
   // Flow control nodes
   LOOP = 'loop',

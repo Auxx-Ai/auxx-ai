@@ -11,6 +11,8 @@ export interface DrawerTabDefinition {
   label: string
   /** Icon name (e.g., 'ticket', 'shopping-bag') - not the React component */
   icon: string
+  /** Optional feature gate key — tab is hidden when the org lacks access */
+  featureGate?: string
 }
 
 /**

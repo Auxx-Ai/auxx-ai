@@ -45,7 +45,7 @@ export const featuresProvider: CacheProvider<FeatureMapObject> = {
       if (subscription.status === 'trialing' && !subscription.hasTrialEnded) {
         const trialSource = plan?.trialFeatureLimits ?? plan?.featureLimits
         featureDefinitions = parseFeaturesFromJson(trialSource)
-      } else if (subscription.status === 'active') {
+      } else if (subscription.status === 'active' || subscription.status === 'past_due') {
         featureDefinitions = parseFeaturesFromJson(plan?.featureLimits)
       }
     }

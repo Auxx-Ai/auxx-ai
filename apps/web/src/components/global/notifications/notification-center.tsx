@@ -10,6 +10,7 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from '@auxx/ui/components/sidebar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { Bell, Check, Mail as MailIcon, Play, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -37,6 +38,14 @@ const NOTIFICATION_ICON_MAP: Record<NotificationType, { iconId: string; color: s
 
 /** Default icon config for unmapped notification types */
 const DEFAULT_NOTIFICATION_ICON = { iconId: 'bell', color: 'gray' }
+
+/** Format notification type enum to readable label */
+const formatNotificationType = (type: string) =>
+  type
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+
 // Helper to determine notification link based on entity type
 const getNotificationLink = (entityType: string, entityId: string) => {
   switch (entityType) {
@@ -80,60 +89,74 @@ const NotificationItem = ({
       router.push(link)
     }
   }
+  const iconConfig = NOTIFICATION_ICON_MAP[type as NotificationType] ?? DEFAULT_NOTIFICATION_ICON
+
   return (
     <div
-      className={`group/item flex cursor-pointer items-start gap-1 px-2 py-2 hover:bg-primary-150 ${isRead ? 'opacity-70' : 'bg-blue-50 dark:bg-blue-900'} `}
+      className={cn(
+        'group/item mx-2 mb-2 rounded-lg border-[0.5px] border-border shadow-xs last-of-type:mb-0',
+        'cursor-pointer hover:bg-secondary/50 hover:ring-1 hover:ring-blue-500',
+        isRead ? 'bg-secondary/20 opacity-80' : 'bg-secondary/30'
+      )}
       onClick={handleClick}>
-      <div className='flex flex-col items-center gap-1 mt-1 me-1'>
-        <EntityIcon
-          {...(NOTIFICATION_ICON_MAP[type as NotificationType] ?? DEFAULT_NOTIFICATION_ICON)}
-          size='sm'
-        />
-        {!isRead && <span className='size-2 rounded-full bg-blue-500' />}
+      {/* Header bar */}
+      <div className='flex h-9 items-center px-2 text-xs font-medium text-muted-foreground bg-primary-150/50 rounded-t-lg'>
+        <EntityIcon {...iconConfig} size='sm' className='mr-1.5' />
+        <span className='grow truncate'>{formatNotificationType(type)}</span>
+        {!isRead && <span className='size-2 rounded-full bg-blue-500 shrink-0' />}
       </div>
 
-      <div className='min-w-0 grow'>
-        <p className='text-sm font-medium'>{message}</p>
-
-        <div className='mt-1 flex items-center'>
-          {actor && (
-            <div className='mr-2 flex items-center'>
-              <Avatar className='mr-1 size-5'>
-                {actor.image ? (
-                  <AvatarImage src={actor.image} alt={actor.name || ''} />
-                ) : (
-                  <AvatarFallback>{actor.name?.charAt(0) || '?'}</AvatarFallback>
-                )}
-              </Avatar>
-              <span className='text-xs text-gray-600'>{actor.name}</span>
-            </div>
-          )}
-          <span className='text-xs text-gray-500'>
-            {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
-          </span>
-        </div>
+      {/* Body */}
+      <div className='px-3 py-2 border-t-[0.5px] border-border'>
+        <p className='text-sm'>{message}</p>
       </div>
 
-      <Button
-        variant='ghost'
-        size='icon-sm'
-        className='shrink-0 opacity-0 group-hover/item:opacity-100 hover:bg-destructive/20 hover:text-destructive border border-transparent hover:border-destructive/50'
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete(id)
-        }}>
-        <Trash />
-      </Button>
+      {/* Footer */}
+      <div className='flex items-center px-3 py-1.5 border-t-[0.5px] border-border rounded-b-lg'>
+        {actor && (
+          <div className='mr-2 flex items-center'>
+            <Avatar className='mr-1 size-4'>
+              {actor.image ? (
+                <AvatarImage src={actor.image} alt={actor.name || ''} />
+              ) : (
+                <AvatarFallback className='text-[9px]'>
+                  {actor.name?.charAt(0) || '?'}
+                </AvatarFallback>
+              )}
+            </Avatar>
+            <span className='text-xs text-muted-foreground'>{actor.name}</span>
+          </div>
+        )}
+        <span className='text-xs text-muted-foreground grow'>
+          {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
+        </span>
+        <Button
+          variant='ghost'
+          size='icon-sm'
+          className='shrink-0 opacity-0 group-hover/item:opacity-100 hover:bg-destructive/20 hover:text-destructive'
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(id)
+          }}>
+          <Trash />
+        </Button>
+      </div>
     </div>
   )
 }
 // Loading skeleton for notifications
 const NotificationSkeleton = () => (
-  <div className='flex items-start gap-3 p-3'>
-    <Skeleton className='size-5 rounded-full' />
-    <div className='grow'>
-      <Skeleton className='mb-2 h-4 w-full' />
-      <Skeleton className='h-3 w-1/2' />
+  <div className='mx-2 mb-2 rounded-lg border-[0.5px] border-border bg-secondary/20 shadow-xs'>
+    <div className='flex h-9 items-center px-2 bg-primary-150/50 rounded-t-lg'>
+      <Skeleton className='size-4 rounded-full mr-1.5' />
+      <Skeleton className='h-3 w-24' />
+    </div>
+    <div className='px-3 py-2 border-t-[0.5px] border-border'>
+      <Skeleton className='h-4 w-full' />
+    </div>
+    <div className='flex items-center px-3 py-1.5 border-t-[0.5px] border-border'>
+      <Skeleton className='size-4 rounded-full mr-1' />
+      <Skeleton className='h-3 w-20' />
     </div>
   </div>
 )
@@ -256,9 +279,11 @@ export const NotificationCenter = () => {
           ) : null}
         </Button> sideOffset={-36} */}
         </PopoverTrigger>
-        <PopoverContent className='w-110 mr-4 p-0 min-h-[300px]' align='start'>
-          <div className='flex items-center justify-between p-2'>
-            <div className='font-medium text-base'>Notifications</div>
+        <PopoverContent
+          className='w-110 mr-4 p-0 min-h-[300px] backdrop-blur-sm bg-white/40 dark:bg-white/5'
+          align='start'>
+          <div className='flex items-center justify-between px-3 py-2 border-b sticky top-0 backdrop-blur-sm dark:bg-black/40 bg-white/40 z-1'>
+            <div className='font-medium text-sm'>Notifications</div>
             {unreadData && unreadData?.count > 0 && (
               <Button
                 variant='ghost'
@@ -298,7 +323,7 @@ export const NotificationCenter = () => {
 
           <div className='flex flex-col m-0 flex-1'>
             {isLoading ? (
-              <div className='max-h-96 overflow-y-auto'>
+              <div className='max-h-96 overflow-y-auto py-2'>
                 <NotificationSkeleton />
                 <NotificationSkeleton />
                 <NotificationSkeleton />
@@ -314,7 +339,7 @@ export const NotificationCenter = () => {
                   />
                 </div>
               ) : (
-                <div className='max-h-96 overflow-y-auto'>
+                <div className='max-h-96 overflow-y-auto py-2'>
                   {data?.notifications.map((notification) => (
                     <NotificationItem
                       key={notification.id!}
@@ -337,7 +362,7 @@ export const NotificationCenter = () => {
                   />
                 </div>
               ) : (
-                <div className='max-h-96 overflow-y-auto'>
+                <div className='max-h-96 overflow-y-auto py-2'>
                   {data?.notifications
                     .filter((notification) => !notification.isRead)
                     .map((notification) => (

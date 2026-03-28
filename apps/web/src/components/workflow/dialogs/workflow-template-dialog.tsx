@@ -44,7 +44,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 
 import { InlineAppInstallButton } from '~/components/apps/app-install-button'
 import { useResources } from '~/components/resources/hooks'
@@ -104,6 +104,7 @@ export function WorkflowTemplateDialog({
 }: WorkflowTemplateDialogProps) {
   const router = useRouter()
   const { theme } = useTheme()
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const { appInstallations } = useExtensionsContext()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [searchQuery, setSearchQuery] = useState('')
@@ -285,7 +286,15 @@ export function WorkflowTemplateDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className=' h-[550px]' innerClassName='p-0' position='tc' size='3xl'>
+        <DialogContent
+          className=' h-[550px]'
+          innerClassName='p-0'
+          position='tc'
+          size='3xl'
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            searchInputRef.current?.focus()
+          }}>
           <div className='flex flex-col flex-1 min-h-0'>
             {viewMode === 'list' ? (
               <>
@@ -348,6 +357,7 @@ export function WorkflowTemplateDialog({
                   <div className='flex-1 overflow-hidden flex flex-col'>
                     <div className='py-3 px-6'>
                       <InputSearch
+                        ref={searchInputRef}
                         placeholder='Search templates by name or description...'
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}

@@ -16,7 +16,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     entityType: 'contact',
     additionalTabs: [
       { value: 'tickets', label: 'Tickets', icon: 'ticket' },
-      { value: 'orders', label: 'Orders', icon: 'shopping-bag' },
+      { value: 'orders', label: 'Orders', icon: 'shopping-bag', featureGate: 'shopify' },
       { value: 'conversations', label: 'Conversations', icon: 'mail' },
       { value: 'parts', label: 'Parts', icon: 'package' },
     ],

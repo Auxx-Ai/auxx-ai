@@ -105,7 +105,7 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
   )
 
   return (
-    <BasePanel title='Answer Configuration' nodeId={nodeId} data={data} showNextStep={false}>
+    <BasePanel title='Answer Configuration' nodeId={nodeId} data={data}>
       {/* Section 1: General Configuration */}
       <Section
         title='General'
