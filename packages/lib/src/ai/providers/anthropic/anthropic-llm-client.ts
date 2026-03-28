@@ -386,6 +386,23 @@ export class AnthropicLLMClient extends LLMClient {
           tokens += 1600
           break
 
+        case 'file': {
+          const size = item.metadata?.size ?? 0
+          const mimeType = item.metadata?.mimeType ?? ''
+
+          if (mimeType === 'application/pdf') {
+            // Anthropic: each page = text extraction + page image (~2000 tokens avg)
+            const estimatedPages = Math.max(1, Math.ceil(size / 50_000))
+            tokens += estimatedPages * 2000
+          } else if (mimeType.startsWith('text/')) {
+            // Plain text: ~4 chars per token
+            tokens += Math.ceil(size / 4)
+          } else {
+            tokens += 1000
+          }
+          break
+        }
+
         default:
           // Unknown content type
           tokens += 100
@@ -599,10 +616,42 @@ export class AnthropicLLMClient extends LLMClient {
             type: 'image',
             source: {
               type: 'base64',
-              media_type: this.detectImageFormat(item.data),
+              media_type: item.metadata?.mimeType || this.detectImageFormat(item.data),
               data: this.extractBase64Data(item.data),
             },
           }
+
+        case 'file': {
+          const mimeType = item.metadata?.mimeType ?? 'application/pdf'
+
+          // Plain text files use Anthropic's text source type (no base64 needed)
+          if (
+            mimeType.startsWith('text/') ||
+            mimeType === 'application/json' ||
+            mimeType === 'application/xml'
+          ) {
+            return {
+              type: 'document',
+              source: {
+                type: 'text',
+                media_type: 'text/plain',
+                data: Buffer.from(this.extractBase64Data(item.data), 'base64').toString('utf-8'),
+              },
+              cache_control: { type: 'ephemeral' },
+            }
+          }
+
+          // PDFs and other binary docs use base64
+          return {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: mimeType,
+              data: this.extractBase64Data(item.data),
+            },
+            cache_control: { type: 'ephemeral' },
+          }
+        }
 
         default:
           throw new InvalidParameterError(`Unsupported content type: ${item.type}`)
@@ -875,18 +924,58 @@ export class AnthropicLLMClient extends LLMClient {
       }
     }
 
+    // Filter file content if model doesn't support it
+    if (processed.messages && modelConfig.supports.fileInput === false) {
+      const hasFileContent = processed.messages.some(
+        (msg) =>
+          Array.isArray(msg.content) && msg.content.some((content) => content.type === 'file')
+      )
+
+      if (hasFileContent) {
+        this.logger.warn('File input not supported for this model, removing file content', {
+          model: params.model,
+        })
+
+        processed.messages = processed.messages.map((msg) => {
+          if (Array.isArray(msg.content)) {
+            const filteredContent = msg.content.filter((content) => content.type !== 'file')
+            if (filteredContent.length === 0) {
+              return {
+                ...msg,
+                content: [
+                  {
+                    type: 'text' as const,
+                    data: '[File content removed — model does not support file input]',
+                  },
+                ],
+              }
+            }
+            if (filteredContent.length === 1 && filteredContent[0].type === 'text') {
+              return { ...msg, content: filteredContent[0].data }
+            }
+            return { ...msg, content: filteredContent }
+          }
+          return msg
+        })
+      }
+    }
+
     return processed
   }
 
   /**
    * Get supported content types for model
    */
-  private getSupportedContentTypes(model: string): ('text' | 'image' | 'audio')[] {
+  private getSupportedContentTypes(model: string): ('text' | 'image' | 'audio' | 'file')[] {
     const modelConfig = ANTHROPIC_MODELS[model]
-    const types: ('text' | 'image' | 'audio')[] = ['text']
+    const types: ('text' | 'image' | 'audio' | 'file')[] = ['text']
 
     if (modelConfig?.supports.vision) {
       types.push('image')
+    }
+
+    if (modelConfig?.supports.fileInput) {
+      types.push('file')
     }
 
     return types

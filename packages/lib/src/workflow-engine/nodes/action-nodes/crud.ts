@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/crud.ts
 
-import { type Database, database, type ModelType, ModelTypes } from '@auxx/database'
+import { database } from '@auxx/database'
 import {
   getRelatedEntityDefinitionId,
   RELATION_UPDATE_MODES,
@@ -9,21 +9,14 @@ import {
   type RelationUpdateMode as RelationUpdateModeType,
 } from '@auxx/types/custom-field'
 import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { toRecordId } from '@auxx/types/resource'
+import { getInstanceId, normalizeToRecordIds, toRecordId } from '@auxx/types/resource'
 import { isMultiRelationship } from '@auxx/utils/relationships'
-import { getCachedResource, getCachedResourceFields } from '../../../cache'
-import {
-  ContactService,
-  type CreateContactInput,
-  type UpdateContactInput,
-} from '../../../contacts/contact-service'
+import { findCachedResource } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
-import type { ModelType as FieldModelType } from '../../../field-values/types'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { CRUD_RESOURCE_CONFIGS, getCrudField } from '../../../resources/crud-definitions'
 import {
   type FieldOptionItem,
-  getAllFields,
   getField,
   getFieldOptionsForResource,
   isCustomResourceId,
@@ -37,11 +30,6 @@ import { getFieldOutputKey, type ResourceField } from '../../../resources/regist
 import type { CustomResource } from '../../../resources/registry/types'
 import { ThreadMutationService } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
-import {
-  type CreateTicketInput,
-  TicketService,
-  type UpdateTicketInput,
-} from '../../../tickets/ticket-service'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -138,6 +126,12 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     // Resolve variables in field data
     const resolvedData: Record<string, any> = {}
     if (config.data) {
+      // Resolve resource fields from cache (works for all resource types)
+      const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
+      const resource = await findCachedResource(organizationId, config.resourceType)
+      const resourceFields = resource?.fields ?? []
+      const findField = (key: string) => resourceFields.find((f) => f.key === key || f.id === key)
+
       // Resolve all field values in parallel
       const fieldEntries = Object.entries(config.data)
       const resolvedValues = await Promise.all(
@@ -147,7 +141,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       // Process resolved values
       fieldEntries.forEach(([key, _], index) => {
         const resolvedValue = resolvedValues[index]
-        const field = getField(config.resourceType, key)
+        const field = findField(key)
 
         // Handle MULTI_SELECT fields with update modes (similar to multi-relation)
         if (field?.fieldType === 'MULTI_SELECT' && config.mode === 'update') {
@@ -165,10 +159,12 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           }
           resolvedData[key] = { values, updateMode, fieldType: 'MULTI_SELECT' }
         }
-        // Transform RELATION fields: extract ID and map to dbColumn
-        else if (field?.type === BaseType.RELATION && field.dbColumn) {
+        // Transform RELATION fields: extract ID and wrap with update mode
+        else if (field?.type === BaseType.RELATION) {
           const isMulti = isMultiRelationship(field.relationship?.relationshipType)
           const updateMode = resolvedFieldUpdateModes[key] ?? RelationUpdateMode.REPLACE
+          // Use dbColumn for system resources (e.g., thread.inboxId), field key for custom entities
+          const outputKey = field.dbColumn || key
 
           if (isMulti && config.mode === 'update') {
             // Multi-relation: parse array and wrap with update mode
@@ -188,19 +184,17 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
             } else if (resolvedValue) {
               ids = [String(resolvedValue)]
             }
-            resolvedData[field.dbColumn || key] = {
+            resolvedData[outputKey] = {
               values: ids,
               updateMode,
             }
           } else {
             // Single-relation or create mode: extract single ID
-            // Primary format: plain ID string
-            // Legacy support: {referenceId: "xxx"} or {id: "xxx"} objects
             if (typeof resolvedValue === 'object' && resolvedValue !== null) {
               const extractedId = resolvedValue.referenceId || resolvedValue.id || null
-              resolvedData[field.dbColumn] = extractedId
+              resolvedData[outputKey] = extractedId
             } else {
-              resolvedData[field.dbColumn] = resolvedValue || null
+              resolvedData[outputKey] = resolvedValue || null
             }
           }
         } else {
@@ -249,9 +243,16 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       return value
     }
 
-    // Check for {{variable}} pattern anywhere in string
-    // This handles exact wrapping, partial patterns, and concatenation
-    // Examples: "{{var}}", "{{var}}suffix", "prefix{{var}}", "{{var1}} and {{var2}}"
+    // Check for exact variable reference: "{{path}}" with nothing else
+    // Return the raw resolved value (entity object, array, etc.) instead of string-converting.
+    // This is critical for relation fields where we need the entity ID, not a display name.
+    const exactVarMatch = value.match(/^\{\{([^}]+)\}\}$/)
+    if (exactVarMatch) {
+      const resolved = await contextManager.resolveVariablePath(exactVarMatch[1].trim())
+      return resolved ?? value
+    }
+
+    // For mixed templates like "Hello {{name}}", use string interpolation
     if (value.includes('{{') && value.includes('}}')) {
       return await contextManager.interpolateVariables(value)
     }
@@ -563,12 +564,12 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
         const ref = createResourceReference(resourceType, result.id, organizationId)
 
-        // For custom entities, use setEntityVariables (same as triggers)
-        if (isCustomResourceId(resourceType)) {
-          // Build resourceData in the format setEntityVariables expects
+        // For entities (custom IDs and entity definition types), use setEntityVariables
+        if (isCustomResourceId(resourceType) || isEntityDefinitionType(resourceType)) {
+          const entityDefId = result.entityInstance?.entityDefinitionId ?? resourceType
           const entityData = {
             id: result.id,
-            entityDefinitionId: result.entityInstance?.entityDefinitionId,
+            entityDefinitionId: entityDefId,
             createdAt: result.entityInstance?.createdAt,
             updatedAt: result.entityInstance?.updatedAt,
             fieldValues: result.fieldValues || {},
@@ -576,14 +577,14 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
           // This sets variables exactly like triggers do:
           // - nodeId.{entityDefId} (ResourceReference) - e.g., nodeId.f08vj083a926klhzkr2tbfvy
-          // - nodeId.{entityDefId}.id
+          // - nodeId.{entityDefId}.record_id, created_at, updated_at
           // - nodeId.{entityDefId}.fieldName (for each field)
-          setEntityVariables(resourceType, entityData, contextManager, node.nodeId)
+          setEntityVariables(entityDefId, entityData, contextManager, node.nodeId)
 
           // Also store under 'record' key for convenience
           contextManager.setNodeVariable(node.nodeId, 'record', ref)
         } else {
-          // System resources - existing behavior
+          // System resources (thread) - existing behavior
           contextManager.setNodeVariable(node.nodeId, resourceType, ref)
 
           // Store commonly accessed scalar fields directly to avoid lazy loading overhead
@@ -649,34 +650,26 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
   ): Promise<any> {
     const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
 
-    // Check if this is a custom entity (UUID/CUID format)
-    if (isCustomResourceId(resourceType)) {
-      const resource = await getCachedResource(organizationId, resourceType)
-
-      if (!resource) {
-        throw new Error(`Unknown custom resource type: ${resourceType}`)
-      }
-
-      return await this.executeEntityOperation(
-        resource as CustomResource,
-        mode,
-        resourceId,
-        data,
-        contextManager
-      )
+    // Thread has special behavior (read status, tags, unread service)
+    if (resourceType === 'thread') {
+      return await this.executeThreadOperation(mode, resourceId, data, contextManager)
     }
 
-    // System resource operations
-    switch (resourceType) {
-      case 'contact':
-        return await this.executeContactOperation(mode, resourceId, data, contextManager)
-      case 'ticket':
-        return await this.executeTicketOperation(mode, resourceId, data, contextManager)
-      case 'thread':
-        return await this.executeThreadOperation(mode, resourceId, data, contextManager)
-      default:
-        throw new Error(`Unsupported system resource type: ${resourceType}`)
+    // All other resource types (custom entity IDs and entity definition types like 'contact', 'ticket')
+    // are entities — resolve via findCachedResource which matches by id, entityType, or apiSlug
+    const resource = await findCachedResource(organizationId, resourceType)
+
+    if (!resource) {
+      throw new Error(`Unknown resource type: ${resourceType}`)
     }
+
+    return await this.executeEntityOperation(
+      resource as CustomResource,
+      mode,
+      resourceId,
+      data,
+      contextManager
+    )
   }
 
   /**
@@ -728,12 +721,22 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         }> = []
 
         for (const [fieldId, value] of Object.entries(dataWithFieldIds)) {
-          if (
+          const hasUpdateMode =
             typeof value === 'object' &&
             value !== null &&
             'updateMode' in value &&
             'values' in value
-          ) {
+
+          contextManager.log('DEBUG', undefined, 'CRUD update field dispatch', {
+            fieldId,
+            valueType: Array.isArray(value) ? 'array' : typeof value,
+            hasUpdateMode,
+            isObject: typeof value === 'object' && value !== null,
+            hasUpdateModeKey: typeof value === 'object' && value !== null && 'updateMode' in value,
+            hasValuesKey: typeof value === 'object' && value !== null && 'values' in value,
+          })
+
+          if (hasUpdateMode) {
             const { values, updateMode, fieldType } = value as {
               values: string[]
               updateMode: RelationUpdateModeType
@@ -756,24 +759,55 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
               updateMode === RelationUpdateMode.REMOVE
             ) {
               // Relation field with add/remove mode
+              // Normalize values to plain entity instance IDs — addRelationValues/removeRelationValues
+              // compare against relatedEntityId column values (plain IDs), so RecordIds, entity
+              // objects, or ResourceReferences must be converted first.
               const field = resource.fields.find((f) => f.id === fieldId || f.key === fieldId)
               const relatedEntityDefId = field?.relationship
                 ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
                 : null
+              const fallbackDefId = relatedEntityDefId ?? resource.entityDefinitionId
+              const normalizedRecordIds = normalizeToRecordIds(values, fallbackDefId)
+              const normalizedIds = normalizedRecordIds.map((rid) => getInstanceId(rid))
               modeAwareRelations.push({
                 fieldId,
-                values,
+                values: normalizedIds,
                 updateMode,
-                relatedEntityDefinitionId: relatedEntityDefId ?? resource.entityDefinitionId,
+                relatedEntityDefinitionId: fallbackDefId,
               })
             } else {
-              // Replace mode: pass values through to regular handler
-              regularData[fieldId] = values
+              // Replace mode: normalize values to RecordId format for field value service
+              const field = resource.fields.find((f) => f.id === fieldId || f.key === fieldId)
+              const relatedEntityDefId = field?.relationship
+                ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+                : null
+
+              if (relatedEntityDefId) {
+                const normalized = normalizeToRecordIds(values, relatedEntityDefId)
+                contextManager.log('DEBUG', undefined, 'CRUD replace-mode relation normalized', {
+                  fieldId,
+                  relatedEntityDefId,
+                  inputTypes: values.map((v) => (typeof v === 'object' ? 'object' : typeof v)),
+                  outputRecordIds: normalized,
+                })
+                regularData[fieldId] = normalized
+              } else {
+                regularData[fieldId] = values
+              }
             }
           } else {
             regularData[fieldId] = value
           }
         }
+
+        contextManager.log('DEBUG', undefined, 'CRUD update field routing', {
+          regularFields: Object.keys(regularData),
+          regularFieldTypes: Object.fromEntries(
+            Object.entries(regularData).map(([k, v]) => [k, Array.isArray(v) ? 'array' : typeof v])
+          ),
+          modeAwareRelationCount: modeAwareRelations.length,
+          modeAwareOptionCount: modeAwareOptions.length,
+        })
 
         // Execute standard update for regular fields (including replace-mode relations)
         const result = await handler.updateValues(resourceId, regularData)
@@ -1051,376 +1085,6 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     }
 
     return { tagIds }
-  }
-
-  /**
-   * Execute contact-specific CRUD operations
-   */
-  private async executeContactOperation(
-    mode: 'create' | 'update' | 'delete',
-    resourceId: string | undefined,
-    data: Record<string, any>,
-    contextManager: ExecutionContextManager
-  ): Promise<any> {
-    const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
-    const userId = (await contextManager.getVariable('sys.userId')) as string
-
-    const contactService = new ContactService(organizationId, userId, database)
-    // Separate standard fields from custom fields
-    const { standardData, customFieldData } = this.separateFieldData(data, 'contact')
-    switch (mode) {
-      case 'create': {
-        const createInput: CreateContactInput = {
-          email: standardData.email,
-          firstName: standardData.firstName,
-          lastName: standardData.lastName,
-          phone: standardData.phone,
-          notes: standardData.notes,
-          tags: standardData.tags ? this.parseTagsValue(standardData.tags) : [],
-          sourceType: standardData.sourceType || 'MANUAL',
-        }
-        const contact = await contactService.createContact(createInput)
-        // Handle custom fields
-        await this.setCustomFieldValues(
-          organizationId,
-          userId,
-          contact.id,
-          customFieldData,
-          ModelTypes.CONTACT
-        )
-        return { contact, id: contact.id }
-      }
-      case 'update': {
-        if (!resourceId) throw new Error('Resource ID required for update operation')
-        const updateInput: UpdateContactInput = {
-          id: resourceId,
-          firstName: standardData.firstName,
-          lastName: standardData.lastName,
-          email: standardData.email,
-          phone: standardData.phone,
-          notes: standardData.notes,
-          tags: standardData.tags ? this.parseTagsValue(standardData.tags) : undefined,
-          status: standardData.status,
-        }
-        const updatedContact = await contactService.updateContact(updateInput)
-        // Update custom fields
-        await this.setCustomFieldValues(
-          organizationId,
-          userId,
-          resourceId,
-          customFieldData,
-          ModelTypes.CONTACT
-        )
-        return { contact: updatedContact, id: resourceId }
-      }
-      case 'delete': {
-        if (!resourceId) throw new Error('Resource ID required for delete operation')
-        await contactService.deleteContact(resourceId)
-        return { deleted: true, id: resourceId }
-      }
-      default:
-        throw new Error(`Unsupported operation: ${mode}`)
-    }
-  }
-  /**
-   * Execute ticket-specific CRUD operations
-   */
-  private async executeTicketOperation(
-    mode: 'create' | 'update' | 'delete',
-    resourceId: string | undefined,
-    data: Record<string, any>,
-    contextManager: ExecutionContextManager
-  ): Promise<any> {
-    const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
-    const userId = (await contextManager.getVariable('sys.userId')) as string
-
-    const ticketService = new TicketService(database)
-
-    // Separate standard fields from custom fields
-    const { standardData, customFieldData } = this.separateFieldData(data, 'ticket')
-
-    switch (mode) {
-      case 'create':
-        return await this.createTicket(
-          ticketService,
-          standardData,
-          customFieldData,
-          organizationId,
-          userId
-        )
-
-      case 'update':
-        if (!resourceId) throw new Error('Resource ID required for update operation')
-        return await this.updateTicket(
-          ticketService,
-          resourceId,
-          standardData,
-          customFieldData,
-          organizationId,
-          userId
-        )
-
-      case 'delete':
-        if (!resourceId) throw new Error('Resource ID required for delete operation')
-        return await this.deleteTicket(ticketService, resourceId, organizationId, userId)
-
-      default:
-        throw new Error(`Unsupported operation: ${mode}`)
-    }
-  }
-
-  /**
-   * Create a new ticket with custom fields
-   */
-  private async createTicket(
-    ticketService: TicketService,
-    standardData: Record<string, any>,
-    customFieldData: Record<string, any>,
-    organizationId: string,
-    userId: string
-  ): Promise<any> {
-    // Validate that relation fields use database column names
-    this.validateRelationFields(standardData, 'ticket', 'create')
-
-    // Build CreateTicketInput from standardData
-    const createInput: CreateTicketInput = {
-      title: standardData.title,
-      description: standardData.description,
-      type: standardData.type,
-      priority: standardData.priority,
-      status: standardData.status,
-      contactId: standardData.contactId,
-      assignedToId: standardData.assignedToId,
-      dueDate: standardData.dueDate ? new Date(standardData.dueDate) : undefined,
-      typeData: standardData.typeData || {},
-      typeStatus: standardData.typeStatus,
-      organizationId,
-      userId,
-    }
-
-    // Create the ticket
-    const ticket = await ticketService.createTicket(createInput)
-
-    // Handle custom fields
-    await this.setCustomFieldValues(
-      organizationId,
-      userId,
-      ticket.id,
-      customFieldData,
-      ModelTypes.TICKET
-    )
-
-    return { ticket, id: ticket.id }
-  }
-
-  /**
-   * Update an existing ticket with custom fields
-   */
-  private async updateTicket(
-    ticketService: TicketService,
-    resourceId: string,
-    standardData: Record<string, any>,
-    customFieldData: Record<string, any>,
-    organizationId: string,
-    userId: string
-  ): Promise<any> {
-    // Validate that relation fields use database column names
-    this.validateRelationFields(standardData, 'ticket', 'update')
-
-    // Build UpdateTicketInput
-    const updateInput: UpdateTicketInput = {
-      id: resourceId,
-      title: standardData.title,
-      description: standardData.description,
-      priority: standardData.priority,
-      status: standardData.status,
-      dueDate: standardData.dueDate ? new Date(standardData.dueDate) : undefined,
-      typeData: standardData.typeData,
-      typeStatus: standardData.typeStatus,
-      organizationId,
-      userId,
-    }
-
-    // Update ticket
-    const updatedTicket = await ticketService.updateTicket(updateInput)
-
-    // Update custom fields
-    await this.setCustomFieldValues(
-      organizationId,
-      userId,
-      resourceId,
-      customFieldData,
-      ModelTypes.TICKET
-    )
-
-    return { ticket: updatedTicket, id: resourceId }
-  }
-
-  /**
-   * Delete a ticket and all its related data
-   */
-  private async deleteTicket(
-    ticketService: TicketService,
-    resourceId: string,
-    organizationId: string,
-    userId: string
-  ): Promise<any> {
-    await ticketService.deleteTicket(resourceId, organizationId, userId)
-
-    return { deleted: true, id: resourceId }
-  }
-  /**
-   * Validate that relation fields use database column names, not logical names
-   *
-   * This validation ensures that preprocessing happened correctly and relation fields
-   * are using the physical database column names (e.g., "contactId") instead of
-   * logical field names (e.g., "contact").
-   *
-   * @param data - Field data to validate
-   * @param resourceType - Resource type (e.g., 'ticket', 'contact')
-   * @param operation - Operation type ('create' or 'update')
-   * @throws Error if logical field names are detected instead of database column names
-   */
-  private validateRelationFields(
-    data: Record<string, any>,
-    resourceType: TableId,
-    operation: 'create' | 'update'
-  ): void {
-    // Get all fields for this resource type
-    const allFields = getAllFields(resourceType)
-
-    // Filter to only relation fields with dbColumn defined
-    const relationFields = allFields.filter(
-      (field) => field.type === BaseType.RELATION && field.dbColumn
-    )
-
-    // Check if any logical names are being used instead of dbColumn names
-    const invalidFields = relationFields.filter((field) => {
-      // If data has the logical name but NOT the database column name, that's invalid
-      return (
-        (data[getFieldOutputKey(field)] !== undefined || data[field.key] !== undefined) &&
-        data[field.dbColumn!] === undefined
-      )
-    })
-
-    if (invalidFields.length > 0) {
-      const fieldNames = invalidFields.map((f) => `"${f.key}" should be "${f.dbColumn}"`).join(', ')
-
-      throw new Error(
-        `Invalid relation field names in ${operation} operation for ${resourceType}. ` +
-          `Found logical names instead of database columns: ${fieldNames}. ` +
-          `This indicates a preprocessing failure. Please ensure preprocessNode() was called.`
-      )
-    }
-  }
-
-  /**
-   * Separate standard fields from custom fields
-   *
-   * This method provides a defensive layer to ensure relation fields use database
-   * column names even if preprocessing somehow failed. This should rarely be needed
-   * since preprocessing is now enforced, but provides an extra safety check.
-   *
-   * @param data - Field data (should already have relation fields transformed)
-   * @param resourceType - Resource type (e.g., 'ticket', 'contact')
-   */
-  private separateFieldData(data: Record<string, any>, resourceType: TableId) {
-    const standardData: Record<string, any> = {}
-    const customFieldData: Record<string, any> = {}
-
-    Object.entries(data).forEach(([key, value]) => {
-      if (key.startsWith('custom_')) {
-        // Custom field: extract field ID and parse value
-        const fieldId = key.replace('custom_', '')
-        customFieldData[fieldId] = this.parseCustomFieldValue(value)
-      } else {
-        // Standard field: check if it's a relation field that needs transformation
-        const field = getField(resourceType, key)
-
-        if (field?.type === BaseType.RELATION && field.dbColumn) {
-          // This is a relation field with logical name - transform to database column
-          // NOTE: This should rarely happen since preprocessing handles this,
-          // but provides a safety net for edge cases
-          standardData[field.dbColumn] = value
-        } else {
-          // Non-relation field: pass through as-is
-          standardData[key] = value
-        }
-      }
-    })
-
-    return { standardData, customFieldData }
-  }
-  /**
-   * Set custom field values for an entity
-   */
-  private async setCustomFieldValues(
-    organizationId: string,
-    userId: string,
-    entityId: string,
-    customFieldData: Record<string, any>,
-    modelType: ModelType
-  ): Promise<void> {
-    const fieldValueService = new FieldValueService(organizationId, userId, database)
-
-    // Map ModelType to FieldModelType
-    const fieldModelType: FieldModelType =
-      modelType === ModelTypes.CONTACT
-        ? 'contact'
-        : modelType === ModelTypes.TICKET
-          ? 'ticket'
-          : modelType === ModelTypes.THREAD
-            ? 'thread'
-            : 'entity'
-
-    const promises = Object.entries(customFieldData)
-      .map(([fieldId, value]) => {
-        if (value === null || value === undefined || value === '') return null
-        return fieldValueService.setValueWithBuiltIn({
-          entityId,
-          fieldId,
-          value,
-          modelType: fieldModelType,
-        })
-      })
-      .filter(Boolean)
-    await Promise.all(promises)
-  }
-  /**
-   * Parse tags value from string or array
-   */
-  private parseTagsValue(value: string | string[]): string[] {
-    if (typeof value === 'string') {
-      return value
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter(Boolean)
-    }
-    return Array.isArray(value) ? value : []
-  }
-  /**
-   * Parse custom field value from various formats
-   */
-  private parseCustomFieldValue(value: any): any {
-    // Handle different custom field value formats
-    if (typeof value === 'string') {
-      // Try to parse JSON for complex types
-      if (value.startsWith('{') || value.startsWith('[')) {
-        try {
-          return JSON.parse(value)
-        } catch {
-          return value
-        }
-      }
-      // Handle comma-separated values (tags, multi-select)
-      if (value.includes(',')) {
-        return value
-          .split(',')
-          .map((v) => v.trim())
-          .filter(Boolean)
-      }
-    }
-    return value
   }
 
   /**

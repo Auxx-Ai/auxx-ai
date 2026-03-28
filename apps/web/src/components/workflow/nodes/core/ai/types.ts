@@ -70,10 +70,12 @@ export interface AiContext {
 }
 
 /**
- * Vision configuration for AI node
+ * Files configuration for AI node
  */
-export interface AiVision {
+export interface AiFiles {
   enabled: boolean
+  input: string // single file reference (variable ref or file:id constant)
+  isConstant: boolean // true = constant file picker, false = variable reference
 }
 
 export interface StructuredOutputConfig {
@@ -110,7 +112,7 @@ export interface AiNodeData extends BaseNodeData {
   model: AiModel
   prompt_template: PromptTemplate[]
   context: AiContext
-  vision: AiVision
+  files: AiFiles
   structured_output: StructuredOutputConfig
   tools: AiToolsConfig
 }

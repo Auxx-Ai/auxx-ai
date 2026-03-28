@@ -4,11 +4,7 @@ import { createScopedLogger } from '../../../logger'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import {
-  createFileVariable,
-  createMultipleFilesVariable,
-  type WorkflowFileData,
-} from '../../types/file-variable'
+import { createFileVariable, type WorkflowFileData } from '../../types/file-variable'
 import { BaseNodeProcessor } from '../base-node'
 
 // Use WorkflowFileData from file-variable types
@@ -96,6 +92,19 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
           this.setMultipleFileVariables(nodeId, files, contextManager)
         }
       }
+      // Check for file: prefixed ID array (from FileInput picker)
+      else if (
+        Array.isArray(value) &&
+        value.length > 0 &&
+        typeof value[0] === 'string' &&
+        value[0].startsWith('file:')
+      ) {
+        const files = await this.resolveFileIds(value, nodeId, contextManager)
+        if (files.length > 0) {
+          // Always use multi-file path — file: prefixed arrays come from FileInput (allowMultiple)
+          this.setMultipleFileVariables(nodeId, files, contextManager)
+        }
+      }
       // Check for single file object (not in array)
       else if (this.isFileObject(value)) {
         const file = this.normalizeFileData(value, nodeId)
@@ -109,6 +118,41 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
 
     // Set a summary variable for easy access
     contextManager.setVariable('manualInputs', triggerData)
+  }
+
+  /**
+   * Resolve file: prefixed IDs to WorkflowFileData via FileContextService
+   */
+  private async resolveFileIds(
+    fileIds: string[],
+    nodeId: string,
+    contextManager: ExecutionContextManager
+  ): Promise<WorkflowFileData[]> {
+    const fileService = contextManager.getFileService()
+    const files: WorkflowFileData[] = []
+
+    for (const prefixedId of fileIds) {
+      const fileRef = await fileService.normalizeFileInput(prefixedId, nodeId)
+      if (fileRef) {
+        files.push({
+          id: fileRef.id,
+          fileId: fileRef.assetId,
+          assetId: fileRef.assetId,
+          versionId: fileRef.versionId,
+          filename: fileRef.filename,
+          mimeType: fileRef.mimeType,
+          size: fileRef.size,
+          url: fileRef.url,
+          nodeId,
+          uploadedAt: new Date(),
+          expiresAt: fileRef.urlExpiresAt,
+        })
+      } else {
+        logger.warn('Could not resolve file ID', { prefixedId, nodeId })
+      }
+    }
+
+    return files
   }
 
   /**
@@ -175,9 +219,8 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
     files: WorkflowFileData[],
     contextManager: ExecutionContextManager
   ): void {
-    // Create structured array variable
-    const filesVariable = createMultipleFilesVariable(nodeId, 'files', files)
-    contextManager.setNodeVariable(nodeId, 'files', filesVariable)
+    // Store the raw files array so path resolution (files[*], files[0]) works
+    contextManager.setNodeVariable(nodeId, 'files', files)
 
     // Set backwards-compatible flat variables
     contextManager.setNodeVariable(nodeId, 'count', files.length)

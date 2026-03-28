@@ -63,6 +63,64 @@ export function getDefinitionId(recordId: RecordId): string {
 }
 
 /**
+ * Normalize a value to RecordId format.
+ * Handles the various shapes that can represent a related entity:
+ * - RecordId string ("entityDefId:instanceId") → pass through
+ * - Plain string ID ("abc123") → toRecordId(fallbackEntityDefId, id)
+ * - Entity object ({ id, entityDefinitionId }) → toRecordId(obj.entityDefinitionId, obj.id)
+ * - ResourceReference ({ __resourceRef, resourceId, resourceType }) → toRecordId(resourceType, resourceId)
+ * - TypedFieldValue ({ relatedEntityId, relatedEntityDefinitionId }) → toRecordId(defId, entityId)
+ *
+ * @param value - The value to normalize
+ * @param fallbackEntityDefId - Entity definition ID to use when the value doesn't carry one
+ * @returns RecordId or null if value cannot be normalized
+ */
+export function normalizeToRecordId(value: unknown, fallbackEntityDefId: string): RecordId | null {
+  if (!value) return null
+
+  // String values
+  if (typeof value === 'string') {
+    if (value.includes(':')) return value as RecordId
+    return toRecordId(fallbackEntityDefId, value)
+  }
+
+  // Object values
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, any>
+
+    // ResourceReference: { __resourceRef: true, resourceId, resourceType }
+    if (obj.__resourceRef && obj.resourceId) {
+      return toRecordId(obj.resourceType ?? fallbackEntityDefId, obj.resourceId)
+    }
+
+    // TypedFieldValue: { relatedEntityId, relatedEntityDefinitionId }
+    if (obj.relatedEntityId) {
+      return toRecordId(obj.relatedEntityDefinitionId ?? fallbackEntityDefId, obj.relatedEntityId)
+    }
+
+    // Entity object: { id, entityDefinitionId }
+    if (obj.id) {
+      return toRecordId(obj.entityDefinitionId ?? fallbackEntityDefId, obj.id)
+    }
+  }
+
+  return null
+}
+
+/**
+ * Normalize an array of values to RecordId[].
+ * Filters out any values that cannot be normalized.
+ */
+export function normalizeToRecordIds(values: unknown[], fallbackEntityDefId: string): RecordId[] {
+  const result: RecordId[] = []
+  for (const v of values) {
+    const recordId = normalizeToRecordId(v, fallbackEntityDefId)
+    if (recordId) result.push(recordId)
+  }
+  return result
+}
+
+/**
  * System entity types that are stored in the EntityDefinition table.
  * Each org gets one EntityDefinition row per type with entityType set.
  * Custom (user-created) entities also use EntityDefinition but with entityType = null.

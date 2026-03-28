@@ -60,6 +60,7 @@ export const DEEPSEEK_MODELS: Record<string, ModelCapabilities> = {
       vision: false,
       toolCalling: false,
       systemMessages: true,
+      fileInput: false,
     },
     description: "DeepSeek's conversational AI model",
     parameterRules: [
@@ -94,6 +95,7 @@ export const DEEPSEEK_MODELS: Record<string, ModelCapabilities> = {
       vision: false,
       toolCalling: false,
       systemMessages: true,
+      fileInput: false,
     },
     description: 'DeepSeek model with enhanced reasoning capabilities',
     parameterRules: [

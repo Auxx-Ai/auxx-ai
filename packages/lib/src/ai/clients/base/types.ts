@@ -29,7 +29,7 @@ export interface ModelCapabilities {
   }
 }
 
-export type ContentType = 'text' | 'image' | 'audio'
+export type ContentType = 'text' | 'image' | 'audio' | 'file'
 
 export interface MultiModalContent {
   type: ContentType
@@ -38,6 +38,9 @@ export interface MultiModalContent {
     duration?: number // for audio
     detail?: 'high' | 'low' // for images
     format?: string
+    filename?: string // original filename (e.g. 'invoice.pdf')
+    mimeType?: string // e.g. 'application/pdf', 'text/csv'
+    size?: number // bytes, for validation and token estimation
     [key: string]: any
   }
 }

@@ -42,18 +42,21 @@ export const FileInput = createNodeInput<FileInputProps>(
     maxFileSize,
   }) => {
     // Get file IDs from inputs (stored as array, JSON string, or plain string ID)
+    // IDs may be prefixed with "file:" — strip for internal use, re-add on output
     let fileIds: string[] = []
     const rawValue = inputs[name]
 
     if (Array.isArray(rawValue)) {
-      fileIds = rawValue
+      fileIds = rawValue.map((id) => String(id).replace(/^file:/, ''))
     } else if (typeof rawValue === 'string' && rawValue) {
       try {
         const parsed = JSON.parse(rawValue)
-        fileIds = Array.isArray(parsed) ? parsed : [parsed].filter((v) => typeof v === 'string')
+        fileIds = Array.isArray(parsed)
+          ? parsed.map((id: string) => String(id).replace(/^file:/, ''))
+          : [parsed].filter((v) => typeof v === 'string').map((id) => id.replace(/^file:/, ''))
       } catch {
         // Not valid JSON, treat as a single file ID string
-        fileIds = [rawValue]
+        fileIds = [rawValue.replace(/^file:/, '')]
       }
     }
 
@@ -126,14 +129,20 @@ export const FileInput = createNodeInput<FileInputProps>(
       // Clear any validation errors
       onError(name, null)
 
-      // Update parent with new file IDs
-      onChange(name, newFileIds)
+      // Update parent with prefixed file IDs
+      onChange(
+        name,
+        newFileIds.map((id) => `file:${id}`)
+      )
     }
 
     // Handle removing individual files
     const handleRemoveFile = (fileId: string) => {
       const newFileIds = fileIds.filter((id) => id !== fileId)
-      onChange(name, newFileIds)
+      onChange(
+        name,
+        newFileIds.map((id) => `file:${id}`)
+      )
     }
 
     const inputId = `input-${name}`

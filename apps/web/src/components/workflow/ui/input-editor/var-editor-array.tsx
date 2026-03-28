@@ -47,6 +47,7 @@ interface VarEditorArrayProps {
  * Extract variable ID from a value string like "{{nodeId.path}}"
  */
 function extractVariableId(value: string): string | null {
+  if (typeof value !== 'string') return null
   const match = value.trim().match(/^\{\{([^}]+)\}\}$/)
   return match ? match[1]! : null
 }
