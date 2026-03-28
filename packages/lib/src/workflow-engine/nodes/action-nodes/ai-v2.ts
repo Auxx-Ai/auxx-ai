@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/ai-v2.ts
 
-import type { Message, Tool } from '../../../ai/clients/base/types'
+import { LLMClient } from '../../../ai/clients/base/llm-client'
+import type { Message, MultiModalContent, Tool } from '../../../ai/clients/base/types'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import { ToolExecutionManager } from '../../core/tool-execution-manager'
 import { ToolRegistry } from '../../core/tool-registry'
@@ -56,7 +57,13 @@ interface AiNodeConfig {
   model: AiModelConfig
   prompt_template: PromptTemplate[]
   context?: { enabled: boolean; variable_selector?: string[] }
-  vision?: { enabled: boolean }
+  files?: {
+    enabled: boolean
+    input?: string // single file reference (variable ref or file:id constant)
+    isConstant?: boolean // true = constant file picker, false = variable reference
+    maxFiles?: number // guard rail, default 10
+    maxTotalSize?: number // bytes, default 20MB
+  }
   structured_output?: {
     enabled: boolean
     schema?: {
@@ -143,6 +150,130 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       messages.push(...(await Promise.all(promptPromises)))
     } else {
       throw new Error('No prompt configuration found')
+    }
+
+    // Attach file content if files config is enabled
+    if (config.files?.enabled && config.files.input) {
+      contextManager.log('INFO', node.nodeId, '[Files] Starting file attachment', {
+        input: config.files.input,
+        isConstant: config.files.isConstant,
+      })
+
+      const fileService = contextManager.getFileService()
+      const fileContents: MultiModalContent[] = []
+      let totalSize = 0
+      const maxTotal = config.files.maxTotalSize ?? 20 * 1024 * 1024 // 20MB default
+      const maxFiles = config.files.maxFiles ?? 10
+
+      // Resolve the file input — constant mode splits comma-separated file: IDs, variable mode resolves to raw value
+      let rawValue: any
+      if (config.files.isConstant) {
+        rawValue = config.files.input.split(',').filter(Boolean)
+      } else {
+        // Extract plain path from {{variable}} format, then resolve to raw value (not string interpolation)
+        const varIds = this.extractVariableIds(config.files.input)
+        rawValue =
+          varIds.length > 0
+            ? await this.resolveVariablePath(varIds[0]!, contextManager)
+            : await this.resolveVariablePath(config.files.input, contextManager)
+      }
+
+      contextManager.log('INFO', node.nodeId, '[Files] Resolved raw value', {
+        rawValueType:
+          rawValue === undefined
+            ? 'undefined'
+            : Array.isArray(rawValue)
+              ? 'array'
+              : typeof rawValue,
+        rawValueLength: Array.isArray(rawValue) ? rawValue.length : undefined,
+        rawValue: Array.isArray(rawValue)
+          ? JSON.stringify(rawValue).slice(0, 200)
+          : String(rawValue)?.slice(0, 200),
+      })
+
+      const fileRefs = await fileService.normalizeFileInputs(rawValue, node.nodeId)
+
+      contextManager.log('INFO', node.nodeId, '[Files] Normalized file references', {
+        fileRefsCount: fileRefs.length,
+        fileRefs: fileRefs.map((r) => ({
+          id: r.id,
+          filename: r.filename,
+          mimeType: r.mimeType,
+          size: r.size,
+          source: r.source,
+        })),
+      })
+
+      for (const fileRef of fileRefs) {
+        if (fileContents.length >= maxFiles) {
+          contextManager.log(
+            'WARN',
+            node.nodeId,
+            'Max file count reached, skipping remaining files'
+          )
+          break
+        }
+
+        if (totalSize + fileRef.size > maxTotal) {
+          contextManager.log(
+            'WARN',
+            node.nodeId,
+            'File size limit reached, skipping remaining files'
+          )
+          break
+        }
+
+        if (!LLMClient.isSupportedFileMimeType(fileRef.mimeType)) {
+          contextManager.log(
+            'WARN',
+            node.nodeId,
+            `Skipping unsupported file type: ${fileRef.mimeType} (${fileRef.filename})`
+          )
+          continue
+        }
+
+        const base64 = (await fileService.getContent(fileRef, { asBase64: true })) as string
+        fileContents.push(
+          LLMClient.fileToMultiModalContent(
+            base64,
+            fileRef.mimeType,
+            fileRef.filename,
+            fileRef.size
+          )
+        )
+        totalSize += fileRef.size
+      }
+
+      contextManager.log('INFO', node.nodeId, '[Files] File content processing complete', {
+        fileContentsCount: fileContents.length,
+        totalSize,
+      })
+
+      if (fileContents.length > 0) {
+        // Append to last user message as multi-modal content
+        const lastUserMsg = messages.findLast((m) => m.role === 'user')
+        if (lastUserMsg) {
+          contextManager.log('INFO', node.nodeId, '[Files] Attaching to last user message', {
+            userMessageContent: String(lastUserMsg.content).slice(0, 100),
+            fileCount: fileContents.length,
+          })
+          const textContent: MultiModalContent = {
+            type: 'text',
+            data: lastUserMsg.content as string,
+          }
+          lastUserMsg.content = [textContent, ...fileContents]
+        }
+      } else {
+        contextManager.log(
+          'WARN',
+          node.nodeId,
+          '[Files] No file content to attach after processing'
+        )
+      }
+    } else if (config.files?.enabled) {
+      contextManager.log('WARN', node.nodeId, '[Files] Files enabled but input is empty', {
+        filesConfig: config.files,
+      })
     }
 
     return messages
@@ -270,6 +401,11 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       config.context.variable_selector.forEach((v: string) => variables.add(v))
     }
 
+    // Extract from files config if enabled (only in variable mode)
+    if (config.files?.enabled && config.files.input && !config.files.isConstant) {
+      this.extractVariableIds(config.files.input).forEach((v) => variables.add(v))
+    }
+
     return Array.from(variables)
   }
 
@@ -334,6 +470,13 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
         if (!schema.properties || Object.keys(schema.properties).length === 0) {
           errors.push('Structured output schema must define at least one property')
         }
+      }
+    }
+
+    // Validate files configuration
+    if (config.files?.enabled) {
+      if (!config.files.input) {
+        warnings.push('Files are enabled but no file input is configured')
       }
     }
 

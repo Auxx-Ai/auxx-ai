@@ -15,9 +15,11 @@ import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
 import { AlertTriangle, Pencil, Plus, Wrench, X } from 'lucide-react'
 import type React from 'react'
-import { memo, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { BaseType } from '~/components/workflow/types'
+import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import StructuredOutputGenerator, {
@@ -109,6 +111,31 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
       setNodeData(newData)
     }
   }
+
+  // Files update handlers
+  const updateFilesEnabled = useCallback(
+    (enabled: boolean) => {
+      const newData = produce(nodeData, (draft: AiNodeData) => {
+        if (!draft.files) draft.files = { enabled: false, input: '', isConstant: false }
+        draft.files.enabled = enabled
+      })
+      setNodeData(newData)
+    },
+    [nodeData, setNodeData]
+  )
+
+  const updateFileInput = useCallback(
+    (value: string | boolean | string[], isConstantMode?: boolean) => {
+      const newData = produce(nodeData, (draft: AiNodeData) => {
+        if (!draft.files) draft.files = { enabled: false, input: '', isConstant: false }
+        // FileInput returns string[] of prefixed file IDs; variable picker returns a string
+        draft.files.input = Array.isArray(value) ? value.join(',') : String(value)
+        draft.files.isConstant = isConstantMode ?? false
+      })
+      setNodeData(newData)
+    },
+    [nodeData, setNodeData]
+  )
 
   // Tools update handler
   const updateTools = (updates: Partial<AiNodeData['tools']>) => {
@@ -315,25 +342,29 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
               }}
             />
           </div>
-
-          <div className='flex items-center justify-between'>
-            <Label className='text-xs'>Enable Vision</Label>
-            <Switch
-              size='sm'
-              disabled={isReadOnly}
-              checked={nodeData.vision?.enabled || false}
-              onCheckedChange={(enabled) => {
-                const newData = produce(nodeData, (draft: AiNodeData) => {
-                  if (!draft.vision) {
-                    draft.vision = { enabled: false }
-                  }
-                  draft.vision.enabled = enabled
-                })
-                setNodeData(newData)
-              }}
-            />
-          </div>
         </div>
+      </Section>
+
+      <Section
+        title='Attach Files'
+        description='Attach file variables (PDFs, text files) for the AI to analyze'
+        showEnable
+        onEnableChange={updateFilesEnabled}
+        enabled={nodeData.files?.enabled || false}
+        initialOpen={nodeData.files?.enabled || false}>
+        <VarEditorField>
+          <VarEditor
+            value={nodeData.files?.input || ''}
+            onChange={updateFileInput}
+            varType={BaseType.FILE}
+            allowedTypes={[BaseType.FILE, BaseType.ARRAY]}
+            nodeId={nodeId}
+            disabled={isReadOnly}
+            allowConstant
+            isConstantMode={nodeData.files?.isConstant ?? false}
+            placeholder='Select file variable'
+          />
+        </VarEditorField>
       </Section>
 
       <Section

@@ -50,6 +50,7 @@ export function getFormInputOutputVariables(
             description: `Uploaded files for "${data.label}"`,
             items: {
               type: BaseType.FILE,
+              label: 'File',
               description: 'Individual file',
               properties: {
                 id: { type: BaseType.STRING, description: 'File ID' },
@@ -59,10 +60,15 @@ export function getFormInputOutputVariables(
                 url: { type: BaseType.URL, description: 'Download URL' },
               },
             },
-            properties: {
-              count: { type: BaseType.NUMBER, description: 'Number of files' },
-              totalSize: { type: BaseType.NUMBER, description: 'Total size' },
-            },
+          })
+        )
+        variables.push(
+          createNestedVariable({
+            nodeId,
+            basePath: 'fileCount',
+            type: BaseType.NUMBER,
+            label: 'File Count',
+            description: 'Number of uploaded files',
           })
         )
       } else {

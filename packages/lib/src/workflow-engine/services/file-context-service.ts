@@ -180,6 +180,24 @@ export class FileContextService {
   }
 
   /**
+   * Normalize file input(s) to an array of FileReferences.
+   * Handles single items, arrays, and nested arrays — flattens everything into a flat list.
+   */
+  async normalizeFileInputs(input: unknown, nodeId: string): Promise<FileReference[]> {
+    if (!input) return []
+
+    // Handle arrays (e.g. email attachments, multi-file variables)
+    if (Array.isArray(input)) {
+      const results = await Promise.all(input.map((item) => this.normalizeFileInput(item, nodeId)))
+      return results.filter((ref): ref is FileReference => ref !== null)
+    }
+
+    // Single item — delegate to normalizeFileInput
+    const ref = await this.normalizeFileInput(input, nodeId)
+    return ref ? [ref] : []
+  }
+
+  /**
    * Normalize any file input to FileReference
    * Handles various input formats: WorkflowFileData, AttachmentData, URL strings
    */
@@ -204,6 +222,13 @@ export class FileContextService {
     // Handle attachment structure (from custom fields)
     if (this.isAttachmentData(input)) {
       return this.normalizeAttachment(input, nodeId)
+    }
+
+    // Handle file:ID references (folder file / media asset IDs from the file picker)
+    // Must be checked before URL handler since file: is a valid URL scheme
+    if (typeof input === 'string' && input.startsWith('file:')) {
+      const fileId = input.slice(5)
+      return this.normalizeFolderFileId(fileId, nodeId)
     }
 
     // Handle simple URL string
@@ -306,6 +331,61 @@ export class FileContextService {
       url,
       urlExpiresAt: new Date(Date.now() + 3600000),
       nodeId,
+    }
+  }
+
+  /**
+   * Normalize a folder file ID to FileReference
+   * Looks up the file via FileService and builds a download URL
+   */
+  private async normalizeFolderFileId(
+    fileId: string,
+    nodeId: string
+  ): Promise<FileReference | null> {
+    try {
+      const { FileService } = await import('../../files/core/file-service')
+      const fileService = new FileService(this.organizationId)
+
+      // Get file entity for metadata
+      const { schema } = await import('@auxx/database')
+      const { eq } = await import('drizzle-orm')
+      const [entity] = await this.db
+        .select({
+          name: schema.FolderFile.name,
+          mimeType: schema.FolderFile.mimeType,
+          size: schema.FolderFile.size,
+        })
+        .from(schema.FolderFile)
+        .where(eq(schema.FolderFile.id, fileId))
+        .limit(1)
+
+      if (!entity) {
+        logger.warn('Folder file not found', { fileId })
+        return null
+      }
+
+      const downloadRef = await fileService.getDownloadRef(fileId)
+      const url = downloadRef.type === 'url' ? downloadRef.url : ''
+
+      return {
+        id: fileId,
+        assetId: fileId,
+        versionId: fileId,
+        source: 'folder-file',
+        filename: entity.name || 'file',
+        mimeType: entity.mimeType || 'application/octet-stream',
+        size: Number(entity.size) || 0,
+        url,
+        urlExpiresAt:
+          downloadRef.type === 'url' ? downloadRef.expiresAt : new Date(Date.now() + 3600000),
+        nodeId,
+      }
+    } catch (err) {
+      logger.error('Failed to normalize folder file ID', {
+        fileId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return null
     }
   }
 

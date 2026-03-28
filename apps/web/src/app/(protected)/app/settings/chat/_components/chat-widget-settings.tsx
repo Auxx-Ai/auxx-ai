@@ -597,11 +597,11 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value='gpt-4o'>OpenAI GPT-4o</SelectItem>
-                              <SelectItem value='claude-3-opus-20240229'>
-                                Anthropic Claude 3 Opus
+                              <SelectItem value='claude-sonnet-4-6'>
+                                Anthropic Claude Sonnet 4.6
                               </SelectItem>
-                              <SelectItem value='claude-3-haiku-20240307'>
-                                Anthropic Claude 3 Haiku
+                              <SelectItem value='claude-haiku-4-5-20251001'>
+                                Anthropic Claude Haiku 4.5
                               </SelectItem>
                               <SelectItem value='gemini-pro'>Google Gemini Pro</SelectItem>
                             </SelectContent>

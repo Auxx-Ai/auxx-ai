@@ -4,6 +4,7 @@ import { TokenCalculator } from '../utils/token-calculator'
 import { BaseSpecializedClient } from './base-specialized-client'
 import type {
   ClientConfig,
+  ContentType,
   LLMInvokeParams,
   LLMResponse,
   LLMStreamChunk,
@@ -21,6 +22,67 @@ import type {
  * Provides common LLM functionality like token calculation, streaming, and tool handling
  */
 export abstract class LLMClient extends BaseSpecializedClient {
+  // ===== FILE SUPPORT =====
+
+  /**
+   * MIME types that providers can process as file/document content blocks.
+   * Images and audio are handled separately via their own ContentType.
+   */
+  static SUPPORTED_FILE_MIME_TYPES = [
+    'application/pdf',
+    'text/plain',
+    'text/csv',
+    'text/html',
+    'text/markdown',
+    'text/xml',
+    'application/json',
+    'application/xml',
+  ] as const
+
+  /**
+   * Check if a MIME type is supported for file input.
+   * Images route to 'image' ContentType, audio to 'audio', others checked against allowlist.
+   */
+  static isSupportedFileMimeType(mimeType: string): boolean {
+    if (mimeType.startsWith('image/') || mimeType.startsWith('audio/')) return true
+    return (
+      (LLMClient.SUPPORTED_FILE_MIME_TYPES as readonly string[]).includes(mimeType) ||
+      mimeType.startsWith('text/')
+    )
+  }
+
+  /** Map MIME type to ContentType — images stay as 'image', audio as 'audio', rest as 'file'. */
+  static mimeToContentType(mimeType: string): ContentType {
+    if (mimeType.startsWith('image/')) return 'image'
+    if (mimeType.startsWith('audio/')) return 'audio'
+    return 'file'
+  }
+
+  /**
+   * Convert base64 file data into a MultiModalContent block.
+   * Determines content type from mimeType — images become 'image', everything else becomes 'file'.
+   */
+  static fileToMultiModalContent(
+    base64Data: string,
+    mimeType: string,
+    filename?: string,
+    size?: number
+  ): MultiModalContent {
+    if (!LLMClient.isSupportedFileMimeType(mimeType)) {
+      throw new Error(
+        `Unsupported file type: ${mimeType} (${filename ?? 'unknown'}). ` +
+          `Supported types: ${LLMClient.SUPPORTED_FILE_MIME_TYPES.join(', ')}, image/*, audio/*`
+      )
+    }
+
+    const type = LLMClient.mimeToContentType(mimeType)
+    return {
+      type,
+      data: base64Data,
+      metadata: { filename, mimeType, size },
+    }
+  }
+
   // ===== ABSTRACT METHODS (must be implemented by each provider) =====
 
   /**
@@ -181,6 +243,42 @@ export abstract class LLMClient extends BaseSpecializedClient {
           if (Array.isArray(msg.content)) {
             const filteredContent = msg.content.filter((content) => content.type !== 'image')
             // Convert back to string if only text content remains
+            if (filteredContent.length === 1 && filteredContent[0].type === 'text') {
+              return { ...msg, content: filteredContent[0].data }
+            }
+            return { ...msg, content: filteredContent }
+          }
+          return msg
+        })
+      }
+    }
+
+    // Filter file content if model doesn't support it
+    if (processed.messages && modelCapabilities?.supports?.fileInput === false) {
+      const hasFileContent = processed.messages.some(
+        (msg) =>
+          Array.isArray(msg.content) && msg.content.some((content) => content.type === 'file')
+      )
+
+      if (hasFileContent) {
+        this.logger.warn('File input not supported for this model, removing file content', {
+          model: params.model,
+        })
+
+        processed.messages = processed.messages.map((msg) => {
+          if (Array.isArray(msg.content)) {
+            const filteredContent = msg.content.filter((content) => content.type !== 'file')
+            if (filteredContent.length === 0) {
+              return {
+                ...msg,
+                content: [
+                  {
+                    type: 'text' as const,
+                    data: '[File content removed — model does not support file input]',
+                  },
+                ],
+              }
+            }
             if (filteredContent.length === 1 && filteredContent[0].type === 'text') {
               return { ...msg, content: filteredContent[0].data }
             }

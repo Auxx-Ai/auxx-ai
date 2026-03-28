@@ -29,21 +29,10 @@ export class AnthropicClient extends ProviderClient {
   async validateCredentials(credentials: Record<string, any>): Promise<ValidationResult> {
     this.logOperationStart('validateCredentials')
 
-    // DEBUG: Log the incoming credentials to see what we're receiving
-    console.log(
-      '🔍 Anthropic validateCredentials - received credentials:',
-      JSON.stringify(credentials, null, 2)
-    )
-
     // First validate schema
     const schemaResult = this.validateSchema(credentials)
     if (!schemaResult.isValid) {
       this.logOperationError('validateCredentials', schemaResult.error)
-      console.log(
-        '❌ Anthropic schema validation failed:',
-        schemaResult.error,
-        schemaResult.fieldErrors
-      )
       return {
         isValid: false,
         error: schemaResult.error,
@@ -89,7 +78,7 @@ export class AnthropicClient extends ProviderClient {
       const extractedCreds = this.extractCredentials(credentials)
       const anthropic = this.getApiClient(extractedCreds)
 
-      const testModel = model || 'claude-3-5-sonnet-20240620'
+      const testModel = model || 'claude-sonnet-4-6'
 
       // Test with minimal message to verify API access
       await anthropic.messages.create({
@@ -133,13 +122,6 @@ export class AnthropicClient extends ProviderClient {
       String(this.extractCredentialField(rawCredentials, 'api_key') || '') ||
       String(this.extractCredentialField(rawCredentials, 'anthropic_api_key') || '') ||
       String(rawCredentials.apiKey || '')
-
-    // DEBUG: Log credential extraction process
-    console.log('🔍 Anthropic extractCredentials - raw:', JSON.stringify(rawCredentials, null, 2))
-    console.log(
-      '🔍 Anthropic extractCredentials - extracted apiKey:',
-      apiKey ? 'Found (' + apiKey.substring(0, 10) + '...)' : 'Not found'
-    )
 
     return {
       anthropic_api_key: apiKey,

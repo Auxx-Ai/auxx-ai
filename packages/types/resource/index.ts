@@ -18,6 +18,8 @@ export {
   isEntityDefinitionType,
   isRecordId,
   isSystemModelType,
+  normalizeToRecordId,
+  normalizeToRecordIds,
   parseRecordId,
   toRecordId,
   toRecordIds,

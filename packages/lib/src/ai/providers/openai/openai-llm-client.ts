@@ -529,6 +529,22 @@ export class OpenAILLMClient extends LLMClient {
           // Estimate based on duration
           tokens += Math.ceil((item.metadata?.duration || 30) / 10) * 50
           break
+        case 'file': {
+          const size = item.metadata?.size ?? 0
+          const mimeType = item.metadata?.mimeType ?? ''
+
+          if (mimeType === 'application/pdf') {
+            // OpenAI: text extraction + per-page image tokens (~850 tokens/page at low detail)
+            const estimatedPages = Math.max(1, Math.ceil(size / 50_000))
+            tokens += estimatedPages * 850
+          } else if (mimeType.startsWith('text/')) {
+            // Plain text: ~4 chars per token
+            tokens += Math.ceil(size / 4)
+          } else {
+            tokens += 1000
+          }
+          break
+        }
       }
     }
 
@@ -548,11 +564,23 @@ export class OpenAILLMClient extends LLMClient {
     }
   }
 
-  private getSupportedContentTypes(model: string): Array<'text' | 'image' | 'audio'> {
-    const baseTypes: Array<'text' | 'image' | 'audio'> = ['text']
+  private getSupportedContentTypes(model: string): Array<'text' | 'image' | 'audio' | 'file'> {
+    const baseTypes: Array<'text' | 'image' | 'audio' | 'file'> = ['text']
 
-    if (model.includes('vision') || model.startsWith('gpt-4o')) {
+    const modelCaps = this.getModelCapabilitiesFromRegistry(model)
+
+    if (
+      modelCaps?.supports.vision ||
+      model.includes('vision') ||
+      model.startsWith('gpt-4o') ||
+      model.startsWith('gpt-5') ||
+      model.startsWith('gpt-4.1')
+    ) {
       baseTypes.push('image')
+    }
+
+    if (modelCaps?.supports.fileInput) {
+      baseTypes.push('file')
     }
 
     if (model.startsWith('gpt-4o-audio')) {
@@ -609,8 +637,19 @@ export class OpenAILLMClient extends LLMClient {
               return {
                 type: 'image_url',
                 image_url: {
-                  url: item.data,
+                  url:
+                    item.data.startsWith('data:') || item.data.startsWith('http')
+                      ? item.data
+                      : `data:${item.metadata?.mimeType ?? 'image/png'};base64,${item.data}`,
                   detail: item.metadata?.detail || 'auto',
+                },
+              }
+            case 'file':
+              return {
+                type: 'file',
+                file: {
+                  filename: item.metadata?.filename ?? 'document',
+                  file_data: `data:${item.metadata?.mimeType ?? 'application/octet-stream'};base64,${item.data}`,
                 },
               }
             default:

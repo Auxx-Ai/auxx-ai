@@ -68,6 +68,7 @@ export interface ModelCapabilities {
     vision: boolean
     toolCalling: boolean
     systemMessages: boolean
+    fileInput: boolean
   }
   costPer1kTokens?: { input: number; output: number }
   deprecated?: boolean

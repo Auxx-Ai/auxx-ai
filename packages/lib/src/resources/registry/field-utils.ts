@@ -133,16 +133,23 @@ export function setEntityVariables(
   const resourceRef = createResourceReference(resourceType as any, resourceData.id, organizationId)
   contextManager.setVariable(`${nodeId}.${resourceType}`, resourceRef)
 
-  // Store the id field
-  contextManager.setVariable(`${nodeId}.${resourceType}.id`, resourceData.id)
+  // Store standard EntityInstance fields under output keys matching systemAttribute values
+  // (mirrors how setResourceVariables uses getFieldOutputKey for system resources)
+  const ENTITY_STANDARD_FIELDS: Array<{ prop: string; outputKey: string }> = [
+    { prop: 'id', outputKey: 'record_id' },
+    { prop: 'createdAt', outputKey: 'created_at' },
+    { prop: 'updatedAt', outputKey: 'updated_at' },
+    { prop: 'entityDefinitionId', outputKey: 'entityDefinitionId' },
+  ]
 
-  // Store standard EntityInstance fields
-  const standardFields = ['createdAt', 'updatedAt', 'entityDefinitionId']
-  for (const field of standardFields) {
-    if (resourceData[field] !== undefined) {
-      contextManager.setVariable(`${nodeId}.${resourceType}.${field}`, resourceData[field])
+  for (const { prop, outputKey } of ENTITY_STANDARD_FIELDS) {
+    if (resourceData[prop] !== undefined) {
+      contextManager.setVariable(`${nodeId}.${resourceType}.${outputKey}`, resourceData[prop])
     }
   }
+
+  // Also store `id` directly — extractIdFromValue, resolveNestedObject, and other paths expect it
+  contextManager.setVariable(`${nodeId}.${resourceType}.id`, resourceData.id)
 
   // Store custom field values from fieldValues object
   // EntityInstance stores custom fields in a JSONB `fieldValues` column

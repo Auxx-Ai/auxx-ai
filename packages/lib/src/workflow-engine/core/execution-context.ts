@@ -280,6 +280,12 @@ export class ExecutionContextManager {
           arrayLength: Array.isArray(result) ? result.length : undefined,
         })
 
+        // Fallback: if resolveNestedObject couldn't find the property,
+        // try field-registry-aware resolution (handles systemAttribute mappings)
+        if (result === undefined) {
+          return this.resolveFieldFromResourceRef(analysis.baseResourceRef, analysis.remainingPath)
+        }
+
         return result
       }
 
@@ -1143,7 +1149,9 @@ export class ExecutionContextManager {
   ): Promise<ResourceFieldId | null> {
     try {
       const fields = await getCachedResourceFields(this.context.organizationId, entityDefId)
-      const field = fields?.find((f) => f.key === fieldKeyOrId || f.id === fieldKeyOrId)
+      const field = fields?.find(
+        (f) => f.key === fieldKeyOrId || f.id === fieldKeyOrId || f.systemAttribute === fieldKeyOrId
+      )
       if (field?.id) {
         return toResourceFieldId(entityDefId, field.id) as ResourceFieldId
       }

@@ -59,6 +59,7 @@ export const GROQ_MODELS: Record<string, ModelCapabilities> = {
       vision: false,
       toolCalling: false,
       systemMessages: true,
+      fileInput: false,
     },
     description: 'High-speed inference on Groq hardware',
     parameterRules: [

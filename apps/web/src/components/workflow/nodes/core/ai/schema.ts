@@ -12,6 +12,7 @@ import {
 import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { containsVariableReference } from '~/components/workflow/utils/variable-utils'
 import { AiModelMode, type AiNodeData, PromptRole } from './types'
 
 /**
@@ -66,9 +67,13 @@ const contextSchema = z.object({
 })
 
 /**
- * Zod schema for AI vision
+ * Zod schema for AI files
  */
-const visionSchema = z.object({ enabled: z.boolean().default(false) })
+const filesSchema = z.object({
+  enabled: z.boolean().default(false),
+  input: z.string().default(''),
+  isConstant: z.boolean().default(false),
+})
 
 /**
  * Zod schema for structured output
@@ -98,7 +103,7 @@ export const aiNodeDataSchema = z.object({
   model: modelSchema,
   prompt_template: z.array(promptTemplateSchema).min(1),
   context: contextSchema,
-  vision: visionSchema,
+  files: filesSchema,
   structured_output: structuredOutputSchema,
 })
 
@@ -111,7 +116,7 @@ export const aiSchema = z.object({
   model: modelSchema,
   prompt_template: z.array(promptTemplateSchema).min(1),
   context: contextSchema,
-  vision: visionSchema,
+  files: filesSchema,
   structured_output: structuredOutputSchema,
 })
 
@@ -131,7 +136,7 @@ export const createAiDefaultData = (): Partial<AiNodeData> => ({
   },
   prompt_template: [{ role: PromptRole.SYSTEM, text: '' }],
   context: { enabled: false, variable_selector: [] },
-  vision: { enabled: false },
+  files: { enabled: false, input: '', isConstant: false },
   structured_output: { enabled: false },
 })
 
@@ -318,6 +323,16 @@ export function extractAIVariableIds(data: AiNodeData): string[] {
       uniqueVariableIds.add(id)
     })
   })
+
+  // Extract from file input (only in variable mode)
+  if (data.files?.input && !data.files.isConstant) {
+    if (containsVariableReference(data.files.input)) {
+      const ids = extractVarIdsFromString(data.files.input)
+      ids.forEach((id) => uniqueVariableIds.add(id))
+    } else {
+      uniqueVariableIds.add(data.files.input)
+    }
+  }
 
   return Array.from(uniqueVariableIds)
 }

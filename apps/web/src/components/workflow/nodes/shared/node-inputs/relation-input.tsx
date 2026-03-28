@@ -3,9 +3,10 @@
 'use client'
 
 import {
-  getInstanceId,
   isMultiRelationship,
+  isRecordId,
   type RecordId,
+  toRecordId,
   toRecordIds,
 } from '@auxx/lib/field-values/client'
 import {
@@ -88,37 +89,34 @@ export const RelationInput = createNodeInput<RelationInputProps>(
     // Get current value from inputs
     const value = inputs[name] ?? ''
 
-    // Parse value to array format (handle legacy formats)
-    const arrayValue = useMemo(() => {
-      if (!value) return []
+    // Parse value to RecordId[] (handle RecordIds, plain IDs, and legacy formats)
+    const selectedRecordIds = useMemo(() => {
+      if (!value || !targetResourceId) return []
       if (typeof value === 'string') {
         try {
           const parsed = JSON.parse(value)
-          if (parsed.referenceId) return [parsed.referenceId]
-          if (Array.isArray(parsed)) return parsed
+          if (parsed.referenceId) return toRecordIds(targetResourceId, [parsed.referenceId])
+          if (Array.isArray(parsed)) {
+            // Array may contain RecordIds or plain IDs
+            return parsed.map((id: string) =>
+              isRecordId(id) ? id : toRecordId(targetResourceId, id)
+            )
+          }
         } catch {
-          // Plain string ID
+          // Single string value — either a RecordId or plain ID
         }
-        return [value]
+        return [isRecordId(value) ? value : toRecordId(targetResourceId, value)]
       }
       return []
-    }, [value])
+    }, [value, targetResourceId])
 
-    // Convert arrayValue to RecordId[] for MultiRelationInput
-    const selectedRecordIds = useMemo(
-      () => (targetResourceId ? toRecordIds(targetResourceId, arrayValue) : []),
-      [arrayValue, targetResourceId]
-    )
-
-    // Handle change - convert RecordId[] back to string ID(s)
+    // Handle change - store RecordIds directly (entityDefId:instanceId format)
     const handleChange = useCallback(
       (recordIds: RecordId[]) => {
         if (isMulti) {
-          const ids = recordIds.map(getInstanceId)
-          onChange(name, ids.length > 0 ? JSON.stringify(ids) : '')
+          onChange(name, recordIds.length > 0 ? JSON.stringify(recordIds) : '')
         } else {
-          const id = recordIds[0] ? getInstanceId(recordIds[0]) : ''
-          onChange(name, id)
+          onChange(name, recordIds[0] ?? '')
         }
       },
       [onChange, name, isMulti]
