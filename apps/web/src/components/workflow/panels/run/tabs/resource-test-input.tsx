@@ -7,14 +7,13 @@ import { getInstanceId, toRecordId } from '@auxx/lib/resources/client'
 import type { ResourceId } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { AlertCircle, Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo } from 'react'
 import { useRecord, useResource } from '~/components/resources'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
-import { BaseType } from '~/components/workflow/types'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import Field from '~/components/workflow/ui/field'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import Section from '~/components/workflow/ui/section'
 
 interface ResourceTestInputProps {
@@ -82,10 +81,10 @@ export function ResourceTestInput({
   )
 
   // Update resourceData when selected resource loads
+  // useRecord returns a RecordMeta object — fields are directly on the object, not nested under .data
   useEffect(() => {
     if (selectedResource) {
-      // Record from useRecord has direct data property
-      handleChange('resourceData', selectedResource.data)
+      handleChange('resourceData', selectedResource)
     }
   }, [selectedResource, handleChange])
 
@@ -128,18 +127,13 @@ export function ResourceTestInput({
     <Section title={`${resource.label} ${operation}`} initialOpen>
       <div className='space-y-4'>
         {/* Resource Picker Mode */}
-        <VarEditorField>
-          <VarEditorFieldRow
-            className='p-0'
-            title='Resource'
-            description={`Select the ${resource.label.toLowerCase()} by type or ID to ${operation === 'created' ? 'create' : operation === 'updated' ? 'update' : 'delete'}`}
-            type={BaseType.RELATION}
-            isRequired
-            validationError={errors.resourceData}
-            validationType={errors.resourceData ? 'error' : undefined}>
-            <div className='flex items-center gap-2 flex-1'>
+        <Field
+          title='Resource'
+          description={`Select the ${resource.label.toLowerCase()} by type or ID to ${operation === 'created' ? 'create' : operation === 'updated' ? 'update' : 'delete'}`}>
+          <VarEditorField>
+            <div className='flex items-center'>
               <MultiRelationInput
-                className='flex-1'
+                className='flex-1 pe-0 ps-2'
                 entityDefinitionId={resourceType}
                 value={selectedRecordId ? [selectedRecordId] : []}
                 onChange={(recordIds: RecordId[]) =>
@@ -150,13 +144,16 @@ export function ResourceTestInput({
                 multi={false}
               />
               {selectedRecordId && (
-                <Button variant='ghost' size='sm' onClick={() => handleResourceSelect(null)}>
-                  Clear
+                <Button variant='ghost' size='icon-sm' onClick={() => handleResourceSelect(null)}>
+                  <X />
                 </Button>
               )}
             </div>
-          </VarEditorFieldRow>
-        </VarEditorField>
+          </VarEditorField>
+          {errors.resourceData && (
+            <p className='text-sm text-destructive mt-1'>{errors.resourceData}</p>
+          )}
+        </Field>
         {/* Loading indicator */}
         {isLoadingResource && (
           <div className='flex items-center gap-2 text-sm text-muted-foreground px-4'>

@@ -1,5 +1,6 @@
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   CardContent,
@@ -9,13 +10,14 @@ import {
   CardTitle,
 } from '@auxx/ui/components/card'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { Laptop, Plus, RefreshCw, ShoppingBag, Store } from 'lucide-react'
+import { Laptop, Lock, Plus, RefreshCw, ShoppingBag, Store } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { ShopifyConnectDialog } from './_components/shopify-connect-dialog'
 import { useShopifyIntegration } from './_components/use-shopify-integration'
 
@@ -123,6 +125,8 @@ function ShopifyCardItem({ integration }: ShopifyCardItemProps) {
 export default function ShopifyIntegrationPage() {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
+  const { hasAccess } = useFeatureFlags()
+  const hasShopifyAccess = hasAccess(FeatureKey.shopify)
 
   // Use the custom Shopify hook
   const { integrations, isLoadingIntegrations, getAuthUrl } = useShopifyIntegration()
@@ -132,6 +136,27 @@ export default function ShopifyIntegrationPage() {
     resolver: standardSchemaResolver(shopDomainSchema),
     defaultValues: { shopDomain: '' },
   })
+
+  if (!hasShopifyAccess) {
+    return (
+      <SettingsPage
+        title='Shopify Integration'
+        description='Connect your Shopify store to sync products, orders, and inventory.'
+        breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Shopify' }]}>
+        <EmptyState
+          icon={Lock}
+          title='Shopify Integration Not Available'
+          description={
+            <>
+              Shopify integration is not included in your current plan. Upgrade to connect your
+              store.
+            </>
+          }
+          button={<div className='h-12' />}
+        />
+      </SettingsPage>
+    )
+  }
 
   return (
     <SettingsPage

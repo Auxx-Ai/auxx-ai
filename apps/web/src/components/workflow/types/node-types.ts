@@ -46,6 +46,7 @@ export enum NodeType {
   VAR_ASSIGN = 'var-assign',
   DATE_TIME = 'date-time',
   LIST = 'list',
+  FORMAT = 'format',
 
   // Data nodes
   // VARIABLE = 'variable', // Currently commented out in registry
@@ -100,6 +101,7 @@ export function getNodeTypeDisplayName(type: NodeType): string {
     [NodeType.VAR_ASSIGN]: 'Assign Variable',
     [NodeType.DATE_TIME]: 'Date Time',
     [NodeType.LIST]: 'List Operations',
+    [NodeType.FORMAT]: 'Format',
     [NodeType.NOTE]: 'Note',
     [NodeType.END]: 'End',
     [NodeType.WAIT]: 'Wait',

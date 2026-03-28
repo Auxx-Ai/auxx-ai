@@ -62,7 +62,7 @@ function DatasetTableRow({
           <div>
             <Link
               href={`/app/datasets/${dataset.id}`}
-              className='font-medium hover:text-primary hover:underline'>
+              className='font-medium hover:text-info hover:underline'>
               {dataset.name}
             </Link>
             {dataset.description && (

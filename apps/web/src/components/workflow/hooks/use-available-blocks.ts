@@ -85,9 +85,6 @@ export const useAvailableBlocks = (
 
     // Rules for what can connect FROM this node
     switch (nodeType) {
-      case 'answer':
-        // Answer nodes are terminal, no outputs
-        break
       case NodeType.LOOP:
         // Loop nodes can connect to any flow node inside the loop
         nextBlocks = flowNodes.map((node) => node.id)

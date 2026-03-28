@@ -67,7 +67,7 @@ import { ReplaceTrigger } from '~/components/workflow/ui/replace-trigger'
 import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
-import { unifiedNodeRegistry } from '../../unified-registry'
+import { ALLOW_TRIGGER_DELETE, unifiedNodeRegistry } from '../../unified-registry'
 import { SingleRunInputTab } from '../single-run-input-tab'
 import { SingleRunResultTab } from '../single-run-result-tab'
 
@@ -404,7 +404,7 @@ export const BasePanel = memo<BasePanelProps>(
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align='end' className='w-48'>
-                    {!isTrigger && (
+                    {(ALLOW_TRIGGER_DELETE || !isTrigger) && (
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger>
                           <RefreshCw />
@@ -445,13 +445,15 @@ export const BasePanel = memo<BasePanelProps>(
                         <KeyboardShortcut shortcut='D' />
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem
-                      onClick={() => handleDeleteNode(nodeId)}
-                      variant='destructive'>
-                      <Trash2 />
-                      Delete
-                      <KeyboardShortcut shortcut='Del' />
-                    </DropdownMenuItem>
+                    {(ALLOW_TRIGGER_DELETE || !isTrigger) && (
+                      <DropdownMenuItem
+                        onClick={() => handleDeleteNode(nodeId)}
+                        variant='destructive'>
+                        <Trash2 />
+                        Delete
+                        <KeyboardShortcut shortcut='Del' />
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}

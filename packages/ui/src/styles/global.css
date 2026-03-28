@@ -870,30 +870,38 @@ input[data-variant='translucent']:-webkit-autofill:active {
   );
 }
 
-/* Base UI ScrollArea — custom gradient overlay fade (for darker shadows etc.) */
+/* Base UI ScrollArea — custom gradient overlay fade (for darker shadows etc.)
+ * Applied to Root (not Viewport) so pseudo-elements don't inflate scroll height.
+ * Uses data-overflow-y-* attributes that Base UI sets on Root to toggle visibility. */
 .scroll-area-fade-custom {
   &::before,
   &::after {
     content: '';
     display: block;
+    position: absolute;
     left: 0;
     width: 100%;
-    position: sticky;
+    height: 8px;
     pointer-events: none;
     z-index: 1;
-    transition: height 0.1s ease-out;
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
   }
 
   &::before {
-    --scroll-area-overflow-y-start: inherit;
     top: 0;
-    height: min(8px, var(--scroll-area-overflow-y-start, 0px));
   }
 
   &::after {
-    --scroll-area-overflow-y-end: inherit;
     bottom: 0;
-    height: min(8px, var(--scroll-area-overflow-y-end, 0px));
+  }
+
+  &[data-overflow-y-start]::before {
+    opacity: 1;
+  }
+
+  &[data-overflow-y-end]::after {
+    opacity: 1;
   }
 }
 

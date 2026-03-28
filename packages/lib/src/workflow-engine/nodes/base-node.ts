@@ -492,6 +492,40 @@ export abstract class BaseNodeProcessor implements NodeProcessor {
   }
 
   /**
+   * Interpolate a string field that may contain {{variable}} references.
+   * Returns empty string for undefined/null values.
+   */
+  protected async interpolateField(
+    value: string | undefined | null,
+    contextManager: ExecutionContextManager
+  ): Promise<string> {
+    if (!value) return ''
+    return this.interpolateVariables(value, contextManager)
+  }
+
+  /**
+   * Resolve a numeric config field that may be a constant number or a variable reference.
+   * When isConstant is true (or value is already a number), parses directly.
+   * When isConstant is false, interpolates the variable first, then parses.
+   */
+  protected async resolveNumberField(
+    value: number | string | undefined | null,
+    isConstant: boolean | undefined,
+    fallback: number,
+    contextManager: ExecutionContextManager
+  ): Promise<number> {
+    if (value == null) return fallback
+    if (typeof value === 'number') return value
+    if (isConstant ?? true) {
+      const parsed = Number(value)
+      return Number.isNaN(parsed) ? fallback : parsed
+    }
+    const resolved = await this.interpolateVariables(value, contextManager)
+    const parsed = Number(resolved)
+    return Number.isNaN(parsed) ? fallback : parsed
+  }
+
+  /**
    * DEPRECATED: Sync version kept for backward compatibility
    * Use resolveVariablePath instead
    * Note: This method is truly synchronous and only accesses pre-loaded variables

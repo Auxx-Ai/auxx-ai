@@ -8,7 +8,7 @@ import React, { memo, type ReactNode, useEffect, useMemo } from 'react'
 import { useNodeStatus, useNodeValidationErrors } from '~/components/workflow/hooks'
 import { useNodesInteractions } from '~/components/workflow/hooks/use-node-interactions'
 import { type BaseNodeData, NodeRunningStatus } from '../../../types'
-import { unifiedNodeRegistry } from '../../unified-registry'
+import { ALLOW_TRIGGER_DELETE, unifiedNodeRegistry } from '../../unified-registry'
 import { NodeValidationWarning } from '../node-validation-warning'
 
 /** Collapsed node dimensions */
@@ -76,7 +76,7 @@ export const BaseNode = memo<BaseNodeProps>(
     const { handleToggleCollapse } = useNodesInteractions()
     const updateNodeInternals = useUpdateNodeInternals()
     const isTriggerNode = unifiedNodeRegistry.isTrigger(data.type)
-    const canCollapse = !isTriggerNode
+    const canCollapse = ALLOW_TRIGGER_DELETE || !isTriggerNode
     const isEffectivelyCollapsed = isCollapsed && canCollapse
     const validation = useNodeValidationErrors({ nodeId: id, data, enabled: !isDisabled })
     const isSelected = selected || data._isBundled

@@ -9,6 +9,7 @@ import {
   // Status
   AlertCircle,
   AlertTriangle,
+  AlignCenter,
   Archive,
   ArrowDown,
   ArrowLeft,
@@ -143,7 +144,9 @@ import {
   QrCode,
   Receipt,
   RefreshCw,
+  Regex,
   Repeat,
+  Replace,
   RotateCcw,
   Save,
   Scan,
@@ -533,6 +536,10 @@ export const ICON_DATA: IconItem[] = [
   { id: 'check-square', label: 'Check Square', icon: CheckSquare },
   { id: 'link-2', label: 'Link 2', icon: Link2 },
   { id: 'calculator', label: 'Calculator', icon: Calculator },
+  { id: 'case-sensitive', label: 'Case Sensitive', icon: CaseSensitive },
+  { id: 'align-center', label: 'Align Center', icon: AlignCenter },
+  { id: 'replace', label: 'Replace', icon: Replace },
+  { id: 'regex', label: 'Regex', icon: Regex },
 ]
 
 /** Get icon item by ID */

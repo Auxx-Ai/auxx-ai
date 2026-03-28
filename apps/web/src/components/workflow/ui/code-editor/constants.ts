@@ -15,8 +15,8 @@ export const DEFAULT_EDITOR_OPTIONS = {
   scrollbar: {
     vertical: 'auto' as const,
     horizontal: 'auto' as const,
-    // verticalScrollbarSize: 8,
-    // horizontalScrollbarSize: 8,
+    verticalScrollbarSize: 6,
+    horizontalScrollbarSize: 6,
   },
   // Disable bracket guides on the right side
   guides: {

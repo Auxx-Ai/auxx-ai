@@ -164,7 +164,9 @@ export function RecordBadge({
               size='xs'
             />
           ) : null}
-          <span data-slot='record-display'>{displayName}</span>
+          <span data-slot='record-display' className='truncate'>
+            {displayName}
+          </span>
         </>
       )}
     </Comp>

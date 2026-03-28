@@ -33,7 +33,7 @@ import {
   useReadOnly,
 } from '../hooks'
 import { useContextMenu } from '../hooks/use-context-menu'
-import { unifiedNodeRegistry } from '../nodes/unified-registry'
+import { ALLOW_TRIGGER_DELETE, unifiedNodeRegistry } from '../nodes/unified-registry'
 import { useWorkflowStore } from '../store/workflow-store'
 import { NodeType } from '../types/node-types'
 import { BlockSelector } from './block-selector'
@@ -114,7 +114,7 @@ export const NodeContextMenu = memo(() => {
       </DropdownMenuTrigger>
       <DropdownMenuContent align='start'>
         {/* Change Block - only for non-triggers */}
-        {!isTrigger && !isReadOnly && (
+        {(ALLOW_TRIGGER_DELETE || !isTrigger) && !isReadOnly && (
           <>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
@@ -178,8 +178,8 @@ export const NodeContextMenu = memo(() => {
           </>
         )}
 
-        {/* Delete - only for non-triggers */}
-        {!isTrigger && !isReadOnly && (
+        {/* Delete - only for non-triggers unless ALLOW_TRIGGER_DELETE */}
+        {(ALLOW_TRIGGER_DELETE || !isTrigger) && !isReadOnly && (
           <DropdownMenuItem
             variant='destructive'
             onClick={() => {

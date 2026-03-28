@@ -6,7 +6,16 @@ import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { isMac } from '@auxx/utils'
-import { ClockArrowUp, Play, Plus, Save, Settings, Upload, Variable } from 'lucide-react'
+import {
+  CircleHelp,
+  ClockArrowUp,
+  Play,
+  Plus,
+  Save,
+  Settings,
+  Upload,
+  Variable,
+} from 'lucide-react'
 import { useCallback } from 'react'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
@@ -60,6 +69,10 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
   // Variable editor state (lifted to store for keyboard shortcut access)
   const variableEditorOpen = usePanelStore((state) => state.variableEditorOpen)
   const setVariableEditorOpen = usePanelStore((state) => state.setVariableEditorOpen)
+
+  // Help overlay state
+  const helpOverlayOpen = usePanelStore((state) => state.helpOverlayOpen)
+  const toggleHelpOverlay = usePanelStore((state) => state.toggleHelpOverlay)
 
   // Settings panel state
   const runPanelOpen = usePanelStore((state) => state.runPanelOpen)
@@ -296,8 +309,16 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
             workflowId={workflow?.id || ''}
           />
         </div>
-        {/* Dock toggle */}
-        <div className='shrink-0'>
+        {/* Help & Dock toggle */}
+        <div className='flex items-center shrink-0'>
+          <Tooltip content='Help & Shortcuts' shortcut='?'>
+            <Button
+              size='icon-sm'
+              variant={helpOverlayOpen ? 'secondary' : 'ghost'}
+              onClick={toggleHelpOverlay}>
+              <CircleHelp />
+            </Button>
+          </Tooltip>
           <DockToggleButton />
         </div>
       </div>

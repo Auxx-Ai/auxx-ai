@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/triggers/resource-trigger-base.ts
 
+import { requireCachedEntityDefId } from '../../../cache'
 import { RESOURCE_CONFIGS, RESOURCE_OPERATIONS } from '../../../resources/definitions'
 import {
   isCustomResourceId,
@@ -53,8 +54,9 @@ export class ResourceTriggerBase extends BaseNodeProcessor {
     }
 
     const context = contextManager.getContext()
+    const organizationId = context.organizationId
 
-    // Get trigger data from context
+    // Get trigger data from context (keyed by original resourceType, e.g. "contact")
     const triggerData = context.triggerData?.[resourceType]
     if (!triggerData) {
       throw new Error(
@@ -63,11 +65,29 @@ export class ResourceTriggerBase extends BaseNodeProcessor {
       )
     }
 
+    // Entity definition types (contact, ticket, etc.) store data in EntityInstance/FieldValue.
+    // Resolve the entityType string to the actual entityDefinitionId UUID so variable paths
+    // match frontend output-variables which use entityDefinitionId.
+    // This is the same pattern used by the Find node (find.ts:508-512).
+    let entityDefId = resourceType
+    if (isEntityDef) {
+      entityDefId = await requireCachedEntityDefId(organizationId, resourceType)
+    }
+
     // Set workflow variables from the resource data
-    // Use appropriate function based on resource type
-    if (isCustomEntity) {
-      setEntityVariables(resourceType, triggerData, contextManager, node.nodeId)
+    const isCustom = isCustomResourceId(entityDefId)
+    if (isCustom) {
+      // Entity definition types + custom entities → setEntityVariables + lazy loading
+      // Only store basic fields; field values resolve lazily via ResourceReference
+      const entityData = {
+        id: triggerData.id,
+        entityDefinitionId: entityDefId,
+        createdAt: triggerData.createdAt,
+        updatedAt: triggerData.updatedAt,
+      }
+      setEntityVariables(entityDefId, entityData, contextManager, node.nodeId)
     } else {
+      // Non-entity system resources (thread, message, etc.) → eager storage
       setResourceVariables(resourceType as TableId, triggerData, contextManager, node.nodeId)
     }
 
