@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.108](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.107...auxx-v0.1.108) (2026-03-29)
+
+
+### Features
+
+* enhance ManualTriggerProcessor to support file input handling and streamline variable setting ([#349](https://github.com/Auxx-Ai/auxx-ai/issues/349)) ([814f940](https://github.com/Auxx-Ai/auxx-ai/commit/814f940963d1dcc9d6ed99deab13ea285baa825a))
+
 ## [0.1.107](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.106...auxx-v0.1.107) (2026-03-28)
 
 
