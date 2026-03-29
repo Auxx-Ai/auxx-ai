@@ -465,7 +465,7 @@ function FileItem({
           style={{ width: `${progress}%` }}
         />
       )}
-      <div className='flex items-center justify-center size-7 bg-primary-200/50 rounded-full'>
+      <div className='flex shrink-0 items-center justify-center size-7 bg-primary-200/50 rounded-full'>
         <FileIcon mimeType={mimeType} className='size-4 text-primary-400 flex-shrink-0 z-10 ' />
       </div>
 
@@ -476,9 +476,9 @@ function FileItem({
           </span>
           {/* Size inline for completed files */}
           {isCompleted ? (
-            <div className='text-xs text-primary-400'>{formatBytes(size)}</div>
+            <div className='shrink-0 text-xs text-primary-400'>{formatBytes(size)}</div>
           ) : (
-            <div className='text-xs text-gray-500'>
+            <div className='shrink-0 text-xs text-gray-500'>
               {error ? (
                 <span className='text-bad-500'>{error}</span>
               ) : isUploading ? (
@@ -491,7 +491,7 @@ function FileItem({
         </div>
       </div>
 
-      <div className='flex items-center z-10'>
+      <div className='flex shrink-0 items-center z-10'>
         {isUploading && <Loader2 className='size-4 animate-spin text-primary-500' />}
         {isFailed && <AlertCircle className='size-4 text-bad-500' />}
 
