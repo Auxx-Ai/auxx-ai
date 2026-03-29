@@ -199,6 +199,17 @@ export class ExecutionContextManager {
   }
 
   /**
+   * Set multiple node-specific variables at once
+   * @param nodeId The ID of the node
+   * @param variables Record of path → value pairs to set
+   */
+  setNodeVariables(nodeId: string, variables: Record<string, any>): void {
+    for (const [path, value] of Object.entries(variables)) {
+      this.setNodeVariable(nodeId, path, value)
+    }
+  }
+
+  /**
    * Get a variable from the context
    * Now supports nested path resolution for accessing nested properties
    * NOW ASYNC for lazy loading support
