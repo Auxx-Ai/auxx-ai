@@ -12,7 +12,13 @@ export class DemoGuard {
    * @param orgId - The organization ID to check
    * @param action - A human-readable description of the blocked action (e.g. "send emails")
    */
-  static async requireNotDemo(orgId: string, action: string): Promise<void> {
+  static async requireNotDemo(
+    orgId: string,
+    action: string,
+    isSuperAdmin?: boolean
+  ): Promise<void> {
+    if (isSuperAdmin) return
+
     const { getOrgCache } = await import('../cache/singletons')
     const orgProfile = await getOrgCache().get(orgId, 'orgProfile')
 

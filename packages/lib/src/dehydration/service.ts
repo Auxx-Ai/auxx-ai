@@ -3,11 +3,14 @@
 import { API_URL, DEV_PORTAL_URL, DOCS_URL, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
 import { configService } from '@auxx/credentials'
 import { getDeploymentMode } from '@auxx/deployment'
+import { createScopedLogger } from '@auxx/logger'
 import { execSync } from 'child_process'
 import { getOrgCache, getUserCache } from '../cache'
 import type { CachedSubscription } from '../cache/org-cache-keys'
 import { SETTINGS_CATALOG } from '../settings'
 import type { DehydratedEnvironment, DehydratedOrganization, DehydratedState } from './types'
+
+const logger = createScopedLogger('dehydration-service')
 
 /** Cached local git info so we only shell out once per process */
 let cachedGitInfo: { sha: string; branch: string } | null = null
@@ -94,16 +97,33 @@ export class DehydrationService {
       'userMemberships',
     ])
 
-    // 2. Fetch per-org data in parallel
+    // 2. Fetch per-org data in parallel (skip orgs that no longer exist)
     const orgIds = userMemberships.map((m) => m.organizationId)
-    const organizations = await Promise.all(
-      orgIds.map((orgId) => this.assembleOrganization(userId, orgId))
+    const orgResults = await Promise.all(
+      orgIds.map((orgId) =>
+        this.assembleOrganization(userId, orgId).catch((err) => {
+          logger.warn(`Skipping deleted/invalid org ${orgId} during dehydration`, {
+            error: err instanceof Error ? err.message : String(err),
+          })
+          return null
+        })
+      )
     )
+    const organizations = orgResults.filter((org): org is DehydratedOrganization => org !== null)
 
-    // 3. Assemble (pure function, no DB calls)
+    // 3. Resolve organizationId — fall back if default org was deleted
+    let organizationId = userProfile.defaultOrganizationId
+    if (organizationId && !organizations.some((o) => o.id === organizationId)) {
+      logger.warn(
+        `User ${userId} defaultOrganizationId ${organizationId} not found in assembled orgs, falling back`
+      )
+      organizationId = organizations[0]?.id ?? null
+    }
+
+    // 4. Assemble (pure function, no DB calls)
     return {
       user: userProfile,
-      organizationId: userProfile.defaultOrganizationId,
+      organizationId,
       organizations,
       settingsCatalog: SETTINGS_CATALOG,
       environment: buildEnvironment(),

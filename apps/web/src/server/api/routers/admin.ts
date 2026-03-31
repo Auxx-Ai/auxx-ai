@@ -296,16 +296,20 @@ export const adminRouter = createTRPCRouter({
       z.object({
         organizationId: z.string(),
         mode: z.enum(['reset', 'additive']),
+        scenario: z
+          .enum(['demo', 'development', 'testing', 'superadmin-test'])
+          .optional()
+          .default('demo'),
       })
     )
     .mutation(async ({ input }) => {
       const { OrganizationSeeder } = await import('@auxx/seed')
-      await OrganizationSeeder.seedOrganization(input.organizationId, input.mode)
+      await OrganizationSeeder.seedOrganization(input.organizationId, input.mode, input.scenario)
       await flushOrganization(input.organizationId)
 
       return {
         success: true,
-        message: `Organization ${input.mode === 'reset' ? 'reset and' : ''} seeded successfully`,
+        message: `Organization ${input.mode === 'reset' ? 'reset and' : ''} seeded successfully (${input.scenario})`,
       }
     }),
 

@@ -36,7 +36,7 @@ TabsList.displayName = TabsPrimitive.List.displayName
 
 // TabsTrigger variants (similar to buttonVariants)
 const tabsTriggerVariants = cva(
-  'inline-flex items-center shrink-0 justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium  transition-all focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center shrink-0 justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium  transition-all focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {

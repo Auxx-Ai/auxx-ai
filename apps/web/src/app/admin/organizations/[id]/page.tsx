@@ -8,6 +8,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import {
@@ -180,13 +183,20 @@ export default function OrganizationDetailsPage() {
     })
   }
 
+  const seedScenarios = [
+    { value: 'demo' as const, label: 'Demo (light)' },
+    { value: 'superadmin-test' as const, label: 'Test (10x heavy)' },
+    { value: 'development' as const, label: 'Development' },
+    { value: 'testing' as const, label: 'Testing (minimal)' },
+  ]
+
   /**
    * Handle Reset and Seed action
    */
-  const handleResetAndSeed = async () => {
+  const handleResetAndSeed = async (scenario: (typeof seedScenarios)[number]['value']) => {
     const confirmed = await confirm({
       title: 'Reset and Seed Organization?',
-      description: `This will delete ALL data for "${org?.name || 'this organization'}" and reseed with demo data. Billing data and subscriptions will be preserved. This action cannot be undone.`,
+      description: `This will delete ALL data for "${org?.name || 'this organization'}" and reseed with "${scenario}" data. Billing data and subscriptions will be preserved. This action cannot be undone.`,
       confirmText: 'Reset and Seed',
       cancelText: 'Cancel',
       destructive: true,
@@ -196,6 +206,7 @@ export default function OrganizationDetailsPage() {
       await seedOrganization.mutateAsync({
         organizationId: id,
         mode: 'reset',
+        scenario,
       })
     }
 
@@ -205,10 +216,10 @@ export default function OrganizationDetailsPage() {
   /**
    * Handle Add Seed Data action
    */
-  const handleAddSeedData = async () => {
+  const handleAddSeedData = async (scenario: (typeof seedScenarios)[number]['value']) => {
     const confirmed = await confirm({
       title: 'Add Seed Data?',
-      description: `This will add demo data to "${org?.name || 'this organization'}" without deleting existing data.`,
+      description: `This will add "${scenario}" data to "${org?.name || 'this organization'}" without deleting existing data.`,
       confirmText: 'Add Data',
       cancelText: 'Cancel',
     })
@@ -217,6 +228,7 @@ export default function OrganizationDetailsPage() {
       await seedOrganization.mutateAsync({
         organizationId: id,
         mode: 'additive',
+        scenario,
       })
     }
 
@@ -465,14 +477,36 @@ export default function OrganizationDetailsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align='end'>
-                    <DropdownMenuItem onClick={handleResetAndSeed}>
-                      <Database />
-                      Reset and Seed
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleAddSeedData}>
-                      <Plus />
-                      Add Seed Data
-                    </DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Database />
+                        Reset and Seed
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {seedScenarios.map((s) => (
+                          <DropdownMenuItem
+                            key={s.value}
+                            onClick={() => handleResetAndSeed(s.value)}>
+                            {s.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Plus />
+                        Add Seed Data
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {seedScenarios.map((s) => (
+                          <DropdownMenuItem
+                            key={s.value}
+                            onClick={() => handleAddSeedData(s.value)}>
+                            {s.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

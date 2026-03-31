@@ -2,7 +2,13 @@
 // Shared type definitions for the database seeding system
 
 /** SeedingScenarioName enumerates the supported scenario identifiers. */
-export type SeedingScenarioName = 'development' | 'testing' | 'screenshot' | 'performance' | 'demo'
+export type SeedingScenarioName =
+  | 'development'
+  | 'testing'
+  | 'screenshot'
+  | 'performance'
+  | 'demo'
+  | 'superadmin-test'
 
 /** AuthSeederResult captures authentication entities shared with downstream refinements. */
 export interface AuthSeederResult {

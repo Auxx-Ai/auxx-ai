@@ -419,7 +419,11 @@ export const workflowRouter = createTRPCRouter({
     // Block demo users from enabling workflows
     if (input.enabled) {
       const { DemoGuard } = await import('@auxx/lib/demo')
-      await DemoGuard.requireNotDemo(ctx.session.organizationId, 'enable workflows')
+      await DemoGuard.requireNotDemo(
+        ctx.session.organizationId,
+        'enable workflows',
+        ctx.session.isSuperAdmin
+      )
     }
 
     const workflowService = new WorkflowService(ctx.db)
