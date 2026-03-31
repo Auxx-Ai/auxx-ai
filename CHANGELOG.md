@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.110](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.109...auxx-v0.1.110) (2026-03-31)
+
+
+### Features
+
+* enhance organization seeding and reset functionality with scenario options ([#352](https://github.com/Auxx-Ai/auxx-ai/issues/352)) ([b0a6325](https://github.com/Auxx-Ai/auxx-ai/commit/b0a63251e697938859447527232ebd3d7bff575e))
+
 ## [0.1.109](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.108...auxx-v0.1.109) (2026-03-29)
 
 
