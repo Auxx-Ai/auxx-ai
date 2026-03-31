@@ -292,6 +292,14 @@ export class OrganizationService {
         `Organization ${organizationId} has ${allMemberIds.length} members identified for potential post-deletion checks.`
       )
     }
+    // Fetch system user ID before transaction (not in OrganizationMember, linked via Organization.systemUserId)
+    const [orgRecord] = await this.db
+      .select({ systemUserId: schema.Organization.systemUserId })
+      .from(schema.Organization)
+      .where(eq(schema.Organization.id, organizationId))
+      .limit(1)
+    const systemUserId = orgRecord?.systemUserId
+
     // --- Cancel Stripe subscription (synchronous, blocks deletion on failure) ---
     const activeSubscription = await this.db.query.PlanSubscription.findFirst({
       where: (sub, { eq: eqOp, and: andOp, or: orOp }) =>
@@ -401,7 +409,7 @@ export class OrganizationService {
             .select({ count: sql<number>`count(*)` })
             .from(schema.OrganizationMember)
             .where(eq(schema.OrganizationMember.userId, userId))
-          const remainingMemberships = membershipCountResult[0]?.count ?? 0
+          const remainingMemberships = Number(membershipCountResult[0]?.count ?? 0)
           // Count *after* the cascade should have removed the membership for the deleted org
           if (remainingMemberships === 0) {
             // User no longer belongs to ANY organization. Delete their account.
@@ -450,10 +458,39 @@ export class OrganizationService {
         logger.info(
           `[${txId}] Finished checking/deleting former members. ${otherUsersDeletedCount} other users deleted. Requesting owner deleted: ${requestingUserWasDeleted}.`
         )
+
+        // **** STEP 8: Delete orphaned system user (not in OrganizationMember) ****
+        if (systemUserId) {
+          try {
+            await tx.delete(schema.User).where(eq(schema.User.id, systemUserId))
+            logger.info(`[${txId}] Deleted system user ${systemUserId}.`)
+          } catch (systemUserDeleteError) {
+            logger.error(`[${txId}] CRITICAL: Failed to delete system user ${systemUserId}.`, {
+              error: systemUserDeleteError,
+            })
+            throw systemUserDeleteError
+          }
+        }
+
         logger.info(`[${txId}] Deletion transaction completed.`)
       }) // End Transaction
       logger.warn(
         `Organization ${organizationId} deletion process finished successfully by owner ${requestingUserId}. Requesting owner deleted: ${requestingUserWasDeleted}. Other users deleted: ${otherUsersDeletedCount}.`
+      )
+
+      // Invalidate system user Redis cache
+      if (systemUserId) {
+        await SystemUserService.invalidateSystemUserCache(organizationId)
+      }
+
+      // Flush org cache so stale data isn't served
+      await flushOrganization(organizationId)
+
+      // Invalidate user caches for all former members so their memberships/profile refresh
+      const dehydrationService = new DehydrationService(this.db)
+      await Promise.all(allMemberIds.map((userId) => dehydrationService.invalidateUser(userId)))
+      logger.info(
+        `Invalidated caches for org ${organizationId} and ${allMemberIds.length} former members.`
       )
 
       // Enqueue async S3 cleanup for marked StorageLocations

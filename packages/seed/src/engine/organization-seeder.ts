@@ -24,7 +24,7 @@ export class OrganizationSeeder {
   static async seedOrganization(
     organizationId: string,
     mode: 'reset' | 'additive',
-    scenario: 'demo' | 'development' | 'testing' = 'demo'
+    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' = 'demo'
   ): Promise<SeedingResult> {
     const webhookCoordinator = new OrganizationWebhookCoordinator(organizationId)
     let webhookState: Awaited<ReturnType<typeof webhookCoordinator.disconnectAll>> | null = null
@@ -45,12 +45,17 @@ export class OrganizationSeeder {
       }
       logger.info('Organization found', { org })
 
-      // Only disconnect webhooks if we're resetting
+      // Skip webhook management for demo/test scenarios (mock integrations have no real webhooks)
+      const shouldManageWebhooks =
+        mode === 'reset' && scenario !== 'demo' && scenario !== 'superadmin-test'
+
       if (mode === 'reset') {
-        // Step 1: Disconnect webhooks
-        logger.info('Step 1: Disconnecting webhooks')
-        webhookState = await webhookCoordinator.disconnectAll()
-        logger.info('Webhooks disconnected', { webhookState })
+        if (shouldManageWebhooks) {
+          // Step 1: Disconnect webhooks
+          logger.info('Step 1: Disconnecting webhooks')
+          webhookState = await webhookCoordinator.disconnectAll()
+          logger.info('Webhooks disconnected', { webhookState })
+        }
 
         // Step 2: Reset organization data
         logger.info('Step 2: Resetting organization data')
@@ -64,7 +69,7 @@ export class OrganizationSeeder {
       logger.info('Organization seeding complete')
 
       // Step 4: Reconnect webhooks (only if we disconnected them)
-      if (mode === 'reset' && webhookState) {
+      if (shouldManageWebhooks && webhookState) {
         logger.info('Step 4: Reconnecting webhooks')
         await webhookCoordinator.reconnectAll(webhookState)
         logger.info('Webhooks reconnected')
@@ -115,7 +120,7 @@ export class OrganizationSeeder {
    */
   static async resetAndSeed(
     organizationId: string,
-    scenario: 'demo' | 'development' | 'testing' = 'demo'
+    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' = 'demo'
   ): Promise<SeedingResult> {
     return OrganizationSeeder.seedOrganization(organizationId, 'reset', scenario)
   }
@@ -125,7 +130,7 @@ export class OrganizationSeeder {
    */
   static async addSeedData(
     organizationId: string,
-    scenario: 'demo' | 'development' | 'testing' = 'demo'
+    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' = 'demo'
   ): Promise<SeedingResult> {
     return OrganizationSeeder.seedOrganization(organizationId, 'additive', scenario)
   }
@@ -145,10 +150,11 @@ export class OrganizationSeeder {
 
       // 2. Communication domain (Messages, Threads)
       console.log('  ↳ Deleting message participants...')
+      const { inArray } = await import('drizzle-orm')
       await db
         .delete(schema.MessageParticipant)
         .where(
-          eq(
+          inArray(
             schema.MessageParticipant.messageId,
             db
               .select({ id: schema.Message.id })
@@ -214,7 +220,7 @@ export class OrganizationSeeder {
   private static async seedOrganizationDirectly(
     organizationId: string,
     ownerId: string,
-    scenarioName: 'demo' | 'development' | 'testing'
+    scenarioName: 'demo' | 'development' | 'testing' | 'superadmin-test'
   ): Promise<void> {
     try {
       logger.info('seedOrganizationDirectly: Starting', { organizationId, ownerId, scenarioName })
@@ -224,6 +230,7 @@ export class OrganizationSeeder {
       const { demoScenario } = await import('../scenarios/demo.scenario')
       const { developmentScenario } = await import('../scenarios/development.scenario')
       const { testingScenario } = await import('../scenarios/testing.scenario')
+      const { superadminTestScenario } = await import('../scenarios/superadmin-test.scenario')
       logger.info('seedOrganizationDirectly: Scenarios loaded')
 
       // Select scenario
@@ -231,6 +238,7 @@ export class OrganizationSeeder {
         demo: demoScenario,
         development: developmentScenario,
         testing: testingScenario,
+        'superadmin-test': superadminTestScenario,
       }
       const scenario = scenarioMap[scenarioName]
       logger.info('seedOrganizationDirectly: Scenario selected', { scenarioName })
@@ -336,8 +344,8 @@ export class OrganizationSeeder {
         integrationsCount: context.services.integrations.length,
       })
 
-      // For demo scenario, create mock integrations before domain seeding
-      if (scenarioName === 'demo') {
+      // For demo/superadmin-test scenarios, create mock integrations before domain seeding
+      if (scenarioName === 'demo' || scenarioName === 'superadmin-test') {
         logger.info('seedOrganizationDirectly: Creating demo integrations')
         const { DemoIntegrationDomain } = await import('../domains/demo-integration.domain')
         const demoIntegrations = new DemoIntegrationDomain(organizationId, ownerId)
@@ -482,8 +490,8 @@ export class OrganizationSeeder {
         logger.info('seedOrganizationDirectly: Dataset domain complete')
       }
 
-      // Entity templates (demo only)
-      if (scenarioName === 'demo') {
+      // Entity templates (demo and superadmin-test)
+      if (scenarioName === 'demo' || scenarioName === 'superadmin-test') {
         logger.info('seedOrganizationDirectly: Installing entity templates')
         console.log('💾 Installing entity templates...')
         const { installTemplates } = await import('@auxx/lib/entity-templates')

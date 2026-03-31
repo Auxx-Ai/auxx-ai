@@ -214,9 +214,9 @@ const auxxErrorMiddleware = t.middleware(async ({ next }) => {
  */
 export const notDemo = (action: string) =>
   t.middleware(async ({ ctx, next }) => {
-    const { organizationId } = (ctx as { session: { organizationId: string } }).session
+    const session = (ctx as { session: { organizationId: string; isSuperAdmin?: boolean } }).session
     const { DemoGuard } = await import('@auxx/lib/demo')
-    await DemoGuard.requireNotDemo(organizationId, action)
+    await DemoGuard.requireNotDemo(session.organizationId, action, session.isSuperAdmin)
     return next()
   })
 

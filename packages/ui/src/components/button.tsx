@@ -6,7 +6,7 @@ import type * as React from 'react'
 
 const buttonVariants = cva(
   `inline-flex items-center shrink-0 justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1
-  focus-visible:ring-ring/20 dark:focus-visible:ring-ring/40 dark:focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 [&_[data-slot=kbd-group]]:ml-1 [&:has([data-slot=kbd-group])]:pe-1.5`,
+  focus-visible:ring-ring/20 dark:focus-visible:ring-ring/40 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 [&_[data-slot=kbd-group]]:ml-1 [&:has([data-slot=kbd-group])]:pe-1.5`,
   {
     variants: {
       variant: {
