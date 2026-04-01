@@ -152,10 +152,14 @@ export class ClientBuilder {
    */
   async rebuild({
     workflowBlockModules,
+    quickActionModules: _quickActionModules,
   }: {
     workflowBlockModules: Map<string, any>
+    quickActionModules: Map<string, any>
   }): Promise<Result<esbuild.BuildResult, any>> {
     this._workflowBlockModulesRef.current = workflowBlockModules
+    // Quick action modules are server-only — client build doesn't need them.
+    // Client runtime discovers quick actions via Host.onRequest('get-quick-actions').
     const jsResult = await generateClientEntry({
       srcDirAbsolute: path.resolve(this._directories.src),
       assetsDirAbsolute: path.resolve(this._directories.assets),

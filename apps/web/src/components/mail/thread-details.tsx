@@ -3,6 +3,7 @@
 
 import { toRecordId } from '@auxx/lib/field-values/client'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { cn } from '@auxx/ui/lib/utils'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { useEffect, useMemo, useRef } from 'react'
 import { useMessageParticipants, useMessages, useThread } from '~/components/threads/hooks'
@@ -21,7 +22,7 @@ import { useThreadContext } from './thread-provider'
  * Main component for displaying thread details.
  * Includes messages, reply functionality, and comments.
  */
-export default function ThreadDetails() {
+export default function ThreadDetails({ centered }: { centered?: boolean }) {
   const { threadId, replyBox, handlers, emailActions } = useThreadContext()
   const { thread, isLoading, isNotFound } = useThread({ threadId })
   const { openInline, close: closeCompose } = useCompose()
@@ -266,28 +267,30 @@ export default function ThreadDetails() {
 
   return (
     <ScrollArea className='relative flex h-full flex-col flex-1 w-full' scrollbarClassName='w-1!'>
-      <ThreadHeader />
+      <div className={cn('flex flex-1 flex-col', centered && 'mx-auto w-full max-w-4xl')}>
+        <ThreadHeader />
 
-      <div className='flex-1 '>
-        <ThreadMessages />
+        <div className='flex-1 '>
+          <ThreadMessages />
 
-        <div className='px-4 pb-6 pt-4 md:px-6 md:pb-10'>
-          <CommentList recordId={toRecordId('thread', thread.id)} />
+          <div className='px-4 pb-6 pt-4 md:px-6 md:pb-10'>
+            <CommentList recordId={toRecordId('thread', thread.id)} />
+          </div>
+
+          <div className='grow'></div>
         </div>
 
-        <div className='grow'></div>
-      </div>
+        {/* Reply editor portal target — the editor renders here via portal when docked */}
+        <div ref={replyBoxRef} className=''>
+          {(isShowReplyBox || hasFloatingCompose) && (
+            <div className='px-4 py-4 pb-[90px]'>
+              <div id={portalTargetId} />
+            </div>
+          )}
+        </div>
 
-      {/* Reply editor portal target — the editor renders here via portal when docked */}
-      <div ref={replyBoxRef} className=''>
-        {(isShowReplyBox || hasFloatingCompose) && (
-          <div className='px-4 py-4 pb-[90px]'>
-            <div id={portalTargetId} />
-          </div>
-        )}
+        <ThreadFooter />
       </div>
-
-      <ThreadFooter />
     </ScrollArea>
   )
 }

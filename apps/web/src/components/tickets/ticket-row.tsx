@@ -143,10 +143,9 @@ function TicketRow({ recordId, createdAt, className }: Props) {
   return (
     <div
       className={cn(
-        'bg-card ring-border-illustration relative cursor-pointer rounded-2xl p-3 shadow shadow-black/10 ring-1 transition-all',
+        'bg-card ring-border-illustration relative rounded-2xl p-3 shadow shadow-black/10 ring-1 transition-all',
         className
-      )}
-      onClick={() => router.push(`/app/tickets/${instanceId}`)}>
+      )}>
       <div className='mb-2 flex items-start justify-between'>
         <div className='space-y-1'>
           <div className='flex items-center gap-2'>
@@ -157,7 +156,13 @@ function TicketRow({ recordId, createdAt, className }: Props) {
               {priorityDisplay.label}
             </span>
           </div>
-          {number && <div className='font-mono text-lg font-semibold'>#{number}</div>}
+          {number && (
+            <div
+              className='cursor-pointer font-mono text-lg font-semibold hover:underline'
+              onClick={() => router.push(`/app/tickets/${instanceId}`)}>
+              #{number}
+            </div>
+          )}
           <div className='text-xs text-muted-foreground'>
             Opened {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
           </div>
@@ -175,7 +180,13 @@ function TicketRow({ recordId, createdAt, className }: Props) {
 
       <div className='space-y-1.5 [--color-border:color-mix(in_oklab,var(--color-foreground)10%,transparent)]'>
         <div className='border-b pb-3'>
-          {title && <div className='mb-2 text-sm font-medium'>{title}</div>}
+          {title && (
+            <div
+              className='mb-2 cursor-pointer text-sm font-medium hover:underline'
+              onClick={() => router.push(`/app/tickets/${instanceId}`)}>
+              {title}
+            </div>
+          )}
           {description && (
             <div className='line-clamp-2 text-xs text-muted-foreground'>{description}</div>
           )}

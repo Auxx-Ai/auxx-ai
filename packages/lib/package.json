@@ -442,6 +442,18 @@
       "import": "./dist/providers/openphone/types.mjs",
       "default": "./src/providers/openphone/types.ts"
     },
+    "./quick-actions": {
+      "types": "./src/quick-actions/index.ts",
+      "source": "./src/quick-actions/index.ts",
+      "import": "./dist/quick-actions/index.mjs",
+      "default": "./src/quick-actions/index.ts"
+    },
+    "./quick-actions/client": {
+      "types": "./src/quick-actions/client.ts",
+      "source": "./src/quick-actions/client.ts",
+      "import": "./dist/quick-actions/client.mjs",
+      "default": "./src/quick-actions/client.ts"
+    },
     "./realtime": {
       "types": "./src/realtime/index.ts",
       "source": "./src/realtime/index.ts",

@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-editor/index.tsx
 'use client'
 import type { IdentifierType } from '@auxx/database/types'
+import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
@@ -52,6 +53,7 @@ import IntegrationSelector from './integration-selector'
 import { LazyTiptapEditor } from './lazy-tiptap-editor'
 import { MessageFile } from './message-file'
 import PrevMessage from './prev-message'
+import { AddActionButton, QuickActionPanel } from './quick-action-panel'
 import { type RecipientField, RecipientInput, type RecipientInputHandle } from './recipient-input'
 import type {
   FileAttachment,
@@ -167,6 +169,12 @@ function ReplyComposeEditorComponent({
   const [attachments, setAttachments] = useState<FileAttachment[]>(
     () => initialDraft?.attachments ?? []
   )
+
+  // Quick actions state - persisted in draft content
+  const [quickActions, setQuickActions] = useState<DraftActionPayload[]>(() => {
+    const meta = initialDraft?.metadata as Record<string, unknown> | undefined
+    return (meta?.actions as DraftActionPayload[]) ?? []
+  })
 
   // Sync state when draft prop changes (e.g., navigating back to thread with existing draft)
   const initializedDraftIdRef = useRef<string | null>(initialDraft?.id ?? null)
@@ -345,6 +353,8 @@ function ReplyComposeEditorComponent({
     onSettled: () => setIsSending(false),
   })
 
+  const executeQuickActions = api.quickAction.execute.useMutation()
+
   const scheduleMessageMutation = api.thread.sendMessage.useMutation({
     onMutate: () => setIsSending(true),
     onSuccess: (data) => {
@@ -442,9 +452,10 @@ function ReplyComposeEditorComponent({
       cc: toPayload(recipients.CC),
       bcc: toPayload(recipients.BCC),
       attachments: allAttachments,
+      actions: quickActions.length > 0 ? quickActions : undefined,
       draftId: state.draftId,
     }
-  }, [state, content, recipients, attachments, fileSelect.selectedItems])
+  }, [state, content, recipients, attachments, fileSelect.selectedItems, quickActions])
   // Auto-save hook
   const draftAutosave = useDraftAutosave({
     enabled: !isSending && !!state.integrationId,
@@ -742,7 +753,47 @@ function ReplyComposeEditorComponent({
         setIsSending(false)
         return
       }
-      // 5. Send with draft ID if available
+      // 5. Execute quick actions before sending (blocking)
+      if (quickActions.length > 0) {
+        const confirmed = await confirm({
+          title: 'Send & execute actions',
+          description: `This will send your reply and execute ${quickActions.length} action${quickActions.length > 1 ? 's' : ''}: ${quickActions.map((a) => a.display.summary || a.display.label).join(', ')}`,
+          confirmText: 'Send & Execute',
+          cancelText: 'Cancel',
+        })
+
+        if (!confirmed) {
+          setIsSending(false)
+          return
+        }
+
+        try {
+          const results = await executeQuickActions.mutateAsync({
+            actions: quickActions,
+            context: { threadId: thread?.id },
+          })
+
+          const failed = results.filter((r: { success: boolean }) => !r.success)
+          if (failed.length > 0) {
+            toastError({
+              title: 'Action failed',
+              description:
+                (failed[0] as { error?: string }).error ?? 'An action failed. Email was not sent.',
+            })
+            setIsSending(false)
+            return
+          }
+        } catch (error) {
+          toastError({
+            title: 'Action failed',
+            description: error instanceof Error ? error.message : 'Failed to execute actions.',
+          })
+          setIsSending(false)
+          return
+        }
+      }
+
+      // 6. Send with draft ID if available
       sendMessageMutation.mutate({
         threadId: thread?.id,
         integrationId: state.integrationId,
@@ -773,6 +824,8 @@ function ReplyComposeEditorComponent({
     draftAutosave,
     upsert,
     isUpserting,
+    quickActions,
+    confirm,
   ])
   const handleScheduleClick = useCallback(
     async (scheduledAt: Date) => {
@@ -1277,6 +1330,39 @@ function ReplyComposeEditorComponent({
                     />
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Quick Actions Panel */}
+            <QuickActionPanel
+              actions={quickActions}
+              onAdd={(action) => setQuickActions((prev) => [...prev, action])}
+              onRemove={(actionId) =>
+                setQuickActions((prev) => prev.filter((a) => a.actionId !== actionId))
+              }
+              onUpdate={(actionId, inputs) =>
+                setQuickActions((prev) =>
+                  prev.map((a) => (a.actionId === actionId ? { ...a, inputs } : a))
+                )
+              }
+              threadId={thread?.id || state.threadId || undefined}
+              disabled={isSending}
+            />
+
+            {/* Add Action Button (always visible when not sending) */}
+            {!isSending && (
+              <div className='px-2'>
+                <AddActionButton
+                  threadId={thread?.id || state.threadId || undefined}
+                  onSelect={(action) => setQuickActions((prev) => [...prev, action])}
+                  disabled={isSending}
+                  popoverClassName={popoverZIndex}
+                  onOpenChange={(open) =>
+                    open
+                      ? activeState.trackPopoverOpen('add-action')
+                      : activeState.trackPopoverClose('add-action')
+                  }
+                />
               </div>
             )}
 

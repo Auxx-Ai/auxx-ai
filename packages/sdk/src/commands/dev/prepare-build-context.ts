@@ -114,10 +114,11 @@ export async function prepareBuildContext(
       if (isErrored(workflowBlockModulesResult)) {
         return workflowBlockModulesResult
       }
-      const workflowBlockModules = workflowBlockModulesResult.value
+      const { blocks: workflowBlockModules, quickActions: quickActionModules } =
+        workflowBlockModulesResult.value
       return combineAsync({
-        client: client.rebuild({ workflowBlockModules }),
-        server: server.rebuild({ workflowBlockModules }),
+        client: client.rebuild({ workflowBlockModules, quickActionModules }),
+        server: server.rebuild({ workflowBlockModules, quickActionModules }),
       })
       // return complete({})
     },

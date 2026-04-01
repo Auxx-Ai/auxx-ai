@@ -10,6 +10,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
 import {
   AlertCircle,
@@ -48,9 +49,10 @@ export interface ChatMessageType {
 }
 interface ChatInterfaceProps {
   threadId: string
+  centered?: boolean
 }
 // --- Main Chat Interface Component ---
-export default function ChatInterface({ threadId }: ChatInterfaceProps) {
+export default function ChatInterface({ threadId, centered }: ChatInterfaceProps) {
   const { pusher: pusherEnv } = useEnv()
   const [newMessage, setNewMessage] = useState('')
   const [messages, setMessages] = useState<ChatMessageType[]>([])
@@ -382,7 +384,7 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
   const isResolved = false
 
   return (
-    <div className='flex h-full flex-col bg-card'>
+    <div className={cn('flex h-full flex-col bg-card', centered && 'mx-auto w-full max-w-4xl')}>
       {/* Chat Header */}
       <div className='flex items-center justify-between border-b p-3'>
         <div className='flex items-center gap-2'>

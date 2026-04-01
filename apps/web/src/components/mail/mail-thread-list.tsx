@@ -23,15 +23,17 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, Mail, User } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
-import { TagPicker } from '~/components/tags/ui/tag-picker'
 // import { useAutoAnimate } from '@formkit/auto-animate/react'
 // NEW: Import selection hooks from threads module
+import { ActorPicker } from '~/components/pickers/actor-picker'
+import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
+import { TagPicker } from '~/components/tags/ui/tag-picker'
 import {
   useFocusedThreadShortcuts,
   useSelectionReset,
   useThreadKeyboardNav,
   useThreadList,
+  useThreadMutation,
   useThreadSelection,
 } from '~/components/threads/hooks'
 import type { ViewMode } from '~/components/threads/store'
@@ -126,6 +128,10 @@ export const ThreadList = memo(function ThreadList({
     handleTagPickerOpenChange,
     tagPickerThreadId,
     openTagPicker,
+    assignPickerOpen,
+    handleAssignPickerOpenChange,
+    assignPickerThreadId,
+    openAssignPicker,
   } = useFocusedThreadShortcuts()
 
   // Anchor ref for tag picker popover — points to the focused thread's DOM element
@@ -139,6 +145,25 @@ export const ThreadList = memo(function ThreadList({
   // Tag management for focused thread — optimistic updates via ThreadStore
   const { selectedTags: tagPickerCurrentTags, handleTagChange: handleFocusedTagChange } =
     useThreadTags(tagPickerThreadId ?? '')
+
+  // Anchor ref for assign picker popover — points to the focused thread's DOM element
+  const assignAnchorRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (assignPickerThreadId && assignPickerOpen) {
+      assignAnchorRef.current = document.getElementById(`thread-${assignPickerThreadId}`) ?? null
+    }
+  }, [assignPickerThreadId, assignPickerOpen])
+
+  // Assign handler for focused thread
+  const { update: updateThread } = useThreadMutation()
+  const handleFocusedAssign = useCallback(
+    (actorIds: string[]) => {
+      if (assignPickerThreadId && actorIds.length > 0) {
+        updateThread(assignPickerThreadId, { assigneeId: actorIds[0] })
+      }
+    },
+    [assignPickerThreadId, updateThread]
+  )
 
   // Reset selection when filter changes
   useSelectionReset(filter.filter)
@@ -272,6 +297,17 @@ export const ThreadList = memo(function ThreadList({
           side='bottom'
         />
       )}
+      {assignPickerOpen && assignPickerThreadId && (
+        <ActorPicker
+          open={assignPickerOpen}
+          onOpenChange={handleAssignPickerOpenChange}
+          anchorRef={assignAnchorRef}
+          onChange={handleFocusedAssign}
+          emptyLabel='Assign'
+          align='end'
+          side='bottom'
+        />
+      )}
       <ScrollArea
         viewportRef={viewportRefCallback}
         scrollbarClassName='w-1!'
@@ -318,6 +354,7 @@ export const ThreadList = memo(function ThreadList({
                   handleThreadClick={handleThreadClick}
                   threadIds={threadIds}
                   onTagClick={openTagPicker}
+                  onAssignClick={openAssignPicker}
                 />
               )
             }

@@ -840,7 +840,96 @@ function serializeComputedOutputs(outputs: Record<string, any>): Record<string, 
   return result
 }
 
+// ===== Quick Actions =====
+
+/**
+ * Serialized quick action metadata (JSON-safe).
+ */
+interface SerializedQuickAction {
+  id: string
+  label: string
+  description?: string
+  icon?: string
+  color?: string
+  inputs: Record<string, any>
+  outputs: Record<string, any>
+  config?: Record<string, any>
+  defaults?: Record<string, unknown>
+}
+
+/**
+ * Get all registered quick actions from SURFACES registry.
+ */
+function getQuickActions(): SerializedQuickAction[] {
+  const surfaces = SURFACES.getAll()
+  return surfaces
+    .filter((s) => s.type === 'quick-action')
+    .map(serializeQuickActionSurface)
+    .filter((a): a is SerializedQuickAction => a !== null)
+}
+
+/**
+ * Get a single quick action object by ID from SURFACES registry.
+ */
+function getQuickAction(actionId: string): any | undefined {
+  const surfaces = SURFACES.getAll()
+  const surface = surfaces.find((s) => s.type === 'quick-action' && s.id === actionId)
+  return surface ? (surface as any).action : undefined
+}
+
+/**
+ * Serialize a quick action surface into JSON-safe metadata.
+ */
+function serializeQuickActionSurface(surface: any): SerializedQuickAction | null {
+  const action = surface.action
+  if (!action) return null
+
+  return {
+    id: action.id,
+    label: action.label,
+    description: action.description,
+    icon: typeof action.icon === 'string' ? resolveBlockIcon(action.icon) : undefined,
+    color: action.color,
+    inputs: action.schema?.inputs ? serializeFields(action.schema.inputs, 'input') : {},
+    outputs: action.schema?.outputs ? serializeFields(action.schema.outputs, 'output') : {},
+    config: action.config,
+  }
+}
+
 // ===== Request Handlers =====
+
+// Handler for getting quick actions (discovery)
+Host.onRequest('get-quick-actions', async (data) => {
+  const context = data?.context
+  const allActions = getQuickActions()
+
+  // Run shouldShow() client-side to filter
+  const filtered = allActions.filter((serialized) => {
+    const action = getQuickAction(serialized.id)
+    if (!action?.shouldShow || !context) return true
+    try {
+      return action.shouldShow(context)
+    } catch {
+      return false
+    }
+  })
+
+  // Run getDefaults() for each visible action
+  const withDefaults = filtered.map((serialized) => {
+    const action = getQuickAction(serialized.id)
+    let defaults: Record<string, unknown> = {}
+    if (action?.getDefaults && context) {
+      try {
+        defaults = action.getDefaults(context) ?? {}
+      } catch {
+        // Ignore default computation errors
+      }
+    }
+    return { ...serialized, defaults }
+  })
+
+  return { quickActions: withDefaults }
+})
 
 // Handler for getting workflow blocks and triggers
 Host.onRequest('get-workflow-blocks', async () => {

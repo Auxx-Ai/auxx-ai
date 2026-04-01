@@ -96,6 +96,9 @@ export enum TicketEventType {
   // Workflow
   WORKFLOW_TRIGGERED = 'ticket:workflow:triggered',
   WORKFLOW_COMPLETED = 'ticket:workflow:completed',
+
+  // Quick Actions
+  QUICK_ACTION_EXECUTED = 'ticket:quick_action:executed',
 }
 
 /** Custom Entity event types (dynamic entities) */

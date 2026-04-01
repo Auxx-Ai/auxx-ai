@@ -1,17 +1,19 @@
 // apps/lambda/src/index.ts
 
-import { verifyInboundRequest } from './auth/verify-inbound.ts'
-import { loadBundle } from './bundle-loader.ts'
-import { createRuntimeContext } from './context-provider.ts'
-import { executeCode } from './executors/code-executor.ts'
-import { executeEventHandler } from './executors/event-executor.ts'
-import { executePollingTrigger } from './executors/polling-trigger-executor.ts'
 /**
  * AWS Lambda Handler for Server Function Execution
  *
  * This Lambda function executes extension server functions in a secure Deno sandbox.
  * It provides Web Platform APIs (fetch, Response, etc.) but NO Node.js built-ins.
  */
+
+import { verifyInboundRequest } from './auth/verify-inbound.ts'
+import { loadBundle } from './bundle-loader.ts'
+import { createRuntimeContext } from './context-provider.ts'
+import { executeCode } from './executors/code-executor.ts'
+import { executeEventHandler } from './executors/event-executor.ts'
+import { executePollingTrigger } from './executors/polling-trigger-executor.ts'
+import { executeQuickAction } from './executors/quick-action-executor.ts'
 import { executeServerFunction } from './executors/server-function-executor.ts'
 import { executeWebhookHandler } from './executors/webhook-executor.ts'
 import { executeWorkflowBlock } from './executors/workflow-block-executor.ts'
@@ -68,6 +70,10 @@ async function executeAppEvent(validatedEvent: ValidatedLambdaEvent) {
       const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executePollingTrigger({ ...eventData, bundleCode, context })
     }
+    case 'quick-action': {
+      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
+      return executeQuickAction({ ...eventData, bundleCode, context })
+    }
   }
 }
 
@@ -92,6 +98,7 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
   'app-events': ['event'],
   'workflow-engine': ['workflow-block', 'code'],
   worker: ['workflow-block', 'code', 'event', 'polling-trigger'],
+  'quick-action': ['quick-action'],
 }
 
 /** Maximum payload size (5 MB) */

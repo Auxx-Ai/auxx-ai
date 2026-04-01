@@ -19,7 +19,13 @@ export const web =
           lambdaUrl: serverFunctionExecutorUrl,
         }),
         // Link secrets and database resources for Resource access
-        link: [...getSecretsForLinking('web'), rds, redis, publicBucket, privateBucket],
+        link: [
+          ...getSecretsForLinking('web'),
+          ...(rds ? [rds] : []),
+          ...(redis ? [redis] : []),
+          publicBucket,
+          privateBucket,
+        ],
         openNextVersion: '3.9.15',
         warm: $app.stage === 'production' ? 5 : 3,
         dev: {

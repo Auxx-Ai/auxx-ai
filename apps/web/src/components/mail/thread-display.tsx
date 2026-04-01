@@ -58,17 +58,22 @@ export function ThreadDisplay({ centered }: ThreadDisplayProps = {}) {
   const showBulkToolbar = hasMultipleSelected || viewMode === 'edit'
 
   return (
-    <div className={cn('flex h-full flex-col flex-1', centered && 'mx-auto w-full max-w-4xl')}>
+    <div className='flex h-full flex-col flex-1'>
       {/* BulkActionToolbar is self-contained - reads selection from store */}
       <BulkActionToolbar />
       {!showBulkToolbar &&
         (thread ? (
           // Determine thread type from integration provider
           isChatThread(thread.integrationProvider) ? (
-            <ChatInterface threadId={thread.id} sessionId={thread.externalId} thread={thread} />
+            <ChatInterface
+              threadId={thread.id}
+              sessionId={thread.externalId}
+              thread={thread}
+              centered={centered}
+            />
           ) : (
             <ThreadProvider threadId={thread.id}>
-              <ThreadDetails />
+              <ThreadDetails centered={centered} />
             </ThreadProvider>
           )
         ) : isLoading ? (
