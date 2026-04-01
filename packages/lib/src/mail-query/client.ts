@@ -35,7 +35,7 @@ export interface ActorIdObject {
  * Supported thread status values.
  * Matches ThreadStatus enum from @auxx/database/enums
  */
-type ThreadStatusValue = 'OPEN' | 'ARCHIVED' | 'TRASH' | 'SPAM'
+type ThreadStatusValue = 'OPEN' | 'ARCHIVED' | 'TRASH' | 'SPAM' | 'IGNORED'
 
 /**
  * Client-side thread filter criteria.
@@ -107,6 +107,9 @@ export function mapStatusSlugToClientFilter(slug?: string): Partial<ThreadClient
 
     case 'spam':
       return { status: 'SPAM' }
+
+    case 'ignored':
+      return { status: 'IGNORED' }
 
     // ─────────────────────────────────────────────────────────────────
     // Assignment filters (combined with OPEN status)

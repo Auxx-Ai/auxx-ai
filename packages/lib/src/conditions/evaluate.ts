@@ -422,6 +422,7 @@ const VIRTUAL_STATUS_MAP: Record<string, { status: string; assignee?: 'empty' | 
   trash: { status: 'TRASH' },
   trashed: { status: 'TRASH' },
   spam: { status: 'SPAM' },
+  ignored: { status: 'IGNORED' },
 }
 
 /**

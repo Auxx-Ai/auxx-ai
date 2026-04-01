@@ -3,18 +3,21 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type ActorId, parseActorId } from '@auxx/types/actor'
-import { getInstanceId, parseRecordId, type RecordId } from '@auxx/types/resource'
+import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
-import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import { and, eq, exists, ilike, inArray, isNotNull, notExists, or, sql } from 'drizzle-orm'
 
 const logger = createScopedLogger('thread-mutation-service')
+
+/** Active statuses eligible for retroactive filtering */
+const FILTERABLE_STATUSES = ['OPEN', 'ACTIVE', 'PENDING'] as const
 
 /**
  * Unified thread updates interface.
  * Used by the update() and updateBulk() methods.
  */
 export interface ThreadUpdates {
-  status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
+  status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED'
   subject?: string
   assigneeId?: ActorId | null
   /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null to unassign */
@@ -198,6 +201,167 @@ export class ThreadMutationService {
     if (!recordIds || recordIds.length === 0) return { count: 0 }
     const threadIds = recordIds.map((id) => parseRecordId(id).entityInstanceId)
     return this.bulkDeletePermanently(threadIds)
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // RETROACTIVE FILTER OPERATIONS
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Find thread IDs where an inbound message's sender or recipient matches the entry.
+   * Entry can be a full email (user@example.com) or a domain (example.com).
+   */
+  async findThreadIdsByParticipant(
+    integrationId: string,
+    entry: string,
+    role: 'sender' | 'recipient'
+  ): Promise<string[]> {
+    const isDomain = !entry.includes('@')
+
+    const emailMatch = (col: typeof schema.Participant.identifier) =>
+      isDomain ? ilike(col, `%@${entry}`) : eq(col, entry)
+
+    const threadFilter = and(
+      eq(schema.Thread.integrationId, integrationId),
+      eq(schema.Thread.organizationId, this.organizationId),
+      inArray(schema.Thread.status, [...FILTERABLE_STATUSES])
+    )
+
+    if (role === 'sender') {
+      // Sender = FROM participant on an inbound message
+      const rows = await this.db
+        .select({ id: schema.Thread.id })
+        .from(schema.Thread)
+        .where(
+          and(
+            threadFilter,
+            exists(
+              this.db
+                .select({ x: sql`1` })
+                .from(schema.Message)
+                .innerJoin(schema.Participant, eq(schema.Participant.id, schema.Message.fromId))
+                .where(
+                  and(
+                    eq(schema.Message.threadId, schema.Thread.id),
+                    eq(schema.Message.isInbound, true),
+                    emailMatch(schema.Participant.identifier)
+                  )
+                )
+            )
+          )
+        )
+
+      return rows.map((r) => r.id)
+    }
+
+    // Recipient = TO/CC participant on an inbound message
+    const rows = await this.db
+      .select({ id: schema.Thread.id })
+      .from(schema.Thread)
+      .where(
+        and(
+          threadFilter,
+          exists(
+            this.db
+              .select({ x: sql`1` })
+              .from(schema.Message)
+              .innerJoin(
+                schema.MessageParticipant,
+                eq(schema.MessageParticipant.messageId, schema.Message.id)
+              )
+              .innerJoin(
+                schema.Participant,
+                eq(schema.Participant.id, schema.MessageParticipant.participantId)
+              )
+              .where(
+                and(
+                  eq(schema.Message.threadId, schema.Thread.id),
+                  eq(schema.Message.isInbound, true),
+                  inArray(schema.MessageParticipant.role, ['TO', 'CC']),
+                  emailMatch(schema.Participant.identifier)
+                )
+              )
+          )
+        )
+      )
+
+    return rows.map((r) => r.id)
+  }
+
+  /**
+   * Find threads where NO inbound message has a TO/CC recipient matching the allowlist.
+   * Used for onlyProcessRecipients — threads sent to non-allowed addresses should be ignored.
+   */
+  async findThreadIdsNotMatchingRecipients(
+    integrationId: string,
+    allowedEntries: string[]
+  ): Promise<string[]> {
+    const matchConditions = allowedEntries.map((entry) => {
+      const isDomain = !entry.includes('@')
+      return isDomain
+        ? ilike(schema.Participant.identifier, `%@${entry}`)
+        : eq(schema.Participant.identifier, entry)
+    })
+
+    const rows = await this.db
+      .select({ id: schema.Thread.id })
+      .from(schema.Thread)
+      .where(
+        and(
+          eq(schema.Thread.integrationId, integrationId),
+          eq(schema.Thread.organizationId, this.organizationId),
+          inArray(schema.Thread.status, [...FILTERABLE_STATUSES]),
+          notExists(
+            this.db
+              .select({ x: sql`1` })
+              .from(schema.Message)
+              .innerJoin(
+                schema.MessageParticipant,
+                eq(schema.MessageParticipant.messageId, schema.Message.id)
+              )
+              .innerJoin(
+                schema.Participant,
+                eq(schema.Participant.id, schema.MessageParticipant.participantId)
+              )
+              .where(
+                and(
+                  eq(schema.Message.threadId, schema.Thread.id),
+                  eq(schema.Message.isInbound, true),
+                  inArray(schema.MessageParticipant.role, ['TO', 'CC']),
+                  or(...matchConditions)
+                )
+              )
+          )
+        )
+      )
+
+    return rows.map((r) => r.id)
+  }
+
+  /**
+   * Find all threads matching a filter entry and mark them as IGNORED.
+   * Returns the count of updated threads.
+   */
+  async ignoreThreadsByFilter(
+    integrationId: string,
+    entry: string,
+    role: 'sender' | 'recipient'
+  ): Promise<{ count: number }> {
+    const threadIds = await this.findThreadIdsByParticipant(integrationId, entry, role)
+
+    if (threadIds.length === 0) return { count: 0 }
+
+    const recordIds = threadIds.map((id) => toRecordId('thread', id))
+
+    logger.info('Retroactively ignoring threads for filter entry', {
+      entry,
+      role,
+      integrationId,
+      matchCount: threadIds.length,
+      organizationId: this.organizationId,
+    })
+
+    return this.updateBulk(recordIds, { status: 'IGNORED' })
   }
 
   // ═══════════════════════════════════════════════════════════════

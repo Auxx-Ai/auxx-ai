@@ -12,12 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import {
   Select,
@@ -43,14 +37,13 @@ import {
   Plus,
   RefreshCw,
   Shield,
-  Trash2,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
-import { client } from '~/auth/auth-client'
 import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { EmailListDialog } from './email-list-dialog'
 import IntegrationLabels from './integration-labels'
 
 /** Props for the IntegrationRouting component */
@@ -527,11 +520,6 @@ function AllowedSendersDialog({
   allowedSenders: string[]
   onClose: () => void
 }) {
-  const [localSenders, setLocalSenders] = useState<string[]>(allowedSenders)
-  const [inputValue, setInputValue] = useState('')
-  const [inputError, setInputError] = useState('')
-  const { data: session } = client.useSession()
-  const userEmail = session?.user?.email
   const utils = api.useUtils()
 
   const updateAllowedSenders = api.channel.updateAllowedSenders.useMutation({
@@ -544,135 +532,17 @@ function AllowedSendersDialog({
     },
   })
 
-  const isEmailValid = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-
-  const addEmail = (email: string) => {
-    const normalized = email.trim().toLowerCase()
-    if (!normalized) return
-
-    if (!isEmailValid(normalized)) {
-      setInputError('Invalid email address')
-      return
-    }
-    if (localSenders.includes(normalized)) {
-      setInputError('Email already added')
-      return
-    }
-
-    setLocalSenders([...localSenders, normalized])
-    setInputValue('')
-    setInputError('')
-  }
-
-  const removeEmail = (email: string) => {
-    setLocalSenders(localSenders.filter((s) => s !== email))
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      addEmail(inputValue)
-    }
-  }
-
-  const handleSave = () => {
-    updateAllowedSenders.mutate({ integrationId, allowedSenders: localSenders })
-  }
-
-  const showSuggestion = userEmail && !localSenders.includes(userEmail.trim().toLowerCase())
-
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent size='sm'>
-        <DialogHeader className='mb-4'>
-          <DialogTitle>Allowed Senders</DialogTitle>
-          <DialogDescription>
-            Only emails from these addresses will be accepted by this forwarding address.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className='space-y-3'>
-          <div className='space-y-1'>
-            <InputGroup>
-              <InputGroupInput
-                placeholder='Add email address...'
-                value={inputValue}
-                onChange={(e) => {
-                  setInputValue((e.target as HTMLInputElement).value)
-                  setInputError('')
-                }}
-                onKeyDown={handleKeyDown}
-              />
-              <InputGroupAddon align='inline-end'>
-                <InputGroupButton
-                  size='xs'
-                  onClick={() => addEmail(inputValue)}
-                  disabled={!inputValue.trim()}>
-                  <Plus />
-                  Add
-                </InputGroupButton>
-              </InputGroupAddon>
-            </InputGroup>
-            {inputError && <p className='text-xs text-destructive'>{inputError}</p>}
-          </div>
-
-          {showSuggestion && (
-            <Button
-              variant='outline'
-              size='sm'
-              className='w-full'
-              onClick={() => addEmail(userEmail)}>
-              <Plus />
-              Add your email ({userEmail})
-            </Button>
-          )}
-
-          {localSenders.length > 0 && (
-            <div className='space-y-1 max-h-60 overflow-y-auto p-0.5'>
-              {localSenders.map((email) => (
-                <InputGroup key={email}>
-                  <InputGroupInput value={email} readOnly className='font-mono text-sm' />
-                  <InputGroupAddon align='inline-end'>
-                    <InputGroupButton
-                      size='icon-xs'
-                      variant='destructive-hover'
-                      aria-label='Remove sender'
-                      title='Remove'
-                      className='rounded-lg mr-0.5'
-                      onClick={() => removeEmail(email)}>
-                      <Trash2 />
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                </InputGroup>
-              ))}
-            </div>
-          )}
-
-          {localSenders.length === 0 && (
-            <div className='rounded-lg border border-dashed py-6 text-center'>
-              <p className='text-sm text-muted-foreground'>
-                No allowed senders. Add at least one email address.
-              </p>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant='ghost' size='sm' onClick={onClose}>
-            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-          </Button>
-          <Button
-            data-dialog-submit
-            onClick={handleSave}
-            variant='outline'
-            size='sm'
-            loading={updateAllowedSenders.isPending}
-            loadingText='Saving...'>
-            Save <KbdSubmit variant='outline' size='sm' />
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <EmailListDialog
+      title='Allowed Senders'
+      description='Only emails from these addresses will be accepted by this forwarding address.'
+      placeholder='Add email address...'
+      entries={allowedSenders}
+      onSave={(entries) => updateAllowedSenders.mutate({ integrationId, allowedSenders: entries })}
+      isPending={updateAllowedSenders.isPending}
+      onClose={onClose}
+      showUserEmailSuggestion
+    />
   )
 }
 

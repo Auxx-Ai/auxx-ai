@@ -71,7 +71,7 @@ export interface PaginatedIdsResult {
 }
 
 /** Thread status enum type. */
-export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
+export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED'
 
 /** Integration provider enum type. */
 export type ChannelProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'

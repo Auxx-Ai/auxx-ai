@@ -10,10 +10,18 @@ export type ViewMode = 'view' | 'edit'
  */
 interface ThreadSelectionState {
   activeThreadId: string | null
+  /** Last thread interacted with (click or checkbox), used as anchor for shift+click range selection */
+  selectionAnchorId: string | null
   selectedThreadIds: string[]
+  /** Thread IDs currently displayed in the list, in display order */
+  listThreadIds: string[]
+  /** Thread with keyboard focus cursor (compact view highlight without navigation) */
+  focusedThreadId: string | null
   viewMode: ViewMode
 
   setActiveThread: (id: string | null) => void
+  setSelectionAnchor: (id: string | null) => void
+  setFocusedThread: (id: string | null) => void
   setSelectedThreads: (ids: string[]) => void
   addToSelection: (id: string) => void
   removeFromSelection: (id: string) => void
@@ -21,6 +29,7 @@ interface ThreadSelectionState {
   clearSelection: () => void
   selectAll: (allIds: string[]) => void
   selectRange: (fromId: string, toId: string, allIds: string[]) => void
+  setListThreadIds: (ids: string[]) => void
   setViewMode: (mode: ViewMode) => void
   toggleViewMode: () => void
   reset: () => void
@@ -28,14 +37,26 @@ interface ThreadSelectionState {
 
 const initialState = {
   activeThreadId: null as string | null,
+  selectionAnchorId: null as string | null,
   selectedThreadIds: [] as string[],
+  listThreadIds: [] as string[],
+  focusedThreadId: null as string | null,
   viewMode: 'view' as ViewMode,
 }
 
 export const useThreadSelectionStore = create<ThreadSelectionState>((set, get) => ({
   ...initialState,
 
-  setActiveThread: (id) => set({ activeThreadId: id }),
+  setActiveThread: (id) =>
+    set((state) => ({
+      activeThreadId: id,
+      // Only update anchor when setting a non-null active thread
+      selectionAnchorId: id !== null ? id : state.selectionAnchorId,
+    })),
+
+  setSelectionAnchor: (id) => set({ selectionAnchorId: id }),
+
+  setFocusedThread: (id) => set({ focusedThreadId: id }),
 
   setSelectedThreads: (ids) => set({ selectedThreadIds: ids }),
 
@@ -57,9 +78,17 @@ export const useThreadSelectionStore = create<ThreadSelectionState>((set, get) =
         : [...state.selectedThreadIds, id],
     })),
 
-  clearSelection: () => set({ selectedThreadIds: [], activeThreadId: null }),
+  clearSelection: () =>
+    set({
+      selectedThreadIds: [],
+      activeThreadId: null,
+      selectionAnchorId: null,
+      focusedThreadId: null,
+    }),
 
   selectAll: (allIds) => set({ selectedThreadIds: allIds }),
+
+  setListThreadIds: (ids) => set({ listThreadIds: ids }),
 
   selectRange: (fromId, toId, allIds) => {
     const fromIndex = allIds.indexOf(fromId)
@@ -91,6 +120,21 @@ const EMPTY_ARRAY: string[] = []
  * Only re-renders when activeThreadId changes.
  */
 export const useActiveThreadId = () => useThreadSelectionStore((s) => s.activeThreadId)
+
+/**
+ * Returns the selection anchor ID (last interacted thread, for shift+click).
+ */
+export const useSelectionAnchorId = () => useThreadSelectionStore((s) => s.selectionAnchorId)
+
+/**
+ * Returns the thread IDs currently displayed in the list.
+ */
+export const useListThreadIds = () => useThreadSelectionStore((s) => s.listThreadIds)
+
+/**
+ * Returns the focused thread ID (keyboard cursor in compact view).
+ */
+export const useFocusedThreadId = () => useThreadSelectionStore((s) => s.focusedThreadId)
 
 /**
  * Returns the selected thread IDs array.

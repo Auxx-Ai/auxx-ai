@@ -592,6 +592,7 @@ export const ThreadStatusValues = [
   'CLOSED',
   'SPAM',
   'TRASH',
+  'IGNORED',
 ] as const
 
 export const ThreadTypeValues = ['EMAIL', 'CHAT'] as const
@@ -1299,6 +1300,7 @@ export const ThreadStatus = {
   CLOSED: 'CLOSED',
   SPAM: 'SPAM',
   TRASH: 'TRASH',
+  IGNORED: 'IGNORED',
 } as const
 
 export const ThreadType = {

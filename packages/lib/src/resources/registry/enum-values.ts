@@ -148,6 +148,7 @@ export const ThreadStatus = {
   CLOSED: 'CLOSED',
   SPAM: 'SPAM',
   TRASH: 'TRASH',
+  IGNORED: 'IGNORED',
 
   values: [
     { value: 'OPEN', label: 'Open', color: 'blue' },
@@ -158,6 +159,7 @@ export const ThreadStatus = {
     { value: 'CLOSED', label: 'Closed', color: 'gray' },
     { value: 'SPAM', label: 'Spam', color: 'red' },
     { value: 'TRASH', label: 'Trash', color: 'red' },
+    { value: 'IGNORED', label: 'Ignored', color: 'gray' },
   ] satisfies FieldOptionItem[],
 } as const
 

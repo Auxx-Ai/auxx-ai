@@ -1,0 +1,1 @@
+ALTER TYPE "public"."ThreadStatus" ADD VALUE 'IGNORED';

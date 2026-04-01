@@ -1,5 +1,6 @@
 // apps/web/src/components/threads/hooks/index.ts
 
+export { useFocusedThreadShortcuts } from './use-focused-thread-shortcuts'
 export { type InboxItem, type InboxRecord, useInbox, useInboxes } from './use-inbox'
 export { useMessage } from './use-message'
 export { useMessageParticipants } from './use-message-participants'
