@@ -26,6 +26,15 @@ import { SystemUserService } from '../users/system-user-service'
 
 const logger = createScopedLogger('message-storage')
 
+/**
+ * Check if an email matches a filter entry (exact email or domain match).
+ */
+function matchesFilterEntry(email: string, entries: string[]): boolean {
+  const normalized = email.toLowerCase().trim()
+  const domain = normalized.split('@')[1]
+  return entries.some((entry) => normalized === entry || domain === entry)
+}
+
 // Re-export enums for convenience
 export {
   MessageType,
@@ -119,6 +128,9 @@ interface IntegrationSettings {
   recordCreation?: {
     mode: 'all' | 'selective' | 'none'
   }
+  excludeSenders?: string[]
+  excludeRecipients?: string[]
+  onlyProcessRecipients?: string[]
   [key: string]: any
 }
 
@@ -149,6 +161,102 @@ export class MessageStorageService {
       )
       this.threadManager = new ThreadManagerService(organizationId, db)
     }
+  }
+
+  /**
+   * Check if a message should be ignored based on integration filter settings.
+   *
+   * Evaluation order:
+   * 1. onlyProcessRecipients (allowlist) — if set and no TO matches → ignore
+   * 2. excludeSenders (blocklist) — if FROM matches → ignore
+   * 3. excludeRecipients (blocklist) — skipped if onlyProcessRecipients already passed
+   */
+  private shouldIgnoreMessage(messageData: MessageData): boolean {
+    const settings = this.integrationSettings
+    if (!settings) return false
+
+    const fromEmail = messageData.from?.identifier?.toLowerCase().trim()
+    const toEmails = (messageData.to ?? [])
+      .map((p) => p.identifier?.toLowerCase().trim())
+      .filter(Boolean) as string[]
+    const ccEmails = (messageData.cc ?? [])
+      .map((p) => p.identifier?.toLowerCase().trim())
+      .filter(Boolean) as string[]
+
+    // 1. Allowlist: if onlyProcessRecipients is set and no TO matches → ignore
+    const hasAllowlist = settings.onlyProcessRecipients && settings.onlyProcessRecipients.length > 0
+    if (hasAllowlist) {
+      const anyToMatches = toEmails.some((e) =>
+        matchesFilterEntry(e, settings.onlyProcessRecipients!)
+      )
+      if (!anyToMatches) return true
+    }
+
+    // 2. Sender blocklist — always applies
+    if (settings.excludeSenders?.length && fromEmail) {
+      if (matchesFilterEntry(fromEmail, settings.excludeSenders)) return true
+    }
+
+    // 3. Recipient blocklist — skipped if allowlist was set (already validated TO)
+    if (!hasAllowlist && settings.excludeRecipients?.length) {
+      const allRecipients = [...toEmails, ...ccEmails]
+      if (allRecipients.some((e) => matchesFilterEntry(e, settings.excludeRecipients!))) return true
+    }
+
+    return false
+  }
+
+  /**
+   * Store minimal thread + message for dedup only. Skips participants, contacts, body, attachments.
+   */
+  private async storeIgnoredMessage(
+    messageData: MessageData
+  ): Promise<{ messageId: string; isNew: boolean }> {
+    const [thread] = await db
+      .insert(schema.Thread)
+      .values({
+        externalId: messageData.externalThreadId,
+        integrationId: messageData.integrationId,
+        organizationId: messageData.organizationId,
+        subject: messageData.subject ?? 'No Subject',
+        status: ThreadStatus.IGNORED,
+        firstMessageAt: messageData.sentAt,
+        lastMessageAt: messageData.sentAt,
+        messageCount: 1,
+        participantCount: 0,
+      })
+      .onConflictDoUpdate({
+        target: [schema.Thread.integrationId, schema.Thread.externalId],
+        set: {}, // Don't update existing threads — preserve their current status
+      })
+      .returning({ id: schema.Thread.id })
+
+    const [message] = await db
+      .insert(schema.Message)
+      .values({
+        externalId: messageData.externalId,
+        externalThreadId: messageData.externalThreadId,
+        threadId: thread.id,
+        organizationId: messageData.organizationId,
+        integrationId: messageData.integrationId,
+        internetMessageId: messageData.internetMessageId,
+        sentAt: messageData.sentAt,
+        receivedAt: messageData.receivedAt,
+        subject: messageData.subject ?? '',
+        isInbound: messageData.isInbound,
+      })
+      .onConflictDoNothing({
+        target: [schema.Message.integrationId, schema.Message.externalId],
+      })
+      .returning({ id: schema.Message.id })
+
+    logger.info('Stored ignored message (minimal, no body/contacts)', {
+      messageId: message?.id,
+      externalId: messageData.externalId,
+      threadId: thread.id,
+    })
+
+    return { messageId: message?.id ?? '', isNew: !!message }
   }
 
   /** Resolves the system user ID for an organization, with caching. */
@@ -980,6 +1088,11 @@ export class MessageStorageService {
         this.integrationSettings = (integration?.metadata as any)?.settings as
           | IntegrationSettings
           | undefined
+      }
+
+      // Check email filtering rules — early exit with minimal storage for dedup
+      if (this.shouldIgnoreMessage(messageData)) {
+        return this.storeIgnoredMessage(messageData)
       }
 
       // --- 1. Process ALL Participants & Cache Results ---

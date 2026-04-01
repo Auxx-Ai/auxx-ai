@@ -10,6 +10,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { OverflowRow } from '@auxx/ui/components/overflow-row'
@@ -18,7 +21,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useDraggable } from '@dnd-kit/core'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Archive, Clock, MailWarning, MoreVertical, Trash2 } from 'lucide-react'
+import { Archive, Ban, Clock, MailWarning, MoreVertical, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
@@ -31,30 +34,49 @@ import {
   useThreadMutation,
   useThreadReadStatus,
 } from '~/components/threads/hooks'
-import { useThreadSelectionStore } from '~/components/threads/store'
+import { useSelectionAnchorId, useThreadSelectionStore } from '~/components/threads/store'
 import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
+import { api } from '~/trpc/react'
 import { useMailFilter } from './mail-filter-context'
 import { getIntegrationIcon } from './mail-status-config'
 
 /**
  * Processing menu component for triggering manual message processing
  */
-function ProcessingMenu({
+export function ProcessingMenu({
   threadId,
+  integrationId,
+  senderEmail,
   update,
   isUpdating,
+  onOpenChange,
 }: {
   threadId: string
-  update: (threadId: string, updates: { status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' }) => void
+  integrationId?: string
+  senderEmail?: string
+  update: (
+    threadId: string,
+    updates: { status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED' }
+  ) => void
   isUpdating: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const onSuccess = useCallback(() => {
     console.log('Workflow triggered successfully')
   }, [])
 
+  const addExcludedSender = api.channel.addExcludedSender.useMutation({
+    onSuccess: () => {
+      update(threadId, { status: 'IGNORED' })
+    },
+  })
+
+  const senderDomain = senderEmail?.split('@')[1]
+  const showIgnoreFrom = integrationId && senderEmail && senderDomain
+
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button variant='ghost' size='icon-sm' className='rounded-[8px]!'>
           <MoreVertical />
@@ -63,6 +85,29 @@ function ProcessingMenu({
       <DropdownMenuContent align='end'>
         <WorkflowSubMenu recordId={toRecordId('thread', threadId)} onSuccess={onSuccess} />
         <DropdownMenuSeparator />
+        {showIgnoreFrom && (
+          <>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Ban />
+                Ignore from
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem
+                  onClick={() => addExcludedSender.mutate({ integrationId, entry: senderEmail })}
+                  disabled={addExcludedSender.isPending}>
+                  {senderEmail}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => addExcludedSender.mutate({ integrationId, entry: senderDomain })}
+                  disabled={addExcludedSender.isPending}>
+                  @{senderDomain}
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem
           onClick={() => update(threadId, { status: 'ARCHIVED' })}
           disabled={isUpdating}>
@@ -99,6 +144,8 @@ export interface MailThreadItemProps {
   isSelected: boolean
   /** Handler for thread click with selection support */
   handleThreadClick: (threadId: string, event: React.MouseEvent) => void
+  /** All thread IDs in display order, needed for shift+click range selection */
+  threadIds: string[]
 }
 
 /**
@@ -111,6 +158,7 @@ export const MailThreadItem = memo(function MailThreadItem({
   basePath: _basePath,
   isSelected: _isSelected,
   handleThreadClick,
+  threadIds,
 }: MailThreadItemProps) {
   // --- Get filter context ---
   const { selectedThreadIds, viewMode, filterConditions } = useMailFilter()
@@ -127,6 +175,9 @@ export const MailThreadItem = memo(function MailThreadItem({
   // --- Selection store actions ---
   const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
   const setActiveThread = useThreadSelectionStore((s) => s.setActiveThread)
+  const setSelectionAnchor = useThreadSelectionStore((s) => s.setSelectionAnchor)
+  const selectRange = useThreadSelectionStore((s) => s.selectRange)
+  const selectionAnchorId = useSelectionAnchorId()
 
   // --- Thread mutations using new unified hook ---
   const { update, isUpdating } = useThreadMutation()
@@ -265,8 +316,12 @@ export const MailThreadItem = memo(function MailThreadItem({
                 <div
                   onClick={(e) => {
                     e.stopPropagation()
-                    toggleSelection(threadId)
-                    setActiveThread(threadId)
+                    if (e.shiftKey && selectionAnchorId) {
+                      selectRange(selectionAnchorId, threadId, threadIds)
+                    } else {
+                      toggleSelection(threadId)
+                    }
+                    setSelectionAnchor(threadId)
                   }}>
                   <Checkbox checked={isMultiSelected} />
                 </div>
@@ -330,7 +385,17 @@ export const MailThreadItem = memo(function MailThreadItem({
               style={{ boxShadow: 'inset 25px 0 25px -25px #000, 1px 1px 3px rgba(0,0,0,0.2)' }}
             />
             <div className='flex flex-col justify-start h-full'>
-              <ProcessingMenu threadId={threadId} update={update} isUpdating={isUpdating} />
+              <ProcessingMenu
+                threadId={threadId}
+                integrationId={thread?.integrationId}
+                senderEmail={
+                  senderParticipant?.identifierType === 'EMAIL'
+                    ? senderParticipant.identifier
+                    : undefined
+                }
+                update={update}
+                isUpdating={isUpdating}
+              />
             </div>
           </div>
         </motion.div>

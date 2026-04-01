@@ -304,6 +304,8 @@ function buildStatusQuery(operator: Operator, value: any): SQL<unknown> | null {
         return eq(Thread.status, 'TRASH')
       case 'spam':
         return eq(Thread.status, 'SPAM')
+      case 'ignored':
+        return eq(Thread.status, 'IGNORED')
       default:
         return null
     }

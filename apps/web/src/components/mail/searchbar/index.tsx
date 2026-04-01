@@ -380,7 +380,7 @@ export function MailSearchBar({
             className='rounded-t-none rounded-b-2xl border-t-0 p-0 shadow-lg'
             align='start'
             sideOffset={0}
-            // onOpenAutoFocus={(e) => e.preventDefault()}
+            onOpenAutoFocus={(e) => e.preventDefault()}
             onInteractOutside={(e) => {
               const target = e.target as HTMLElement
               // Prevent closing when clicking the filter button

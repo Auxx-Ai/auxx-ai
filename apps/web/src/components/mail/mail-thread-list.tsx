@@ -1,7 +1,7 @@
 // apps/web/src/components/mail/mail-thread-list.tsx
 'use client'
 
-import { parseRecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -21,10 +21,14 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, Mail, User } from 'lucide-react'
+import { useQueryState } from 'nuqs'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
+import { TagPicker } from '~/components/tags/ui/tag-picker'
 // import { useAutoAnimate } from '@formkit/auto-animate/react'
 // NEW: Import selection hooks from threads module
 import {
+  useFocusedThreadShortcuts,
   useSelectionReset,
   useThreadKeyboardNav,
   useThreadList,
@@ -36,10 +40,17 @@ import {
   useThreadSelectionStore,
   useViewMode,
 } from '~/components/threads/store'
+import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
+import { api } from '~/trpc/react'
+import BulkActionToolbar from './bulk-action-toolbar'
+import { CompactDraftItem } from './compact-draft-item'
+import { CompactThreadItem } from './compact-thread-item'
 import { type SortOption, useMailFilter } from './mail-filter-context'
 import { MailThreadItem } from './mail-thread-item'
 import { StandaloneDraftItem } from './standalone-draft-item'
 import type { ThreadsFilterInput } from './types'
+
+export type ThreadListVariant = 'default' | 'compact'
 
 interface ThreadListProps {
   /** Filter configuration for fetching threads */
@@ -50,6 +61,8 @@ interface ThreadListProps {
   selectedThreadId?: string | null
   /** Callback when loading state changes */
   onLoadingChange?: (isLoading: boolean) => void
+  /** Layout variant: 'default' (card style) or 'compact' (single-line rows) */
+  variant?: ThreadListVariant
 }
 
 /**
@@ -62,7 +75,12 @@ export const ThreadList = memo(function ThreadList({
   basePath,
   selectedThreadId,
   onLoadingChange,
+  variant = 'default',
 }: ThreadListProps) {
+  const [, setTid] = useQueryState('tid', { defaultValue: '', history: 'replace', shallow: true })
+  const utils = api.useUtils()
+  const { contextType, contextId, statusSlug, searchQuery } = useMailFilter()
+
   // Use ID-based hook with unified condition-based filter
   const {
     recordIds,
@@ -80,16 +98,46 @@ export const ThreadList = memo(function ThreadList({
   // Selection hooks - use new thread selection system (for threads only)
   const { handleThreadClick } = useThreadSelection({ threadIds })
 
+  // Keep store in sync with current list thread IDs for navigation toolbar
+  const setListThreadIds = useThreadSelectionStore((s) => s.setListThreadIds)
+  useEffect(() => {
+    setListThreadIds(threadIds)
+  }, [threadIds, setListThreadIds])
+
   // Keyboard navigation - handles arrow keys, Home/End, Cmd+A, Escape, etc.
   useThreadKeyboardNav({
     threadIds,
     enabled: true,
+    mode: variant === 'compact' ? 'focus' : 'navigate',
     onNavigateToEnd: () => {
       if (hasNextPage && !isFetchingNextPage) {
         fetchNextPage()
       }
     },
+    onOpen: variant === 'compact' ? (id) => void setTid(id) : undefined,
   })
+
+  // Action shortcuts (D, #, !, W, L) for focused thread in compact view
+  const {
+    workflowDialogOpen,
+    setWorkflowDialogOpen,
+    workflowThreadId,
+    tagPickerOpen,
+    setTagPickerOpen,
+    tagPickerThreadId,
+  } = useFocusedThreadShortcuts()
+
+  // Anchor ref for tag picker popover — points to the focused thread's DOM element
+  const tagAnchorRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (tagPickerThreadId && tagPickerOpen) {
+      tagAnchorRef.current = document.getElementById(`thread-${tagPickerThreadId}`) ?? null
+    }
+  }, [tagPickerThreadId, tagPickerOpen])
+
+  // Tag management for focused thread — optimistic updates via ThreadStore
+  const { selectedTags: tagPickerCurrentTags, handleTagChange: handleFocusedTagChange } =
+    useThreadTags(tagPickerThreadId ?? '')
 
   // Reset selection when filter changes
   useSelectionReset(filter.filter)
@@ -200,12 +248,39 @@ export const ThreadList = memo(function ThreadList({
   return (
     <div className={cn('relative flex h-full w-full flex-col', isEmpty && 'flex-1')}>
       <ThreadListMenu threadIds={threadIds} />
+      <BulkActionToolbar />
+      {workflowThreadId && (
+        <MassWorkflowTriggerDialog
+          open={workflowDialogOpen}
+          onOpenChange={setWorkflowDialogOpen}
+          recordIds={[toRecordId('thread', workflowThreadId)]}
+          onSuccess={() => {
+            utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
+          }}
+        />
+      )}
+      {tagPickerOpen && tagPickerThreadId && (
+        <TagPicker
+          open={tagPickerOpen}
+          onOpenChange={setTagPickerOpen}
+          anchorRef={tagAnchorRef}
+          selectedTags={tagPickerCurrentTags}
+          onChange={handleFocusedTagChange}
+          allowMultiple
+          align='end'
+          side='bottom'
+        />
+      )}
       <ScrollArea
         viewportRef={viewportRefCallback}
         scrollbarClassName='w-1!'
         className={cn('flex-1 min-h-0', isEmpty && 'flex flex-col')}>
         <div
-          className={cn('relative flex flex-col gap-2 p-4 pt-0', isEmpty && 'flex-1')}
+          className={cn(
+            'relative flex flex-col pt-0',
+            variant === 'compact' ? 'gap-0 px-0' : 'gap-2 p-4',
+            isEmpty && 'flex-1'
+          )}
           ref={parent}>
           {isEmpty && (
             <div className='p-4 text-center flex-1 flex items-center justify-center border rounded-2xl ring-inset ring-1 ring-muted/10'>
@@ -226,10 +301,25 @@ export const ThreadList = memo(function ThreadList({
             const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
             if (entityDefinitionId === 'draft') {
+              if (variant === 'compact') {
+                return <CompactDraftItem key={recordId} draftId={entityInstanceId} />
+              }
               return <StandaloneDraftItem key={recordId} draftId={entityInstanceId} />
             }
 
-            // Default: thread
+            if (variant === 'compact') {
+              return (
+                <CompactThreadItem
+                  key={recordId}
+                  threadId={entityInstanceId}
+                  basePath={basePath}
+                  isSelected={entityInstanceId === selectedThreadId}
+                  handleThreadClick={handleThreadClick}
+                  threadIds={threadIds}
+                />
+              )
+            }
+
             return (
               <MailThreadItem
                 key={recordId}
@@ -237,6 +327,7 @@ export const ThreadList = memo(function ThreadList({
                 basePath={basePath}
                 isSelected={entityInstanceId === selectedThreadId}
                 handleThreadClick={handleThreadClick}
+                threadIds={threadIds}
               />
             )
           })}

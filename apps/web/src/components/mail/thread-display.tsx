@@ -2,9 +2,11 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { AtSignIcon } from '@auxx/ui/components/icons/at-sign-icon'
+import { cn } from '@auxx/ui/lib/utils'
 import { Mail, Plus, Waypoints } from 'lucide-react'
 import Link from 'next/link'
-import { useThread } from '~/components/threads/hooks'
+import { useEffect } from 'react'
+import { useThread, useThreadReadStatus } from '~/components/threads/hooks'
 import { useFirstSelectedThreadId, useHasMultipleSelected } from '~/components/threads/store'
 import type { ChannelProvider } from '~/components/threads/store/thread-store'
 import { useCompose } from '~/hooks/use-compose'
@@ -24,11 +26,16 @@ function isChatThread(provider: ChannelProvider | null): boolean {
   return provider !== null && CHAT_PROVIDERS.includes(provider)
 }
 
+interface ThreadDisplayProps {
+  /** When true, centers the content with a max-width for full-page list view */
+  centered?: boolean
+}
+
 /**
  * ThreadDisplay - displays the selected thread details or bulk action toolbar.
  * Gets thread data from Zustand store.
  */
-export function ThreadDisplay() {
+export function ThreadDisplay({ centered }: ThreadDisplayProps = {}) {
   const { openCompose } = useCompose()
   const { hasOnlyForwardingChannel } = useUser()
   const { viewMode } = useMailFilter()
@@ -39,11 +46,19 @@ export function ThreadDisplay() {
 
   // Get thread from store
   const { thread, isLoading } = useThread({ threadId })
+  const { isUnread, markAsRead } = useThreadReadStatus(threadId)
+
+  // Mark thread as read when displayed
+  useEffect(() => {
+    if (threadId && isUnread) {
+      markAsRead()
+    }
+  }, [threadId, isUnread, markAsRead])
 
   const showBulkToolbar = hasMultipleSelected || viewMode === 'edit'
 
   return (
-    <div className='flex h-full flex-col flex-1'>
+    <div className={cn('flex h-full flex-col flex-1', centered && 'mx-auto w-full max-w-4xl')}>
       {/* BulkActionToolbar is self-contained - reads selection from store */}
       <BulkActionToolbar />
       {!showBulkToolbar &&

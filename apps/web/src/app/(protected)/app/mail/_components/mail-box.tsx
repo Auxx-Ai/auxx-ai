@@ -13,13 +13,14 @@ import {
 } from '@auxx/ui/components/main-page'
 import { PanelResizeHandle } from '@auxx/ui/components/panel-resize-handle'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { Mail, MailIcon, Play, Plus, Waypoints } from 'lucide-react'
+import { Columns2, Mail, Plus, Rows3, Waypoints } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import {
   useCallback,
   useDeferredValue, // Import for optimizing search input
+  useEffect,
   useMemo,
   useState,
 } from 'react'
@@ -38,8 +39,14 @@ import { MailSearchBar } from '~/components/mail/searchbar'
 // import { MailFilterProvider } from '~/context/mail-filter-context' // Import the provider
 import { useSearchConditions } from '~/components/mail/searchbar/hooks/use-search-filters'
 import { ThreadDisplay } from '~/components/mail/thread-display'
+import { ThreadNavToolbar } from '~/components/mail/thread-nav-toolbar'
 import type { ThreadsFilterInput } from '~/components/mail/types'
-import { useSelectedThreadIds, useThreadSelectionStore, useViewMode } from '~/components/threads'
+import {
+  useActiveThreadId,
+  useSelectedThreadIds,
+  useThreadSelectionStore,
+  useViewMode,
+} from '~/components/threads'
 import { useCompose } from '~/hooks/use-compose'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
@@ -49,7 +56,6 @@ import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import {
   calculateBasePathForList,
-  constructNavigationSearchParams,
   constructTabNavigationPath,
   deriveActiveStatusSlug,
   parseMailboxContext,
@@ -147,11 +153,16 @@ function MailboxInner({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [mode, setMode] = useQueryState('mode', {
-    defaultValue: 'mail',
-    history: 'replace',
-    shallow: false,
+  // Layout mode: 'split' (two-panel) or 'list' (compact single-panel), persisted in localStorage
+  const [layoutMode, setLayoutMode] = useState<'split' | 'list'>(() => {
+    const stored = safeLocalStorage.get('mail-layout-mode')
+    return stored === 'list' ? 'list' : 'split'
   })
+  const handleLayoutModeChange = useCallback((mode: string) => {
+    const value = mode as 'split' | 'list'
+    setLayoutMode(value)
+    safeLocalStorage.set('mail-layout-mode', value)
+  }, [])
 
   // Get current user ID for personal inbox/assigned filtering
   const { userId } = useUser()
@@ -190,14 +201,44 @@ function MailboxInner({
     { enabled: contextType === 'view' && !!contextId }
   )
 
-  // State for the currently selected thread ID, derived from URL search parameter 'thread'
-  const selectedThreadId = searchParams?.get('selected')
+  // Selected thread ID persisted in URL via nuqs for reload support
+  const [tid, setTid] = useQueryState('tid', {
+    defaultValue: '',
+    history: 'replace',
+    shallow: true,
+  })
+  const selectedThreadId = tid || null
 
   // State to track if the thread list is currently fetching/loading data
   const [isListLoading, setIsListLoading] = useState(false)
 
+  // Sync URL → Zustand on mount (restore selection after reload)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect
+  useEffect(() => {
+    if (tid) {
+      const store = useThreadSelectionStore.getState()
+      if (store.selectedThreadIds.length === 0) {
+        store.setSelectedThreads([tid])
+        store.setActiveThread(tid)
+      }
+    }
+  }, [])
+
   // View mode from store - determines checkbox visibility and interaction behavior
   const viewMode = useViewMode()
+
+  // Sync Zustand → URL (persist active thread when user clicks a thread row)
+  const activeThreadId = useActiveThreadId()
+  useEffect(() => {
+    if (activeThreadId) {
+      void setTid(activeThreadId)
+    } else {
+      const { selectedThreadIds } = useThreadSelectionStore.getState()
+      if (selectedThreadIds.length === 0) {
+        void setTid('')
+      }
+    }
+  }, [activeThreadId, setTid])
   const setViewMode = useThreadSelectionStore((s) => s.setViewMode)
 
   // State for sorting - default to newest first
@@ -295,21 +336,18 @@ function MailboxInner({
   )
 
   // Calculate the base path for constructing links within the ThreadList using utility
-  const basePathForList = calculateBasePathForList(pathname, selectedThreadId)
+  const basePathForList = calculateBasePathForList(pathname)
 
   // Handles navigation when a status tab is clicked using utility function
   const handleTabChange = useCallback(
     (newStatusSlug: string) => {
-      const newPath = constructTabNavigationPath(pathname, newStatusSlug, selectedThreadId)
+      const newPath = constructTabNavigationPath(pathname, newStatusSlug)
 
-      // Preserve other search parameters (like 'q') but remove 'selected'
-      const newSearchParams = constructNavigationSearchParams(searchParams, { removeThread: true })
-      const queryString = newSearchParams.toString()
-
-      console.debug(`Routing tab change to: ${newPath}${queryString ? `?${queryString}` : ''}`)
-      router.push(`${newPath}${queryString ? `?${queryString}` : ''}`)
+      console.debug(`Routing tab change to: ${newPath}`)
+      void setTid('')
+      router.push(newPath)
     },
-    [pathname, router, searchParams, selectedThreadId]
+    [pathname, router, setTid]
   )
 
   // Handles updates from the SearchBar component (called after debounce)
@@ -334,11 +372,9 @@ function MailboxInner({
 
   // Handles navigation back to thread list on mobile
   const handleBackToList = useCallback(() => {
-    const newSearchParams = constructNavigationSearchParams(searchParams, { removeThread: true })
-    const queryString = newSearchParams.toString()
-
-    router.push(`${basePathForList}${queryString ? `?${queryString}` : ''}`)
-  }, [router, searchParams, basePathForList])
+    void setTid('')
+    router.push(basePathForList)
+  }, [router, basePathForList, setTid])
 
   // Handle closing contact drawer
   const handleContactDrawerClose = useCallback(
@@ -424,27 +460,23 @@ function MailboxInner({
               </div>
               <div className='hidden items-center shrink-0 gap-2 sm:flex'>
                 <RadioTab
-                  value={mode}
-                  onValueChange={setMode}
+                  value={layoutMode}
+                  onValueChange={handleLayoutModeChange}
                   size='sm'
                   className='border border-primary-200 bg-background/30'>
-                  <RadioTabItem value='mail' size='sm'>
-                    <MailIcon />
-                    Mail
+                  <RadioTabItem value='split' size='sm'>
+                    <Columns2 />
+                    Split
                   </RadioTabItem>
-                  <RadioTabItem value='actions' size='sm'>
-                    <Play />
-                    Actions
+                  <RadioTabItem value='list' size='sm'>
+                    <Rows3 />
+                    List
                   </RadioTabItem>
                 </RadioTab>
               </div>
             </div>
           </div>
-          {mode === 'actions' ? (
-            // Actions mode: Show proposed actions view
-            <div className='h-full flex-1 bg-secondary dark:bg-primary-100'></div>
-          ) : // Mail mode: Show regular mail interface
-          isSmallScreen ? (
+          {isSmallScreen ? (
             // Mobile: Single panel view based on URL state
             <div className='h-full flex-1 bg-secondary dark:bg-primary-100'>
               {selectedThreadId ? (
@@ -467,8 +499,34 @@ function MailboxInner({
                 </div>
               )}
             </div>
+          ) : layoutMode === 'list' ? (
+            // Desktop List mode: compact thread list or full-page thread display
+            <div className='h-full flex-1 overflow-hidden bg-secondary dark:bg-muted-50'>
+              {selectedThreadId ? (
+                <div className='h-full flex flex-col'>
+                  <ThreadNavToolbar
+                    activeThreadId={selectedThreadId}
+                    onBack={handleBackToList}
+                    onNavigate={(id) => void setTid(id)}
+                  />
+                  <div className='flex-1 overflow-hidden'>
+                    <ThreadDisplay centered />
+                  </div>
+                </div>
+              ) : (
+                <div className='h-full overflow-hidden'>
+                  <ThreadList
+                    filter={threadFilterForHook}
+                    basePath={basePathForList}
+                    selectedThreadId={selectedThreadId}
+                    onLoadingChange={setIsListLoading}
+                    variant='compact'
+                  />
+                </div>
+              )}
+            </div>
           ) : (
-            // Desktop: Flex layout with fixed-width thread list
+            // Desktop Split mode: Flex layout with fixed-width thread list
             <div className='flex flex-row h-full flex-1 overflow-hidden bg-secondary dark:bg-muted-50'>
               {/* Left Panel: Thread list with fixed pixel width */}
               <div

@@ -6,6 +6,7 @@ import {
   useActiveThreadId,
   useIsMultiSelectMode,
   useSelectedThreadIds,
+  useSelectionAnchorId,
   useThreadSelectionStore,
 } from '../store/thread-selection-store'
 
@@ -21,6 +22,7 @@ interface UseThreadSelectionOptions {
 export function useThreadSelection({ threadIds }: UseThreadSelectionOptions = {}) {
   // Granular subscriptions - only re-render when these specific values change
   const activeThreadId = useActiveThreadId()
+  const selectionAnchorId = useSelectionAnchorId()
   const selectedThreadIds = useSelectedThreadIds()
   const isMultiSelectMode = useIsMultiSelectMode()
 
@@ -51,15 +53,15 @@ export function useThreadSelection({ threadIds }: UseThreadSelectionOptions = {}
       if (event.metaKey || event.ctrlKey) {
         actions.toggleSelection(threadId)
         actions.setActiveThread(threadId)
-      } else if (event.shiftKey && activeThreadId && threadIds) {
-        actions.selectRange(activeThreadId, threadId, threadIds)
+      } else if (event.shiftKey && selectionAnchorId && threadIds) {
+        actions.selectRange(selectionAnchorId, threadId, threadIds)
         actions.setActiveThread(threadId)
       } else {
         actions.setSelectedThreads([threadId])
         actions.setActiveThread(threadId)
       }
     },
-    [activeThreadId, threadIds, actions]
+    [selectionAnchorId, threadIds, actions]
   )
 
   const clearSelection = useCallback(() => {

@@ -346,7 +346,9 @@ export const channelRouter = createTRPCRouter({
               mode: z.enum(['all', 'selective', 'none']),
             })
             .optional(),
-          // Add other settings categories as needed
+          excludeSenders: z.array(z.string().toLowerCase().trim()).optional(),
+          excludeRecipients: z.array(z.string().toLowerCase().trim()).optional(),
+          onlyProcessRecipients: z.array(z.string().toLowerCase().trim()).optional(),
         }),
       })
     )
@@ -375,6 +377,46 @@ export const channelRouter = createTRPCRouter({
 
       const service = new ChannelService(ctx.db, organizationId, userId)
       return service.updateAllowedSenders(input.integrationId, input.allowedSenders)
+    }),
+
+  /**
+   * Add an email or domain to the excluded senders list.
+   */
+  addExcludedSender: adminProcedure
+    .input(
+      z.object({
+        integrationId: z.string(),
+        entry: z.string().toLowerCase().trim(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      const service = new ChannelService(ctx.db, organizationId, userId)
+
+      return service.addExcludedSender(input.integrationId, input.entry)
+    }),
+
+  /**
+   * Remove an email or domain from the excluded senders list.
+   */
+  removeExcludedSender: adminProcedure
+    .input(
+      z.object({
+        integrationId: z.string(),
+        entry: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      const service = new ChannelService(ctx.db, organizationId, userId)
+
+      const current = await service.getSettings(input.integrationId)
+      const existing = current?.excludeSenders ?? []
+      return service.updateSettings(input.integrationId, {
+        excludeSenders: existing.filter((e) => e !== input.entry),
+      })
     }),
 
   /**

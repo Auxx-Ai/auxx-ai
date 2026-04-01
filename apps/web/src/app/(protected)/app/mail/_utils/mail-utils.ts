@@ -110,34 +110,24 @@ export function deriveActiveStatusSlug(
  * Constructs a new path for tab navigation
  * @param currentPathname - Current URL pathname
  * @param newStatusSlug - New status slug to navigate to
- * @param selectedThreadId - Currently selected thread ID (will be cleared)
  * @returns New pathname for navigation
  */
-export function constructTabNavigationPath(
-  currentPathname: string,
-  newStatusSlug: string,
-  selectedThreadId?: string | null
-): string {
+export function constructTabNavigationPath(currentPathname: string, newStatusSlug: string): string {
   const currentSegments = currentPathname.split('/')
   let basePathSegments = [...currentSegments]
-  let statusOrThreadIndex = -1
+  let statusIndex = -1
 
-  // Search backwards for the status slug or the selected thread ID
+  // Search backwards for the status slug
   for (let i = basePathSegments.length - 1; i >= 0; i--) {
-    const segment = basePathSegments[i]
-    if (isValidStatusSlug(segment)) {
-      statusOrThreadIndex = i
-      break
-    }
-    if (selectedThreadId && segment === selectedThreadId) {
-      statusOrThreadIndex = i
+    if (isValidStatusSlug(basePathSegments[i])) {
+      statusIndex = i
       break
     }
   }
 
-  // If a status/thread segment was found, slice the array up to that point
-  if (statusOrThreadIndex !== -1) {
-    basePathSegments = basePathSegments.slice(0, statusOrThreadIndex)
+  // If a status segment was found, slice the array up to that point
+  if (statusIndex !== -1) {
+    basePathSegments = basePathSegments.slice(0, statusIndex)
   }
 
   // Handle root path case
@@ -148,23 +138,12 @@ export function constructTabNavigationPath(
 }
 
 /**
- * Calculates the base path for thread list navigation
+ * Calculates the base path for thread list navigation.
+ * Thread ID is managed via query param (`tid`), not path segment.
  * @param pathname - Current URL pathname
- * @param selectedThreadId - Currently selected thread ID
- * @returns Base path without thread ID
+ * @returns Base path with trailing slash removed
  */
-export function calculateBasePathForList(
-  pathname: string,
-  selectedThreadId?: string | null
-): string {
-  // If a thread is selected, the current pathname includes the thread ID.
-  // We need the path *before* the thread ID.
-  if (selectedThreadId && pathname.endsWith('/' + selectedThreadId)) {
-    return pathname.substring(0, pathname.lastIndexOf('/'))
-  }
-
-  // If no thread is selected, the current pathname is already the base path
-  // Remove trailing slash if present for consistency.
+export function calculateBasePathForList(pathname: string): string {
   return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
 }
 
@@ -185,13 +164,9 @@ export function formatStatusSlugForDisplay(slug: string): string {
  */
 export function constructNavigationSearchParams(
   currentSearchParams: URLSearchParams | null,
-  options: { removeThread?: boolean; preserveQuery?: boolean; newQuery?: string } = {}
+  options: { preserveQuery?: boolean; newQuery?: string } = {}
 ): URLSearchParams {
   const newSearchParams = new URLSearchParams(currentSearchParams?.toString())
-
-  if (options.removeThread) {
-    newSearchParams.delete('selected')
-  }
 
   if (options.newQuery !== undefined) {
     if (options.newQuery) {

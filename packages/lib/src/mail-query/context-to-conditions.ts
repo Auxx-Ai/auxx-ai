@@ -188,12 +188,12 @@ export function buildContextConditions(params: ContextConditionParams): Conditio
 
   // Default: exclude trash and spam unless explicitly viewing them
   const slug = params.statusSlug?.toLowerCase()
-  if (!slug || !['trash', 'trashed', 'spam'].includes(slug)) {
+  if (!slug || !['trash', 'trashed', 'spam', 'ignored'].includes(slug)) {
     conditions.push({
       id: 'ctx-status-exclude',
       fieldId: 'status',
       operator: 'not in',
-      value: ['TRASH', 'SPAM'],
+      value: ['TRASH', 'SPAM', 'IGNORED'],
     })
   }
 
@@ -247,7 +247,7 @@ export function buildConditionGroups(
           id: 'ctx-status-exclude',
           fieldId: 'status',
           operator: 'not in',
-          value: ['TRASH', 'SPAM'],
+          value: ['TRASH', 'SPAM', 'IGNORED'],
         },
       ],
     })

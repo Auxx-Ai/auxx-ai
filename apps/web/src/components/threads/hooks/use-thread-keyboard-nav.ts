@@ -13,26 +13,35 @@ interface UseThreadKeyboardNavOptions {
   enabled?: boolean
   /** Callback when navigating near end of list (for infinite scroll) */
   onNavigateToEnd?: () => void
+  /** 'navigate' opens threads on arrow key (split view), 'focus' only highlights (compact view) */
+  mode?: 'navigate' | 'focus'
+  /** Callback when a thread is opened via Enter/ArrowRight in focus mode */
+  onOpen?: (threadId: string) => void
 }
 
 /**
  * Provides keyboard navigation for thread lists.
  * Registers shortcuts: ArrowUp/Down, Shift+Arrow, Mod+A, Escape, M, Home, End
+ * In 'focus' mode, also registers Enter to open the focused thread.
  */
 export function useThreadKeyboardNav({
   threadIds,
   enabled = true,
   onNavigateToEnd,
+  mode = 'navigate',
+  onOpen,
 }: UseThreadKeyboardNavOptions) {
+  const isFocusMode = mode === 'focus'
+
   // Navigation helper
   const navigate = useCallback(
     (direction: 'up' | 'down', extendSelection: boolean) => {
       const store = useThreadSelectionStore.getState()
-      const { activeThreadId, viewMode } = store
+      const currentId = isFocusMode ? store.focusedThreadId : store.activeThreadId
 
       if (threadIds.length === 0) return
 
-      const currentIndex = activeThreadId ? threadIds.indexOf(activeThreadId) : -1
+      const currentIndex = currentId ? threadIds.indexOf(currentId) : -1
       let nextIndex: number
 
       if (direction === 'down') {
@@ -44,21 +53,27 @@ export function useThreadKeyboardNav({
       const nextId = threadIds[nextIndex]
       if (!nextId || nextIndex === currentIndex) return
 
-      store.setActiveThread(nextId)
-      document.getElementById(`thread-${nextId}`)?.scrollIntoView({ block: 'nearest' })
-
-      if (extendSelection) {
-        store.addToSelection(nextId)
-      } else if (viewMode !== 'edit') {
-        store.setSelectedThreads([nextId])
+      if (isFocusMode) {
+        // Focus mode: only move the cursor, don't navigate or select
+        store.setFocusedThread(nextId)
+      } else {
+        // Navigate mode: open the thread
+        store.setActiveThread(nextId)
+        if (extendSelection) {
+          store.addToSelection(nextId)
+        } else if (store.viewMode !== 'edit') {
+          store.setSelectedThreads([nextId])
+        }
       }
+
+      document.getElementById(`thread-${nextId}`)?.scrollIntoView({ block: 'nearest' })
 
       // Trigger infinite scroll fetch if near end
       if (direction === 'down' && nextIndex >= threadIds.length - 5 && onNavigateToEnd) {
         onNavigateToEnd()
       }
     },
-    [threadIds, onNavigateToEnd]
+    [threadIds, onNavigateToEnd, isFocusMode]
   )
 
   // Arrow Down
@@ -73,17 +88,35 @@ export function useThreadKeyboardNav({
   // Shift + Arrow Up (extend selection)
   useHotkey('Shift+ArrowUp', () => navigate('up', true), { enabled })
 
+  // Enter / ArrowRight - open focused thread (focus mode only)
+  const openFocused = useCallback(() => {
+    const store = useThreadSelectionStore.getState()
+    const targetId = store.focusedThreadId ?? store.selectedThreadIds[0]
+    if (targetId) {
+      store.setActiveThread(targetId)
+      store.setSelectedThreads([targetId])
+      onOpen?.(targetId)
+    }
+  }, [onOpen])
+
+  useHotkey('Enter', openFocused, { enabled: enabled && isFocusMode })
+  useHotkey('ArrowRight', openFocused, { enabled: enabled && isFocusMode })
+
   // Home - go to first thread
   useHotkey(
     'Home',
     () => {
       const store = useThreadSelectionStore.getState()
       if (threadIds.length > 0 && threadIds[0]) {
-        store.setActiveThread(threadIds[0])
-        document.getElementById(`thread-${threadIds[0]}`)?.scrollIntoView({ block: 'nearest' })
-        if (store.viewMode !== 'edit') {
-          store.setSelectedThreads([threadIds[0]])
+        if (isFocusMode) {
+          store.setFocusedThread(threadIds[0])
+        } else {
+          store.setActiveThread(threadIds[0])
+          if (store.viewMode !== 'edit') {
+            store.setSelectedThreads([threadIds[0]])
+          }
         }
+        document.getElementById(`thread-${threadIds[0]}`)?.scrollIntoView({ block: 'nearest' })
       }
     },
     { enabled }
@@ -96,11 +129,15 @@ export function useThreadKeyboardNav({
       const store = useThreadSelectionStore.getState()
       const lastId = threadIds[threadIds.length - 1]
       if (threadIds.length > 0 && lastId) {
-        store.setActiveThread(lastId)
-        document.getElementById(`thread-${lastId}`)?.scrollIntoView({ block: 'nearest' })
-        if (store.viewMode !== 'edit') {
-          store.setSelectedThreads([lastId])
+        if (isFocusMode) {
+          store.setFocusedThread(lastId)
+        } else {
+          store.setActiveThread(lastId)
+          if (store.viewMode !== 'edit') {
+            store.setSelectedThreads([lastId])
+          }
         }
+        document.getElementById(`thread-${lastId}`)?.scrollIntoView({ block: 'nearest' })
       }
     },
     { enabled }

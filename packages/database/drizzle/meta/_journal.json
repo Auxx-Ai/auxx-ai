@@ -750,6 +750,13 @@
       "when": 1774506089707,
       "tag": "0106_add-scheduled-message",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1774999085188,
+      "tag": "0107_add-ignored-thread-status",
+      "breakpoints": true
     }
   ]
 }

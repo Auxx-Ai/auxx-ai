@@ -1,6 +1,7 @@
 // packages/lib/src/providers/channel-service.ts
 
 import { type Database, schema } from '@auxx/database'
+import { toRecordId } from '@auxx/types/resource'
 import crypto from 'crypto'
 import { and, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { withAuthErrorHandling } from '../email/errors-handlers'
@@ -9,6 +10,7 @@ import { clearImportCache, getImportCacheSize } from '../email/polling-import-ca
 import { enqueueStorageCleanupJob } from '../jobs/maintenance/storage-cleanup-job'
 import { createScopedLogger } from '../logger'
 import { SyncMessages } from '../messages/sync-messages'
+import { ThreadMutationService } from '../threads/thread-mutation.service'
 import { FacebookOAuthService } from './facebook/facebook-oauth'
 import { GoogleOAuthService } from './google/google-oauth'
 import { InstagramOAuthService } from './instagram/instagram-oauth'
@@ -26,7 +28,9 @@ interface ChannelSettings {
   recordCreation?: {
     mode: 'all' | 'selective' | 'none'
   }
-  // Add other settings categories as needed
+  excludeSenders?: string[]
+  excludeRecipients?: string[]
+  onlyProcessRecipients?: string[]
 }
 
 /**
@@ -713,13 +717,38 @@ export class ChannelService {
   }
 
   /**
-   * Update channel settings
+   * Get current channel settings.
+   */
+  async getSettings(channelId: string): Promise<ChannelSettings> {
+    await this.validateChannelOwnership(channelId)
+
+    const [row] = await this.db
+      .select({ metadata: schema.Integration.metadata })
+      .from(schema.Integration)
+      .where(
+        and(
+          eq(schema.Integration.id, channelId),
+          eq(schema.Integration.organizationId, this.organizationId)
+        )
+      )
+      .limit(1)
+
+    if (!row) {
+      throw new ChannelError('Channel not found', 'CHANNEL_NOT_FOUND')
+    }
+
+    return ((row.metadata as any)?.settings as ChannelSettings) || {}
+  }
+
+  /**
+   * Update channel settings.
+   * Retroactively ignores threads for any newly added filter entries.
    */
   async updateSettings(channelId: string, settings: ChannelSettings) {
     try {
       await this.validateChannelOwnership(channelId)
 
-      // Get current metadata
+      // Get current metadata (read before writing so we can diff)
       const [row] = await this.db
         .select({ metadata: schema.Integration.metadata })
         .from(schema.Integration)
@@ -735,11 +764,10 @@ export class ChannelService {
         throw new ChannelError('Channel not found', 'CHANNEL_NOT_FOUND')
       }
 
-      // Merge new settings into metadata.settings
       const currentMetadata = (row.metadata as any) || {}
-      const currentSettings = (currentMetadata.settings as ChannelSettings) || {}
+      const previousSettings = (currentMetadata.settings as ChannelSettings) || {}
       const updatedSettings = {
-        ...currentSettings,
+        ...previousSettings,
         ...settings,
       }
 
@@ -761,6 +789,9 @@ export class ChannelService {
         organizationId: this.organizationId,
       })
 
+      // Retroactive updates for newly added filter entries
+      await this.retroactivelyIgnoreThreads(channelId, previousSettings, settings)
+
       return {
         success: true,
         message: 'Settings updated successfully',
@@ -773,6 +804,61 @@ export class ChannelService {
         channelId,
       })
       throw new ChannelError('Failed to update settings', 'UPDATE_SETTINGS_FAILED', error)
+    }
+  }
+
+  /**
+   * Add an email or domain to the excluded senders list.
+   * Retroactively ignores matching threads.
+   */
+  async addExcludedSender(channelId: string, entry: string) {
+    const current = await this.getSettings(channelId)
+    const existing = current?.excludeSenders ?? []
+
+    if (existing.includes(entry)) {
+      return { success: true, message: 'Already excluded' }
+    }
+
+    return this.updateSettings(channelId, {
+      excludeSenders: [...existing, entry],
+    })
+  }
+
+  /**
+   * Retroactively mark threads as IGNORED for newly added filter entries.
+   */
+  private async retroactivelyIgnoreThreads(
+    channelId: string,
+    previousSettings: ChannelSettings,
+    newSettings: ChannelSettings
+  ) {
+    const threadMutation = new ThreadMutationService(this.organizationId, this.db)
+
+    if (newSettings.excludeSenders) {
+      const oldEntries = previousSettings.excludeSenders ?? []
+      const added = newSettings.excludeSenders.filter((e) => !oldEntries.includes(e))
+      for (const entry of added) {
+        await threadMutation.ignoreThreadsByFilter(channelId, entry, 'sender')
+      }
+    }
+
+    if (newSettings.excludeRecipients) {
+      const oldEntries = previousSettings.excludeRecipients ?? []
+      const added = newSettings.excludeRecipients.filter((e) => !oldEntries.includes(e))
+      for (const entry of added) {
+        await threadMutation.ignoreThreadsByFilter(channelId, entry, 'recipient')
+      }
+    }
+
+    if (newSettings.onlyProcessRecipients?.length) {
+      const threadIds = await threadMutation.findThreadIdsNotMatchingRecipients(
+        channelId,
+        newSettings.onlyProcessRecipients
+      )
+      if (threadIds.length > 0) {
+        const recordIds = threadIds.map((id) => toRecordId('thread', id))
+        await threadMutation.updateBulk(recordIds, { status: 'IGNORED' })
+      }
     }
   }
 
