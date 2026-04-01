@@ -22,10 +22,14 @@ export function useFocusedThreadShortcuts() {
   const viewMode = useViewMode()
   const { update, isUpdating } = useThreadMutation()
 
+  const isFocusLocked = useThreadSelectionStore((s) => s.isFocusLocked)
+  const setFocusLocked = useThreadSelectionStore((s) => s.setFocusLocked)
+
   const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
   const [workflowThreadId, setWorkflowThreadId] = useState<string | null>(null)
 
   const enabled = !!focusedThreadId && !hasMultipleSelected && viewMode !== 'edit'
+  const actionsEnabled = enabled && !isFocusLocked
 
   const advanceFocus = useCallback(() => {
     const store = useThreadSelectionStore.getState()
@@ -45,7 +49,7 @@ export function useFocusedThreadShortcuts() {
         advanceFocus()
       }
     },
-    { enabled, conflictBehavior: 'allow' }
+    { enabled: actionsEnabled, conflictBehavior: 'allow' }
   )
 
   // Shift+3 (#) — Trash
@@ -57,7 +61,7 @@ export function useFocusedThreadShortcuts() {
         advanceFocus()
       }
     },
-    { enabled, conflictBehavior: 'allow' }
+    { enabled: actionsEnabled, conflictBehavior: 'allow' }
   )
 
   // Shift+1 (!) — Spam
@@ -69,7 +73,7 @@ export function useFocusedThreadShortcuts() {
         advanceFocus()
       }
     },
-    { enabled, conflictBehavior: 'allow' }
+    { enabled: actionsEnabled, conflictBehavior: 'allow' }
   )
 
   // W — Open workflow dialog
@@ -79,9 +83,18 @@ export function useFocusedThreadShortcuts() {
       if (focusedThreadId) {
         setWorkflowThreadId(focusedThreadId)
         setWorkflowDialogOpen(true)
+        setFocusLocked(true)
       }
     },
-    { enabled, conflictBehavior: 'allow' }
+    { enabled: actionsEnabled, conflictBehavior: 'allow' }
+  )
+
+  const handleWorkflowDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setWorkflowDialogOpen(open)
+      setFocusLocked(open)
+    },
+    [setFocusLocked]
   )
 
   // L — Open tag picker
@@ -94,17 +107,37 @@ export function useFocusedThreadShortcuts() {
       if (focusedThreadId) {
         setTagPickerThreadId(focusedThreadId)
         setTagPickerOpen(true)
+        setFocusLocked(true)
       }
     },
-    { enabled, conflictBehavior: 'allow' }
+    { enabled: actionsEnabled, conflictBehavior: 'allow' }
+  )
+
+  const handleTagPickerOpenChange = useCallback(
+    (open: boolean) => {
+      setTagPickerOpen(open)
+      setFocusLocked(open)
+    },
+    [setFocusLocked]
+  )
+
+  /** Open the tag picker for a specific thread (e.g. from a tag badge click) */
+  const openTagPicker = useCallback(
+    (threadId: string) => {
+      setTagPickerThreadId(threadId)
+      setTagPickerOpen(true)
+      setFocusLocked(true)
+    },
+    [setFocusLocked]
   )
 
   return {
     workflowDialogOpen,
-    setWorkflowDialogOpen,
+    handleWorkflowDialogOpenChange,
     workflowThreadId,
     tagPickerOpen,
-    setTagPickerOpen,
+    handleTagPickerOpenChange,
     tagPickerThreadId,
+    openTagPicker,
   }
 }

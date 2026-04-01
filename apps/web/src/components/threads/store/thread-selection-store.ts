@@ -17,11 +17,14 @@ interface ThreadSelectionState {
   listThreadIds: string[]
   /** Thread with keyboard focus cursor (compact view highlight without navigation) */
   focusedThreadId: string | null
+  /** When true, setFocusedThread calls are no-ops (used while popovers are anchored to a row) */
+  isFocusLocked: boolean
   viewMode: ViewMode
 
   setActiveThread: (id: string | null) => void
   setSelectionAnchor: (id: string | null) => void
   setFocusedThread: (id: string | null) => void
+  setFocusLocked: (locked: boolean) => void
   setSelectedThreads: (ids: string[]) => void
   addToSelection: (id: string) => void
   removeFromSelection: (id: string) => void
@@ -41,6 +44,7 @@ const initialState = {
   selectedThreadIds: [] as string[],
   listThreadIds: [] as string[],
   focusedThreadId: null as string | null,
+  isFocusLocked: false,
   viewMode: 'view' as ViewMode,
 }
 
@@ -56,7 +60,12 @@ export const useThreadSelectionStore = create<ThreadSelectionState>((set, get) =
 
   setSelectionAnchor: (id) => set({ selectionAnchorId: id }),
 
-  setFocusedThread: (id) => set({ focusedThreadId: id }),
+  setFocusedThread: (id) => {
+    if (get().isFocusLocked) return
+    set({ focusedThreadId: id })
+  },
+
+  setFocusLocked: (locked) => set({ isFocusLocked: locked }),
 
   setSelectedThreads: (ids) => set({ selectedThreadIds: ids }),
 

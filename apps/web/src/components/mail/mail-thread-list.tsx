@@ -120,11 +120,12 @@ export const ThreadList = memo(function ThreadList({
   // Action shortcuts (D, #, !, W, L) for focused thread in compact view
   const {
     workflowDialogOpen,
-    setWorkflowDialogOpen,
+    handleWorkflowDialogOpenChange,
     workflowThreadId,
     tagPickerOpen,
-    setTagPickerOpen,
+    handleTagPickerOpenChange,
     tagPickerThreadId,
+    openTagPicker,
   } = useFocusedThreadShortcuts()
 
   // Anchor ref for tag picker popover — points to the focused thread's DOM element
@@ -252,7 +253,7 @@ export const ThreadList = memo(function ThreadList({
       {workflowThreadId && (
         <MassWorkflowTriggerDialog
           open={workflowDialogOpen}
-          onOpenChange={setWorkflowDialogOpen}
+          onOpenChange={handleWorkflowDialogOpenChange}
           recordIds={[toRecordId('thread', workflowThreadId)]}
           onSuccess={() => {
             utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
@@ -262,7 +263,7 @@ export const ThreadList = memo(function ThreadList({
       {tagPickerOpen && tagPickerThreadId && (
         <TagPicker
           open={tagPickerOpen}
-          onOpenChange={setTagPickerOpen}
+          onOpenChange={handleTagPickerOpenChange}
           anchorRef={tagAnchorRef}
           selectedTags={tagPickerCurrentTags}
           onChange={handleFocusedTagChange}
@@ -316,6 +317,7 @@ export const ThreadList = memo(function ThreadList({
                   isSelected={entityInstanceId === selectedThreadId}
                   handleThreadClick={handleThreadClick}
                   threadIds={threadIds}
+                  onTagClick={openTagPicker}
                 />
               )
             }
