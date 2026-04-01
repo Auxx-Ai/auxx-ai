@@ -48,6 +48,7 @@ import { organizationRouter } from './routers/organization'
 import { partRouter } from './routers/part'
 import { participantRouter } from './routers/participant'
 import { productRouter } from './routers/product'
+import { quickActionRouter } from './routers/quick-actions'
 import { recordRouter } from './routers/record'
 import { resourceRouter } from './routers/resource'
 import { resourceAccessRouter } from './routers/resourceAccess'
@@ -128,6 +129,7 @@ export const appRouter = createTRPCRouter({
   part: partRouter,
   participant: participantRouter,
   product: productRouter,
+  quickAction: quickActionRouter,
   record: recordRouter,
   resource: resourceRouter,
   resourceAccess: resourceAccessRouter,

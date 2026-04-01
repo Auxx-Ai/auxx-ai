@@ -38,6 +38,23 @@ export interface BlockModule {
 }
 
 /**
+ * Quick action module structure containing server-side handlers.
+ * Simplified version of BlockModule — no activate/deactivate lifecycle.
+ */
+export interface QuickActionModule {
+  execute?: HandlerRef | null
+  schema?: HandlerRef | null
+}
+
+/**
+ * Combined result of scanning an app's source for server-side modules.
+ */
+export interface AppModules {
+  blocks: Map<string, BlockModule>
+  quickActions: Map<string, QuickActionModule>
+}
+
+/**
  * Import binding definition from scope analysis
  */
 interface ImportBinding {
@@ -471,6 +488,84 @@ function visitBlock(
 }
 
 /**
+ * Visit a quick action definition and extract handler references.
+ * Simplified version of visitBlock — no activate/deactivate lifecycle.
+ */
+function visitQuickAction(
+  node: ASTNode,
+  scope: Scope,
+  result: Map<string, QuickActionModule>,
+  currPath: string,
+  helpers: Helpers
+): void {
+  if (node.type === 'Identifier') {
+    let targetScope = scope
+    let value = resolveIdentifierToValue(node, scope)
+    let targetPath = currPath
+    if (value?.type === 'ImportBinding') {
+      const importDeclaration = value.parent
+      const module = loadModule(importDeclaration.source.value, currPath, helpers)
+      const local = value.name.name
+      const specififier = importDeclaration.specifiers.find((s: ASTNode) => s.local.name === local)
+      const name = (specififier?.imported).name
+      if (!module.namedExports.has(name)) {
+        throw new Error(
+          `Unable to find named export ${name} in module ${importDeclaration.source.value}`
+        )
+      }
+      value = module.namedExports.get(name)
+      if (module.scope) {
+        targetScope = module.scope
+      }
+      targetPath = module.path
+    }
+    value = unwrapTypeAnnotations(value)
+
+    if (!value || value.type !== 'ObjectExpression') {
+      throw new Error(`Expected variable ${node.name} to have an initializer`)
+    }
+    visitQuickAction(value, targetScope, result, targetPath, helpers)
+    return
+  }
+  if (node.type === 'ObjectExpression') {
+    let id: string | undefined
+    let execute: HandlerRef | null = null
+    let schema: HandlerRef | null = null
+
+    for (const property of node.properties) {
+      if (property.type !== 'Property' || property.key.type !== 'Identifier') {
+        continue
+      }
+      const name = property.key.name
+      if (name === 'id') {
+        if (property.value.type !== 'Literal' || typeof property.value.value !== 'string') {
+          throw new Error('Expected quick action id to be a string literal')
+        }
+        id = property.value.value
+      } else if (name === 'execute') {
+        execute = captureImportPath(name, property.value, scope, currPath, helpers, 'execute')
+      } else if (name === 'schema') {
+        const ref = captureImportPath(name, property.value, scope, currPath, helpers, 'schema')
+        if (ref !== null) {
+          schema = ref
+        } else {
+          let exportName = 'inline_schema'
+          if (property.value.type === 'Identifier') {
+            exportName = property.value.name
+          }
+          schema = { path: currPath, export: exportName }
+        }
+      }
+      // Skip client-only properties: label, description, icon, color, form, shouldShow, getDefaults, config
+    }
+    if (!id) {
+      throw new Error('Quick action is missing an id')
+    }
+    result.set(id, { execute, schema })
+  }
+}
+
+/**
  * Find a property by name in an object expression
  */
 function findProperty(obj: ASTNode, name: string, scope: Scope): ASTNode | null {
@@ -507,6 +602,7 @@ export function findWorkflowBlockModulesFromSource(
   helpers: Helpers
 ) {
   const result = new Map()
+  const quickActionResult = new Map<string, QuickActionModule>()
   try {
     const ast = parse(source, {
       range: true,
@@ -571,13 +667,23 @@ export function findWorkflowBlockModulesFromSource(
             }
           }
         }
+
+        // Scan for quick actions: app.quickActions (array)
+        const quickActionsArray = findProperty(appValue, 'quickActions', moduleScope)
+        if (quickActionsArray?.type === 'ArrayExpression') {
+          for (const element of quickActionsArray.elements) {
+            if (element) {
+              visitQuickAction(element, moduleScope, quickActionResult, currPath, helpers)
+            }
+          }
+        }
       },
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return errored({ code: 'WORKFLOW_BLOCK_RESOLUTION_FAILED', message })
   }
-  return complete(result)
+  return complete({ blocks: result, quickActions: quickActionResult } as AppModules)
 }
 
 /**
@@ -587,7 +693,7 @@ export function findWorkflowBlockModulesFromSource(
 export async function findWorkflowBlockModules(srcDirAbsolute: string) {
   const appEntryPoint = await getAppEntryPoint(srcDirAbsolute)
   if (!appEntryPoint) {
-    return complete(new Map())
+    return complete({ blocks: new Map(), quickActions: new Map() } as AppModules)
   }
   const getModuleSource = (path: string) => {
     return fs.readFileSync(path, 'utf-8')

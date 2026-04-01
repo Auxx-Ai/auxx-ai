@@ -228,6 +228,13 @@ export async function generateClientEntry({
                     }))
                     : []),
             ],
+            "quick-action": (Array.isArray(app?.quickActions) ? app.quickActions : []).map((action) => ({
+                type: "quick-action",
+                location: "email-editor",
+                id: action.id,
+                label: action.label,
+                action,
+            })),
         })
     `
 

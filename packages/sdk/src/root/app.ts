@@ -2,6 +2,7 @@
 
 import type { BulkRecordAction, RecordAction, RecordWidget } from '../client/record-actions.js'
 // import type { WorkflowStepBlock, WorkflowTriggerBlock } from '../server/workflow/index.js'
+import type { QuickAction } from './quick-actions/types.js'
 import type { ScopedSettingsSchema } from './settings/settings-schema.js'
 import type { WorkflowBlock, WorkflowTrigger } from './workflow/types.js'
 /**
@@ -92,6 +93,10 @@ export interface App {
     /** New workflow triggers using schema-based API */
     readonly triggers?: WorkflowTrigger[]
   }
+
+  /** Quick actions available in the email editor's action panel */
+  readonly quickActions?: ReadonlyArray<QuickAction>
+
   readonly settings?: {
     readonly organization?: ScopedSettingsSchema
   }

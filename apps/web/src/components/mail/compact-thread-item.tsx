@@ -3,14 +3,16 @@
 
 import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditions/client'
 import { toRecordId } from '@auxx/types/resource'
+import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Clock } from 'lucide-react'
+import { Archive, Clock, ShieldAlert, Tag, Trash2, UserRound } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 import {
   useMessage,
@@ -34,6 +36,8 @@ export interface CompactThreadItemProps {
   threadIds: string[]
   /** Called when a tag badge is clicked, to open the tag picker for this thread */
   onTagClick?: (threadId: string) => void
+  /** Called when the assign action is clicked, to open the assign picker for this thread */
+  onAssignClick?: (threadId: string) => void
 }
 
 export const CompactThreadItem = memo(function CompactThreadItem({
@@ -43,6 +47,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   handleThreadClick,
   threadIds,
   onTagClick,
+  onAssignClick,
 }: CompactThreadItemProps) {
   const { selectedThreadIds, viewMode, filterConditions } = useMailFilter()
   const { thread, isLoading: isThreadLoading } = useThread({ threadId })
@@ -81,11 +86,10 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
   const isFocused = useThreadSelectionStore((s) => s.focusedThreadId === threadId)
 
-  const [isHovered, setIsHovered] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const hasAnySelected = selectedThreadIds.length > 0
-  const showCheckbox = viewMode === 'edit' || isHovered || hasAnySelected || isFocused
+  const showCheckbox = viewMode === 'edit' || isFocused || hasAnySelected
 
   const handleClick = useCallback(
     (event: React.MouseEvent) => {
@@ -138,15 +142,11 @@ export const CompactThreadItem = memo(function CompactThreadItem({
         <motion.div
           key={threadId}
           initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-          animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
+          animate={{ opacity: 1, height: 'auto', overflow: 'clip' }}
           exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
           transition={{ duration: 0.15, ease: 'easeOut' }}
           onMouseEnter={() => {
-            setIsHovered(true)
             setFocusedThread(threadId)
-          }}
-          onMouseLeave={() => {
-            if (!isMenuOpen) setIsHovered(false)
           }}>
           <div
             id={`thread-${threadId}`}
@@ -159,6 +159,9 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                 'bg-primary-200/80 hover:bg-primary-200 dark:bg-primary-400/30'
             )}
             aria-selected={isMultiSelected}
+            onMouseDown={(e) => {
+              if (e.shiftKey) e.preventDefault()
+            }}
             onClick={handleClick}>
             {/* Checkbox + Status dot (shared click area) */}
             <div
@@ -243,10 +246,55 @@ export const CompactThreadItem = memo(function CompactThreadItem({
             <div className='flex shrink-0 items-center justify-end gap-1 ms-2'>
               <div
                 className={cn(
-                  'flex items-center transition-opacity',
-                  isHovered || isMenuOpen ? 'opacity-100' : 'opacity-0'
+                  'items-center gap-0.5 hidden',
+                  isFocused || isMenuOpen ? 'flex opacity-100' : 'opacity-0 pointer-events-none'
                 )}
                 onClick={(e) => e.stopPropagation()}>
+                <Tooltip content='Done' shortcut='D'>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='size-6'
+                    onClick={() => update(threadId, { status: 'ARCHIVED' })}>
+                    <Archive className='size-3.5' />
+                  </Button>
+                </Tooltip>
+                <Tooltip content='Trash' shortcut='#'>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='size-6'
+                    onClick={() => update(threadId, { status: 'TRASH' })}>
+                    <Trash2 className='size-3.5' />
+                  </Button>
+                </Tooltip>
+                <Tooltip content='Spam' shortcut='!'>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='size-6'
+                    onClick={() => update(threadId, { status: 'SPAM' })}>
+                    <ShieldAlert className='size-3.5' />
+                  </Button>
+                </Tooltip>
+                <Tooltip content='Assign' shortcut='A'>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='size-6'
+                    onClick={() => onAssignClick?.(threadId)}>
+                    <UserRound className='size-3.5' />
+                  </Button>
+                </Tooltip>
+                <Tooltip content='Tag' shortcut='L'>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='size-6'
+                    onClick={() => onTagClick?.(threadId)}>
+                    <Tag className='size-3.5' />
+                  </Button>
+                </Tooltip>
                 <ProcessingMenu
                   threadId={threadId}
                   integrationId={thread?.integrationId}

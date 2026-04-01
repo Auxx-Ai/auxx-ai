@@ -97,6 +97,40 @@ export function useFocusedThreadShortcuts() {
     [setFocusLocked]
   )
 
+  // A — Open assign picker
+  const [assignPickerOpen, setAssignPickerOpen] = useState(false)
+  const [assignPickerThreadId, setAssignPickerThreadId] = useState<string | null>(null)
+
+  useHotkey(
+    'A',
+    () => {
+      if (focusedThreadId) {
+        setAssignPickerThreadId(focusedThreadId)
+        setAssignPickerOpen(true)
+        setFocusLocked(true)
+      }
+    },
+    { enabled: actionsEnabled, conflictBehavior: 'allow' }
+  )
+
+  const handleAssignPickerOpenChange = useCallback(
+    (open: boolean) => {
+      setAssignPickerOpen(open)
+      setFocusLocked(open)
+    },
+    [setFocusLocked]
+  )
+
+  /** Open the assign picker for a specific thread (e.g. from a hover action click) */
+  const openAssignPicker = useCallback(
+    (threadId: string) => {
+      setAssignPickerThreadId(threadId)
+      setAssignPickerOpen(true)
+      setFocusLocked(true)
+    },
+    [setFocusLocked]
+  )
+
   // L — Open tag picker
   const [tagPickerOpen, setTagPickerOpen] = useState(false)
   const [tagPickerThreadId, setTagPickerThreadId] = useState<string | null>(null)
@@ -139,5 +173,9 @@ export function useFocusedThreadShortcuts() {
     handleTagPickerOpenChange,
     tagPickerThreadId,
     openTagPicker,
+    assignPickerOpen,
+    handleAssignPickerOpenChange,
+    assignPickerThreadId,
+    openAssignPicker,
   }
 }

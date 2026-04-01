@@ -24,6 +24,7 @@ function buildKey(p: DraftPayload) {
     cc: p.cc,
     bcc: p.bcc,
     attachments: p.attachments,
+    actions: p.actions,
     metadata: p.metadata,
   })
 }

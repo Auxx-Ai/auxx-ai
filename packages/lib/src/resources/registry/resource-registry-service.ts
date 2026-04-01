@@ -326,16 +326,25 @@ export class ResourceRegistryService {
 
     // Custom resources with fields from grouped map
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
+    // For entity-definition types with a static field registry (ticket, contact, etc.),
+    // merge static metadata (key, dbColumn, etc.) into DB fields — same as system resources
     const customResources: CustomResource[] = filteredEntityDefs.map((def) => {
       const instanceFields = getEntityInstanceFields()
       const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(instanceFields, def.id)
+      const entityCustomFields = fieldsByEntityId.get(def.id) ?? []
+
+      // Check if this entity-definition type has a static field registry
+      const fieldRegistry = def.entityType ? RESOURCE_FIELD_REGISTRY[def.entityType] : undefined
+      const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+
+      const customFields =
+        staticFields.length > 0
+          ? this.mergeSystemAndCustomFields(staticFields, entityCustomFields, def.id)
+          : this.mapCustomFieldsToResourceFields(entityCustomFields, def.id)
 
       return {
         ...toCustomResourceBase(def),
-        fields: sortFieldsWithMetadataLast([
-          ...hydratedInstanceFields,
-          ...this.mapCustomFieldsToResourceFields(fieldsByEntityId.get(def.id) ?? [], def.id),
-        ]),
+        fields: sortFieldsWithMetadataLast([...hydratedInstanceFields, ...customFields]),
       }
     })
 
@@ -376,16 +385,26 @@ export class ResourceRegistryService {
     )
 
     // Include implicit EntityInstance system fields (id, createdAt, updatedAt) before custom fields
+    // For entity-definition types with a static field registry, merge static metadata
     return filteredEntityDefs.map((def) => {
       const instanceFields = getEntityInstanceFields()
       const hydratedInstanceFields = this.mapSystemFieldsToResourceFields(instanceFields, def.id)
 
+      const fieldRegistry = def.entityType ? RESOURCE_FIELD_REGISTRY[def.entityType] : undefined
+      const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+
+      const customFields =
+        staticFields.length > 0
+          ? this.mergeSystemAndCustomFields(
+              staticFields,
+              def.customFields as CustomFieldRecord[],
+              def.id
+            )
+          : this.mapCustomFieldsToResourceFields(def.customFields, def.id)
+
       return {
         ...toCustomResourceBase(def),
-        fields: [
-          ...hydratedInstanceFields,
-          ...this.mapCustomFieldsToResourceFields(def.customFields, def.id),
-        ],
+        fields: [...hydratedInstanceFields, ...customFields],
       }
     })
   }
@@ -425,15 +444,25 @@ export class ResourceRegistryService {
       entityDef.id
     )
 
+    // Merge static field metadata for entity-definition types
+    const entityDefWithFields = entityDef as EntityDefinitionWithFields
+    const fieldRegistry = entityDef.entityType
+      ? RESOURCE_FIELD_REGISTRY[entityDef.entityType]
+      : undefined
+    const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+
+    const customFields =
+      staticFields.length > 0
+        ? this.mergeSystemAndCustomFields(
+            staticFields,
+            entityDefWithFields.customFields as CustomFieldRecord[],
+            entityDef.id
+          )
+        : this.mapCustomFieldsToResourceFields(entityDefWithFields.customFields, entityDef.id)
+
     return {
-      ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
-      fields: [
-        ...hydratedInstanceFields,
-        ...this.mapCustomFieldsToResourceFields(
-          (entityDef as EntityDefinitionWithFields).customFields,
-          entityDef.id
-        ),
-      ],
+      ...toCustomResourceBase(entityDefWithFields),
+      fields: [...hydratedInstanceFields, ...customFields],
     }
   }
 
@@ -533,15 +562,25 @@ export class ResourceRegistryService {
           resourceId
         )
 
+        // Merge static field metadata for entity-definition types
+        const entityDefWithFields = entityDef as EntityDefinitionWithFields
+        const fieldRegistry = entityDef.entityType
+          ? RESOURCE_FIELD_REGISTRY[entityDef.entityType]
+          : undefined
+        const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+
+        const customFields =
+          staticFields.length > 0
+            ? this.mergeSystemAndCustomFields(
+                staticFields,
+                entityDefWithFields.customFields as CustomFieldRecord[],
+                resourceId
+              )
+            : this.mapCustomFieldsToResourceFields(entityDefWithFields.customFields, resourceId)
+
         resource = {
-          ...toCustomResourceBase(entityDef as EntityDefinitionWithFields),
-          fields: [
-            ...hydratedInstanceFields,
-            ...this.mapCustomFieldsToResourceFields(
-              (entityDef as EntityDefinitionWithFields).customFields,
-              resourceId
-            ),
-          ],
+          ...toCustomResourceBase(entityDefWithFields),
+          fields: [...hydratedInstanceFields, ...customFields],
         }
       }
     }
@@ -632,13 +671,25 @@ export class ResourceRegistryService {
           resourceId
         )
 
-        fields = [
-          ...hydratedInstanceFields,
-          ...this.mapCustomFieldsToResourceFields(
-            entityDef.customFields as CustomFieldRecord[],
-            resourceId
-          ),
-        ]
+        // Merge static field metadata for entity-definition types
+        const fieldRegistry = entityDef.entityType
+          ? RESOURCE_FIELD_REGISTRY[entityDef.entityType]
+          : undefined
+        const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
+
+        const customFields =
+          staticFields.length > 0
+            ? this.mergeSystemAndCustomFields(
+                staticFields,
+                entityDef.customFields as CustomFieldRecord[],
+                resourceId
+              )
+            : this.mapCustomFieldsToResourceFields(
+                entityDef.customFields as CustomFieldRecord[],
+                resourceId
+              )
+
+        fields = [...hydratedInstanceFields, ...customFields]
       }
     }
 

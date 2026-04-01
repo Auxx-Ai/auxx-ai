@@ -38,6 +38,22 @@ const FileAttachmentSchema = z.object({
  * Upsert draft input schema
  * Maps frontend payload to DraftContent format
  */
+/**
+ * Quick action payload schema for draft-attached actions
+ */
+const DraftActionPayloadSchema = z.object({
+  appId: z.string(),
+  installationId: z.string(),
+  actionId: z.string(),
+  inputs: z.record(z.unknown()),
+  display: z.object({
+    label: z.string(),
+    icon: z.string().optional(),
+    color: z.string().optional(),
+    summary: z.string(),
+  }),
+})
+
 const UpsertDraftInputSchema = z.object({
   draftId: z.string().nullish(),
   threadId: z.string().nullish(),
@@ -52,6 +68,7 @@ const UpsertDraftInputSchema = z.object({
   cc: z.array(ParticipantInputSchema).optional(),
   bcc: z.array(ParticipantInputSchema).optional(),
   attachments: z.array(FileAttachmentSchema).optional(),
+  actions: z.array(DraftActionPayloadSchema).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
@@ -118,6 +135,7 @@ export const draftRouter = createTRPCRouter({
           bcc: (input.bcc || []).map(mapParticipant),
         },
         attachments: (input.attachments || []).map(mapAttachment),
+        actions: input.actions,
         includePreviousMessage: input.includePreviousMessage,
         metadata: input.metadata,
       }

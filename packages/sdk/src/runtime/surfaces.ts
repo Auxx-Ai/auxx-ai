@@ -12,6 +12,7 @@ export type SurfaceType =
   | 'record-widget'
   | 'organization-settings'
   | 'workflow-block'
+  | 'quick-action'
 
 /**
  * Valid surface locations in the Auxx platform.
@@ -117,6 +118,7 @@ class SurfacesManager {
         'record-widget',
         'organization-settings',
         'workflow-block',
+        'quick-action',
       ]
 
       throw new SurfaceError(

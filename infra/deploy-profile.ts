@@ -98,6 +98,22 @@ export function shouldDeployRouterResources(): boolean {
 }
 
 /**
+ * shouldDeployDatabaseResources determines whether SST should provision RDS and Redis.
+ * In platform mode, these are managed externally (e.g. Railway).
+ */
+export function shouldDeployDatabaseResources(): boolean {
+  return currentDeployProfile === 'full'
+}
+
+/**
+ * shouldDeployMigrationResources determines whether SST should provision the migration lambda.
+ * In platform mode, migrations are run externally.
+ */
+export function shouldDeployMigrationResources(): boolean {
+  return currentDeployProfile === 'full'
+}
+
+/**
  * shouldDeployEmailInfrastructure ensures stage-global outbound email resources are managed by one stage only.
  */
 export function shouldDeployEmailInfrastructure(stage: string): boolean {

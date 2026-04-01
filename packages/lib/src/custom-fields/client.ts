@@ -62,55 +62,64 @@ export const OPTION_COLORS: OptionColor[] = [
     id: 'red',
     label: 'Red',
     swatch: 'bg-red-500',
-    badgeClasses: 'bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400',
+    badgeClasses:
+      'bg-red-50 text-red-600 border-black/10 dark:bg-[#4e1b28] dark:text-[#FFD1D1] dark:border-[#692623]',
   },
   {
     id: 'orange',
     label: 'Orange',
     swatch: 'bg-orange-500',
-    badgeClasses: 'bg-orange-50 text-orange-600 dark:bg-orange-950 dark:text-orange-400',
+    badgeClasses:
+      'bg-[#feeee1] text-[#9E3F00] border-[#fee0c8] dark:bg-[#432410] dark:text-[#FFC89E] dark:border-[#593217]',
   },
   {
     id: 'amber',
     label: 'Amber',
     swatch: 'bg-amber-500',
-    badgeClasses: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
+    badgeClasses:
+      'bg-amber-50 text-amber-600 dark:bg-[#3d2c0a] dark:text-[#FFDEA7] dark:border-[#5c4216]',
   },
   {
     id: 'green',
     label: 'Green',
     swatch: 'bg-green-500',
-    badgeClasses: 'bg-green-50 text-green-600 dark:bg-green-950 dark:text-green-400',
+    badgeClasses:
+      'bg-green-50 text-green-600 dark:bg-[#1d4034] dark:text-[#A7F2CF] dark:border-[#244a3a]',
   },
   {
     id: 'teal',
     label: 'Teal',
     swatch: 'bg-teal-500',
-    badgeClasses: 'bg-teal-50 text-teal-600 dark:bg-teal-950 dark:text-teal-400',
+    badgeClasses:
+      'bg-teal-50 text-teal-600 dark:bg-[#1a3946] dark:text-[#A9EBFC] dark:border-[#0a4e6b]',
   },
   {
     id: 'blue',
     label: 'Blue',
     swatch: 'bg-blue-500',
-    badgeClasses: 'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400',
+    badgeClasses:
+      'bg-blue-50 text-blue-600 dark:bg-[#1d2e55] dark:text-[#C2D6FF] dark:border-[#2b3e6d]',
   },
   {
     id: 'indigo',
     label: 'Indigo',
     swatch: 'bg-indigo-500',
-    badgeClasses: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400',
+    badgeClasses:
+      'bg-indigo-50 text-indigo-600 dark:bg-[#252058] dark:text-[#D0C8FF] dark:border-[#3b3578]',
   },
   {
     id: 'purple',
     label: 'Purple',
     swatch: 'bg-purple-500',
-    badgeClasses: 'bg-purple-50 text-purple-600 dark:bg-purple-950 dark:text-purple-400',
+    badgeClasses:
+      'bg-purple-50 text-purple-600 dark:bg-[#2f1e5a]/50 dark:text-[#D8C4FF] border-purple-500/10',
   },
   {
     id: 'pink',
     label: 'Pink',
     swatch: 'bg-pink-500',
-    badgeClasses: 'bg-pink-50 text-pink-600 dark:bg-pink-950 dark:text-pink-400',
+    badgeClasses:
+      'bg-pink-50 text-pink-600 dark:bg-[#4e1a3e] dark:text-[#FFD1EE] dark:border-[#6b2458]',
   },
 ]
 

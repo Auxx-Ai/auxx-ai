@@ -39,7 +39,7 @@ export function TagBadge({ recordId, size = 'md', onRemove, className, ...props 
   const isLoading = !recordId || recordLoading || valuesLoading
 
   const displayName = record?.displayName ?? 'Unknown'
-  const sizeClasses = size === 'sm' ? 'text-xs px-1.5 py-0.5 h-5' : 'text-sm px-2 py-1 h-6'
+  const sizeClasses = size === 'sm' ? 'text-xs px-1.5 py-0.5 h-5.5' : 'text-sm px-2 py-1 h-6'
 
   // Get Tailwind badge classes from named color
   const colorData = getOptionColor((color || 'gray') as SelectOptionColor)

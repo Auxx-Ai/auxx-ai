@@ -18,6 +18,11 @@ interface WorkflowHandlerData {
 type WorkflowBlockModules = Map<string, Record<string, WorkflowHandlerData | undefined>>
 
 /**
+ * Map of quick action handlers
+ */
+type QuickActionModules = Map<string, Record<string, WorkflowHandlerData | undefined>>
+
+/**
  * Logger function
  */
 type LogFunction = (message: string) => void
@@ -171,6 +176,7 @@ export async function generateServerEntry({
   webhooksDirAbsolute,
   eventDirAbsolute,
   workflowBlockModules,
+  quickActionModules = new Map(),
   log,
 }: {
   appDirAbsolute: string
@@ -178,6 +184,7 @@ export async function generateServerEntry({
   webhooksDirAbsolute: string
   eventDirAbsolute: string
   workflowBlockModules: WorkflowBlockModules
+  quickActionModules?: QuickActionModules
   log?: LogFunction
 }) {
   const pathsResult = await combineAsync({
@@ -276,6 +283,52 @@ export async function generateServerEntry({
                     }
                     if (typeof func !== "function") {
                         throw new Error(\`Execute export in block \${blockId} is not a function\`);
+                    }
+                    return await func(...args);
+                }
+            };
+        }
+
+        // Quick action module registry
+        const quickActionModulesMap = new Map()
+
+        ${[...quickActionModules.entries()]
+          .map(
+            ([actionId, handlers]) => `quickActionModulesMap.set(
+                        ${JSON.stringify(actionId)},
+                        {
+                        ${[...Object.entries(handlers)]
+                          .map(([handler, data]) =>
+                            data
+                              ? `${JSON.stringify(handler)}: {
+                                        module: () => import(${JSON.stringify(path.join(appDirAbsolute, data.path))}),
+                                        export: ${JSON.stringify(data.export)}
+                                    },`
+                              : ''
+                          )
+                          .join('\n')}
+                        }
+                    )`
+          )
+          .join('\n')}
+
+        // Build __AUXX_QUICK_ACTIONS__ for Lambda executor compatibility
+        const __AUXX_QUICK_ACTIONS__ = {};
+
+        for (const [actionId, handlers] of quickActionModulesMap.entries()) {
+            __AUXX_QUICK_ACTIONS__[actionId] = {
+                execute: async (...args) => {
+                    const executeHandler = handlers.execute;
+                    if (!executeHandler) {
+                        throw new Error(\`No execute handler for quick action \${actionId}\`);
+                    }
+                    const module = await executeHandler.module();
+                    const func = module[executeHandler.export];
+                    if (!func) {
+                        throw new Error(\`Execute export not found in quick action \${actionId}\`);
+                    }
+                    if (typeof func !== "function") {
+                        throw new Error(\`Execute export in quick action \${actionId} is not a function\`);
                     }
                     return await func(...args);
                 }

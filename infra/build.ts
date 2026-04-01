@@ -25,7 +25,7 @@ export const build =
         cpu: '0.25 vCPU',
         memory: '0.5 GB',
         environment: getSelectedEnvVars('build'),
-        link: [...getSecretsForLinking('build'), rds, redis],
+        link: [...getSecretsForLinking('build'), ...(rds ? [rds] : []), ...(redis ? [redis] : [])],
         loadBalancer: {
           rules: [{ listen: '80/http', forward: '3006/http' }],
           health: {

@@ -104,7 +104,7 @@ export const Tooltip = ({
   })
 
   return (
-    <ShadcnTooltip open={isOpen} onOpenChange={handleOpenChange}>
+    <ShadcnTooltip open={isOpen} onOpenChange={handleOpenChange} disableHoverableContent>
       <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent
         sideOffset={sideOffset}

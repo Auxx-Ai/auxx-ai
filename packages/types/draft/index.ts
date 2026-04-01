@@ -35,6 +35,29 @@ export interface DraftAttachment {
 }
 
 /**
+ * A quick action attached to a draft, executed at send time.
+ * Stored in DraftContent.actions — persists across autosaves and page refreshes.
+ */
+export interface DraftActionPayload {
+  /** App that owns this action */
+  appId: string
+  /** App installation ID */
+  installationId: string
+  /** Quick action ID (e.g., "refund-order") */
+  actionId: string
+  /** User-filled input values */
+  inputs: Record<string, unknown>
+  /** App display info (for rendering chips without re-fetching) */
+  display: {
+    label: string
+    icon?: string
+    color?: string
+    /** Human-readable summary, e.g., "Refund $49.99 for #1234" */
+    summary: string
+  }
+}
+
+/**
  * Complete draft content structure stored as JSON in the Draft table.
  * All fields are optional to support incremental autosave.
  */
@@ -69,6 +92,9 @@ export interface DraftContent {
 
   /** Whether to include previous message in reply (user preference, toggleable) */
   includePreviousMessage?: boolean
+
+  /** Quick actions attached to this draft, executed at send time */
+  actions?: DraftActionPayload[]
 
   /** Additional metadata (for truly arbitrary client-specific data) */
   metadata?: Record<string, unknown>

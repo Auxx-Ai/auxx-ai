@@ -136,6 +136,18 @@ export type DraftPayload = {
     name?: string
   }>
   attachments?: FileAttachment[]
+  actions?: Array<{
+    appId: string
+    installationId: string
+    actionId: string
+    inputs: Record<string, unknown>
+    display: {
+      label: string
+      icon?: string
+      color?: string
+      summary: string
+    }
+  }>
   draftId?: string | null
 }
 // File attachment type for structured attachments

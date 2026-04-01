@@ -176,12 +176,12 @@ export default function BulkActionToolbar() {
     () => [
       {
         id: 'archive',
-        label: 'Archive',
+        label: 'Done',
         icon: Archive,
         onClick: handleArchive,
         disabled: isBulkUpdating || disabled,
         shortcut: 'D',
-        tooltip: 'Archive selected',
+        tooltip: 'Done selected',
       },
       {
         id: 'trash',

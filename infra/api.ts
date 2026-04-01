@@ -28,7 +28,13 @@ export const api =
         environment: getSelectedEnvVars('api', {
           lambdaUrl: serverFunctionExecutorUrl,
         }),
-        link: [...getSecretsForLinking('api'), rds, redis, publicBucket, privateBucket],
+        link: [
+          ...getSecretsForLinking('api'),
+          ...(rds ? [rds] : []),
+          ...(redis ? [redis] : []),
+          publicBucket,
+          privateBucket,
+        ],
         loadBalancer: {
           rules: [{ listen: '80/http', forward: '3007/http' }],
           health: {

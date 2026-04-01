@@ -49,7 +49,13 @@ export const worker =
               }
             : {}),
         },
-        link: [...getSecretsForLinking('worker'), rds, redis, publicBucket, privateBucket],
+        link: [
+          ...getSecretsForLinking('worker'),
+          ...(rds ? [rds] : []),
+          ...(redis ? [redis] : []),
+          publicBucket,
+          privateBucket,
+        ],
         permissions: [
           {
             actions: ['ses:SendEmail', 'ses:SendRawEmail'],

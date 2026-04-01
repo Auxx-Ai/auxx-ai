@@ -1,7 +1,7 @@
 // apps/web/src/components/threads/hooks/use-thread-read-status.ts
 
 import { toastError } from '@auxx/ui/components/toast'
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { type ThreadCountContext, useCountUpdates } from '~/components/mail/hooks'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
@@ -77,17 +77,21 @@ export function useThreadReadStatus(threadId: string | null): UseThreadReadStatu
     },
   })
 
+  // Use a ref so the callbacks stay stable across renders
+  const mutateRef = useRef(readStatus.mutate)
+  mutateRef.current = readStatus.mutate
+
   return {
     isUnread: isUnread ?? true,
     markAsRead: useCallback(() => {
       if (threadId) {
-        readStatus.mutate({ threadId, isRead: true })
+        mutateRef.current({ threadId, isRead: true })
       }
-    }, [threadId, readStatus]),
+    }, [threadId]),
     markAsUnread: useCallback(() => {
       if (threadId) {
-        readStatus.mutate({ threadId, isRead: false })
+        mutateRef.current({ threadId, isRead: false })
       }
-    }, [threadId, readStatus]),
+    }, [threadId]),
   }
 }

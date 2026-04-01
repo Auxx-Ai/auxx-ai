@@ -7,10 +7,29 @@ import type { WorkflowBlock } from './types'
 /**
  * Responsible for loading workflow blocks from installed apps
  */
+/**
+ * Serialized quick action metadata returned from app iframe.
+ */
+export interface SerializedQuickAction {
+  id: string
+  label: string
+  description?: string
+  icon?: string
+  color?: string
+  inputs: Record<string, any>
+  outputs: Record<string, any>
+  config?: Record<string, any>
+  defaults?: Record<string, unknown>
+  /** Enriched by loader */
+  appId?: string
+  installationId?: string
+}
+
 export class WorkflowBlockLoader {
   private appStore: AppStore
   private loadedBlocks = new Map<string, WorkflowBlock[]>()
   private loadedTriggers = new Map<string, WorkflowBlock[]>()
+  private loadedQuickActions = new Map<string, SerializedQuickAction[]>()
 
   constructor(appStore: AppStore) {
     this.appStore = appStore
@@ -153,10 +172,69 @@ export class WorkflowBlockLoader {
   }
 
   /**
-   * Unload workflow blocks and triggers for an app installation
+   * Load quick actions from a specific app
+   */
+  async loadAppQuickActions(
+    appId: string,
+    installationId: string,
+    context?: {
+      threadId?: string
+      ticket?: unknown
+      participants?: unknown[]
+      entities?: unknown[]
+    }
+  ): Promise<void> {
+    const loadKey = `${appId}:${installationId}`
+    if (this.loadedQuickActions.has(loadKey)) return
+
+    const messageClient = this.appStore.getMessageClient({
+      appId,
+      appInstallationId: installationId,
+    })
+
+    if (!messageClient) {
+      console.warn(`[WorkflowBlockLoader] No MessageClient for ${appId}`)
+      return
+    }
+
+    try {
+      await messageClient.waitUntilReady()
+      const result = await messageClient.sendRequest<{
+        quickActions: (SerializedQuickAction & { defaults?: Record<string, unknown> })[]
+      }>('get-quick-actions', { context }, { timeout: 10000 })
+
+      const enriched = (result.quickActions ?? []).map((qa) => ({
+        ...qa,
+        appId,
+        installationId,
+      }))
+      this.loadedQuickActions.set(loadKey, enriched)
+    } catch (error) {
+      console.warn(`[WorkflowBlockLoader] get-quick-actions failed for ${appId}:`, error)
+    }
+  }
+
+  /**
+   * Get all loaded quick actions
+   */
+  getAllQuickActions(): SerializedQuickAction[] {
+    return [...this.loadedQuickActions.values()].flat()
+  }
+
+  /**
+   * Get quick actions for a specific app installation
+   */
+  getQuickActionsForApp(appId: string, installationId: string): SerializedQuickAction[] {
+    return this.loadedQuickActions.get(`${appId}:${installationId}`) ?? []
+  }
+
+  /**
+   * Unload workflow blocks, triggers, and quick actions for an app installation
    */
   unloadAppBlocks(appId: string, installationId: string): void {
-    this.loadedBlocks.delete(`${appId}:${installationId}`)
-    this.loadedTriggers.delete(`${appId}:${installationId}`)
+    const key = `${appId}:${installationId}`
+    this.loadedBlocks.delete(key)
+    this.loadedTriggers.delete(key)
+    this.loadedQuickActions.delete(key)
   }
 }
