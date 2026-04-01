@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.111](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.110...auxx-v0.1.111) (2026-04-01)
+
+
+### Features
+
+* add IGNORED status to thread management and filtering ([#354](https://github.com/Auxx-Ai/auxx-ai/issues/354)) ([814865c](https://github.com/Auxx-Ai/auxx-ai/commit/814865c5144b58ba3611a654f14159caa511299e))
+* implement tag picker functionality and enhance thread selection handling ([#356](https://github.com/Auxx-Ai/auxx-ai/issues/356)) ([b13411e](https://github.com/Auxx-Ai/auxx-ai/commit/b13411e44f4137873ee0b2f6ef31dd93b1e00491))
+
 ## [0.1.110](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.109...auxx-v0.1.110) (2026-03-31)
 
 
