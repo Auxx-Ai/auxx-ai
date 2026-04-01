@@ -10,6 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -113,6 +114,7 @@ export function ProcessingMenu({
           disabled={isUpdating}>
           <Archive />
           Archive
+          <DropdownMenuShortcut>D</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => update(threadId, { status: 'TRASH' })}
@@ -120,12 +122,14 @@ export function ProcessingMenu({
           variant='destructive'>
           <Trash2 />
           Trash Thread
+          <DropdownMenuShortcut>#</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => update(threadId, { status: 'SPAM' })}
           disabled={isUpdating}>
           <MailWarning />
           Mark as spam
+          <DropdownMenuShortcut>!</DropdownMenuShortcut>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

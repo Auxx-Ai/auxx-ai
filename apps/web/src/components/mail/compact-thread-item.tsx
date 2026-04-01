@@ -32,6 +32,8 @@ export interface CompactThreadItemProps {
   handleThreadClick: (threadId: string, event: React.MouseEvent) => void
   /** All thread IDs in display order, needed for shift+click range selection */
   threadIds: string[]
+  /** Called when a tag badge is clicked, to open the tag picker for this thread */
+  onTagClick?: (threadId: string) => void
 }
 
 export const CompactThreadItem = memo(function CompactThreadItem({
@@ -40,6 +42,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   isSelected: _isSelected,
   handleThreadClick,
   threadIds,
+  onTagClick,
 }: CompactThreadItemProps) {
   const { selectedThreadIds, viewMode, filterConditions } = useMailFilter()
   const { thread, isLoading: isThreadLoading } = useThread({ threadId })
@@ -151,7 +154,9 @@ export const CompactThreadItem = memo(function CompactThreadItem({
               'group flex h-9 w-full cursor-pointer items-center border-b border-primary-200 pe-3 text-sm transition-colors hover:bg-accent/50',
               isMultiSelected &&
                 'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
-              isFocused && !isMultiSelected && 'bg-primary-200/80 hover:bg-primary-200'
+              isFocused &&
+                !isMultiSelected &&
+                'bg-primary-200/80 hover:bg-primary-200 dark:bg-primary-400/30'
             )}
             aria-selected={isMultiSelected}
             onClick={handleClick}>
@@ -204,7 +209,12 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
             {/* Tags */}
             {hasTags && (
-              <div className='flex shrink-0 items-center gap-1 ms-2'>
+              <div
+                className='flex shrink-0 items-center gap-1 ms-2'
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onTagClick?.(threadId)
+                }}>
                 {thread.tagIds?.slice(0, 2).map((tagId) => (
                   <TagBadge key={tagId} recordId={tagId} size='sm' />
                 ))}
