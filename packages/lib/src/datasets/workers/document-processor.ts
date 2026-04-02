@@ -75,6 +75,44 @@ export class DocumentProcessor {
         throw new Error(`Extraction failed: ${extractionResult.error}`)
       }
 
+      // Handle image-only documents (e.g. PDFs with no extractable text)
+      if (extractionResult.metadata?.imageOnly) {
+        const processingTime = Date.now() - startTime
+
+        logger.info('Document is image-only, no text to extract', {
+          documentId,
+          fileName: jobData.fileName,
+          mimeType: jobData.mimeType,
+        })
+
+        await documentService.update(documentId, organizationId, {
+          status: DocumentStatus.INDEXED,
+          totalChunks: 0,
+          processingTime,
+          processedAt: new Date(),
+          metadata: {
+            imageOnly: true,
+            processingCompletedAt: new Date().toISOString(),
+            segmentCount: 0,
+            processingTime,
+          },
+        })
+
+        await reporter.emit(DocumentEventType.PROCESSING_COMPLETED, {
+          segmentCount: 0,
+          totalProcessingTimeMs: processingTime,
+        })
+
+        return {
+          success: true,
+          data: {
+            documentId,
+            segmentCount: 0,
+            flowCreated: false,
+          },
+        }
+      }
+
       await reporter.emit(DocumentEventType.EXTRACTION_COMPLETED, {
         contentLength: extractionResult.content!.length,
         wordCount: extractionResult.wordCount,

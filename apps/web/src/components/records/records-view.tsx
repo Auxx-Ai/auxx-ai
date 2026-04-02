@@ -14,6 +14,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import Loader from '@auxx/ui/components/loader'
 import {
+  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -567,6 +568,41 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
     [resource?.plural, resource?.label]
   )
 
+  // Build docked panels (must be before early returns to satisfy Rules of Hooks)
+  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
+    if (!isDocked || !isDrawerOpen || !selectedInstanceId || !entityDefinitionId) return []
+    return [
+      {
+        key: 'record-detail',
+        content: (
+          <RecordDrawer
+            open={isDrawerOpen}
+            onOpenChange={handleDrawerOpenChange}
+            recordId={toRecordId(entityDefinitionId, selectedInstanceId)}
+            onDeleteInstance={handleDrawerDelete}
+            onMutationSuccess={refresh}
+          />
+        ),
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth,
+        maxWidth,
+      },
+    ]
+  }, [
+    isDocked,
+    isDrawerOpen,
+    selectedInstanceId,
+    entityDefinitionId,
+    handleDrawerOpenChange,
+    handleDrawerDelete,
+    refresh,
+    dockedWidth,
+    setDockedWidth,
+    minWidth,
+    maxWidth,
+  ])
+
   // Loading state
   if (isLoading) {
     const loadingContent = (
@@ -616,26 +652,9 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
     )
   }
 
-  // Build docked panel content
-  const dockedPanel =
-    isDocked && isDrawerOpen && selectedInstanceId && entityDefinitionId ? (
-      <RecordDrawer
-        open={isDrawerOpen}
-        onOpenChange={handleDrawerOpenChange}
-        recordId={toRecordId(entityDefinitionId, selectedInstanceId)}
-        onDeleteInstance={handleDrawerDelete}
-        onMutationSuccess={refresh}
-      />
-    ) : undefined
-
   // Main content (table + footer)
   const mainContent = (
-    <MainPageContent
-      dockedPanel={dockedPanel}
-      dockedPanelWidth={dockedWidth}
-      onDockedPanelWidthChange={setDockedWidth}
-      dockedPanelMinWidth={minWidth}
-      dockedPanelMaxWidth={maxWidth}>
+    <MainPageContent dockedPanels={dockedPanels}>
       <div className='flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10 flex-col flex'>
         <DynamicView
           data={records}

@@ -72,6 +72,18 @@ export interface DraftMessageType {
     mimeType?: string
     type: 'file' | 'asset'
   }>
+  actions?: Array<{
+    appId: string
+    installationId: string
+    actionId: string
+    inputs: Record<string, unknown>
+    display: {
+      label: string
+      icon?: string
+      color?: string
+      summary: string
+    }
+  }>
   metadata: Record<string, unknown>
   createdAt: string
   updatedAt: string

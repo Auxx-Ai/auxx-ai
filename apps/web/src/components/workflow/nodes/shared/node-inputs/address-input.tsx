@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/address-input.tsx
 
+import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { useCallback } from 'react'
 import {
   type AddressStruct,
@@ -15,6 +16,8 @@ interface AddressInputProps extends NodeInputProps {
   name: string
   /** Placeholder text */
   placeholder?: string
+  /** Field-specific options (used for address inputVariant) */
+  fieldOptions?: FieldOptions
 }
 
 /**
@@ -40,7 +43,7 @@ function parseAddressValue(value: unknown): AddressStruct {
  * Uses shared AddressStructFields component
  */
 export const AddressInput = createNodeInput<AddressInputProps>(
-  ({ inputs, onChange, onError, isLoading, name }) => {
+  ({ inputs, onChange, onError, isLoading, name, fieldOptions }) => {
     const value = parseAddressValue(inputs[name])
 
     /**
@@ -59,6 +62,7 @@ export const AddressInput = createNodeInput<AddressInputProps>(
         onChange={handleChange}
         disabled={isLoading}
         className='flex w-full flex-col gap-1 pe-2 py-1'
+        inputVariant={fieldOptions?.address?.inputVariant}
       />
     )
   }

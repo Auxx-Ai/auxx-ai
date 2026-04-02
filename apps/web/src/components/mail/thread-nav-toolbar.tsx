@@ -49,10 +49,10 @@ export function ThreadNavToolbar({ activeThreadId, onBack, onNavigate }: ThreadN
     }
   }, [hasNext, listThreadIds, currentIndex, onNavigate])
 
-  useHotkey('Q', onBack, { enabled: true })
-  useHotkey('ArrowLeft', onBack, { enabled: true })
-  useHotkey('K', goToPrevious, { enabled: true })
-  useHotkey('J', goToNext, { enabled: true })
+  useHotkey('Q', onBack, { enabled: true, conflictBehavior: 'allow' })
+  useHotkey('ArrowLeft', onBack, { enabled: true, conflictBehavior: 'allow' })
+  useHotkey('K', goToPrevious, { enabled: true, conflictBehavior: 'allow' })
+  useHotkey('J', goToNext, { enabled: true, conflictBehavior: 'allow' })
 
   return (
     <div className='flex items-center gap-2 border-b px-3 py-1.5'>

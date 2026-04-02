@@ -75,11 +75,9 @@ export class OrganizationDomain {
       // Generate and insert Signatures via UnifiedCrudHandler
       await this.seedSignatures(db, org.id, org.ownerId, users, UnifiedCrudHandler)
 
-      // Generate and insert Snippets
-      await this.seedSnippets(db, schema, org.id, users)
-
-      // Generate and insert Snippet Folders
-      await this.seedSnippetFolders(db, schema, org.id, users)
+      // Generate and insert Snippet Folders first, then Snippets (so snippets can reference folders)
+      const folderIds = await this.seedSnippetFolders(db, schema, org.id, users)
+      await this.seedSnippets(db, schema, org.id, users, folderIds)
     }
   }
 
@@ -152,7 +150,8 @@ export class OrganizationDomain {
     db: any,
     schema: any,
     organizationId: string,
-    users: Array<{ id: string }>
+    users: Array<{ id: string }>,
+    folderIds: { general: string; sales: string; support: string }
   ): Promise<void> {
     console.log('📝 Generating snippets...')
 
@@ -160,46 +159,56 @@ export class OrganizationDomain {
       {
         title: 'Greeting',
         content: 'Hello! Thank you for reaching out to us. How can I help you today?',
+        folder: 'general' as const,
       },
       {
         title: 'Thank You',
         content: 'Thank you for contacting us. We appreciate your business!',
+        folder: 'general' as const,
       },
       {
         title: 'Closing',
         content:
           "If you have any other questions, please don't hesitate to reach out. Have a great day!",
+        folder: 'general' as const,
       },
       {
         title: 'Order Status',
         content:
           'Let me check on your order status for you. Could you please provide your order number?',
+        folder: 'sales' as const,
       },
       {
         title: 'Refund Process',
         content:
           "I understand you'd like to process a refund. Let me help you with that right away.",
+        folder: 'support' as const,
       },
       {
         title: 'Shipping Info',
         content: 'Your order has been shipped and should arrive within 3-5 business days.',
+        folder: 'sales' as const,
       },
       {
         title: 'Apology',
         content:
           'We sincerely apologize for any inconvenience this may have caused. Let me make this right.',
+        folder: 'support' as const,
       },
       {
         title: 'Escalation',
         content: "I'm going to escalate this to our management team for immediate attention.",
+        folder: 'support' as const,
       },
       {
         title: 'Follow Up',
         content: 'Just following up on our previous conversation. Have you had a chance to review?',
+        folder: 'sales' as const,
       },
       {
         title: 'Welcome',
         content: "Welcome to our community! We're excited to have you here.",
+        folder: 'general' as const,
       },
     ]
 
@@ -213,6 +222,7 @@ export class OrganizationDomain {
         title: template.title,
         content: template.content,
         organizationId: organizationId,
+        folderId: folderIds[template.folder],
         createdById: users[i % users.length]!.id,
         createdAt: new Date(Date.now() - (snippetTemplates.length - i) * 3600000),
         updatedAt: new Date(),
@@ -228,6 +238,7 @@ export class OrganizationDomain {
           set: {
             title: sql`excluded.title`,
             content: sql`excluded.content`,
+            folderId: sql`excluded."folderId"`,
             updatedAt: sql`excluded."updatedAt"`,
           },
         })
@@ -248,24 +259,29 @@ export class OrganizationDomain {
     schema: any,
     organizationId: string,
     users: Array<{ id: string }>
-  ): Promise<void> {
+  ): Promise<{ general: string; sales: string; support: string }> {
     console.log('📁 Generating snippet folders...')
 
-    const folderNames = ['General', 'Sales', 'Support']
-    const folders = []
-
-    for (let i = 0; i < folderNames.length; i++) {
-      const name = folderNames[i]!
-
-      folders.push({
-        id: createId(),
-        name: name,
-        organizationId: organizationId,
-        createdById: users[0]!.id, // Use first user as creator
-        createdAt: new Date(Date.now() - (folderNames.length - i) * 3600000),
-        updatedAt: new Date(),
-      })
+    const folderMap = {
+      general: createId(),
+      sales: createId(),
+      support: createId(),
     }
+
+    const folderEntries: Array<{ key: keyof typeof folderMap; name: string }> = [
+      { key: 'general', name: 'General' },
+      { key: 'sales', name: 'Sales' },
+      { key: 'support', name: 'Support' },
+    ]
+
+    const folders = folderEntries.map((entry, i) => ({
+      id: folderMap[entry.key],
+      name: entry.name,
+      organizationId: organizationId,
+      createdById: users[0]!.id,
+      createdAt: new Date(Date.now() - (folderEntries.length - i) * 3600000),
+      updatedAt: new Date(),
+    }))
 
     if (folders.length > 0) {
       await db
@@ -281,6 +297,8 @@ export class OrganizationDomain {
 
       console.log(`✅ Upserted ${folders.length} snippet folders`)
     }
+
+    return folderMap
   }
 
   // ---- Generator Methods ----

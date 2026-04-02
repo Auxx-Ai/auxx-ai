@@ -4,15 +4,19 @@
 
 import {
   Command,
+  CommandBreadcrumb,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
+  CommandNavigation,
+  useCommandNavigation,
 } from '@auxx/ui/components/command'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import type { Editor } from '@tiptap/react'
-import { File, Folder, Heading1, Heading2, Heading3, List, ListOrdered, Quote } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
 
 type Range = { from: number; to: number }
@@ -31,8 +35,15 @@ interface CommandItemDef {
   title: string
   description: string
   keywords: string[]
-  icon: React.ReactNode
+  iconId: string
+  drillDown?: boolean
   command: (editor: Editor, range: Range) => void
+}
+
+interface SlashCommandNavItem {
+  id: string
+  label: string
+  type: 'snippets' | 'folder'
 }
 
 const BASE_COMMANDS: CommandItemDef[] = [
@@ -41,7 +52,8 @@ const BASE_COMMANDS: CommandItemDef[] = [
     title: 'Insert snippet',
     description: 'Search and insert reusable content',
     keywords: ['template', 'canned', 'saved', 'reusable'],
-    icon: <Folder className='mr-2 h-4 w-4' />,
+    iconId: 'folder',
+    drillDown: true,
     command: () => {}, // Handled separately — enters snippet mode
   },
   {
@@ -49,7 +61,7 @@ const BASE_COMMANDS: CommandItemDef[] = [
     title: 'Heading 1',
     description: 'Big section heading',
     keywords: ['h1', 'title', 'large'],
-    icon: <Heading1 className='mr-2 h-4 w-4' />,
+    iconId: 'heading-1',
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run()
     },
@@ -59,7 +71,7 @@ const BASE_COMMANDS: CommandItemDef[] = [
     title: 'Heading 2',
     description: 'Medium section heading',
     keywords: ['h2', 'subtitle'],
-    icon: <Heading2 className='mr-2 h-4 w-4' />,
+    iconId: 'heading-2',
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run()
     },
@@ -69,7 +81,7 @@ const BASE_COMMANDS: CommandItemDef[] = [
     title: 'Heading 3',
     description: 'Small section heading',
     keywords: ['h3', 'subheading'],
-    icon: <Heading3 className='mr-2 h-4 w-4' />,
+    iconId: 'heading-3',
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run()
     },
@@ -79,7 +91,7 @@ const BASE_COMMANDS: CommandItemDef[] = [
     title: 'Bullet List',
     description: 'Create a bullet list',
     keywords: ['ul', 'unordered', 'bullets', 'points'],
-    icon: <List className='mr-2 h-4 w-4' />,
+    iconId: 'list',
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).toggleBulletList().run()
     },
@@ -89,7 +101,7 @@ const BASE_COMMANDS: CommandItemDef[] = [
     title: 'Numbered List',
     description: 'Create a numbered list',
     keywords: ['ol', 'ordered', 'numbers', 'steps'],
-    icon: <ListOrdered className='mr-2 h-4 w-4' />,
+    iconId: 'list-ordered',
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).toggleOrderedList().run()
     },
@@ -99,17 +111,42 @@ const BASE_COMMANDS: CommandItemDef[] = [
     title: 'Blockquote',
     description: 'Create a quote block',
     keywords: ['quote', 'cite'],
-    icon: <Quote className='mr-2 h-4 w-4' />,
+    iconId: 'quote',
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).toggleBlockquote().run()
     },
   },
 ]
 
-export function SlashCommandPicker({ query, onExecute, onClose }: SlashCommandPickerProps) {
-  const [snippetMode, setSnippetMode] = useState(false)
-  const [searchQuery, setSearchQuery] = useState(query)
+export function SlashCommandPicker(props: SlashCommandPickerProps) {
+  const [searchQuery, setSearchQuery] = useState(props.query)
+
+  return (
+    <CommandNavigation<SlashCommandNavItem> onNavigationChange={() => setSearchQuery('')}>
+      <SlashCommandPickerContent
+        {...props}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+      />
+    </CommandNavigation>
+  )
+}
+
+function SlashCommandPickerContent({
+  query,
+  onExecute,
+  onClose,
+  searchQuery,
+  setSearchQuery,
+}: SlashCommandPickerProps & {
+  searchQuery: string
+  setSearchQuery: (q: string) => void
+}) {
+  const { push, pop, isAtRoot, current, stack } = useCommandNavigation<SlashCommandNavItem>()
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const isInSnippets = stack.length > 0
+  const currentFolderId = current?.type === 'folder' ? current.id : null
 
   const incrementUsage = api.snippet.incrementUsage.useMutation({
     onError: (error) => {
@@ -117,34 +154,81 @@ export function SlashCommandPicker({ query, onExecute, onClose }: SlashCommandPi
     },
   })
 
+  // Load all snippets and folders once upfront
   const { data: snippets, isLoading: snippetsLoading } = api.snippet.all.useQuery(
-    { searchQuery: snippetMode ? searchQuery : undefined },
-    {
-      enabled: snippetMode,
-      staleTime: 5 * 60 * 1000,
-    }
+    {},
+    { staleTime: 5 * 60 * 1000 }
   )
-  const snippetData = snippets?.snippets ?? []
+  const allSnippets = snippets?.snippets ?? []
+
+  const { data: foldersData } = api.snippet.getFolders.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  })
+  const allFolders = foldersData?.folders ?? []
 
   // Sync external query changes
   useEffect(() => {
-    if (!snippetMode) {
+    if (isAtRoot) {
       setSearchQuery(query)
     }
-  }, [query, snippetMode])
+  }, [query, isAtRoot, setSearchQuery])
 
-  const goBack = useCallback(() => {
-    setSnippetMode(false)
-    setSearchQuery('')
-  }, [])
+  const q = searchQuery.toLowerCase()
+
+  // Snippets in current folder (null = root level)
+  const currentSnippets = useMemo(() => {
+    return allSnippets.filter((s) => {
+      const matchesFolder = currentFolderId ? s.folderId === currentFolderId : !s.folderId
+      if (q) return matchesFolder && s.title.toLowerCase().includes(q)
+      return matchesFolder
+    })
+  }, [allSnippets, currentFolderId, q])
+
+  // Subfolders of current folder
+  const currentFolders = useMemo(() => {
+    return allFolders.filter((f) => {
+      const matchesParent = currentFolderId ? f.parentId === currentFolderId : !f.parentId
+      if (q) return matchesParent && f.name.toLowerCase().includes(q)
+      return matchesParent
+    })
+  }, [allFolders, currentFolderId, q])
+
+  // When searching from root, show matching snippets alongside commands
+  const rootSnippetResults = useMemo(() => {
+    if (!isAtRoot || !q) return []
+    return allSnippets.filter((s) => s.title.toLowerCase().includes(q))
+  }, [isAtRoot, allSnippets, q])
+
+  // Filter base commands by title, description, or hidden keywords
+  const filteredCommands = useMemo(() => {
+    if (isInSnippets) return []
+    return BASE_COMMANDS.filter(
+      (item) =>
+        item.title.toLowerCase().includes(q) ||
+        item.description.toLowerCase().includes(q) ||
+        item.keywords.some((kw) => kw.includes(q))
+    )
+  }, [isInSnippets, q])
 
   const handleSelect = useCallback(
     (itemId: string) => {
-      // Handle snippet mode selection
-      if (snippetMode) {
-        const snippet = snippetData.find((s) => s.id === itemId)
-        if (!snippet) return
+      // Handle "insert snippet" command — enter snippet mode instead of executing
+      if (itemId === 'snippet') {
+        push({ id: 'snippets', label: 'Snippets', type: 'snippets' })
+        setSearchQuery('')
+        return
+      }
 
+      // Handle base command
+      const cmd = BASE_COMMANDS.find((c) => c.id === itemId)
+      if (cmd) {
+        onExecute(cmd.command)
+        return
+      }
+
+      // Handle snippet selection (from any view)
+      const snippet = allSnippets.find((s) => s.id === itemId)
+      if (snippet) {
         onExecute((editor, range) => {
           editor
             .chain()
@@ -156,23 +240,9 @@ export function SlashCommandPicker({ query, onExecute, onClose }: SlashCommandPi
             .run()
         })
         incrementUsage.mutate({ id: snippet.id })
-        return
-      }
-
-      // Handle "insert snippet" command — enter snippet mode instead of executing
-      if (itemId === 'snippet') {
-        setSnippetMode(true)
-        setSearchQuery('')
-        return
-      }
-
-      // Handle base command
-      const item = BASE_COMMANDS.find((c) => c.id === itemId)
-      if (item) {
-        onExecute(item.command)
       }
     },
-    [snippetMode, snippetData, onExecute, incrementUsage]
+    [allSnippets, onExecute, incrementUsage, push, setSearchQuery]
   )
 
   const handleKeyDown = useCallback(
@@ -183,83 +253,129 @@ export function SlashCommandPicker({ query, onExecute, onClose }: SlashCommandPi
         onClose()
         return
       }
-      if (snippetMode && e.key === 'Backspace' && !searchQuery) {
+      if (!isAtRoot && (e.key === 'Backspace' || e.key === 'ArrowLeft') && !searchQuery) {
         e.preventDefault()
-        goBack()
+        pop()
+        return
+      }
+      if (e.key === 'ArrowRight') {
+        const selected = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(
+          '[cmdk-item][data-selected="true"]'
+        )
+        const value = selected?.getAttribute('data-value')
+        if (!value) return
+
+        if (isAtRoot && value.toLowerCase() === 'insert snippet') {
+          e.preventDefault()
+          push({ id: 'snippets', label: 'Snippets', type: 'snippets' } as SlashCommandNavItem)
+          setSearchQuery('')
+          return
+        }
+
+        if (isInSnippets) {
+          const folder = currentFolders.find((f) => f.name.toLowerCase() === value.toLowerCase())
+          if (folder) {
+            e.preventDefault()
+            push({ id: folder.id, label: folder.name, type: 'folder' } as SlashCommandNavItem)
+            setSearchQuery('')
+          }
+        }
       }
     },
-    [snippetMode, searchQuery, onClose, goBack]
+    [isAtRoot, isInSnippets, searchQuery, onClose, pop, push, setSearchQuery, currentFolders]
   )
 
-  // Filter base commands by title, description, or hidden keywords
-  const filteredCommands = snippetMode
-    ? []
-    : BASE_COMMANDS.filter((item) => {
-        const q = searchQuery.toLowerCase()
-        return (
-          item.title.toLowerCase().includes(q) ||
-          item.description.toLowerCase().includes(q) ||
-          item.keywords.some((kw) => kw.includes(q))
-        )
-      })
-
-  const isLoading = snippetMode && snippetsLoading
+  const isLoading = snippetsLoading
 
   return (
-    <Command className='w-72 overflow-hidden' onKeyDown={handleKeyDown}>
+    <Command className='w-72 overflow-hidden' shouldFilter={false} onKeyDown={handleKeyDown}>
+      <CommandBreadcrumb rootLabel='Commands' />
       <CommandInput
         ref={inputRef}
-        placeholder={snippetMode ? 'Search snippets...' : 'Type a command or search...'}
+        placeholder={isInSnippets ? 'Search snippets...' : 'Type a command or search...'}
         value={searchQuery}
         onValueChange={setSearchQuery}
       />
       <CommandList>
-        {isLoading && <CommandEmpty>Loading snippets...</CommandEmpty>}
-        {!isLoading && !snippetMode && filteredCommands.length === 0 && (
-          <CommandEmpty>No results found.</CommandEmpty>
-        )}
-        {!isLoading && snippetMode && snippetData.length === 0 && (
-          <CommandEmpty>No snippets found.</CommandEmpty>
-        )}
+        {isLoading && <CommandEmpty>Loading...</CommandEmpty>}
+        {!isLoading &&
+          !isInSnippets &&
+          filteredCommands.length === 0 &&
+          rootSnippetResults.length === 0 && <CommandEmpty>No results found.</CommandEmpty>}
+        {!isLoading &&
+          isInSnippets &&
+          currentFolders.length === 0 &&
+          currentSnippets.length === 0 && <CommandEmpty>No snippets found.</CommandEmpty>}
 
-        <CommandGroup heading={snippetMode ? 'Snippets' : 'Suggestions'}>
-          {snippetMode && (
-            <CommandItem key='back' onSelect={goBack} value='--back--'>
-              <span className='text-muted-foreground text-sm'>← Back to commands</span>
-            </CommandItem>
-          )}
-
-          {!snippetMode &&
-            filteredCommands.map((item) => (
-              <CommandItem key={item.id} onSelect={() => handleSelect(item.id)} value={item.title}>
-                <div className='flex w-full items-center'>
-                  {item.icon}
-                  <div className='ml-2'>
-                    <p className='text-sm font-medium'>{item.title}</p>
-                    <p className='text-xs text-muted-foreground'>{item.description}</p>
-                  </div>
+        {!isInSnippets && filteredCommands.length > 0 && (
+          <CommandGroup heading='Suggestions'>
+            {filteredCommands.map((item) => (
+              <CommandItem
+                key={item.id}
+                onSelect={() => handleSelect(item.id)}
+                value={item.title}
+                className='flex items-center justify-between'>
+                <div className='flex items-center gap-2'>
+                  <EntityIcon iconId={item.iconId} size='xs' className='text-muted-foreground' />
+                  <span>{item.title}</span>
                 </div>
+                {item.drillDown && <ChevronRight className='size-4 opacity-50' />}
               </CommandItem>
             ))}
+          </CommandGroup>
+        )}
 
-          {snippetMode &&
-            snippetData.map((snippet) => (
+        {!isInSnippets && rootSnippetResults.length > 0 && (
+          <CommandGroup heading='Snippets'>
+            {rootSnippetResults.map((snippet) => (
               <CommandItem
                 key={snippet.id}
-                onSelect={() => handleSelect(snippet.id)}
-                value={snippet.title}>
-                <div className='flex w-full items-center'>
-                  <File className='mr-2 h-4 w-4' />
-                  <div className='ml-2'>
-                    <p className='text-sm font-medium'>{snippet.title}</p>
-                    <p className='text-xs text-muted-foreground'>
-                      {snippet.description || 'Insert snippet content'}
-                    </p>
-                  </div>
+                value={`snippet-${snippet.id}`}
+                onSelect={() => handleSelect(snippet.id)}>
+                <div className='flex items-center gap-2'>
+                  <EntityIcon iconId='file-text' size='xs' className='text-muted-foreground' />
+                  <span>{snippet.title}</span>
                 </div>
               </CommandItem>
             ))}
-        </CommandGroup>
+          </CommandGroup>
+        )}
+
+        {isInSnippets && (
+          <CommandGroup heading={current?.type === 'folder' ? current.label : 'Snippets'}>
+            {currentFolders.map((folder) => (
+              <CommandItem
+                key={folder.id}
+                value={folder.name}
+                onSelect={() => {
+                  push({ id: folder.id, label: folder.name, type: 'folder' })
+                  setSearchQuery('')
+                }}
+                className='flex items-center justify-between'>
+                <div className='flex items-center gap-2'>
+                  <EntityIcon iconId='folder' size='xs' className='text-muted-foreground' />
+                  <span>{folder.name}</span>
+                  {folder._count.snippets > 0 && (
+                    <span className='text-muted-foreground text-xs'>{folder._count.snippets}</span>
+                  )}
+                </div>
+                <ChevronRight className='size-4 opacity-50' />
+              </CommandItem>
+            ))}
+
+            {currentSnippets.map((snippet) => (
+              <CommandItem
+                key={snippet.id}
+                value={`snippet-${snippet.id}`}
+                onSelect={() => handleSelect(snippet.id)}>
+                <div className='flex items-center gap-2'>
+                  <EntityIcon iconId='file-text' size='xs' className='text-muted-foreground' />
+                  <span>{snippet.title}</span>
+                </div>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
       </CommandList>
     </Command>
   )

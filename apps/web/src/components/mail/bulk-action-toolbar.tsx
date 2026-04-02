@@ -95,7 +95,7 @@ export default function BulkActionToolbar() {
     () => {
       if (selectionCount > 0 && !isBulkUpdating) handleArchive()
     },
-    { enabled: open }
+    { enabled: open, conflictBehavior: 'allow' }
   )
 
   useHotkey(
@@ -103,7 +103,7 @@ export default function BulkActionToolbar() {
     () => {
       if (selectionCount > 0 && !isBulkUpdating) handleTrash()
     },
-    { enabled: open }
+    { enabled: open, conflictBehavior: 'allow' }
   )
 
   useHotkey(
@@ -111,7 +111,7 @@ export default function BulkActionToolbar() {
     () => {
       if (selectionCount > 0 && !isBulkUpdating) handleSpam()
     },
-    { enabled: open }
+    { enabled: open, conflictBehavior: 'allow' }
   )
 
   useHotkey(
@@ -122,7 +122,7 @@ export default function BulkActionToolbar() {
         btn?.click()
       }
     },
-    { enabled: open }
+    { enabled: open, conflictBehavior: 'allow' }
   )
 
   useHotkey(
@@ -133,7 +133,7 @@ export default function BulkActionToolbar() {
         btn?.click()
       }
     },
-    { enabled: open }
+    { enabled: open, conflictBehavior: 'allow' }
   )
 
   useHotkey(
@@ -141,7 +141,7 @@ export default function BulkActionToolbar() {
     () => {
       if (selectionCount > 0) setWorkflowDialogOpen(true)
     },
-    { enabled: open }
+    { enabled: open, conflictBehavior: 'allow' }
   )
 
   // --- Handlers ---

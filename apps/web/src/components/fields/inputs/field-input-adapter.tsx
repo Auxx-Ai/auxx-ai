@@ -480,7 +480,7 @@ export function FieldInputAdapter({
     case FieldType.ADDRESS_STRUCT:
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
-          <AddressInput {...nodeInputProps} />
+          <AddressInput {...nodeInputProps} fieldOptions={fieldOptions} />
         </FocusableInputWrapper>
       )
 

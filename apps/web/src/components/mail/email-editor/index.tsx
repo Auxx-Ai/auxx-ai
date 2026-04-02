@@ -171,10 +171,9 @@ function ReplyComposeEditorComponent({
   )
 
   // Quick actions state - persisted in draft content
-  const [quickActions, setQuickActions] = useState<DraftActionPayload[]>(() => {
-    const meta = initialDraft?.metadata as Record<string, unknown> | undefined
-    return (meta?.actions as DraftActionPayload[]) ?? []
-  })
+  const [quickActions, setQuickActions] = useState<DraftActionPayload[]>(
+    () => (initialDraft?.actions as DraftActionPayload[]) ?? []
+  )
 
   // Sync state when draft prop changes (e.g., navigating back to thread with existing draft)
   const initializedDraftIdRef = useRef<string | null>(initialDraft?.id ?? null)
@@ -201,11 +200,29 @@ function ReplyComposeEditorComponent({
       })
       setShowCc(newState.cc.length > 0)
       setShowBcc(newState.bcc.length > 0)
-      // Sync attachments from draft
+      // Sync attachments and actions from draft
       setAttachments(initialDraft.attachments ?? [])
+      setQuickActions((initialDraft.actions as DraftActionPayload[]) ?? [])
       setIsDraftSaved(true) // Draft was loaded from server
     }
   }, [initialDraft, mode, thread, sourceMessage, integrations, presetValues])
+
+  // Defensive sync: if quickActions is empty but initialDraft has actions, restore them.
+  // Covers the case where the draft prop arrives with richer data after initial mount.
+  const prevActionsRef = useRef(initialDraft?.actions)
+  useEffect(() => {
+    const incoming = initialDraft?.actions as DraftActionPayload[] | undefined
+    if (
+      incoming &&
+      incoming.length > 0 &&
+      quickActions.length === 0 &&
+      incoming !== prevActionsRef.current
+    ) {
+      prevActionsRef.current = incoming
+      setQuickActions(incoming)
+    }
+  }, [initialDraft?.actions, quickActions.length])
+
   // Generate temp ID for file uploads before draft exists
   const tempEntityId = useMemo(
     () => state.draftId || `temp-message-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -597,6 +614,8 @@ function ReplyComposeEditorComponent({
         // Plain text - wrap in paragraph
         editor.commands.setContent(`<p>${response.content}</p>`)
       }
+      // Sync React content state — setContent doesn't emit onUpdate by default
+      handleContentChange(editor.getHTML())
       // Push the new state to history after applying it
       pushToHistory(editor.getHTML(), aiToolsState.currentOperation)
       setProcessing(false)
@@ -1081,8 +1100,9 @@ function ReplyComposeEditorComponent({
         <div
           {...getRootProps()}
           className={cn(
-            'relative flex flex-col rounded-[20px] border border-transparent hover:border-gray-400 dark:hover:border-black/20 hover:bg-gray-50 dark:hover:bg-background ring-2 ring-transparent bg-white shadow-lg dark:bg-background',
-            'focus-within:ring-blue-500 focus-within:hover:bg-white focus-within:hover:border-transparent',
+            'relative flex flex-col rounded-[20px] border border-transparent  ring-2 ring-transparent bg-white shadow-lg dark:bg-background',
+            'focus-within:ring-blue-500 focus-within:hover:bg-white focus-within:hover:border-transparent dark:hover:bg-background',
+            // 'hover:border-gray-400 dark:hover:border-black/20 hover:bg-gray-50 dark:hover:bg-background',
             activeState.isActive && 'ring-blue-500 hover:bg-white hover:border-transparent',
             isDragActive && 'border-transparent bg-white hover:bg-white hover:border-transparent '
           )}
@@ -1347,6 +1367,12 @@ function ReplyComposeEditorComponent({
               }
               threadId={thread?.id || state.threadId || undefined}
               disabled={isSending}
+              popoverClassName={popoverZIndex}
+              onPopoverOpenChange={(open) =>
+                open
+                  ? activeState.trackPopoverOpen('quick-action')
+                  : activeState.trackPopoverClose('quick-action')
+              }
             />
 
             {/* Add Action Button (always visible when not sending) */}
@@ -1354,7 +1380,11 @@ function ReplyComposeEditorComponent({
               <div className='px-2'>
                 <AddActionButton
                   threadId={thread?.id || state.threadId || undefined}
-                  onSelect={(action) => setQuickActions((prev) => [...prev, action])}
+                  currentActions={quickActions}
+                  onAdd={(action) => setQuickActions((prev) => [...prev, action])}
+                  onRemove={(actionId) =>
+                    setQuickActions((prev) => prev.filter((a) => a.actionId !== actionId))
+                  }
                   disabled={isSending}
                   popoverClassName={popoverZIndex}
                   onOpenChange={(open) =>

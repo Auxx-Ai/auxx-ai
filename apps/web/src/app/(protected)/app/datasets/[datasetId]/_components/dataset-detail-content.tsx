@@ -5,6 +5,7 @@
 import type { DocumentEntity as Document } from '@auxx/database/types'
 import { Badge } from '@auxx/ui/components/badge'
 import {
+  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -13,7 +14,7 @@ import {
 } from '@auxx/ui/components/main-page'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { FileText, Search, Settings } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { DocumentDetailDrawer } from '~/components/datasets/documents/document-detail-drawer'
 import { DocumentManagement } from '~/components/datasets/documents/document-management'
 import { DatasetSearch } from '~/components/datasets/search/dataset-search'
@@ -52,21 +53,44 @@ export function DatasetDetailContent() {
     if (!open) setSelectedDocument(null)
   }, [])
 
+  // Build docked panels - only show when on documents tab
+  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
+    if (!isDocked || !isDrawerOpen || !selectedDocument || !dataset || currentTab !== 'documents')
+      return []
+    return [
+      {
+        key: 'document-detail',
+        content: (
+          <DocumentDetailDrawer
+            document={selectedDocument}
+            open={isDrawerOpen}
+            onOpenChange={handleDrawerOpenChange}
+            datasetId={dataset.id}
+          />
+        ),
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth,
+        maxWidth,
+      },
+    ]
+  }, [
+    isDocked,
+    isDrawerOpen,
+    selectedDocument,
+    currentTab,
+    dataset,
+    handleDrawerOpenChange,
+    dockedWidth,
+    setDockedWidth,
+    minWidth,
+    maxWidth,
+  ])
+
   if (!dataset) return null
 
   const processingCount = documents.filter((doc) => doc.status === 'PROCESSING').length
   const errorCount = documents.filter((doc) => doc.status === 'FAILED').length
-
-  // Build docked panel - only show when on documents tab
-  const dockedPanel =
-    isDocked && isDrawerOpen && selectedDocument && currentTab === 'documents' ? (
-      <DocumentDetailDrawer
-        document={selectedDocument}
-        open={isDrawerOpen}
-        onOpenChange={handleDrawerOpenChange}
-        datasetId={dataset.id}
-      />
-    ) : undefined
 
   return (
     <MainPage>
@@ -76,12 +100,7 @@ export function DatasetDetailContent() {
           <MainPageBreadcrumbItem title='Dataset Details' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
-      <MainPageContent
-        dockedPanel={dockedPanel}
-        dockedPanelWidth={dockedWidth}
-        onDockedPanelWidthChange={setDockedWidth}
-        dockedPanelMinWidth={minWidth}
-        dockedPanelMaxWidth={maxWidth}>
+      <MainPageContent dockedPanels={dockedPanels}>
         <Tabs
           value={currentTab}
           onValueChange={setCurrentTab}

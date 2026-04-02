@@ -14,7 +14,7 @@ const draftActionPayloadSchema = z.object({
   appId: z.string(),
   installationId: z.string(),
   actionId: z.string(),
-  inputs: z.record(z.unknown()),
+  inputs: z.record(z.string(), z.unknown()),
   display: z.object({
     label: z.string(),
     icon: z.string().optional(),

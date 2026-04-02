@@ -45,7 +45,7 @@ const DraftActionPayloadSchema = z.object({
   appId: z.string(),
   installationId: z.string(),
   actionId: z.string(),
-  inputs: z.record(z.unknown()),
+  inputs: z.record(z.string(), z.unknown()),
   display: z.object({
     label: z.string(),
     icon: z.string().optional(),
@@ -325,6 +325,7 @@ function transformDraftForFrontend(draft: import('@auxx/types/draft').Draft) {
     ],
     // Attachments are now returned directly - types match
     attachments: content.attachments,
+    actions: content.actions,
     metadata: content.metadata || {},
     createdAt: draft.createdAt.toISOString(),
     updatedAt: draft.updatedAt.toISOString(),

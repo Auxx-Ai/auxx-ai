@@ -10,6 +10,7 @@ import {
 } from '@auxx/ui/components/breadcrumb'
 import { SidebarTrigger } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
+import { AnimatePresence, motion } from 'motion/react'
 import Link from 'next/link'
 import React from 'react'
 import { PanelFrame } from './panel-frame'
@@ -290,32 +291,32 @@ function MainPageContent({
         ]
       : [])
 
-  const mainContent = (
-    <PanelFrame data-main='content' flex shrink={false} className={className} {...props}>
-      {children}
-    </PanelFrame>
-  )
-
-  // No panels - just render main content
-  if (panels.length === 0) {
-    return mainContent
-  }
-
-  // With panels - render in flex row
+  // Always render flex wrapper to keep a stable tree — toggling panels
+  // only adds/removes siblings, never remounts the main content.
   return (
     <div className='flex flex-row flex-1 min-h-0'>
-      {mainContent}
-      {panels.map((panel) => (
-        <React.Fragment key={panel.key}>
-          <PanelResizeHandle
-            currentWidth={panel.width}
-            onWidthChange={panel.onWidthChange}
-            minWidth={panel.minWidth}
-            maxWidth={panel.maxWidth}
-          />
-          <PanelFrame width={panel.width}>{panel.content}</PanelFrame>
-        </React.Fragment>
-      ))}
+      <PanelFrame data-main='content' flex shrink={false} className={className} {...props}>
+        {children}
+      </PanelFrame>
+      <AnimatePresence initial={false}>
+        {panels.map((panel) => (
+          <motion.div
+            key={panel.key}
+            className='flex flex-row shrink-0 overflow-hidden'
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: panel.width + 8, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: [0.165, 0.84, 0.44, 1] }}>
+            <PanelResizeHandle
+              currentWidth={panel.width}
+              onWidthChange={panel.onWidthChange}
+              minWidth={panel.minWidth}
+              maxWidth={panel.maxWidth}
+            />
+            <PanelFrame width={panel.width}>{panel.content}</PanelFrame>
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   )
 }
