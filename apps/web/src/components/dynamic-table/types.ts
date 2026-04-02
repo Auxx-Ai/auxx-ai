@@ -222,6 +222,9 @@ export interface DynamicTableProps<TData = any> {
   rowSelectionFeatures?: RowSelectionFeatures
   /** Enable global search */
   enableSearch?: boolean
+  /** Custom search component rendered in the toolbar's search slot.
+   *  When provided, replaces the built-in InputSearch. */
+  renderSearch?: () => React.ReactNode
   /** Search placeholder text */
   searchPlaceholder?: string
   /** Keys to search in for global search */

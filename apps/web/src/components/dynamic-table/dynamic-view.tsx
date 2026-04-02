@@ -233,6 +233,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
   const {
     className,
     customFilter,
+    renderSearch,
     showFooter = false,
     hideToolbar = false,
     bulkActions = [],
@@ -358,6 +359,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       rowClassName,
       isLoading,
       customFilter,
+      renderSearch,
       emptyState,
       headerActions,
       dragDropConfig: props.dragDrop,
@@ -387,6 +389,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       rowClassName,
       isLoading,
       customFilter,
+      renderSearch,
       emptyState,
       headerActions,
       props.dragDrop,

@@ -1,15 +1,16 @@
 // apps/web/src/components/drawers/tabs/contact-conversations-tab.tsx
 'use client'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Loader2, Mail, Plus } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { EmptyState } from '~/components/global/empty-state'
 import { MailContactThreadItem } from '~/components/mail/mail-contact/mail-contact-thread-item'
+import { toRecordId, useRecord } from '~/components/resources'
 import { useThreadList } from '~/components/threads/hooks/use-thread-list'
-import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /**
@@ -18,24 +19,36 @@ import type { DrawerTabProps } from '../drawer-tab-registry'
 export function ContactConversationsTab({ entityInstanceId }: DrawerTabProps) {
   const contactId = entityInstanceId
 
-  const { data: contact, isLoading: isLoadingContact } = api.contact.getById.useQuery(
-    { id: contactId },
-    { enabled: !!contactId }
-  )
+  const recordId = contactId ? (toRecordId('contact', contactId) as RecordId) : null
+  const { record: contact, isLoading: isLoadingContact } = useRecord({ recordId })
 
-  // Build filter only when contact email is available
-  const contactEmail = contact?.email
+  const contactEmail = contact?.email as string | undefined
+
+  const filter: ConditionGroup[] = useMemo(() => {
+    if (!contactEmail) return []
+    return [
+      {
+        id: 'contact-email-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'from-match',
+            fieldId: 'from',
+            operator: 'is',
+            value: contactEmail,
+          },
+        ],
+      },
+    ]
+  }, [contactEmail])
+
   const {
     threads,
     isLoading: isLoadingThreads,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useThreadList({
-    contextType: 'all',
-    // Use structured filter instead of searchQuery
-    filter: contactEmail ? { to: [contactEmail] } : undefined,
-  })
+  } = useThreadList({ filter, sort: { field: 'lastMessageAt', direction: 'desc' } })
 
   const { ref, inView } = useInView({ threshold: 0 })
   useEffect(() => {
@@ -45,11 +58,11 @@ export function ContactConversationsTab({ entityInstanceId }: DrawerTabProps) {
   }, [inView, fetchNextPage, hasNextPage, isFetchingNextPage])
 
   // Show loading while contact or threads are loading
-  const isLoading = isLoadingContact || isLoadingThreads
+  const isLoading = (isLoadingContact && !contact) || isLoadingThreads
 
   if (isLoading) {
     return (
-      <div className='flex items-center justify-center h-full w-full'>
+      <div className='flex items-center justify-center flex-1 w-full'>
         <EmptyState
           icon={Mail}
           iconClassName='animate-spin'
@@ -61,7 +74,7 @@ export function ContactConversationsTab({ entityInstanceId }: DrawerTabProps) {
     )
   } else if (threads && threads.length === 0) {
     return (
-      <div className='flex items-center justify-center h-full w-full'>
+      <div className='flex items-center justify-center flex-1 w-full'>
         <EmptyState
           icon={Mail}
           title='No messages found'
@@ -80,39 +93,37 @@ export function ContactConversationsTab({ entityInstanceId }: DrawerTabProps) {
   }
 
   return (
-    <ScrollArea className='flex-1'>
-      <Section
-        title='Conversations'
-        className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
-        collapsible={false}
-        icon={<Mail className='size-4 text-muted-foreground/50' />}
-        actions={
-          <Button variant='ghost' size='sm'>
-            <Plus />
-            Create Message
-          </Button>
-        }>
-        <div className='space-y-4 dark:bg-muted/10 p-4 pb-6'>
-          {threads.map((thread) => (
-            <MailContactThreadItem key={thread.id} item={thread} />
-          ))}
-        </div>
+    <Section
+      title='Conversations'
+      className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
+      collapsible={false}
+      icon={<Mail className='size-4 text-muted-foreground/50' />}
+      actions={
+        <Button variant='ghost' size='sm'>
+          <Plus />
+          Create Message
+        </Button>
+      }>
+      <div className='space-y-4 dark:bg-muted/10 p-4 pb-6'>
+        {threads.map((thread) => (
+          <MailContactThreadItem key={thread.id} item={thread} />
+        ))}
+      </div>
 
-        <div className='pb-4'>
-          {isFetchingNextPage && (
-            <div className='flex h-8 w-full items-center justify-center'>
-              <div>
-                <Loader2 className='h-4 w-4 animate-spin' />
-              </div>
+      <div className='pb-4'>
+        {isFetchingNextPage && (
+          <div className='flex h-8 w-full items-center justify-center'>
+            <div>
+              <Loader2 className='h-4 w-4 animate-spin' />
             </div>
-          )}
+          </div>
+        )}
 
-          <div ref={ref} className='h-1'></div>
-          {!hasNextPage && (
-            <div className='flex items-center justify-center text-sm'>End of list...</div>
-          )}
-        </div>
-      </Section>
-    </ScrollArea>
+        <div ref={ref} className='h-1'></div>
+        {!hasNextPage && (
+          <div className='flex items-center justify-center text-sm'>End of list...</div>
+        )}
+      </div>
+    </Section>
   )
 }
