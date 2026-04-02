@@ -7,10 +7,9 @@ import {
   type MailViewFieldDefinition,
 } from '@auxx/lib/mail-views/client'
 import { useCallback, useMemo } from 'react'
+import type { SearchCondition, SearchSuggestion } from '~/components/searchbar/types'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
-import type { SearchSuggestion } from '../search-suggestions-list'
-import type { SearchCondition } from '../store'
 
 /**
  * Props for useSearchSuggestions hook
