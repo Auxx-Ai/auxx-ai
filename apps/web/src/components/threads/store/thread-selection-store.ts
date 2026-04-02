@@ -10,6 +10,8 @@ export type ViewMode = 'view' | 'edit'
  */
 interface ThreadSelectionState {
   activeThreadId: string | null
+  /** Increments on every setActiveThread call so effects fire even when the ID is unchanged */
+  activeThreadVersion: number
   /** Last thread interacted with (click or checkbox), used as anchor for shift+click range selection */
   selectionAnchorId: string | null
   selectedThreadIds: string[]
@@ -40,6 +42,7 @@ interface ThreadSelectionState {
 
 const initialState = {
   activeThreadId: null as string | null,
+  activeThreadVersion: 0,
   selectionAnchorId: null as string | null,
   selectedThreadIds: [] as string[],
   listThreadIds: [] as string[],
@@ -54,6 +57,7 @@ export const useThreadSelectionStore = create<ThreadSelectionState>((set, get) =
   setActiveThread: (id) =>
     set((state) => ({
       activeThreadId: id,
+      activeThreadVersion: state.activeThreadVersion + 1,
       // Only update anchor when setting a non-null active thread
       selectionAnchorId: id !== null ? id : state.selectionAnchorId,
     })),
@@ -129,6 +133,12 @@ const EMPTY_ARRAY: string[] = []
  * Only re-renders when activeThreadId changes.
  */
 export const useActiveThreadId = () => useThreadSelectionStore((s) => s.activeThreadId)
+
+/**
+ * Returns the active thread version counter.
+ * Changes on every setActiveThread call, even when the ID is the same.
+ */
+export const useActiveThreadVersion = () => useThreadSelectionStore((s) => s.activeThreadVersion)
 
 /**
  * Returns the selection anchor ID (last interacted thread, for shift+click).

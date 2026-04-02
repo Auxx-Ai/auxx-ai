@@ -3,6 +3,7 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
+  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -10,7 +11,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { Lock } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { FilesManagement } from '~/components/files'
 import { FileDetailDrawer } from '~/components/files/file-detail-drawer'
 import type { FileItem } from '~/components/files/files-store'
@@ -42,15 +43,35 @@ function FilesPageContent() {
     if (!open) setSelectedFile(null)
   }, [])
 
-  // Build docked panel content
-  const dockedPanel =
-    isDocked && isDrawerOpen && selectedFile ? (
-      <FileDetailDrawer
-        file={selectedFile}
-        setSelectedFile={setSelectedFile}
-        onOpenChange={handleDrawerOpenChange}
-      />
-    ) : undefined
+  // Build docked panels
+  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
+    if (!isDocked || !isDrawerOpen || !selectedFile) return []
+    return [
+      {
+        key: 'file-detail',
+        content: (
+          <FileDetailDrawer
+            file={selectedFile}
+            setSelectedFile={setSelectedFile}
+            onOpenChange={handleDrawerOpenChange}
+          />
+        ),
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth,
+        maxWidth,
+      },
+    ]
+  }, [
+    isDocked,
+    isDrawerOpen,
+    selectedFile,
+    handleDrawerOpenChange,
+    dockedWidth,
+    setDockedWidth,
+    minWidth,
+    maxWidth,
+  ])
 
   return (
     <MainPage>
@@ -60,12 +81,7 @@ function FilesPageContent() {
           <MainPageBreadcrumbItem title='Management' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
-      <MainPageContent
-        dockedPanel={dockedPanel}
-        dockedPanelWidth={dockedWidth}
-        onDockedPanelWidthChange={setDockedWidth}
-        dockedPanelMinWidth={minWidth}
-        dockedPanelMaxWidth={maxWidth}>
+      <MainPageContent dockedPanels={dockedPanels}>
         <FilesManagement onFileSelect={handleFileSelect} />
 
         {/* Overlay drawer when NOT docked */}

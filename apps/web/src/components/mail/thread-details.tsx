@@ -236,7 +236,7 @@ export default function ThreadDetails({ centered }: { centered?: boolean }) {
     () => {
       if (lastEditorMessage) emailActions.onReplyAll(lastEditorMessage)
     },
-    { enabled: !!thread && !isShowReplyBox }
+    { enabled: !!thread && !isShowReplyBox, conflictBehavior: 'allow' }
   )
 
   useHotkey(
@@ -244,7 +244,7 @@ export default function ThreadDetails({ centered }: { centered?: boolean }) {
     () => {
       if (lastEditorMessage) emailActions.onForward(lastEditorMessage)
     },
-    { enabled: !!thread && !isShowReplyBox }
+    { enabled: !!thread && !isShowReplyBox, conflictBehavior: 'allow' }
   )
 
   if (!thread) {

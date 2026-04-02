@@ -92,6 +92,10 @@ import {
   Hammer,
   Handshake,
   Hash,
+  // Text formatting
+  Heading1,
+  Heading2,
+  Heading3,
   Heart,
   HelpCircle,
   Hexagon,
@@ -113,6 +117,7 @@ import {
   List,
   ListChecks,
   ListFilter,
+  ListOrdered,
   Lock,
   // Communication
   Mail,
@@ -142,6 +147,7 @@ import {
   Power,
   Printer,
   QrCode,
+  Quote,
   Receipt,
   RefreshCw,
   Regex,
@@ -509,6 +515,12 @@ export const ICON_DATA: IconItem[] = [
   { id: 'qr-code', label: 'QR Code', icon: QrCode },
   { id: 'printer', label: 'Printer', icon: Printer },
   { id: 'scan', label: 'Scan', icon: Scan },
+  // Text formatting
+  { id: 'heading-1', label: 'Heading 1', icon: Heading1 },
+  { id: 'heading-2', label: 'Heading 2', icon: Heading2 },
+  { id: 'heading-3', label: 'Heading 3', icon: Heading3 },
+  { id: 'list-ordered', label: 'Numbered List', icon: ListOrdered },
+  { id: 'quote', label: 'Quote', icon: Quote },
   // Workflow-specific icons
   { id: 'git-branch', label: 'Git Branch', icon: GitBranch },
   { id: 'sticky-note', label: 'Sticky Note', icon: StickyNote },

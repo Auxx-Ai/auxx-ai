@@ -53,6 +53,10 @@ interface ComboboxProps extends Omit<PopoverContentProps, 'children' | 'classNam
   size?: ButtonVariantProps['size']
   /** Additional className for the trigger button */
   className?: string
+  /** Additional className for the popover content (e.g. z-index overrides) */
+  popoverClassName?: string
+  /** Callback when the popover opens or closes */
+  onOpenChange?: (open: boolean) => void
   /** Optional action to add a new item, displayed at the bottom of the dropdown */
   addAction?: ComboboxAddAction
 }
@@ -72,6 +76,8 @@ export function Combobox(props: ComboboxProps) {
     variant = 'outline',
     size,
     className,
+    popoverClassName,
+    onOpenChange,
     addAction,
     // PopoverContent props
     align,
@@ -101,14 +107,23 @@ export function Combobox(props: ComboboxProps) {
   )
 
   return (
-    <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
+    <Popover
+      open={disabled ? false : open}
+      onOpenChange={
+        disabled
+          ? undefined
+          : (v) => {
+              setOpen(v)
+              onOpenChange?.(v)
+            }
+      }>
       <PopoverTrigger asChild>{trigger ?? defaultTrigger}</PopoverTrigger>
       <PopoverContent
         align={align}
         alignOffset={alignOffset}
         sideOffset={sideOffset}
         side={side}
-        className={cn('p-0 min-w-(--radix-popover-trigger-width) w-auto')}
+        className={cn('p-0 min-w-(--radix-popover-trigger-width) w-auto', popoverClassName)}
         {...popoverContentProps}>
         <Command>
           <CommandInput

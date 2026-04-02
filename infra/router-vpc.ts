@@ -1,10 +1,6 @@
 import { shouldDeployClusterResources, shouldDeployRouterResources } from './deploy-profile'
 import { domain } from './dns'
 
-// Keep legacy VPC declared to avoid failed delete during migration.
-// Active infrastructure uses AuxxAiVpcV2 below.
-export const legacyVpc = new sst.aws.Vpc('AuxxAiVpc', { bastion: true, nat: 'ec2' })
-
 export const vpc = new sst.aws.Vpc('AuxxAiVpcV2', { bastion: true, nat: 'ec2' })
 
 // Import existing CloudFront distribution

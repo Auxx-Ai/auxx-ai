@@ -8,6 +8,7 @@ import { AlertCircle, AlertTriangle, Clock, Info } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { TicketTypeBadge } from './ticket-badges'
+import { TicketRowActions } from './ticket-row-actions'
 
 /** System attributes for ticket fields */
 const TICKET_ATTRS = [
@@ -23,6 +24,7 @@ type Props = {
   recordId: RecordId
   createdAt: string | Date
   className?: string
+  onActionComplete?: () => void
 }
 
 /** Get the priority icon and color based on priority level */
@@ -67,32 +69,46 @@ function getPriorityDisplay(priority: string) {
 function getStatusDisplay(status: string) {
   switch (status) {
     case 'IN_PROGRESS':
-      return { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'In Progress' }
+      return {
+        className: 'bg-yellow-100 text-yellow-800',
+        label: 'In Progress',
+      }
     case 'OPEN':
-      return { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Open' }
+      return { className: 'bg-blue-100 text-blue-800', label: 'Open' }
     case 'WAITING_FOR_CUSTOMER':
-      return { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Waiting' }
+      return {
+        className: 'bg-purple-100 text-purple-800',
+        label: 'Waiting',
+      }
     case 'RESOLVED':
-      return { bg: 'bg-green-100', text: 'text-green-800', label: 'Resolved' }
+      return { className: 'bg-green-100 text-green-800', label: 'Resolved' }
     case 'CLOSED':
-      return { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Closed' }
+      return { className: 'bg-gray-100 text-gray-800', label: 'Closed' }
     default:
-      return { bg: 'bg-gray-100', text: 'text-gray-800', label: (status + '').replace(/_/g, ' ') }
+      return {
+        className: 'bg-gray-100 text-gray-800',
+        label: (status + '').replace(/_/g, ' '),
+      }
   }
 }
 
 /** TicketRow component - displays a ticket card using the field value store */
-function TicketRow({ recordId, createdAt, className }: Props) {
+function TicketRow({ recordId, createdAt, className, onActionComplete }: Props) {
   const router = useRouter()
 
   const { values, isLoading } = useSystemValues(recordId, TICKET_ATTRS, { autoFetch: true })
 
-  const title = (values.ticket_title as string) ?? ''
-  const number = (values.ticket_number as string) ?? ''
-  const status = (values.ticket_status as string) ?? ''
-  const priority = (values.ticket_priority as string) ?? ''
-  const type = (values.ticket_type as string) ?? ''
-  const description = (values.ticket_description as string) ?? ''
+  const unwrap = (v: unknown): string => {
+    const raw = Array.isArray(v) ? v[0] : v
+    return (raw as string) ?? ''
+  }
+
+  const title = unwrap(values.ticket_title)
+  const number = unwrap(values.ticket_number)
+  const status = unwrap(values.ticket_status)
+  const priority = unwrap(values.ticket_priority)
+  const type = unwrap(values.ticket_type)
+  const description = unwrap(values.ticket_description)
 
   // Extract instance ID from recordId (format: "entityDefinitionId:instanceId")
   const instanceId = recordId.split(':').slice(1).join(':')
@@ -170,8 +186,7 @@ function TicketRow({ recordId, createdAt, className }: Props) {
         <div
           className={cn(
             'flex items-center gap-1 rounded-full px-2 py-1 text-xs',
-            statusDisplay.bg,
-            statusDisplay.text
+            statusDisplay.className
           )}>
           <Clock className='size-3' />
           <span>{statusDisplay.label}</span>
@@ -192,12 +207,20 @@ function TicketRow({ recordId, createdAt, className }: Props) {
           )}
         </div>
 
-        {type && (
-          <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
-            <span className='text-xs text-muted-foreground'>Category:</span>
-            <TicketTypeBadge type={type} />
-          </div>
-        )}
+        <div className='flex items-center justify-between'>
+          {type && (
+            <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
+              <span className='text-xs text-muted-foreground'>Category:</span>
+              <TicketTypeBadge type={type} />
+            </div>
+          )}
+          <TicketRowActions
+            recordId={recordId}
+            status={status}
+            priority={priority}
+            onActionComplete={onActionComplete}
+          />
+        </div>
       </div>
     </div>
   )

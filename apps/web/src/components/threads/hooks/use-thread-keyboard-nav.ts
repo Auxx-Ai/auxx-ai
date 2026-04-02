@@ -77,16 +77,16 @@ export function useThreadKeyboardNav({
   )
 
   // Arrow Down
-  useHotkey('ArrowDown', () => navigate('down', false), { enabled })
+  useHotkey('ArrowDown', () => navigate('down', false), { enabled, conflictBehavior: 'allow' })
 
   // Arrow Up
-  useHotkey('ArrowUp', () => navigate('up', false), { enabled })
+  useHotkey('ArrowUp', () => navigate('up', false), { enabled, conflictBehavior: 'allow' })
 
   // Shift + Arrow Down (extend selection)
-  useHotkey('Shift+ArrowDown', () => navigate('down', true), { enabled })
+  useHotkey('Shift+ArrowDown', () => navigate('down', true), { enabled, conflictBehavior: 'allow' })
 
   // Shift + Arrow Up (extend selection)
-  useHotkey('Shift+ArrowUp', () => navigate('up', true), { enabled })
+  useHotkey('Shift+ArrowUp', () => navigate('up', true), { enabled, conflictBehavior: 'allow' })
 
   // Enter / ArrowRight - open focused thread (focus mode only)
   const openFocused = useCallback(() => {
@@ -99,8 +99,11 @@ export function useThreadKeyboardNav({
     }
   }, [onOpen])
 
-  useHotkey('Enter', openFocused, { enabled: enabled && isFocusMode })
-  useHotkey('ArrowRight', openFocused, { enabled: enabled && isFocusMode })
+  useHotkey('Enter', openFocused, { enabled: enabled && isFocusMode, conflictBehavior: 'allow' })
+  useHotkey('ArrowRight', openFocused, {
+    enabled: enabled && isFocusMode,
+    conflictBehavior: 'allow',
+  })
 
   // Home - go to first thread
   useHotkey(
@@ -119,7 +122,7 @@ export function useThreadKeyboardNav({
         document.getElementById(`thread-${threadIds[0]}`)?.scrollIntoView({ block: 'nearest' })
       }
     },
-    { enabled }
+    { enabled, conflictBehavior: 'allow' }
   )
 
   // End - go to last thread
@@ -140,7 +143,7 @@ export function useThreadKeyboardNav({
         document.getElementById(`thread-${lastId}`)?.scrollIntoView({ block: 'nearest' })
       }
     },
-    { enabled }
+    { enabled, conflictBehavior: 'allow' }
   )
 
   // Select All: Mod+A (replaces separate Meta+a and Control+a)
@@ -148,10 +151,14 @@ export function useThreadKeyboardNav({
   useHotkey('Mod+A', () => useThreadSelectionStore.getState().selectAll(threadIds), {
     enabled,
     ignoreInputs: true,
+    conflictBehavior: 'allow',
   })
 
   // Escape - clear selection
-  useHotkey('Escape', () => useThreadSelectionStore.getState().clearSelection(), { enabled })
+  useHotkey('Escape', () => useThreadSelectionStore.getState().clearSelection(), {
+    enabled,
+    conflictBehavior: 'allow',
+  })
 
   // Toggle view mode (view/edit)
   useHotkey(
@@ -162,6 +169,6 @@ export function useThreadKeyboardNav({
       store.toggleViewMode()
       toast.info(currentMode === 'view' ? 'Edit mode enabled' : 'View mode enabled')
     },
-    { enabled }
+    { enabled, conflictBehavior: 'allow' }
   )
 }

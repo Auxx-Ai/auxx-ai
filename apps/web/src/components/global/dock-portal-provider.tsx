@@ -47,23 +47,21 @@ export function DockPortalProvider({ children }: { children: ReactNode }) {
   // Force re-render when refs become available so portals can attach
   const [, forceUpdate] = useState(0)
 
-  // Callback ref for primary panel - triggers re-render when mounted
+  // Callback ref for primary panel - triggers re-render when mounted.
+  // Ignores null to prevent AnimatePresence exit unmounts from wiping
+  // a ref that was already updated by a newly mounted target.
   const setPrimaryRef = useCallback((el: HTMLDivElement | null) => {
-    if (el && !primaryPanelRef.current) {
+    if (el) {
       primaryPanelRef.current = el
       forceUpdate((n) => n + 1)
-    } else {
-      primaryPanelRef.current = el
     }
   }, [])
 
-  // Callback ref for secondary panel - triggers re-render when mounted
+  // Callback ref for secondary panel - same guard as primary
   const setSecondaryRef = useCallback((el: HTMLDivElement | null) => {
-    if (el && !secondaryPanelRef.current) {
+    if (el) {
       secondaryPanelRef.current = el
       forceUpdate((n) => n + 1)
-    } else {
-      secondaryPanelRef.current = el
     }
   }, [])
 

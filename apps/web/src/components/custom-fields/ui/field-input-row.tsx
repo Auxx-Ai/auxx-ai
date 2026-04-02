@@ -102,6 +102,15 @@ export function FieldInputRow({
   const relationshipConfig = field.options?.relationship as RelationshipConfig | undefined
   const actorConfig = field.options?.actor as ActorOptions | undefined
 
+  // Merge address-specific options for dialog context (transparent inputs)
+  const fieldOptions =
+    fieldType === 'ADDRESS' || fieldType === 'ADDRESS_STRUCT'
+      ? {
+          ...field.options,
+          address: { ...field.options?.address, inputVariant: 'transparent' as const },
+        }
+      : field.options
+
   // Normalize value for different field types
   const normalizedValue =
     fieldType === 'RELATIONSHIP'
@@ -146,7 +155,7 @@ export function FieldInputRow({
       showIcon>
       <FieldInputAdapter
         fieldType={fieldType}
-        fieldOptions={field.options}
+        fieldOptions={fieldOptions}
         value={normalizedValue}
         onChange={handleChange}
         placeholder={placeholder ?? `Enter ${field.label.toLowerCase()}...`}

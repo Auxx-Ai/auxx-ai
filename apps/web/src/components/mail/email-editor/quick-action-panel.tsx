@@ -3,20 +3,22 @@
 'use client'
 
 import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
+import type { SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
+import { Combobox } from '@auxx/ui/components/combobox'
 import { Input } from '@auxx/ui/components/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
+  CurrencyInputField,
+  CurrencyInput as CurrencyInputUi,
+} from '@auxx/ui/components/input-currency'
+import { InputGroup } from '@auxx/ui/components/input-group'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Switch } from '@auxx/ui/components/switch'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, ChevronRight, Plus, X, Zap } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, ChevronRight, X, Zap } from 'lucide-react'
+import type React from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { useQuickActions } from '~/hooks/use-quick-actions'
 import type { SerializedQuickAction } from '~/lib/workflow/workflow-block-loader'
 
@@ -31,9 +33,18 @@ interface QuickActionPanelProps {
   threadId?: string
   ticketId?: string
   disabled?: boolean
+  popoverClassName?: string
+  onPopoverOpenChange?: (open: boolean) => void
 }
 
-export function QuickActionPanel({ actions, onRemove, onUpdate, disabled }: QuickActionPanelProps) {
+export function QuickActionPanel({
+  actions,
+  onRemove,
+  onUpdate,
+  disabled,
+  popoverClassName,
+  onPopoverOpenChange,
+}: QuickActionPanelProps) {
   if (actions.length === 0) return null
 
   return (
@@ -52,6 +63,8 @@ export function QuickActionPanel({ actions, onRemove, onUpdate, disabled }: Quic
               onRemove={() => onRemove(action.actionId)}
               onUpdate={onUpdate}
               disabled={disabled}
+              popoverClassName={popoverClassName}
+              onPopoverOpenChange={onPopoverOpenChange}
             />
           ))}
         </div>
@@ -65,11 +78,15 @@ function QuickActionChip({
   onRemove,
   onUpdate,
   disabled,
+  popoverClassName,
+  onPopoverOpenChange,
 }: {
   action: DraftActionPayload
   onRemove: () => void
   onUpdate: (actionId: string, inputs: Record<string, unknown>) => void
   disabled?: boolean
+  popoverClassName?: string
+  onPopoverOpenChange?: (open: boolean) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const schema = quickActionSchemaCache.get(`${action.appId}:${action.actionId}`)
@@ -119,6 +136,8 @@ function QuickActionChip({
           values={action.inputs}
           onChange={(inputs) => onUpdate(action.actionId, inputs)}
           disabled={disabled}
+          popoverClassName={popoverClassName}
+          onPopoverOpenChange={onPopoverOpenChange}
         />
       )}
     </div>
@@ -128,7 +147,9 @@ function QuickActionChip({
 interface AddActionButtonProps {
   threadId?: string
   ticketId?: string
-  onSelect: (action: DraftActionPayload) => void
+  currentActions: DraftActionPayload[]
+  onAdd: (action: DraftActionPayload) => void
+  onRemove: (actionId: string) => void
   disabled?: boolean
   popoverClassName?: string
   onOpenChange?: (open: boolean) => void
@@ -137,7 +158,9 @@ interface AddActionButtonProps {
 export function AddActionButton({
   threadId,
   ticketId,
-  onSelect,
+  currentActions,
+  onAdd,
+  onRemove,
   disabled,
   popoverClassName,
   onOpenChange,
@@ -156,20 +179,18 @@ export function AddActionButton({
           variant='ghost'
           size='xs'
           disabled={disabled}
-          className='h-6 gap-1 text-xs text-muted-foreground'>
+          className='h-6 gap-1 text-xs text-muted-foreground/50'>
           <Zap className='size-3' />
-          <Plus className='size-3' />
           Add action
         </Button>
       </PopoverTrigger>
-      <PopoverContent align='start' className={cn('w-64 p-2', popoverClassName)}>
+      <PopoverContent align='start' className={cn('w-64 p-0', popoverClassName)}>
         <QuickActionPicker
           threadId={threadId}
           ticketId={ticketId}
-          onSelect={(action) => {
-            onSelect(action)
-            setOpen(false)
-          }}
+          currentActions={currentActions}
+          onAdd={onAdd}
+          onRemove={onRemove}
         />
       </PopoverContent>
     </Popover>
@@ -177,21 +198,67 @@ export function AddActionButton({
 }
 
 function QuickActionPicker({
-  onSelect,
   threadId,
   ticketId,
+  currentActions,
+  onAdd,
+  onRemove,
 }: {
-  onSelect: (action: DraftActionPayload) => void
   threadId?: string
   ticketId?: string
+  currentActions: DraftActionPayload[]
+  onAdd: (action: DraftActionPayload) => void
+  onRemove: (actionId: string) => void
 }) {
   const { actions, isLoading } = useQuickActions(threadId, ticketId)
 
-  if (isLoading) {
-    return <div className='py-4 text-center text-xs text-muted-foreground'>Loading...</div>
-  }
+  const options: SelectOption[] = useMemo(
+    () => actions.map((a) => ({ value: a.id, label: a.label, color: a.color })),
+    [actions]
+  )
 
-  if (actions.length === 0) {
+  const selectedIds = useMemo(() => currentActions.map((a) => a.actionId), [currentActions])
+
+  // Build a lookup map for constructing DraftActionPayload on add
+  const actionMap = useMemo(() => new Map(actions.map((a) => [a.id, a])), [actions])
+
+  const handleChange = useCallback(
+    (newSelectedIds: string[]) => {
+      const prevSet = new Set(selectedIds)
+      const nextSet = new Set(newSelectedIds)
+
+      // Handle additions
+      for (const id of newSelectedIds) {
+        if (!prevSet.has(id)) {
+          const action = actionMap.get(id)
+          if (!action) continue
+          cacheActionSchema(action)
+          onAdd({
+            appId: action.appId!,
+            installationId: action.installationId!,
+            actionId: action.id,
+            inputs: action.defaults ?? {},
+            display: {
+              label: action.label,
+              icon: action.icon,
+              color: action.color,
+              summary: action.label,
+            },
+          })
+        }
+      }
+
+      // Handle removals
+      for (const id of selectedIds) {
+        if (!nextSet.has(id)) {
+          onRemove(id)
+        }
+      }
+    },
+    [selectedIds, actionMap, onAdd, onRemove]
+  )
+
+  if (!isLoading && actions.length === 0) {
     return (
       <div className='py-4 text-center text-xs text-muted-foreground'>
         No quick actions available.
@@ -202,44 +269,15 @@ function QuickActionPicker({
   }
 
   return (
-    <div className='flex flex-col gap-1 p-1'>
-      {actions.map((action) => (
-        <button
-          key={`${action.appId}:${action.id}`}
-          type='button'
-          className='flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent'
-          onClick={() => {
-            // Cache schema for form rendering
-            cacheActionSchema(action)
-
-            onSelect({
-              appId: action.appId!,
-              installationId: action.installationId!,
-              actionId: action.id,
-              inputs: action.defaults ?? {},
-              display: {
-                label: action.label,
-                icon: action.icon,
-                color: action.color,
-                summary: action.label,
-              },
-            })
-          }}>
-          {action.color && (
-            <span
-              className='size-2 shrink-0 rounded-full'
-              style={{ backgroundColor: action.color }}
-            />
-          )}
-          <div className='min-w-0'>
-            <div className='truncate font-medium'>{action.label}</div>
-            {action.description && (
-              <div className='truncate text-xs text-muted-foreground'>{action.description}</div>
-            )}
-          </div>
-        </button>
-      ))}
-    </div>
+    <MultiSelectPicker
+      options={options}
+      value={selectedIds}
+      onChange={handleChange}
+      placeholder='Search actions...'
+      canManage={false}
+      canAdd={false}
+      isLoading={isLoading}
+    />
   )
 }
 
@@ -258,11 +296,15 @@ function QuickActionForm({
   values,
   onChange,
   disabled,
+  popoverClassName,
+  onPopoverOpenChange,
 }: {
   fields: Record<string, any>
   values: Record<string, unknown>
   onChange: (values: Record<string, unknown>) => void
   disabled?: boolean
+  popoverClassName?: string
+  onPopoverOpenChange?: (open: boolean) => void
 }) {
   const entries = Object.entries(fields)
   if (entries.length === 0) return null
@@ -277,6 +319,8 @@ function QuickActionForm({
           value={values[key]}
           onChange={(v) => onChange({ ...values, [key]: v })}
           disabled={disabled}
+          popoverClassName={popoverClassName}
+          onPopoverOpenChange={onPopoverOpenChange}
         />
       ))}
     </div>
@@ -289,12 +333,16 @@ function QuickActionField({
   value,
   onChange,
   disabled,
+  popoverClassName,
+  onPopoverOpenChange,
 }: {
   fieldKey: string
   field: any
   value: unknown
   onChange: (value: unknown) => void
   disabled?: boolean
+  popoverClassName?: string
+  onPopoverOpenChange?: (open: boolean) => void
 }) {
   const label = field.label || fieldKey
 
@@ -314,7 +362,6 @@ function QuickActionField({
       )
 
     case 'number':
-    case 'currency':
       return (
         <div className='flex items-center gap-2'>
           <label className='min-w-16 shrink-0 text-xs text-muted-foreground'>{label}</label>
@@ -330,6 +377,19 @@ function QuickActionField({
             disabled={disabled}
           />
         </div>
+      )
+
+    case 'currency':
+      return (
+        <QuickActionCurrencyField
+          label={label}
+          value={value as number | undefined}
+          onChange={onChange}
+          disabled={disabled}
+          currencyCode={field._metadata?.currencyCode ?? 'USD'}
+          decimalPlaces={field._metadata?.decimalPlaces}
+          placeholder={field.placeholder}
+        />
       )
 
     case 'boolean':
@@ -348,21 +408,22 @@ function QuickActionField({
       return (
         <div className='flex items-center gap-2'>
           <label className='min-w-16 shrink-0 text-xs text-muted-foreground'>{label}</label>
-          <Select
+          <Combobox
+            options={(field.options ?? []).map((opt: any) => ({
+              value: opt.value,
+              label: opt.label || opt.value,
+            }))}
+            placeholder={field.placeholder || 'Select...'}
+            emptyText='No options'
             value={(value as string) ?? ''}
-            onValueChange={(v) => onChange(v)}
-            disabled={disabled}>
-            <SelectTrigger className='h-6 text-xs'>
-              <SelectValue placeholder={field.placeholder || 'Select...'} />
-            </SelectTrigger>
-            <SelectContent>
-              {(field.options ?? []).map((opt: any) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label || opt.value}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChangeValue={(v) => onChange(v)}
+            disabled={disabled}
+            variant='outline'
+            size='sm'
+            className='h-6 text-xs'
+            popoverClassName={popoverClassName}
+            onOpenChange={onPopoverOpenChange}
+          />
         </div>
       )
 
@@ -378,4 +439,66 @@ function QuickActionField({
       }
       return null
   }
+}
+
+function QuickActionCurrencyField({
+  label,
+  value,
+  onChange,
+  disabled,
+  currencyCode = 'USD',
+  decimalPlaces,
+  placeholder = '0.00',
+}: {
+  label: string
+  value: number | undefined
+  onChange: (value: unknown) => void
+  disabled?: boolean
+  currencyCode?: string
+  decimalPlaces?: number
+  placeholder?: string
+}) {
+  const shouldUpdateRef = useRef(false)
+
+  const handleValueChange = useCallback(
+    (cents: number | undefined) => {
+      if (shouldUpdateRef.current) {
+        shouldUpdateRef.current = false
+        onChange(cents ?? undefined)
+      }
+    },
+    [onChange]
+  )
+
+  const handleBlur = useCallback(() => {
+    shouldUpdateRef.current = true
+  }, [])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      e.currentTarget.blur()
+    }
+  }, [])
+
+  return (
+    <div className='flex items-center gap-2'>
+      <label className='min-w-16 shrink-0 text-xs text-muted-foreground'>{label}</label>
+      <CurrencyInputUi
+        value={value}
+        onValueChange={handleValueChange}
+        currencyCode={currencyCode}
+        decimalPlaces={decimalPlaces === 0 ? 'no-decimal' : 'two-places'}
+        disabled={disabled}>
+        <InputGroup className='h-6 text-xs'>
+          <CurrencyInputField
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            className='text-xs'
+          />
+        </InputGroup>
+      </CurrencyInputUi>
+    </div>
+  )
 }

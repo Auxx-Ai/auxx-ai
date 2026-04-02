@@ -52,14 +52,8 @@ export class PdfExtractor extends BaseExtractor {
       let content = pdfData.text || ''
       content = this.cleanText(content)
 
-      // Validate content
-      this.validateContent(content)
-
-      // Count words
-      const wordCount = this.countWords(content)
-
-      // Create metadata
-      const metadata = this.createMetadata('pdf', {
+      // Build common metadata
+      const pdfMetadata = {
         title: this.extractTitle(pdfData.info),
         author: this.extractAuthor(pdfData.info),
         pageCount: pdfData.numpages,
@@ -70,7 +64,34 @@ export class PdfExtractor extends BaseExtractor {
         pdfVersion: pdfData.version,
         encrypted: pdfData.info?.IsAcroFormPresent === 'true',
         hasFormFields: pdfData.info?.IsAcroFormPresent === 'true',
-      })
+      }
+
+      // Handle image-only PDFs (no extractable text)
+      if (!content || content.trim().length === 0) {
+        const processingTime = Date.now() - startTime
+
+        const metadata = this.createMetadata('pdf', {
+          ...pdfMetadata,
+          imageOnly: true,
+        })
+
+        return {
+          content: '',
+          wordCount: 0,
+          metadata,
+          processingTime,
+          extractorUsed: this.getName(),
+        }
+      }
+
+      // Validate content (only for PDFs with text)
+      this.validateContent(content)
+
+      // Count words
+      const wordCount = this.countWords(content)
+
+      // Create metadata
+      const metadata = this.createMetadata('pdf', pdfMetadata)
 
       const processingTime = Date.now() - startTime
 
@@ -100,12 +121,8 @@ export class PdfExtractor extends BaseExtractor {
    */
   private async parsePdf(buffer: Buffer) {
     const options = {
-      // Increase memory limit for large PDFs
-      max: this.options.maxContentLength || 50 * 1024 * 1024,
-
-      // Custom text extraction options
-      normalizeWhitespace: true,
-      disableCombineTextItems: false,
+      // max = maximum number of pages to parse (0 = all pages)
+      max: 0,
     }
 
     try {

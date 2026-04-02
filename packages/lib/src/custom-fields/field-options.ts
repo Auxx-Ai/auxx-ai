@@ -112,6 +112,11 @@ export interface FieldOptions {
   email?: EmailFieldOptions
 
   // ─────────────────────────────────────────────────────────────
+  // ADDRESS (structured address field)
+  // ─────────────────────────────────────────────────────────────
+  address?: AddressFieldOptions
+
+  // ─────────────────────────────────────────────────────────────
   // NAME (composite name field)
   // ─────────────────────────────────────────────────────────────
   /** NAME field options - references two TEXT fields for firstName/lastName */
@@ -192,3 +197,12 @@ export type PhoneFieldOptions = Pick<FieldOptions, 'phoneFormat'>
 
 /** Options for SELECT/MULTI_SELECT/TAGS fields */
 export type SelectFieldOptions = Pick<FieldOptions, 'maxItemsShown' | 'truncateLabel'>
+
+/**
+ * Options for ADDRESS / ADDRESS_STRUCT fields.
+ * Controls the visual style of the address input fields.
+ */
+export interface AddressFieldOptions {
+  /** Input variant for address sub-fields */
+  inputVariant?: 'default' | 'transparent'
+}

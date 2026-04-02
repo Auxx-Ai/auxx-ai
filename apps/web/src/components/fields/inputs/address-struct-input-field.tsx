@@ -36,6 +36,8 @@ interface AddressStructFieldsProps {
   autoFocus?: boolean
   /** Optional class name for the container */
   className?: string
+  /** Input variant for address sub-fields */
+  inputVariant?: 'default' | 'transparent'
 }
 
 /**
@@ -48,6 +50,7 @@ export function AddressStructFields({
   disabled = false,
   autoFocus = false,
   className = 'flex w-[350px] flex-col gap-2 p-2',
+  inputVariant,
 }: AddressStructFieldsProps) {
   /** Handle field change */
   const handleFieldChange = useCallback(
@@ -61,6 +64,7 @@ export function AddressStructFields({
       {/* Street Address - full width */}
       <Input
         size='sm'
+        variant={inputVariant}
         placeholder='Street address'
         value={value.street1}
         onChange={(e) => handleFieldChange('street1', e.target.value)}
@@ -71,6 +75,7 @@ export function AddressStructFields({
       {/* Apartment/Suite - full width */}
       <Input
         size='sm'
+        variant={inputVariant}
         placeholder='Apartment, suite, etc. (optional)'
         value={value.street2}
         onChange={(e) => handleFieldChange('street2', e.target.value)}
@@ -81,6 +86,7 @@ export function AddressStructFields({
       <div className='flex gap-2'>
         <Input
           size='sm'
+          variant={inputVariant}
           className='min-w-0 flex-1'
           placeholder='City'
           value={value.city}
@@ -89,6 +95,7 @@ export function AddressStructFields({
         />
         <Input
           size='sm'
+          variant={inputVariant}
           className='w-24'
           placeholder='State'
           value={value.state}
@@ -101,6 +108,7 @@ export function AddressStructFields({
       <div className='flex gap-2'>
         <Input
           size='sm'
+          variant={inputVariant}
           className='w-24'
           placeholder='ZIP Code'
           value={value.zipCode}
@@ -120,7 +128,7 @@ export function AddressStructFields({
                 type='button'
                 disabled={disabled}
                 className={cn(
-                  inputVariants({ size: 'sm' }),
+                  inputVariants({ size: 'sm', variant: inputVariant }),
                   'flex w-full cursor-pointer items-center justify-between',
                   disabled && 'cursor-not-allowed opacity-50'
                 )}>

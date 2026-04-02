@@ -3,7 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Pencil, Plus, X } from 'lucide-react'
+import { Feather, Pencil, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useEditorActiveStateContext } from '~/components/mail/email-editor/editor-active-state-context'
 import { sanitizeHtml } from '~/lib/sanitize'
@@ -105,7 +105,7 @@ function SignatureEditor({
             onClick={handleAddClick}
             disabled={disabled}
             className='text-muted-foreground/50'>
-            <Plus className='size-4' />
+            <Feather className='size-3.5' />
             Add signature
           </Button>
         </SignaturePicker>

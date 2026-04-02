@@ -18,6 +18,7 @@ export {
 export {
   getThreadSelectionState,
   useActiveThreadId,
+  useActiveThreadVersion,
   useFirstSelectedThreadId,
   useFocusedThreadId,
   useHasMultipleSelected,

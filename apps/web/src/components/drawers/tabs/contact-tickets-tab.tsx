@@ -108,6 +108,7 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
             key={record.id}
             recordId={toRecordId(entityDefinitionId!, record.id)}
             createdAt={record.createdAt}
+            onActionComplete={refresh}
           />
         ))}
       </div>

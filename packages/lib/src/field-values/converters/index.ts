@@ -5,6 +5,7 @@ import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types/field-va
 
 // Re-export field options types from centralized location
 export type {
+  AddressFieldOptions,
   BooleanFieldOptions,
   DateFieldOptions,
   EmailFieldOptions,

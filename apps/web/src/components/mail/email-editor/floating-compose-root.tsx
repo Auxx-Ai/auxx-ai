@@ -13,9 +13,13 @@ export function FloatingComposeRoot() {
   const instances = useComposeStore((s) => s.instances)
 
   // Global shortcut: C to open a new compose editor
-  useHotkey('C', () => {
-    useComposeStore.getState().open({ mode: 'new', displayMode: 'floating' })
-  })
+  useHotkey(
+    'C',
+    () => {
+      useComposeStore.getState().open({ mode: 'new', displayMode: 'floating' })
+    },
+    { conflictBehavior: 'allow' }
+  )
 
   console.log(
     '[FloatingComposeRoot] render, instances:',

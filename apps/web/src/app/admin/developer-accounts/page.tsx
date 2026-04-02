@@ -4,6 +4,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import {
+  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -23,7 +24,7 @@ import {
 import { formatDistanceToNow } from 'date-fns'
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
@@ -80,15 +81,35 @@ export default function DeveloperAccountsPage() {
     if (!open) setSelectedAccountId(null)
   }
 
-  /** Docked panel content */
-  const dockedPanel =
-    isDocked && isDrawerOpen ? (
-      <DeveloperAccountDrawer
-        account={selectedAccount}
-        open={isDrawerOpen}
-        onOpenChange={handleDrawerOpenChange}
-      />
-    ) : undefined
+  /** Docked panels */
+  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
+    if (!isDocked || !isDrawerOpen) return []
+    return [
+      {
+        key: 'developer-account',
+        content: (
+          <DeveloperAccountDrawer
+            account={selectedAccount}
+            open={isDrawerOpen}
+            onOpenChange={handleDrawerOpenChange}
+          />
+        ),
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth,
+        maxWidth,
+      },
+    ]
+  }, [
+    isDocked,
+    isDrawerOpen,
+    selectedAccount,
+    handleDrawerOpenChange,
+    dockedWidth,
+    setDockedWidth,
+    minWidth,
+    maxWidth,
+  ])
 
   return (
     <>
@@ -103,12 +124,7 @@ export default function DeveloperAccountsPage() {
             />
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent
-          dockedPanel={dockedPanel}
-          dockedPanelWidth={dockedWidth}
-          onDockedPanelWidthChange={setDockedWidth}
-          dockedPanelMinWidth={minWidth}
-          dockedPanelMaxWidth={maxWidth}>
+        <MainPageContent dockedPanels={dockedPanels}>
           <MainPageSubheader>
             <div className='relative flex-1'>
               <Search className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />

@@ -60,6 +60,7 @@ export {
   type ThreadSort,
   type ThreadStatus,
   useActiveThreadId,
+  useActiveThreadVersion,
   useFirstSelectedThreadId,
   useHasMultipleSelected,
   useHasSelection,

@@ -94,7 +94,7 @@ export const CurrencyInput = createNodeInput<CurrencyInputProps>(
         currencyCode={currencyCode}
         decimalPlaces={decimalPlaces === 0 ? 'no-decimal' : 'two-places'}
         disabled={isLoading}>
-        <InputGroup className='bg-transparent h-[28px] shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]'>
+        <InputGroup className='bg-transparent dark:bg-transparent h-[28px] shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]'>
           <CurrencyInputField
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}

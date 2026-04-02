@@ -5,6 +5,7 @@ import { buildConditionGroups } from '@auxx/lib/mail-query/client'
 import { InternalFilterContextType } from '@auxx/lib/types'
 import { Button } from '@auxx/ui/components/button'
 import {
+  type DockedPanelConfig,
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -43,6 +44,7 @@ import { ThreadNavToolbar } from '~/components/mail/thread-nav-toolbar'
 import type { ThreadsFilterInput } from '~/components/mail/types'
 import {
   useActiveThreadId,
+  useActiveThreadVersion,
   useSelectedThreadIds,
   useThreadSelectionStore,
   useViewMode,
@@ -212,15 +214,17 @@ function MailboxInner({
   // State to track if the thread list is currently fetching/loading data
   const [isListLoading, setIsListLoading] = useState(false)
 
-  // Sync URL → Zustand on mount (restore selection after reload)
+  // Sync URL ↔ Zustand on mount (restore selection after reload or navigation)
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect
   useEffect(() => {
+    const store = useThreadSelectionStore.getState()
     if (tid) {
-      const store = useThreadSelectionStore.getState()
       if (store.selectedThreadIds.length === 0) {
         store.setSelectedThreads([tid])
         store.setActiveThread(tid)
       }
+    } else if (store.activeThreadId) {
+      void setTid(store.activeThreadId)
     }
   }, [])
 
@@ -229,6 +233,7 @@ function MailboxInner({
 
   // Sync Zustand → URL (persist active thread when user clicks a thread row)
   const activeThreadId = useActiveThreadId()
+  const activeThreadVersion = useActiveThreadVersion()
   useEffect(() => {
     if (activeThreadId) {
       void setTid(activeThreadId)
@@ -238,7 +243,7 @@ function MailboxInner({
         void setTid('')
       }
     }
-  }, [activeThreadId, setTid])
+  }, [activeThreadId, activeThreadVersion, setTid])
   const setViewMode = useThreadSelectionStore((s) => s.setViewMode)
 
   // State for sorting - default to newest first
@@ -370,9 +375,10 @@ function MailboxInner({
     safeLocalStorage.set('mail-thread-list-width', String(width))
   }, [])
 
-  // Handles navigation back to thread list on mobile
+  // Handles navigation back to thread list
   const handleBackToList = useCallback(() => {
     void setTid('')
+    useThreadSelectionStore.getState().setActiveThread(null)
     router.push(basePathForList)
   }, [router, basePathForList, setTid])
 
@@ -384,15 +390,35 @@ function MailboxInner({
     [contactId, setContactId]
   )
 
-  // Build docked panel content for contact drawer
-  const dockedPanel =
-    isDocked && isContactDrawerOpen ? (
-      <ContactDrawer
-        contactId={contactId}
-        open={isContactDrawerOpen}
-        onOpenChange={handleContactDrawerClose}
-      />
-    ) : undefined
+  // Build docked panels for contact drawer
+  const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
+    if (!isDocked || !isContactDrawerOpen) return []
+    return [
+      {
+        key: 'contact',
+        content: (
+          <ContactDrawer
+            contactId={contactId}
+            open={isContactDrawerOpen}
+            onOpenChange={handleContactDrawerClose}
+          />
+        ),
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth,
+        maxWidth,
+      },
+    ]
+  }, [
+    isDocked,
+    isContactDrawerOpen,
+    contactId,
+    handleContactDrawerClose,
+    dockedWidth,
+    setDockedWidth,
+    minWidth,
+    maxWidth,
+  ])
 
   return (
     <MailFilterProvider value={mailFilterContextValue}>
@@ -431,12 +457,7 @@ function MailboxInner({
             )}
           </MainPageBreadcrumb>
         </MainPageHeader>
-        <MainPageContent
-          dockedPanel={dockedPanel}
-          dockedPanelWidth={dockedWidth}
-          onDockedPanelWidthChange={setDockedWidth}
-          dockedPanelMinWidth={minWidth}
-          dockedPanelMaxWidth={maxWidth}>
+        <MainPageContent dockedPanels={dockedPanels}>
           <div className='flex items-center justify-between bg-primary-150 border-b w-full rounded-t-lg px-2 h-10.5 '>
             {/* Status Dropdown and Search Bar */}
             <div className='w-full flex flex-1 justify-between overflow-x-auto no-scrollbar gap-2'>
