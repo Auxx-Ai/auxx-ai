@@ -25,6 +25,9 @@ export interface TableConfigContextValue<TData = any> {
   /** Enable global search */
   enableSearch?: boolean
 
+  /** Custom search component that replaces built-in InputSearch */
+  renderSearch?: () => React.ReactNode
+
   /** Enable checkboxes for row selection */
   enableCheckbox: boolean
 

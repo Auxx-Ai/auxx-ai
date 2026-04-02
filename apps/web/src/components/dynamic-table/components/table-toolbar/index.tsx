@@ -67,6 +67,7 @@ export function TableToolbar<TData = any>({
     entityDefinitionId,
     enableFiltering = true,
     enableSearch = true,
+    renderSearch,
     enableImport = false,
     onImport,
     importHref,
@@ -191,13 +192,15 @@ export function TableToolbar<TData = any>({
       {customFilter}
 
       {/* Search Input */}
-      {enableSearch && (
+      {renderSearch ? (
+        renderSearch()
+      ) : enableSearch ? (
         <InputSearch
           placeholder='Search...'
           value={localSearchQuery}
           onChange={(e) => setLocalSearchQuery(e.target.value)}
         />
-      )}
+      ) : null}
 
       {onRefresh && (
         <Tooltip content='Refresh Data'>

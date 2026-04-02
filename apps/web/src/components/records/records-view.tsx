@@ -61,6 +61,8 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useEntityInstanceOperations } from '~/hooks/use-entity-instance-operations'
 import { useDockStore } from '~/stores/dock-store'
 import { RecordDrawer } from './record-drawer'
+import { searchConditionsToGroup, useRecordsSearchStore } from './records-search-store'
+import { RecordsSearchBar } from './records-searchbar'
 
 /** Page size for infinite query */
 const PAGE_SIZE = 100
@@ -193,8 +195,16 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
   // Get fieldMap from resource store for field lookups across all entities
   const fieldMap = useResourceStore((state) => state.fieldMap)
 
+  // Search conditions → ConditionGroup merge
+  const searchConditions = useRecordsSearchStore((s) => s.conditions)
+  const searchGroup = useMemo(() => searchConditionsToGroup(searchConditions), [searchConditions])
+
   // Convert to formats expected by useRecordList
-  const filtersForQuery = viewFilters.length > 0 ? viewFilters : undefined
+  const filtersForQuery = useMemo(() => {
+    const groups = [...viewFilters]
+    if (searchGroup) groups.push(searchGroup)
+    return groups.length > 0 ? groups : undefined
+  }, [viewFilters, searchGroup])
   const sortingForQuery = viewSorting.length > 0 ? viewSorting : undefined
 
   // Check if store config is initialized (undefined = not ready yet)
@@ -661,7 +671,9 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
           className='h-full flex-1'
           tableId={`entity-${entityDefinitionId}`}
           bulkActions={bulkActions}
-          enableSearch
+          renderSearch={() => (
+            <RecordsSearchBar entityDefinitionId={entityDefinitionId!} fields={resource.fields} />
+          )}
           columns={columns}
           enableSorting
           enableFiltering
