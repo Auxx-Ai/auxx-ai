@@ -291,6 +291,8 @@ function MainPageContent({
         ]
       : [])
 
+  const [isResizing, setIsResizing] = React.useState(false)
+
   // Always render flex wrapper to keep a stable tree — toggling panels
   // only adds/removes siblings, never remounts the main content.
   return (
@@ -306,12 +308,16 @@ function MainPageContent({
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: panel.width + 8, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: [0.165, 0.84, 0.44, 1] }}>
+            transition={
+              isResizing ? { duration: 0 } : { duration: 0.2, ease: [0.165, 0.84, 0.44, 1] }
+            }>
             <PanelResizeHandle
               currentWidth={panel.width}
               onWidthChange={panel.onWidthChange}
               minWidth={panel.minWidth}
               maxWidth={panel.maxWidth}
+              onResizeStart={() => setIsResizing(true)}
+              onResizeEnd={() => setIsResizing(false)}
             />
             <PanelFrame width={panel.width}>{panel.content}</PanelFrame>
           </motion.div>

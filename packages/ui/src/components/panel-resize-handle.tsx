@@ -19,6 +19,10 @@ interface PanelResizeHandleProps {
    * - `'left'`: panel is to the left, dragging right increases width
    */
   side?: 'left' | 'right'
+  /** Called when resize drag starts */
+  onResizeStart?: () => void
+  /** Called when resize drag ends */
+  onResizeEnd?: () => void
 }
 
 function PanelResizeHandle({
@@ -27,6 +31,8 @@ function PanelResizeHandle({
   minWidth = 350,
   maxWidth = 800,
   side = 'right',
+  onResizeStart,
+  onResizeEnd,
 }: PanelResizeHandleProps) {
   const [isDragging, setIsDragging] = useState(false)
 
@@ -35,6 +41,7 @@ function PanelResizeHandle({
       if (!onWidthChange) return
       e.preventDefault()
       setIsDragging(true)
+      onResizeStart?.()
 
       const startX = e.clientX
       const startWidth = currentWidth
@@ -47,6 +54,7 @@ function PanelResizeHandle({
 
       const handleMouseUp = () => {
         setIsDragging(false)
+        onResizeEnd?.()
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
       }

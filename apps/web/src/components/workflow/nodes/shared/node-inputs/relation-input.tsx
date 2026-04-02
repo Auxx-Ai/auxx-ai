@@ -89,24 +89,18 @@ export const RelationInput = createNodeInput<RelationInputProps>(
     // Get current value from inputs
     const value = inputs[name] ?? ''
 
-    // Parse value to RecordId[] (handle RecordIds, plain IDs, and legacy formats)
+    // Parse value to RecordId[] (handle RecordIds, plain IDs, and arrays)
     const selectedRecordIds = useMemo(() => {
       if (!value || !targetResourceId) return []
+
+      if (Array.isArray(value)) {
+        return value.map((id: string) => (isRecordId(id) ? id : toRecordId(targetResourceId, id)))
+      }
+
       if (typeof value === 'string') {
-        try {
-          const parsed = JSON.parse(value)
-          if (parsed.referenceId) return toRecordIds(targetResourceId, [parsed.referenceId])
-          if (Array.isArray(parsed)) {
-            // Array may contain RecordIds or plain IDs
-            return parsed.map((id: string) =>
-              isRecordId(id) ? id : toRecordId(targetResourceId, id)
-            )
-          }
-        } catch {
-          // Single string value — either a RecordId or plain ID
-        }
         return [isRecordId(value) ? value : toRecordId(targetResourceId, value)]
       }
+
       return []
     }, [value, targetResourceId])
 
@@ -114,7 +108,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
     const handleChange = useCallback(
       (recordIds: RecordId[]) => {
         if (isMulti) {
-          onChange(name, recordIds.length > 0 ? JSON.stringify(recordIds) : '')
+          onChange(name, recordIds.length > 0 ? recordIds : '')
         } else {
           onChange(name, recordIds[0] ?? '')
         }

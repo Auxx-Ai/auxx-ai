@@ -40,6 +40,7 @@ import type {
 import { BaseType, NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { createResourceReference } from '../../types/resource-reference'
 import { BaseNodeProcessor } from '../base-node'
+import { parseRelationInput } from './relation-utils'
 
 /**
  * CRUD node data interface
@@ -165,37 +166,26 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           const updateMode = resolvedFieldUpdateModes[key] ?? RelationUpdateMode.REPLACE
           // Use dbColumn for system resources (e.g., thread.inboxId), field key for custom entities
           const outputKey = field.dbColumn || key
+          const ids = parseRelationInput(resolvedValue)
+
+          contextManager.log('DEBUG', node.name, 'CRUD preprocess relation field', {
+            fieldKey: key,
+            outputKey,
+            isMulti,
+            mode: config.mode,
+            inputType: Array.isArray(resolvedValue) ? 'array' : typeof resolvedValue,
+            parsedIds: ids,
+          })
 
           if (isMulti && config.mode === 'update') {
-            // Multi-relation: parse array and wrap with update mode
-            let ids: string[] = []
-            if (typeof resolvedValue === 'string') {
-              try {
-                const parsed = JSON.parse(resolvedValue)
-                ids = Array.isArray(parsed) ? parsed : parsed ? [parsed] : []
-              } catch {
-                ids = resolvedValue ? [resolvedValue] : []
-              }
-            } else if (Array.isArray(resolvedValue)) {
-              ids = resolvedValue
-            } else if (typeof resolvedValue === 'object' && resolvedValue !== null) {
-              const extractedId = resolvedValue.referenceId || resolvedValue.id || null
-              ids = extractedId ? [extractedId] : []
-            } else if (resolvedValue) {
-              ids = [String(resolvedValue)]
-            }
-            resolvedData[outputKey] = {
-              values: ids,
-              updateMode,
-            }
+            // Multi-relation update: wrap with update mode for add/remove/replace handling
+            resolvedData[outputKey] = { values: ids, updateMode }
+          } else if (isMulti) {
+            // Multi-relation create: pass array of IDs
+            resolvedData[outputKey] = ids
           } else {
-            // Single-relation or create mode: extract single ID
-            if (typeof resolvedValue === 'object' && resolvedValue !== null) {
-              const extractedId = resolvedValue.referenceId || resolvedValue.id || null
-              resolvedData[outputKey] = extractedId
-            } else {
-              resolvedData[outputKey] = resolvedValue || null
-            }
+            // Single-relation: take first ID
+            resolvedData[outputKey] = ids[0] ?? null
           }
         } else {
           resolvedData[key] = resolvedValue
