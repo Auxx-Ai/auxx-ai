@@ -5,6 +5,11 @@
 import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@auxx/ui/components/collapsible'
 import { Combobox } from '@auxx/ui/components/combobox'
 import { Input } from '@auxx/ui/components/input'
 import {
@@ -92,55 +97,64 @@ function QuickActionChip({
   const schema = quickActionSchemaCache.get(`${action.appId}:${action.actionId}`)
 
   return (
-    <div className='flex flex-col'>
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
       <div
         className={cn(
-          'group inline-flex items-center gap-1 rounded-md border bg-muted/50 px-2 py-1 text-xs',
-          disabled && 'opacity-50',
-          schema && !disabled && 'cursor-pointer'
-        )}
-        onClick={() => schema && !disabled && setExpanded(!expanded)}>
-        {schema && (
-          <span className='size-3 shrink-0 text-muted-foreground'>
-            {expanded ? <ChevronDown className='size-3' /> : <ChevronRight className='size-3' />}
+          'group inline-flex flex-col rounded-md border bg-muted/50 text-xs',
+          disabled && 'opacity-50'
+        )}>
+        <CollapsibleTrigger
+          disabled={!schema || disabled}
+          className={cn(
+            'inline-flex items-center gap-1 px-2 py-1',
+            schema && !disabled && 'cursor-pointer'
+          )}>
+          {schema && (
+            <span className='size-3 shrink-0 text-muted-foreground'>
+              {expanded ? <ChevronDown className='size-3' /> : <ChevronRight className='size-3' />}
+            </span>
+          )}
+
+          {action.display.color && (
+            <span
+              className='size-2 shrink-0 rounded-full'
+              style={{ backgroundColor: action.display.color }}
+            />
+          )}
+
+          <span className='max-w-48 truncate font-medium'>
+            {action.display.summary || action.display.label}
           </span>
-        )}
 
-        {action.display.color && (
-          <span
-            className='size-2 shrink-0 rounded-full'
-            style={{ backgroundColor: action.display.color }}
-          />
-        )}
+          {!disabled && (
+            <button
+              type='button'
+              className='ml-0.5 opacity-0 transition-opacity group-hover:opacity-100'
+              onClick={(e) => {
+                e.stopPropagation()
+                onRemove()
+              }}>
+              <X className='size-3' />
+            </button>
+          )}
+        </CollapsibleTrigger>
 
-        <span className='max-w-48 truncate font-medium'>
-          {action.display.summary || action.display.label}
-        </span>
-
-        {!disabled && (
-          <button
-            type='button'
-            className='ml-0.5 opacity-0 transition-opacity group-hover:opacity-100'
-            onClick={(e) => {
-              e.stopPropagation()
-              onRemove()
-            }}>
-            <X className='size-3' />
-          </button>
+        {schema && (
+          <CollapsibleContent className='overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down'>
+            <div className='px-2 pb-1.5 opacity-0 transition-opacity duration-200 delay-100 [[data-state=open]_&]:opacity-100 [[data-state=closed]_&]:opacity-0 [[data-state=closed]_&]:delay-0'>
+              <QuickActionForm
+                fields={schema.inputs}
+                values={action.inputs}
+                onChange={(inputs) => onUpdate(action.actionId, inputs)}
+                disabled={disabled}
+                popoverClassName={popoverClassName}
+                onPopoverOpenChange={onPopoverOpenChange}
+              />
+            </div>
+          </CollapsibleContent>
         )}
       </div>
-
-      {expanded && schema && (
-        <QuickActionForm
-          fields={schema.inputs}
-          values={action.inputs}
-          onChange={(inputs) => onUpdate(action.actionId, inputs)}
-          disabled={disabled}
-          popoverClassName={popoverClassName}
-          onPopoverOpenChange={onPopoverOpenChange}
-        />
-      )}
-    </div>
+    </Collapsible>
   )
 }
 
@@ -310,7 +324,7 @@ function QuickActionForm({
   if (entries.length === 0) return null
 
   return (
-    <div className='mt-1 flex flex-col gap-1.5 border-t pt-1.5'>
+    <div className='flex flex-col gap-1.5 border-t pt-1.5'>
       {entries.map(([key, field]) => (
         <QuickActionField
           key={key}
