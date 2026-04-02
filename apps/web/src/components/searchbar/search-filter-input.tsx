@@ -1,36 +1,51 @@
-// apps/web/src/components/mail/searchbar/search-filter-input.tsx
+// apps/web/src/components/searchbar/search-filter-input.tsx
 'use client'
 
-import { SEARCH_SCOPE_FIELD_ID } from '@auxx/lib/mail-views/client'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { useCallback, useRef } from 'react'
 import { ConditionBadge } from '~/components/conditions/components/condition-badge'
-import { useSearchStore } from './store'
+import type { SearchCondition } from './types'
 
 /**
  * Props for SearchFilterInput component
  */
 interface SearchFilterInputProps {
+  /** Conditions to render as badges */
+  conditions: SearchCondition[]
+  /** Field IDs to hide from badge display (e.g., scope field in mail) */
+  hiddenFieldIds?: Set<string>
+  /** Index of keyboard-highlighted badge, null = none */
+  highlightedIndex: number | null
+
+  // Callbacks
+  onUpdateCondition: (id: string, updates: Partial<SearchCondition>) => void
+  onRemoveCondition: (id: string) => void
+  onHighlightChange: (index: number | null) => void
+
+  // Input props
+  /** Ref to expose focus method */
+  inputRef?: React.RefObject<AutosizeInputRef | null>
+  /** Current input text value */
+  inputValue: string
   /** Callback when input text changes */
   onInputChange: (value: string) => void
   /** Callback for keyboard events on the input */
   onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
-  /** Current input text value */
-  inputValue: string
-  /** Whether to show the scope badge (even without store conditions) */
-  showScopeBadge?: boolean
+  /** Callback when input receives focus */
+  onFocus?: () => void
   /** Placeholder text when empty */
   placeholder?: string
   /** Additional CSS classes */
   className?: string
-  /** Ref to expose focus method */
-  inputRef?: React.RefObject<AutosizeInputRef | null>
-  /** Callback when input receives focus */
-  onFocus?: () => void
   /** Ref to the searchbar container — used to prevent badge popovers from closing when clicking inside the searchbar */
   searchBarRef?: React.RefObject<HTMLElement | null>
+
+  /** Field IDs that are pinned (non-removable, locked field selector). Shown with special styling. */
+  pinnedFieldIds?: Set<string>
+  /** Custom class for pinned/locked badges (e.g., scope badge styling) */
+  pinnedBadgeClassName?: string
 }
 
 /**
@@ -39,28 +54,26 @@ interface SearchFilterInputProps {
  * Requires ConditionProvider to be wrapped around the parent component.
  */
 export function SearchFilterInput({
+  conditions,
+  hiddenFieldIds,
+  highlightedIndex,
+  onUpdateCondition,
+  onRemoveCondition,
+  onHighlightChange,
+  inputRef: externalInputRef,
+  inputValue,
   onInputChange,
   onInputKeyDown,
-  inputValue,
-  showScopeBadge = false,
+  onFocus,
   placeholder = 'Search...',
   className,
-  inputRef: externalInputRef,
-  onFocus,
   searchBarRef,
+  pinnedFieldIds,
+  pinnedBadgeClassName,
 }: SearchFilterInputProps) {
   const internalInputRef = useRef<AutosizeInputRef>(null)
   const inputRef = externalInputRef || internalInputRef
   const containerRef = useRef<HTMLDivElement>(null)
-
-  // Get conditions from store
-  const conditions = useSearchStore((s) => s.conditions)
-  const highlightedIndex = useSearchStore((s) => s.highlightedIndex)
-
-  // Actions
-  const setHighlightedIndex = useSearchStore((s) => s.setHighlightedIndex)
-  const removeCondition = useSearchStore((s) => s.removeCondition)
-  const updateCondition = useSearchStore((s) => s.updateCondition)
 
   /** Check if a dismiss target is inside the searchbar boundary */
   const shouldPreventDismiss = useCallback(
@@ -94,41 +107,44 @@ export function SearchFilterInput({
   /** Handle input keydown for badge navigation */
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      console.log('[SearchFilterInput] keydown:', e.key, {
-        inputValue,
-        conditionsCount: conditions.length,
-        highlightedIndex,
-        defaultPrevented: e.defaultPrevented,
-      })
-
-      // Backspace on empty input — skip scope condition
+      // Backspace on empty input — skip hidden conditions
       if (e.key === 'Backspace' && inputValue === '' && conditions.length > 0) {
-        const lastRealIndex = conditions.findLastIndex((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
-        if (lastRealIndex === -1) return // Only scope condition left
+        const lastVisibleIndex = conditions.findLastIndex((c) => !hiddenFieldIds?.has(c.fieldId))
+        if (lastVisibleIndex === -1) return // No visible conditions
 
         e.preventDefault()
-        if (highlightedIndex === lastRealIndex) {
+        if (highlightedIndex === lastVisibleIndex) {
           // Second backspace: delete highlighted condition
-          removeCondition(conditions[highlightedIndex].id)
-          setHighlightedIndex(null)
+          onRemoveCondition(conditions[highlightedIndex].id)
+          onHighlightChange(null)
         } else {
-          // First backspace: highlight last real condition
-          setHighlightedIndex(lastRealIndex)
+          // First backspace: highlight last visible condition
+          onHighlightChange(lastVisibleIndex)
         }
         return
       }
 
       // Clear highlight when typing
       if (highlightedIndex !== null && e.key.length === 1) {
-        setHighlightedIndex(null)
+        onHighlightChange(null)
       }
 
       // Forward to parent for suggestion navigation
-      console.log('[SearchFilterInput] forwarding to parent, defaultPrevented:', e.defaultPrevented)
       onInputKeyDown(e)
     },
-    [inputValue, conditions, highlightedIndex, removeCondition, setHighlightedIndex, onInputKeyDown]
+    [
+      inputValue,
+      conditions,
+      hiddenFieldIds,
+      highlightedIndex,
+      onRemoveCondition,
+      onHighlightChange,
+      onInputKeyDown,
+    ]
   )
+
+  // Check if there are any visible non-hidden conditions
+  const hasVisibleConditions = conditions.some((c) => !hiddenFieldIds?.has(c.fieldId))
 
   return (
     <ScrollArea
@@ -141,21 +157,21 @@ export function SearchFilterInput({
         className='flex items-center gap-1 h-8 cursor-text pt-0.5'>
         {/* Condition badges - full editable badges with field/operator/value/remove */}
         {conditions.map((condition, index) => {
-          const isScopeBadge = condition.fieldId === SEARCH_SCOPE_FIELD_ID
-          // Hide scope badge when showScopeBadge is false
-          if (isScopeBadge && !showScopeBadge) return null
+          if (hiddenFieldIds?.has(condition.fieldId)) return null
+
+          const isPinned = pinnedFieldIds?.has(condition.fieldId)
           return (
             <ConditionBadge
               key={condition.id}
               condition={condition}
               isHighlighted={highlightedIndex === index}
-              showRemoveButton={!isScopeBadge}
-              lockField={isScopeBadge}
+              showRemoveButton={!isPinned}
+              lockField={isPinned}
               shouldPreventDismiss={shouldPreventDismiss}
-              className={isScopeBadge ? 'bg-accent/30 border-accent/40' : undefined}
-              onUpdate={(updates) => updateCondition(condition.id, updates)}
+              className={isPinned ? pinnedBadgeClassName : undefined}
+              onUpdate={(updates) => onUpdateCondition(condition.id, updates)}
               onRemove={() => {
-                removeCondition(condition.id)
+                onRemoveCondition(condition.id)
                 inputRef.current?.focus()
               }}
             />
@@ -169,11 +185,7 @@ export function SearchFilterInput({
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={handleInputKeyDown}
           onFocus={onFocus}
-          placeholder={
-            !conditions.some((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID) && !showScopeBadge
-              ? placeholder
-              : ''
-          }
+          placeholder={!hasVisibleConditions ? placeholder : ''}
           minWidth={100}
           inputClassName='bg-transparent outline-none text-sm'
         />

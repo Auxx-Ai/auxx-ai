@@ -8,8 +8,8 @@ import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
+import type { SearchCondition } from '~/components/searchbar/types'
 import { ItemsListView } from '~/components/ui/items-list-view'
-import type { SearchCondition } from './store'
 
 interface RecentSearchDisplayProps {
   conditions: SearchCondition[]

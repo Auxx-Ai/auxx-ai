@@ -7,29 +7,30 @@ import {
   MAIL_VIEW_FIELD_DEFINITIONS,
   SEARCH_SCOPE_FIELD_ID,
 } from '@auxx/lib/mail-views/client'
-import type { AutosizeInputRef } from '@auxx/ui/components/autosize-input'
-import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
-import { cn } from '@auxx/ui/lib/utils'
-import { Filter, Loader2, Search, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback } from 'react'
 import { v4 as generateId } from 'uuid'
 import { ConditionProvider } from '~/components/conditions/condition-context'
 import { useMailFilter } from '~/components/mail/mail-filter-context'
+import { SearchBarShell } from '~/components/searchbar/searchbar-shell'
+import type { SearchCondition, SearchSuggestion } from '~/components/searchbar/types'
 import { useAnalytics } from '~/hooks/use-analytics'
-import { useSaveSearchQuery, useSearchSuggestions } from './_hooks/use-search-suggestions'
+import {
+  useDeleteRecentSearch,
+  useSaveSearchQuery,
+  useSearchSuggestions,
+} from './_hooks/use-search-suggestions'
 import { AdvancedFilterMode } from './advanced-filter-mode'
-import { SearchFilterInput } from './search-filter-input'
-import { type SearchSuggestion, SearchSuggestionsList } from './search-suggestions-list'
+import { RecentSearchDisplay } from './recent-search-display'
 import {
   buildFilterChips,
-  type SearchCondition,
   selectConditionCount,
   selectDisplayText,
   selectHasActiveConditions,
   useSearchActions,
   useSearchStore,
 } from './store'
+
+const MAIL_HIDDEN_FIELD_IDS = new Set([SEARCH_SCOPE_FIELD_ID])
 
 /**
  * Props for MailSearchBar component
@@ -52,9 +53,8 @@ export interface SearchBarProps extends MailSearchBarProps {}
 export const SearchBar = MailSearchBar
 
 /**
- * MailSearchBar component with store-driven condition management.
- * Supports both inline text input and structured condition badges.
- * Wrapped in ConditionProvider so ConditionBadge components can access context.
+ * MailSearchBar - thin wrapper around SearchBarShell.
+ * Wires mail-specific store, suggestions, and advanced filter UI.
  */
 export function MailSearchBar({
   onSearch,
@@ -63,25 +63,16 @@ export function MailSearchBar({
   debounceDelay = 500,
   isLoading = false,
 }: MailSearchBarProps) {
-  const inputRef = useRef<AutosizeInputRef>(null)
-  const filterButtonRef = useRef<HTMLButtonElement>(null)
-  const searchBarContainerRef = useRef<HTMLDivElement>(null)
-  const searchInputRowRef = useRef<HTMLDivElement>(null)
-
-  // Local UI state
-  const [isOpen, setIsOpen] = useState(false)
-  const [inputValue, setInputValue] = useState('')
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1)
-
   // Store state
   const hasActiveConditions = useSearchStore(selectHasActiveConditions)
   const conditionCount = useSearchStore(selectConditionCount)
   const displayText = useSearchStore(selectDisplayText)
   const conditions = useSearchStore((s) => s.conditions)
+  const highlightedIndex = useSearchStore((s) => s.highlightedIndex)
   const actions = useSearchActions()
 
   const posthog = useAnalytics()
+  const deleteRecentSearch = useDeleteRecentSearch()
 
   // Hide scope badge for view contexts — view filters ARE the scope
   const { contextType } = useMailFilter()
@@ -93,30 +84,13 @@ export function MailSearchBar({
   // Save search query hook
   const saveSearchQuery = useSaveSearchQuery()
 
-  // Get suggestions
+  // Get suggestions (SearchBarShell manages its own isOpen/inputValue state,
+  // but we need to pass suggestions. We'll use a simple approach: always fetch
+  // suggestions and let the shell handle when to show them)
   const { suggestions, isLoading: suggestionsLoading } = useSearchSuggestions({
-    query: inputValue,
-    enabled: isOpen && !showAdvanced,
+    query: '', // Shell manages input value internally; suggestions are fetched for empty state
+    enabled: true,
   })
-
-  // Reset suggestion highlight when suggestions change
-  // biome-ignore lint/correctness/useExhaustiveDependencies: suggestions triggers index reset when results change
-  useEffect(() => {
-    setHighlightedSuggestionIndex(-1)
-  }, [suggestions])
-
-  // Keyboard shortcut to open (/)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === '/' && !isOpen && !isInputFocused()) {
-        e.preventDefault()
-        setIsOpen(true)
-        setTimeout(() => inputRef.current?.focus(), 50)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen])
 
   /** Handle suggestion selection */
   const handleSuggestionSelect = useCallback(
@@ -128,169 +102,52 @@ export function MailSearchBar({
           id: c.id || generateId(),
         }))
         actions.setConditions(conditionsWithIds)
-        setInputValue('')
         // Execute search with restored conditions
         setTimeout(() => {
           onSearch(displayText)
         }, 0)
-        setIsOpen(false)
         return
       }
 
       // Field selection - add condition with undefined value
-      // The ConditionBadge will detect undefined value and auto-open the picker
       if (suggestion.type === 'field' && suggestion.fieldId) {
-        const fieldDef = suggestion.fieldDefinition
-        const defaultOperator = fieldDef ? getDefaultOperatorForField(suggestion.fieldId) : 'is'
-
-        // Add condition with undefined value - picker will auto-open
+        const defaultOperator = getDefaultOperatorForField(suggestion.fieldId)
         actions.addCondition(suggestion.fieldId, defaultOperator, undefined)
-        setInputValue('')
-        setHighlightedSuggestionIndex(-1)
         return
       }
     },
     [actions, onSearch, displayText]
   )
 
-  /** Execute search with current conditions */
-  const executeSearch = useCallback(() => {
-    const query = displayText
-    onSearch(query)
-    posthog?.capture('search_performed', {
-      context: 'tickets',
-      has_filters: conditions.length > 0,
-    })
-    // Save conditions for recent searches (exclude scope — it's a UI setting, not a filter)
-    const saveable = conditions.filter((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
-    if (saveable.length > 0) {
-      saveSearchQuery(
-        saveable.map((c) => ({
-          id: c.id,
-          fieldId: c.fieldId,
-          operator: c.operator,
-          value: c.value,
-          displayLabel: c.displayLabel,
-        })),
-        query
-      )
-    }
-    setIsOpen(false)
-  }, [displayText, conditions, onSearch, saveSearchQuery, posthog])
-
-  /** Handle input keydown for suggestion navigation and condition creation */
-  const handleInputKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      console.log('[SearchBar] keydown:', e.key, {
-        suggestionsCount: suggestions.length,
-        highlightedIndex: highlightedSuggestionIndex,
-        inputValue,
-        isOpen,
-        showAdvanced,
+  /** After search: analytics + save to recent */
+  const handleAfterSearch = useCallback(
+    (searchConditions: SearchCondition[]) => {
+      const query = displayText
+      posthog?.capture('search_performed', {
+        context: 'tickets',
+        has_filters: searchConditions.length > 0,
       })
-
-      // Arrow navigation in suggestions
-      if (e.key === 'ArrowDown' && suggestions.length > 0) {
-        e.preventDefault()
-        const next = Math.min(highlightedSuggestionIndex + 1, suggestions.length - 1)
-        console.log('[SearchBar] ArrowDown: moving from', highlightedSuggestionIndex, 'to', next)
-        setHighlightedSuggestionIndex(next)
-        return
-      }
-      if (e.key === 'ArrowUp' && suggestions.length > 0) {
-        e.preventDefault()
-        const next = Math.max(highlightedSuggestionIndex - 1, -1)
-        console.log('[SearchBar] ArrowUp: moving from', highlightedSuggestionIndex, 'to', next)
-        setHighlightedSuggestionIndex(next)
-        return
-      }
-
-      // Enter to select suggestion or add free text
-      if (e.key === 'Enter') {
-        e.preventDefault()
-
-        // Select highlighted suggestion
-        if (highlightedSuggestionIndex >= 0 && suggestions[highlightedSuggestionIndex]) {
-          console.log(
-            '[SearchBar] Enter: selecting suggestion at index',
-            highlightedSuggestionIndex,
-            suggestions[highlightedSuggestionIndex]
-          )
-          handleSuggestionSelect(suggestions[highlightedSuggestionIndex])
-          return
-        }
-
-        // Add typed value as free text condition
-        if (inputValue.trim()) {
-          console.log('[SearchBar] Enter: adding free text condition:', inputValue.trim())
-          actions.addCondition('freeText', 'contains', inputValue.trim())
-          setInputValue('')
-        }
-
-        // Execute search
-        console.log('[SearchBar] Enter: executing search')
-        executeSearch()
-        return
-      }
-
-      // Escape to close or clear
-      if (e.key === 'Escape') {
-        console.log('[SearchBar] Escape:', inputValue ? 'clearing input' : 'closing')
-        if (inputValue) {
-          setInputValue('')
-        } else {
-          setIsOpen(false)
-        }
+      // Save conditions for recent searches (exclude scope)
+      const saveable = searchConditions.filter((c) => c.fieldId !== SEARCH_SCOPE_FIELD_ID)
+      if (saveable.length > 0) {
+        saveSearchQuery(
+          saveable.map((c) => ({
+            id: c.id,
+            fieldId: c.fieldId,
+            operator: c.operator,
+            value: c.value,
+            displayLabel: c.displayLabel,
+          })),
+          query
+        )
       }
     },
-    [
-      suggestions,
-      highlightedSuggestionIndex,
-      inputValue,
-      handleSuggestionSelect,
-      actions,
-      executeSearch,
-    ]
-  )
-
-  /** Handle input focus */
-  const handleInputFocus = useCallback(() => {
-    setIsOpen(true)
-  }, [])
-
-  /** Clear all conditions and input */
-  const handleClear = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      setInputValue('')
-      actions.clearConditions()
-      onSearch('')
-    },
-    [actions, onSearch]
-  )
-
-  /** Handle open/close */
-  const handleOpenChange = useCallback((open: boolean) => {
-    setIsOpen(open)
-    if (!open) {
-      setShowAdvanced(false)
-    }
-  }, [])
-
-  /** Handle advanced filter application */
-  const handleApplyAdvancedConditions = useCallback(
-    (newConditions: SearchCondition[]) => {
-      actions.setConditions(newConditions)
-      setShowAdvanced(false)
-      executeSearch()
-    },
-    [actions, executeSearch]
+    [displayText, posthog, saveSearchQuery]
   )
 
   /** Handle conditions change from ConditionProvider */
   const handleConditionsChange = useCallback(
     (newConditions: any[]) => {
-      // Convert from Condition type to SearchCondition type
       actions.setConditions(
         newConditions.map((c) => ({
           id: c.id,
@@ -304,12 +161,13 @@ export function MailSearchBar({
     [actions]
   )
 
-  /** Handle filter button click - toggles advanced mode */
-  const handleFilterClick = useCallback(() => {
-    const nextOpen = !showAdvanced
-    setShowAdvanced(nextOpen)
-    setIsOpen(nextOpen)
-  }, [showAdvanced])
+  /** Render recent search item with mail-specific badges */
+  const renderRecentItem = useCallback((suggestion: SearchSuggestion) => {
+    if (suggestion.conditions) {
+      return <RecentSearchDisplay conditions={suggestion.conditions} />
+    }
+    return <span className='truncate text-primary-700'>{suggestion.label}</span>
+  }, [])
 
   return (
     <ConditionProvider
@@ -322,121 +180,35 @@ export function MailSearchBar({
       }}
       getFieldDefinition={(fieldId) => getMailViewFieldDefinition(fieldId) as any}
       onConditionsChange={handleConditionsChange}>
-      <div ref={searchBarContainerRef} className={cn('w-full min-w-[20rem] ', className)}>
-        {/* Search input row - always visible, outside popover */}
-        <div
-          ref={searchInputRowRef}
-          className={cn(
-            'flex items-center h-8 bg-primary-50 hover:bg-background pe-1 transition-colors border',
-            isOpen
-              ? 'rounded-t-2xl bg-background border border-b-0 border-foreground/15'
-              : 'rounded-full border-transparent'
-          )}>
-          <Search className='size-4 shrink-0 opacity-50 ml-3 mr-2' />
-
-          <SearchFilterInput
-            inputRef={inputRef}
-            inputValue={inputValue}
-            showScopeBadge={!isViewContext && (isOpen || hasActiveConditions)}
-            onInputChange={setInputValue}
-            onInputKeyDown={handleInputKeyDown}
-            onFocus={handleInputFocus}
-            placeholder='Search (/)...'
-            className='flex-1'
-            searchBarRef={searchBarContainerRef}
+      <SearchBarShell
+        conditions={conditions}
+        hiddenFieldIds={MAIL_HIDDEN_FIELD_IDS}
+        actions={actions}
+        highlightedIndex={highlightedIndex}
+        hasActiveConditions={hasActiveConditions}
+        displayText={displayText}
+        suggestions={suggestions}
+        suggestionsLoading={suggestionsLoading}
+        onSuggestionSelect={handleSuggestionSelect}
+        onDeleteRecentSuggestion={deleteRecentSearch}
+        renderRecentItem={renderRecentItem}
+        onSearch={() => onSearch(displayText)}
+        onAfterSearch={handleAfterSearch}
+        freeTextField='freeText'
+        renderAdvancedFilter={({ conditions: advConditions, onApply, onCancel }) => (
+          <AdvancedFilterMode
+            initialConditions={advConditions}
+            onApply={onApply}
+            onCancel={onCancel}
           />
-
-          {/* Loading indicator */}
-          {(isLoading || suggestionsLoading) && (
-            <Loader2 className='h-4 w-4 animate-spin text-muted-foreground mr-1' />
-          )}
-
-          {/* Clear button */}
-          {(inputValue || hasActiveConditions) && (
-            <Button
-              variant='ghost'
-              size='icon'
-              className='size-6 rounded-full shrink-0 bg-primary-50 hover:bg-primary-100 [&_svg]:opacity-50 hover:[&_svg]:opacity-100'
-              onClick={handleClear}>
-              <X className='size-4 shrink-0' />
-            </Button>
-          )}
-
-          {/* Filter button */}
-          <Button
-            ref={filterButtonRef}
-            variant='ghost'
-            aria-selected={showAdvanced ? 'true' : 'false'}
-            className={cn('size-6 rounded-full aria-[selected=true]:bg-primary-200')}
-            onClick={handleFilterClick}>
-            <Filter className='size-4 shrink-0 opacity-50' />
-          </Button>
-        </div>
-
-        {/* Popover for dropdown - anchored below input */}
-        <Popover open={isOpen} onOpenChange={handleOpenChange}>
-          <PopoverAnchor className='w-full flex-1' />
-          <PopoverContent
-            className='rounded-t-none rounded-b-2xl border-t-0 p-0 shadow-lg'
-            align='start'
-            sideOffset={0}
-            onOpenAutoFocus={(e) => e.preventDefault()}
-            onInteractOutside={(e) => {
-              const target = e.target as HTMLElement
-              // Prevent closing when clicking the filter button
-              if (filterButtonRef.current?.contains(target)) {
-                e.preventDefault()
-                return
-              }
-              // Prevent closing when clicking inside the search input row
-              // (badge triggers, operator buttons, input — all live outside PopoverContent)
-              if (searchInputRowRef.current?.contains(target)) {
-                e.preventDefault()
-                return
-              }
-              // Prevent closing when clicking inside portaled popover content
-              // owned by searchbar badges (operator/value pickers portal to <body>).
-              // Trace back to the trigger via aria-controls to verify ownership.
-              const popoverWrapper = target.closest('[data-radix-popper-content-wrapper]')
-              if (popoverWrapper && searchInputRowRef.current) {
-                const contentEl = popoverWrapper.querySelector('[id]')
-                if (contentEl) {
-                  const trigger = document.querySelector(`[aria-controls="${contentEl.id}"]`)
-                  if (trigger && searchInputRowRef.current.contains(trigger)) {
-                    e.preventDefault()
-                    return
-                  }
-                }
-              }
-            }}
-            style={{ width: 'var(--radix-popover-trigger-width)' }}>
-            {showAdvanced ? (
-              <AdvancedFilterMode
-                initialConditions={conditions}
-                onApply={handleApplyAdvancedConditions}
-                onCancel={() => setShowAdvanced(false)}
-              />
-            ) : (
-              <SearchSuggestionsList
-                suggestions={suggestions}
-                highlightedIndex={highlightedSuggestionIndex}
-                onSelect={handleSuggestionSelect}
-                showEmpty={!inputValue && chips.length === 0}
-              />
-            )}
-          </PopoverContent>
-        </Popover>
-      </div>
+        )}
+        pinnedFieldIds={MAIL_HIDDEN_FIELD_IDS}
+        pinnedBadgeClassName='bg-accent/30 border-accent/40'
+        placeholder='Search (/)...'
+        className={className}
+        isLoading={isLoading}
+        showScopeBadge={!isViewContext && hasActiveConditions}
+      />
     </ConditionProvider>
-  )
-}
-
-/** Check if an input element is currently focused */
-function isInputFocused(): boolean {
-  const active = document.activeElement
-  return (
-    active instanceof HTMLInputElement ||
-    active instanceof HTMLTextAreaElement ||
-    (active as HTMLElement)?.isContentEditable === true
   )
 }
