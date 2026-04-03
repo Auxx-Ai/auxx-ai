@@ -58,6 +58,10 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
   // Track the current streaming message ID so llm-complete can commit it
   const streamingMessageIdRef = useRef<string | null>(null)
 
+  // Track whether the responder committed a message in this pipeline run.
+  // When false, the `message` event acts as a fallback to commit the response.
+  const responderCommittedRef = useRef(false)
+
   /** Get the ID of the last visible message (current leaf of the active branch) */
   const getCurrentLeafId = useCallback((): string | null => {
     const { messages } = useKopilotStore.getState()
@@ -74,6 +78,7 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
         case 'pipeline-started': {
           setCurrentRoute(data.route)
           setIsStreaming(true)
+          responderCommittedRef.current = false
           break
         }
         case 'agent-started': {
@@ -98,9 +103,12 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           if (data.agent === 'executor') {
             commitThinkingText()
           } else if (data.agent === 'responder') {
-            // Commit accumulated streaming content as a new assistant message
+            // Commit the assistant message using the authoritative content from the
+            // server event, falling back to the accumulated streaming deltas.
             const store = useKopilotStore.getState()
-            const content = store.stream.streamingContent
+            const content = data.content || store.stream.streamingContent
+            const leafId = getCurrentLeafId()
+
             if (content) {
               const msgId = streamingMessageIdRef.current || generateId()
               addMessage({
@@ -108,9 +116,10 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
                 role: 'assistant',
                 content,
                 timestamp: Date.now(),
-                parentId: getCurrentLeafId(),
+                parentId: leafId,
               })
               attachThinkingGroupToMessage(msgId)
+              responderCommittedRef.current = true
             }
             streamingMessageIdRef.current = null
             clearStream()
@@ -187,8 +196,22 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           break
         }
         case 'message': {
-          // Intentionally ignored — llm-complete already commits assistant messages.
-          // This event is a server-side summary that duplicates streamed content.
+          // Fallback: if the responder never ran (e.g. executor hit max iterations
+          // or pipeline errored), this event carries the final assistant content.
+          if (!responderCommittedRef.current && data.content) {
+            const msgId = generateId()
+            finalizeThinkingGroup()
+            addMessage({
+              id: msgId,
+              role: 'assistant',
+              content: data.content,
+              timestamp: Date.now(),
+              parentId: getCurrentLeafId(),
+            })
+            attachThinkingGroupToMessage(msgId)
+            responderCommittedRef.current = true
+            clearStream()
+          }
           break
         }
         case 'pipeline-error': {
@@ -241,6 +264,9 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
       setSSEConfig(null)
       return
     }
+
+    // Show status bar immediately — don't wait for server's pipeline-started event
+    setIsStreaming(true)
 
     setSSEConfig({
       url: '/api/kopilot/stream',

@@ -8,7 +8,7 @@ export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefiniti
   return {
     name: 'list_entities',
     description:
-      'List available entity types in this workspace (contacts, tickets, companies, custom entities, etc.). Call this first to discover what entity types exist before searching or modifying records.',
+      'Discover what entity TYPES exist in this workspace (e.g. Contact, Ticket, Company, custom entities). Returns type metadata, NOT individual records. Use search_entities to find specific records.',
     parameters: {
       type: 'object',
       properties: {

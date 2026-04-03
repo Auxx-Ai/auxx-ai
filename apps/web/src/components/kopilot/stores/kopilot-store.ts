@@ -40,6 +40,10 @@ export interface KopilotMessage {
   timestamp: number
   /** Parent message ID — null for root messages */
   parentId: string | null
+  /** Agent metadata — identifies which agent produced this message */
+  metadata?: { agent?: string }
+  /** Tool calls on assistant messages (used for tool call lookup + executor detection) */
+  toolCalls?: Array<{ id: string; function: { name: string; arguments: unknown } }>
   /** Tool call metadata (for tool messages) */
   tool?: {
     name: string
@@ -125,11 +129,23 @@ function rebuildTree(messages: KopilotMessage[]): {
   return { messageMap, childrenMap, activeBranch }
 }
 
+/** Page context pushed by the active page so KopilotDock knows what's on-screen */
+export interface KopilotPageContext {
+  page: string
+  [key: string]: unknown
+}
+
 interface KopilotState {
   // Panel
   panelOpen: boolean
   setPanelOpen: (open: boolean) => void
   togglePanel: () => void
+  panelWidth: number
+  setPanelWidth: (width: number) => void
+
+  // Page context — set by the active page, read by KopilotDock
+  context: KopilotPageContext | null
+  setContext: (context: KopilotPageContext | null) => void
 
   // Session — null means "new session" (not yet created on server)
   activeSessionId: string | null
@@ -195,6 +211,19 @@ const initialStreamState: KopilotStreamState = {
   activeTools: [],
 }
 
+/**
+ * Detect executor assistant messages — these should be hidden from the visible
+ * message list and only used for thinking step reconstruction.
+ */
+export function isExecutorAssistant(m: KopilotMessage): boolean {
+  // Tagged messages (new sessions after this fix)
+  if (m.role === 'assistant' && m.metadata?.agent === 'executor') return true
+  // Untagged messages (old sessions) — assistant with toolCalls = executor
+  if (m.role === 'assistant' && !m.metadata?.agent && m.toolCalls && m.toolCalls.length > 0)
+    return true
+  return false
+}
+
 const emptyTreeState = {
   messageMap: {} as Record<string, KopilotMessage>,
   childrenMap: {} as Record<string, string[]>,
@@ -209,6 +238,12 @@ export const useKopilotStore = create<KopilotState>()(
       panelOpen: false,
       setPanelOpen: (panelOpen) => set({ panelOpen }),
       togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
+      panelWidth: 420,
+      setPanelWidth: (panelWidth) => set({ panelWidth }),
+
+      // Page context
+      context: null,
+      setContext: (context) => set({ context }),
 
       // Session
       activeSessionId: null,
@@ -478,14 +513,37 @@ export const useKopilotStore = create<KopilotState>()(
           }
         }),
 
-      reconstructThinkingGroups: (messages) =>
+      reconstructThinkingGroups: (allMessages) =>
         set(() => {
           const groups: Record<string, ThinkingGroup> = {}
           let currentGroup: ThinkingGroup | null = null
+          let pendingThinking = ''
 
-          for (const msg of messages) {
+          for (const msg of allMessages) {
+            if (msg.role === 'user') {
+              currentGroup = null
+              pendingThinking = ''
+              continue
+            }
+
+            // Executor assistant message — extract thinking text
+            if (isExecutorAssistant(msg)) {
+              if (!currentGroup) {
+                currentGroup = {
+                  id: generateId(),
+                  steps: [],
+                  status: 'completed',
+                  pendingThinking: '',
+                }
+              }
+              if (msg.content?.trim()) {
+                pendingThinking = msg.content.trim()
+              }
+              continue
+            }
+
+            // Tool message — add as a step
             if (msg.role === 'tool' && msg.tool) {
-              // Start a new group if we don't have one
               if (!currentGroup) {
                 currentGroup = {
                   id: generateId(),
@@ -497,6 +555,7 @@ export const useKopilotStore = create<KopilotState>()(
               const { summary, entities } = summarizeToolResult(msg.tool.name, msg.tool.result)
               currentGroup.steps.push({
                 id: generateId(),
+                thinking: pendingThinking || undefined,
                 tool: {
                   name: msg.tool.name,
                   args: msg.tool.args,
@@ -505,14 +564,18 @@ export const useKopilotStore = create<KopilotState>()(
                   entities,
                 },
               })
-            } else if (msg.role === 'assistant' && currentGroup) {
-              // Attach the current group to this assistant message
-              currentGroup.messageId = msg.id
-              groups[currentGroup.id] = currentGroup
+              pendingThinking = ''
+              continue
+            }
+
+            // Responder assistant message — attach group and finalize
+            if (msg.role === 'assistant' && !isExecutorAssistant(msg)) {
+              if (currentGroup && currentGroup.steps.length > 0) {
+                currentGroup.messageId = msg.id
+                groups[currentGroup.id] = currentGroup
+              }
               currentGroup = null
-            } else if (msg.role === 'user') {
-              // Reset — discard any orphaned group
-              currentGroup = null
+              pendingThinking = ''
             }
           }
 
@@ -543,6 +606,7 @@ export const useKopilotStore = create<KopilotState>()(
       partialize: (state) => ({
         panelOpen: state.panelOpen,
         activeSessionId: state.activeSessionId,
+        panelWidth: state.panelWidth,
       }),
     }
   )

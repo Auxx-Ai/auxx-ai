@@ -1,6 +1,7 @@
 // apps/web/src/components/kopilot/ui/messages/assistant-message.tsx
 
 import { Sparkles } from 'lucide-react'
+import { useMemo } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { KopilotMessage, ThinkingGroup } from '../../stores/kopilot-store'
@@ -44,6 +45,20 @@ export function AssistantMessage({
       : undefined
   const group: ThinkingGroup | undefined = thinkingGroup ?? activeGroup
 
+  // Memoize components so react-markdown can reconcile without remounting blocks
+  const markdownComponents = useMemo(
+    () => ({
+      code({ className, children }: { className?: string; children?: React.ReactNode }) {
+        const match = className?.match(/^language-auxx:(.+)$/)
+        if (match) {
+          return <AuxxBlock type={match[1]} rawContent={String(children).trim()} />
+        }
+        return <code className={className}>{children}</code>
+      },
+    }),
+    []
+  )
+
   return (
     <div className='group/message flex gap-2'>
       <div className='animate-hue-rotate relative size-fit'>
@@ -55,17 +70,7 @@ export function AssistantMessage({
       <div className='min-w-0 flex-1 space-y-1'>
         {group && group.steps.length > 0 && <ThinkingSteps group={group} />}
         <div className='prose prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1 max-w-none text-sm dark:prose-invert'>
-          <Markdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code({ className, children }) {
-                const match = className?.match(/^language-auxx:(.+)$/)
-                if (match) {
-                  return <AuxxBlock type={match[1]} rawContent={String(children).trim()} />
-                }
-                return <code className={className}>{children}</code>
-              },
-            }}>
+          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {isStreaming ? `${content}\u258C` : content}
           </Markdown>
         </div>

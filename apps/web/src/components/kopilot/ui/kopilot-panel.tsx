@@ -14,7 +14,7 @@ import { useKopilotSessions, useLoadSession } from '../hooks/use-kopilot-session
 import { type KopilotRequest, useKopilotSSE } from '../hooks/use-kopilot-sse'
 import { useKopilotStore } from '../stores/kopilot-store'
 import './blocks/register-blocks'
-import { KopilotComposer } from './kopilot-composer'
+import { KopilotComposer, type KopilotComposerHandle } from './kopilot-composer'
 import { KopilotMessageList } from './kopilot-message-list'
 import { KopilotStatusBar } from './kopilot-status-bar'
 
@@ -34,6 +34,7 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
   const messages = useKopilotStore((s) => s.messages)
   const setMessageFeedback = useKopilotStore((s) => s.setMessageFeedback)
 
+  const composerRef = useRef<KopilotComposerHandle>(null)
   const [pendingRequest, setPendingRequest] = useState<KopilotRequest | null>(null)
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false)
 
@@ -137,8 +138,13 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
   )
 
   const handleNewSession = useCallback(() => {
+    console.log('[KopilotPanel] handleNewSession, composerRef:', !!composerRef.current)
     startNewSession()
     setSessionPickerOpen(false)
+    requestAnimationFrame(() => {
+      console.log('[KopilotPanel] rAF fired, composerRef:', !!composerRef.current)
+      composerRef.current?.focus()
+    })
   }, [startNewSession])
 
   const handleOptionsChange = useCallback(
@@ -193,8 +199,8 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
                 onSelectSingle={handleSessionSelect}
                 canManage={true}
                 canAdd={false}
-                manageLabel='Manage sessions'
-                placeholder='Search sessions...'
+                manageLabel='Manage chats'
+                placeholder='Search chats...'
                 isLoading={isLoadingSessions}
                 onOptionsChange={handleOptionsChange}
               />
@@ -216,7 +222,7 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
         onFeedback={handleFeedback}
       />
       <KopilotStatusBar />
-      <KopilotComposer page={page} context={context} onSend={handleSend} />
+      <KopilotComposer ref={composerRef} page={page} context={context} onSend={handleSend} />
     </div>
   )
 }

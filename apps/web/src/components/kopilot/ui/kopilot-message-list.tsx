@@ -5,6 +5,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { ArrowDown, Sparkles } from 'lucide-react'
+import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { useKopilotStore } from '../stores/kopilot-store'
@@ -151,17 +152,22 @@ export function KopilotMessageList({
           if (message.approval) {
             const ApprovalCard = getApprovalCard(message.approval.toolName) ?? GenericApprovalCard
             messageEl = (
-              <ApprovalCard
-                key={message.id}
-                toolName={message.approval.toolName}
-                toolCallId={message.approval.toolCallId}
-                args={message.approval.args}
-                status={message.approval.status}
-                onApprove={(inputAmendment) =>
-                  handleApproval(message.id, 'approved', inputAmendment)
-                }
-                onReject={() => handleApproval(message.id, 'rejected')}
-              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
+                <ApprovalCard
+                  key={message.id}
+                  toolName={message.approval.toolName}
+                  toolCallId={message.approval.toolCallId}
+                  args={message.approval.args}
+                  status={message.approval.status}
+                  onApprove={(inputAmendment) =>
+                    handleApproval(message.id, 'approved', inputAmendment)
+                  }
+                  onReject={() => handleApproval(message.id, 'rejected')}
+                />
+              </motion.div>
             )
           } else {
             switch (message.role) {

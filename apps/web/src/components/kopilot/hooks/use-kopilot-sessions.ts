@@ -1,10 +1,11 @@
 // apps/web/src/components/kopilot/hooks/use-kopilot-sessions.ts
 
 import type { SelectOption } from '@auxx/types/custom-field'
+import { generateId } from '@auxx/utils/generateId'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
 import type { KopilotMessage } from '../stores/kopilot-store'
-import { useKopilotStore } from '../stores/kopilot-store'
+import { isExecutorAssistant, useKopilotStore } from '../stores/kopilot-store'
 
 export function useKopilotSessions() {
   const sessions = api.kopilot.listSessions.useQuery({ limit: 50 }, { staleTime: 30_000 })
@@ -81,6 +82,7 @@ export function useLoadSession() {
           content: m.content,
           timestamp: m.timestamp || Date.now(),
           parentId: m.parentId ?? (i > 0 ? raw[i - 1].toolCallId || `loaded-${i - 1}` : null),
+          metadata: m.metadata,
           toolCalls: m.toolCalls,
         }
 
@@ -107,7 +109,45 @@ export function useLoadSession() {
 
         return msg
       })
-      setMessages(messages)
+      // Split: visible messages go to the store, all messages go to reconstruction.
+      // After filtering out executor assistant messages, reparent so the chain
+      // stays contiguous — each visible message's parent is the previous visible message.
+      const visibleMessages = messages.filter((m) => !isExecutorAssistant(m))
+
+      // Reconstruct approval card from persisted domainState when session is
+      // still waiting for user approval (the approval message is frontend-only
+      // and not stored in engine messages).
+      const domainState = (data as any).domainState as Record<string, unknown> | undefined
+      if (domainState?._waitingForApproval && domainState?._pendingToolCall) {
+        const ptc = domainState._pendingToolCall as {
+          toolCallId: string
+          toolName: string
+          agentName: string
+          args: Record<string, unknown>
+        }
+        visibleMessages.push({
+          id: generateId(),
+          role: 'system',
+          content: `Approval needed: ${ptc.toolName}`,
+          timestamp: Date.now(),
+          parentId:
+            visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1]!.id : null,
+          approval: {
+            toolName: ptc.toolName,
+            toolCallId: ptc.toolCallId,
+            args: ptc.args ?? {},
+            status: 'pending',
+          },
+        })
+      }
+
+      for (let i = 0; i < visibleMessages.length; i++) {
+        visibleMessages[i] = {
+          ...visibleMessages[i]!,
+          parentId: i > 0 ? visibleMessages[i - 1]!.id : null,
+        }
+      }
+      setMessages(visibleMessages)
       reconstructThinkingGroups(messages)
 
       // Hydrate feedback from server

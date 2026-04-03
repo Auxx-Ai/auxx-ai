@@ -8,17 +8,31 @@ import { Check, Plus, X } from 'lucide-react'
 import { useResource } from '~/components/resources'
 import type { ApprovalCardProps } from './approval-card-registry'
 
+/** Convert camelCase field keys to human-readable labels (e.g. "companyName" → "Company Name") */
+function formatFieldKey(key: string): string {
+  return key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase())
+}
+
 export function EntityCreateApprovalCard({ args, status, onApprove, onReject }: ApprovalCardProps) {
   const entityDefinitionId = args.entityDefinitionId as string
-  const values = (args.values as Record<string, unknown>) ?? {}
+
+  // The LLM may nest field values under `values` or flatten them at the top level.
+  // Handle both: prefer `args.values`, fall back to top-level keys minus known meta keys.
+  const values =
+    (args.values as Record<string, unknown>) ??
+    Object.fromEntries(
+      Object.entries(args).filter(([k]) => k !== 'entityDefinitionId' && k !== 'values')
+    )
 
   const { resource } = useResource(entityDefinitionId)
 
-  // Resolve field labels from resource fields
-  const fieldEntries = Object.entries(values).map(([key, value]) => {
-    const field = resource?.fields?.find((f) => (f.systemAttribute ?? f.key) === key)
-    return { key, label: field?.label ?? key, value }
-  })
+  // Resolve field labels from resource fields, falling back to the raw key
+  const fieldEntries = Object.entries(values)
+    .filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => {
+      const field = resource?.fields?.find((f) => (f.systemAttribute ?? f.key) === key)
+      return { key, label: field?.label ?? formatFieldKey(key), value }
+    })
 
   return (
     <div className='rounded-lg border'>
@@ -34,16 +48,18 @@ export function EntityCreateApprovalCard({ args, status, onApprove, onReject }: 
       </div>
 
       {/* Proposed values */}
-      <div className='px-3 py-2'>
-        <div className='space-y-1.5'>
-          {fieldEntries.map(({ key, label, value }) => (
-            <div key={key} className='flex items-baseline gap-2 text-sm'>
-              <span className='shrink-0 text-xs text-muted-foreground'>{label}:</span>
-              <span className='truncate font-medium'>{String(value ?? '')}</span>
-            </div>
-          ))}
+      {fieldEntries.length > 0 && (
+        <div className='px-3 py-2'>
+          <div className='space-y-1.5'>
+            {fieldEntries.map(({ key, label, value }) => (
+              <div key={key} className='flex items-baseline gap-2 text-sm'>
+                <span className='shrink-0 text-xs text-muted-foreground'>{label}:</span>
+                <span className='truncate font-medium'>{String(value ?? '')}</span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Actions */}
       {status === 'pending' && (

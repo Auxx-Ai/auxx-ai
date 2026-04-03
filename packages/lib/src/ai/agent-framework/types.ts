@@ -119,7 +119,10 @@ export interface AgentDefinition<TDomainState = Record<string, unknown>> {
   /** Unique agent name */
   name: string
   /** Build the message array for the LLM call */
-  buildMessages: (state: AgentState<TDomainState>, deps: AgentDeps) => Message[]
+  buildMessages: (
+    state: AgentState<TDomainState>,
+    deps: AgentDeps
+  ) => Message[] | Promise<Message[]>
   /** Tools available to this agent (empty = one-shot, no tool loop) */
   tools: AgentToolDefinition[]
   /** Process the LLM response and update domain state */
