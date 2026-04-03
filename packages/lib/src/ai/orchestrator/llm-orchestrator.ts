@@ -273,25 +273,17 @@ export class LLMOrchestrator {
         stream: true,
       }
 
-      // Stream the response
+      // Stream the response, accumulating content in a single pass
       const streamResult = llmClient.streamInvoke(invokeParams)
-      let finalResult: LLMStreamResult | undefined
+      let finalContent = ''
+      let finalToolCalls: ToolCall[] = []
+      let finalUsage: UsageMetrics | undefined
 
       for await (const chunk of streamResult) {
         // Trigger chunk callback
         await this.triggerNewChunkCallback(request.callbacks, chunk)
 
-        // Yield chunk to caller
-        yield chunk
-      }
-
-      // Get final result - manually collect all chunks to build final result
-      let finalContent = ''
-      let finalToolCalls: ToolCall[] = []
-      let finalUsage: UsageMetrics | undefined
-
-      // The chunks have already been yielded above
-      for await (const chunk of streamResult) {
+        // Accumulate final result from chunks
         finalContent += chunk.delta || ''
         if (chunk.toolCalls) {
           finalToolCalls = chunk.toolCalls
@@ -299,9 +291,12 @@ export class LLMOrchestrator {
         if (chunk.usage) {
           finalUsage = chunk.usage
         }
+
+        // Yield chunk to caller
+        yield chunk
       }
 
-      finalResult = {
+      const finalResult: LLMStreamResult = {
         model,
         content: finalContent,
         toolCalls: finalToolCalls,

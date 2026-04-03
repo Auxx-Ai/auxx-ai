@@ -14,7 +14,8 @@ import {
 } from '@auxx/ui/components/main-page'
 import { PanelResizeHandle } from '@auxx/ui/components/panel-resize-handle'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { Columns2, Mail, Plus, Rows3, Waypoints } from 'lucide-react'
+import { useHotkey } from '@tanstack/react-hotkeys'
+import { Columns2, Mail, Plus, Rows3, Sparkles, Waypoints } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryState } from 'nuqs'
@@ -27,6 +28,8 @@ import {
 } from 'react'
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { EmptyState } from '~/components/global/empty-state'
+import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
+import { KopilotPanel } from '~/components/kopilot/ui/kopilot-panel'
 import {
   MailFilterProvider,
   type SortDirection,
@@ -54,6 +57,7 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useIsSmallScreen } from '~/hooks/use-small-screen'
 import { useUser } from '~/hooks/use-user'
 import { safeLocalStorage } from '~/lib/safe-localstorage'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import {
@@ -179,6 +183,19 @@ function MailboxInner({
   // Contact drawer state from URL (shared with participant-display.tsx)
   const [contactId, setContactId] = useQueryState('contactId', { defaultValue: '' })
   const isContactDrawerOpen = !!contactId
+
+  // Kopilot panel state
+  const { hasAccess } = useFeatureFlags()
+  const kopilotEnabled = hasAccess('kopilot')
+  const kopilotOpen = useKopilotStore((s) => s.panelOpen) && kopilotEnabled
+  const toggleKopilot = useKopilotStore((s) => s.togglePanel)
+  const [kopilotWidth, setKopilotWidth] = useState(420)
+
+  // Kopilot keyboard shortcut — registered here so it works when panel is closed
+  useHotkey('mod+shift+k', () => toggleKopilot(), {
+    enabled: kopilotEnabled,
+    conflictBehavior: 'allow',
+  })
 
   // Use new selection store directly
   const selectedThreads = useSelectedThreadIds()
@@ -390,11 +407,12 @@ function MailboxInner({
     [contactId, setContactId]
   )
 
-  // Build docked panels for contact drawer
+  // Build docked panels for contact drawer and Kopilot
   const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
-    if (!isDocked || !isContactDrawerOpen) return []
-    return [
-      {
+    const panels: DockedPanelConfig[] = []
+
+    if (isDocked && isContactDrawerOpen) {
+      panels.push({
         key: 'contact',
         content: (
           <ContactDrawer
@@ -407,8 +425,23 @@ function MailboxInner({
         onWidthChange: setDockedWidth,
         minWidth,
         maxWidth,
-      },
-    ]
+      })
+    }
+
+    if (kopilotOpen) {
+      panels.push({
+        key: 'kopilot',
+        content: (
+          <KopilotPanel page='mail' context={{ activeThreadId: activeThreadId ?? undefined }} />
+        ),
+        width: kopilotWidth,
+        onWidthChange: setKopilotWidth,
+        minWidth: 360,
+        maxWidth: 600,
+      })
+    }
+
+    return panels
   }, [
     isDocked,
     isContactDrawerOpen,
@@ -418,6 +451,9 @@ function MailboxInner({
     setDockedWidth,
     minWidth,
     maxWidth,
+    kopilotOpen,
+    activeThreadId,
+    kopilotWidth,
   ])
 
   return (
@@ -425,13 +461,20 @@ function MailboxInner({
       <MainPage loading={true}>
         <MainPageHeader
           action={
-            <Button
-              variant='info'
-              size='sm'
-              className='h-7 rounded-lg'
-              onClick={() => openCompose()}>
-              Compose
-            </Button>
+            <div className='flex items-center gap-1'>
+              {kopilotEnabled && (
+                <Button variant='ghost' size='icon' className='size-7' onClick={toggleKopilot}>
+                  <Sparkles className='size-4' />
+                </Button>
+              )}
+              <Button
+                variant='info'
+                size='sm'
+                className='h-7 rounded-lg'
+                onClick={() => openCompose()}>
+                Compose
+              </Button>
+            </div>
           }>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Mail' href='/app/mail' />

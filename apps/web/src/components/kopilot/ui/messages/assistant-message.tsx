@@ -1,0 +1,65 @@
+// apps/web/src/components/kopilot/ui/messages/assistant-message.tsx
+
+import { Sparkles } from 'lucide-react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import type { KopilotMessage } from '../../stores/kopilot-store'
+import { AuxxBlock } from '../blocks/auxx-block'
+import { MessageActions } from './message-actions'
+
+interface AssistantMessageProps {
+  message?: KopilotMessage
+  /** When streaming, render this content instead of message.content */
+  streamingContent?: string
+  onRetry?: () => void
+  onThumbsUp?: () => void
+  onThumbsDown?: () => void
+}
+
+export function AssistantMessage({
+  message,
+  streamingContent,
+  onRetry,
+  onThumbsUp,
+  onThumbsDown,
+}: AssistantMessageProps) {
+  const isStreaming = streamingContent !== undefined
+  const content = isStreaming ? streamingContent : (message?.content ?? '')
+
+  return (
+    <div className='group/message flex gap-2'>
+      <div className='animate-hue-rotate relative size-fit'>
+        <div className='bg-conic/decreasing relative flex size-5 items-center justify-center rounded-full from-violet-500 via-lime-300 to-violet-400 blur-md' />
+        <div className='absolute inset-0 flex items-center justify-center'>
+          <Sparkles className='size-3.5' />
+        </div>
+      </div>
+      <div className='min-w-0 flex-1 space-y-1'>
+        <div className='prose prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1 max-w-none text-sm dark:prose-invert'>
+          <Markdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({ className, children }) {
+                const match = className?.match(/^language-auxx:(.+)$/)
+                if (match) {
+                  return <AuxxBlock type={match[1]} rawContent={String(children).trim()} />
+                }
+                return <code className={className}>{children}</code>
+              },
+            }}>
+            {isStreaming ? `${content}\u258C` : content}
+          </Markdown>
+        </div>
+        {!isStreaming && message && (
+          <MessageActions
+            role='assistant'
+            content={content}
+            onRetry={onRetry}
+            onThumbsUp={onThumbsUp}
+            onThumbsDown={onThumbsDown}
+          />
+        )}
+      </div>
+    </div>
+  )
+}

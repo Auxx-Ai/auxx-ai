@@ -438,7 +438,7 @@ export function MultiSelectPicker({
                           {/* Option label */}
                           <span className='truncate'>{opt.label}</span>
                         </div>
-                        <div className='flex items-center gap-1'>
+                        <div className='flex items-center gap-1 shrink-0'>
                           <div className='flex items-center justify-center'>
                             {isManageMode ? (
                               <span className='bg-secondary rounded-sm py-[1px] px-[3px] text-[10px]'>

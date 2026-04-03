@@ -1087,6 +1087,7 @@ export const adminRouter = createTRPCRouter({
         const { id, ...data } = input
         const plan = await service.updatePlan(id, data)
         await getAppCache().invalidateAndRecompute(['plans', 'planMap'])
+        await getOrgCache().flushKeyForAllOrgs(['features', 'subscription', 'overages'])
         return plan
       }),
 
@@ -1106,6 +1107,7 @@ export const adminRouter = createTRPCRouter({
         const { id, ...pricing } = input
         const result = await service.updatePricing(id, pricing)
         await getAppCache().invalidateAndRecompute(['plans', 'planMap'])
+        await getOrgCache().flushKeyForAllOrgs(['features', 'subscription', 'overages'])
         return result
       }),
 
@@ -1118,6 +1120,7 @@ export const adminRouter = createTRPCRouter({
         const service = new PlanAdminService(ctx.db)
         const result = await service.markAsLegacy(input.id)
         await getAppCache().invalidateAndRecompute(['plans', 'planMap'])
+        await getOrgCache().flushKeyForAllOrgs(['features', 'subscription', 'overages'])
         return result
       }),
 
@@ -1130,6 +1133,7 @@ export const adminRouter = createTRPCRouter({
         const service = new PlanAdminService(ctx.db)
         const result = await service.restoreLegacyPlan(input.id)
         await getAppCache().invalidateAndRecompute(['plans', 'planMap'])
+        await getOrgCache().flushKeyForAllOrgs(['features', 'subscription', 'overages'])
         return result
       }),
 

@@ -1,6 +1,7 @@
 import { constants } from '@auxx/config'
 import { isSelfHosted } from '@auxx/deployment'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { startAiAgentWorker } from './worker-definitions/ai-agent-worker'
 import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
 import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedding-worker'
@@ -70,6 +71,9 @@ export async function startWorkers() {
   // App polling trigger worker (scheduled poll → dispatch)
   const pollingTriggerWorker = startPollingTriggerWorker()
 
+  // AI agent worker (Kopilot, Builder session processing)
+  const aiAgentWorker = startAiAgentWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -91,6 +95,7 @@ export async function startWorkers() {
     messageProcessingWorker,
     appTriggerWorker,
     pollingTriggerWorker,
+    aiAgentWorker,
   ]
 
   return Promise.all(workers)

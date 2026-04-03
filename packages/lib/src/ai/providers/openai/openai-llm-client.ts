@@ -98,10 +98,12 @@ export class OpenAILLMClient extends LLMClient {
 
     try {
       // Flatten parameters object to top level for OpenAI API
+      // Spread order matters: restParams may contain response_format from handleResponseFormat,
+      // so it must come AFTER parameters to avoid model defaults overwriting structured output config
       const { parameters, ...restParams } = processedParams
       const flattenedParams = {
-        ...restParams,
-        ...parameters, // Spread parameters to top level
+        ...parameters, // Spread parameters (model defaults) first
+        ...restParams, // Then overlay rest (includes response_format from handleResponseFormat)
         stream: true,
         stream_options: { include_usage: true },
       }
@@ -130,6 +132,11 @@ export class OpenAILLMClient extends LLMClient {
       this.logger.debug('OpenAI API streaming request', {
         model: flattenedParams.model,
         keys: Object.keys(flattenedParams),
+        hasResponseFormat: !!flattenedParams.response_format,
+        responseFormatType:
+          typeof flattenedParams.response_format === 'object'
+            ? (flattenedParams.response_format as any)?.type
+            : flattenedParams.response_format,
       })
 
       const stream = await this.createWithReasoningFallback(flattenedParams, (payload) =>
@@ -217,10 +224,12 @@ export class OpenAILLMClient extends LLMClient {
 
   private async handleDirectCompletion(params: ProcessedLLMParams): Promise<LLMResponse> {
     // Flatten parameters object to top level for OpenAI API
+    // Spread order matters: restParams may contain response_format from handleResponseFormat,
+    // so it must come AFTER parameters to avoid model defaults overwriting structured output config
     const { parameters, ...restParams } = params
     const flattenedParams = {
-      ...restParams,
-      ...parameters, // Spread parameters to top level
+      ...parameters, // Spread parameters (model defaults) first
+      ...restParams, // Then overlay rest (includes response_format from handleResponseFormat)
     }
 
     // Remove tools key completely if empty (OpenAI doesn't accept empty tools for unsupported models)
@@ -404,6 +413,18 @@ export class OpenAILLMClient extends LLMClient {
 
   handleResponseFormat(params: LLMInvokeParams): LLMInvokeParams {
     const processed = { ...params }
+
+    this.logger.debug('handleResponseFormat', {
+      hasResponseFormat: !!params.response_format,
+      responseFormatType: typeof params.response_format,
+      responseFormatValue:
+        typeof params.response_format === 'string'
+          ? params.response_format
+          : params.response_format
+            ? 'object'
+            : 'none',
+      hasJsonSchema: !!params.json_schema,
+    })
 
     if (params.response_format) {
       if (params.response_format === 'json_schema' && params.json_schema) {

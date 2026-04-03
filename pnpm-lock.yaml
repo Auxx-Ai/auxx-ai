@@ -502,7 +502,7 @@ importers:
     devDependencies:
       '@opennextjs/aws':
         specifier: 3.9.15
-        version: 3.9.15(next@16.0.10(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
+        version: 3.9.15(next@16.0.10(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
       '@tailwindcss/postcss':
         specifier: 'catalog:'
         version: 4.2.1
@@ -587,7 +587,7 @@ importers:
     devDependencies:
       '@opennextjs/aws':
         specifier: 3.9.15
-        version: 3.9.15(next@16.0.10(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
+        version: 3.9.15(next@16.0.10(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.2.1
@@ -1056,6 +1056,9 @@ importers:
       recharts:
         specifier: ^2.15.4
         version: 2.15.4(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
       server-only:
         specifier: 'catalog:'
         version: 0.0.1
@@ -1122,7 +1125,7 @@ importers:
         version: 15.5.12
       '@opennextjs/aws':
         specifier: 3.9.15
-        version: 3.9.15(next@16.0.10(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
+        version: 3.9.15(next@16.0.10(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
       '@tailwindcss/container-queries':
         specifier: ^0.1.1
         version: 0.1.1(tailwindcss@4.2.1)
@@ -17353,7 +17356,7 @@ snapshots:
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
 
-  '@opennextjs/aws@3.9.15(next@16.0.10(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))':
+  '@opennextjs/aws@3.9.15(next@16.0.10(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))':
     dependencies:
       '@ast-grep/napi': 0.40.5
       '@aws-sdk/client-cloudfront': 3.398.0

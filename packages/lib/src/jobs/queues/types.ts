@@ -33,4 +33,6 @@ export enum Queues {
   appTriggerQueue = 'app-trigger',
   // App polling trigger queue (scheduled poll → dispatch)
   appPollingTriggerQueue = 'app-polling-trigger-queue',
+  // AI agent session processing queue (Kopilot, Builder)
+  aiAgentQueue = 'ai-agent',
 }

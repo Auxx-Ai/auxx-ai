@@ -4,6 +4,7 @@
 import { relations } from 'drizzle-orm/relations'
 import {
   Address,
+  AiAgentSession,
   AiIntegration,
   AiUsage,
   ApiKey,
@@ -132,6 +133,7 @@ export const userRelations = relations(User, ({ one, many }) => ({
   messages: many(Message),
   threads: many(Thread),
   articles: many(Article),
+  aiAgentSessions: many(AiAgentSession),
   aiUsages: many(AiUsage),
   aiIntegrations: many(AiIntegration),
   promptHistory: many(PromptHistory),
@@ -219,6 +221,7 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   products: many(Product),
   articles: many(Article),
   integrations: many(Integration),
+  aiAgentSessions: many(AiAgentSession),
   aiUsages: many(AiUsage),
   aiIntegrations: many(AiIntegration),
   productVariants: many(ProductVariant),

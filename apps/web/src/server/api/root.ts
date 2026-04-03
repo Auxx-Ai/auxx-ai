@@ -36,6 +36,7 @@ import { folderRouter } from './routers/folder'
 import { inboxRouter } from './routers/inbox'
 import { inventoryRouter } from './routers/inventory'
 import { knowledgeBaseRouter } from './routers/kb'
+import { kopilotRouter } from './routers/kopilot'
 import { labelRouter } from './routers/label'
 import { mailDomainsRouter } from './routers/mailDomain'
 import { mailViewRouter } from './routers/mailView'
@@ -118,6 +119,7 @@ export const appRouter = createTRPCRouter({
   channelReauth: channelReauthRouter,
   inventory: inventoryRouter,
   kb: knowledgeBaseRouter,
+  kopilot: kopilotRouter,
   label: labelRouter,
   mailDomain: mailDomainsRouter,
   mailView: mailViewRouter,

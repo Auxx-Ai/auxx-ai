@@ -1,6 +1,26 @@
 // packages/services/src/index.ts
 
 export type {
+  CreateSessionInput,
+  FindSessionByContextInput,
+  ListSessionsInput,
+  SaveMessagesInput,
+  SessionContext,
+  UpdateDomainStateInput,
+} from './ai-agent-sessions'
+// AI Agent Sessions
+export {
+  createSession,
+  deleteSession,
+  findSessionByContext,
+  findSessionsByType,
+  getSessionById,
+  saveSessionMessages,
+  updateSessionDomainState,
+  updateSessionTitle,
+} from './ai-agent-sessions'
+
+export type {
   DeleteFieldValuesInput,
   EntityNotFoundError as FieldValueEntityNotFoundError,
   ExistingFieldValueRow,

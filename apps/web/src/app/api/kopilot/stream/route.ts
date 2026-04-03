@@ -1,0 +1,414 @@
+// apps/web/src/app/api/kopilot/stream/route.ts
+
+import path from 'node:path'
+import {
+  AgentEngine,
+  type AgentEngineConfig,
+  type AgentEvent,
+  createCallModel,
+  enqueueAgentJob,
+  subscribeToAgentEvents,
+} from '@auxx/lib/ai/agent-framework'
+import {
+  createCapabilityRegistry,
+  createKopilotDomainConfig,
+  createMailCapabilities,
+  generateSessionTitle,
+} from '@auxx/lib/ai/kopilot'
+import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { createScopedLogger } from '@auxx/logger'
+import { withRunLog } from '@auxx/logger/run-log'
+import {
+  createSession,
+  getSessionById,
+  saveSessionMessages,
+  updateSessionDomainState,
+  updateSessionTitle,
+} from '@auxx/services'
+import { headers } from 'next/headers'
+import type { NextRequest } from 'next/server'
+import { auth } from '~/auth/server'
+
+const logger = createScopedLogger('kopilot-stream')
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+interface KopilotStreamRequest {
+  sessionId?: string
+  message: string
+  type?: 'message' | 'approval'
+  page?: string
+  context?: {
+    activeThreadId?: string
+    activeContactId?: string
+    filters?: Record<string, unknown>
+  }
+}
+
+/**
+ * Whether to dispatch this request to the BullMQ worker.
+ * Currently always in-process — enable worker dispatch by setting USE_AGENT_WORKER=true.
+ */
+function shouldUseWorker(): boolean {
+  return process.env.USE_AGENT_WORKER === 'true'
+}
+
+/**
+ * POST /api/kopilot/stream
+ *
+ * SSE endpoint for Kopilot agent interactions.
+ * Supports two modes:
+ * - In-process: runs the AgentEngine directly and streams events
+ * - Worker: dispatches to BullMQ, subscribes to Redis pub/sub for events
+ */
+export async function POST(request: NextRequest) {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session) {
+    return new Response('Unauthorized', { status: 401 })
+  }
+
+  const organizationId = (session.user as any).defaultOrganizationId as string
+  const userId = session.user.id
+
+  if (!organizationId) {
+    return new Response('Organization required', { status: 400 })
+  }
+
+  // Feature gate: check Kopilot access on the org's plan
+  const hasKopilot = await new FeaturePermissionService().hasAccess(
+    organizationId,
+    FeatureKey.kopilot
+  )
+  if (!hasKopilot) {
+    return new Response('Kopilot is not available on your plan', { status: 403 })
+  }
+
+  let body: KopilotStreamRequest
+  try {
+    body = await request.json()
+  } catch {
+    return new Response('Invalid JSON body', { status: 400 })
+  }
+
+  if (!body.message || typeof body.message !== 'string') {
+    return new Response('Message is required', { status: 400 })
+  }
+
+  const { message, type = 'message', page, context } = body
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder()
+
+      const send = (event: AgentEvent | { type: string; [key: string]: unknown }) => {
+        try {
+          controller.enqueue(
+            encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+          )
+        } catch (error) {
+          logger.error('Failed to send SSE event', {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+
+      let heartbeatInterval: NodeJS.Timeout | null = null
+
+      const cleanup = () => {
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval)
+          heartbeatInterval = null
+        }
+        try {
+          controller.close()
+        } catch {
+          // Controller might already be closed
+        }
+      }
+
+      // Start heartbeat
+      heartbeatInterval = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(':heartbeat\n\n'))
+        } catch {
+          cleanup()
+        }
+      }, 15000)
+
+      try {
+        // 1. Resolve or create session
+        let sessionId = body.sessionId
+        let isNewSession = false
+        let savedMessages: Record<string, unknown>[] = []
+        let savedDomainState: Record<string, unknown> = {}
+
+        if (sessionId) {
+          const sessionResult = await getSessionById({ sessionId, organizationId })
+          if (sessionResult.isErr()) {
+            send({ type: 'error', error: sessionResult.error.message })
+            cleanup()
+            return
+          }
+          savedMessages = (sessionResult.value.messages ?? []) as Record<string, unknown>[]
+          savedDomainState = (sessionResult.value.domainState ?? {}) as Record<string, unknown>
+        } else {
+          const createResult = await createSession({
+            organizationId,
+            userId,
+            type: 'kopilot',
+            title: message.slice(0, 100),
+          })
+          if (createResult.isErr()) {
+            send({ type: 'error', error: createResult.error.message })
+            cleanup()
+            return
+          }
+          sessionId = createResult.value.id
+          isNewSession = true
+          send({ type: 'session-created', sessionId })
+        }
+
+        const runPath = shouldUseWorker()
+          ? () =>
+              runWorkerPath({
+                sessionId,
+                organizationId,
+                userId,
+                message,
+                type,
+                page,
+                context,
+                send,
+                cleanup,
+                request,
+              })
+          : () =>
+              runInProcessPath({
+                sessionId,
+                organizationId,
+                userId,
+                message,
+                type,
+                page,
+                context,
+                savedMessages,
+                savedDomainState,
+                send,
+                request,
+                isNewSession,
+              })
+
+        // Dev only: tee all logs to a per-session file
+        if (process.env.NODE_ENV === 'development') {
+          const logFile = path.join(
+            process.cwd(),
+            '.logs',
+            'agent-sessions',
+            sessionId,
+            `${Date.now()}.log`
+          )
+          await withRunLog(sessionId, logFile, runPath)
+        } else {
+          await runPath()
+        }
+
+        // Send terminal event
+        send({ type: 'done' })
+      } catch (error) {
+        logger.error('Kopilot stream error', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        send({
+          type: 'pipeline-error',
+          error: error instanceof Error ? error.message : 'Internal server error',
+        })
+      } finally {
+        cleanup()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
+}
+
+// ── In-process engine execution ──
+
+async function runInProcessPath(params: {
+  sessionId: string
+  organizationId: string
+  userId: string
+  message: string
+  type: 'message' | 'approval'
+  page?: string
+  context?: KopilotStreamRequest['context']
+  savedMessages: Record<string, unknown>[]
+  savedDomainState: Record<string, unknown>
+  send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
+  request: NextRequest
+  isNewSession: boolean
+}) {
+  const {
+    sessionId,
+    organizationId,
+    userId,
+    message,
+    type,
+    page,
+    context,
+    savedMessages,
+    savedDomainState,
+    send,
+    request,
+    isNewSession,
+  } = params
+
+  // Build domain config with capabilities
+  const getToolDeps = createToolDepsFactory({
+    organizationId,
+    userId,
+    sessionId,
+    signal: request.signal,
+  })
+
+  const registry = createCapabilityRegistry()
+  registry.register(createMailCapabilities(getToolDeps))
+
+  const domainConfig = createKopilotDomainConfig({
+    capabilityRegistry: registry,
+    page: page ?? (context?.activeThreadId ? 'mail' : undefined),
+  })
+
+  // Create LLM adapter
+  const callModel = createCallModel({
+    organizationId,
+    userId,
+    source: 'kopilot',
+    sourceId: sessionId,
+  })
+
+  const engineConfig: AgentEngineConfig = {
+    organizationId,
+    userId,
+    sessionId,
+    domainConfig,
+    callModel,
+    signal: request.signal,
+  }
+
+  // Create engine with restored state
+  const initialState =
+    savedMessages.length > 0
+      ? { messages: savedMessages as any[], domainState: savedDomainState }
+      : undefined
+
+  const engine = new AgentEngine(engineConfig, initialState)
+
+  // Handle client disconnect
+  request.signal.addEventListener('abort', () => {
+    logger.info('Client disconnected from Kopilot SSE', { sessionId })
+    engine.interrupt()
+  })
+
+  // Run the engine
+  const generator = type === 'approval' ? engine.resume(message) : engine.submitMessage(message)
+
+  for await (const event of generator) {
+    if (request.signal.aborted) break
+    send(event)
+  }
+
+  // Persist state
+  const finalState = engine.getState()
+  await saveSessionMessages({
+    sessionId,
+    organizationId,
+    messages: finalState.messages as Record<string, unknown>[],
+  })
+  await updateSessionDomainState({
+    sessionId,
+    organizationId,
+    domainState: finalState.domainState as Record<string, unknown>,
+  })
+
+  // Auto-title new sessions after first exchange
+  if (isNewSession) {
+    const assistantMsg =
+      [...finalState.messages].reverse().find((m) => m.role === 'assistant')?.content ?? ''
+
+    generateSessionTitle(message, assistantMsg, { organizationId, userId })
+      .then((title) => updateSessionTitle({ sessionId, organizationId, title }))
+      .catch((err) => logger.warn('Session auto-title failed', { sessionId, error: String(err) }))
+  }
+}
+
+// ── Worker dispatch path ──
+
+async function runWorkerPath(params: {
+  sessionId: string
+  organizationId: string
+  userId: string
+  message: string
+  type: 'message' | 'approval'
+  page?: string
+  context?: KopilotStreamRequest['context']
+  send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
+  cleanup: () => void
+  request: NextRequest
+}) {
+  const { sessionId, organizationId, userId, message, type, page, context, send, request } = params
+
+  // 1. Subscribe to Redis events BEFORE enqueuing to avoid race conditions.
+  // Use a promise to detect terminal events and close the stream.
+  let resolveCompletion: () => void
+  const completionPromise = new Promise<void>((resolve) => {
+    resolveCompletion = resolve
+  })
+
+  const { handlerId, router } = await subscribeToAgentEvents(sessionId, (event) => {
+    send(event)
+    if (
+      event.type === 'done' ||
+      event.type === 'pipeline-error' ||
+      event.type === 'pipeline-completed'
+    ) {
+      resolveCompletion()
+    }
+  })
+
+  // Handle client disconnect
+  request.signal.addEventListener('abort', () => {
+    logger.info('Client disconnected during worker dispatch', { sessionId })
+    resolveCompletion()
+  })
+
+  // 2. Enqueue the job
+  await enqueueAgentJob({
+    sessionId,
+    organizationId,
+    userId,
+    message,
+    type,
+    domain: 'kopilot',
+    page,
+    context: context as Record<string, unknown>,
+  })
+
+  // 3. Wait for terminal event or disconnect
+  await completionPromise
+
+  // 4. Cleanup subscription
+  try {
+    await router.unsubscribe(handlerId)
+  } catch {
+    // Best effort
+  }
+}

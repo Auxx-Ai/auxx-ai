@@ -1,7 +1,6 @@
 // apps/web/src/components/drawers/tabs/contact-conversations-tab.tsx
 'use client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
 import { Loader2, Mail, Plus } from 'lucide-react'
@@ -9,20 +8,14 @@ import { useEffect, useMemo } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { EmptyState } from '~/components/global/empty-state'
 import { MailContactThreadItem } from '~/components/mail/mail-contact/mail-contact-thread-item'
-import { toRecordId, useRecord } from '~/components/resources'
 import { useThreadList } from '~/components/threads/hooks/use-thread-list'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /**
  * Conversations tab for contact drawer - displays email threads
  */
-export function ContactConversationsTab({ entityInstanceId }: DrawerTabProps) {
-  const contactId = entityInstanceId
-
-  const recordId = contactId ? (toRecordId('contact', contactId) as RecordId) : null
-  const { record: contact, isLoading: isLoadingContact } = useRecord({ recordId })
-
-  const contactEmail = contact?.email as string | undefined
+export function ContactConversationsTab({ record }: DrawerTabProps) {
+  const contactEmail = record?.email as string | undefined
 
   const filter: ConditionGroup[] = useMemo(() => {
     if (!contactEmail) return []
@@ -57,8 +50,7 @@ export function ContactConversationsTab({ entityInstanceId }: DrawerTabProps) {
     }
   }, [inView, fetchNextPage, hasNextPage, isFetchingNextPage])
 
-  // Show loading while contact or threads are loading
-  const isLoading = (isLoadingContact && !contact) || isLoadingThreads
+  const isLoading = !contactEmail || isLoadingThreads
 
   if (isLoading) {
     return (

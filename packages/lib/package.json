@@ -46,6 +46,24 @@
       "import": "./dist/ai-features/generator/index.mjs",
       "default": "./src/ai-features/generator/index.ts"
     },
+    "./ai/agent-framework": {
+      "types": "./src/ai/agent-framework/index.ts",
+      "source": "./src/ai/agent-framework/index.ts",
+      "import": "./dist/ai/agent-framework/index.mjs",
+      "default": "./src/ai/agent-framework/index.ts"
+    },
+    "./ai/kopilot": {
+      "types": "./src/ai/kopilot/index.ts",
+      "source": "./src/ai/kopilot/index.ts",
+      "import": "./dist/ai/kopilot/index.mjs",
+      "default": "./src/ai/kopilot/index.ts"
+    },
+    "./ai/kopilot/capabilities": {
+      "types": "./src/ai/kopilot/capabilities/index.ts",
+      "source": "./src/ai/kopilot/capabilities/index.ts",
+      "import": "./dist/ai/kopilot/capabilities/index.mjs",
+      "default": "./src/ai/kopilot/capabilities/index.ts"
+    },
     "./ai/providers/types": {
       "types": "./src/ai/providers/types.ts",
       "source": "./src/ai/providers/types.ts",

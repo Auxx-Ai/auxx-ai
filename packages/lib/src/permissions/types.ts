@@ -39,6 +39,7 @@ export enum FeatureKey {
   shopify = 'shopify',
   devTools = 'devTools',
   unverifiedApps = 'unverifiedApps',
+  kopilot = 'kopilot',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -114,6 +115,7 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     description: 'Allow installing unverified apps from the marketplace',
     group: 'Integrations',
   },
+  { key: FeatureKey.kopilot, type: 'boolean', label: 'Kopilot', group: 'AI' },
 
   // ── Static limits ──
   { key: FeatureKey.teammates, type: 'static', label: 'Teammates', group: 'Team', unit: 'seats' },
@@ -337,6 +339,7 @@ export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
   { key: FeatureKey.shopify, limit: false },
   { key: FeatureKey.devTools, limit: false },
   { key: FeatureKey.unverifiedApps, limit: true },
+  { key: FeatureKey.kopilot, limit: false },
   { key: FeatureKey.outboundEmailsPerMonthHard, limit: 100 },
   { key: FeatureKey.outboundEmailsPerMonthSoft, limit: 80 },
   { key: FeatureKey.workflowRunsPerMonthHard, limit: 0 },
