@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/send-reply.ts
 
+import { DraftService } from '../../../../../drafts'
 import { MessageSenderService } from '../../../../../messages'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -19,7 +20,8 @@ export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
         },
         body: {
           type: 'string',
-          description: 'Reply body text',
+          description:
+            'Reply body text. Never include an email signature — the app appends the signature automatically.',
         },
         toRecipients: {
           type: 'array',
@@ -36,6 +38,7 @@ export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
       const threadId = args.threadId as string
       const body = args.body as string
       const toRecipients = args.toRecipients as string[] | undefined
+      const saveAsDraft = args.saveAsDraft as boolean | undefined
 
       // Get thread meta for integration and subject
       const threadService = new ThreadQueryService(agentDeps.organizationId, db)
@@ -50,6 +53,33 @@ export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
           success: false,
           output: null,
           error: 'At least one recipient is required to send a reply',
+        }
+      }
+
+      // Save as draft instead of sending (via inputAmendment)
+      if (saveAsDraft) {
+        const draftService = new DraftService(db, agentDeps.organizationId, agentDeps.userId)
+        const draft = await draftService.upsert({
+          integrationId: threadMeta.integrationId,
+          threadId,
+          inReplyToMessageId: threadMeta.latestMessageId,
+          content: {
+            bodyHtml: `<p>${body.replace(/\n/g, '</p><p>')}</p>`,
+            bodyText: body,
+            recipients: {
+              to: toRecipients.map((email) => ({
+                identifier: email,
+                identifierType: 'EMAIL' as const,
+              })),
+              cc: [],
+              bcc: [],
+            },
+            attachments: [],
+          },
+        })
+        return {
+          success: true,
+          output: { draftId: draft.id, threadId, status: 'saved_as_draft' },
         }
       }
 

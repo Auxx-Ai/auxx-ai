@@ -29,11 +29,23 @@ export function createExecutorAgent(
       // Include full conversation (user, assistant, tool messages) for tool loop continuity
       const conversationMessages: Message[] = state.messages
         .filter((m) => m.role !== 'system')
-        .map((m) => ({
-          role: m.role as 'user' | 'assistant' | 'tool',
-          content: m.content || '',
-          tool_call_id: m.toolCallId,
-        }))
+        .map((m) => {
+          const msg: Message = {
+            role: m.role as 'user' | 'assistant' | 'tool',
+            content:
+              m.role === 'assistant' && m.toolCalls?.length ? m.content || null : m.content || '',
+            tool_call_id: m.toolCallId,
+          }
+          // Include tool_calls on assistant messages so subsequent tool results are valid
+          if (m.role === 'assistant' && m.toolCalls?.length) {
+            msg.tool_calls = m.toolCalls.map((tc) => ({
+              id: tc.id,
+              type: 'function' as const,
+              function: { name: tc.function.name, arguments: tc.function.arguments },
+            }))
+          }
+          return msg
+        })
 
       return [{ role: 'system', content: systemPrompt }, ...conversationMessages]
     },
@@ -48,12 +60,25 @@ export function createExecutorAgent(
     ): Promise<AgentState<KopilotDomainState>> {
       const domainState = { ...state.domainState }
 
-      // Track tool results for the responder
+      // Track tool results for the responder — extract actual outputs from tool messages in state
       if (toolCalls.length > 0) {
-        const newResults = toolCalls.map((tc) => ({
-          tool: tc.function.name,
-          result: tc.function.arguments,
-        }))
+        const toolCallIds = new Set(toolCalls.map((tc) => tc.id))
+        const toolResultMsgs = state.messages.filter(
+          (m) => m.role === 'tool' && m.toolCallId && toolCallIds.has(m.toolCallId)
+        )
+        const newResults = toolCalls.map((tc) => {
+          const resultMsg = toolResultMsgs.find((m) => m.toolCallId === tc.id)
+          let result: unknown = resultMsg?.content
+          // Parse JSON string results back to objects for the responder prompt
+          if (typeof result === 'string') {
+            try {
+              result = JSON.parse(result)
+            } catch {
+              /* keep as string */
+            }
+          }
+          return { tool: tc.function.name, result }
+        })
         domainState.toolResults = [...(domainState.toolResults ?? []), ...newResults]
       }
 

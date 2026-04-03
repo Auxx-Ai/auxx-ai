@@ -7,13 +7,10 @@ import type { KopilotDomainState, PlanStep } from '../types'
  * The executor uses tools to fulfill the user's request or execute plan steps.
  */
 export function buildExecutorSystemPrompt(domainState: KopilotDomainState): string {
-  const pageContext = domainState.page ? `Current page: ${domainState.page}` : ''
-  const threadContext = domainState.activeThreadId
-    ? `Active thread: ${domainState.activeThreadId}`
-    : ''
-  const contactContext = domainState.activeContactId
-    ? `Active contact: ${domainState.activeContactId}`
-    : ''
+  const ctx = domainState.context
+  const pageContext = ctx.page ? `Current page: ${ctx.page}` : ''
+  const threadContext = ctx.activeThreadId ? `Active thread: ${ctx.activeThreadId}` : ''
+  const contactContext = ctx.activeContactId ? `Active contact: ${ctx.activeContactId}` : ''
 
   const planSection = buildPlanSection(domainState)
 

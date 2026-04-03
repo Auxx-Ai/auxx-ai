@@ -1,7 +1,37 @@
 // apps/web/src/components/kopilot/stores/kopilot-store.ts
 
+import { generateId } from '@auxx/utils/generateId'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { summarizeToolResult } from '../ui/blocks/summarize-tool-result'
+
+/** A single step within a thinking group */
+export interface ThinkingStep {
+  id: string
+  /** Executor's reasoning text before/during this step */
+  thinking?: string
+  /** Tool call info (absent for pure-thinking steps) */
+  tool?: {
+    name: string
+    /** Human-readable one-liner */
+    summary?: string
+    args: Record<string, unknown>
+    status: 'running' | 'completed' | 'error'
+    /** Optional entity references for inline badges */
+    entities?: Array<{ recordId: string }>
+  }
+}
+
+/** A group of thinking steps for one pipeline run */
+export interface ThinkingGroup {
+  id: string
+  steps: ThinkingStep[]
+  status: 'running' | 'completed' | 'error'
+  /** Accumulated executor text that hasn't been attached to a step yet */
+  pendingThinking: string
+  /** The assistant message ID this group is attached to (set when responder commits) */
+  messageId?: string
+}
 
 export interface KopilotMessage {
   id: string
@@ -17,10 +47,17 @@ export interface KopilotMessage {
     result?: unknown
     status: 'running' | 'completed' | 'error'
   }
-  /** Whether this message requires approval */
-  approvalRequired?: boolean
-  /** Approval state */
-  approvalStatus?: 'pending' | 'approved' | 'rejected'
+  /** Approval state — present when this message represents a tool approval request */
+  approval?: {
+    toolName: string
+    toolCallId: string
+    args: Record<string, unknown>
+    status: 'pending' | 'approved' | 'rejected'
+  }
+  /** User feedback on this message (hydrated from AiMessageFeedback table) */
+  feedback?: {
+    isPositive: boolean
+  }
 }
 
 export interface KopilotStreamState {
@@ -112,6 +149,7 @@ interface KopilotState {
   setMessages: (messages: KopilotMessage[]) => void
   updateMessage: (id: string, updates: Partial<KopilotMessage>) => void
   setActiveBranch: (parentId: string, childId: string) => void
+  setMessageFeedback: (messageId: string, isPositive: boolean | null) => void
 
   // Streaming
   stream: KopilotStreamState
@@ -126,6 +164,19 @@ interface KopilotState {
   // Edit
   editingMessageId: string | null
   setEditingMessage: (messageId: string | null) => void
+
+  // Thinking steps
+  activeThinkingGroupId: string | null
+  thinkingGroups: Record<string, ThinkingGroup>
+  beginThinkingGroup: () => void
+  appendThinkingText: (delta: string) => void
+  commitThinkingText: () => void
+  addThinkingToolStep: (tool: string, args: Record<string, unknown>) => void
+  completeThinkingToolStep: (tool: string, result: unknown) => void
+  failThinkingToolStep: (tool: string, error: string) => void
+  finalizeThinkingGroup: () => void
+  attachThinkingGroupToMessage: (messageId: string) => void
+  reconstructThinkingGroups: (messages: KopilotMessage[]) => void
 
   // Status
   isStreaming: boolean
@@ -170,6 +221,8 @@ export const useKopilotStore = create<KopilotState>()(
           isStreaming: false,
           error: null,
           editingMessageId: null,
+          activeThinkingGroupId: null,
+          thinkingGroups: {},
         }),
 
       // Tree model
@@ -223,6 +276,21 @@ export const useKopilotStore = create<KopilotState>()(
           }
         }),
 
+      setMessageFeedback: (messageId, isPositive) =>
+        set((s) => {
+          const existing = s.messageMap[messageId]
+          if (!existing) return s
+          const updated = {
+            ...existing,
+            feedback: isPositive != null ? { isPositive } : undefined,
+          }
+          const newMessageMap = { ...s.messageMap, [messageId]: updated }
+          return {
+            messageMap: newMessageMap,
+            messages: computeVisibleMessages(newMessageMap, s.childrenMap, s.activeBranch),
+          }
+        }),
+
       // Streaming
       stream: { ...initialStreamState },
       setStreamingContent: (streamingContent) =>
@@ -250,6 +318,207 @@ export const useKopilotStore = create<KopilotState>()(
       editingMessageId: null,
       setEditingMessage: (editingMessageId) => set({ editingMessageId }),
 
+      // Thinking steps
+      activeThinkingGroupId: null,
+      thinkingGroups: {},
+
+      beginThinkingGroup: () =>
+        set((s) => {
+          const id = generateId()
+          const group: ThinkingGroup = {
+            id,
+            steps: [],
+            status: 'running',
+            pendingThinking: '',
+          }
+          return {
+            activeThinkingGroupId: id,
+            thinkingGroups: { ...s.thinkingGroups, [id]: group },
+          }
+        }),
+
+      appendThinkingText: (delta) =>
+        set((s) => {
+          const gid = s.activeThinkingGroupId
+          if (!gid) return s
+          const group = s.thinkingGroups[gid]
+          if (!group) return s
+          return {
+            thinkingGroups: {
+              ...s.thinkingGroups,
+              [gid]: { ...group, pendingThinking: group.pendingThinking + delta },
+            },
+          }
+        }),
+
+      commitThinkingText: () =>
+        set((s) => {
+          const gid = s.activeThinkingGroupId
+          if (!gid) return s
+          const group = s.thinkingGroups[gid]
+          if (!group || !group.pendingThinking.trim()) return s
+          const text = group.pendingThinking.trim()
+          const steps = [...group.steps]
+          const last = steps[steps.length - 1]
+          // If the last step is a pure-thinking step (no tool), append to it
+          if (last && !last.tool) {
+            steps[steps.length - 1] = {
+              ...last,
+              thinking: (last.thinking ? `${last.thinking}\n\n` : '') + text,
+            }
+          } else {
+            steps.push({ id: generateId(), thinking: text })
+          }
+          return {
+            thinkingGroups: {
+              ...s.thinkingGroups,
+              [gid]: { ...group, steps, pendingThinking: '' },
+            },
+          }
+        }),
+
+      addThinkingToolStep: (tool, args) =>
+        set((s) => {
+          const gid = s.activeThinkingGroupId
+          if (!gid) return s
+          const group = s.thinkingGroups[gid]
+          if (!group) return s
+          // Commit any pending thinking text, then attach it to the tool step
+          const pendingText = group.pendingThinking.trim()
+          const step: ThinkingStep = {
+            id: generateId(),
+            thinking: pendingText || undefined,
+            tool: { name: tool, args, status: 'running' },
+          }
+          return {
+            thinkingGroups: {
+              ...s.thinkingGroups,
+              [gid]: {
+                ...group,
+                steps: [...group.steps, step],
+                pendingThinking: '',
+              },
+            },
+          }
+        }),
+
+      completeThinkingToolStep: (tool, result) =>
+        set((s) => {
+          const gid = s.activeThinkingGroupId
+          if (!gid) return s
+          const group = s.thinkingGroups[gid]
+          if (!group) return s
+          const steps = [...group.steps]
+          // Find the last running step for this tool
+          for (let i = steps.length - 1; i >= 0; i--) {
+            const step = steps[i]!
+            if (step.tool?.name === tool && step.tool.status === 'running') {
+              const { summary, entities } = summarizeToolResult(tool, result)
+              steps[i] = {
+                ...step,
+                tool: { ...step.tool, status: 'completed', summary, entities },
+              }
+              break
+            }
+          }
+          return {
+            thinkingGroups: { ...s.thinkingGroups, [gid]: { ...group, steps } },
+          }
+        }),
+
+      failThinkingToolStep: (tool, error) =>
+        set((s) => {
+          const gid = s.activeThinkingGroupId
+          if (!gid) return s
+          const group = s.thinkingGroups[gid]
+          if (!group) return s
+          const steps = [...group.steps]
+          for (let i = steps.length - 1; i >= 0; i--) {
+            const step = steps[i]!
+            if (step.tool?.name === tool && step.tool.status === 'running') {
+              steps[i] = {
+                ...step,
+                tool: { ...step.tool, status: 'error', summary: error },
+              }
+              break
+            }
+          }
+          return {
+            thinkingGroups: { ...s.thinkingGroups, [gid]: { ...group, steps } },
+          }
+        }),
+
+      finalizeThinkingGroup: () =>
+        set((s) => {
+          const gid = s.activeThinkingGroupId
+          if (!gid) return s
+          const group = s.thinkingGroups[gid]
+          if (!group) return s
+          const hasError = group.steps.some((step) => step.tool?.status === 'error')
+          return {
+            thinkingGroups: {
+              ...s.thinkingGroups,
+              [gid]: { ...group, status: hasError ? 'error' : 'completed' },
+            },
+          }
+        }),
+
+      attachThinkingGroupToMessage: (messageId) =>
+        set((s) => {
+          const gid = s.activeThinkingGroupId
+          if (!gid) return s
+          const group = s.thinkingGroups[gid]
+          if (!group) return s
+          return {
+            activeThinkingGroupId: null,
+            thinkingGroups: {
+              ...s.thinkingGroups,
+              [gid]: { ...group, messageId },
+            },
+          }
+        }),
+
+      reconstructThinkingGroups: (messages) =>
+        set(() => {
+          const groups: Record<string, ThinkingGroup> = {}
+          let currentGroup: ThinkingGroup | null = null
+
+          for (const msg of messages) {
+            if (msg.role === 'tool' && msg.tool) {
+              // Start a new group if we don't have one
+              if (!currentGroup) {
+                currentGroup = {
+                  id: generateId(),
+                  steps: [],
+                  status: 'completed',
+                  pendingThinking: '',
+                }
+              }
+              const { summary, entities } = summarizeToolResult(msg.tool.name, msg.tool.result)
+              currentGroup.steps.push({
+                id: generateId(),
+                tool: {
+                  name: msg.tool.name,
+                  args: msg.tool.args,
+                  status: msg.tool.status === 'error' ? 'error' : 'completed',
+                  summary,
+                  entities,
+                },
+              })
+            } else if (msg.role === 'assistant' && currentGroup) {
+              // Attach the current group to this assistant message
+              currentGroup.messageId = msg.id
+              groups[currentGroup.id] = currentGroup
+              currentGroup = null
+            } else if (msg.role === 'user') {
+              // Reset — discard any orphaned group
+              currentGroup = null
+            }
+          }
+
+          return { thinkingGroups: groups, activeThinkingGroupId: null }
+        }),
+
       // Status
       isStreaming: false,
       setIsStreaming: (isStreaming) => set({ isStreaming }),
@@ -265,6 +534,8 @@ export const useKopilotStore = create<KopilotState>()(
           isStreaming: false,
           error: null,
           editingMessageId: null,
+          activeThinkingGroupId: null,
+          thinkingGroups: {},
         }),
     }),
     {

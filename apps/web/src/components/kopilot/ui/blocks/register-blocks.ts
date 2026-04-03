@@ -1,16 +1,26 @@
 // apps/web/src/components/kopilot/ui/blocks/register-blocks.ts
 
 import { ActionResultBlock } from './action-result-block'
+import { registerApprovalCard } from './approval-card-registry'
 import { registerBlockRenderer } from './block-registry'
-import { ContactCardBlock } from './contact-card-block'
+import { DraftApprovalCard } from './draft-approval-card'
 import { DraftPreviewBlock } from './draft-preview-block'
+import { EntityCardBlock } from './entity-card-block'
+import { EntityCreateApprovalCard } from './entity-create-approval-card'
+import { EntityListBlock } from './entity-list-block'
+import { EntityUpdateApprovalCard } from './entity-update-approval-card'
 import { KBArticleBlock } from './kb-article-block'
 import { PlanStepsBlock } from './plan-steps-block'
 import { ThreadListBlock } from './thread-list-block'
 
 registerBlockRenderer('thread-list', ThreadListBlock)
-registerBlockRenderer('contact-card', ContactCardBlock)
+registerBlockRenderer('entity-card', EntityCardBlock)
+registerBlockRenderer('entity-list', EntityListBlock)
 registerBlockRenderer('draft-preview', DraftPreviewBlock)
 registerBlockRenderer('kb-article', KBArticleBlock)
 registerBlockRenderer('plan-steps', PlanStepsBlock)
 registerBlockRenderer('action-result', ActionResultBlock)
+
+registerApprovalCard('send_reply', DraftApprovalCard)
+registerApprovalCard('update_entity', EntityUpdateApprovalCard)
+registerApprovalCard('create_entity', EntityCreateApprovalCard)

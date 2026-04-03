@@ -7,18 +7,15 @@ import type { KopilotDomainState } from '../types'
  * The supervisor classifies intent and picks a route + execution mode.
  */
 export function buildSupervisorSystemPrompt(domainState: KopilotDomainState): string {
-  const pageContext = domainState.page
-    ? `The user is currently on the "${domainState.page}" page.`
-    : ''
-  const threadContext = domainState.activeThreadId
-    ? `They have thread ${domainState.activeThreadId} selected.`
-    : ''
-  const contactContext = domainState.activeContactId
-    ? `They have contact ${domainState.activeContactId} selected.`
+  const ctx = domainState.context
+  const pageContext = ctx.page ? `The user is currently on the "${ctx.page}" page.` : ''
+  const threadContext = ctx.activeThreadId ? `They have thread ${ctx.activeThreadId} selected.` : ''
+  const contactContext = ctx.activeContactId
+    ? `They have contact ${ctx.activeContactId} selected.`
     : ''
   const filterContext =
-    domainState.filters && Object.keys(domainState.filters).length > 0
-      ? `Active filters: ${JSON.stringify(domainState.filters)}`
+    ctx.filters && Object.keys(ctx.filters as object).length > 0
+      ? `Active filters: ${JSON.stringify(ctx.filters)}`
       : ''
 
   return `You are a routing supervisor for Kopilot, an AI assistant inside an email support platform for Shopify businesses.

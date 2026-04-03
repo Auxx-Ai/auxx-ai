@@ -2,6 +2,7 @@
 
 import { DraftService } from '../../../../../drafts'
 import { MessageQueryService } from '../../../../../messages'
+import { ParticipantService } from '../../../../../participants'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -20,7 +21,8 @@ export function createDraftReplyTool(getDeps: GetToolDeps): AgentToolDefinition 
         },
         body: {
           type: 'string',
-          description: 'Reply body text',
+          description:
+            'Reply body text. Never include an email signature — the app appends the signature automatically.',
         },
         toRecipients: {
           type: 'array',
@@ -58,15 +60,17 @@ export function createDraftReplyTool(getDeps: GetToolDeps): AgentToolDefinition 
         const { messages } = await messageService.getMessagesByThread(threadId)
         const lastInbound = [...messages].reverse().find((m) => m.isInbound)
         if (lastInbound) {
-          // Extract sender from participants (format: "from:participantId")
-          const fromParticipant = lastInbound.participants.find((p) =>
-            typeof p === 'string' ? p.startsWith('from:') : false
-          )
-          if (fromParticipant && typeof fromParticipant === 'string') {
-            // We need the email, not the participant ID — use snippet as fallback
-            // The participant ID format doesn't directly give us the email,
-            // so we pass it as-is and let the draft service resolve it
-            resolvedTo = [fromParticipant.replace('from:', '')]
+          // Extract participant ID from "from:participantId" format
+          const fromEntry = lastInbound.participants.find((p) => p.startsWith('from:'))
+          const fromParticipantId = fromEntry?.replace('from:', '')
+          if (fromParticipantId) {
+            const participantService = new ParticipantService(agentDeps.organizationId, db)
+            const [participant] = await participantService.getParticipantMetaBatch([
+              fromParticipantId,
+            ])
+            if (participant?.identifier) {
+              resolvedTo = [participant.identifier]
+            }
           }
         }
       }

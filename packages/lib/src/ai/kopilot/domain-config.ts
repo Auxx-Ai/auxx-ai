@@ -6,7 +6,7 @@ import { createPlannerAgent } from './agents/planner'
 import { createResponderAgent } from './agents/responder'
 import { createSupervisorAgent } from './agents/supervisor'
 import type { CapabilityRegistry } from './capabilities/types'
-import type { KopilotDomainState, KopilotSessionContext } from './types'
+import type { KopilotDomainState } from './types'
 
 export interface KopilotDomainConfigOptions {
   /** Tools available to the executor and planner (manual injection) */
@@ -94,13 +94,11 @@ export function createKopilotDomainConfig(
     ],
 
     createInitialState(context: Record<string, unknown>): KopilotDomainState {
-      const ctx = context as KopilotSessionContext
-      return {
-        page: ctx.page,
-        filters: ctx.filters,
-        activeThreadId: ctx.activeThreadId,
-        activeContactId: ctx.activeContactId,
-      }
+      return { context }
+    },
+
+    applyContext(state: KopilotDomainState, context: Record<string, unknown>): KopilotDomainState {
+      return { ...state, context }
     },
   }
 }

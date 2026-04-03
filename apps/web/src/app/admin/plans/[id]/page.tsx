@@ -18,6 +18,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeft } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { FeatureLimitsCard } from '~/app/admin/_components/features'
 import { api } from '~/trpc/react'
@@ -107,6 +108,7 @@ function PlanEditForm({ plan }: { plan: any }) {
       hasTrial: plan.hasTrial,
       trialDays: plan.trialDays,
       featureLimits: plan.featureLimits || [],
+      trialFeatureLimits: plan.trialFeatureLimits || null,
       hierarchyLevel: plan.hierarchyLevel,
       selfServed: plan.selfServed,
       isMostPopular: plan.isMostPopular,
@@ -138,9 +140,26 @@ function PlanEditForm({ plan }: { plan: any }) {
     })
   }
 
+  // Trial vs regular feature limits toggle
+  const [trialMode, setTrialMode] = useState(false)
   const featureLimits = watch('featureLimits')
+  const trialFeatureLimits = watch('trialFeatureLimits')
+  const hasTrial = watch('hasTrial')
+
+  const handleTrialToggle = (checked: boolean) => {
+    if (checked && (!trialFeatureLimits || trialFeatureLimits.length === 0)) {
+      setValue('trialFeatureLimits', featureLimits, { shouldDirty: true })
+    }
+    setTrialMode(checked)
+  }
+
+  const activeLimits = trialMode ? (trialFeatureLimits ?? featureLimits) : featureLimits
   const handleFeatureLimitsChange = (limits: FeatureDefinition[]) => {
-    setValue('featureLimits', limits, { shouldDirty: true })
+    if (trialMode) {
+      setValue('trialFeatureLimits', limits, { shouldDirty: true })
+    } else {
+      setValue('featureLimits', limits, { shouldDirty: true })
+    }
   }
 
   return (
@@ -195,7 +214,13 @@ function PlanEditForm({ plan }: { plan: any }) {
 
               {/* Right column */}
               <div className='col-span-2'>
-                <FeatureLimitsCard limits={featureLimits} onChange={handleFeatureLimitsChange} />
+                <FeatureLimitsCard
+                  limits={activeLimits}
+                  onChange={handleFeatureLimitsChange}
+                  trialMode={trialMode}
+                  onTrialModeChange={handleTrialToggle}
+                  showTrialToggle={hasTrial}
+                />
               </div>
             </div>
           </div>

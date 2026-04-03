@@ -271,6 +271,12 @@ export class LLMOrchestrator {
         parameters,
         tools: request.tools || [],
         stream: true,
+        ...(request.structuredOutput?.enabled && {
+          response_format: 'json_schema' as const,
+          json_schema: request.structuredOutput.schema
+            ? JSON.stringify(request.structuredOutput.schema)
+            : undefined,
+        }),
       }
 
       // Stream the response, accumulating content in a single pass

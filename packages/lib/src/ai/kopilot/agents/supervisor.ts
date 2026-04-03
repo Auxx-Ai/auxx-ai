@@ -56,7 +56,9 @@ export function createSupervisorAgent(): AgentDefinition<KopilotDomainState> {
         if (!content || content.trim().length === 0) {
           throw new Error('Empty supervisor response from LLM')
         }
-        classification = JSON.parse(content)
+        // Strip markdown code fences if present (e.g. ```json ... ```)
+        const cleaned = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '')
+        classification = JSON.parse(cleaned)
         if (!classification.route || !classification.executionMode) {
           throw new Error(
             `Missing required fields: route=${classification.route}, executionMode=${classification.executionMode}`

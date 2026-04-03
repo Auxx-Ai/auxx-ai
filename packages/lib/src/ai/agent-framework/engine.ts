@@ -5,9 +5,11 @@ import { manageContext } from './context-manager'
 import { agentQueryLoop } from './query-loop'
 import type {
   AgentDefinition,
+  AgentDeps,
   AgentEngineConfig,
   AgentEvent,
   AgentState,
+  ResumeOptions,
   Route,
   SessionMessage,
 } from './types'
@@ -47,7 +49,18 @@ export class AgentEngine {
    * Submit a user message and run the pipeline.
    * Yields AgentEvents for every phase of execution.
    */
-  async *submitMessage(userMessage: string): AsyncGenerator<AgentEvent> {
+  async *submitMessage(
+    userMessage: string,
+    context?: Record<string, unknown>
+  ): AsyncGenerator<AgentEvent> {
+    // Refresh domain state with latest UI context
+    if (context && this.config.domainConfig.applyContext) {
+      this.state = {
+        ...this.state,
+        domainState: this.config.domainConfig.applyContext(this.state.domainState, context),
+      }
+    }
+
     const userMsg: SessionMessage = {
       role: 'user',
       content: userMessage,
@@ -79,38 +92,100 @@ export class AgentEngine {
   }
 
   /**
-   * Resume a paused session (e.g. after user approves an action).
+   * Resume a paused session after the user approves or rejects a tool call.
+   *
+   * - **approve**: executes the stored `pendingToolCall` directly (no LLM re-call).
+   *   If `inputAmendment` is provided, it's merged into the tool args before execution.
+   * - **reject**: yields a `tool-rejected` event and completes the pipeline.
    */
-  async *resume(approvalMessage?: string, resumeState?: AgentState): AsyncGenerator<AgentEvent> {
-    if (resumeState) {
-      this.state = resumeState
+  async *resume(opts: ResumeOptions): AsyncGenerator<AgentEvent> {
+    if (opts.resumeState) {
+      this.state = opts.resumeState
     }
 
-    if (approvalMessage) {
-      const approvalMsg: SessionMessage = {
-        role: 'user',
-        content: approvalMessage,
-        timestamp: Date.now(),
-        metadata: { type: 'approval' },
-      }
+    // Refresh domain state with latest UI context
+    if (opts.context && this.config.domainConfig.applyContext) {
       this.state = {
         ...this.state,
-        messages: [...this.state.messages, approvalMsg],
-        waitingForApproval: false,
+        domainState: this.config.domainConfig.applyContext(this.state.domainState, opts.context),
       }
     }
 
-    this.abortController = new AbortController()
-    const configWithAbort: AgentEngineConfig = {
-      ...this.config,
-      signal: this.abortController.signal,
+    const pending = this.state.pendingToolCall
+    if (!pending) {
+      yield { type: 'pipeline-error', error: 'No pending tool call to resume' }
+      return
+    }
+
+    const route = this.state.currentRoute ?? 'unknown'
+
+    // Rejection: short-circuit without any LLM call
+    if (opts.action === 'reject') {
+      yield {
+        type: 'tool-rejected',
+        agent: pending.agentName,
+        tool: pending.toolName,
+        toolCallId: pending.toolCallId,
+      }
+      this.state = { ...this.state, waitingForApproval: false, pendingToolCall: undefined }
+      yield { type: 'pipeline-completed', route }
+      return
+    }
+
+    // Approval: execute the stored tool call directly
+    const agent = this.config.domainConfig.agents[pending.agentName]
+    const tool = agent?.tools.find((t) => t.name === pending.toolName)
+
+    if (!tool) {
+      yield {
+        type: 'pipeline-error',
+        error: `Tool "${pending.toolName}" not found on agent "${pending.agentName}"`,
+      }
+      return
+    }
+
+    const finalArgs = opts.inputAmendment
+      ? { ...pending.args, ...opts.inputAmendment }
+      : pending.args
+
+    const deps: AgentDeps = {
+      organizationId: this.config.organizationId,
+      userId: this.config.userId,
+      sessionId: this.config.sessionId,
+      signal: this.config.signal,
+    }
+
+    yield {
+      type: 'tool-started',
+      agent: pending.agentName,
+      tool: pending.toolName,
+      args: finalArgs,
     }
 
     try {
-      yield* this.runPipeline(configWithAbort)
-    } finally {
-      this.abortController = null
+      const result = await tool.execute(finalArgs, deps)
+      yield {
+        type: 'tool-completed',
+        agent: pending.agentName,
+        tool: pending.toolName,
+        result,
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      logger.error('Approved tool execution failed', {
+        tool: pending.toolName,
+        error: errorMessage,
+      })
+      yield {
+        type: 'tool-error',
+        agent: pending.agentName,
+        tool: pending.toolName,
+        error: errorMessage,
+      }
     }
+
+    this.state = { ...this.state, waitingForApproval: false, pendingToolCall: undefined }
+    yield { type: 'pipeline-completed', route }
   }
 
   /** Abort the current pipeline execution. */

@@ -12,7 +12,9 @@ export function createCapabilityRegistry(): CapabilityRegistry {
 
   return {
     getTools(page: string): AgentToolDefinition[] {
-      return pages.get(page)?.tools ?? []
+      const globalTools = pages.get('__global__')?.tools ?? []
+      const pageTools = pages.get(page)?.tools ?? []
+      return [...globalTools, ...pageTools]
     },
 
     getPages(): string[] {
@@ -20,7 +22,10 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     },
 
     getSystemPromptAddition(page: string): string | undefined {
-      return pages.get(page)?.systemPromptAddition
+      const globalAddition = pages.get('__global__')?.systemPromptAddition
+      const pageAddition = pages.get(page)?.systemPromptAddition
+      if (globalAddition && pageAddition) return `${globalAddition}\n\n${pageAddition}`
+      return globalAddition ?? pageAddition
     },
 
     register(capability: PageCapability): void {

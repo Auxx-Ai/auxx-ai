@@ -14,6 +14,10 @@ export interface AgentJobPayload {
   /** Page context for tool resolution */
   page?: string
   context?: Record<string, unknown>
+  /** Approval action — required when type is 'approval' */
+  approvalAction?: 'approve' | 'reject'
+  /** Input amendment for approval (e.g. { saveAsDraft: true }) */
+  inputAmendment?: Record<string, unknown>
 }
 
 /**

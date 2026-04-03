@@ -15,6 +15,7 @@ export interface PlanFormData {
   hasTrial: boolean
   trialDays: number
   featureLimits: FeatureDefinition[]
+  trialFeatureLimits: FeatureDefinition[] | null
   hierarchyLevel: number
   selfServed: boolean
   isMostPopular: boolean

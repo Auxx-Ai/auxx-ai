@@ -4,12 +4,14 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
+import { cn } from '@auxx/ui/lib/utils'
 import { Check, Copy, Pencil, RotateCcw, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
 interface MessageActionsProps {
   role: 'user' | 'assistant'
   content: string
+  feedback?: { isPositive: boolean }
   onEdit?: () => void
   onRetry?: () => void
   onThumbsUp?: () => void
@@ -20,16 +22,24 @@ function ActionButton({
   icon: Icon,
   tooltip,
   onClick,
+  active,
+  activeColor,
 }: {
   icon: React.ComponentType<{ className?: string }>
   tooltip: string
   onClick: () => void
+  active?: boolean
+  activeColor?: string
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant='ghost' size='icon' className='h-6 w-6' onClick={onClick}>
-          <Icon className='size-3' />
+        <Button
+          variant='ghost'
+          size='icon'
+          className={cn('h-6 w-6', active && activeColor)}
+          onClick={onClick}>
+          <Icon className={cn('size-3', active && 'fill-current')} />
         </Button>
       </TooltipTrigger>
       <TooltipContent side='bottom' className='text-xs'>
@@ -42,6 +52,7 @@ function ActionButton({
 export function MessageActions({
   role,
   content,
+  feedback,
   onEdit,
   onRetry,
   onThumbsUp,
@@ -57,8 +68,14 @@ export function MessageActions({
     setTimeout(() => setCopied(false), 1500)
   }, [content])
 
+  const hasFeedback = feedback != null
+
   return (
-    <div className='opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-0.5'>
+    <div
+      className={cn(
+        'flex items-center gap-0.5 transition-opacity',
+        hasFeedback ? 'opacity-100' : 'opacity-0 group-hover/message:opacity-100'
+      )}>
       <ActionButton
         icon={copied ? Check : Copy}
         tooltip={copied ? 'Copied' : 'Copy'}
@@ -70,10 +87,22 @@ export function MessageActions({
       {role === 'assistant' && (
         <>
           {onThumbsUp && (
-            <ActionButton icon={ThumbsUp} tooltip='Good response' onClick={onThumbsUp} />
+            <ActionButton
+              icon={ThumbsUp}
+              tooltip='Good response'
+              onClick={onThumbsUp}
+              active={feedback?.isPositive === true}
+              activeColor='text-green-500'
+            />
           )}
           {onThumbsDown && (
-            <ActionButton icon={ThumbsDown} tooltip='Bad response' onClick={onThumbsDown} />
+            <ActionButton
+              icon={ThumbsDown}
+              tooltip='Bad response'
+              onClick={onThumbsDown}
+              active={feedback?.isPositive === false}
+              activeColor='text-red-500'
+            />
           )}
           {onRetry && <ActionButton icon={RotateCcw} tooltip='Retry' onClick={onRetry} />}
         </>

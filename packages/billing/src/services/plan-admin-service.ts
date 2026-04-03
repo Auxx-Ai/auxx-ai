@@ -54,6 +54,7 @@ export interface UpdatePlanInput {
   hasTrial?: boolean
   trialDays?: number
   featureLimits?: FeatureLimit[]
+  trialFeatureLimits?: FeatureLimit[] | null
   hierarchyLevel?: number
   selfServed?: boolean
   isMostPopular?: boolean
@@ -163,10 +164,9 @@ export class PlanAdminService {
   }
 
   /**
-   * Update an existing plan
+   * Update an existing plan.
    */
   async updatePlan(id: string, input: UpdatePlanInput) {
-    // Verify plan exists
     await this.getPlanById(id)
 
     const [updated] = await this.db

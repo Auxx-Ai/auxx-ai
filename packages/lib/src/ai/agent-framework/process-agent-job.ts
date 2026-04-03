@@ -7,6 +7,7 @@ import { getSessionById, saveSessionMessages, updateSessionDomainState } from '@
 import type { JobContext } from '../../jobs/types'
 import {
   createCapabilityRegistry,
+  createEntityCapabilities,
   createKopilotDomainConfig,
   createMailCapabilities,
   createToolDepsFactory,
@@ -94,7 +95,16 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   const publisher = createAgentEventPublisher(sessionId)
 
   // 6. Run engine and publish events
-  const generator = type === 'approval' ? engine.resume(message) : engine.submitMessage(message)
+  const sessionContext = { page, ...(context ?? {}) }
+
+  const generator =
+    type === 'approval'
+      ? engine.resume({
+          action: data.approvalAction ?? 'approve',
+          inputAmendment: data.inputAmendment,
+          context: sessionContext,
+        })
+      : engine.submitMessage(message, sessionContext)
 
   for await (const event of generator) {
     if (signal?.aborted) {
@@ -147,6 +157,7 @@ function buildDomainConfig(
       })
 
       const registry = createCapabilityRegistry()
+      registry.register(createEntityCapabilities(getToolDeps))
       registry.register(createMailCapabilities(getToolDeps))
 
       return createKopilotDomainConfig({

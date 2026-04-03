@@ -29,6 +29,12 @@ interface FeatureLimitsCardProps {
   planDefaults?: FeatureDefinition[]
   /** When true, features inherit from planDefaults and changes are overrides */
   overrideMode?: boolean
+  /** Whether the trial limits are being shown */
+  trialMode?: boolean
+  /** Callback when trial toggle changes */
+  onTrialModeChange?: (checked: boolean) => void
+  /** Whether to show the trial/regular toggle (only for plans with trials) */
+  showTrialToggle?: boolean
 }
 
 const BOOLEAN_FEATURES = FEATURE_REGISTRY.filter((f) => f.type === 'boolean')
@@ -55,6 +61,9 @@ export function FeatureLimitsCard({
   onChange,
   planDefaults,
   overrideMode,
+  trialMode,
+  onTrialModeChange,
+  showTrialToggle,
 }: FeatureLimitsCardProps) {
   const [customKey, setCustomKey] = useState('')
   const [customLimit, setCustomLimit] = useState<number>(0)
@@ -166,8 +175,20 @@ export function FeatureLimitsCard({
   return (
     <Card className='border-none rounded-none shadow-none'>
       <CardHeader>
-        <CardTitle>Feature Limits</CardTitle>
-        <CardDescription>Gates, static limits, and usage quotas</CardDescription>
+        <div className='flex items-center justify-between'>
+          <div>
+            <CardTitle>Feature Limits</CardTitle>
+            <CardDescription>
+              {trialMode ? 'Trial period limits' : 'Gates, static limits, and usage quotas'}
+            </CardDescription>
+          </div>
+          {showTrialToggle && (
+            <div className='flex items-center gap-2'>
+              <span className='text-sm text-muted-foreground'>Trial</span>
+              <Switch checked={trialMode} onCheckedChange={onTrialModeChange} />
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div className='overflow-hidden rounded-md border bg-background'>

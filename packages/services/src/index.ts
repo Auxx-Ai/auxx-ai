@@ -19,6 +19,9 @@ export {
   updateSessionDomainState,
   updateSessionTitle,
 } from './ai-agent-sessions'
+// AI Message Feedback
+export type { GetSessionFeedbackInput, UpsertMessageFeedbackInput } from './ai-message-feedback'
+export { getSessionFeedback, upsertMessageFeedback } from './ai-message-feedback'
 
 export type {
   DeleteFieldValuesInput,

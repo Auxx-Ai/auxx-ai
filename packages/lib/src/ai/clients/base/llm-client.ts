@@ -310,7 +310,9 @@ export abstract class LLMClient extends BaseSpecializedClient {
 
     // Validate message structure
     for (const [index, message] of params.messages.entries()) {
-      if (!message.role || !message.content) {
+      // Assistant messages with tool_calls can have null/empty content
+      const hasToolCalls = message.role === 'assistant' && message.tool_calls?.length
+      if (!message.role || (!hasToolCalls && message.content == null)) {
         throw new Error(`Invalid message at index ${index}: role and content are required`)
       }
 

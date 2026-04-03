@@ -131,16 +131,26 @@ export async function* agentQueryLoop(
     const approvalTool = findApprovalTool(toolCalls, agent.tools)
     if (approvalTool) {
       logger.info('Approval required', { agent: agent.name, tool: approvalTool.function.name })
-      const args = parseToolArgs(approvalTool)
+      const approvalArgs = parseToolArgs(approvalTool)
       yield {
         type: 'approval-required',
         agent: agent.name,
         tool: approvalTool.function.name,
-        args,
+        toolCallId: approvalTool.id,
+        args: approvalArgs,
       }
       // Let processResult update state (e.g. mark as waiting)
       currentState = await agent.processResult(content, toolCalls, currentState, deps)
-      currentState = { ...currentState, waitingForApproval: true }
+      currentState = {
+        ...currentState,
+        waitingForApproval: true,
+        pendingToolCall: {
+          toolCallId: approvalTool.id,
+          toolName: approvalTool.function.name,
+          agentName: agent.name,
+          args: approvalArgs,
+        },
+      }
       break
     }
 

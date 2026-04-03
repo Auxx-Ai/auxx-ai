@@ -28,6 +28,8 @@ export type {
   AgentToolResult,
   LLMCallParams,
   LLMStreamEvent,
+  PendingToolCall,
+  ResumeOptions,
   Route,
   SessionMessage,
 } from './types'

@@ -8,7 +8,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
 import { EditorContent } from '@tiptap/react'
 import { Send, X } from 'lucide-react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { InlinePickerPopover, useMentionEditor } from '~/components/editor/inline-picker'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
@@ -44,10 +44,16 @@ export function KopilotComposer({ page, context, onSend }: KopilotComposerProps)
   const setEditingMessage = useKopilotStore((s) => s.setEditingMessage)
   const messageMap = useKopilotStore((s) => s.messageMap)
 
+  const [isEmpty, setIsEmpty] = useState(true)
+
   const mentionEditor = useMentionEditor({
     placeholder: 'Ask Kopilot...',
     editable: true,
     className: cn('prose prose-sm prose-p:my-0 focus:outline-hidden max-w-none dark:prose-invert'),
+    onUpdate: (html) => {
+      const empty = isEmptyContent(html)
+      setIsEmpty((prev) => (prev === empty ? prev : empty))
+    },
     extensions: [
       SubmitOnEnter.configure({
         isExpanded: () => false,
@@ -133,8 +139,6 @@ export function KopilotComposer({ page, context, onSend }: KopilotComposerProps)
     editor?.commands.clearContent()
   }, [setEditingMessage, editor])
 
-  const isEmpty = !editor || isEmptyContent(editor.getHTML())
-
   return (
     <div ref={containerRef} className='p-3'>
       <div className='relative flex flex-row items-end rounded-xl border min-h-[120px]'>
@@ -170,10 +174,10 @@ export function KopilotComposer({ page, context, onSend }: KopilotComposerProps)
           <Button
             size='icon'
             variant='ghost'
-            className='h-7 w-7 shrink-0 rounded-full'
+            className='shrink-0 rounded-full'
             onClick={handleSend}
             disabled={isStreaming || isEmpty}>
-            <Send size={15} />
+            <Send />
           </Button>
         </div>
       </div>

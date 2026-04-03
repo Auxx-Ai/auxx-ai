@@ -78,6 +78,14 @@ export interface AgentBlock {
 
 // ===== AGENT STATE =====
 
+/** Stored tool call awaiting human approval — executed directly on resume */
+export interface PendingToolCall {
+  toolCallId: string
+  toolName: string
+  agentName: string
+  args: Record<string, unknown>
+}
+
 /** Runtime state passed through the agent pipeline */
 export interface AgentState<TDomainState = Record<string, unknown>> {
   /** Full conversation history */
@@ -88,6 +96,20 @@ export interface AgentState<TDomainState = Record<string, unknown>> {
   currentRoute?: string
   /** Whether the pipeline is waiting for human input */
   waitingForApproval?: boolean
+  /** Tool call awaiting approval — executed directly on resume without re-running pipeline */
+  pendingToolCall?: PendingToolCall
+}
+
+/** Options passed to engine.resume() for approval actions */
+export interface ResumeOptions {
+  /** Whether the user approved or rejected the pending tool call */
+  action: 'approve' | 'reject'
+  /** Optional overrides merged into the tool args (e.g. { saveAsDraft: true }) */
+  inputAmendment?: Record<string, unknown>
+  /** Optional state to restore before resuming (e.g. after reconnect) */
+  resumeState?: AgentState
+  /** Fresh UI context to apply before execution */
+  context?: Record<string, unknown>
 }
 
 // ===== AGENT DEFINITION =====
@@ -145,6 +167,8 @@ export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
   supervisorAgent: string
   /** Create initial domain state for a new session */
   createInitialState: (context: Record<string, unknown>) => TDomainState
+  /** Merge fresh UI context into domain state before each pipeline run */
+  applyContext?: (state: TDomainState, context: Record<string, unknown>) => TDomainState
   /** Default model for agents that don't override */
   defaultModel: string
   /** Default provider for agents that don't override */
@@ -200,7 +224,14 @@ export type AgentEvent =
     }
   | { type: 'tool-error'; agent: string; tool: string; error: string }
   | { type: 'agent-completed'; agent: string }
-  | { type: 'approval-required'; agent: string; tool: string; args: Record<string, unknown> }
+  | {
+      type: 'approval-required'
+      agent: string
+      tool: string
+      toolCallId: string
+      args: Record<string, unknown>
+    }
+  | { type: 'tool-rejected'; agent: string; tool: string; toolCallId: string }
   | { type: 'pipeline-completed'; route: string }
   | { type: 'pipeline-error'; error: string }
   | { type: 'message'; role: 'assistant'; content: string; blocks?: AgentBlock[] }
