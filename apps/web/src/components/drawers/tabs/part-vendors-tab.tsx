@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import {
@@ -131,7 +132,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
   const vendorParts = part.vendorParts ?? []
 
   return (
-    <>
+    <ScrollArea className='flex-1'>
       <Section
         title={`Suppliers (${vendorParts.length})`}
         initialOpen
@@ -244,6 +245,6 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
       />
 
       <ConfirmDeleteDialog />
-    </>
+    </ScrollArea>
   )
 }

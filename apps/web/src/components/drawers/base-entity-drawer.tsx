@@ -239,15 +239,13 @@ export function BaseEntityDrawer({
                   .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
                   .map((tab) => (
                     <TabsContent key={tab.value} value={tab.value} className='w-full'>
-                      <ScrollArea className='flex-1'>
-                        <LazyTabComponent
-                          entityType={entityType}
-                          tabValue={tab.value}
-                          entityInstanceId={entityInstanceId!}
-                          recordId={recordId}
-                          record={record}
-                        />
-                      </ScrollArea>
+                      <LazyTabComponent
+                        entityType={entityType}
+                        tabValue={tab.value}
+                        entityInstanceId={entityInstanceId!}
+                        recordId={recordId}
+                        record={record}
+                      />
                     </TabsContent>
                   ))}
               </div>
