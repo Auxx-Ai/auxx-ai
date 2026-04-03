@@ -16,7 +16,7 @@ export function KopilotStatusBar() {
   return (
     <div
       className={cn(
-        'overflow-hidden border-t transition-all duration-200',
+        'overflow-hidden transition-all duration-200',
         isStreaming ? 'h-8' : 'h-0 border-t-0'
       )}>
       <div className='flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground'>

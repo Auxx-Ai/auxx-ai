@@ -3,6 +3,7 @@
 
 import { parseRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Blocks, Edit, PlusCircle } from 'lucide-react'
@@ -35,7 +36,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
   }
 
   return (
-    <>
+    <ScrollArea className='flex-1'>
       {/* Inventory Section */}
       <Section
         title='Inventory'
@@ -117,6 +118,6 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
         partId={partId}
         inventory={part.inventory}
       />
-    </>
+    </ScrollArea>
   )
 }

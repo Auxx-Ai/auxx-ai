@@ -3,6 +3,7 @@
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Loader2, Plus, TicketIcon } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
@@ -89,38 +90,40 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
   }
 
   return (
-    <Section
-      title='Tickets'
-      className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
-      collapsible={false}
-      icon={<TicketIcon className='size-4 text-muted-foreground/50' />}
-      actions={
-        <CreateTicketDialog contactId={contactId} onSuccess={refresh}>
-          <Button variant='ghost' size='sm'>
-            <Plus />
-            Create Ticket
-          </Button>
-        </CreateTicketDialog>
-      }>
-      <div className='space-y-4 p-4'>
-        {records.map((record) => (
-          <TicketRow
-            key={record.id}
-            recordId={toRecordId(entityDefinitionId!, record.id)}
-            createdAt={record.createdAt}
-            onActionComplete={refresh}
-          />
-        ))}
-      </div>
+    <ScrollArea className='flex-1'>
+      <Section
+        title='Tickets'
+        className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
+        collapsible={false}
+        icon={<TicketIcon className='size-4 text-muted-foreground/50' />}
+        actions={
+          <CreateTicketDialog contactId={contactId} onSuccess={refresh}>
+            <Button variant='ghost' size='sm'>
+              <Plus />
+              Create Ticket
+            </Button>
+          </CreateTicketDialog>
+        }>
+        <div className='space-y-4 p-4'>
+          {records.map((record) => (
+            <TicketRow
+              key={record.id}
+              recordId={toRecordId(entityDefinitionId!, record.id)}
+              createdAt={record.createdAt}
+              onActionComplete={refresh}
+            />
+          ))}
+        </div>
 
-      <div className='pb-4'>
-        {isFetchingNextPage && (
-          <div className='flex h-8 w-full items-center justify-center'>
-            <Loader2 className='h-4 w-4 animate-spin' />
-          </div>
-        )}
-        <div ref={ref} className='h-1' />
-      </div>
-    </Section>
+        <div className='pb-4'>
+          {isFetchingNextPage && (
+            <div className='flex h-8 w-full items-center justify-center'>
+              <Loader2 className='h-4 w-4 animate-spin' />
+            </div>
+          )}
+          <div ref={ref} className='h-1' />
+        </div>
+      </Section>
+    </ScrollArea>
   )
 }

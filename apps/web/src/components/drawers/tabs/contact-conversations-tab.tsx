@@ -2,6 +2,7 @@
 'use client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { Button } from '@auxx/ui/components/button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Loader2, Mail, Plus } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
@@ -85,37 +86,39 @@ export function ContactConversationsTab({ record }: DrawerTabProps) {
   }
 
   return (
-    <Section
-      title='Conversations'
-      className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
-      collapsible={false}
-      icon={<Mail className='size-4 text-muted-foreground/50' />}
-      actions={
-        <Button variant='ghost' size='sm'>
-          <Plus />
-          Create Message
-        </Button>
-      }>
-      <div className='space-y-4 dark:bg-muted/10 p-4 pb-6'>
-        {threads.map((thread) => (
-          <MailContactThreadItem key={thread.id} item={thread} />
-        ))}
-      </div>
+    <ScrollArea className='flex-1'>
+      <Section
+        title='Conversations'
+        className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
+        collapsible={false}
+        icon={<Mail className='size-4 text-muted-foreground/50' />}
+        actions={
+          <Button variant='ghost' size='sm'>
+            <Plus />
+            Create Message
+          </Button>
+        }>
+        <div className='space-y-4 dark:bg-muted/10 p-4 pb-6'>
+          {threads.map((thread) => (
+            <MailContactThreadItem key={thread.id} item={thread} />
+          ))}
+        </div>
 
-      <div className='pb-4'>
-        {isFetchingNextPage && (
-          <div className='flex h-8 w-full items-center justify-center'>
-            <div>
-              <Loader2 className='h-4 w-4 animate-spin' />
+        <div className='pb-4'>
+          {isFetchingNextPage && (
+            <div className='flex h-8 w-full items-center justify-center'>
+              <div>
+                <Loader2 className='h-4 w-4 animate-spin' />
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <div ref={ref} className='h-1'></div>
-        {!hasNextPage && (
-          <div className='flex items-center justify-center text-sm'>End of list...</div>
-        )}
-      </div>
-    </Section>
+          <div ref={ref} className='h-1'></div>
+          {!hasNextPage && (
+            <div className='flex items-center justify-center text-sm'>End of list...</div>
+          )}
+        </div>
+      </Section>
+    </ScrollArea>
   )
 }
