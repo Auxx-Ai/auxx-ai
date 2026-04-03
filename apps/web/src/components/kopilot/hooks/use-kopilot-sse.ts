@@ -10,11 +10,11 @@ export interface KopilotRequest {
   message: string
   type?: 'message' | 'approval'
   page?: string
-  context?: {
-    activeThreadId?: string
-    activeContactId?: string
-    filters?: Record<string, unknown>
-  }
+  context?: Record<string, unknown>
+  /** Approval action — required when type is 'approval' */
+  approvalAction?: 'approve' | 'reject'
+  /** Input amendment for approval actions (e.g. { saveAsDraft: true }) */
+  inputAmendment?: Record<string, unknown>
 }
 
 interface UseKopilotSSEOptions {
@@ -38,6 +38,16 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
   const addActiveTool = useKopilotStore((s) => s.addActiveTool)
   const removeActiveTool = useKopilotStore((s) => s.removeActiveTool)
   const setError = useKopilotStore((s) => s.setError)
+
+  // Thinking step actions
+  const beginThinkingGroup = useKopilotStore((s) => s.beginThinkingGroup)
+  const appendThinkingText = useKopilotStore((s) => s.appendThinkingText)
+  const commitThinkingText = useKopilotStore((s) => s.commitThinkingText)
+  const addThinkingToolStep = useKopilotStore((s) => s.addThinkingToolStep)
+  const completeThinkingToolStep = useKopilotStore((s) => s.completeThinkingToolStep)
+  const failThinkingToolStep = useKopilotStore((s) => s.failThinkingToolStep)
+  const finalizeThinkingGroup = useKopilotStore((s) => s.finalizeThinkingGroup)
+  const attachThinkingGroupToMessage = useKopilotStore((s) => s.attachThinkingGroupToMessage)
 
   // Stable ref for onRequestSent to avoid re-triggering effects
   const onRequestSentRef = useRef(onRequestSent)
@@ -68,37 +78,50 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
         }
         case 'agent-started': {
           setCurrentAgent(data.agent)
+          if (data.agent === 'executor') {
+            beginThinkingGroup()
+          }
+          if (data.agent === 'responder') {
+            finalizeThinkingGroup()
+          }
           break
         }
         case 'llm-stream': {
-          // Skip internal agents (e.g. supervisor routing classification)
-          if (data.agent === 'supervisor') break
-          appendStreamDelta(data.delta)
+          if (data.agent === 'responder') {
+            appendStreamDelta(data.delta)
+          } else if (data.agent === 'executor') {
+            appendThinkingText(data.delta)
+          }
           break
         }
         case 'llm-complete': {
-          // Skip internal agents (e.g. supervisor routing classification)
-          if (data.agent === 'supervisor') break
-          // Commit accumulated streaming content as a new assistant message
-          const store = useKopilotStore.getState()
-          const content = store.stream.streamingContent
-          if (content) {
-            const msgId = streamingMessageIdRef.current || generateId()
-            addMessage({
-              id: msgId,
-              role: 'assistant',
-              content,
-              timestamp: Date.now(),
-              parentId: getCurrentLeafId(),
-            })
+          if (data.agent === 'executor') {
+            commitThinkingText()
+          } else if (data.agent === 'responder') {
+            // Commit accumulated streaming content as a new assistant message
+            const store = useKopilotStore.getState()
+            const content = store.stream.streamingContent
+            if (content) {
+              const msgId = streamingMessageIdRef.current || generateId()
+              addMessage({
+                id: msgId,
+                role: 'assistant',
+                content,
+                timestamp: Date.now(),
+                parentId: getCurrentLeafId(),
+              })
+              attachThinkingGroupToMessage(msgId)
+            }
+            streamingMessageIdRef.current = null
+            clearStream()
           }
-          streamingMessageIdRef.current = null
-          clearStream()
           break
         }
         case 'tool-started': {
           const toolMsgId = generateId()
           addActiveTool(data.tool, data.agent)
+          addThinkingToolStep(data.tool, data.args ?? {})
+          // Still store tool message for persistence
           addMessage({
             id: toolMsgId,
             role: 'tool',
@@ -111,7 +134,8 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
         }
         case 'tool-completed': {
           removeActiveTool(data.tool)
-          // Find and update the matching tool message
+          completeThinkingToolStep(data.tool, data.result?.output)
+          // Still update tool message for persistence
           const store = useKopilotStore.getState()
           const toolMsg = Object.values(store.messageMap)
             .reverse()
@@ -129,6 +153,7 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
         }
         case 'tool-error': {
           removeActiveTool(data.tool)
+          failThinkingToolStep(data.tool, data.error)
           const store = useKopilotStore.getState()
           const errToolMsg = Object.values(store.messageMap)
             .reverse()
@@ -147,11 +172,18 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
             content: `Approval needed: ${data.tool}`,
             timestamp: Date.now(),
             parentId: getCurrentLeafId(),
-            approvalRequired: true,
-            approvalStatus: 'pending',
-            tool: { name: data.tool, args: data.args ?? {}, status: 'running' },
+            approval: {
+              toolName: data.tool,
+              toolCallId: data.toolCallId,
+              args: data.args ?? {},
+              status: 'pending',
+            },
           })
           setIsStreaming(false)
+          break
+        }
+        case 'tool-rejected': {
+          // Tool was rejected — nothing to update, the approval card already shows 'rejected'
           break
         }
         case 'message': {
@@ -184,6 +216,14 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
       removeActiveTool,
       setError,
       getCurrentLeafId,
+      beginThinkingGroup,
+      appendThinkingText,
+      commitThinkingText,
+      addThinkingToolStep,
+      completeThinkingToolStep,
+      failThinkingToolStep,
+      finalizeThinkingGroup,
+      attachThinkingGroupToMessage,
     ]
   )
 

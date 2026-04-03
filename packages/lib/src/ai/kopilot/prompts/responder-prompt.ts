@@ -8,7 +8,7 @@ import { BLOCK_CATALOG } from './block-catalog'
  * The responder synthesizes tool results into a coherent user-facing message.
  */
 export function buildResponderSystemPrompt(domainState: KopilotDomainState): string {
-  const pageContext = domainState.page ? `Current page: ${domainState.page}` : ''
+  const pageContext = domainState.context.page ? `Current page: ${domainState.context.page}` : ''
   const resultsSection = buildResultsSection(domainState)
   const planSummary = buildPlanSummary(domainState)
 

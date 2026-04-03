@@ -8,22 +8,25 @@ import { ArrowDown, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { useKopilotStore } from '../stores/kopilot-store'
-import { ApprovalMessage } from './messages/approval-message'
+import { getApprovalCard } from './blocks/approval-card-registry'
+import { GenericApprovalCard } from './blocks/generic-approval-card'
 import { AssistantMessage } from './messages/assistant-message'
 import { BranchNavigator } from './messages/branch-navigator'
-import { ToolMessage } from './messages/tool-message'
+import { ThinkingSteps } from './messages/thinking-steps'
 import { UserMessage } from './messages/user-message'
 
 interface KopilotMessageListProps {
   onApprovalAction: (request: KopilotRequest) => void
   onEditMessage?: (messageId: string) => void
   onRetryMessage?: (messageId: string) => void
+  onFeedback?: (messageId: string, isPositive: boolean) => void
 }
 
 export function KopilotMessageList({
   onApprovalAction,
   onEditMessage,
   onRetryMessage,
+  onFeedback,
 }: KopilotMessageListProps) {
   const messages = useKopilotStore((s) => s.messages)
   const editingMessageId = useKopilotStore((s) => s.editingMessageId)
@@ -33,6 +36,9 @@ export function KopilotMessageList({
   const updateMessage = useKopilotStore((s) => s.updateMessage)
   const childrenMap = useKopilotStore((s) => s.childrenMap)
   const setActiveBranch = useKopilotStore((s) => s.setActiveBranch)
+  const thinkingGroups = useKopilotStore((s) => s.thinkingGroups)
+  const activeThinkingGroupId = useKopilotStore((s) => s.activeThinkingGroupId)
+  const activeThinkingGroup = activeThinkingGroupId ? thinkingGroups[activeThinkingGroupId] : null
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -88,15 +94,26 @@ export function KopilotMessageList({
   }, [])
 
   const handleApproval = useCallback(
-    (messageId: string, action: 'approved' | 'rejected') => {
-      updateMessage(messageId, { approvalStatus: action })
+    (
+      messageId: string,
+      action: 'approved' | 'rejected',
+      inputAmendment?: Record<string, unknown>
+    ) => {
+      const msg = messages.find((m) => m.id === messageId)
+      if (msg?.approval) {
+        updateMessage(messageId, {
+          approval: { ...msg.approval, status: action },
+        })
+      }
       onApprovalAction({
         sessionId: activeSessionId ?? undefined,
         message: action,
         type: 'approval',
+        approvalAction: action === 'approved' ? 'approve' : 'reject',
+        inputAmendment,
       })
     },
-    [activeSessionId, updateMessage, onApprovalAction]
+    [activeSessionId, messages, updateMessage, onApprovalAction]
   )
 
   if (messages.length === 0 && !isStreaming) {
@@ -131,12 +148,18 @@ export function KopilotMessageList({
 
           let messageEl: React.ReactNode = null
 
-          if (message.approvalRequired) {
+          if (message.approval) {
+            const ApprovalCard = getApprovalCard(message.approval.toolName) ?? GenericApprovalCard
             messageEl = (
-              <ApprovalMessage
+              <ApprovalCard
                 key={message.id}
-                message={message}
-                onApprove={() => handleApproval(message.id, 'approved')}
+                toolName={message.approval.toolName}
+                toolCallId={message.approval.toolCallId}
+                args={message.approval.args}
+                status={message.approval.status}
+                onApprove={(inputAmendment) =>
+                  handleApproval(message.id, 'approved', inputAmendment)
+                }
                 onReject={() => handleApproval(message.id, 'rejected')}
               />
             )
@@ -156,15 +179,16 @@ export function KopilotMessageList({
                   <AssistantMessage
                     key={message.id}
                     message={message}
+                    feedback={message.feedback}
                     onRetry={onRetryMessage ? () => onRetryMessage(message.id) : undefined}
-                    onThumbsUp={() => {}}
-                    onThumbsDown={() => {}}
+                    onThumbsUp={onFeedback ? () => onFeedback(message.id, true) : undefined}
+                    onThumbsDown={onFeedback ? () => onFeedback(message.id, false) : undefined}
                   />
                 )
                 break
               case 'tool':
-                messageEl = <ToolMessage key={message.id} message={message} />
-                break
+                // Tool messages are now shown in ThinkingSteps, not as individual messages
+                return null
               default:
                 break
             }
@@ -186,7 +210,25 @@ export function KopilotMessageList({
           )
         })}
 
-        {/* Streaming assistant message */}
+        {/* Show thinking steps while executor is running (before responder streams) */}
+        {isStreaming &&
+          !streamingContent &&
+          activeThinkingGroup &&
+          activeThinkingGroup.steps.length > 0 && (
+            <div className='flex gap-2'>
+              <div className='animate-hue-rotate relative size-fit'>
+                <div className='bg-conic/decreasing relative flex size-5 items-center justify-center rounded-full from-violet-500 via-lime-300 to-violet-400 blur-md' />
+                <div className='absolute inset-0 flex items-center justify-center'>
+                  <Sparkles className='size-3.5' />
+                </div>
+              </div>
+              <div className='min-w-0 flex-1'>
+                <ThinkingSteps group={activeThinkingGroup} />
+              </div>
+            </div>
+          )}
+
+        {/* Streaming assistant message (responder output) */}
         {isStreaming && streamingContent && (
           <AssistantMessage streamingContent={streamingContent} />
         )}

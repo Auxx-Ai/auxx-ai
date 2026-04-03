@@ -77,8 +77,10 @@ export interface ClientConfig {
 
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string | MultiModalContent[]
+  content: string | MultiModalContent[] | null
   tool_call_id?: string
+  /** Tool calls made by an assistant message (required by OpenAI for multi-turn tool use) */
+  tool_calls?: ToolCall[]
 }
 
 export interface Tool {

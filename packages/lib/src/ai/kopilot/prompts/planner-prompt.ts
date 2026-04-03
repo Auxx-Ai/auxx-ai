@@ -13,10 +13,9 @@ export function buildPlannerSystemPrompt(
 ): string {
   const toolList = availableTools.map((t) => `- **${t.name}**: ${t.description}`).join('\n')
 
-  const pageContext = domainState.page ? `Current page: ${domainState.page}` : ''
-  const threadContext = domainState.activeThreadId
-    ? `Active thread: ${domainState.activeThreadId}`
-    : ''
+  const ctx = domainState.context
+  const pageContext = ctx.page ? `Current page: ${ctx.page}` : ''
+  const threadContext = ctx.activeThreadId ? `Active thread: ${ctx.activeThreadId}` : ''
 
   return `You are a planning agent for Kopilot, an AI assistant inside an email support platform for Shopify businesses.
 

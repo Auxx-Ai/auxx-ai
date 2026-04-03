@@ -16,12 +16,22 @@ Schema: JSON array of thread objects.
 \`\`\`
 Always copy thread data exactly from tool results. Never fabricate thread IDs.
 
-#### \`auxx:contact-card\` — Contact/customer card
-Use when showing contact search results or referencing a specific person.
+#### \`auxx:entity-card\` — Entity record card
+Use when referencing a specific record (contact, company, ticket, any custom entity).
+The frontend resolves all display data — you only need the recordId.
 Schema: single object.
 \`\`\`
-{"id": "...", "name": "...", "email": "...", "company": "...", "orderCount": 12, "totalSpent": "$1,234"}
+{"recordId": "entityDefinitionId:entityInstanceId"}
 \`\`\`
+Copy recordId exactly from tool results (search_entities, get_entity, create_entity). Never fabricate recordIds.
+
+#### \`auxx:entity-list\` — List of entity records
+Use when showing multiple entity results from a search.
+Schema: JSON array of entity card objects.
+\`\`\`
+[{"recordId": "defId:instId1"}, {"recordId": "defId:instId2"}]
+\`\`\`
+Copy recordIds exactly from search_entities results.
 
 #### \`auxx:draft-preview\` — Email draft preview
 ONLY use after the \`draft_reply\` tool has been called and returned a result. Copy \`draftId\` and \`threadId\` exactly from the tool output — never fabricate them.

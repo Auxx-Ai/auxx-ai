@@ -1,22 +1,19 @@
-// apps/web/src/components/kopilot/ui/messages/approval-message.tsx
+// apps/web/src/components/kopilot/ui/blocks/generic-approval-card.tsx
 
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Check, ShieldAlert, X } from 'lucide-react'
-import type { KopilotMessage } from '../../stores/kopilot-store'
+import type { ApprovalCardProps } from './approval-card-registry'
 
-interface ApprovalMessageProps {
-  message: KopilotMessage
-  onApprove: () => void
-  onReject: () => void
-}
-
-export function ApprovalMessage({ message, onApprove, onReject }: ApprovalMessageProps) {
-  const tool = message.tool
-  const status = message.approvalStatus
-
+export function GenericApprovalCard({
+  toolName,
+  args,
+  status,
+  onApprove,
+  onReject,
+}: ApprovalCardProps) {
   return (
     <div className='rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30'>
       <div className='flex items-start gap-2'>
@@ -25,20 +22,18 @@ export function ApprovalMessage({ message, onApprove, onReject }: ApprovalMessag
           <p className='text-sm font-medium text-amber-900 dark:text-amber-200'>
             Approval required
           </p>
-          {tool && (
-            <p className='text-xs text-amber-700 dark:text-amber-300'>
-              <span className='font-mono'>{tool.name}</span>
-              {Object.keys(tool.args).length > 0 && (
-                <span className='ml-1 text-amber-600 dark:text-amber-400'>
-                  — {summarizeArgs(tool.args)}
-                </span>
-              )}
-            </p>
-          )}
+          <p className='text-xs text-amber-700 dark:text-amber-300'>
+            <span className='font-mono'>{toolName}</span>
+            {Object.keys(args).length > 0 && (
+              <span className='ml-1 text-amber-600 dark:text-amber-400'>
+                — {summarizeArgs(args)}
+              </span>
+            )}
+          </p>
 
           {status === 'pending' ? (
             <div className='flex items-center gap-2'>
-              <Button size='sm' variant='outline' className='h-7' onClick={onApprove}>
+              <Button size='sm' variant='outline' className='h-7' onClick={() => onApprove()}>
                 <Check />
                 Approve
               </Button>
@@ -49,7 +44,7 @@ export function ApprovalMessage({ message, onApprove, onReject }: ApprovalMessag
             </div>
           ) : (
             <Badge variant={status === 'approved' ? 'default' : 'destructive'}>
-              {status === 'approved' ? 'Approved ✓' : 'Rejected ✗'}
+              {status === 'approved' ? 'Approved' : 'Rejected'}
             </Badge>
           )}
         </div>
@@ -58,12 +53,12 @@ export function ApprovalMessage({ message, onApprove, onReject }: ApprovalMessag
   )
 }
 
-/** Show a one-line summary of tool args */
 function summarizeArgs(args: Record<string, unknown>): string {
-  const entries = Object.entries(args)
-  if (entries.length === 0) return ''
-  return entries
+  return Object.entries(args)
     .slice(0, 3)
-    .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+    .map(([k, v]) => {
+      const str = typeof v === 'string' ? v : JSON.stringify(v)
+      return `${k}: ${str.length > 60 ? `${str.slice(0, 60)}...` : str}`
+    })
     .join(', ')
 }

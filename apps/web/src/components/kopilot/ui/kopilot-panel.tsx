@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { ChevronDown, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { api } from '~/trpc/react'
 import { useKopilotSessions, useLoadSession } from '../hooks/use-kopilot-sessions'
 import { type KopilotRequest, useKopilotSSE } from '../hooks/use-kopilot-sse'
 import { useKopilotStore } from '../stores/kopilot-store'
@@ -21,11 +22,7 @@ export interface KopilotPanelProps {
   /** Current page context (e.g. 'mail') */
   page: string
   /** Page-specific context */
-  context?: {
-    activeThreadId?: string
-    activeContactId?: string
-    filters?: Record<string, unknown>
-  }
+  context?: Record<string, unknown>
 }
 
 export function KopilotPanel({ page, context }: KopilotPanelProps) {
@@ -35,6 +32,7 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
   const setEditingMessage = useKopilotStore((s) => s.setEditingMessage)
   const messageMap = useKopilotStore((s) => s.messageMap)
   const messages = useKopilotStore((s) => s.messages)
+  const setMessageFeedback = useKopilotStore((s) => s.setMessageFeedback)
 
   const [pendingRequest, setPendingRequest] = useState<KopilotRequest | null>(null)
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false)
@@ -68,6 +66,29 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
       loadSession(activeSessionId)
     }
   }, [activeSessionId, messages.length, loadSession])
+
+  // Feedback
+  const rateMessage = api.kopilot.rateMessage.useMutation()
+
+  const handleFeedback = useCallback(
+    (messageId: string, isPositive: boolean) => {
+      if (!activeSessionId) return
+
+      const current = messageMap[messageId]?.feedback?.isPositive
+      const newValue = current === isPositive ? null : isPositive
+
+      // Optimistic update
+      setMessageFeedback(messageId, newValue)
+
+      // Fire-and-forget persist
+      rateMessage.mutate({
+        sessionId: activeSessionId,
+        messageId,
+        isPositive,
+      })
+    },
+    [activeSessionId, messageMap, setMessageFeedback, rateMessage]
+  )
 
   const handleSend = useCallback((request: KopilotRequest) => {
     setPendingRequest(request)
@@ -192,6 +213,7 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
         onApprovalAction={handleApprovalAction}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
+        onFeedback={handleFeedback}
       />
       <KopilotStatusBar />
       <KopilotComposer page={page} context={context} onSend={handleSend} />

@@ -764,6 +764,13 @@
       "when": 1775157216049,
       "tag": "0108_add_ai_agent_session",
       "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1775181917443,
+      "tag": "0109_add_ai_message_feedback",
+      "breakpoints": true
     }
   ]
 }

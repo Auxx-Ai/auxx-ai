@@ -3,6 +3,7 @@
 export type { CapabilityRegistry, GetToolDeps, PageCapability, ToolDeps } from './capabilities'
 export {
   createCapabilityRegistry,
+  createEntityCapabilities,
   createMailCapabilities,
   createToolDepsFactory,
 } from './capabilities'
@@ -13,7 +14,7 @@ export type {
   KopilotDomainState,
   KopilotExecutionMode,
   KopilotRoute,
-  KopilotSessionContext,
   PlanStep,
+  SessionContext,
   SupervisorClassification,
 } from './types'

@@ -3,9 +3,11 @@
 import { Sparkles } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { KopilotMessage } from '../../stores/kopilot-store'
+import type { KopilotMessage, ThinkingGroup } from '../../stores/kopilot-store'
+import { useKopilotStore } from '../../stores/kopilot-store'
 import { AuxxBlock } from '../blocks/auxx-block'
 import { MessageActions } from './message-actions'
+import { ThinkingSteps } from './thinking-steps'
 
 interface AssistantMessageProps {
   message?: KopilotMessage
@@ -14,6 +16,7 @@ interface AssistantMessageProps {
   onRetry?: () => void
   onThumbsUp?: () => void
   onThumbsDown?: () => void
+  feedback?: { isPositive: boolean }
 }
 
 export function AssistantMessage({
@@ -22,9 +25,24 @@ export function AssistantMessage({
   onRetry,
   onThumbsUp,
   onThumbsDown,
+  feedback,
 }: AssistantMessageProps) {
   const isStreaming = streamingContent !== undefined
   const content = isStreaming ? streamingContent : (message?.content ?? '')
+
+  const thinkingGroups = useKopilotStore((s) => s.thinkingGroups)
+  const activeThinkingGroupId = useKopilotStore((s) => s.activeThinkingGroupId)
+
+  // Find the thinking group attached to this message
+  const thinkingGroup = message?.id
+    ? Object.values(thinkingGroups).find((g) => g.messageId === message.id)
+    : undefined
+  // While streaming (no message yet), show the active thinking group
+  const activeGroup =
+    streamingContent !== undefined && activeThinkingGroupId
+      ? thinkingGroups[activeThinkingGroupId]
+      : undefined
+  const group: ThinkingGroup | undefined = thinkingGroup ?? activeGroup
 
   return (
     <div className='group/message flex gap-2'>
@@ -35,6 +53,7 @@ export function AssistantMessage({
         </div>
       </div>
       <div className='min-w-0 flex-1 space-y-1'>
+        {group && group.steps.length > 0 && <ThinkingSteps group={group} />}
         <div className='prose prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1 max-w-none text-sm dark:prose-invert'>
           <Markdown
             remarkPlugins={[remarkGfm]}
@@ -54,6 +73,7 @@ export function AssistantMessage({
           <MessageActions
             role='assistant'
             content={content}
+            feedback={feedback}
             onRetry={onRetry}
             onThumbsUp={onThumbsUp}
             onThumbsDown={onThumbsDown}

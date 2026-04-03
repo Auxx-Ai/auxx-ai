@@ -1075,6 +1075,15 @@ export const adminRouter = createTRPCRouter({
               })
             )
             .optional(),
+          trialFeatureLimits: z
+            .array(
+              z.object({
+                key: z.string(),
+                limit: z.union([z.number().int(), z.boolean()]),
+              })
+            )
+            .nullable()
+            .optional(),
           hierarchyLevel: z.number().int().min(0).max(10).optional(),
           selfServed: z.boolean().optional(),
           isMostPopular: z.boolean().optional(),

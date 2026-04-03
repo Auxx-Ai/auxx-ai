@@ -16,15 +16,11 @@ export const threadItemSchema = z.object({
 
 export const threadListSchema = z.array(threadItemSchema)
 
-export const contactCardSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  email: z.string().optional(),
-  company: z.string().optional(),
-  avatarUrl: z.string().optional(),
-  orderCount: z.number().optional(),
-  totalSpent: z.string().optional(),
+export const entityCardSchema = z.object({
+  recordId: z.string(),
 })
+
+export const entityListSchema = z.array(entityCardSchema)
 
 export const draftPreviewSchema = z.object({
   draftId: z.string(),
@@ -61,7 +57,8 @@ export const actionResultSchema = z.object({
 /** Registry of block type → Zod schema */
 export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
   'thread-list': threadListSchema,
-  'contact-card': contactCardSchema,
+  'entity-card': entityCardSchema,
+  'entity-list': entityListSchema,
   'draft-preview': draftPreviewSchema,
   'kb-article': kbArticleSchema,
   'plan-steps': planStepsSchema,
@@ -71,7 +68,8 @@ export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
 /** Inferred types for block components */
 export type ThreadItem = z.infer<typeof threadItemSchema>
 export type ThreadListData = z.infer<typeof threadListSchema>
-export type ContactCardData = z.infer<typeof contactCardSchema>
+export type EntityCardData = z.infer<typeof entityCardSchema>
+export type EntityListData = z.infer<typeof entityListSchema>
 export type DraftPreviewData = z.infer<typeof draftPreviewSchema>
 export type KBArticleData = z.infer<typeof kbArticleSchema>
 export type PlanStepsData = z.infer<typeof planStepsSchema>

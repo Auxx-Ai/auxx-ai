@@ -6,6 +6,7 @@ import {
   Address,
   AiAgentSession,
   AiIntegration,
+  AiMessageFeedback,
   AiUsage,
   ApiKey,
   ApprovalRequest,
@@ -706,5 +707,20 @@ export const systemModelDefaultRelations = relations(SystemModelDefault, ({ one 
   organization: one(Organization, {
     fields: [SystemModelDefault.organizationId],
     references: [Organization.id],
+  }),
+}))
+
+export const aiMessageFeedbackRelations = relations(AiMessageFeedback, ({ one }) => ({
+  session: one(AiAgentSession, {
+    fields: [AiMessageFeedback.sessionId],
+    references: [AiAgentSession.id],
+  }),
+  organization: one(Organization, {
+    fields: [AiMessageFeedback.organizationId],
+    references: [Organization.id],
+  }),
+  user: one(User, {
+    fields: [AiMessageFeedback.userId],
+    references: [User.id],
   }),
 }))

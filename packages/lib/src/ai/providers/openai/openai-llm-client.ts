@@ -94,6 +94,7 @@ export class OpenAILLMClient extends LLMClient {
     let chunkCount = 0
     const toolCalls: ToolCall[] = []
     let functionCallBuffer: Partial<FunctionCall> | null = null
+    const toolCallBuffers: Map<number, { id: string; name: string; arguments: string }> = new Map()
     let finalUsage: UsageMetrics | undefined
 
     try {
@@ -155,11 +156,31 @@ export class OpenAILLMClient extends LLMClient {
         const delta = chunk.choices[0]
         const deltaContent = delta.delta.content || ''
         const deltaFunctionCall = delta.delta.function_call
+        const deltaToolCalls = (delta.delta as any).tool_calls as
+          | Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>
+          | undefined
         const finishReason = delta.finish_reason
 
         fullContent += deltaContent
 
-        // Handle function call streaming (sophisticated buffer management)
+        // Handle modern tool_calls streaming (OpenAI streams tool calls as indexed deltas)
+        if (deltaToolCalls) {
+          for (const tc of deltaToolCalls) {
+            const existing = toolCallBuffers.get(tc.index)
+            if (existing) {
+              existing.arguments += tc.function?.arguments || ''
+            } else {
+              toolCallBuffers.set(tc.index, {
+                id: tc.id || `call_${tc.index}`,
+                name: tc.function?.name || '',
+                arguments: tc.function?.arguments || '',
+              })
+            }
+          }
+          if (!finishReason) continue
+        }
+
+        // Handle legacy function_call streaming
         if (functionCallBuffer && deltaFunctionCall) {
           functionCallBuffer.arguments += deltaFunctionCall.arguments || ''
           if (!finishReason) continue
@@ -173,6 +194,18 @@ export class OpenAILLMClient extends LLMClient {
             arguments: deltaFunctionCall.arguments || '',
           }
           if (!finishReason) continue
+        }
+
+        // Flush tool call buffers on finish
+        if (finishReason && toolCallBuffers.size > 0) {
+          for (const [, buf] of toolCallBuffers) {
+            toolCalls.push({
+              id: buf.id,
+              type: 'function',
+              function: { name: buf.name, arguments: buf.arguments },
+            })
+          }
+          toolCallBuffers.clear()
         }
 
         // Yield chunk with enhanced metadata
@@ -433,8 +466,15 @@ export class OpenAILLMClient extends LLMClient {
             typeof params.json_schema === 'string'
               ? JSON.parse(params.json_schema)
               : params.json_schema
+
+          // Detect if schema is already in OpenAI wrapper format ({ name, schema, strict })
+          // vs a plain JSON Schema ({ type: 'object', properties: ... })
+          const isWrapped =
+            rawSchema.schema && typeof rawSchema.schema === 'object' && !rawSchema.type
+          const innerSchema = isWrapped ? rawSchema.schema : rawSchema
+
           // OpenAI strict mode requires all properties to be in the required array
-          const schemaForOpenAI = { ...rawSchema }
+          const schemaForOpenAI = { ...innerSchema }
           if (schemaForOpenAI.properties && typeof schemaForOpenAI.properties === 'object') {
             // For strict mode, ensure all properties are required
             schemaForOpenAI.required = Object.keys(schemaForOpenAI.properties)
@@ -446,8 +486,9 @@ export class OpenAILLMClient extends LLMClient {
 
           // OpenAI requires the schema to be wrapped in a specific format
           const wrappedSchema = {
-            name: rawSchema.name || 'output_schema',
-            description: rawSchema.description || 'Generated output schema',
+            name: rawSchema.name || innerSchema.name || 'output_schema',
+            description:
+              rawSchema.description || innerSchema.description || 'Generated output schema',
             schema: schemaForOpenAI,
             strict: true,
           }

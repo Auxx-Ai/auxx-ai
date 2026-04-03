@@ -130,6 +130,12 @@ export class AnthropicLLMClient extends LLMClient {
                   eventType: event.type,
                 },
               }
+            } else if (event.delta.type === 'input_json_delta') {
+              // Accumulate streamed tool call arguments
+              const lastToolCall = toolCalls[toolCalls.length - 1]
+              if (lastToolCall) {
+                lastToolCall.function.arguments += event.delta.partial_json
+              }
             }
             break
 

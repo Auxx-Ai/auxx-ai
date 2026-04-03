@@ -40,11 +40,11 @@ interface KopilotStreamRequest {
   message: string
   type?: 'message' | 'approval'
   page?: string
-  context?: {
-    activeThreadId?: string
-    activeContactId?: string
-    filters?: Record<string, unknown>
-  }
+  context?: Record<string, unknown>
+  /** Approval action — required when type is 'approval' */
+  approvalAction?: 'approve' | 'reject'
+  /** Input amendment for approval actions (e.g. { saveAsDraft: true }) */
+  inputAmendment?: Record<string, unknown>
 }
 
 /**
@@ -180,6 +180,8 @@ export async function POST(request: NextRequest) {
                 type,
                 page,
                 context,
+                approvalAction: body.approvalAction,
+                inputAmendment: body.inputAmendment,
                 send,
                 cleanup,
                 request,
@@ -249,7 +251,7 @@ async function runInProcessPath(params: {
   message: string
   type: 'message' | 'approval'
   page?: string
-  context?: KopilotStreamRequest['context']
+  context?: Record<string, unknown>
   savedMessages: Record<string, unknown>[]
   savedDomainState: Record<string, unknown>
   send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
@@ -318,8 +320,18 @@ async function runInProcessPath(params: {
     engine.interrupt()
   })
 
+  // Build session context from request
+  const sessionContext = { page, ...context }
+
   // Run the engine
-  const generator = type === 'approval' ? engine.resume(message) : engine.submitMessage(message)
+  const generator =
+    type === 'approval'
+      ? engine.resume({
+          action: body.approvalAction ?? 'approve',
+          inputAmendment: body.inputAmendment,
+          context: sessionContext,
+        })
+      : engine.submitMessage(message, sessionContext)
 
   for await (const event of generator) {
     if (request.signal.aborted) break
@@ -359,7 +371,9 @@ async function runWorkerPath(params: {
   message: string
   type: 'message' | 'approval'
   page?: string
-  context?: KopilotStreamRequest['context']
+  context?: Record<string, unknown>
+  approvalAction?: 'approve' | 'reject'
+  inputAmendment?: Record<string, unknown>
   send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
   cleanup: () => void
   request: NextRequest
@@ -400,6 +414,8 @@ async function runWorkerPath(params: {
     domain: 'kopilot',
     page,
     context: context as Record<string, unknown>,
+    approvalAction: params.approvalAction,
+    inputAmendment: params.inputAmendment,
   })
 
   // 3. Wait for terminal event or disconnect
