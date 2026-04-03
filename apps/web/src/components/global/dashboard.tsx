@@ -24,6 +24,7 @@ import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { OverageBanner } from '~/components/banner/overage-banner'
 import { DemoBanner } from '~/components/demo/demo-banner'
 import AppSidebar from '~/components/global/sidebar'
+import { KopilotDock } from '~/components/kopilot/ui/kopilot-dock'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { useThreadMutation } from '~/components/threads/hooks'
 import { useOverages } from '~/hooks/use-overages'
@@ -125,6 +126,7 @@ export const Dashboard = ({
               <OverageBanner overages={overages} />
               {children}
             </SidebarInset>
+            <KopilotDock />
           </div>
         </DndStateProvider>
         {portalContainer &&

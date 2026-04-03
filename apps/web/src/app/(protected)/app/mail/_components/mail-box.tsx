@@ -14,7 +14,6 @@ import {
 } from '@auxx/ui/components/main-page'
 import { PanelResizeHandle } from '@auxx/ui/components/panel-resize-handle'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { useHotkey } from '@tanstack/react-hotkeys'
 import { Columns2, Mail, Plus, Rows3, Sparkles, Waypoints } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -29,7 +28,6 @@ import {
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { EmptyState } from '~/components/global/empty-state'
 import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
-import { KopilotPanel } from '~/components/kopilot/ui/kopilot-panel'
 import {
   MailFilterProvider,
   type SortDirection,
@@ -184,18 +182,11 @@ function MailboxInner({
   const [contactId, setContactId] = useQueryState('contactId', { defaultValue: '' })
   const isContactDrawerOpen = !!contactId
 
-  // Kopilot panel state
+  // Kopilot — push page context so the global KopilotDock knows what's on-screen
   const { hasAccess } = useFeatureFlags()
   const kopilotEnabled = hasAccess('kopilot')
-  const kopilotOpen = useKopilotStore((s) => s.panelOpen) && kopilotEnabled
   const toggleKopilot = useKopilotStore((s) => s.togglePanel)
-  const [kopilotWidth, setKopilotWidth] = useState(420)
-
-  // Kopilot keyboard shortcut — registered here so it works when panel is closed
-  useHotkey('mod+shift+k', () => toggleKopilot(), {
-    enabled: kopilotEnabled,
-    conflictBehavior: 'allow',
-  })
+  const setKopilotContext = useKopilotStore((s) => s.setContext)
 
   // Use new selection store directly
   const selectedThreads = useSelectedThreadIds()
@@ -251,6 +242,14 @@ function MailboxInner({
   // Sync Zustand → URL (persist active thread when user clicks a thread row)
   const activeThreadId = useActiveThreadId()
   const activeThreadVersion = useActiveThreadVersion()
+
+  // Push page context to Kopilot global dock
+  useEffect(() => {
+    if (!kopilotEnabled) return
+    setKopilotContext({ page: 'mail', activeThreadId: activeThreadId ?? undefined })
+    return () => setKopilotContext(null)
+  }, [kopilotEnabled, activeThreadId, setKopilotContext])
+
   useEffect(() => {
     if (activeThreadId) {
       void setTid(activeThreadId)
@@ -407,7 +406,7 @@ function MailboxInner({
     [contactId, setContactId]
   )
 
-  // Build docked panels for contact drawer and Kopilot
+  // Build docked panels for contact drawer
   const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
     const panels: DockedPanelConfig[] = []
 
@@ -428,19 +427,6 @@ function MailboxInner({
       })
     }
 
-    if (kopilotOpen) {
-      panels.push({
-        key: 'kopilot',
-        content: (
-          <KopilotPanel page='mail' context={{ activeThreadId: activeThreadId ?? undefined }} />
-        ),
-        width: kopilotWidth,
-        onWidthChange: setKopilotWidth,
-        minWidth: 360,
-        maxWidth: 600,
-      })
-    }
-
     return panels
   }, [
     isDocked,
@@ -451,9 +437,6 @@ function MailboxInner({
     setDockedWidth,
     minWidth,
     maxWidth,
-    kopilotOpen,
-    activeThreadId,
-    kopilotWidth,
   ])
 
   return (

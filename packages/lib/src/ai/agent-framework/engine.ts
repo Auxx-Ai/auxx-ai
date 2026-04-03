@@ -170,6 +170,20 @@ export class AgentEngine {
         tool: pending.toolName,
         result,
       }
+      // Persist the tool result so it survives page refresh
+      this.state = {
+        ...this.state,
+        messages: [
+          ...this.state.messages,
+          {
+            role: 'tool' as const,
+            content: JSON.stringify(result),
+            toolCallId: pending.toolCallId,
+            timestamp: Date.now(),
+            metadata: { agent: pending.agentName },
+          },
+        ],
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       logger.error('Approved tool execution failed', {
@@ -269,7 +283,8 @@ export class AgentEngine {
       for await (const event of this.runAgentAndUpdateState(agent, config)) {
         yield event
         if (event.type === 'pipeline-error') return
-        iterCount++
+        // Only count LLM calls (not streaming deltas) to avoid false runaway detection
+        if (event.type === 'llm-complete') iterCount++
       }
       totalIterations += iterCount
 

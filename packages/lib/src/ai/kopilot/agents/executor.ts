@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/agents/executor.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { getCachedResources } from '../../../cache/org-cache-helpers'
 import type {
   AgentDefinition,
   AgentDeps,
@@ -23,8 +24,21 @@ export function createExecutorAgent(
   return {
     name: 'executor',
 
-    buildMessages(state: AgentState<KopilotDomainState>, _deps: AgentDeps): Message[] {
-      const systemPrompt = buildExecutorSystemPrompt(state.domainState)
+    async buildMessages(
+      state: AgentState<KopilotDomainState>,
+      deps: AgentDeps
+    ): Promise<Message[]> {
+      const resources = await getCachedResources(deps.organizationId)
+      const entityCatalog = resources
+        .filter((r) => r.isVisible !== false)
+        .map((r) => ({
+          apiSlug: r.apiSlug,
+          label: r.label,
+          plural: r.plural,
+          entityDefinitionId: r.entityDefinitionId ?? r.id,
+        }))
+
+      const systemPrompt = buildExecutorSystemPrompt(state.domainState, entityCatalog)
 
       // Include full conversation (user, assistant, tool messages) for tool loop continuity
       const conversationMessages: Message[] = state.messages
@@ -97,9 +111,10 @@ export function createExecutorAgent(
         }
       }
 
-      // Persist the final assistant message
+      // Persist the final assistant message — only on one-shot exit (no tool calls).
+      // When toolCalls exist, the query loop already appended an assistant message with the same content.
       const messages = [...state.messages]
-      if (content) {
+      if (content && toolCalls.length === 0) {
         messages.push({
           role: 'assistant',
           content,

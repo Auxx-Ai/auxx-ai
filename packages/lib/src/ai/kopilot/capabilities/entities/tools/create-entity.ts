@@ -8,8 +8,14 @@ import type { GetToolDeps } from '../../types'
 export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_entity',
-    description:
-      'Create a new entity instance with field values. Requires user approval before execution. Use list_entity_fields first to discover required fields.',
+    description: `Create a new entity instance. Requires user approval before execution.
+
+IMPORTANT: You MUST call list_entity_fields first to discover valid field IDs.
+Pass field values inside the "values" object using the field IDs returned by list_entity_fields.
+
+Example:
+  entityDefinitionId: "abc123"
+  values: { "companyName": "Acme", "website": "https://acme.com" }`,
     requiresApproval: true,
     parameters: {
       type: 'object',
@@ -20,7 +26,9 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
         },
         values: {
           type: 'object',
-          description: 'Field ID → value mapping. Use field IDs from list_entity_fields.',
+          description:
+            'Object mapping field IDs to their values. Field IDs come from list_entity_fields (e.g. { "companyName": "Acme", "website": "https://acme.com" }). Only include fields you want to set.',
+          additionalProperties: true,
         },
       },
       required: ['entityDefinitionId', 'values'],
@@ -29,7 +37,22 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       const key = args.entityDefinitionId as string
-      const values = args.values as Record<string, unknown>
+
+      // The LLM may nest field values under `values` or flatten them at the top level.
+      const values =
+        (args.values as Record<string, unknown>) ??
+        Object.fromEntries(
+          Object.entries(args).filter(([k]) => k !== 'entityDefinitionId' && k !== 'values')
+        )
+
+      if (!values || Object.keys(values).length === 0) {
+        return {
+          success: false,
+          output: null,
+          error:
+            'No field values provided. Call list_entity_fields first to discover fields, then pass them in the "values" object.',
+        }
+      }
 
       const resource = await findCachedResource(agentDeps.organizationId, key)
       if (!resource) {

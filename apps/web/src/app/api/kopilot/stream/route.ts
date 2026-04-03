@@ -11,6 +11,7 @@ import {
 } from '@auxx/lib/ai/agent-framework'
 import {
   createCapabilityRegistry,
+  createEntityCapabilities,
   createKopilotDomainConfig,
   createMailCapabilities,
   generateSessionTitle,
@@ -282,11 +283,12 @@ async function runInProcessPath(params: {
   })
 
   const registry = createCapabilityRegistry()
+  registry.register(createEntityCapabilities(getToolDeps))
   registry.register(createMailCapabilities(getToolDeps))
 
   const domainConfig = createKopilotDomainConfig({
     capabilityRegistry: registry,
-    page: page ?? (context?.activeThreadId ? 'mail' : undefined),
+    page: page ?? 'mail',
   })
 
   // Create LLM adapter
@@ -306,10 +308,15 @@ async function runInProcessPath(params: {
     signal: request.signal,
   }
 
-  // Create engine with restored state
+  // Create engine with restored state (including approval state if paused)
   const initialState =
     savedMessages.length > 0
-      ? { messages: savedMessages as any[], domainState: savedDomainState }
+      ? {
+          messages: savedMessages as any[],
+          domainState: savedDomainState,
+          waitingForApproval: savedDomainState._waitingForApproval as boolean | undefined,
+          pendingToolCall: savedDomainState._pendingToolCall as any,
+        }
       : undefined
 
   const engine = new AgentEngine(engineConfig, initialState)
@@ -338,17 +345,22 @@ async function runInProcessPath(params: {
     send(event)
   }
 
-  // Persist state
+  // Persist state — stash approval fields inside domainState so they survive reload
   const finalState = engine.getState()
+  const domainStateToSave = {
+    ...(finalState.domainState as Record<string, unknown>),
+    _waitingForApproval: finalState.waitingForApproval ?? false,
+    _pendingToolCall: finalState.pendingToolCall ?? null,
+  }
   await saveSessionMessages({
     sessionId,
     organizationId,
-    messages: finalState.messages as Record<string, unknown>[],
+    messages: finalState.messages as unknown as Record<string, unknown>[],
   })
   await updateSessionDomainState({
     sessionId,
     organizationId,
-    domainState: finalState.domainState as Record<string, unknown>,
+    domainState: domainStateToSave,
   })
 
   // Auto-title new sessions after first exchange

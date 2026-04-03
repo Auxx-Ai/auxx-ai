@@ -52,7 +52,7 @@ export async function* agentQueryLoop(
     iteration++
 
     // Build messages from current state
-    const messages = agent.buildMessages(currentState, deps)
+    const messages = await agent.buildMessages(currentState, deps)
     logger.debug('LLM call', {
       agent: agent.name,
       iteration,
@@ -127,6 +127,29 @@ export async function* agentQueryLoop(
       yield event
     }
 
+    // Build tool result messages and add to state — must happen before the
+    // approval check so the assistant tool-call message is always persisted.
+    const toolResultMessages = toolResults.results.map((r) => ({
+      role: 'tool' as const,
+      content: JSON.stringify(r.output),
+      toolCallId: r.toolCallId,
+      timestamp: Date.now(),
+      metadata: { agent: agent.name },
+    }))
+
+    const assistantMessage = {
+      role: 'assistant' as const,
+      content,
+      toolCalls,
+      timestamp: Date.now(),
+      metadata: { agent: agent.name },
+    }
+
+    currentState = {
+      ...currentState,
+      messages: [...currentState.messages, assistantMessage, ...toolResultMessages],
+    }
+
     // Check if any tool requires approval (HITL)
     const approvalTool = findApprovalTool(toolCalls, agent.tools)
     if (approvalTool) {
@@ -152,26 +175,6 @@ export async function* agentQueryLoop(
         },
       }
       break
-    }
-
-    // Build tool result messages and add to state for next iteration
-    const toolResultMessages = toolResults.results.map((r) => ({
-      role: 'tool' as const,
-      content: JSON.stringify(r.output),
-      toolCallId: r.toolCallId,
-      timestamp: Date.now(),
-    }))
-
-    const assistantMessage = {
-      role: 'assistant' as const,
-      content,
-      toolCalls,
-      timestamp: Date.now(),
-    }
-
-    currentState = {
-      ...currentState,
-      messages: [...currentState.messages, assistantMessage, ...toolResultMessages],
     }
 
     // Let the agent process intermediate results

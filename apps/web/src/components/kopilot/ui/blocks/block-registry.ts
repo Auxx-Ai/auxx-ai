@@ -6,6 +6,8 @@ export interface BlockRendererProps<T = unknown> {
   data: T
   /** True when data is from a partial streaming parse */
   isPartial?: boolean
+  /** True when this block was already shown — skip entrance animations */
+  skipEntrance?: boolean
 }
 
 type BlockRenderer = React.ComponentType<BlockRendererProps>

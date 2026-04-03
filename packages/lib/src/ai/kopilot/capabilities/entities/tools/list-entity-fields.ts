@@ -49,13 +49,48 @@ export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefi
         )
       }
 
-      const output = fields.map((f) => ({
-        id: f.systemAttribute ?? f.key,
-        label: f.label,
-        fieldType: f.fieldType ?? f.type,
-        capabilities: f.capabilities,
-        systemAttribute: f.systemAttribute ?? null,
-      }))
+      const MAX_OPTIONS = 15
+      const selectTypes = ['SINGLE_SELECT', 'MULTI_SELECT', 'STATUS']
+
+      const output = fields.map((f) => {
+        const base = {
+          id: f.systemAttribute ?? f.key,
+          label: f.label,
+          fieldType: f.fieldType ?? f.type,
+          capabilities: f.capabilities,
+          systemAttribute: f.systemAttribute ?? null,
+        }
+
+        // Include options for select-type fields so the LLM can construct valid filters
+        const fieldType = (f.fieldType ?? f.type)?.toUpperCase()
+        if (selectTypes.includes(fieldType ?? '') && f.options?.options?.length) {
+          const allOptions = f.options.options
+          const truncated = allOptions.length > MAX_OPTIONS
+          return {
+            ...base,
+            options: allOptions
+              .slice(0, MAX_OPTIONS)
+              .map((o) => ({ value: o.value, label: o.label })),
+            ...(truncated && { moreOptions: true, totalOptions: allOptions.length }),
+          }
+        }
+
+        // Include relationship target for RELATIONSHIP fields
+        if (fieldType === 'RELATIONSHIP' && f.options?.relationship) {
+          // Target entity def ID is encoded in inverseResourceFieldId (format: "targetEntityDefId:inverseFieldId")
+          const inverseRfId = f.options.relationship.inverseResourceFieldId
+          const targetEntityDefId = inverseRfId?.split(':')[0] ?? null
+          return {
+            ...base,
+            relationship: {
+              targetEntityDefinitionId: targetEntityDefId,
+              relationshipType: f.options.relationship.relationshipType,
+            },
+          }
+        }
+
+        return base
+      })
 
       return {
         success: true,

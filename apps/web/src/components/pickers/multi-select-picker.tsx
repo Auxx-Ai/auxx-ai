@@ -404,7 +404,7 @@ export function MultiSelectPicker({
                   {filteredOptions.map((opt) => (
                     <CommandItem
                       key={opt.value}
-                      value={opt.label}
+                      value={opt.value}
                       onSelect={() => {
                         if (isManageMode) {
                           startEdit(opt.value)

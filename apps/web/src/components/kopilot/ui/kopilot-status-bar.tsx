@@ -21,7 +21,7 @@ export function KopilotStatusBar() {
       )}>
       <div className='flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground'>
         <Loader2 className='size-3 animate-spin' />
-        {currentAgent && <span>{currentAgent}</span>}
+        <span>{currentAgent ?? 'Thinking...'}</span>
         {activeTool && (
           <>
             <span>•</span>

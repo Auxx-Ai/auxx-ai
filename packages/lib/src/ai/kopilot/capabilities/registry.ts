@@ -11,21 +11,24 @@ export function createCapabilityRegistry(): CapabilityRegistry {
   const pages = new Map<string, PageCapability>()
 
   return {
-    getTools(page: string): AgentToolDefinition[] {
-      const globalTools = pages.get('__global__')?.tools ?? []
-      const pageTools = pages.get(page)?.tools ?? []
-      return [...globalTools, ...pageTools]
+    getTools(_page: string): AgentToolDefinition[] {
+      const allTools: AgentToolDefinition[] = []
+      for (const capability of pages.values()) {
+        allTools.push(...capability.tools)
+      }
+      return allTools
     },
 
     getPages(): string[] {
       return [...pages.keys()]
     },
 
-    getSystemPromptAddition(page: string): string | undefined {
-      const globalAddition = pages.get('__global__')?.systemPromptAddition
-      const pageAddition = pages.get(page)?.systemPromptAddition
-      if (globalAddition && pageAddition) return `${globalAddition}\n\n${pageAddition}`
-      return globalAddition ?? pageAddition
+    getSystemPromptAddition(_page: string): string | undefined {
+      const additions: string[] = []
+      for (const capability of pages.values()) {
+        if (capability.systemPromptAddition) additions.push(capability.systemPromptAddition)
+      }
+      return additions.length > 0 ? additions.join('\n\n') : undefined
     },
 
     register(capability: PageCapability): void {

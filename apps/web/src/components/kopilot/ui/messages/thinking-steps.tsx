@@ -4,6 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { Check, ChevronRight, Loader2, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import type { ThinkingGroup } from '../../stores/kopilot-store'
 
@@ -36,42 +37,64 @@ export function ThinkingSteps({ group }: ThinkingStepsProps) {
         type='button'
         onClick={() => setIsOpen((v) => !v)}
         className={cn(
-          'flex items-center gap-1 rounded-md px-1 py-0.5 text-xs transition-colors',
+          'flex items-center gap-1 rounded-md px-1 py-0.5 text-xs',
           'text-muted-foreground hover:bg-muted/50'
         )}>
-        <ChevronRight
-          className={cn('size-3 transition-transform duration-200', expanded && 'rotate-90')}
-        />
         {isRunning && <Loader2 className='size-3 animate-spin' />}
-        <span>{headerLabel}</span>
+        <AnimatePresence mode='wait'>
+          <motion.span
+            key={headerLabel}
+            initial={{ filter: 'blur(4px)', opacity: 0, y: 4 }}
+            animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
+            exit={{ filter: 'blur(4px)', opacity: 0, y: -4 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 25 }}>
+            {headerLabel}
+          </motion.span>
+        </AnimatePresence>
+        <motion.span
+          animate={{ rotate: expanded ? 90 : 0 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20 }}>
+          <ChevronRight className='size-3' />
+        </motion.span>
       </button>
 
-      <div
-        className={cn(
-          'grid transition-[grid-template-rows] duration-200 ease-in-out',
-          expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
-        )}>
-        <div className='overflow-hidden'>
-          <div className='space-y-2 py-1.5 pl-2'>
-            {group.steps.map((step) => (
-              <div key={step.id} className='animate-in fade-in slide-in-from-top-1 duration-200'>
-                {step.thinking && (
-                  <p className='text-xs text-muted-foreground/70 italic leading-relaxed'>
-                    {step.thinking}
-                  </p>
-                )}
-                {step.tool && <ToolStepRow tool={step.tool} />}
-              </div>
-            ))}
-            {/* Show pending thinking text while running */}
-            {isRunning && group.pendingThinking.trim() && (
-              <p className='text-xs text-muted-foreground/70 italic leading-relaxed animate-in fade-in duration-200'>
-                {group.pendingThinking.trim()}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            style={{ overflow: 'hidden' }}>
+            <div className='space-y-2 py-1.5 pl-2'>
+              {group.steps.map((step) => (
+                <motion.div
+                  key={step.id}
+                  initial={{ filter: 'blur(4px)', opacity: 0, y: 8 }}
+                  animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 20 }}>
+                  {step.thinking && (
+                    <p className='text-xs text-muted-foreground/70 italic leading-relaxed'>
+                      {step.thinking}
+                    </p>
+                  )}
+                  {step.tool && <ToolStepRow tool={step.tool} />}
+                </motion.div>
+              ))}
+              {/* Show pending thinking text while running */}
+              {isRunning && group.pendingThinking.trim() && (
+                <motion.p
+                  initial={{ filter: 'blur(3px)', opacity: 0 }}
+                  animate={{ filter: 'blur(0px)', opacity: 0.7 }}
+                  transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                  className='text-xs text-muted-foreground/70 italic leading-relaxed'>
+                  {group.pendingThinking.trim()}
+                </motion.p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -89,7 +112,17 @@ function ToolStepRow({
 
   return (
     <div className='flex items-start gap-1.5 text-xs'>
-      <span className='mt-0.5'>{statusIcon}</span>
+      <AnimatePresence mode='wait'>
+        <motion.span
+          key={tool.status}
+          className='mt-0.5'
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.5, opacity: 0 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 25 }}>
+          {statusIcon}
+        </motion.span>
+      </AnimatePresence>
       <div className='min-w-0'>
         <span className='font-medium text-foreground/80'>{formatToolName(tool.name)}</span>
         {tool.summary && <p className='text-muted-foreground/70 truncate'>{tool.summary}</p>}
