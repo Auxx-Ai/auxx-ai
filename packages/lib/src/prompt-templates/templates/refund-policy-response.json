@@ -1,0 +1,8 @@
+{
+  "id": "refund-policy-response",
+  "name": "Refund Policy Response",
+  "description": "Draft a response explaining the refund policy for the customer's situation",
+  "prompt": "Based on the customer's request and our refund policy, draft a response that clearly explains whether they qualify for a refund, the process and timeline, and any alternatives if they don't qualify. Be empathetic but clear about the policy.",
+  "categories": ["shopify"],
+  "icon": { "iconId": "ReceiptText", "color": "#EC4899" }
+}

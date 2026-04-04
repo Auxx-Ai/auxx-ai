@@ -55,7 +55,7 @@ export function KopilotDock() {
             onResizeStart={() => setIsResizing(true)}
             onResizeEnd={() => setIsResizing(false)}
           />
-          <div className='pb-3 pr-3 pt-3'>
+          <div className='pb-3 pr-3 pt-1.5'>
             <PanelFrame width={panelWidth}>
               <KopilotPanel page={context?.page ?? 'unknown'} context={context ?? undefined} />
             </PanelFrame>

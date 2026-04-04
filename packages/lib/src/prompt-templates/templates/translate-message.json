@@ -1,0 +1,8 @@
+{
+  "id": "translate-message",
+  "name": "Translate Message",
+  "description": "Translate the customer's message to English and draft a reply in their language",
+  "prompt": "Translate the customer's most recent message to English, then draft a reply in the customer's original language. Show both the translation and the draft reply clearly labeled.",
+  "categories": ["general"],
+  "icon": { "iconId": "Languages", "color": "#14B8A6" }
+}

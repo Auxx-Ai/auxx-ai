@@ -45,9 +45,12 @@ import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 // import { signOut } from 'next-auth/react'
 import { client } from '~/auth/auth-client' // Use the correct import for your auth library
+import { Tooltip } from '~/components/global/tooltip'
+import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useUser } from '~/hooks/use-user'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 import { CreateOrganizationDialog } from '../create-org-dialog'
 
@@ -68,6 +71,9 @@ export function NavUser({ user }: Prop) {
   const router = useRouter()
   const posthog = useAnalytics()
   const selfHosted = useIsSelfHosted()
+  const { hasAccess } = useFeatureFlags()
+  const kopilotEnabled = hasAccess('kopilot')
+  const toggleKopilot = useKopilotStore((s) => s.togglePanel)
 
   // const session = await auth();
   const {
@@ -103,7 +109,7 @@ export function NavUser({ user }: Prop) {
       <CreateOrganizationDialog open={showNewOrgDialog} onOpenChange={setShowNewOrgDialog} />
 
       <SidebarMenu>
-        <SidebarMenuItem>
+        <SidebarMenuItem className='flex items-center justify-between gap-1'>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
@@ -272,6 +278,16 @@ export function NavUser({ user }: Prop) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          {kopilotEnabled && (
+            <Tooltip content='Kopilot' shortcut={['⌘', '⇧', 'K']}>
+              <button
+                type='button'
+                className='shrink-0 flex items-center justify-center size-8 rounded-2xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[collapsible=icon]:hidden'
+                onClick={toggleKopilot}>
+                <Sparkles className='size-4' />
+              </button>
+            </Tooltip>
+          )}
         </SidebarMenuItem>
       </SidebarMenu>
     </>

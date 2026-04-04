@@ -1,0 +1,8 @@
+{
+  "id": "summarize-ticket",
+  "name": "Summarize Ticket",
+  "description": "Generate a concise summary of the current ticket conversation",
+  "prompt": "Summarize the current ticket conversation. Include: the customer's issue, any actions taken so far, and the current status. Keep it concise (3-5 bullet points).",
+  "categories": ["customer-support"],
+  "icon": { "iconId": "FileText", "color": "#3B82F6" }
+}

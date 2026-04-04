@@ -11,6 +11,7 @@ export function buildResponderSystemPrompt(domainState: KopilotDomainState): str
   const pageContext = domainState.context.page ? `Current page: ${domainState.context.page}` : ''
   const resultsSection = buildResultsSection(domainState)
   const planSummary = buildPlanSummary(domainState)
+  const actionWarning = buildActionRouteWarning(domainState)
 
   return `You are Kopilot, an AI assistant inside an email support platform for Shopify businesses.
 
@@ -20,18 +21,34 @@ Your job is to provide a clear, helpful response to the user based on the conver
 ${[pageContext].filter(Boolean).join('\n')}
 ${planSummary}
 ${resultsSection}
+${actionWarning}
 
 ## Instructions
 
 1. Synthesize the information gathered by the executor into a clear response.
 2. Be concise and direct. Lead with the answer.
-3. If results include specific data (threads, contacts, orders), present them using rich blocks (see below).
-4. If an action was taken, confirm what was done.
-5. If something failed, explain what happened and suggest alternatives.
-6. Do not repeat the plan steps — the user wants results, not process.
-7. Use markdown formatting when it helps readability.
+3. **CRITICAL: When tool results contain recordIds (format "defId:instId"), you MUST present them using \`auxx:entity-list\` or \`auxx:entity-card\` blocks.** Never render recordIds as markdown links or plain text. The frontend resolves display data from recordIds — plain text loses all interactivity.
+4. When results are logically grouped (e.g. duplicate sets, categorized records), use separate \`auxx:entity-list\` blocks per group with a text heading for each, rather than one flat list.
+5. If an action was taken, confirm what was done.
+6. If something failed, explain what happened and suggest alternatives.
+7. Do not repeat the plan steps — the user wants results, not process.
+8. Use markdown formatting when it helps readability.
 
 ${BLOCK_CATALOG}`
+}
+
+function buildActionRouteWarning(domainState: KopilotDomainState): string {
+  const route = domainState.classification?.route
+  const hasResults = domainState.toolResults && domainState.toolResults.length > 0
+
+  if (route === 'action' && !hasResults) {
+    return `
+## WARNING
+The user requested an action but no tool was executed successfully.
+Do NOT pretend the action was completed. Tell the user the action could not be performed and suggest they try again.`
+  }
+
+  return ''
 }
 
 function buildResultsSection(domainState: KopilotDomainState): string {

@@ -14,7 +14,7 @@ import {
 } from '@auxx/ui/components/main-page'
 import { PanelResizeHandle } from '@auxx/ui/components/panel-resize-handle'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { Columns2, Mail, Plus, Rows3, Sparkles, Waypoints } from 'lucide-react'
+import { Columns2, Mail, Plus, Rows3, Waypoints } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryState } from 'nuqs'
@@ -185,7 +185,6 @@ function MailboxInner({
   // Kopilot — push page context so the global KopilotDock knows what's on-screen
   const { hasAccess } = useFeatureFlags()
   const kopilotEnabled = hasAccess('kopilot')
-  const toggleKopilot = useKopilotStore((s) => s.togglePanel)
   const setKopilotContext = useKopilotStore((s) => s.setContext)
 
   // Use new selection store directly
@@ -445,11 +444,6 @@ function MailboxInner({
         <MainPageHeader
           action={
             <div className='flex items-center gap-1'>
-              {kopilotEnabled && (
-                <Button variant='ghost' size='icon' className='size-7' onClick={toggleKopilot}>
-                  <Sparkles className='size-4' />
-                </Button>
-              )}
               <Button
                 variant='info'
                 size='sm'

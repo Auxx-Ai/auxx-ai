@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/index.ts
 
+export { createBulkUpdateEntityTool } from './bulk-update-entity'
 export { createCreateEntityTool } from './create-entity'
 export { createGetEntityTool } from './get-entity'
 export { createListEntitiesTool } from './list-entities'

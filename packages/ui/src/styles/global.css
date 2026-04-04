@@ -362,6 +362,7 @@
   --popover: 19 19 22;
   --popover-foreground: 250 250 250;*/
   --illustration: #2c313a;
+  --border-illustration: color-mix(in oklab, var(--color-white) 7.5%, transparent);
 
   --primary: var(--zinc-950);
   --primary-foreground: 23 23 23;
@@ -756,6 +757,32 @@
     }
     to {
       background-position: 0% 50%;
+    }
+  }
+}
+
+@theme inline {
+  --animate-hue-rotate: hue-rotate 4s infinite;
+  --animate-scan: scan 3s infinite;
+
+  @keyframes hue-rotate {
+    from {
+      filter: hue-rotate(0deg);
+    }
+    to {
+      filter: hue-rotate(360deg);
+    }
+  }
+
+  @keyframes scan {
+    from {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
     }
   }
 }

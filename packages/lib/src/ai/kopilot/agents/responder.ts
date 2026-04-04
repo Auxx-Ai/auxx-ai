@@ -16,9 +16,12 @@ export function createResponderAgent(): AgentDefinition<KopilotDomainState> {
     buildMessages(state: AgentState<KopilotDomainState>, _deps: AgentDeps): Message[] {
       const systemPrompt = buildResponderSystemPrompt(state.domainState)
 
-      // Include the full conversation for synthesis context
+      // Include the full conversation for synthesis context (exclude synthetic nudge messages)
       const conversationMessages: Message[] = state.messages
-        .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
+        .filter(
+          (m) =>
+            (m.role === 'user' || m.role === 'assistant') && m.content && !m.metadata?.synthetic
+        )
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
       return [{ role: 'system', content: systemPrompt }, ...conversationMessages]

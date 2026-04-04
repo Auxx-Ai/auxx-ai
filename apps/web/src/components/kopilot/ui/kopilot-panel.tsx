@@ -6,6 +6,7 @@ import type { SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { generateId } from '@auxx/utils/generateId'
 import { ChevronDown, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
@@ -33,6 +34,7 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
   const messageMap = useKopilotStore((s) => s.messageMap)
   const messages = useKopilotStore((s) => s.messages)
   const setMessageFeedback = useKopilotStore((s) => s.setMessageFeedback)
+  const addMessage = useKopilotStore((s) => s.addMessage)
 
   const composerRef = useRef<KopilotComposerHandle>(null)
   const [pendingRequest, setPendingRequest] = useState<KopilotRequest | null>(null)
@@ -94,6 +96,26 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
   const handleSend = useCallback((request: KopilotRequest) => {
     setPendingRequest(request)
   }, [])
+
+  const handleSuggestionClick = useCallback(
+    (text: string) => {
+      addMessage({
+        id: generateId(),
+        role: 'user',
+        content: `<p>${text}</p>`,
+        timestamp: Date.now(),
+        parentId: messages.length > 0 ? messages[messages.length - 1]!.id : null,
+      })
+      setPendingRequest({
+        sessionId: activeSessionId ?? undefined,
+        message: text,
+        type: 'message',
+        page,
+        context,
+      })
+    },
+    [addMessage, messages, activeSessionId, page, context]
+  )
 
   const handleApprovalAction = useCallback((request: KopilotRequest) => {
     setPendingRequest(request)
@@ -220,6 +242,7 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
         onFeedback={handleFeedback}
+        onSuggestionClick={handleSuggestionClick}
       />
       <KopilotStatusBar />
       <KopilotComposer ref={composerRef} page={page} context={context} onSend={handleSend} />

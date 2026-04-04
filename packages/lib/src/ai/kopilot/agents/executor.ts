@@ -127,5 +127,6 @@ export function createExecutorAgent(
     },
 
     maxIterations: 15,
+    minToolCalls: 1,
   }
 }

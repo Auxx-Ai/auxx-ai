@@ -1,0 +1,8 @@
+{
+  "id": "escalation-assessment",
+  "name": "Escalation Assessment",
+  "description": "Assess whether the ticket needs to be escalated to a senior agent",
+  "prompt": "Analyze this ticket and assess whether it needs escalation. Consider: customer sentiment, issue complexity, time since first contact, and whether previous attempts have resolved the issue. Recommend: escalate or continue handling, with reasoning.",
+  "categories": ["customer-support"],
+  "icon": { "iconId": "AlertTriangle", "color": "#F59E0B" }
+}

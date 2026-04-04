@@ -3,6 +3,7 @@
 import { ActionResultBlock } from './action-result-block'
 import { registerApprovalCard } from './approval-card-registry'
 import { registerBlockRenderer } from './block-registry'
+import { BulkUpdateApprovalCard } from './bulk-update-approval-card'
 import { DraftApprovalCard } from './draft-approval-card'
 import { DraftPreviewBlock } from './draft-preview-block'
 import { EntityCardBlock } from './entity-card-block'
@@ -23,4 +24,5 @@ registerBlockRenderer('action-result', ActionResultBlock)
 
 registerApprovalCard('send_reply', DraftApprovalCard)
 registerApprovalCard('update_entity', EntityUpdateApprovalCard)
+registerApprovalCard('bulk_update_entity', BulkUpdateApprovalCard)
 registerApprovalCard('create_entity', EntityCreateApprovalCard)

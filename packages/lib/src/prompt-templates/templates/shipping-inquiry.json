@@ -1,0 +1,8 @@
+{
+  "id": "shipping-inquiry",
+  "name": "Shipping Inquiry",
+  "description": "Help respond to customer shipping questions and concerns",
+  "prompt": "Address the customer's shipping concern. Check order fulfillment status, provide tracking details if available, explain typical shipping timelines for their region, and offer solutions if there's a delay or issue.",
+  "categories": ["shopify"],
+  "icon": { "iconId": "Truck", "color": "#06B6D4" }
+}

@@ -70,6 +70,7 @@ import {
   Product,
   ProductVariant,
   PromptHistory,
+  PromptTemplate,
   ProviderConfiguration,
   ProviderPreference,
   SearchHistory,
@@ -148,6 +149,7 @@ export const userRelations = relations(User, ({ one, many }) => ({
   }),
   snippetFolders: many(SnippetFolder),
   snippets: many(Snippet),
+  promptTemplates: many(PromptTemplate),
   comments: many(Comment, {
     relationName: 'comment_createdById_user_id',
   }),
@@ -245,6 +247,7 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   emailTemplates: many(EmailTemplate),
   snippetFolders: many(SnippetFolder),
   snippets: many(Snippet),
+  promptTemplates: many(PromptTemplate),
   comments: many(Comment),
   mailViews: many(MailView),
   chatWidgets: many(ChatWidget),

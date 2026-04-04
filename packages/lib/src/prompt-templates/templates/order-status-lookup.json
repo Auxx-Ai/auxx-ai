@@ -1,0 +1,8 @@
+{
+  "id": "order-status-lookup",
+  "name": "Order Status Lookup",
+  "description": "Look up and summarize the status of a customer's order",
+  "prompt": "Look up the customer's order and provide a clear status update. Include: order number, items ordered, current fulfillment status, tracking information (if available), and estimated delivery date.",
+  "categories": ["shopify"],
+  "icon": { "iconId": "Package", "color": "#10B981" }
+}
