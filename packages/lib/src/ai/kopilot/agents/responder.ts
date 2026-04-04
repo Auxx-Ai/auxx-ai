@@ -16,11 +16,16 @@ export function createResponderAgent(): AgentDefinition<KopilotDomainState> {
     buildMessages(state: AgentState<KopilotDomainState>, _deps: AgentDeps): Message[] {
       const systemPrompt = buildResponderSystemPrompt(state.domainState)
 
-      // Include the full conversation for synthesis context (exclude synthetic nudge messages)
+      // Include only user messages and prior responder messages — exclude executor assistant
+      // messages so the responder synthesizes from structured tool results (in the system prompt)
+      // rather than copying the executor's plain-text formatting.
       const conversationMessages: Message[] = state.messages
         .filter(
           (m) =>
-            (m.role === 'user' || m.role === 'assistant') && m.content && !m.metadata?.synthetic
+            (m.role === 'user' || m.role === 'assistant') &&
+            m.content &&
+            !m.metadata?.synthetic &&
+            m.metadata?.agent !== 'executor'
         )
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 

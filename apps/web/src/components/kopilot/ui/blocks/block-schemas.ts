@@ -54,6 +54,33 @@ export const actionResultSchema = z.object({
   summary: z.string(),
 })
 
+export const tableCellSchema = z.object({
+  text: z.string(),
+  recordId: z.string().optional(),
+  href: z.string().optional(),
+})
+
+export const tableColumnSchema = z.object({
+  label: z.string(),
+  align: z.enum(['left', 'center', 'right']).optional(),
+})
+
+export const tableBlockSchema = z.object({
+  columns: z.array(tableColumnSchema),
+  rows: z.array(z.array(tableCellSchema)),
+})
+
+export const docsResultsSchema = z.object({
+  articles: z.array(
+    z.object({
+      title: z.string(),
+      url: z.string(),
+      description: z.string().nullable().optional(),
+    })
+  ),
+  query: z.string().optional(),
+})
+
 /** Registry of block type → Zod schema */
 export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
   'thread-list': threadListSchema,
@@ -63,6 +90,8 @@ export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
   'kb-article': kbArticleSchema,
   'plan-steps': planStepsSchema,
   'action-result': actionResultSchema,
+  'docs-results': docsResultsSchema,
+  table: tableBlockSchema,
 }
 
 /** Inferred types for block components */
@@ -74,3 +103,7 @@ export type DraftPreviewData = z.infer<typeof draftPreviewSchema>
 export type KBArticleData = z.infer<typeof kbArticleSchema>
 export type PlanStepsData = z.infer<typeof planStepsSchema>
 export type ActionResultData = z.infer<typeof actionResultSchema>
+export type DocsResultsData = z.infer<typeof docsResultsSchema>
+export type TableCellData = z.infer<typeof tableCellSchema>
+export type TableColumnData = z.infer<typeof tableColumnSchema>
+export type TableBlockData = z.infer<typeof tableBlockSchema>

@@ -13,7 +13,7 @@ export function buildResponderSystemPrompt(domainState: KopilotDomainState): str
   const planSummary = buildPlanSummary(domainState)
   const actionWarning = buildActionRouteWarning(domainState)
 
-  return `You are Kopilot, an AI assistant inside an email support platform for Shopify businesses.
+  return `You are Kopilot, an AI assistant inside an email support and CRM platform.
 
 Your job is to provide a clear, helpful response to the user based on the conversation and any tool results.
 

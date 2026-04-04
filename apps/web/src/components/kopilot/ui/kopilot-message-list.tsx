@@ -2,9 +2,11 @@
 
 'use client'
 
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { ArrowDown, Sparkles } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
+import { AlertTriangle, ArrowDown, RotateCcw, Sparkles } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
@@ -14,23 +16,28 @@ import { GenericApprovalCard } from './blocks/generic-approval-card'
 import { KopilotEmptyState } from './kopilot-empty-state'
 import { AssistantMessage } from './messages/assistant-message'
 import { BranchNavigator } from './messages/branch-navigator'
-import { ThinkingSteps } from './messages/thinking-steps'
+import { ToolStatusPills } from './messages/tool-status-pills'
 import { UserMessage } from './messages/user-message'
 
 interface KopilotMessageListProps {
   onApprovalAction: (request: KopilotRequest) => void
   onEditMessage?: (messageId: string) => void
   onRetryMessage?: (messageId: string) => void
+  onRetryLastMessage?: () => void
   onFeedback?: (messageId: string, isPositive: boolean) => void
   onSuggestionClick?: (text: string) => void
+  /** Class applied to inner content for centering/width constraints */
+  contentClassName?: string
 }
 
 export function KopilotMessageList({
   onApprovalAction,
   onEditMessage,
   onRetryMessage,
+  onRetryLastMessage,
   onFeedback,
   onSuggestionClick,
+  contentClassName,
 }: KopilotMessageListProps) {
   const messages = useKopilotStore((s) => s.messages)
   const editingMessageId = useKopilotStore((s) => s.editingMessageId)
@@ -42,6 +49,8 @@ export function KopilotMessageList({
   const setActiveBranch = useKopilotStore((s) => s.setActiveBranch)
   const thinkingGroups = useKopilotStore((s) => s.thinkingGroups)
   const activeThinkingGroupId = useKopilotStore((s) => s.activeThinkingGroupId)
+  const error = useKopilotStore((s) => s.error)
+  const setError = useKopilotStore((s) => s.setError)
   const activeThinkingGroup = activeThinkingGroupId ? thinkingGroups[activeThinkingGroupId] : null
 
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -109,7 +118,7 @@ export function KopilotMessageList({
 
   return (
     <ScrollArea viewportRef={viewportRef} className='flex-1'>
-      <div className='space-y-3 p-4 pr-5!'>
+      <div className={cn('space-y-3 p-4 pr-5!', contentClassName)}>
         {messages.map((message, index) => {
           // During editing, hide the edited message and everything after it
           if (editingMessageId) {
@@ -203,7 +212,7 @@ export function KopilotMessageList({
                 </div>
               </div>
               <div className='min-w-0 flex-1'>
-                <ThinkingSteps group={activeThinkingGroup} />
+                <ToolStatusPills group={activeThinkingGroup} />
               </div>
             </div>
           )}
@@ -211,6 +220,29 @@ export function KopilotMessageList({
         {/* Streaming assistant message (responder output) */}
         {isStreaming && streamingContent && (
           <AssistantMessage streamingContent={streamingContent} />
+        )}
+
+        {/* Pipeline error */}
+        {error && !isStreaming && (
+          <Alert variant='destructive'>
+            <AlertTriangle className='size-4' />
+            <AlertTitle>Something went wrong</AlertTitle>
+            <AlertDescription className='flex items-end justify-between gap-2'>
+              <span className='text-muted-foreground text-xs'>{error}</span>
+              {onRetryLastMessage && (
+                <Button
+                  size='xs'
+                  variant='outline'
+                  onClick={() => {
+                    setError(null)
+                    onRetryLastMessage()
+                  }}>
+                  <RotateCcw />
+                  Retry
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
         )}
 
         <div ref={bottomRef} />

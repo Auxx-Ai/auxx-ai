@@ -1,4 +1,4 @@
-// packages/lib/src/ai/kopilot/capabilities/mail/tools/search-kb.ts
+// packages/lib/src/ai/kopilot/capabilities/knowledge/tools/search-kb.ts
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, ilike, or } from 'drizzle-orm'

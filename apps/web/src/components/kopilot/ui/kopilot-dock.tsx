@@ -6,6 +6,7 @@ import { PanelFrame } from '@auxx/ui/components/panel-frame'
 import { PanelResizeHandle } from '@auxx/ui/components/panel-resize-handle'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { AnimatePresence, motion } from 'motion/react'
+import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useKopilotStore } from '../stores/kopilot-store'
@@ -19,6 +20,8 @@ import { KopilotPanel } from './kopilot-panel'
 export function KopilotDock() {
   const { hasAccess } = useFeatureFlags()
   const kopilotEnabled = hasAccess('kopilot')
+  const pathname = usePathname()
+  const isOnKopilotPage = pathname.startsWith('/app/kopilot')
 
   const panelOpen = useKopilotStore((s) => s.panelOpen)
   const togglePanel = useKopilotStore((s) => s.togglePanel)
@@ -34,7 +37,7 @@ export function KopilotDock() {
     conflictBehavior: 'allow',
   })
 
-  if (!kopilotEnabled) return null
+  if (!kopilotEnabled || isOnKopilotPage) return null
 
   return (
     <AnimatePresence initial={false}>

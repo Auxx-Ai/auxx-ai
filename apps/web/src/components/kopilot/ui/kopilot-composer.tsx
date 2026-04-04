@@ -31,6 +31,7 @@ interface KopilotComposerProps {
   page: string
   context?: KopilotRequest['context']
   onSend: (request: KopilotRequest) => void
+  contentClassName?: string
 }
 
 export interface KopilotComposerHandle {
@@ -58,7 +59,13 @@ function resolvePromptBadges(html: string, templateMap: Map<string, string>): st
   )
 }
 
-export function KopilotComposer({ ref, page, context, onSend }: KopilotComposerProps) {
+export function KopilotComposer({
+  ref,
+  page,
+  context,
+  onSend,
+  contentClassName,
+}: KopilotComposerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleSendRef = useRef<() => void>(() => {})
 
@@ -221,7 +228,7 @@ export function KopilotComposer({ ref, page, context, onSend }: KopilotComposerP
   }, [editor])
 
   return (
-    <div ref={containerRef} className='p-3'>
+    <div ref={containerRef} className={cn('p-3', contentClassName)}>
       <div className='relative flex flex-row items-end rounded-xl border min-h-[120px] bg-primary-150  focus-within:border-info'>
         <div className='relative flex flex-1 flex-col self-stretch'>
           {editingMessageId && (

@@ -4,6 +4,7 @@ export type { CapabilityRegistry, GetToolDeps, PageCapability, ToolDeps } from '
 export {
   createCapabilityRegistry,
   createEntityCapabilities,
+  createKnowledgeCapabilities,
   createMailCapabilities,
   createToolDepsFactory,
 } from './capabilities'

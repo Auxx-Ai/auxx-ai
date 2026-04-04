@@ -6,7 +6,11 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Loader2 } from 'lucide-react'
 import { useKopilotStore } from '../stores/kopilot-store'
 
-export function KopilotStatusBar() {
+interface KopilotStatusBarProps {
+  contentClassName?: string
+}
+
+export function KopilotStatusBar({ contentClassName }: KopilotStatusBarProps) {
   const isStreaming = useKopilotStore((s) => s.isStreaming)
   const currentAgent = useKopilotStore((s) => s.stream.currentAgent)
   const activeTools = useKopilotStore((s) => s.stream.activeTools)
@@ -19,7 +23,11 @@ export function KopilotStatusBar() {
         'overflow-hidden transition-all duration-200',
         isStreaming ? 'h-8' : 'h-0 border-t-0'
       )}>
-      <div className='flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground'>
+      <div
+        className={cn(
+          'flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground',
+          contentClassName
+        )}>
         <Loader2 className='size-3 animate-spin' />
         <span>{currentAgent ?? 'Thinking...'}</span>
         {activeTool && (
