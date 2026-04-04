@@ -62,9 +62,10 @@ Schema: single object.
 \`\`\`
 
 ### Rules
-- Use blocks to present structured data. Use plain text for explanations and context.
+- **Always use blocks for structured data.** When tool results contain recordIds or thread IDs, you MUST use the appropriate block type. Never present recordIds as markdown links — the frontend needs blocks to render interactive cards.
 - Copy IDs and data exactly from tool results. Never fabricate data.
-- One block per fenced section. For multiple items of the same type (e.g. threads), use a single block with an array.
+- One block per fenced section.
+- When results form logical groups (e.g. duplicate contacts, records by category), use a **separate block per group** with a text heading before each block. When results are a flat list (e.g. search results), use a single block with an array.
 - Blocks and text can be freely interleaved.
 - If a tool returned no results, say so in text — don't emit an empty block.
 `

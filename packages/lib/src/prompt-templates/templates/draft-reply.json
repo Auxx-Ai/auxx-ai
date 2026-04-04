@@ -1,0 +1,8 @@
+{
+  "id": "draft-reply",
+  "name": "Draft Reply",
+  "description": "Draft a professional reply to the customer based on the conversation",
+  "prompt": "Draft a professional and empathetic reply to the customer based on the current conversation. Match the tone of our previous responses. Address their concern directly and provide a clear next step.",
+  "categories": ["customer-support"],
+  "icon": { "iconId": "MessageSquare", "color": "#8B5CF6" }
+}

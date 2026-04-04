@@ -13,6 +13,7 @@ import {
   KnowledgeBase,
   MediaAsset,
   Organization,
+  PromptTemplate,
   Snippet,
   SnippetFolder,
   TagsOnArticle,
@@ -168,6 +169,17 @@ export const commentReactionRelations = relations(CommentReaction, ({ one }) => 
   }),
   user: one(User, {
     fields: [CommentReaction.userId],
+    references: [User.id],
+  }),
+}))
+
+export const promptTemplateRelations = relations(PromptTemplate, ({ one }) => ({
+  organization: one(Organization, {
+    fields: [PromptTemplate.organizationId],
+    references: [Organization.id],
+  }),
+  createdBy: one(User, {
+    fields: [PromptTemplate.createdById],
     references: [User.id],
   }),
 }))

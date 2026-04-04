@@ -45,6 +45,14 @@ export const constants = {
     { value: 'sales', label: 'Sales & Marketing', icon: 'TrendingUp', color: 'teal' },
   ] as const,
 
+  /** Prompt template categories for Kopilot */
+  promptTemplateCategories: [
+    { value: 'all', label: 'All Prompts', icon: 'LayoutGrid' },
+    { value: 'customer-support', label: 'Customer Support', icon: 'Headphones' },
+    { value: 'shopify', label: 'Shopify', icon: 'ShoppingBag' },
+    { value: 'general', label: 'General', icon: 'Sparkles' },
+  ] as const,
+
   /** Entity definition template categories */
   entityTemplateCategories: [
     { value: 'all', label: 'All Templates', icon: 'LayoutGrid' },

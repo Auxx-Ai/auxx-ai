@@ -2,6 +2,7 @@
 
 import type { GetToolDeps, PageCapability } from '../types'
 import {
+  createBulkUpdateEntityTool,
   createCreateEntityTool,
   createGetEntityTool,
   createListEntitiesTool,
@@ -26,6 +27,7 @@ export function createEntityCapabilities(getDeps: GetToolDeps): PageCapability {
       createQueryRecordsTool(getDeps),
       createGetEntityTool(getDeps),
       createUpdateEntityTool(getDeps),
+      createBulkUpdateEntityTool(getDeps),
       createCreateEntityTool(getDeps),
     ],
   }

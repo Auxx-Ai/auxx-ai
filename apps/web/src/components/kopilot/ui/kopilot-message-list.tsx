@@ -11,6 +11,7 @@ import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { getApprovalCard } from './blocks/approval-card-registry'
 import { GenericApprovalCard } from './blocks/generic-approval-card'
+import { KopilotEmptyState } from './kopilot-empty-state'
 import { AssistantMessage } from './messages/assistant-message'
 import { BranchNavigator } from './messages/branch-navigator'
 import { ThinkingSteps } from './messages/thinking-steps'
@@ -21,6 +22,7 @@ interface KopilotMessageListProps {
   onEditMessage?: (messageId: string) => void
   onRetryMessage?: (messageId: string) => void
   onFeedback?: (messageId: string, isPositive: boolean) => void
+  onSuggestionClick?: (text: string) => void
 }
 
 export function KopilotMessageList({
@@ -28,6 +30,7 @@ export function KopilotMessageList({
   onEditMessage,
   onRetryMessage,
   onFeedback,
+  onSuggestionClick,
 }: KopilotMessageListProps) {
   const messages = useKopilotStore((s) => s.messages)
   const editingMessageId = useKopilotStore((s) => s.editingMessageId)
@@ -49,27 +52,11 @@ export function KopilotMessageList({
   useEffect(() => {
     const sentinel = bottomRef.current
     const viewport = viewportRef.current
-    if (!sentinel || !viewport) {
-      console.log(
-        '[KopilotMessageList] IntersectionObserver skipped — sentinel:',
-        !!sentinel,
-        'viewport:',
-        !!viewport
-      )
-      return
-    }
-
-    console.log('[KopilotMessageList] IntersectionObserver attached, root:', viewport)
+    if (!sentinel || !viewport) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry) {
-          console.log(
-            '[KopilotMessageList] isAtBottom:',
-            entry.isIntersecting,
-            'ratio:',
-            entry.intersectionRatio
-          )
           setIsAtBottom(entry.isIntersecting)
         }
       },
@@ -83,7 +70,6 @@ export function KopilotMessageList({
   // Auto-scroll when new messages arrive or streaming updates
   useEffect(() => {
     if (isAtBottom && viewportRef.current) {
-      console.log('[KopilotMessageList] Auto-scrolling to bottom')
       viewportRef.current.scrollTop = viewportRef.current.scrollHeight
     }
   }, [messages, streamingContent, isAtBottom])
@@ -118,24 +104,12 @@ export function KopilotMessageList({
   )
 
   if (messages.length === 0 && !isStreaming) {
-    return (
-      <div className='flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center'>
-        <div className='flex size-10 items-center justify-center rounded-full bg-purple-500/10'>
-          <Sparkles className='size-5 text-purple-500' />
-        </div>
-        <div className='space-y-1'>
-          <p className='text-sm font-medium'>Kopilot</p>
-          <p className='text-xs text-muted-foreground'>
-            Ask about tickets, contacts, or anything in your inbox.
-          </p>
-        </div>
-      </div>
-    )
+    return <KopilotEmptyState onSuggestionClick={onSuggestionClick} />
   }
 
   return (
     <ScrollArea viewportRef={viewportRef} className='flex-1'>
-      <div className='space-y-3 p-4'>
+      <div className='space-y-3 p-4 pr-5!'>
         {messages.map((message, index) => {
           // During editing, hide the edited message and everything after it
           if (editingMessageId) {

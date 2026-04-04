@@ -448,6 +448,12 @@
       "import": "./dist/posthog/posthog-client.mjs",
       "default": "./src/posthog/posthog-client.ts"
     },
+    "./prompt-templates": {
+      "types": "./src/prompt-templates/index.ts",
+      "source": "./src/prompt-templates/index.ts",
+      "import": "./dist/prompt-templates/index.mjs",
+      "default": "./src/prompt-templates/index.ts"
+    },
     "./providers": {
       "types": "./src/providers/index.ts",
       "source": "./src/providers/index.ts",

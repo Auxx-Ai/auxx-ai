@@ -9,6 +9,9 @@ export { useInlinePicker } from './hooks/use-inline-picker'
 export { useMentionEditor } from './hooks/use-mention-editor'
 export { useRecordLinkEditor } from './hooks/use-record-link-editor'
 export { useSlashCommand } from './hooks/use-slash-command'
+// Nodes
+export { createPromptNode } from './nodes/prompt-node'
+export { PromptTemplateBadge } from './nodes/prompt-node-view'
 // Types
 export type {
   InlineNodeBadgeProps,

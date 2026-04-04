@@ -1,0 +1,8 @@
+{
+  "id": "sentiment-analysis",
+  "name": "Sentiment Analysis",
+  "description": "Analyze the customer's sentiment and suggest an appropriate tone for the response",
+  "prompt": "Analyze the customer's sentiment throughout this conversation. Rate their current mood (frustrated, neutral, satisfied), identify any emotional triggers, and suggest the appropriate tone and approach for the next response.",
+  "categories": ["customer-support"],
+  "icon": { "iconId": "Heart", "color": "#EF4444" }
+}

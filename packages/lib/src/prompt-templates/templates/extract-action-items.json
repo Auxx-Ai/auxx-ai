@@ -1,0 +1,8 @@
+{
+  "id": "extract-action-items",
+  "name": "Extract Action Items",
+  "description": "Identify and list action items from the conversation",
+  "prompt": "Review this conversation and extract all action items. For each item, note: what needs to be done, who is responsible (agent or customer), and any deadlines or urgency. Format as a numbered checklist.",
+  "categories": ["general"],
+  "icon": { "iconId": "ListChecks", "color": "#F97316" }
+}

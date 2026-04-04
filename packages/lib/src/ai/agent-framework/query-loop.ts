@@ -36,8 +36,11 @@ export async function* agentQueryLoop(
     signal: config.signal,
   }
 
+  const minToolCalls = agent.minToolCalls ?? 0
+
   let currentState = state
   let iteration = 0
+  let totalToolCallCount = 0
 
   yield { type: 'agent-started', agent: agent.name }
   logger.info('Agent started', { agent: agent.name, maxIterations, toolCount: agent.tools.length })
@@ -105,8 +108,49 @@ export async function* agentQueryLoop(
       break
     }
 
-    // No tool calls — one-shot or final response, run processResult and exit
+    // No tool calls — one-shot or final response
     if (toolCalls.length === 0) {
+      // If minimum tool calls not met, inject a nudge and retry
+      if (totalToolCallCount < minToolCalls && iteration < maxIterations) {
+        logger.warn('Agent returned text without meeting minimum tool calls, nudging', {
+          agent: agent.name,
+          minToolCalls,
+          actualToolCalls: totalToolCallCount,
+          iteration,
+          contentPreview: content.slice(0, 200),
+        })
+        currentState = {
+          ...currentState,
+          messages: [
+            ...currentState.messages,
+            {
+              role: 'assistant' as const,
+              content,
+              timestamp: Date.now(),
+              metadata: { agent: agent.name },
+            },
+            {
+              role: 'user' as const,
+              content:
+                'You must use tools to complete this task. Do not write the result as text — call the appropriate tool now.',
+              timestamp: Date.now(),
+              metadata: { agent: agent.name, synthetic: true },
+            },
+          ],
+        }
+        continue
+      }
+
+      if (totalToolCallCount < minToolCalls) {
+        logger.warn('Agent exited without meeting minimum tool calls', {
+          agent: agent.name,
+          minToolCalls,
+          actualToolCalls: totalToolCallCount,
+          iteration,
+          contentPreview: content.slice(0, 200),
+        })
+      }
+
       logger.debug('Agent one-shot result', {
         agent: agent.name,
         contentLength: content.length,
@@ -118,6 +162,7 @@ export async function* agentQueryLoop(
     }
 
     // Execute tool calls
+    totalToolCallCount += toolCalls.length
     logger.info('Executing tools', {
       agent: agent.name,
       tools: toolCalls.map((tc) => tc.function.name),

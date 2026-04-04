@@ -2,12 +2,10 @@
 
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { ExternalLink, Save, Send, X } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { ApprovalCardProps } from './approval-card-registry'
+import { BlockCard, type BlockCardAction, StatusIndicator } from './block-card'
 
 export function DraftApprovalCard({ args, status, onApprove, onReject }: ApprovalCardProps) {
   const router = useRouter()
@@ -23,69 +21,37 @@ export function DraftApprovalCard({ args, status, onApprove, onReject }: Approva
     router.push(`?${params.toString()}`)
   }
 
+  const isPending = status === 'pending'
+
+  const actions: BlockCardAction[] = isPending
+    ? [
+        { label: 'Deny', onClick: onReject },
+        { label: 'Save as Draft', onClick: () => onApprove({ saveAsDraft: true }) },
+        { label: 'Edit in Thread', onClick: handleEditInThread },
+        { label: 'Send', onClick: () => onApprove(), primary: true },
+      ]
+    : status === 'approved'
+      ? [{ label: 'View in Thread', onClick: handleEditInThread, primary: true }]
+      : []
+
+  const secondaryText = toRecipients.length > 0 ? `To: ${toRecipients.join(', ')}` : undefined
+
   return (
-    <div className='rounded-lg border'>
-      {/* Header */}
-      <div className='flex items-center gap-2 border-b px-3 py-2 text-xs text-muted-foreground'>
-        <Send className='size-3' />
-        <span className='font-medium'>Send Reply</span>
-        {status !== 'pending' && (
-          <Badge variant={status === 'approved' ? 'default' : 'destructive'} className='ml-auto'>
-            {status === 'approved' ? 'Approved' : 'Rejected'}
-          </Badge>
-        )}
+    <BlockCard
+      indicator={<StatusIndicator status={status} />}
+      primaryText='Send Reply'
+      secondaryText={secondaryText}
+      actionLabel={isPending ? 'Send reply?' : undefined}
+      hasFooter={actions.length > 0}
+      actions={actions}>
+      <div className='h-40'>
+        <ScrollArea
+          className='h-full'
+          scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'
+          allowScrollChaining>
+          <div className='whitespace-pre-wrap text-sm'>{body}</div>
+        </ScrollArea>
       </div>
-
-      {/* Email preview */}
-      <div className='px-3 py-2'>
-        {toRecipients.length > 0 && (
-          <div className='text-xs text-muted-foreground'>To: {toRecipients.join(', ')}</div>
-        )}
-        <div className='mt-2 h-40'>
-          <ScrollArea
-            className='h-full'
-            scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'
-            allowScrollChaining>
-            <div className='whitespace-pre-wrap text-sm'>{body}</div>
-          </ScrollArea>
-        </div>
-      </div>
-
-      {/* Pending: show action buttons */}
-      {status === 'pending' && (
-        <div className='flex items-center justify-end gap-2 border-t px-3 py-2'>
-          <Button variant='ghost' size='sm' className='h-7 text-xs' onClick={onReject}>
-            <X />
-            Deny
-          </Button>
-          <Button
-            variant='outline'
-            size='sm'
-            className='h-7 text-xs'
-            onClick={() => onApprove({ saveAsDraft: true })}>
-            <Save />
-            Save as Draft
-          </Button>
-          <Button variant='outline' size='sm' className='h-7 text-xs' onClick={handleEditInThread}>
-            <ExternalLink />
-            Edit in Thread
-          </Button>
-          <Button size='sm' className='h-7 text-xs' onClick={() => onApprove()}>
-            <Send />
-            Send
-          </Button>
-        </div>
-      )}
-
-      {/* Approved: show view link */}
-      {status === 'approved' && (
-        <div className='flex items-center justify-end gap-2 border-t px-3 py-2'>
-          <Button variant='outline' size='sm' className='h-7 text-xs' onClick={handleEditInThread}>
-            <ExternalLink />
-            View in Thread
-          </Button>
-        </div>
-      )}
-    </div>
+    </BlockCard>
   )
 }

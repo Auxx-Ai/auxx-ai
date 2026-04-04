@@ -771,6 +771,13 @@
       "when": 1775181917443,
       "tag": "0109_add_ai_message_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1775259147259,
+      "tag": "0110_add-prompt-template",
+      "breakpoints": true
     }
   ]
 }

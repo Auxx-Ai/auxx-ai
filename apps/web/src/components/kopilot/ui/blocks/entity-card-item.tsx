@@ -4,12 +4,22 @@
 
 import { getDefinitionId } from '@auxx/lib/resources/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import Link from 'next/link'
 import { useRecord, useRecordLink, useResource } from '~/components/resources'
 
-export function EntityCardItem({ recordId }: { recordId: string }) {
+interface EntityCardItemProps {
+  recordId: string
+  /** Show a checkbox on the right. When provided, the card is not wrapped in a Link. */
+  selectable?: {
+    checked: boolean
+    onChange: (checked: boolean) => void
+  }
+}
+
+export function EntityCardItem({ recordId, selectable }: EntityCardItemProps) {
   const { record, isLoading } = useRecord({ recordId })
   const entityDefId = getDefinitionId(recordId)
   const { resource } = useResource(entityDefId)
@@ -46,10 +56,13 @@ export function EntityCardItem({ recordId }: { recordId: string }) {
           <div className='truncate text-xs text-muted-foreground'>{record.secondaryInfo}</div>
         )}
       </div>
+      {selectable && (
+        <Checkbox checked={selectable.checked} onCheckedChange={selectable.onChange} />
+      )}
     </div>
   )
 
-  return href ? <Link href={href}>{inner}</Link> : inner
+  return selectable ? inner : href ? <Link href={href}>{inner}</Link> : inner
 }
 
 function EntityCardItemSkeleton() {

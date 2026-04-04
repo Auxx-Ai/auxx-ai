@@ -1,0 +1,8 @@
+{
+  "id": "summarize-thread",
+  "name": "Summarize Thread",
+  "description": "Create a brief summary of the entire conversation thread",
+  "prompt": "Provide a brief summary of this conversation thread. Capture the key points, decisions made, and any outstanding action items. Format as a short paragraph followed by bullet points for action items.",
+  "categories": ["general"],
+  "icon": { "iconId": "List", "color": "#6366F1" }
+}

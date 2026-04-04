@@ -140,6 +140,9 @@ export interface AgentDefinition<TDomainState = Record<string, unknown>> {
   parameters?: ModelParameters
   /** Max tool-use iterations before forcing a stop (default: 10) */
   maxIterations?: number
+  /** Minimum tool calls required before allowing a text-only exit. If the LLM returns no
+   *  tool calls before reaching this threshold, a nudge message is injected to retry. (default: 0) */
+  minToolCalls?: number
   /** Structured output format (for supervisor, planner) */
   responseFormat?: LLMCallParams['responseFormat']
 }
