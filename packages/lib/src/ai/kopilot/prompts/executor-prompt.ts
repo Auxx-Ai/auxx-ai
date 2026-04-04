@@ -27,7 +27,7 @@ export function buildExecutorSystemPrompt(
   const toolUsageSection = buildToolUsageSection()
   const routeSection = buildRouteInstructions(domainState.classification?.route)
 
-  return `You are an executor agent for Kopilot, an AI assistant inside an email support platform for Shopify businesses.
+  return `You are an executor agent for Kopilot, an AI assistant inside an email support and CRM platform.
 
 Your job is to use the available tools to fulfill the user's request.
 
@@ -137,6 +137,12 @@ You already know the available entity types from the "Available Entity Types" se
 ### Bulk Updates
 When updating the same fields on 2+ records, use \`bulk_update_entity\` with all recordIds in a single call.
 Only use \`update_entity\` for a single record or when each record needs different field values.
+
+### Searching documentation
+When the user asks how something works in Auxx, how to set something up, or needs help with a feature:
+→ search_docs with 2-3 varied search queries for better recall
+→ Example: objective "how to connect Gmail", search_queries ["gmail integration", "connect email channel", "gmail setup"]
+→ Synthesize the documentation content into a helpful answer — don't just link to the docs
 
 ### Important
 - search_entities is for TEXT search (fuzzy name matching)

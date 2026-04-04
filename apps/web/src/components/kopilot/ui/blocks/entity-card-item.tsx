@@ -37,7 +37,7 @@ export function EntityCardItem({ recordId, selectable }: EntityCardItemProps) {
     .toUpperCase()
 
   const inner = (
-    <div className='flex items-center gap-3 rounded-lg bg-background p-3 shadow-sm ring-1 ring-border transition-colors hover:bg-muted/50'>
+    <div className='flex items-center gap-3 rounded-2xl bg-background p-1 shadow-sm ring-1 ring-border transition-colors hover:bg-muted/50'>
       <Avatar className='size-8'>
         {record?.avatarUrl ? <AvatarImage src={record.avatarUrl} /> : null}
         <AvatarFallback className='text-xs'>
@@ -57,7 +57,9 @@ export function EntityCardItem({ recordId, selectable }: EntityCardItemProps) {
         )}
       </div>
       {selectable && (
-        <Checkbox checked={selectable.checked} onCheckedChange={selectable.onChange} />
+        <div className='h-full px-2'>
+          <Checkbox checked={selectable.checked} onCheckedChange={selectable.onChange} />
+        </div>
       )}
     </div>
   )

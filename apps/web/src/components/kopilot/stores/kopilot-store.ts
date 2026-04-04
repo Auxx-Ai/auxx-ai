@@ -571,6 +571,17 @@ export const useKopilotStore = create<KopilotState>()(
             // Responder assistant message — attach group and finalize
             if (msg.role === 'assistant' && !isExecutorAssistant(msg)) {
               if (currentGroup && currentGroup.steps.length > 0) {
+                // Attach any trailing thinking text (from the final executor message
+                // after all tool calls) to the last tool step
+                if (pendingThinking) {
+                  const lastStep = currentGroup.steps[currentGroup.steps.length - 1]!
+                  currentGroup.steps[currentGroup.steps.length - 1] = {
+                    ...lastStep,
+                    thinking: lastStep.thinking
+                      ? `${lastStep.thinking}\n\n${pendingThinking}`
+                      : pendingThinking,
+                  }
+                }
                 currentGroup.messageId = msg.id
                 groups[currentGroup.id] = currentGroup
               }

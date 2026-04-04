@@ -28,7 +28,7 @@ const PLANNER_RESPONSE_SCHEMA = {
             description: { type: 'string' },
             tool: { type: 'string' },
           },
-          required: ['id', 'description'],
+          required: ['id', 'description', 'tool'],
           additionalProperties: false,
         },
       },

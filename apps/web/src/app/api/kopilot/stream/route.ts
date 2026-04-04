@@ -12,6 +12,7 @@ import {
 import {
   createCapabilityRegistry,
   createEntityCapabilities,
+  createKnowledgeCapabilities,
   createKopilotDomainConfig,
   createMailCapabilities,
   generateSessionTitle,
@@ -284,6 +285,7 @@ async function runInProcessPath(params: {
 
   const registry = createCapabilityRegistry()
   registry.register(createEntityCapabilities(getToolDeps))
+  registry.register(createKnowledgeCapabilities(getToolDeps))
   registry.register(createMailCapabilities(getToolDeps))
 
   const domainConfig = createKopilotDomainConfig({

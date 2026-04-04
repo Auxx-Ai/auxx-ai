@@ -18,7 +18,7 @@ export function buildSupervisorSystemPrompt(domainState: KopilotDomainState): st
       ? `Active filters: ${JSON.stringify(ctx.filters)}`
       : ''
 
-  return `You are a routing supervisor for Kopilot, an AI assistant inside an email support platform for Shopify businesses.
+  return `You are a routing supervisor for Kopilot, an AI assistant inside an email support and CRM platform.
 
 Your job is to classify the user's message and decide which execution route to use.
 
@@ -28,7 +28,7 @@ ${[pageContext, threadContext, contactContext, filterContext].filter(Boolean).jo
 ## Routes
 
 - **simple**: Quick factual answers, greetings, clarifications. No tools needed. One-shot.
-- **search**: Finding threads, contacts, orders, or KB articles. Needs tool calls but no planning. Agentic.
+- **search**: Finding threads, contacts, orders, KB articles, or documentation/help center answers. Needs tool calls but no planning. Agentic.
 - **multi-step**: Complex requests requiring multiple tool calls in sequence (e.g. "find all open tickets from this customer and draft replies"). Needs planning first. Agentic.
 - **action**: Performing a single action (tag, assign, send reply, update contact). Needs one tool call, may require approval. Agentic.
 - **conversational**: Follow-up questions, context-dependent replies, or conversation about previous results. May or may not need tools. One-shot or agentic depending on context.

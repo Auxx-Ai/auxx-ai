@@ -70,6 +70,12 @@ export const MAIL_MENU: SidebarProps[] = []
 
 export const SIDEBAR_MENU: SidebarProps[] = [
   {
+    id: 'chats',
+    label: 'Chats',
+    slug: 'kopilot/new',
+    icon: <MessagesSquare />,
+  },
+  {
     id: 'workflows',
     label: 'Workflows',
     slug: 'workflows',
