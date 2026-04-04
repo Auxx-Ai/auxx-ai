@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.112](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.111...auxx-v0.1.112) (2026-04-04)
+
+
+### Features
+
+* add active thread version tracking and ticket row actions component ([#359](https://github.com/Auxx-Ai/auxx-ai/issues/359)) ([43adc2e](https://github.com/Auxx-Ai/auxx-ai/commit/43adc2e1f1c916a895ecccb276d6a4ad7fe478c7))
+* add entity management tools and feedback system ([#363](https://github.com/Auxx-Ai/auxx-ai/issues/363)) ([ed50ddb](https://github.com/Auxx-Ai/auxx-ai/commit/ed50ddb57b72a711644e5fe80c4e3cefb04294a7))
+* add prompt template functionality and related tools ([#366](https://github.com/Auxx-Ai/auxx-ai/issues/366)) ([921d7b0](https://github.com/Auxx-Ai/auxx-ai/commit/921d7b0b2ef6cb01467b19e9827662c5402e0289))
+* add quick actions support and enhance resource registry ([#357](https://github.com/Auxx-Ai/auxx-ai/issues/357)) ([5efe4a6](https://github.com/Auxx-Ai/auxx-ai/commit/5efe4a6fae182e4553239f65c33b61bff32a8b1d))
+* enhance relation input handling and add collapsible animations ([#360](https://github.com/Auxx-Ai/auxx-ai/issues/360)) ([0fbb501](https://github.com/Auxx-Ai/auxx-ai/commit/0fbb50145b1a6804104391196f218042923257fd))
+* enhance status bar and tool status display ([#367](https://github.com/Auxx-Ai/auxx-ai/issues/367)) ([22bb016](https://github.com/Auxx-Ai/auxx-ai/commit/22bb0166c721ba0c5b63ab35613d9a28f3ee2612))
+* enhance ThinkingSteps component with animations and improve tool execution persistence ([#364](https://github.com/Auxx-Ai/auxx-ai/issues/364)) ([0f1b17d](https://github.com/Auxx-Ai/auxx-ai/commit/0f1b17dd28cc4cefe96c5897225749519b1c1248))
+* implement records search functionality with custom search bar ([#362](https://github.com/Auxx-Ai/auxx-ai/issues/362)) ([6c01522](https://github.com/Auxx-Ai/auxx-ai/commit/6c01522139c9225bd7e2f34b1c020a91d5b04429))
+* integrate ScrollArea component into various tabs for improved scrolling experience ([#365](https://github.com/Auxx-Ai/auxx-ai/issues/365)) ([05b5f9d](https://github.com/Auxx-Ai/auxx-ai/commit/05b5f9dc84b39f3d7ce84a225f0e9d36566d2fb9))
+* kopilot initial implementation ([02f3269](https://github.com/Auxx-Ai/auxx-ai/commit/02f32696ff04db5a8190605cf873d4f48dadb9ed))
+* **searchbar:** implement search store and UI components ([#361](https://github.com/Auxx-Ai/auxx-ai/issues/361)) ([a333445](https://github.com/Auxx-Ai/auxx-ai/commit/a333445e90b0b912a91f97224c4f48b224112c5f))
+
 ## [0.1.111](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.110...auxx-v0.1.111) (2026-04-01)
 
 
