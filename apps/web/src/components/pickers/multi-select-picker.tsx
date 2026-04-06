@@ -16,7 +16,17 @@ import {
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
-import { Check, Loader2, Plus, Tags, TextCursorInput, Trash2, X } from 'lucide-react'
+import {
+  Check,
+  LayoutGrid,
+  Loader2,
+  Plus,
+  Settings,
+  Tags,
+  TextCursorInput,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /**
@@ -76,6 +86,15 @@ export interface MultiSelectPickerProps {
 
   /** When true, created options use the label text as value instead of a UUID */
   useValueAsLabel?: boolean
+
+  /** Called when an option is clicked in manage mode (overrides inline edit) */
+  onEdit?: (value: string) => void
+
+  /** Callback for a secondary action button (e.g., "Browse prompts") */
+  onBrowse?: () => void
+
+  /** Label for browse button (default: "Browse all") */
+  browseLabel?: string
 }
 
 /**
@@ -102,6 +121,9 @@ export function MultiSelectPicker({
   onCreate,
   createLabel = 'Create new',
   useValueAsLabel = false,
+  onEdit,
+  onBrowse,
+  browseLabel = 'Browse all',
 }: MultiSelectPickerProps) {
   const editInputRef = useRef<HTMLInputElement>(null)
 
@@ -407,14 +429,18 @@ export function MultiSelectPicker({
                       value={opt.value}
                       onSelect={() => {
                         if (isManageMode) {
-                          startEdit(opt.value)
+                          if (onEdit) {
+                            onEdit(opt.value)
+                          } else {
+                            startEdit(opt.value)
+                          }
                         } else {
                           handleSelect(opt.value)
                         }
                       }}
                       disabled={disabled}
                       className={cn(
-                        'cursor-pointer h-7',
+                        'group/item cursor-pointer h-7',
                         isManageMode && 'py-0 pe-1',
                         editingOptionId === opt.value && 'bg-primary-200'
                       )}>
@@ -423,10 +449,18 @@ export function MultiSelectPicker({
                           {/* Selection indicator (checkbox/radio) or manage icon */}
 
                           {/* Icon (if option has icon) */}
-                          {opt.icon && <EntityIcon iconId={opt.icon} size='sm' color='gray' />}
+                          {opt.icon && (
+                            <EntityIcon
+                              iconId={opt.icon}
+                              size='sm'
+                              {...(opt.color?.startsWith('#')
+                                ? { style: { color: opt.color } }
+                                : { color: opt.color ?? 'gray' })}
+                            />
+                          )}
 
-                          {/* Color dot (if option has color) */}
-                          {opt.color && (
+                          {/* Color dot (if option has color but no icon) */}
+                          {opt.color && !opt.icon && (
                             <div
                               className={cn(
                                 'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10',
@@ -439,6 +473,19 @@ export function MultiSelectPicker({
                           <span className='truncate'>{opt.label}</span>
                         </div>
                         <div className='flex items-center gap-1 shrink-0'>
+                          {/* Edit button on hover (normal mode only) */}
+                          {!isManageMode && onEdit && (
+                            <button
+                              type='button'
+                              disabled={disabled}
+                              className='hidden group-hover/item:flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-primary-200'
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onEdit(opt.value)
+                              }}>
+                              <Settings className='size-3' />
+                            </button>
+                          )}
                           <div className='flex items-center justify-center'>
                             {isManageMode ? (
                               <span className='bg-secondary rounded-sm py-[1px] px-[3px] text-[10px]'>
@@ -502,16 +549,27 @@ export function MultiSelectPicker({
               </CommandGroup>
             )}
 
-            {/* Create button for complex items */}
-            {onCreate && (
+            {/* Create / Browse buttons */}
+            {(onCreate || onBrowse) && (
               <CommandGroup>
-                <CommandItem
-                  onSelect={onCreate}
-                  disabled={disabled}
-                  className='cursor-pointer h-7.5'>
-                  <Plus className='text-muted-foreground' />
-                  <span>{createLabel}</span>
-                </CommandItem>
+                {onCreate && (
+                  <CommandItem
+                    onSelect={onCreate}
+                    disabled={disabled}
+                    className='cursor-pointer h-7.5'>
+                    <Plus className='text-muted-foreground' />
+                    <span>{createLabel}</span>
+                  </CommandItem>
+                )}
+                {onBrowse && (
+                  <CommandItem
+                    onSelect={onBrowse}
+                    disabled={disabled}
+                    className='cursor-pointer h-7.5'>
+                    <LayoutGrid className='text-muted-foreground' />
+                    <span>{browseLabel}</span>
+                  </CommandItem>
+                )}
               </CommandGroup>
             )}
           </>

@@ -1,8 +1,8 @@
 // apps/web/src/server/api/routers/promptTemplate.ts
 
 import { schema } from '@auxx/database'
-import type { PromptTemplateItem } from '@auxx/lib/prompt-templates'
-import { listPromptTemplates } from '@auxx/lib/prompt-templates'
+import type { PromptTemplateItem, SystemTemplateGalleryItem } from '@auxx/lib/prompt-templates'
+import { getPromptTemplateById, listPromptTemplates } from '@auxx/lib/prompt-templates'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -10,30 +10,18 @@ import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 export const promptTemplateRouter = createTRPCRouter({
   /**
-   * List all prompt templates — merges built-in (system) + org-specific (user) templates.
-   * System templates come first, then user templates sorted by createdAt desc.
+   * List org-specific prompt templates (user-created + installed).
+   * These are the templates that appear in the inline slash picker.
    */
   list: protectedProcedure.query(async ({ ctx }): Promise<PromptTemplateItem[]> => {
     const { organizationId } = ctx.session
 
-    // Built-in templates from code
-    const systemTemplates: PromptTemplateItem[] = listPromptTemplates().map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      prompt: t.prompt,
-      categories: t.categories,
-      icon: t.icon,
-      type: 'system',
-    }))
-
-    // Org-specific templates from DB
     const dbTemplates = await ctx.db.query.PromptTemplate.findMany({
       where: eq(schema.PromptTemplate.organizationId, organizationId),
       orderBy: [desc(schema.PromptTemplate.createdAt)],
     })
 
-    const userTemplates: PromptTemplateItem[] = dbTemplates.map((t) => ({
+    return dbTemplates.map((t) => ({
       id: t.id,
       name: t.name,
       description: t.description,
@@ -42,9 +30,64 @@ export const promptTemplateRouter = createTRPCRouter({
       icon: t.icon,
       type: 'user',
     }))
-
-    return [...systemTemplates, ...userTemplates]
   }),
+
+  /**
+   * List all system templates for the gallery/browse dialog.
+   * Includes an `installed` flag indicating if the org has already installed each template.
+   */
+  listSystem: protectedProcedure.query(async ({ ctx }): Promise<SystemTemplateGalleryItem[]> => {
+    const { organizationId } = ctx.session
+
+    const systemTemplates = listPromptTemplates()
+
+    // Find which system templates this org has already installed (by matching name)
+    const orgTemplates = await ctx.db.query.PromptTemplate.findMany({
+      where: eq(schema.PromptTemplate.organizationId, organizationId),
+      columns: { name: true },
+    })
+    const installedNames = new Set(orgTemplates.map((r) => r.name))
+
+    return systemTemplates.map((t) => ({
+      ...t,
+      installed: installedNames.has(t.name),
+    }))
+  }),
+
+  /**
+   * Install a system template — copies it to the DB as a user template for the org.
+   * Optionally accepts a custom prompt override (for editing before install).
+   */
+  install: protectedProcedure
+    .input(
+      z.object({
+        systemTemplateId: z.string(),
+        prompt: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const systemTemplate = getPromptTemplateById(input.systemTemplateId)
+
+      if (!systemTemplate) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'System template not found' })
+      }
+
+      const [template] = await ctx.db
+        .insert(schema.PromptTemplate)
+        .values({
+          name: systemTemplate.name,
+          description: systemTemplate.description,
+          prompt: input.prompt ?? systemTemplate.prompt,
+          categories: systemTemplate.categories,
+          icon: systemTemplate.icon,
+          organizationId,
+          createdById: userId,
+        })
+        .returning()
+
+      return template
+    }),
 
   /** Create a custom org-specific prompt template */
   create: protectedProcedure

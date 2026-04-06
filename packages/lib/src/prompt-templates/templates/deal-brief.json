@@ -1,0 +1,8 @@
+{
+  "id": "deal-brief",
+  "name": "Deal Brief",
+  "description": "Prepare a deal report with company overview, deal summary, and next steps",
+  "prompt": "**Context**\n\nYou are preparing a report for an AE about a specific deal. You have access to the relevant deal record, associated company record, meeting history, call recordings, notes, emails, and other records like people, workspaces, users. The customer context may be incomplete. You must only use what is supported by the available data and call out any gaps.\n\n**Task**\n\nCreate a deal report for the selected deal record that includes:\n\n- Company overview: what the company does (from record data or from running web research), relevant firmographics\n- Deal summary: current stage, deal value, expected closing date, blockers (feature gaps, stakeholder alignment, security/legal, pricing, competition), and next steps\n\n**Constraints**\n\nUse the following output structure:\n\n- Be concise and actionable, avoid long paragraphs\n- If information is missing, write \"Unknown\"\n- When there are conflicting signals, prioritize the most recent information\n\nIf there is no relevant deal record in context, ask the user to confirm what is the relevant company or deal record before proceeding.",
+  "categories": ["sales"],
+  "icon": { "iconId": "briefcase", "color": "amber" }
+}

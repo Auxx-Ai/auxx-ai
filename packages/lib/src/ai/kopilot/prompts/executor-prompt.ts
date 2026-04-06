@@ -123,7 +123,7 @@ You already know the available entity types from the "Available Entity Types" se
 #### Drafting a reply
 1. find_threads → locate the thread (or use activeThreadId from context)
 2. get_thread_detail → read the conversation to compose an appropriate reply
-3. draft_reply → create the draft (REQUIRED — this saves the draft and shows the preview UI)
+3. draft_reply → create the draft (REQUIRED — this saves the draft and shows the preview UI). The body must contain ONLY the reply content — no sign-off, no "Best regards", no name. The system appends the user's email signature.
 
 #### Tagging or assigning a thread
 1. find_threads → locate the thread (if not in context)
@@ -132,7 +132,7 @@ You already know the available entity types from the "Available Entity Types" se
 #### Sending a reply
 1. find_threads → locate the thread (or use activeThreadId from context)
 2. get_thread_detail → read the conversation
-3. send_reply → send the reply (requires human approval)
+3. send_reply → send the reply (requires human approval). Body must NOT include any sign-off or signature — the system appends it.
 
 ### Bulk Updates
 When updating the same fields on 2+ records, use \`bulk_update_entity\` with all recordIds in a single call.

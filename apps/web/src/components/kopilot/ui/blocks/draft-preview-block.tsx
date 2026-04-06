@@ -2,10 +2,10 @@
 
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Pencil } from 'lucide-react'
 import { useComposeStore } from '~/components/mail/store/compose-store'
+import { BlockCard, type BlockCardAction } from './block-card'
 import type { BlockRendererProps } from './block-registry'
 import type { DraftPreviewData } from './block-schemas'
 
@@ -49,21 +49,28 @@ export function DraftPreviewBlock({ data }: BlockRendererProps<DraftPreviewData>
     })
   }
 
+  const secondaryText = [
+    `To: ${data.to.join(', ')}`,
+    data.cc && data.cc.length > 0 ? `Cc: ${data.cc.join(', ')}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  const actions: BlockCardAction[] = [
+    { label: 'Edit Draft', onClick: handleEditDraft, primary: true },
+  ]
+
   return (
-    <div className='not-prose my-2 rounded-lg border'>
-      <div className='flex items-center gap-2 border-b px-3 py-2 text-xs text-muted-foreground'>
-        <Pencil className='size-3' />
-        <span className='font-medium'>Draft Reply</span>
-      </div>
-      <div className='px-3 py-2'>
-        <div className='text-xs text-muted-foreground'>
-          To: {data.to.join(', ')}
-          {data.cc && data.cc.length > 0 && <span> · Cc: {data.cc.join(', ')}</span>}
-        </div>
+    <div className='not-prose my-2'>
+      <BlockCard
+        indicator={<Pencil className='size-3 text-muted-foreground' />}
+        primaryText='Draft Reply'
+        secondaryText={<span className='text-xs text-muted-foreground'>{secondaryText}</span>}
+        actions={actions}>
         {data.subject && (
-          <div className='mt-1 text-xs text-muted-foreground'>Subject: {data.subject}</div>
+          <div className='mb-2 text-xs text-muted-foreground'>Subject: {data.subject}</div>
         )}
-        <div className='mt-2 h-40'>
+        <div className='h-40'>
           <ScrollArea
             className='h-full'
             scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'
@@ -71,13 +78,7 @@ export function DraftPreviewBlock({ data }: BlockRendererProps<DraftPreviewData>
             <div className='whitespace-pre-wrap text-sm'>{data.body}</div>
           </ScrollArea>
         </div>
-      </div>
-      <div className='flex items-center justify-end gap-2 border-t px-3 py-2'>
-        <Button variant='outline' size='sm' className='h-7 text-xs' onClick={handleEditDraft}>
-          <Pencil className='size-3' />
-          Edit Draft
-        </Button>
-      </div>
+      </BlockCard>
     </div>
   )
 }

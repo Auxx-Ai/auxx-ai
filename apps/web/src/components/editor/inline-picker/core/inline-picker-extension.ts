@@ -34,7 +34,7 @@ export function createInlinePickerExtension(config: InlinePickerExtensionConfig)
           char: trigger,
           allowSpaces,
           startOfLine: false,
-          allowedPrefixes: null,
+          allowedPrefixes: [' '],
           pluginKey,
           // Items are handled externally - return empty array
           items: () => [],

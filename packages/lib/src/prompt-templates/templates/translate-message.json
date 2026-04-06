@@ -2,7 +2,7 @@
   "id": "translate-message",
   "name": "Translate Message",
   "description": "Translate the customer's message to English and draft a reply in their language",
-  "prompt": "Translate the customer's most recent message to English, then draft a reply in the customer's original language. Show both the translation and the draft reply clearly labeled.",
+  "prompt": "**Context**\n\nYou are a support agent handling a message in a language other than English. You have access to the ticket conversation and any linked records. The customer has written in their preferred language and expects a response in the same language.\n\n**Task**\n\nProvide:\n\n- Detected language: identify what language the customer is writing in\n- English translation: translate the customer's most recent message into English\n- Draft reply: write a response in the customer's language that addresses their message, matching the same level of formality\n\n**Constraints**\n\nUse the following output structure:\n\n- Clearly label each section: \"Detected Language\", \"English Translation\", \"Draft Reply\"\n- Preserve the customer's meaning accurately — don't paraphrase or soften their tone in translation\n- If the language is ambiguous (e.g., could be Portuguese or Spanish), state the ambiguity and translate in the most likely language\n- If the message is already in English, note that and offer to translate the draft reply into a specified language instead.",
   "categories": ["general"],
-  "icon": { "iconId": "Languages", "color": "#14B8A6" }
+  "icon": { "iconId": "globe", "color": "teal" }
 }

@@ -1,10 +1,13 @@
 // packages/lib/src/prompt-templates/template-registry.ts
 
+import accountResearch from './templates/account-research.json'
+import dealBrief from './templates/deal-brief.json'
 import draftReply from './templates/draft-reply.json'
 import escalationAssessment from './templates/escalation-assessment.json'
 import extractActionItems from './templates/extract-action-items.json'
 import orderStatusLookup from './templates/order-status-lookup.json'
 import refundPolicyResponse from './templates/refund-policy-response.json'
+import salesCoach from './templates/sales-coach.json'
 import sentimentAnalysis from './templates/sentiment-analysis.json'
 import shippingInquiry from './templates/shipping-inquiry.json'
 import summarizeThread from './templates/summarize-thread.json'
@@ -22,6 +25,10 @@ const allTemplates: PromptTemplateDefinition[] = [
   orderStatusLookup,
   refundPolicyResponse,
   shippingInquiry,
+  // Sales
+  salesCoach,
+  accountResearch,
+  dealBrief,
   // General
   summarizeThread,
   translateMessage,

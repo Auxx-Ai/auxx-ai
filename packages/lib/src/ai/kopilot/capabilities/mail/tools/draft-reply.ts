@@ -6,12 +6,13 @@ import { ParticipantService } from '../../../../../participants'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { stripSignOff } from './strip-sign-off'
 
 export function createDraftReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'draft_reply',
     description:
-      'Create or update a draft reply on a thread. If no recipients are specified, defaults to the last inbound sender. Returns the draft ID.',
+      "Create or update a draft reply on a thread. If no recipients are specified, defaults to the last inbound sender. The user's email signature is appended automatically — never include one in the body. Returns the draft ID.",
     parameters: {
       type: 'object',
       properties: {
@@ -22,7 +23,7 @@ export function createDraftReplyTool(getDeps: GetToolDeps): AgentToolDefinition 
         body: {
           type: 'string',
           description:
-            'Reply body text. Never include an email signature — the app appends the signature automatically.',
+            'Reply body text. Do NOT include any sign-off, closing, or signature (no "Best regards", "Thanks", "Sincerely", or name). The system appends the user\'s email signature automatically.',
         },
         toRecipients: {
           type: 'array',
@@ -41,7 +42,7 @@ export function createDraftReplyTool(getDeps: GetToolDeps): AgentToolDefinition 
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       const threadId = args.threadId as string
-      const body = args.body as string
+      const body = stripSignOff(args.body as string)
       const toRecipients = args.toRecipients as string[] | undefined
       const ccRecipients = args.ccRecipients as string[] | undefined
 

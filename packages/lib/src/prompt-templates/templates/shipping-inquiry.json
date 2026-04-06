@@ -2,7 +2,7 @@
   "id": "shipping-inquiry",
   "name": "Shipping Inquiry",
   "description": "Help respond to customer shipping questions and concerns",
-  "prompt": "Address the customer's shipping concern. Check order fulfillment status, provide tracking details if available, explain typical shipping timelines for their region, and offer solutions if there's a delay or issue.",
+  "prompt": "**Context**\n\nYou are a support agent handling a shipping-related question or concern. You have access to the ticket conversation, the customer's order and fulfillment data from Shopify, including tracking information if available. The customer may be asking about delivery timing, reporting a missing package, or inquiring about shipping options.\n\n**Task**\n\nDraft a customer-facing response that addresses their shipping concern:\n\n- Current fulfillment and tracking status\n- Carrier and tracking number (if available)\n- Expected delivery timeline based on shipping method and destination\n- If there's a delay or issue: acknowledge it, explain what's known, and offer a concrete next step (reshipment, refund, investigation)\n\n**Constraints**\n\nUse the following output structure:\n\n- Be concise and helpful — lead with the status, then explain\n- If tracking shows delivered but the customer says they didn't receive it, recommend specific next steps (check with neighbors, wait 24-48 hours, file a carrier claim)\n- If no order or tracking data is available in context, ask the user to confirm the order before proceeding.",
   "categories": ["shopify"],
-  "icon": { "iconId": "Truck", "color": "#06B6D4" }
+  "icon": { "iconId": "truck", "color": "teal" }
 }

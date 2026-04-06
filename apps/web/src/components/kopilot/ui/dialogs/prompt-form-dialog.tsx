@@ -17,8 +17,10 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
+import { Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { usePromptTemplateMutations } from '../../hooks/use-prompt-template-mutations'
 
 type PromptFormDialogProps =
@@ -39,6 +41,7 @@ type PromptFormDialogProps =
         prompt: string
         icon?: { iconId: string; color: string } | null
       }
+      onDeleted?: () => void
     }
 
 const DEFAULT_ICON: IconPickerValue = { icon: 'sparkles', color: 'violet' }
@@ -51,7 +54,8 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
   const [prompt, setPrompt] = useState('')
   const [iconValue, setIconValue] = useState<IconPickerValue>(DEFAULT_ICON)
 
-  const { create, update } = usePromptTemplateMutations()
+  const { create, update, remove } = usePromptTemplateMutations()
+  const [confirm, ConfirmDialog] = useConfirm()
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on open/mode change only
   useEffect(() => {
@@ -116,6 +120,21 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
     onOpenChange(false)
   }
 
+  const handleDelete = async () => {
+    if (props.mode !== 'edit') return
+    const confirmed = await confirm({
+      title: 'Delete prompt template?',
+      description: 'This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!confirmed) return
+    await remove.mutateAsync({ id: props.promptTemplate.id })
+    onOpenChange(false)
+    props.onDeleted?.()
+  }
+
   const isPending = props.mode === 'create' ? create.isPending : update.isPending
   const dialogTitle = props.mode === 'create' ? 'Create Prompt Template' : 'Edit Prompt Template'
   const dialogDescription =
@@ -165,17 +184,6 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
               </InputGroup>
             </div>
             <div className='grid gap-2'>
-              <Label htmlFor='prompt-description'>Description</Label>
-              <Textarea
-                id='prompt-description'
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder='Short description of what this prompt does'
-                disabled={isPending}
-                rows={2}
-              />
-            </div>
-            <div className='grid gap-2'>
               <Label htmlFor='prompt-content'>Prompt</Label>
               <Textarea
                 id='prompt-content'
@@ -190,6 +198,19 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
           </div>
 
           <DialogFooter>
+            {props.mode === 'edit' && (
+              <Button
+                type='button'
+                size='sm'
+                variant='destructive-hover'
+                onClick={handleDelete}
+                loading={remove.isPending}
+                loadingText='Deleting...'
+                className='mr-auto'>
+                <Trash2 />
+                Delete
+              </Button>
+            )}
             <Button
               type='button'
               variant='ghost'
@@ -209,6 +230,7 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
           </DialogFooter>
         </form>
       </DialogContent>
+      <ConfirmDialog />
     </Dialog>
   )
 }

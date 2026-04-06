@@ -2,7 +2,7 @@
   "id": "escalation-assessment",
   "name": "Escalation Assessment",
   "description": "Assess whether the ticket needs to be escalated to a senior agent",
-  "prompt": "Analyze this ticket and assess whether it needs escalation. Consider: customer sentiment, issue complexity, time since first contact, and whether previous attempts have resolved the issue. Recommend: escalate or continue handling, with reasoning.",
+  "prompt": "**Context**\n\nYou are a support team lead reviewing a ticket to determine whether it should be escalated. You have access to the full ticket conversation, customer profile, any linked orders, and the history of actions taken so far.\n\n**Task**\n\nProduce an escalation assessment that includes:\n\n- Summary: 1-2 sentences on what the issue is\n- Severity signals: list the factors that suggest escalation may be needed — customer sentiment, issue complexity, time since first contact, repeat contacts, revenue impact, or failed resolution attempts\n- Recommendation: escalate or continue handling at current level, with clear reasoning\n- Suggested next step: if escalating, who should handle it and what they need to know; if not escalating, what the agent should do next\n\n**Constraints**\n\nUse the following output structure:\n\n- Be concise and actionable, avoid long paragraphs\n- If information is missing, write \"Unknown\"\n- When there are conflicting signals, prioritize the most recent information\n- If there is no relevant ticket conversation in context, ask the user to confirm which ticket to assess before proceeding.",
   "categories": ["customer-support"],
-  "icon": { "iconId": "AlertTriangle", "color": "#F59E0B" }
+  "icon": { "iconId": "alert-triangle", "color": "amber" }
 }

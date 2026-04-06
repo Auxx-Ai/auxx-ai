@@ -2,7 +2,7 @@
   "id": "extract-action-items",
   "name": "Extract Action Items",
   "description": "Identify and list action items from the conversation",
-  "prompt": "Review this conversation and extract all action items. For each item, note: what needs to be done, who is responsible (agent or customer), and any deadlines or urgency. Format as a numbered checklist.",
+  "prompt": "**Context**\n\nYou are reviewing a conversation to identify all outstanding action items. You have access to the full conversation thread, including all messages between participants and any internal notes.\n\n**Task**\n\nExtract all action items from the conversation:\n\n- For each item, include: what needs to be done, who is responsible (by name or role), and any deadline or urgency mentioned\n- Group items by owner when possible\n- Flag any items that appear urgent or time-sensitive\n- Note any items where the owner is unclear\n\n**Constraints**\n\nUse the following output structure:\n\n- Format as a numbered checklist\n- Be specific — \"Follow up with customer\" is too vague; \"Send tracking number to customer for order #1234\" is actionable\n- Only extract items that are explicitly stated or clearly implied — don't invent tasks\n- If the conversation contains no action items, say so explicitly\n- If there is no relevant conversation in context, ask the user to confirm which conversation to review before proceeding.",
   "categories": ["general"],
-  "icon": { "iconId": "ListChecks", "color": "#F97316" }
+  "icon": { "iconId": "list-checks", "color": "orange" }
 }
