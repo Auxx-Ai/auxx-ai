@@ -2,7 +2,7 @@
   "id": "order-status-lookup",
   "name": "Order Status Lookup",
   "description": "Look up and summarize the status of a customer's order",
-  "prompt": "Look up the customer's order and provide a clear status update. Include: order number, items ordered, current fulfillment status, tracking information (if available), and estimated delivery date.",
+  "prompt": "**Context**\n\nYou are a support agent looking up a customer's order. You have access to the Shopify order data, including order details, fulfillment status, tracking information, and payment status. The customer may have referenced an order number, or it may be linked to the current ticket.\n\n**Task**\n\nProduce an order status update that includes:\n\n- Order number and date placed\n- Items ordered: product names and quantities\n- Payment status: paid, partially refunded, refunded, or pending\n- Fulfillment status: unfulfilled, partially fulfilled, fulfilled, or delivered\n- Tracking: carrier, tracking number, and last known status (if available)\n- Estimated delivery date (if available)\n\n**Constraints**\n\nUse the following output structure:\n\n- Be concise and factual — this is a status report, not a customer-facing message\n- If information is missing, write \"Unknown\"\n- If multiple orders exist for this customer, summarize the most recent one and note how many others exist\n- If there is no relevant order data in context, ask the user to confirm the order number or customer before proceeding.",
   "categories": ["shopify"],
-  "icon": { "iconId": "Package", "color": "#10B981" }
+  "icon": { "iconId": "package", "color": "green" }
 }

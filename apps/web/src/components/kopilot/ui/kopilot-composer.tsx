@@ -2,7 +2,7 @@
 
 'use client'
 
-import AiThinking from '@auxx/ui/components/ai-thinking'
+import type { PromptTemplateItem } from '@auxx/lib/prompt-templates'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
@@ -24,6 +24,7 @@ import { usePromptTemplates } from '../hooks/use-prompt-templates'
 import type { KopilotMessage } from '../stores/kopilot-store'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { PromptFormDialog } from './dialogs/prompt-form-dialog'
+import { PromptTemplateDialog } from './dialogs/prompt-template-dialog'
 import { PromptTemplatePickerContent } from './pickers/prompt-template-picker/prompt-template-picker-content'
 
 interface KopilotComposerProps {
@@ -48,15 +49,32 @@ function isEmptyContent(html: string): boolean {
   )
 }
 
+const PROMPT_BADGE_REGEX =
+  /<span[^>]*data-type="promptTemplate"[^>]*data-id="([^"]*)"[^>]*>[^<]*<\/span>/g
+
 /**
- * Resolve prompt template badges in HTML to their full prompt text.
- * Replaces <span data-type="promptTemplate" data-id="...">...</span> with the prompt content.
+ * Resolve prompt template badges in HTML to their full prompt text for the API.
  */
 function resolvePromptBadges(html: string, templateMap: Map<string, string>): string {
-  return html.replace(
-    /<span[^>]*data-type="promptTemplate"[^>]*data-id="([^"]*)"[^>]*>[^<]*<\/span>/g,
-    (_match, id: string) => templateMap.get(id) ?? ''
-  )
+  return html.replace(PROMPT_BADGE_REGEX, (_match, id: string) => templateMap.get(id) ?? '')
+}
+
+/**
+ * Replace prompt template badge spans with styled static HTML for chat display.
+ * Renders a compact pill with colored dot + template name.
+ */
+function formatPromptBadgesForDisplay(
+  html: string,
+  templates: Map<string, { name: string; icon?: { iconId: string; color: string } | null }>
+): string {
+  return html.replace(PROMPT_BADGE_REGEX, (_match, id: string) => {
+    const template = templates.get(id)
+    if (!template) return ''
+    const iconHtml = template.icon
+      ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${template.icon.color};flex-shrink:0;"></span>`
+      : ''
+    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:9999px;background:#f0f0f0;font-size:12px;font-weight:500;line-height:1.4;">${iconHtml}${template.name}</span>`
+  })
 }
 
 export function KopilotComposer({
@@ -79,9 +97,15 @@ export function KopilotComposer({
 
   const { templates } = usePromptTemplates()
   const templateMap = useMemo(() => new Map(templates.map((t) => [t.id, t.prompt])), [templates])
+  const templateDisplayMap = useMemo(
+    () => new Map(templates.map((t) => [t.id, { name: t.name, icon: t.icon }])),
+    [templates]
+  )
 
   const [isEmpty, setIsEmpty] = useState(true)
   const [promptDialogOpen, setPromptDialogOpen] = useState(false)
+  const [browseDialogOpen, setBrowseDialogOpen] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState<PromptTemplateItem | null>(null)
 
   // Slash command hook — creates extension to add to editor
   const {
@@ -93,10 +117,23 @@ export function KopilotComposer({
     setEditor: slashSetEditor,
   } = useSlashCommand()
 
+  // Stable ref for badge edit handler (avoids recreating TipTap extension)
+  const handleBadgeEditRef = useRef<(id: string) => void>(() => {})
+  handleBadgeEditRef.current = (id: string) => {
+    const template = templates.find((t) => t.id === id)
+    if (template) setEditingTemplate(template)
+  }
+
   // Prompt template inline node extension
   const promptNodeExtension = useMemo(
     () =>
-      createPromptNode(({ id, selected }) => <PromptTemplateBadge id={id} selected={selected} />),
+      createPromptNode(({ id, selected }) => (
+        <PromptTemplateBadge
+          id={id}
+          selected={selected}
+          onEdit={(id) => handleBadgeEditRef.current(id)}
+        />
+      )),
     []
   )
 
@@ -164,11 +201,12 @@ export function KopilotComposer({
       parentId = messages.length > 0 ? messages[messages.length - 1]!.id : null
     }
 
-    // Optimistic: add user message to store
+    // Optimistic: add user message to store (with styled badges for display)
+    const displayHtml = formatPromptBadgesForDisplay(html, templateDisplayMap)
     const userMessage: KopilotMessage = {
       id: generateId(),
       role: 'user',
-      content: html,
+      content: displayHtml,
       timestamp: Date.now(),
       parentId,
     }
@@ -201,6 +239,7 @@ export function KopilotComposer({
     messageMap,
     messages,
     templateMap,
+    templateDisplayMap,
   ])
 
   // Keep ref in sync
@@ -280,6 +319,11 @@ export function KopilotComposer({
                 })
               }}
               onCreateRequest={() => setPromptDialogOpen(true)}
+              onEditRequest={setEditingTemplate}
+              onBrowseRequest={() => {
+                slashClosePicker()
+                setBrowseDialogOpen(true)
+              }}
             />
           </InlinePickerPopover>
         </div>
@@ -313,6 +357,19 @@ export function KopilotComposer({
           onOpenChange={setPromptDialogOpen}
           mode='create'
         />
+      )}
+      {editingTemplate && (
+        <PromptFormDialog
+          open={!!editingTemplate}
+          onOpenChange={(open) => {
+            if (!open) setEditingTemplate(null)
+          }}
+          mode='edit'
+          promptTemplate={editingTemplate}
+        />
+      )}
+      {browseDialogOpen && (
+        <PromptTemplateDialog open={browseDialogOpen} onOpenChange={setBrowseDialogOpen} />
       )}
     </div>
   )

@@ -10,7 +10,7 @@ export interface PromptTemplateDefinition {
   icon: { iconId: string; color: string }
 }
 
-/** Unified type returned by the list endpoint — merges system + user templates */
+/** Unified type returned by the list endpoint — user/installed templates only */
 export interface PromptTemplateItem {
   id: string
   name: string
@@ -18,5 +18,10 @@ export interface PromptTemplateItem {
   prompt: string
   categories: string[]
   icon: { iconId: string; color: string } | null
-  type: 'system' | 'user'
+  type: 'user'
+}
+
+/** System template with install status — returned by listSystem for the gallery */
+export interface SystemTemplateGalleryItem extends PromptTemplateDefinition {
+  installed: boolean
 }

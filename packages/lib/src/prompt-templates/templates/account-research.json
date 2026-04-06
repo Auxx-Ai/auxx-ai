@@ -1,0 +1,8 @@
+{
+  "id": "account-research",
+  "name": "Account Research",
+  "description": "Research a company using public web sources and produce a company brief",
+  "prompt": "**Context**\n\nYou are researching a specific company using public web sources. You have access to publicly available information which can include the company's official website, trustworthy business websites, recent news from reputable publications.\n\n**Task**\n\nProduce a company research brief that includes:\n\n- Snapshot: what the company does in 1-2 sentences\n- Firmographics: Industry / Category, HQ location, company size, funding status\n- GTM motion: PLG, sales-led, or enterprise\n- Recent news: max 4-5 bullet points summarizing meaningful announcements in the last 90 days such as product launches, funding, acquisitions, leadership changes, layoffs, or regulatory updates\n- Key figureheads: 4-5 bullet points on executive roles\n- Competitive landscape: 1-2 sentences on their main competitors\n\n**Constraints**\n\nUse the following output structure:\n\n- Be concise and actionable, avoid long paragraphs\n- If information is missing, write \"Unknown\"\n- When there are conflicting signals, prioritize the most recent information\n- If the company name is ambiguous, state the ambiguity and list the top 3 likely matches\n- If the company record doesn't have a domain, or the user doesn't provide one, try to find it using external web search\n- If there is no relevant company name or company record in context, ask the user to confirm what the relevant company is before proceeding.",
+  "categories": ["sales"],
+  "icon": { "iconId": "building", "color": "blue" }
+}

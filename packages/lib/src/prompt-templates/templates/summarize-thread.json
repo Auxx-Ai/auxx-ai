@@ -2,7 +2,7 @@
   "id": "summarize-thread",
   "name": "Summarize Thread",
   "description": "Create a brief summary of the entire conversation thread",
-  "prompt": "Provide a brief summary of this conversation thread. Capture the key points, decisions made, and any outstanding action items. Format as a short paragraph followed by bullet points for action items.",
+  "prompt": "**Context**\n\nYou are reviewing a conversation thread. You have access to all messages in the thread, including any internal notes, linked records, and participant information. The thread may be a support ticket, an internal discussion, or a customer interaction.\n\n**Task**\n\nCreate a thread summary that includes:\n\n- Overview: what the conversation is about in 1-2 sentences\n- Key points: the most important things discussed (max 5 bullet points)\n- Decisions made: any agreements, approvals, or conclusions reached\n- Outstanding items: anything unresolved or still needing follow-up, with who owns each item\n\n**Constraints**\n\nUse the following output structure:\n\n- Be concise and actionable, avoid long paragraphs\n- If information is missing, write \"Unknown\"\n- Attribute action items to specific people when possible\n- If the thread is very short (1-2 messages), note that the summary may be incomplete\n- If there is no relevant conversation in context, ask the user to confirm which thread to summarize before proceeding.",
   "categories": ["general"],
-  "icon": { "iconId": "List", "color": "#6366F1" }
+  "icon": { "iconId": "list", "color": "indigo" }
 }

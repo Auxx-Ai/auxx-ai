@@ -1,0 +1,8 @@
+{
+  "id": "sales-coach",
+  "name": "Sales Coach",
+  "description": "Generate a post-call coaching summary based on a sales call transcript",
+  "prompt": "**Context**\n\nYou are coaching an AE based on a specific sales call they ran. You have access to the call transcript, any linked meeting notes, emails, participant records, and company records. The customer context may be incomplete. You must only use what is supported by the available data and call out any gaps.\n\n**Task**\n\nCreate a post-call coaching summary that includes:\n\n- Call overview: 1 sentence on what the meeting was about, the meeting objective (if included or inferable), and the outcome (what progress was made, purchase decision reached or not, next step secured or not)\n- What went well: what the AE did effectively (discovery, positioning, objection handling, next steps, building rapport)\n- What to improve: 3-5 coaching opportunities, prioritized by impact on deal progression. For each improvement, list what happened, why it matters, and what to do differently next time.\n\n**Constraints**\n\nUse the following output structure:\n\n- Be concise and actionable, avoid long paragraphs\n- If information is missing, write \"Unknown\"\n- When there are conflicting signals, prioritize the most recent information\n- If there is no relevant call recording in context, ask the user to confirm what is the relevant call recording or meeting before proceeding.",
+  "categories": ["sales"],
+  "icon": { "iconId": "megaphone", "color": "purple" }
+}

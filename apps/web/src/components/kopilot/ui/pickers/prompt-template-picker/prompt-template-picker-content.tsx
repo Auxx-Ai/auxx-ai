@@ -14,14 +14,20 @@ interface PromptTemplatePickerContentProps {
   onSelect: (template: PromptTemplateItem) => void
   /** Called when user clicks "Create prompt" — parent opens dialog */
   onCreateRequest: () => void
+  /** Called when user clicks edit on a template — parent opens edit dialog */
+  onEditRequest: (template: PromptTemplateItem) => void
+  /** Called when user clicks "Browse prompts" — parent opens browse dialog */
+  onBrowseRequest: () => void
 }
 
 export function PromptTemplatePickerContent({
   onSelect,
   onCreateRequest,
+  onEditRequest,
+  onBrowseRequest,
 }: PromptTemplatePickerContentProps) {
   const { templates, isLoading } = usePromptTemplates()
-  const { update, remove } = usePromptTemplateMutations()
+  const { remove } = usePromptTemplateMutations()
 
   const templateOptions: SelectOption[] = useMemo(
     () =>
@@ -29,7 +35,7 @@ export function PromptTemplatePickerContent({
         value: t.id,
         label: t.name,
         icon: t.icon?.iconId,
-        color: undefined,
+        color: t.icon?.color,
       })),
     [templates]
   )
@@ -41,17 +47,14 @@ export function PromptTemplatePickerContent({
     }
   }
 
-  const handleOptionsChange = (options: SelectOption[]) => {
-    // Detect renames and deletions by comparing with current templates
-    const currentMap = new Map(templates.map((t) => [t.id, t]))
-
-    for (const opt of options) {
-      const existing = currentMap.get(opt.value)
-      if (existing && existing.name !== opt.label && existing.type === 'user') {
-        update.mutate({ id: opt.value, name: opt.label })
-      }
+  const handleEdit = (value: string) => {
+    const template = templates.find((t) => t.id === value)
+    if (template) {
+      onEditRequest(template)
     }
+  }
 
+  const handleOptionsChange = (options: SelectOption[]) => {
     // Detect deletions (option removed from list)
     const optionIds = new Set(options.map((o) => o.value))
     for (const template of templates) {
@@ -67,11 +70,14 @@ export function PromptTemplatePickerContent({
       value={[]}
       onChange={() => {}}
       multi={false}
-      canManage={true}
+      canManage={false}
       canAdd={true}
       onCreate={onCreateRequest}
       createLabel='Create prompt'
+      onBrowse={onBrowseRequest}
+      browseLabel='Browse prompts'
       onSelectSingle={handleSelectSingle}
+      onEdit={handleEdit}
       placeholder='Search prompts...'
       isLoading={isLoading}
       onOptionsChange={handleOptionsChange}

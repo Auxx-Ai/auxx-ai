@@ -2,7 +2,7 @@
   "id": "sentiment-analysis",
   "name": "Sentiment Analysis",
   "description": "Analyze the customer's sentiment and suggest an appropriate tone for the response",
-  "prompt": "Analyze the customer's sentiment throughout this conversation. Rate their current mood (frustrated, neutral, satisfied), identify any emotional triggers, and suggest the appropriate tone and approach for the next response.",
+  "prompt": "**Context**\n\nYou are a customer experience analyst reviewing a support conversation. You have access to the full ticket conversation, including all customer messages and agent responses. The customer context may include order history and previous interactions.\n\n**Task**\n\nProduce a sentiment analysis that includes:\n\n- Current sentiment: rate as frustrated, dissatisfied, neutral, satisfied, or positive — with a 1-sentence explanation\n- Sentiment trajectory: is it improving, stable, or deteriorating over the course of the conversation?\n- Emotional triggers: list the specific moments or statements that shifted sentiment (max 3-4 bullet points)\n- Recommended tone: what tone and approach the next response should take, with a brief example phrase\n\n**Constraints**\n\nUse the following output structure:\n\n- Be concise and actionable, avoid long paragraphs\n- Base your assessment only on what the customer actually said — don't infer emotions that aren't supported by the text\n- If the conversation is too short to assess trajectory, note that explicitly\n- If there is no relevant conversation in context, ask the user to confirm which conversation to analyze before proceeding.",
   "categories": ["customer-support"],
-  "icon": { "iconId": "Heart", "color": "#EF4444" }
+  "icon": { "iconId": "heart", "color": "red" }
 }

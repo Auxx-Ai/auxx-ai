@@ -50,6 +50,7 @@ export const constants = {
     { value: 'all', label: 'All Prompts', icon: 'LayoutGrid' },
     { value: 'customer-support', label: 'Customer Support', icon: 'Headphones' },
     { value: 'shopify', label: 'Shopify', icon: 'ShoppingBag' },
+    { value: 'sales', label: 'Sales', icon: 'Handshake' },
     { value: 'general', label: 'General', icon: 'Sparkles' },
   ] as const,
 

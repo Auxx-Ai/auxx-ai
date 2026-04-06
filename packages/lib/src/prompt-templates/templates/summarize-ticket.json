@@ -2,7 +2,7 @@
   "id": "summarize-ticket",
   "name": "Summarize Ticket",
   "description": "Generate a concise summary of the current ticket conversation",
-  "prompt": "Summarize the current ticket conversation. Include: the customer's issue, any actions taken so far, and the current status. Keep it concise (3-5 bullet points).",
+  "prompt": "**Context**\n\nYou are a support operations analyst reviewing a customer support ticket. You have access to the full ticket conversation, including all messages between the customer and support agents, any internal notes, and linked records such as orders or customer profiles.\n\n**Task**\n\nCreate a ticket summary that includes:\n\n- Issue: what the customer contacted about in 1-2 sentences\n- Timeline: key events in chronological order (max 5 bullet points)\n- Actions taken: what the support team has done so far\n- Current status: where things stand right now — resolved, waiting on customer, waiting on internal team, or unresolved\n- Next step: the single most important thing that needs to happen next\n\n**Constraints**\n\nUse the following output structure:\n\n- Be concise and actionable, avoid long paragraphs\n- If information is missing, write \"Unknown\"\n- When there are conflicting signals, prioritize the most recent information\n- If there is no relevant ticket conversation in context, ask the user to confirm which ticket to summarize before proceeding.",
   "categories": ["customer-support"],
-  "icon": { "iconId": "FileText", "color": "#3B82F6" }
+  "icon": { "iconId": "file-text", "color": "blue" }
 }

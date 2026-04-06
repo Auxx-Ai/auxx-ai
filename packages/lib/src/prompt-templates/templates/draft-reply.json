@@ -2,7 +2,7 @@
   "id": "draft-reply",
   "name": "Draft Reply",
   "description": "Draft a professional reply to the customer based on the conversation",
-  "prompt": "Draft a professional and empathetic reply to the customer based on the current conversation. Match the tone of our previous responses. Address their concern directly and provide a clear next step.",
+  "prompt": "**Context**\n\nYou are a customer support agent drafting a reply to a customer. You have access to the full ticket conversation, any linked orders, customer profile, and knowledge base articles. You should match the tone and style of previous agent responses in the thread.\n\n**Task**\n\nDraft a reply to the customer that includes:\n\n- Acknowledgment of their concern or question\n- A clear, direct answer or update on their issue\n- Any specific actions you've taken or will take\n- A concrete next step or resolution\n\n**Constraints**\n\nUse the following output structure:\n\n- Be professional, empathetic, and concise — avoid filler phrases like \"I understand your frustration\"\n- Match the tone of previous agent responses in the conversation\n- If the issue requires information you don't have, say what's needed and who needs to provide it\n- If there is no relevant ticket conversation in context, ask the user to confirm which conversation to reply to before proceeding.",
   "categories": ["customer-support"],
-  "icon": { "iconId": "MessageSquare", "color": "#8B5CF6" }
+  "icon": { "iconId": "message-square", "color": "purple" }
 }

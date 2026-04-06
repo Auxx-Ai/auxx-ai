@@ -5,12 +5,13 @@ import { MessageSenderService } from '../../../../../messages'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { stripSignOff } from './strip-sign-off'
 
 export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'send_reply',
     description:
-      "Send a reply message on a thread. This action requires human approval before execution. The message will be sent via the thread's email integration.",
+      "Send a reply message on a thread. This action requires human approval before execution. The user's email signature is appended automatically — never include one in the body.",
     parameters: {
       type: 'object',
       properties: {
@@ -21,7 +22,7 @@ export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
         body: {
           type: 'string',
           description:
-            'Reply body text. Never include an email signature — the app appends the signature automatically.',
+            'Reply body text. Do NOT include any sign-off, closing, or signature (no "Best regards", "Thanks", "Sincerely", or name). The system appends the user\'s email signature automatically.',
         },
         toRecipients: {
           type: 'array',
@@ -36,7 +37,7 @@ export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       const threadId = args.threadId as string
-      const body = args.body as string
+      const body = stripSignOff(args.body as string)
       const toRecipients = args.toRecipients as string[] | undefined
       const saveAsDraft = args.saveAsDraft as boolean | undefined
 

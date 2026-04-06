@@ -3,7 +3,8 @@
 'use client'
 
 import { constants } from '@auxx/config/client'
-import type { PromptTemplateItem } from '@auxx/lib/prompt-templates'
+import type { SystemTemplateGalleryItem } from '@auxx/lib/prompt-templates'
+import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -20,12 +21,15 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@auxx/ui/components/empty'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import {
+  Check,
   ChevronLeft,
+  Handshake,
   Headphones,
   LayoutGrid,
   Loader2,
@@ -35,32 +39,36 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { usePromptTemplates } from '../../hooks/use-prompt-templates'
+import { usePromptTemplateMutations } from '../../hooks/use-prompt-template-mutations'
+import { useSystemTemplates } from '../../hooks/use-prompt-templates'
 
 /** Map icon names from constants to Lucide components */
 const categoryIcons: Record<string, LucideIcon> = {
   LayoutGrid,
   Headphones,
   ShoppingBag,
+  Handshake,
   Sparkles,
 }
 
 interface PromptTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSelect: (template: PromptTemplateItem) => void
 }
 
 type PromptCategory = (typeof constants.promptTemplateCategories)[number]['value']
 
-export function PromptTemplateDialog({ open, onOpenChange, onSelect }: PromptTemplateDialogProps) {
-  const { templates, isLoading } = usePromptTemplates()
+export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialogProps) {
+  const { templates, isLoading } = useSystemTemplates()
+  const { install } = usePromptTemplateMutations()
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<PromptCategory>('all')
-  const [selectedTemplate, setSelectedTemplate] = useState<PromptTemplateItem | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<SystemTemplateGalleryItem | null>(null)
+  const [editedPrompt, setEditedPrompt] = useState('')
+  const [isCustomizing, setIsCustomizing] = useState(false)
 
   const filteredTemplates = useMemo(() => {
     let filtered = templates
@@ -79,25 +87,36 @@ export function PromptTemplateDialog({ open, onOpenChange, onSelect }: PromptTem
     return filtered
   }, [templates, selectedCategory, searchQuery])
 
-  const handleSelectTemplate = useCallback((template: PromptTemplateItem) => {
+  const handleSelectTemplate = useCallback((template: SystemTemplateGalleryItem) => {
     setSelectedTemplate(template)
+    setEditedPrompt(template.prompt)
     setViewMode('detail')
   }, [])
 
-  const handleUseTemplate = useCallback(() => {
-    if (selectedTemplate) {
-      onSelect(selectedTemplate)
-      onOpenChange(false)
-      // Reset state
-      setViewMode('list')
-      setSelectedTemplate(null)
-      setSearchQuery('')
-    }
-  }, [selectedTemplate, onSelect, onOpenChange])
+  const handleInstall = useCallback(() => {
+    if (!selectedTemplate) return
+
+    install.mutate(
+      {
+        systemTemplateId: selectedTemplate.id,
+        prompt: editedPrompt !== selectedTemplate.prompt ? editedPrompt : undefined,
+      },
+      {
+        onSuccess: () => {
+          setViewMode('list')
+          setSelectedTemplate(null)
+          setEditedPrompt('')
+          setIsCustomizing(false)
+        },
+      }
+    )
+  }, [selectedTemplate, editedPrompt, install])
 
   const handleBack = useCallback(() => {
     setViewMode('list')
     setSelectedTemplate(null)
+    setEditedPrompt('')
+    setIsCustomizing(false)
   }, [])
 
   return (
@@ -122,7 +141,7 @@ export function PromptTemplateDialog({ open, onOpenChange, onSelect }: PromptTem
                   </Button>
                   <DialogTitle className='sr-only'>Prompt Templates</DialogTitle>
                   <DialogDescription className='sr-only'>
-                    Browse and select prompt templates
+                    Browse and install prompt templates
                   </DialogDescription>
                 </div>
               </DialogHeader>
@@ -197,22 +216,12 @@ export function PromptTemplateDialog({ open, onOpenChange, onSelect }: PromptTem
                             onClick={() => handleSelectTemplate(template)}
                             className='group flex flex-col gap-2 rounded-2xl border p-3 hover:bg-primary-50 transition-colors duration-200 cursor-pointer'>
                             <div className='flex items-start gap-3'>
-                              <div
-                                className='size-8 rounded-xl border flex items-center justify-center shrink-0'
-                                style={
-                                  template.icon
-                                    ? { backgroundColor: `${template.icon.color}15` }
-                                    : undefined
-                                }>
-                                {template.icon ? (
-                                  <span
-                                    className='size-3 rounded-full'
-                                    style={{ backgroundColor: template.icon.color }}
-                                  />
-                                ) : (
-                                  <Sparkles className='size-4 text-primary-500' />
-                                )}
-                              </div>
+                              <EntityIcon
+                                iconId={template.icon.iconId}
+                                color={template.icon.color}
+                                size='lg'
+                                variant='muted'
+                              />
                               <div className='flex flex-col flex-1 min-w-0'>
                                 <div className='flex items-center gap-2'>
                                   <span className='text-sm font-semibold truncate'>
@@ -224,13 +233,14 @@ export function PromptTemplateDialog({ open, onOpenChange, onSelect }: PromptTem
                                 </span>
                               </div>
                             </div>
-                            <div className='flex items-center gap-1.5'>
-                              <Badge
-                                variant={template.type === 'system' ? 'pill' : 'outline'}
-                                className='text-[10px]'>
-                                {template.type === 'system' ? 'Built-in' : 'Custom'}
-                              </Badge>
-                            </div>
+                            {template.installed && (
+                              <div className='flex items-center gap-1.5'>
+                                <Badge variant='outline' className='text-[10px]'>
+                                  <Check className='size-3' />
+                                  Installed
+                                </Badge>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -281,37 +291,28 @@ export function PromptTemplateDialog({ open, onOpenChange, onSelect }: PromptTem
               </DialogHeader>
 
               {selectedTemplate && (
-                <div className='flex flex-col flex-1 min-h-0 p-6'>
+                <div className='flex flex-col flex-1 min-h-0'>
                   <ScrollArea className='flex-1'>
-                    <div className='space-y-4'>
+                    <div className='space-y-4 p-6'>
                       <div className='flex items-start gap-3'>
-                        <div
-                          className='size-10 rounded-xl border flex items-center justify-center shrink-0'
-                          style={
-                            selectedTemplate.icon
-                              ? { backgroundColor: `${selectedTemplate.icon.color}15` }
-                              : undefined
-                          }>
-                          {selectedTemplate.icon ? (
-                            <span
-                              className='size-4 rounded-full'
-                              style={{ backgroundColor: selectedTemplate.icon.color }}
-                            />
-                          ) : (
-                            <Sparkles className='size-5 text-primary-500' />
-                          )}
-                        </div>
+                        <EntityIcon
+                          iconId={selectedTemplate.icon.iconId}
+                          color={selectedTemplate.icon.color}
+                          size='xl'
+                          variant='muted'
+                        />
                         <div>
                           <h2 className='text-lg font-semibold'>{selectedTemplate.name}</h2>
                           <p className='text-sm text-muted-foreground mt-0.5'>
                             {selectedTemplate.description}
                           </p>
                           <div className='flex items-center gap-1.5 mt-2'>
-                            <Badge
-                              variant={selectedTemplate.type === 'system' ? 'pill' : 'outline'}
-                              className='text-xs'>
-                              {selectedTemplate.type === 'system' ? 'Built-in' : 'Custom'}
-                            </Badge>
+                            {selectedTemplate.installed && (
+                              <Badge variant='outline' className='text-xs'>
+                                <Check className='size-3' />
+                                Installed
+                              </Badge>
+                            )}
                             {selectedTemplate.categories.map((cat) => (
                               <Badge key={cat} variant='secondary' className='text-xs'>
                                 {constants.promptTemplateCategories.find((c) => c.value === cat)
@@ -322,22 +323,60 @@ export function PromptTemplateDialog({ open, onOpenChange, onSelect }: PromptTem
                         </div>
                       </div>
 
-                      <div className='rounded-xl border bg-muted/30 p-4'>
-                        <h3 className='text-sm font-medium mb-2'>Prompt</h3>
-                        <p className='text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed'>
-                          {selectedTemplate.prompt}
-                        </p>
+                      <div className='space-y-2'>
+                        <div className='flex items-center justify-between'>
+                          <h3 className='text-sm font-medium'>Prompt</h3>
+                          {!selectedTemplate.installed && (
+                            <Button
+                              variant='ghost'
+                              size='xs'
+                              onClick={() => {
+                                if (isCustomizing) {
+                                  setIsCustomizing(false)
+                                  setEditedPrompt(selectedTemplate.prompt)
+                                } else {
+                                  setIsCustomizing(true)
+                                }
+                              }}>
+                              {isCustomizing ? 'Cancel' : 'Customize'}
+                            </Button>
+                          )}
+                        </div>
+                        {isCustomizing ? (
+                          <div className='px-0.5 pb-0.5'>
+                            <AutosizeTextarea
+                              value={editedPrompt}
+                              onChange={(e) => setEditedPrompt(e.target.value)}
+                              minHeight={200}
+                              className='text-sm rounded-xl bg-muted/30 ps-[14px]! p-4 leading-relaxed'
+                              autoFocus
+                            />
+                          </div>
+                        ) : (
+                          <div className='rounded-xl border bg-muted/30 p-4'>
+                            <p className='text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed'>
+                              {selectedTemplate.prompt}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </ScrollArea>
 
-                  <div className='flex justify-end gap-2 pt-4 border-t mt-4'>
+                  <div className='flex justify-end gap-2 pt-4 border-t px-6 pb-6'>
                     <Button variant='ghost' size='sm' onClick={handleBack}>
                       Back
                     </Button>
-                    <Button variant='outline' size='sm' onClick={handleUseTemplate}>
-                      Use this prompt
-                    </Button>
+                    {!selectedTemplate.installed && (
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={handleInstall}
+                        loading={install.isPending}
+                        loadingText='Installing...'>
+                        Install prompt
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
