@@ -7,6 +7,10 @@ export { AgentEngine } from './engine'
 export type { AgentJobPayload } from './enqueue-agent-job'
 export { enqueueAgentJob } from './enqueue-agent-job'
 export { createAgentEventPublisher, subscribeToAgentEvents } from './event-publisher'
+export {
+  cleanDomainStateForModelSwitch,
+  flattenMessagesForModelSwitch,
+} from './flatten-messages'
 export type { LLMAdapterConfig } from './llm-adapter'
 export { createCallModel } from './llm-adapter'
 export { processAgentMessage } from './process-agent-job'

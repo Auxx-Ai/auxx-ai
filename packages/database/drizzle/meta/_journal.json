@@ -785,6 +785,13 @@
       "when": 1775540308929,
       "tag": "0111_provider-config-unique-with-type",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1775601187930,
+      "tag": "0112_add-session-model-id",
+      "breakpoints": true
     }
   ]
 }

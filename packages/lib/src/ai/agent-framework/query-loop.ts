@@ -137,7 +137,10 @@ export async function* agentQueryLoop(
               content,
               reasoning_content: reasoningContent || undefined,
               timestamp: Date.now(),
-              metadata: { agent: agent.name },
+              metadata: {
+                agent: agent.name,
+                modelId: `${callParams.provider}:${callParams.model}`,
+              },
             },
             {
               role: 'user' as const,
@@ -200,7 +203,10 @@ export async function* agentQueryLoop(
       toolCalls,
       reasoning_content: reasoningContent || undefined,
       timestamp: Date.now(),
-      metadata: { agent: agent.name },
+      metadata: {
+        agent: agent.name,
+        modelId: `${callParams.provider}:${callParams.model}`,
+      },
     }
 
     currentState = {

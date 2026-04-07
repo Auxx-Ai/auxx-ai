@@ -9,6 +9,7 @@ export {
   getSessionById,
   saveSessionMessages,
   updateSessionDomainState,
+  updateSessionModelId,
   updateSessionTitle,
 } from './session-queries'
 

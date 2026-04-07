@@ -16,7 +16,7 @@ import type {
  * Create a new agent session
  */
 export async function createSession(input: CreateSessionInput) {
-  const { organizationId, userId, type, title, messages, domainState } = input
+  const { organizationId, userId, type, title, modelId, messages, domainState } = input
 
   const result = await fromDatabase(
     database
@@ -26,6 +26,7 @@ export async function createSession(input: CreateSessionInput) {
         userId,
         type,
         title,
+        modelId: modelId ?? null,
         messages: messages ?? [],
         domainState: domainState ?? {},
         updatedAt: new Date(),
@@ -246,6 +247,46 @@ export async function updateSessionTitle(params: {
       )
       .returning(),
     'update-ai-agent-session-title'
+  )
+
+  if (result.isErr()) return err(result.error)
+
+  const session = result.value[0]
+  if (!session) {
+    return err({
+      code: 'SESSION_NOT_FOUND' as const,
+      message: `Agent session not found: ${sessionId}`,
+    })
+  }
+
+  return ok(session)
+}
+
+/**
+ * Update session model ID
+ */
+export async function updateSessionModelId(params: {
+  sessionId: string
+  organizationId: string
+  modelId: string
+}) {
+  const { sessionId, organizationId, modelId } = params
+
+  const result = await fromDatabase(
+    database
+      .update(schema.AiAgentSession)
+      .set({
+        modelId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.AiAgentSession.id, sessionId),
+          eq(schema.AiAgentSession.organizationId, organizationId)
+        )
+      )
+      .returning(),
+    'update-ai-agent-session-model-id'
   )
 
   if (result.isErr()) return err(result.error)

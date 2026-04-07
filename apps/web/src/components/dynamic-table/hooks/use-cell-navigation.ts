@@ -75,6 +75,9 @@ export function useCellNavigation<TData>({
       // Don't navigate while editing
       if (editingCell || !enabled) return
 
+      // Ignore keystrokes originating outside the table
+      if (!scrollContainerRef.current?.contains(e.target as Node)) return
+
       // Use current selection, or fall back to last position for resuming after Escape
       const activeCell = selectedCell || lastPositionRef.current
       if (!activeCell) return

@@ -18,6 +18,8 @@ export const AiAgentSession = pgTable(
     type: text().notNull(),
     /** Optional human-readable title (LLM-generated after first exchange) */
     title: text(),
+    /** Model identifier in "provider:model" format — null means system default was used */
+    modelId: text(),
     /** Full conversation history as JSONB array of SessionMessage */
     messages: jsonb().$type<Record<string, unknown>[]>().default([]).notNull(),
     /** Domain-specific state (plan, page context, etc.) */
