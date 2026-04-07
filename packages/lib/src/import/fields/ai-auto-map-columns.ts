@@ -15,7 +15,7 @@ const logger = createScopedLogger('ai-auto-map-columns')
 
 /** Default fallback model if user has no default configured */
 const FALLBACK_PROVIDER = 'openai'
-const FALLBACK_MODEL = 'gpt-4o-mini'
+const FALLBACK_MODEL = 'gpt-5.4-nano'
 
 /**
  * Prompt template for AI column mapping

@@ -64,6 +64,8 @@ export class SmartChunkingService {
       'text-embedding-3-large': 8191,
 
       // Google
+      'gemini-embedding-2-preview': 8192,
+      'gemini-embedding-001': 2048,
       'text-embedding-004': 2048,
       'textembedding-gecko@003': 3072,
 

@@ -180,6 +180,7 @@ export const ProviderRow: React.FC<ProviderRowProps> = ({
             currentType={provider.statusInfo.usingProviderType === 'SYSTEM' ? 'system' : 'custom'}
             hasCustomCredentials={!!provider.customConfiguration?.provider?.credentials}
             hasSystemAccess={provider.systemConfiguration?.enabled ?? false}
+            onRequestCustomSetup={() => onSetup?.(provider.provider)}
           />
         )}
 
@@ -187,6 +188,7 @@ export const ProviderRow: React.FC<ProviderRowProps> = ({
           provider={provider.provider}
           configured={provider.statusInfo.configured}
           configStatus={provider.statusInfo.status}
+          hasCustomCredentials={!!provider.customConfiguration?.provider?.credentials}
           onSetup={onSetup}
           onEdit={onEdit}
           onMakeDefault={handleMakeDefault}

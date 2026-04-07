@@ -77,7 +77,7 @@ export abstract class BaseAiNodeProcessor extends BaseNodeProcessor {
         enableUsageTracking: true,
         enableQuotaEnforcement: true,
         defaultProvider: 'openai',
-        defaultModel: 'gpt-4o-mini',
+        defaultModel: 'gpt-5.4-nano',
       },
       logger
     )

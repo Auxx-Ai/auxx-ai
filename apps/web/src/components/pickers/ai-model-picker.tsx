@@ -1,7 +1,8 @@
 // ~/components/pickers/ai-model-picker.tsx
 'use client'
 
-import type { ModelData, ModelType } from '@auxx/lib/ai/providers/types'
+import { type ModelData, ModelType } from '@auxx/lib/ai/providers/types'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
@@ -23,6 +24,7 @@ import { api, type RouterOutputs } from '~/trpc/react'
 /** Type for unified model data from the API */
 export type UnifiedModelData = RouterOutputs['aiIntegration']['getUnifiedModelData']
 
+import { Tooltip } from '~/components/global/tooltip'
 import ModelIcon from '~/components/workflow/ui/model-parameter/model-icon'
 import ModelName from '~/components/workflow/ui/model-parameter/model-name'
 
@@ -69,6 +71,31 @@ interface AiModelPickerProps {
   data?: UnifiedModelData
   /** Show updating state on trigger button */
   isUpdating?: boolean
+}
+
+/**
+ * Client-side model compatibility check — mirrors ProviderManager.isModelCompatible
+ * so that client-side filtering on pre-fetched data matches backend behavior.
+ */
+function isModelCompatibleClient(model: ModelData, modelType: ModelType): boolean {
+  switch (modelType) {
+    case ModelType.LLM:
+      return model.features.includes('chat')
+    case ModelType.TEXT_EMBEDDING:
+      return model.features.includes('text-embedding') || model.features.includes('embedding')
+    case ModelType.VISION:
+      return model.supports.vision
+    case ModelType.TTS:
+      return model.features.includes('tts')
+    case ModelType.SPEECH2TEXT:
+      return model.features.includes('speech2text')
+    case ModelType.MODERATION:
+      return model.features.includes('moderation')
+    case ModelType.RERANK:
+      return model.features.includes('rerank')
+    default:
+      return false
+  }
 }
 
 /** AiModelPicker renders a searchable list of AI models inside a popover */
@@ -125,10 +152,12 @@ export function AiModelPicker({
 
     return unifiedData.providers.flatMap((provider) =>
       provider.models
+        // Hide retired models from picker
+        .filter((model) => model.status !== 'retired')
         // Filter by modelTypes when using external data (backend filtering isn't applied)
         .filter((model) => {
           if (!externalData || modelTypes.length === 0) return true
-          return modelTypes.includes(model.modelType as ModelType)
+          return modelTypes.some((type) => isModelCompatibleClient(model, type))
         })
         // Filter by unconfigured status when using external data
         .filter((model) => {
@@ -328,6 +357,16 @@ export function AiModelPicker({
                             showMode
                             showModelType
                           />
+                          {model.deprecated && (
+                            <Tooltip
+                              content={`This model is deprecated.${model.replacement ? ` Switch to ${model.replacement}` : ''}`}>
+                              <Badge
+                                variant='outline'
+                                className='text-amber-500 border-amber-500 text-[10px] ml-1 shrink-0'>
+                                Deprecated
+                              </Badge>
+                            </Tooltip>
+                          )}
                         </div>
                         <Check
                           className={cn(

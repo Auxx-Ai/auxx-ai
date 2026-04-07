@@ -30,6 +30,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         includeDefaults: z.boolean().default(true),
         modelTypes: z.array(z.enum(ModelType)).optional(),
         includeUnconfigured: z.boolean().default(true),
+        includeRetired: z.boolean().optional().default(false),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -44,6 +45,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         includeDefaults: input.includeDefaults,
         modelTypes: input.modelTypes,
         includeUnconfigured: input.includeUnconfigured,
+        includeRetired: input.includeRetired,
       })
     }),
 
@@ -466,7 +468,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   setSystemModelDefault: protectedProcedure
     .input(
       z.object({
-        modelType: z.nativeEnum(ModelType),
+        modelType: z.enum(ModelType),
         provider: z.string(),
         model: z.string(),
       })
@@ -490,7 +492,7 @@ export const aiIntegrationRouter = createTRPCRouter({
   removeSystemModelDefault: protectedProcedure
     .input(
       z.object({
-        modelType: z.nativeEnum(ModelType),
+        modelType: z.enum(ModelType),
       })
     )
     .use(notDemo('modify AI defaults'))

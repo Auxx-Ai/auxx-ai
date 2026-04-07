@@ -229,6 +229,8 @@ export class EmbeddingService {
     'text-embedding-3-large': 3072,
     'text-embedding-ada-002': 1536,
     // Google models
+    'gemini-embedding-2-preview': 3072,
+    'gemini-embedding-001': 768,
     'text-embedding-004': 768,
     'textembedding-gecko@001': 768,
     'textembedding-gecko@003': 768,

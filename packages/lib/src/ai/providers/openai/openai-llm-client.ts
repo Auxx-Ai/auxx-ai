@@ -39,6 +39,7 @@ export class OpenAILLMClient extends LLMClient {
   }
 
   async invoke(params: LLMInvokeParams): Promise<LLMResponse> {
+    ProviderRegistry.assertModelNotRetired(params.model)
     this.validateLLMParams(params)
 
     const startTime = this.getTimestamp()
@@ -75,6 +76,7 @@ export class OpenAILLMClient extends LLMClient {
   }
 
   async *streamInvoke(params: LLMInvokeParams): AsyncGenerator<LLMStreamChunk, LLMStreamResult> {
+    ProviderRegistry.assertModelNotRetired(params.model)
     this.validateLLMParams(params)
 
     const modelCapabilities = this.getModelCapabilitiesFromRegistry(params.model)
@@ -108,6 +110,9 @@ export class OpenAILLMClient extends LLMClient {
         stream: true,
         stream_options: { include_usage: true },
       }
+
+      // Strip internal-only params that are not part of the OpenAI Chat Completions API
+      delete flattenedParams.verbosity
 
       // Remove tools key completely if empty (OpenAI doesn't accept empty tools for unsupported models)
       if (
@@ -265,6 +270,9 @@ export class OpenAILLMClient extends LLMClient {
       ...restParams, // Then overlay rest (includes response_format from handleResponseFormat)
     }
 
+    // Strip internal-only params that are not part of the OpenAI Chat Completions API
+    delete flattenedParams.verbosity
+
     // Remove tools key completely if empty (OpenAI doesn't accept empty tools for unsupported models)
     if (
       flattenedParams.tools &&
@@ -407,8 +415,8 @@ export class OpenAILLMClient extends LLMClient {
   transformParameters(params: LLMInvokeParams, baseModel: string): LLMInvokeParams {
     const processed = { ...params }
 
-    // O1/O3 model specific handling
-    if (baseModel.startsWith('o1') || baseModel.startsWith('o3')) {
+    // O-series model specific handling (o1, o3, o4)
+    if (baseModel.startsWith('o1') || baseModel.startsWith('o3') || baseModel.startsWith('o4')) {
       // Transform max_tokens to max_completion_tokens
       if (processed.parameters?.max_tokens) {
         processed.max_completion_tokens = processed.parameters.max_tokens
@@ -615,11 +623,12 @@ export class OpenAILLMClient extends LLMClient {
 
   async getModelCapabilities(model: string): Promise<ModelCapabilities> {
     const baseModel = this.getBaseModel(model)
+    const modelCaps = this.getModelCapabilitiesFromRegistry(baseModel)
 
     return {
-      maxTokens: this.getMaxTokensForModel(baseModel),
-      supportsStreaming: true,
-      supportsTools: !baseModel.startsWith('o1') && !baseModel.startsWith('o3'),
+      maxTokens: modelCaps?.contextLength ?? this.getMaxTokensForModel(baseModel),
+      supportsStreaming: modelCaps?.supports.streaming ?? true,
+      supportsTools: modelCaps?.supports.toolCalling ?? true,
       supportedContentTypes: this.getSupportedContentTypes(baseModel),
       costPerToken: await this.getCostPerToken(model),
       rateLimit: await this.getRateLimit(model),
@@ -631,13 +640,7 @@ export class OpenAILLMClient extends LLMClient {
 
     const modelCaps = this.getModelCapabilitiesFromRegistry(model)
 
-    if (
-      modelCaps?.supports.vision ||
-      model.includes('vision') ||
-      model.startsWith('gpt-4o') ||
-      model.startsWith('gpt-5') ||
-      model.startsWith('gpt-4.1')
-    ) {
+    if (modelCaps?.supports.vision || model.includes('vision')) {
       baseTypes.push('image')
     }
 
@@ -653,28 +656,22 @@ export class OpenAILLMClient extends LLMClient {
   }
 
   private getMaxTokensForModel(model: string): number {
-    // OpenAI model context limits
+    const modelCaps = this.getModelCapabilitiesFromRegistry(model)
+    if (modelCaps?.contextLength) return modelCaps.contextLength
+
+    // Fallback for unregistered models
     if (model.includes('gpt-4o')) return 128000
     if (model.includes('gpt-4-turbo')) return 128000
     if (model.includes('gpt-4')) return 8192
     if (model.includes('gpt-3.5-turbo')) return 16385
-    if (model.startsWith('o1')) return 200000
 
-    return 4096 // Default
+    return 4096
   }
 
   private async getCostPerToken(model: string): Promise<{ input: number; output: number }> {
-    // These would typically come from a pricing service
-    const pricing: Record<string, { input: number; output: number }> = {
-      'gpt-4o': { input: 0.0025, output: 0.01 },
-      'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
-      'gpt-4-turbo': { input: 0.01, output: 0.03 },
-      'gpt-4': { input: 0.03, output: 0.06 },
-      'gpt-3.5-turbo': { input: 0.0005, output: 0.0015 },
-    }
-
     const baseModel = this.getBaseModel(model)
-    return pricing[baseModel] || { input: 0, output: 0 }
+    const modelCaps = this.getModelCapabilitiesFromRegistry(baseModel)
+    return modelCaps?.costPer1kTokens ?? { input: 0, output: 0 }
   }
 
   private async getRateLimit(
@@ -773,7 +770,11 @@ export class OpenAILLMClient extends LLMClient {
 
   private shouldRetryWithoutReasoningParams(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error)
-    return message.includes('Unrecognized request argument supplied: reasoning_effort')
+    return (
+      message.includes('Unrecognized request argument supplied: reasoning_effort') ||
+      message.includes("'reasoning_effort' does not support") ||
+      message.includes('Function tools with reasoning_effort are not supported')
+    )
   }
 
   private stripReasoningOnlyParams(params: Record<string, any>): Record<string, any> {

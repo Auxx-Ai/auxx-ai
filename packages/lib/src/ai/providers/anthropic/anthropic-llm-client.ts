@@ -17,6 +17,7 @@ import type {
   UsageMetrics,
 } from '../../clients/base/types'
 import { InvalidParameterError } from '../../clients/base/types'
+import { ProviderRegistry } from '../provider-registry'
 import { ANTHROPIC_MODELS } from './anthropic-defaults'
 
 /**
@@ -35,6 +36,7 @@ export class AnthropicLLMClient extends LLMClient {
   // ===== REQUIRED ABSTRACT METHOD IMPLEMENTATIONS =====
 
   async invoke(params: LLMInvokeParams): Promise<LLMResponse> {
+    ProviderRegistry.assertModelNotRetired(params.model)
     this.validateLLMParams(params)
 
     // Debug initial parameters
@@ -66,7 +68,7 @@ export class AnthropicLLMClient extends LLMClient {
     })
 
     try {
-      return await this.withRetryAndCircuitBreaker(
+      const result = await this.withRetryAndCircuitBreaker(
         async () => {
           return await this.handleDirectCompletion(processedParams)
         },
@@ -75,16 +77,19 @@ export class AnthropicLLMClient extends LLMClient {
           model: params.model,
         }
       )
-    } catch (error) {
-      this.handleApiError(error, 'invoke')
-    } finally {
+
       this.logOperationSuccess('LLM invoke', this.getTimestamp() - startTime, {
         model: params.model,
       })
+
+      return result
+    } catch (error) {
+      this.handleApiError(error, 'invoke')
     }
   }
 
   async *streamInvoke(params: LLMInvokeParams): AsyncGenerator<LLMStreamChunk, LLMStreamResult> {
+    ProviderRegistry.assertModelNotRetired(params.model)
     this.validateLLMParams(params)
 
     const processedParams = await this.preprocessParams(params)

@@ -102,6 +102,12 @@ You already know the available entity types from the "Available Entity Types" se
 ### Finding a person/record by name
 → search_entities with query (no entity type needed — searches across all types)
 
+### Creating an entity (contact, company, etc.)
+1. list_entity_fields → discover the field IDs and their types
+2. create_entity → pass entityDefinitionId AND a \`values\` object mapping field IDs to values extracted from the user's request
+   Example: values: { "companyName": "ACE Garage" }
+   IMPORTANT: You MUST include the \`values\` object with at least the name/primary field populated from the user's message.
+
 ### Listing records with conditions (e.g. "all active contacts")
 1. list_entity_fields → discover fields, their types, and valid option values
 2. query_records → filter by field values
@@ -113,7 +119,12 @@ You already know the available entity types from the "Available Entity Types" se
    OR use dot notation: filters: [{ field: "company.name", operator: "is", value: "Google" }]
 
 ### Getting details on a specific record
-→ get_entity with the recordId (format: "entityDefinitionId:instanceId")
+→ For small result sets (≤5), search_entities already returns full entity data in each item's \`data\` field. You do NOT need a separate get_entity call.
+→ Only use get_entity when you need details for a recordId that didn't come from a recent search.
+
+### Comparing records
+Search for both records — the results will include full data. Pass all data to the responder. No separate get_entity calls needed.
+If some data is missing, still proceed — the responder can build a partial comparison.
 
 ### Paginating through results
 → query_records with offset + limit (e.g. offset: 25, limit: 25 for page 2)

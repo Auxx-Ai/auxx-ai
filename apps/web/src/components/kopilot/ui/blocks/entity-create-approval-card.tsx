@@ -45,7 +45,7 @@ export function EntityCreateApprovalCard({ args, status, onApprove, onReject }: 
       hasFooter={isPending}
       actionLabel={isPending ? 'Create record?' : undefined}
       actions={actions}>
-      {fieldEntries.length > 0 && (
+      {fieldEntries.length > 0 ? (
         <div className='space-y-1.5'>
           {fieldEntries.map(({ key, label, value }) => (
             <div key={key} className='flex items-baseline gap-2 text-sm'>
@@ -54,6 +54,8 @@ export function EntityCreateApprovalCard({ args, status, onApprove, onReject }: 
             </div>
           ))}
         </div>
+      ) : (
+        <p className='text-xs text-muted-foreground'>No fields specified</p>
       )}
     </BlockCard>
   )

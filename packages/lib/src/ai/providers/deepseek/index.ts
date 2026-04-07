@@ -2,3 +2,4 @@
 
 export { DeepSeekClient } from './deepseek-client'
 export { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek-defaults'
+export { DeepSeekLLMClient } from './deepseek-llm-client'

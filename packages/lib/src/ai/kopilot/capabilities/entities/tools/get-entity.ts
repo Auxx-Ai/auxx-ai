@@ -1,9 +1,16 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/get-entity.ts
 
+import { schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
 import { RecordPickerService } from '../../../../../resources/picker'
-import { isRecordId } from '../../../../../resources/resource-id'
+import { isRecordId, parseRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
+import { formatEnrichedFields } from '../format-enriched-fields'
+
+const logger = createScopedLogger('kopilot-get-entity')
 
 export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -37,25 +44,67 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
       const items = await pickerService.getResourcesByIds([recordId])
       const item = items[recordId]
 
-      if (!item) {
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+
+      if (item) {
+        const enriched = await enrichEntitiesWithFieldValues({
+          organizationId: agentDeps.organizationId,
+          userId: agentDeps.userId,
+          db,
+          entities: [{ recordId, entityDefinitionId, entityInstanceId }],
+        })
         return {
-          success: false,
-          output: null,
-          error: `Record "${recordId}" not found.`,
+          success: true,
+          output: {
+            recordId: item.recordId,
+            displayName: item.displayName,
+            secondaryInfo: item.secondaryInfo ?? null,
+            avatarUrl: item.avatarUrl ?? null,
+            fields: formatEnrichedFields(enriched.get(recordId) ?? {}),
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+          },
+        }
+      }
+
+      // Fallback: direct DB lookup when picker service fails (e.g. cache miss)
+      const instance = await db.query.EntityInstance.findFirst({
+        where: and(
+          eq(schema.EntityInstance.id, entityInstanceId),
+          eq(schema.EntityInstance.organizationId, agentDeps.organizationId),
+          eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId)
+        ),
+      })
+
+      if (instance) {
+        logger.warn('Entity found via direct DB lookup but not via picker service', {
+          recordId,
+          organizationId: agentDeps.organizationId,
+        })
+        const enriched = await enrichEntitiesWithFieldValues({
+          organizationId: agentDeps.organizationId,
+          userId: agentDeps.userId,
+          db,
+          entities: [{ recordId, entityDefinitionId, entityInstanceId }],
+        })
+        return {
+          success: true,
+          output: {
+            recordId,
+            displayName: instance.displayName || entityInstanceId,
+            secondaryInfo: instance.secondaryDisplayValue ?? null,
+            avatarUrl: instance.avatarUrl ?? null,
+            fields: formatEnrichedFields(enriched.get(recordId) ?? {}),
+            createdAt: instance.createdAt,
+            updatedAt: instance.updatedAt,
+          },
         }
       }
 
       return {
-        success: true,
-        output: {
-          recordId: item.recordId,
-          displayName: item.displayName,
-          secondaryInfo: item.secondaryInfo ?? null,
-          avatarUrl: item.avatarUrl ?? null,
-          data: item.data,
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt,
-        },
+        success: false,
+        output: null,
+        error: `Record "${recordId}" not found.`,
       }
     },
   }

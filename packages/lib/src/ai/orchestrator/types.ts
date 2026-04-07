@@ -92,7 +92,7 @@ export type CredentialSourceType = 'SYSTEM' | 'CUSTOM' | 'MODEL_SPECIFIC' | 'LOA
 export type ProviderTypeValue = 'SYSTEM' | 'CUSTOM'
 
 /** Source of AI usage for tracking purposes */
-export type UsageSource = 'compose' | 'workflow' | 'dataset' | 'chat' | 'other'
+export type UsageSource = 'compose' | 'workflow' | 'dataset' | 'chat' | 'agent' | 'other'
 
 export interface UsageTrackingRequest {
   organizationId: string
@@ -117,6 +117,7 @@ export interface UsageTrackingRequest {
 
 export interface UsageTrackingService {
   trackUsage(request: UsageTrackingRequest): Promise<void>
+  trackUsageBatch?(requests: UsageTrackingRequest[]): Promise<void>
   checkQuotaAvailable?(
     organizationId: string,
     provider: string,

@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/session-title.ts
 
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { LLMOrchestrator } from '../orchestrator/llm-orchestrator'
 
@@ -12,9 +13,9 @@ const logger = createScopedLogger('kopilot-session-title')
 export async function generateSessionTitle(
   firstUserMessage: string,
   firstAssistantResponse: string,
-  config: { organizationId: string; userId: string }
+  config: { organizationId: string; userId: string; db: Database }
 ): Promise<string> {
-  const orchestrator = new LLMOrchestrator()
+  const orchestrator = new LLMOrchestrator(undefined, config.db)
 
   const response = await orchestrator.invoke({
     model: 'claude-haiku-4-5-20251001',

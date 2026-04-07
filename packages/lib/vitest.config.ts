@@ -6,7 +6,8 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
+  const monorepoRoot = path.resolve(__dirname, '../..')
+  const env = { ...loadEnv(mode, monorepoRoot, ''), ...loadEnv(mode, process.cwd(), '') }
 
   return {
     plugins: [tsconfigPaths()],

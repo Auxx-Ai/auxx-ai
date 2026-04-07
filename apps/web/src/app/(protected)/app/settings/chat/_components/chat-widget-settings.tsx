@@ -596,7 +596,7 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value='gpt-4o'>OpenAI GPT-4o</SelectItem>
+                              <SelectItem value='gpt-5.4-nano'>OpenAI GPT-5.4 Nano</SelectItem>
                               <SelectItem value='claude-sonnet-4-6'>
                                 Anthropic Claude Sonnet 4.6
                               </SelectItem>

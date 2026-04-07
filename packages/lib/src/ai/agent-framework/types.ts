@@ -220,7 +220,14 @@ export type AgentEvent =
   | { type: 'pipeline-started'; route: string; agents: string[] }
   | { type: 'agent-started'; agent: string }
   | { type: 'llm-stream'; agent: string; delta: string }
-  | { type: 'llm-complete'; agent: string; content: string; usage: UsageMetrics }
+  | {
+      type: 'llm-complete'
+      agent: string
+      content: string
+      usage: UsageMetrics
+      provider: string
+      model: string
+    }
   | { type: 'tool-started'; agent: string; tool: string; args: Record<string, unknown> }
   | {
       type: 'tool-completed'

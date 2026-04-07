@@ -35,6 +35,8 @@ export enum ModelStatus {
   QUOTA_EXCEEDED = 'quota-exceeded',
   NO_PERMISSION = 'no-permission',
   DISABLED = 'disabled',
+  DEPRECATED = 'deprecated',
+  RETIRED = 'retired',
 }
 
 export enum FetchFrom {
@@ -72,6 +74,8 @@ export interface ModelCapabilities {
   }
   costPer1kTokens?: { input: number; output: number }
   deprecated?: boolean
+  retired?: boolean
+  replacement?: string
   releaseDate?: string
   description?: string
   parameterRules: ParameterRule[] // Model-specific parameter rules
@@ -104,7 +108,7 @@ export interface ModelData extends ModelCapabilities {
   // modelId inherited from ModelCapabilities
   // fetchFrom inherited from ModelCapabilities
   enabled: boolean // Model enabled for organization
-  status: 'active' | 'disabled' | 'not_configured' // Model status
+  status: 'active' | 'disabled' | 'not_configured' | 'deprecated' | 'retired' // Model status
   isDefault: boolean // Is this the default model
   providerType: 'system' | 'custom' // Provider configuration type
   isProviderEnabled: boolean // Is the provider configured and enabled
@@ -332,6 +336,8 @@ export interface ModelWithProviderEntity {
   fetchFrom: FetchFrom
   modelProperties: Record<string, any>
   deprecated?: boolean
+  retired?: boolean
+  replacement?: string
   provider: SimpleModelProviderEntity
   status: ModelStatus
   loadBalancingEnabled?: boolean

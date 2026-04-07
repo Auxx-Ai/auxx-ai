@@ -444,7 +444,7 @@ export default function ChatWidgetIntegrationForm() {
                         <FormItem>
                           <FormLabel>AI Model</FormLabel>
                           <FormControl>
-                            <Input placeholder='e.g., gpt-4o' {...field} />
+                            <Input placeholder='e.g., gpt-5.4-nano' {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>

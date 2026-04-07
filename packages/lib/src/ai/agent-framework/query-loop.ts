@@ -97,6 +97,8 @@ export async function* agentQueryLoop(
               agent: agent.name,
               content: event.content,
               usage: event.usage,
+              provider: callParams.provider,
+              model: callParams.model,
             }
             break
         }
@@ -176,7 +178,9 @@ export async function* agentQueryLoop(
     // approval check so the assistant tool-call message is always persisted.
     const toolResultMessages = toolResults.results.map((r) => ({
       role: 'tool' as const,
-      content: JSON.stringify(r.output),
+      content: JSON.stringify(
+        r.success ? r.output : { error: r.error ?? 'Unknown error', output: r.output }
+      ),
       toolCallId: r.toolCallId,
       timestamp: Date.now(),
       metadata: { agent: agent.name },
@@ -198,8 +202,42 @@ export async function* agentQueryLoop(
     // Check if any tool requires approval (HITL)
     const approvalTool = findApprovalTool(toolCalls, agent.tools)
     if (approvalTool) {
-      logger.info('Approval required', { agent: agent.name, tool: approvalTool.function.name })
       const approvalArgs = parseToolArgs(approvalTool)
+      const toolDef = agent.tools.find((t) => t.name === approvalTool.function.name)
+
+      // Validate required params before showing approval — if missing, return
+      // an error so the LLM can retry with correct args instead of showing an
+      // empty approval card.
+      const missingParams = validateRequiredParams(toolDef, approvalArgs)
+      if (missingParams.length > 0) {
+        logger.warn('Approval tool missing required params, returning error to LLM', {
+          agent: agent.name,
+          tool: approvalTool.function.name,
+          missingParams,
+          args: approvalArgs,
+        })
+        const errorContent = JSON.stringify({
+          error: `Missing required parameters: ${missingParams.join(', ')}. Please provide all required parameters.`,
+          output: null,
+        })
+        // Replace the fake "awaiting_approval" tool result already in state
+        // with an error so the LLM can retry with correct args.
+        currentState = {
+          ...currentState,
+          messages: currentState.messages.map((m) =>
+            m.role === 'tool' && m.toolCallId === approvalTool.id
+              ? { ...m, content: errorContent }
+              : m
+          ),
+        }
+        continue
+      }
+
+      logger.info('Approval required', {
+        agent: agent.name,
+        tool: approvalTool.function.name,
+        args: approvalArgs,
+      })
       yield {
         type: 'approval-required',
         agent: agent.name,
@@ -239,6 +277,21 @@ interface ToolExecResult {
   toolName: string
   output: unknown
   success: boolean
+  error?: string
+}
+
+/**
+ * Check that all `required` params from the tool's JSON Schema are present in the parsed args.
+ * Returns the list of missing parameter names (empty if valid).
+ */
+function validateRequiredParams(
+  toolDef: AgentToolDefinition | undefined,
+  args: Record<string, unknown>
+): string[] {
+  if (!toolDef) return []
+  const required = toolDef.parameters?.required
+  if (!Array.isArray(required)) return []
+  return required.filter((param: string) => !(param in args))
 }
 
 function agentToolsToLLMTools(tools: AgentToolDefinition[]) {
@@ -298,6 +351,7 @@ async function executeToolCalls(
         toolName,
         output: { error: errorMsg },
         success: false,
+        error: errorMsg,
       })
       continue
     }
@@ -321,6 +375,7 @@ async function executeToolCalls(
         toolName,
         output: result.output,
         success: result.success,
+        error: result.error,
       })
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
@@ -331,6 +386,7 @@ async function executeToolCalls(
         toolName,
         output: { error: errorMsg },
         success: false,
+        error: errorMsg,
       })
     }
   }

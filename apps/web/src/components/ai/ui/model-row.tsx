@@ -1,12 +1,14 @@
 // apps/web/src/app/(protected)/app/settings/aiModels/_components/model-row.tsx
 
 'use client'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { Settings } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
 import { ModelToggle } from '~/components/ai/ui/model-toggle'
+import { Tooltip } from '~/components/global/tooltip'
 import ModelIcon from '~/components/workflow/ui/model-parameter/model-icon'
 import { CredentialConfigurationDialog } from './credential-configuration-dialog'
 import { FeatureBadges } from './feature-badges'
@@ -38,6 +40,7 @@ export const ModelRow: React.FC<ModelRowProps> = ({
   const [shouldRenderDialog, setShouldRenderDialog] = useState(false)
 
   const isModelDisabled = model.status === 'not_configured'
+  const isRetired = model.status === 'retired'
 
   return (
     <div
@@ -72,6 +75,26 @@ export const ModelRow: React.FC<ModelRowProps> = ({
             maxVisible={4}
             className='gap-1 hidden @lg:flex'
           />
+          {model.deprecated && (
+            <Tooltip
+              content={`This model is deprecated.${model.replacement ? ` Switch to ${model.replacement}` : ''}`}>
+              <Badge
+                variant='outline'
+                className='text-amber-500 border-amber-500 text-[10px] shrink-0'>
+                Deprecated
+              </Badge>
+            </Tooltip>
+          )}
+          {model.retired && (
+            <Tooltip
+              content={`This model has been retired.${model.replacement ? ` Switch to ${model.replacement}` : ''}`}>
+              <Badge
+                variant='outline'
+                className='text-destructive border-destructive text-[10px] shrink-0'>
+                Retired
+              </Badge>
+            </Tooltip>
+          )}
         </div>
       </div>
 
@@ -113,9 +136,9 @@ export const ModelRow: React.FC<ModelRowProps> = ({
           {/* {provider.statusInfo.configured && ( */}
           <ModelToggle
             provider={model.provider}
-            disabled={isModelDisabled || isProcessing}
+            disabled={isModelDisabled || isRetired || isProcessing}
             model={model.modelId}
-            enabled={!isModelDisabled && model.enabled}
+            enabled={!isModelDisabled && !isRetired && model.enabled}
             onToggle={(enabled) => {
               // Handle toggle - refresh UI is handled by ModelToggle component
             }}

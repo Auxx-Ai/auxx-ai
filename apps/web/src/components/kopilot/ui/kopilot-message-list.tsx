@@ -69,7 +69,7 @@ export function KopilotMessageList({
           setIsAtBottom(entry.isIntersecting)
         }
       },
-      { root: viewport, threshold: 0.1 }
+      { root: viewport, threshold: 0 }
     )
 
     observer.observe(sentinel)
@@ -245,7 +245,7 @@ export function KopilotMessageList({
           </Alert>
         )}
 
-        <div ref={bottomRef} />
+        <div ref={bottomRef} className='h-px' />
       </div>
 
       {/* Scroll to bottom button */}

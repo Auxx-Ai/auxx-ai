@@ -19,6 +19,8 @@ interface ProviderTypeToggleProps {
   hasSystemAccess: boolean
   /** Callback when provider type is changed */
   onTypeChange?: (newType: 'system' | 'custom') => void
+  /** Called when user clicks custom but has no credentials — opens setup dialog */
+  onRequestCustomSetup?: () => void
 }
 
 /**
@@ -33,6 +35,7 @@ export function ProviderTypeToggle({
   hasCustomCredentials,
   hasSystemAccess,
   onTypeChange,
+  onRequestCustomSetup,
 }: ProviderTypeToggleProps) {
   const [localType, setLocalType] = useState(currentType)
 
@@ -58,7 +61,10 @@ export function ProviderTypeToggle({
 
   const handleToggle = (newType: string) => {
     if (newType === 'system' && !hasSystemAccess) return
-    if (newType === 'custom' && !hasCustomCredentials) return
+    if (newType === 'custom' && !hasCustomCredentials) {
+      onRequestCustomSetup?.()
+      return
+    }
 
     const typedNewType = newType as 'system' | 'custom'
 
@@ -102,11 +108,8 @@ export function ProviderTypeToggle({
           localType === 'custom' && 'text-amber-600 dark:text-amber-300'
         )}
         size='sm'
-        disabled={!hasCustomCredentials}
         tooltip={
-          !hasCustomCredentials
-            ? 'Configure your API key first'
-            : 'Prioritize using your own API key'
+          !hasCustomCredentials ? 'Set up your own API key' : 'Prioritize using your own API key'
         }>
         <Key />
       </RadioTabItem>
