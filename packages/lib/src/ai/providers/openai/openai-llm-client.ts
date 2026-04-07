@@ -98,6 +98,7 @@ export class OpenAILLMClient extends LLMClient {
     let functionCallBuffer: Partial<FunctionCall> | null = null
     const toolCallBuffers: Map<number, { id: string; name: string; arguments: string }> = new Map()
     let finalUsage: UsageMetrics | undefined
+    let finished = false
 
     try {
       // Flatten parameters object to top level for OpenAI API
@@ -150,10 +151,11 @@ export class OpenAILLMClient extends LLMClient {
       )
 
       for await (const chunk of stream) {
-        // Handle usage information
+        // Handle usage information (may arrive after finish_reason in a separate chunk)
         if (chunk.usage) {
           finalUsage = this.convertUsage(chunk.usage)
-          continue
+          // If we already finished, skip further processing
+          if (finished) continue
         }
 
         if (chunk.choices.length === 0) continue
@@ -229,14 +231,20 @@ export class OpenAILLMClient extends LLMClient {
           },
         }
 
-        if (finishReason) break
+        // Mark as finished but don't break — let the outer loop naturally consume
+        // any remaining chunks (e.g. usage data sent after finish_reason).
+        // A nested for-await on the same stream fails on some OpenAI-compatible
+        // providers (Kimi) with "Cannot iterate over a consumed stream".
+        if (finishReason) {
+          finished = true
+        }
       }
     } catch (error) {
       this.logger.error('Streaming error:', error)
       throw new StreamingError(`OpenAI streaming failed: ${(error as Error).message}`, error)
     }
 
-    // Calculate final usage if not provided
+    // Calculate final usage if not provided (fallback estimation)
     if (!finalUsage) {
       const promptTokens = this.calculateRequestTokens(params.messages, params.tools, params.model)
       const completionTokens = this.calculateTextTokens(fullContent, params.model)
@@ -244,6 +252,24 @@ export class OpenAILLMClient extends LLMClient {
         prompt_tokens: promptTokens,
         completion_tokens: completionTokens,
         total_tokens: promptTokens + completionTokens,
+      }
+    }
+
+    // Yield a usage-only chunk so consumers using for-await (which discards
+    // the generator return value) still receive the usage data
+    if (finalUsage && finalUsage.total_tokens > 0) {
+      yield {
+        id: `usage_${Date.now()}`,
+        model: params.model,
+        content: '',
+        delta: '',
+        finishReason: null,
+        toolCalls: undefined,
+        usage: finalUsage,
+        metadata: {
+          chunkIndex: ++chunkCount,
+          totalLength: fullContent.length,
+        },
       }
     }
 

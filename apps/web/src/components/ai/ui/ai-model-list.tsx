@@ -80,15 +80,9 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
     setIsDialogOpen(true)
   }
 
-  const handleModelCreated = () => {
-    // Refresh the data when a model is created
-    utils.aiIntegration.getUnifiedModelData.invalidate()
-  }
-
-  const handleProviderConfigured = () => {
-    // Refresh the data when a provider is configured
-    utils.aiIntegration.getUnifiedModelData.invalidate()
-  }
+  // No-ops: the dialog's onSuccess already invalidates getUnifiedModelData
+  const handleModelCreated = () => {}
+  const handleProviderConfigured = () => {}
 
   const handleCreateGeneric = () => {
     // Open generic create dialog (no specific provider)

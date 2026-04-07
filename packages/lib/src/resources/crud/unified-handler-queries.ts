@@ -9,6 +9,7 @@ import {
   type FieldReference,
   parseResourceFieldId,
   type ResourceFieldId,
+  toFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -20,6 +21,7 @@ import {
 } from '../../cache'
 import type { ConditionGroup } from '../../conditions'
 import { FieldValueService, formatToRawValue } from '../../field-values'
+import { BaseType } from '../../workflow-engine/core/types'
 import {
   type EntityQueryContext,
   entityConditionBuilder,
@@ -150,8 +152,36 @@ export async function queryEntityInstanceIds(params: {
   // Get fields for this entity from org cache
   const fields = await getCachedResourceFields(organizationId, entityDefinitionId)
 
+  // Inject displayName as a virtual field for free-text search.
+  // EntityInstance.displayName is a denormalized column (maintained by DisplayFieldService)
+  // but not exposed as a ResourceField to avoid polluting field pickers/UIs.
+  const fieldsWithDisplayName = fields.some((f) => f.key === 'displayName')
+    ? fields
+    : [
+        ...fields,
+        {
+          id: toFieldId('displayName'),
+          key: 'displayName',
+          label: 'Display Name',
+          name: 'Display Name',
+          type: BaseType.STRING,
+          fieldType: 'TEXT' as FieldType,
+          isSystem: true,
+          dbColumn: 'displayName',
+          nullable: true,
+          showInPanel: false,
+          capabilities: {
+            filterable: true,
+            sortable: true,
+            creatable: false,
+            updatable: false,
+            configurable: false,
+          },
+        } satisfies ResourceField,
+      ]
+
   // Detect required related entities from filters
-  const requiredRelatedEntities = extractRequiredRelatedEntities(filters, fields)
+  const requiredRelatedEntities = extractRequiredRelatedEntities(filters, fieldsWithDisplayName)
   logger.debug(
     `Detected ${requiredRelatedEntities.size} required related entities: ${Array.from(requiredRelatedEntities).join(', ')}`
   )
@@ -167,7 +197,7 @@ export async function queryEntityInstanceIds(params: {
 
   // Build WHERE clause using existing EntityConditionBuilder
   const context: EntityQueryContext = {
-    fields,
+    fields: fieldsWithDisplayName,
     outerTable: schema.EntityInstance,
     relatedEntityFields,
   }

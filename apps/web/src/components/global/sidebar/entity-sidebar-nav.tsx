@@ -340,7 +340,7 @@ export function EntitySidebarNav() {
 
         {/* Empty state when all items hidden (but group is visible) */}
         {allItemsHidden && !isEditMode && isOpen && isGroupVisible && (
-          <SidebarMenu className='gap-0'>
+          <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton onClick={toggleEditMode}>
                 <Settings2 />
@@ -352,15 +352,11 @@ export function EntitySidebarNav() {
 
         {/* Entity list - only show when group is visible or in edit mode */}
         {(isEditMode || (isOpen && isGroupVisible)) && !allItemsHidden && (
-          <SidebarMenu className='gap-0'>
-            {isEditMode ? renderEditModeList() : renderNormalModeList()}
-          </SidebarMenu>
+          <SidebarMenu>{isEditMode ? renderEditModeList() : renderNormalModeList()}</SidebarMenu>
         )}
 
         {/* Edit mode list when all items are hidden */}
-        {isEditMode && allItemsHidden && (
-          <SidebarMenu className='gap-0'>{renderEditModeList()}</SidebarMenu>
-        )}
+        {isEditMode && allItemsHidden && <SidebarMenu>{renderEditModeList()}</SidebarMenu>}
       </SidebarGroup>
 
       {/* Done button footer for edit mode */}

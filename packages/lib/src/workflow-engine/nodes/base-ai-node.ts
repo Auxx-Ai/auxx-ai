@@ -119,7 +119,7 @@ export abstract class BaseAiNodeProcessor extends BaseNodeProcessor {
       // Step 2: Get model configuration (resolve useDefault at execution time)
       const modelConfig = data.model as BaseAiModelConfig
       const extracted = extractModelConfig(modelConfig)
-      const { provider, model } = await resolveModelConfig(extracted, db, organizationId)
+      const { provider, model } = await resolveModelConfig(extracted, organizationId)
 
       // Step 3: Build completion parameters with defaults
       const completionParams = buildCompletionParams(modelConfig, {

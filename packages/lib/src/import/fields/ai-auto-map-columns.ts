@@ -4,9 +4,9 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
 import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
-import { SystemModelService } from '../../ai/providers/system-model-service'
 import { ModelType } from '../../ai/providers/types'
 import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
+import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
 import type { AIColumnMappingInput, AIColumnMappingResult } from '../types/ai-mapping'
 import type { ImportableField } from './get-importable-fields'
 import { suggestResolutionType } from './suggest-resolution-type'
@@ -82,8 +82,7 @@ export async function aiAutoMapColumns(
   input: AIColumnMappingInput
 ): Promise<AIColumnMappingResult[]> {
   // Get user's default LLM model
-  const systemModelService = new SystemModelService(db, organizationId)
-  const defaultModel = await systemModelService.getDefault(ModelType.LLM)
+  const defaultModel = await getCachedDefaultModel(organizationId, ModelType.LLM)
 
   const provider = defaultModel?.provider ?? FALLBACK_PROVIDER
   const model = defaultModel?.model ?? FALLBACK_MODEL

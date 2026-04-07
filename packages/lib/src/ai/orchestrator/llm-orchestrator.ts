@@ -295,7 +295,7 @@ export class LLMOrchestrator {
 
         // Accumulate final result from chunks
         finalContent += chunk.delta || ''
-        if (chunk.toolCalls) {
+        if (chunk.toolCalls && chunk.toolCalls.length > 0) {
           finalToolCalls = chunk.toolCalls
         }
         if (chunk.usage) {

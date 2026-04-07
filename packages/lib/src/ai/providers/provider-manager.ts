@@ -1,19 +1,15 @@
 // packages/lib/src/ai/providers/provider-manager.ts
 
 import type { Database } from '@auxx/database'
+import { onCacheEvent } from '../../cache/invalidate'
+import { getOrgCache } from '../../cache/singletons'
 import { createScopedLogger } from '../../logger'
-import { ProviderCacheService } from './provider-cache-service'
 import { ProviderConfigurationService } from './provider-configuration-service'
 import { ProviderRegistry } from './provider-registry'
-import { SystemModelService } from './system-model-service'
 import {
-  type CacheOptions,
-  // type ProviderCredentials,
-  // type ProviderData,
   type CredentialsResponse,
   ModelType,
   type ProviderConfiguration,
-  // ProviderType,
   ProviderConfigurationError,
   type ProviderConfigurations,
 } from './types'
@@ -22,45 +18,33 @@ import { getSortedProviders, obfuscateCredentials } from './utils'
 const logger = createScopedLogger('ProviderManager')
 
 /**
- * Main orchestrator for AI Provider management
- * Handles configuration retrieval, caching, and provider instance creation
+ * Main orchestrator for AI Provider management.
+ * Reads configuration and credentials from OrgCache (4-stage: local → Redis hash → Redis data → compute).
+ * Mutations invalidate via onCacheEvent() for declarative, graph-driven cache invalidation.
  */
 export class ProviderManager {
   private configurationService: ProviderConfigurationService
-  private cache: ProviderCacheService
 
-  /**
-   * Constructor for ProviderManager
-   * Initializes configuration service and cache service for provider management
-   * @param db - Drizzle database client for data access
-   * @param organizationId - Organization identifier for scoped operations
-   * @param userId - User identifier for audit and access control
-   */
   constructor(
     private db: Database,
     private organizationId: string,
     private userId: string
   ) {
     this.configurationService = new ProviderConfigurationService(db, organizationId, userId)
-    this.cache = ProviderCacheService.getInstance()
   }
 
   // ===== MAIN CONFIGURATION METHODS =====
 
   /**
-   * Get all provider configurations for the organization
-   * Retrieves configuration data for all supported providers in parallel
-   * Continues processing even if individual provider configurations fail
-   * @param options - Caching options including skipCache and ttl settings
-   * @returns Promise<ProviderConfigurations> - Object containing all provider configurations
-   * @throws ProviderConfigurationError - When overall configuration retrieval fails
+   * Get all provider configurations for the organization.
+   * Reads from OrgCache (aiProviderConfigs key).
    */
-  async getConfigurations(options: CacheOptions = {}): Promise<ProviderConfigurations> {
+  async getConfigurations(): Promise<ProviderConfigurations> {
     logger.info('Getting all provider configurations', { organizationId: this.organizationId })
 
     try {
-      const configurations = await this.configurationService.getConfigurations()
-      return configurations
+      const configurations = await getOrgCache().get(this.organizationId, 'aiProviderConfigs')
+      return { organizationId: this.organizationId, configurations }
     } catch (error) {
       logger.error('Failed to get provider configurations', {
         organizationId: this.organizationId,
@@ -76,123 +60,103 @@ export class ProviderManager {
   }
 
   /**
-   * Get configuration for a specific provider with caching support
-   * Checks cache first, then retrieves from configuration service if needed
-   * Automatically caches results with tags for efficient invalidation
-   * @param provider - The provider name to get configuration for
-   * @param options - Caching options including skipCache and custom ttl
-   * @returns Promise<ProviderConfiguration> - Complete provider configuration
+   * Get configuration for a specific provider.
+   * Extracts from the full aiProviderConfigs cache.
    */
-  async getProviderConfiguration(
-    provider: string,
-    options: CacheOptions = {}
-  ): Promise<ProviderConfiguration> {
-    if (!options.skipCache) {
-      const cached = await this.cache.getProviderConfig(this.organizationId, provider)
-      if (cached) return cached
+  async getProviderConfiguration(provider: string): Promise<ProviderConfiguration> {
+    const configurations = await getOrgCache().get(this.organizationId, 'aiProviderConfigs')
+    const config = configurations[provider]
+    if (!config) {
+      throw new ProviderConfigurationError(
+        `Provider '${provider}' not found in configurations`,
+        provider,
+        'PROVIDER_NOT_FOUND'
+      )
     }
-
-    const config = await this.configurationService.getProviderConfiguration(provider)
-
-    await this.cache.setProviderConfig(this.organizationId, provider, config, {
-      ttl: options.ttl || 900,
-      tags: [`provider:${provider}`, `org:${this.organizationId}`],
-    })
-
     return config
   }
 
+  /**
+   * Get credentials for a provider or model.
+   * Reads from OrgCache (aiCredentials key) and looks up by compound key.
+   * Always returns non-obfuscated credentials — obfuscation is applied at the tRPC layer.
+   */
   async getCurrentCredentials(
     provider: string,
     model: string | null,
     modelType: ModelType | null,
-    obfuscate: boolean = true,
-    options: CacheOptions = {}
+    obfuscate: boolean = false
   ): Promise<CredentialsResponse> {
-    // Build cache key that includes mode information
-    // options.skipCache = true
+    const credentialsMap = await getOrgCache().get(this.organizationId, 'aiCredentials')
 
-    if (!options.skipCache) {
-      const cached = await this.cache.getCurrentCredentials(
-        this.organizationId,
-        provider,
-        model || '__provider__', // Use special marker for provider-only
-        modelType || ModelType.LLM, // Default for cache key consistency
-        obfuscate
-      )
-      if (cached) return cached
-    }
+    // Build lookup key matching how the provider computes them
+    const lookupKey =
+      model && modelType ? `${provider}:${model}:${modelType}` : `${provider}:__provider__`
 
-    // Use getCurrentCredentials to get providerType and credentialSource for quota tracking
-    const result = await this.configurationService.getCurrentCredentials(provider, model, modelType)
+    const result = credentialsMap[lookupKey]
 
-    // Optionally obfuscate credentials for display purposes
-    if (obfuscate && result.credentials && Object.keys(result.credentials).length > 0) {
-      const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
-      if (providerCaps?.credentialSchema) {
-        // Convert CredentialFormField[] to CredentialFormSchema[] format for obfuscation
-        const schemas = providerCaps.credentialSchema.map((field) => ({
-          variable: field.variable,
-          type: field.type as any, // Type mapping between form field types
-          required: field.required,
-          default: field.default as string | number | boolean | undefined,
-          label: field.label ? { en_US: field.label } : undefined,
-        }))
-        result.credentials = obfuscateCredentials(result.credentials, schemas)
+    if (result) {
+      // Apply obfuscation at read time if requested (for UI display only)
+      if (obfuscate && result.credentials && Object.keys(result.credentials).length > 0) {
+        return this._obfuscateResult(provider, result)
       }
+      return result
     }
 
-    await this.cache.setCurrentCredentials(
-      this.organizationId,
+    // Cache miss for this specific key — the model might not have been in the config
+    // when the cache was computed. Fall through to direct service call.
+    logger.warn('Credentials cache miss for key, falling back to direct lookup', {
+      organizationId: this.organizationId,
+      lookupKey,
+    })
+
+    const directResult = await this.configurationService.getCurrentCredentials(
       provider,
-      model || '__provider__',
-      modelType || ModelType.LLM,
-      result,
-      {
-        ttl: options.ttl || 900,
-        tags: [`provider:${provider}`, `org:${this.organizationId}`],
-      },
-      obfuscate
+      model,
+      modelType
     )
 
+    if (obfuscate && directResult.credentials && Object.keys(directResult.credentials).length > 0) {
+      return this._obfuscateResult(provider, directResult)
+    }
+
+    return directResult
+  }
+
+  /**
+   * Apply credential obfuscation using provider's credential schema.
+   * Returns a new CredentialsResponse with sensitive values replaced by __HIDDEN__.
+   */
+  private async _obfuscateResult(
+    provider: string,
+    result: CredentialsResponse
+  ): Promise<CredentialsResponse> {
+    const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
+    if (providerCaps?.credentialSchema) {
+      const schemas = providerCaps.credentialSchema.map((field) => ({
+        variable: field.variable,
+        type: field.type as any,
+        required: field.required,
+        default: field.default as string | number | boolean | undefined,
+        label: field.label ? { en_US: field.label } : undefined,
+      }))
+      return {
+        ...result,
+        credentials: obfuscateCredentials(result.credentials, schemas),
+      }
+    }
     return result
   }
 
   // ===== UTILITY METHODS =====
 
   /**
-   * Invalidate cache for a specific provider
-   * Removes all cached data related to the provider for this organization
-   * Used when provider configuration changes to ensure fresh data
-   * @param provider - The provider name to invalidate cache for
-   * @returns Promise<void> - Resolves when cache invalidation completes
-   */
-  invalidateProvider(provider: string): Promise<void> {
-    return this.cache.invalidateProvider(this.organizationId, provider)
-  }
-
-  /**
-   * Invalidate all cached data for the organization
-   * Removes all provider and configuration cache entries for this organization
-   * Used for complete cache refresh when major configuration changes occur
-   * @returns Promise<void> - Resolves when organization cache invalidation completes
-   */
-  invalidateOrganization(): Promise<void> {
-    return this.cache.invalidateOrganization(this.organizationId)
-  }
-
-  /**
-   * Determine the primary model type for a given model
-   * Uses ProviderRegistry capabilities to classify model based on features
-   * Prioritizes specialized types (embedding, vision, tts) over general LLM
-   * @param model - The model name to classify
-   * @returns ModelType - The primary model type for this model
+   * Determine the primary model type for a given model.
+   * Uses ProviderRegistry capabilities to classify model based on features.
    */
   private _getModelTypeForModel(model: string): ModelType {
     const capabilities = ProviderRegistry.getModelCapabilities(model)
 
-    // Primary determination based on features
-    // Check for both 'text-embedding' (model definitions) and 'embedding' (legacy)
     if (
       capabilities?.features.includes('text-embedding') ||
       capabilities?.features.includes('embedding')
@@ -203,17 +167,12 @@ export class ProviderManager {
     } else if (capabilities?.features.includes('tts')) {
       return ModelType.TTS
     } else {
-      return ModelType.LLM // Default
+      return ModelType.LLM
     }
   }
 
   /**
-   * Check if a model is compatible with a specific model type
-   * Uses ProviderRegistry capabilities to determine feature compatibility
-   * Validates that model supports the required features for the model type
-   * @param model - The model name to check compatibility for
-   * @param modelType - The model type to check compatibility against
-   * @returns boolean - True if model supports the model type, false otherwise
+   * Check if a model is compatible with a specific model type.
    */
   isModelCompatible(model: string, modelType: ModelType): boolean {
     const capabilities = ProviderRegistry.getModelCapabilities(model)
@@ -223,7 +182,6 @@ export class ProviderManager {
       case ModelType.LLM:
         return capabilities.features.includes('chat')
       case ModelType.TEXT_EMBEDDING:
-        // Check for both 'text-embedding' (model definitions) and 'embedding' (legacy)
         return (
           capabilities.features.includes('text-embedding') ||
           capabilities.features.includes('embedding')
@@ -243,35 +201,10 @@ export class ProviderManager {
     }
   }
 
-  /**
-   * Invalidate cached status information for a specific provider
-   * Removes status cache entries to force fresh calculation on next access
-   * Used when provider configuration changes affect status
-   * @param provider - The provider name to invalidate status cache for
-   * @returns Promise<void> - Resolves when status cache invalidation completes
-   */
-  async invalidateProviderStatus(provider: string): Promise<void> {
-    await this.cache.invalidateByTag(`provider:${provider}`)
-  }
-
-  /**
-   * Invalidate all cached status information for the organization
-   * Removes all status cache entries to force fresh calculation
-   * Used for organization-wide configuration changes
-   * @returns Promise<void> - Resolves when all status cache invalidation completes
-   */
-  async invalidateAllStatus(): Promise<void> {
-    await this.cache.invalidateByTag(`org:${this.organizationId}`)
-  }
-
   // ===== UNIFIED MODEL DATA METHODS =====
 
   /**
-   * Get unified model data with complete ModelCapabilities and status information
-   * Now simplified to delegate to enhanced ProviderConfigurationService
-   * Returns rich data structure with all model metadata and configuration status
-   * @param options - Filtering and configuration options
-   * @returns Promise<{providers: ProviderData[], defaultModel: any}> - Complete model data
+   * Get unified model data with complete ModelCapabilities and status information.
    */
   async getUnifiedModelData(
     options: {
@@ -299,33 +232,22 @@ export class ProviderManager {
     })
 
     try {
-      // Get enhanced configurations (now includes complete ModelData AND ProviderData!)
       const configurations = await this.getConfigurations()
 
-      // configurations.configurations is Record<string, ProviderConfiguration>
-      // where ProviderConfiguration extends ProviderData
-      // So Object.values() returns ProviderConfiguration[] which IS ProviderData[]!
-
-      // Sort providers by configuration status first, then by position
       let providers = getSortedProviders(Object.values(configurations.configurations))
 
-      // Apply filtering if requested
       if (!includeUnconfigured || modelTypes.length > 0) {
         providers = providers
           .map((provider) => {
             const filteredModels = provider.models.filter((model) => {
-              // Filter by provider configuration unless including unconfigured
               if (!includeUnconfigured && !provider.statusInfo.configured) {
                 return false
               }
 
-              // Filter out retired models unless explicitly included
               if (!includeRetired && model.status === 'retired') {
                 return false
               }
 
-              // Filter by model status unless including unconfigured
-              // Deprecated models are still usable, so include them
               if (
                 !includeUnconfigured &&
                 model.status !== 'active' &&
@@ -334,7 +256,6 @@ export class ProviderManager {
                 return false
               }
 
-              // Filter by model types if specified
               if (modelTypes.length > 0) {
                 const modelSupportsType = modelTypes.some((type) => {
                   return this.isModelCompatible(model.modelId, type)
@@ -351,18 +272,15 @@ export class ProviderManager {
             }
           })
           .filter((provider) => {
-            // Remove providers with no models after filtering, unless including unconfigured
             return includeUnconfigured || provider.models.length > 0
           })
       }
 
-      // Build default models map from system model defaults
-      const systemModelService = new SystemModelService(this.db, this.organizationId)
-      const defaults = await systemModelService.getAllDefaults()
-
+      // Read default models from OrgCache
+      const cachedDefaults = await getOrgCache().get(this.organizationId, 'aiDefaultModels')
       const defaultModels: Record<string, { provider: string; model: string }> = {}
-      for (const entry of defaults) {
-        defaultModels[entry.modelType] = {
+      for (const [modelType, entry] of Object.entries(cachedDefaults)) {
+        defaultModels[modelType] = {
           provider: entry.provider,
           model: entry.model,
         }
@@ -388,26 +306,13 @@ export class ProviderManager {
 
   // ===== CLEAN PROXY METHODS =====
 
-  /**
-   * Save provider configuration with clean method name
-   * Delegates to ProviderConfigurationService with consistent error handling
-   * @param provider - Provider name to save configuration for
-   * @param credentials - Provider credentials to save
-   * @returns Promise<void> - Resolves when provider is saved
-   */
   async saveProvider(provider: string, credentials: Record<string, any>): Promise<void> {
     logger.info('Saving provider configuration', { organizationId: this.organizationId, provider })
 
     await this.configurationService.addCustomProviderCredentials(provider, credentials)
-    await this.invalidateProvider(provider)
+    await onCacheEvent('ai-provider.configured', { orgId: this.organizationId })
   }
 
-  /**
-   * Delete provider configuration with clean method name
-   * Delegates to ProviderConfigurationService with cache invalidation
-   * @param provider - Provider name to delete configuration for
-   * @returns Promise<void> - Resolves when provider is deleted
-   */
   async deleteProvider(provider: string): Promise<void> {
     logger.info('Deleting provider configuration', {
       organizationId: this.organizationId,
@@ -415,30 +320,15 @@ export class ProviderManager {
     })
 
     await this.configurationService.deleteProvider(provider)
-    await this.invalidateProvider(provider)
+    await onCacheEvent('ai-provider.deleted', { orgId: this.organizationId })
   }
 
-  /**
-   * Test provider credentials with clean method name
-   * Delegates to ProviderConfigurationService for credential validation
-   * @param provider - Provider name to test
-   * @param credentials - Credentials to test
-   * @returns Promise<boolean> - True if credentials are valid
-   */
   async testProvider(provider: string, credentials: Record<string, any>): Promise<boolean> {
     logger.info('Testing provider credentials', { organizationId: this.organizationId, provider })
 
     return await this.configurationService.testCredentials(provider, credentials)
   }
 
-  /**
-   * Toggle model enabled state with clean method name
-   * Updates model configuration and invalidates relevant caches
-   * @param provider - Provider name hosting the model
-   * @param model - Model name to toggle
-   * @param enabled - New enabled state
-   * @returns Promise<void> - Resolves when model is toggled
-   */
   async toggleModel(provider: string, model: string, enabled: boolean): Promise<void> {
     logger.info('Toggling model enabled state', {
       organizationId: this.organizationId,
@@ -448,17 +338,9 @@ export class ProviderManager {
     })
 
     await this.configurationService.toggleModel(provider, model, enabled)
-    await this.invalidateProvider(provider)
+    await onCacheEvent('ai-provider.configured', { orgId: this.organizationId })
   }
 
-  /**
-   * Update model configuration with clean method name
-   * Updates model-specific configuration and invalidates caches
-   * @param provider - Provider name hosting the model
-   * @param model - Model name to update
-   * @param config - New model configuration
-   * @returns Promise<void> - Resolves when model config is updated
-   */
   async updateModelConfig(
     provider: string,
     model: string,
@@ -471,14 +353,9 @@ export class ProviderManager {
     })
 
     await this.configurationService.updateModelConfig(provider, model, config)
-    await this.invalidateProvider(provider)
+    await onCacheEvent('ai-provider.configured', { orgId: this.organizationId })
   }
 
-  /**
-   * Save custom model configuration (handles both create and update)
-   * @param params - Custom model save parameters with mode
-   * @returns Promise<void> - Resolves when custom model is saved
-   */
   async saveCustomModel(params: {
     provider: string
     modelId: string
@@ -496,7 +373,6 @@ export class ProviderManager {
       mode,
     })
 
-    // Validate provider exists
     const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
     if (!providerCaps) {
       throw new ProviderConfigurationError(
@@ -506,7 +382,6 @@ export class ProviderManager {
       )
     }
 
-    // Create or update model configuration with credentials
     await this.configurationService.addCustomModelCredentials(
       provider,
       modelId,
@@ -514,8 +389,7 @@ export class ProviderManager {
       credentials
     )
 
-    // Invalidate provider cache to include new/updated model
-    await this.invalidateProvider(provider)
+    await onCacheEvent('ai-model.configured', { orgId: this.organizationId })
 
     logger.info('Custom model saved successfully', {
       organizationId: this.organizationId,
@@ -525,11 +399,6 @@ export class ProviderManager {
     })
   }
 
-  /**
-   * Delete a custom model configuration
-   * @param params - Custom model delete parameters
-   * @returns Promise<{ deleted: boolean }> - Deletion result
-   */
   async deleteCustomModel(params: {
     provider: string
     modelId: string
@@ -544,8 +413,7 @@ export class ProviderManager {
 
     const result = await this.configurationService.deleteCustomModel(provider, modelId)
 
-    // Invalidate provider cache to reflect model removal
-    await this.invalidateProvider(provider)
+    await onCacheEvent('ai-model.deleted', { orgId: this.organizationId })
 
     logger.info('Custom model deleted successfully', {
       organizationId: this.organizationId,
@@ -557,19 +425,13 @@ export class ProviderManager {
     return result
   }
 
-  /**
-   * Remove custom credentials for a provider
-   * Clears credentials and switches to system mode, preserving quota data
-   * @param provider - The provider name
-   * @returns Promise<RemoveCredentialsResult> - Removal result
-   */
   async removeCustomCredentials(provider: string): Promise<{
     removed: boolean
     switchedToSystem: boolean
     hasQuota: boolean
   }> {
     const result = await this.configurationService.removeCustomCredentials(provider)
-    await this.invalidateProvider(provider)
+    await onCacheEvent('ai-provider.deleted', { orgId: this.organizationId })
     return result
   }
 }

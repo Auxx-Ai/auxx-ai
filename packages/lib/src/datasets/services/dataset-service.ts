@@ -21,8 +21,8 @@ import {
   sql,
   sum,
 } from 'drizzle-orm'
-import { SystemModelService } from '../../ai/providers/system-model-service'
 import { ModelType } from '../../ai/providers/types'
+import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
 import type {
   ChunkSettings,
   CreateDatasetInput,
@@ -436,8 +436,7 @@ export class DatasetService {
   async getAvailableEmbeddingOptions(organizationId: string) {
     try {
       // Get system default for TEXT_EMBEDDING
-      const systemModelService = new SystemModelService(this.db, organizationId)
-      const systemDefault = await systemModelService.getDefault(ModelType.TEXT_EMBEDDING)
+      const systemDefault = await getCachedDefaultModel(organizationId, ModelType.TEXT_EMBEDDING)
 
       return {
         systemDefault: systemDefault ? `${systemDefault.provider}:${systemDefault.model}` : null,

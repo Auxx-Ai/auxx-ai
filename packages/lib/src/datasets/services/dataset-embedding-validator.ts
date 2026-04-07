@@ -3,8 +3,8 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
-import { SystemModelService } from '../../ai/providers/system-model-service'
 import { ModelType } from '../../ai/providers/types'
+import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
 
 const logger = createScopedLogger('dataset-embedding-validator')
 
@@ -207,8 +207,7 @@ export class DatasetEmbeddingValidator {
   ): Promise<DatasetEmbeddingConfig> {
     try {
       // First check if there's a system default for TEXT_EMBEDDING
-      const systemModelService = new SystemModelService(db, organizationId)
-      const systemDefault = await systemModelService.getDefault(ModelType.TEXT_EMBEDDING)
+      const systemDefault = await getCachedDefaultModel(organizationId, ModelType.TEXT_EMBEDDING)
 
       if (systemDefault) {
         const modelId = `${systemDefault.provider}:${systemDefault.model}`

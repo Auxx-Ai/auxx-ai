@@ -63,6 +63,15 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'app.deployment.changed': ['installedApps'],
   'app.connection-def.changed': ['installedApps'],
 
+  // ── AI provider events ──
+  'ai-provider.configured': ['aiProviderConfigs', 'aiCredentials'],
+  'ai-provider.deleted': ['aiProviderConfigs', 'aiCredentials'],
+  'ai-provider.credentials-changed': ['aiCredentials'],
+  'ai-provider.type-switched': ['aiProviderConfigs', 'aiCredentials'],
+  'ai-model.configured': ['aiProviderConfigs', 'aiCredentials'],
+  'ai-model.deleted': ['aiProviderConfigs', 'aiCredentials'],
+  'ai-default-model.changed': ['aiDefaultModels'],
+
   // ── Mixed events (org + user keys) ──
   'member.added': {
     user: ['userMemberships'],

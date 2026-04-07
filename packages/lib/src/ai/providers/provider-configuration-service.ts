@@ -1,5 +1,6 @@
 // packages/lib/src/ai/providers/provider-configuration-service.ts
 import { CredentialService } from '@auxx/credentials'
+import { configService } from '@auxx/credentials/config'
 import { type Database, schema } from '@auxx/database'
 import type {
   LoadBalancingConfigEntity as LoadBalancingConfigModel,
@@ -39,6 +40,13 @@ import {
 import { mergeCredentialsWithHidden, obfuscateCredentials } from './utils'
 
 const logger = createScopedLogger('ProviderConfigurationService')
+
+/**
+ * Providers that support system (platform-managed) credentials.
+ * Only these providers can resolve API keys from environment variables for SYSTEM mode.
+ * Must match the providers seeded in organization-seeder.ts.
+ */
+const SYSTEM_ELIGIBLE_PROVIDERS = new Set(['anthropic', 'openai'])
 
 /**
  * Provider Configuration Service with comprehensive provider configuration management
@@ -1658,16 +1666,53 @@ export class ProviderConfigurationService {
       })
     }
 
+    // Resolve credentials: encrypted DB column first, then env fallback for system-eligible providers
+    let credentials: Record<string, any> | undefined
+    if (systemRecord?.credentials) {
+      credentials = await this._decryptCredentials(systemRecord.credentials)
+    } else if (SYSTEM_ELIGIBLE_PROVIDERS.has(provider)) {
+      credentials = await this._resolveSystemCredentialsFromEnv(provider)
+    }
+
     return {
       enabled: !!systemRecord?.isEnabled,
       currentQuotaType: systemRecord?.quotaType
         ? (systemRecord.quotaType as ProviderQuotaType)
         : undefined,
       quotaConfigurations,
-      credentials: systemRecord?.credentials
-        ? await this._decryptCredentials(systemRecord.credentials)
-        : undefined,
+      credentials,
     }
+  }
+
+  /**
+   * Resolve system credentials from environment via configService.
+   * Only called for SYSTEM_ELIGIBLE_PROVIDERS (anthropic, openai).
+   *
+   * Uses the provider's credentialSchema to map variable names (e.g. `anthropic_api_key`)
+   * to config keys (e.g. `ANTHROPIC_API_KEY`), which configService resolves from
+   * DB override → process.env → SST Resource → registry default.
+   *
+   * Returns undefined if no credentials are found.
+   */
+  private async _resolveSystemCredentialsFromEnv(
+    provider: string
+  ): Promise<Record<string, any> | undefined> {
+    const providerCaps = await ProviderRegistry.getProviderCapabilities(provider)
+    if (!providerCaps?.credentialSchema?.length) return undefined
+
+    const credentials: Record<string, any> = {}
+    let hasAny = false
+
+    for (const field of providerCaps.credentialSchema) {
+      const configKey = field.variable.toUpperCase() // anthropic_api_key → ANTHROPIC_API_KEY
+      const value = configService.get(configKey)
+      if (value) {
+        credentials[field.variable] = value
+        hasAny = true
+      }
+    }
+
+    return hasAny ? credentials : undefined
   }
 
   /**

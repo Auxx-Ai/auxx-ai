@@ -98,7 +98,7 @@ export function NavMain({ menu, itemActions }: Props) {
         hideEditOption
       />
       {isOpen && (
-        <SidebarMenu className='gap-0'>
+        <SidebarMenu>
           {menu.items.map((item) => (
             <div key={item.id}>
               {item.items?.length ? (

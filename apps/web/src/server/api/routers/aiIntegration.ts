@@ -15,6 +15,7 @@ import {
   type PlanTier,
   ProviderType,
 } from '@auxx/lib/ai/providers/types'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -292,11 +293,12 @@ export const aiIntegrationRouter = createTRPCRouter({
       const providerManager = new ProviderManager(ctx.db, organizationId, userId)
 
       try {
-        // Use existing getCurrentCredentials for both modes
+        // Obfuscate credentials for UI display — raw creds stay in the cache
         const result = await providerManager.getCurrentCredentials(
           provider,
           mode === 'provider' ? null : model!,
-          mode === 'provider' ? null : ModelType.LLM
+          mode === 'provider' ? null : ModelType.LLM,
+          true // obfuscate for client display
         )
 
         return result
@@ -482,6 +484,7 @@ export const aiIntegrationRouter = createTRPCRouter({
 
       const systemModelService = new SystemModelService(ctx.db, organizationId)
       await systemModelService.setDefault(input.modelType, input.provider, input.model)
+      await onCacheEvent('ai-default-model.changed', { orgId: organizationId })
 
       return { success: true }
     }),
@@ -504,6 +507,7 @@ export const aiIntegrationRouter = createTRPCRouter({
 
       const systemModelService = new SystemModelService(ctx.db, organizationId)
       await systemModelService.removeDefault(input.modelType)
+      await onCacheEvent('ai-default-model.changed', { orgId: organizationId })
 
       return { success: true }
     }),
@@ -567,6 +571,7 @@ export const aiIntegrationRouter = createTRPCRouter({
         input.provider,
         input.providerType === 'system' ? ProviderType.SYSTEM : ProviderType.CUSTOM
       )
+      await onCacheEvent('ai-provider.type-switched', { orgId: organizationId })
 
       return { success: true }
     }),

@@ -428,16 +428,18 @@ export class EmbeddingService {
   }
 
   /**
-   * Get default embedding provider for organization using SystemModelService
+   * Get default embedding provider for organization using cached defaults
    */
   private async getDefaultEmbeddingProvider(): Promise<{ provider: string; model: string }> {
     try {
-      const { SystemModelService } = await import('../../ai/providers/system-model-service')
-      const systemModelService = new SystemModelService(this.db, this.organizationId)
-      const systemDefault = await systemModelService.getDefault(ModelType.TEXT_EMBEDDING)
+      const { getCachedDefaultModel } = await import('../../cache/org-cache-helpers')
+      const systemDefault = await getCachedDefaultModel(
+        this.organizationId,
+        ModelType.TEXT_EMBEDDING
+      )
 
       if (systemDefault) {
-        return { provider: systemDefault.provider, model: systemDefault.model }
+        return systemDefault
       }
 
       // Fallback to OpenAI as app-level default

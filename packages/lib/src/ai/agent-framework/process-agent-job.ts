@@ -215,11 +215,9 @@ async function buildDomainConfig(
         defaultProvider = provider
         defaultModel = modelParts.join(':')
       } else {
-        const { database } = await import('@auxx/database')
-        const { SystemModelService } = await import('../providers/system-model-service')
+        const { getCachedDefaultModel } = await import('../../cache/org-cache-helpers')
         const { ModelType } = await import('../providers/types')
-        const systemModelService = new SystemModelService(database, params.organizationId)
-        const systemDefault = await systemModelService.getDefault(ModelType.LLM)
+        const systemDefault = await getCachedDefaultModel(params.organizationId, ModelType.LLM)
         if (systemDefault) {
           defaultProvider = systemDefault.provider
           defaultModel = systemDefault.model
