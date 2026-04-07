@@ -7,12 +7,11 @@ import { LLMOrchestrator } from '../orchestrator/llm-orchestrator'
 const logger = createScopedLogger('kopilot-session-title')
 
 /**
- * Generate a concise title (5-8 words) for a Kopilot session
- * based on the first user message and assistant response.
+ * Generate a concise title (3-8 words) for a Kopilot session
+ * based on the first user message.
  */
 export async function generateSessionTitle(
   firstUserMessage: string,
-  firstAssistantResponse: string,
   config: { organizationId: string; userId: string; db: Database }
 ): Promise<string> {
   const orchestrator = new LLMOrchestrator(undefined, config.db)
@@ -25,19 +24,30 @@ export async function generateSessionTitle(
     messages: [
       {
         role: 'system',
-        content:
-          'Generate a 5-8 word title for this conversation. No quotes, no prefix. Just the title.',
+        content: [
+          'Your ONLY job is to output a short title (3-8 words) that summarizes the topic of the conversation below.',
+          'Rules:',
+          '- Output ONLY the title, nothing else.',
+          '- Do NOT echo, quote, or paraphrase anything from the conversation.',
+          '- Do NOT include filler phrases like "I\'d be happy to help" or "Here\'s a title".',
+          "- Focus on the user's intent/topic, not the assistant's response.",
+          '- Use title case.',
+        ].join('\n'),
       },
       {
         role: 'user',
-        content: `User: ${firstUserMessage.slice(0, 300)}\n\nAssistant: ${firstAssistantResponse.slice(0, 200)}`,
+        content: `User message: ${firstUserMessage.slice(0, 300)}`,
       },
     ],
     tools: [],
+    parameters: { max_tokens: 30 },
     context: { source: 'kopilot-title' },
   })
 
-  const title = response.content?.trim() ?? ''
+  let title = response.content?.trim() ?? ''
+
+  // Strip quotes if the model wrapped the title
+  title = title.replace(/^["']|["']$/g, '')
 
   if (!title) {
     logger.warn('Empty title generated', { organizationId: config.organizationId })

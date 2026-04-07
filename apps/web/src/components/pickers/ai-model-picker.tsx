@@ -71,6 +71,8 @@ interface AiModelPickerProps {
   data?: UnifiedModelData
   /** Show updating state on trigger button */
   isUpdating?: boolean
+  /** Compact trigger — show only icon + model name, no badges */
+  compact?: boolean
 }
 
 /**
@@ -118,6 +120,7 @@ export function AiModelPicker({
   onPopoverOpenChange: externalOnOpenChange,
   data: externalData,
   isUpdating = false,
+  compact = false,
 }: AiModelPickerProps) {
   /** Router instance used for navigation when no models exist */
   const router = useRouter()
@@ -275,9 +278,9 @@ export function AiModelPicker({
                     <ModelName
                       modelItem={selectedModel}
                       className='truncate'
-                      showMode
-                      showModelType
-                      showFeatures
+                      showMode={!compact}
+                      showModelType={!compact}
+                      showFeatures={!compact}
                     />
                   </>
                 ) : (

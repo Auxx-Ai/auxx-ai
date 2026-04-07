@@ -406,7 +406,7 @@ export class ProviderConfigurationService {
       // Encrypt credentials
       const encryptedCredentials = await this._encryptCredentials(credentials)
 
-      // Upsert provider configuration
+      // Upsert CUSTOM provider configuration (separate from SYSTEM record)
       const now = new Date()
       await this.db
         .insert(schema.ProviderConfiguration)
@@ -422,10 +422,10 @@ export class ProviderConfigurationService {
           target: [
             schema.ProviderConfiguration.organizationId,
             schema.ProviderConfiguration.provider,
+            schema.ProviderConfiguration.providerType,
           ],
           set: {
             credentials: encryptedCredentials,
-            providerType: 'CUSTOM',
             isEnabled: true,
             updatedAt: now,
           },
@@ -493,7 +493,7 @@ export class ProviderConfigurationService {
       // Encrypt the merged credentials
       const encryptedCredentials = await this._encryptCredentials(mergedCredentials)
 
-      // Update the provider configuration
+      // Update the CUSTOM provider configuration (separate from SYSTEM record)
       const now = new Date()
       await this.db
         .insert(schema.ProviderConfiguration)
@@ -509,10 +509,10 @@ export class ProviderConfigurationService {
           target: [
             schema.ProviderConfiguration.organizationId,
             schema.ProviderConfiguration.provider,
+            schema.ProviderConfiguration.providerType,
           ],
           set: {
             credentials: encryptedCredentials,
-            providerType: 'CUSTOM',
             isEnabled: true,
             updatedAt: now,
           },
@@ -1074,43 +1074,40 @@ export class ProviderConfigurationService {
     })
 
     try {
-      // 1. Get current configuration to check quota status
-      const config = await this.db.query.ProviderConfiguration.findFirst({
+      // 1. Check if SYSTEM record exists to determine quota availability
+      const systemConfig = await this.db.query.ProviderConfiguration.findFirst({
         where: and(
           eq(schema.ProviderConfiguration.organizationId, this.organizationId),
-          eq(schema.ProviderConfiguration.provider, provider)
+          eq(schema.ProviderConfiguration.provider, provider),
+          eq(schema.ProviderConfiguration.providerType, 'SYSTEM')
         ),
       })
 
-      if (!config) {
-        return {
-          removed: false,
-          switchedToSystem: false,
-          hasQuota: false,
-        }
-      }
-
       const hasQuota = !!(
-        config.quotaLimit &&
-        config.quotaLimit > 0 &&
-        config.quotaUsed < config.quotaLimit
+        systemConfig?.quotaLimit &&
+        systemConfig.quotaLimit > 0 &&
+        systemConfig.quotaUsed < systemConfig.quotaLimit
       )
 
-      // 2. Update the row: clear credentials and switch to SYSTEM
-      const now = new Date()
-      await this.db
-        .update(schema.ProviderConfiguration)
-        .set({
-          credentials: null,
-          providerType: 'SYSTEM',
-          updatedAt: now,
-        })
+      // 2. Delete the CUSTOM record (SYSTEM record is preserved)
+      const deleted = await this.db
+        .delete(schema.ProviderConfiguration)
         .where(
           and(
             eq(schema.ProviderConfiguration.organizationId, this.organizationId),
-            eq(schema.ProviderConfiguration.provider, provider)
+            eq(schema.ProviderConfiguration.provider, provider),
+            eq(schema.ProviderConfiguration.providerType, 'CUSTOM')
           )
         )
+        .returning({ id: schema.ProviderConfiguration.id })
+
+      if (deleted.length === 0) {
+        return {
+          removed: false,
+          switchedToSystem: false,
+          hasQuota,
+        }
+      }
 
       // 3. Update preference to SYSTEM
       await this.switchProviderType(provider, ProviderType.SYSTEM)
@@ -1296,6 +1293,7 @@ export class ProviderConfigurationService {
           target: [
             schema.ProviderConfiguration.organizationId,
             schema.ProviderConfiguration.provider,
+            schema.ProviderConfiguration.providerType,
           ],
           set: {
             quotaType: quotaConfig.quotaType,
@@ -1303,7 +1301,6 @@ export class ProviderConfigurationService {
             quotaUsed: 0,
             quotaPeriodStart: quotaConfig.periodStart ?? null,
             quotaPeriodEnd: quotaConfig.periodEnd ?? null,
-            providerType: 'SYSTEM',
             isEnabled: true,
             updatedAt: now,
           },

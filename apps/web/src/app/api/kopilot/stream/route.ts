@@ -48,6 +48,8 @@ interface KopilotStreamRequest {
   approvalAction?: 'approve' | 'reject'
   /** Input amendment for approval actions (e.g. { saveAsDraft: true }) */
   inputAmendment?: Record<string, unknown>
+  /** Model override in "provider:model" format — omit to use system default */
+  modelId?: string
 }
 
 /**
@@ -185,6 +187,7 @@ export async function POST(request: NextRequest) {
                 context,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
+                modelId: body.modelId,
                 send,
                 cleanup,
                 request,
@@ -200,6 +203,7 @@ export async function POST(request: NextRequest) {
                 context,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
+                modelId: body.modelId,
                 savedMessages,
                 savedDomainState,
                 send,
@@ -259,6 +263,7 @@ async function runInProcessPath(params: {
   context?: Record<string, unknown>
   approvalAction?: 'approve' | 'reject'
   inputAmendment?: Record<string, unknown>
+  modelId?: string
   savedMessages: Record<string, unknown>[]
   savedDomainState: Record<string, unknown>
   send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
@@ -275,6 +280,7 @@ async function runInProcessPath(params: {
     context,
     approvalAction,
     inputAmendment,
+    modelId,
     savedMessages,
     savedDomainState,
     send,
@@ -295,9 +301,29 @@ async function runInProcessPath(params: {
   registry.register(createKnowledgeCapabilities(getToolDeps))
   registry.register(createMailCapabilities(getToolDeps))
 
+  // Resolve model: explicit override → system default → hardcoded fallback
+  let defaultModel: string | undefined
+  let defaultProvider: string | undefined
+  if (modelId) {
+    const [provider, ...modelParts] = modelId.split(':')
+    defaultProvider = provider
+    defaultModel = modelParts.join(':')
+  } else {
+    const { SystemModelService } = await import('@auxx/lib/ai')
+    const { ModelType } = await import('@auxx/lib/ai/providers/types')
+    const systemModelService = new SystemModelService(db, organizationId)
+    const systemDefault = await systemModelService.getDefault(ModelType.LLM)
+    if (systemDefault) {
+      defaultProvider = systemDefault.provider
+      defaultModel = systemDefault.model
+    }
+  }
+
   const domainConfig = createKopilotDomainConfig({
     capabilityRegistry: registry,
     page: page ?? 'mail',
+    defaultModel,
+    defaultProvider,
   })
 
   // Create LLM adapter
@@ -325,6 +351,7 @@ async function runInProcessPath(params: {
           domainState: savedDomainState,
           waitingForApproval: savedDomainState._waitingForApproval as boolean | undefined,
           pendingToolCall: savedDomainState._pendingToolCall as any,
+          currentRoute: savedDomainState._currentRoute as string | undefined,
         }
       : undefined
 
@@ -360,6 +387,7 @@ async function runInProcessPath(params: {
     ...(finalState.domainState as Record<string, unknown>),
     _waitingForApproval: finalState.waitingForApproval ?? false,
     _pendingToolCall: finalState.pendingToolCall ?? null,
+    _currentRoute: finalState.currentRoute ?? null,
   }
   await saveSessionMessages({
     sessionId,
@@ -374,10 +402,7 @@ async function runInProcessPath(params: {
 
   // Auto-title new sessions after first exchange
   if (isNewSession) {
-    const assistantMsg =
-      [...finalState.messages].reverse().find((m) => m.role === 'assistant')?.content ?? ''
-
-    generateSessionTitle(message, assistantMsg, { organizationId, userId, db })
+    generateSessionTitle(message, { organizationId, userId, db })
       .then((title) => updateSessionTitle({ sessionId, organizationId, title }))
       .catch((err) => logger.warn('Session auto-title failed', { sessionId, error: String(err) }))
   }
@@ -395,6 +420,7 @@ async function runWorkerPath(params: {
   context?: Record<string, unknown>
   approvalAction?: 'approve' | 'reject'
   inputAmendment?: Record<string, unknown>
+  modelId?: string
   send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
   cleanup: () => void
   request: NextRequest
@@ -437,6 +463,7 @@ async function runWorkerPath(params: {
     context: context as Record<string, unknown>,
     approvalAction: params.approvalAction,
     inputAmendment: params.inputAmendment,
+    modelId: params.modelId,
   })
 
   // 3. Wait for terminal event or disconnect

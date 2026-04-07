@@ -341,9 +341,8 @@ async function executeToolCalls(
     const tool = toolMap.get(toolName)
     const args = parseToolArgs(toolCall)
 
-    events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
-
     if (!tool) {
+      events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
       const errorMsg = `Unknown tool: ${toolName}`
       events.push({ type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg })
       results.push({
@@ -356,7 +355,8 @@ async function executeToolCalls(
       continue
     }
 
-    // Skip execution for approval-required tools
+    // Skip execution and events for approval-required tools — the approval
+    // flow handles its own tool-started/completed events on resume.
     if (tool.requiresApproval) {
       results.push({
         toolCallId: toolCall.id,
@@ -366,6 +366,8 @@ async function executeToolCalls(
       })
       continue
     }
+
+    events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
 
     try {
       const result = await tool.execute(args, deps)

@@ -46,10 +46,11 @@ export const ProviderConfiguration = pgTable(
       table.organizationId.asc().nullsLast(),
       table.provider.asc().nullsLast()
     ),
-    uniqueIndex('ProviderConfiguration_organizationId_provider_key').using(
+    uniqueIndex('ProviderConfiguration_org_provider_type_key').using(
       'btree',
       table.organizationId.asc().nullsLast(),
-      table.provider.asc().nullsLast()
+      table.provider.asc().nullsLast(),
+      table.providerType.asc().nullsLast()
     ),
   ]
 )

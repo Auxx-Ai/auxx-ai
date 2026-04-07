@@ -41,7 +41,7 @@ export function createExecutorAgent(
       const systemPrompt = buildExecutorSystemPrompt(state.domainState, entityCatalog)
 
       // Include full conversation (user, assistant, tool messages) for tool loop continuity
-      const conversationMessages: Message[] = state.messages
+      const rawMessages: Message[] = state.messages
         .filter((m) => m.role !== 'system')
         .map((m) => {
           const msg: Message = {
@@ -60,6 +60,44 @@ export function createExecutorAgent(
           }
           return msg
         })
+
+      // Sanitize: OpenAI requires every 'tool' message to follow an assistant
+      // message with a matching tool_calls entry. Drop orphaned tool messages.
+      const validToolCallIds = new Set<string>()
+      const conversationMessages: Message[] = []
+      for (const msg of rawMessages) {
+        if (msg.role === 'assistant' && msg.tool_calls?.length) {
+          for (const tc of msg.tool_calls) validToolCallIds.add(tc.id)
+        }
+        if (msg.role === 'tool') {
+          if (!msg.tool_call_id || !validToolCallIds.has(msg.tool_call_id)) {
+            logger.debug('Dropping orphaned tool message', { toolCallId: msg.tool_call_id })
+            continue
+          }
+        }
+        conversationMessages.push(msg)
+      }
+
+      // Debug: log message structure to diagnose orphaned tool messages
+      const toolMsgs = conversationMessages.filter((m) => m.role === 'tool')
+      const assistantWithToolCalls = conversationMessages.filter(
+        (m) => m.role === 'assistant' && m.tool_calls?.length
+      )
+      if (toolMsgs.length > 0) {
+        logger.info('Tool message chain debug', {
+          totalMessages: conversationMessages.length,
+          toolMessageCount: toolMsgs.length,
+          assistantWithToolCallsCount: assistantWithToolCalls.length,
+          toolCallIds: toolMsgs.map((m) => m.tool_call_id),
+          validToolCallIds: [...validToolCallIds],
+          messageRoles: conversationMessages.map((m, i) => ({
+            i,
+            role: m.role,
+            hasToolCalls: !!(m as any).tool_calls?.length,
+            toolCallId: (m as any).tool_call_id,
+          })),
+        })
+      }
 
       return [{ role: 'system', content: systemPrompt }, ...conversationMessages]
     },

@@ -18,6 +18,8 @@ export interface AgentJobPayload {
   approvalAction?: 'approve' | 'reject'
   /** Input amendment for approval (e.g. { saveAsDraft: true }) */
   inputAmendment?: Record<string, unknown>
+  /** Model override in "provider:model" format — omit to use system default */
+  modelId?: string
 }
 
 /**
