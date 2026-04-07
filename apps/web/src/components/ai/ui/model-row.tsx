@@ -73,7 +73,7 @@ export const ModelRow: React.FC<ModelRowProps> = ({
             features={model.features}
             contextLength={model.contextLength}
             maxVisible={4}
-            className='gap-1 hidden @lg:flex'
+            className='gap-1 hidden @lg:flex truncate'
           />
           {model.deprecated && (
             <Tooltip

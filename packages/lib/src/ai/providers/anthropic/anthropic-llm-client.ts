@@ -113,10 +113,19 @@ export class AnthropicLLMClient extends LLMClient {
         stream: true,
       })
 
+      let inputTokens = 0
+
       for await (const event of stream as any) {
         chunkCount++
 
         switch (event.type) {
+          case 'message_start':
+            // Capture input tokens from the initial message event
+            if (event.message?.usage?.input_tokens) {
+              inputTokens = event.message.usage.input_tokens
+            }
+            break
+
           case 'content_block_delta':
             if (event.delta.type === 'text_delta') {
               const delta = event.delta.text
@@ -164,8 +173,14 @@ export class AnthropicLLMClient extends LLMClient {
             break
 
           case 'message_delta':
+            // message_delta only carries output_tokens — merge with input_tokens from message_start
             if (event.usage) {
-              finalUsage = this.convertAnthropicUsage(event.usage)
+              const outputTokens = event.usage.output_tokens || 0
+              finalUsage = {
+                prompt_tokens: inputTokens,
+                completion_tokens: outputTokens,
+                total_tokens: inputTokens + outputTokens,
+              }
             }
             break
 
@@ -173,6 +188,24 @@ export class AnthropicLLMClient extends LLMClient {
             // Stream complete
             break
         }
+      }
+
+      // Yield a final chunk with tool calls and/or usage so for-await consumers
+      // (e.g. the orchestrator) can see them — matching OpenAI client behavior.
+      const finishReason = toolCalls.length > 0 ? 'tool_calls' : 'stop'
+      yield {
+        id: `anthropic_${Date.now()}_final`,
+        model: params.model,
+        content: fullContent,
+        delta: '',
+        finishReason,
+        toolCalls,
+        usage: finalUsage,
+        metadata: {
+          chunkIndex: ++chunkCount,
+          totalLength: fullContent.length,
+          eventType: toolCalls.length > 0 ? 'tool_calls_complete' : 'stream_complete',
+        },
       }
 
       return {
@@ -552,10 +585,57 @@ export class AnthropicLLMClient extends LLMClient {
 
     // Convert to Anthropic format with proper role alternation
     const anthropicMessages = this.ensureRoleAlternation(
-      nonSystemMessages.map((msg) => ({
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: this.convertContentToAnthropicFormat(msg.content),
-      }))
+      nonSystemMessages.map((msg) => {
+        // Tool result messages → Anthropic tool_result content block inside a user message
+        if (msg.role === 'tool' && msg.tool_call_id) {
+          return {
+            role: 'user' as const,
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: msg.tool_call_id,
+                content:
+                  typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+              },
+            ],
+          }
+        }
+
+        // Assistant messages with tool_calls → include tool_use content blocks
+        if (msg.role === 'assistant' && msg.tool_calls?.length) {
+          const content: any[] = []
+          // Include any text content first
+          if (msg.content && typeof msg.content === 'string' && msg.content.length > 0) {
+            content.push({ type: 'text', text: msg.content })
+          } else if (msg.content && Array.isArray(msg.content)) {
+            content.push(...this.convertContentToAnthropicFormat(msg.content))
+          }
+          // Append tool_use blocks
+          for (const tc of msg.tool_calls) {
+            let input: Record<string, unknown> = {}
+            try {
+              input =
+                typeof tc.function.arguments === 'string'
+                  ? JSON.parse(tc.function.arguments)
+                  : tc.function.arguments
+            } catch {
+              /* keep empty */
+            }
+            content.push({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.function.name,
+              input,
+            })
+          }
+          return { role: 'assistant' as const, content }
+        }
+
+        return {
+          role: msg.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+          content: this.convertContentToAnthropicFormat(msg.content),
+        }
+      })
     )
 
     this.logger.debug('Final Anthropic messages', {

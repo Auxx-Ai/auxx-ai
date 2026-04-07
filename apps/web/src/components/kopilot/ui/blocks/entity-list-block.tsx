@@ -17,6 +17,7 @@ export function EntityListBlock({ data, skipEntrance }: BlockRendererProps<Entit
   return (
     <div className='not-prose my-2'>
       <BlockCard
+        data-slot='entity-list-block'
         indicator={
           <div
             className='size-2 rounded-full'

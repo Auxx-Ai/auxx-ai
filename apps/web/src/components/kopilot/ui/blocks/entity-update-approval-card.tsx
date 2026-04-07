@@ -31,6 +31,7 @@ export function EntityUpdateApprovalCard({ args, status, onApprove, onReject }: 
 
   return (
     <BlockCard
+      data-slot='entity-update-approval-card'
       indicator={<StatusIndicator status={status} />}
       primaryText={`Update ${resource?.label ?? 'Record'}${record?.displayName ? `: ${record.displayName}` : ''}`}
       hasFooter={isPending}

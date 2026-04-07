@@ -23,6 +23,7 @@ export function ThreadListBlock({ data, skipEntrance }: BlockRendererProps<Threa
   return (
     <div className='not-prose my-2'>
       <BlockCard
+        data-slot='thread-list-block'
         indicator={<Mail className='size-3 text-muted-foreground' />}
         primaryText='Threads'
         secondaryText={<span className='text-xs text-muted-foreground'>{data.length}</span>}

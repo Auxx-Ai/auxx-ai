@@ -24,8 +24,8 @@ export const DEEPSEEK_CAPABILITIES: ProviderCapabilities = {
       priority: 'model-override',
       helpText: 'Your DeepSeek API key from the DeepSeek platform',
       validation: {
-        pattern: '^sk-[a-zA-Z0-9]+$',
-        message: 'DeepSeek API key must start with sk-',
+        pattern: '^sk-[a-zA-Z0-9\\-_]{10,}$',
+        message: 'DeepSeek API key must start with sk- followed by at least 10 characters',
       },
     },
   ],

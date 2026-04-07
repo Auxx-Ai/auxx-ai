@@ -153,7 +153,7 @@ const PollingTriggerExecutionSchema = AppEventSchema.extend({
 const QuickActionExecutionSchema = AppEventSchema.extend({
   type: z.literal('quick-action'),
   actionId: z.string(),
-  inputs: z.record(z.unknown()),
+  inputs: z.record(z.string(), z.unknown()),
   timeout: z.number().min(1000).max(30000).default(30000),
 })
 

@@ -218,24 +218,26 @@ export const ConditionBadge = ({
       />
 
       {/* Value Input */}
-      <ResourceInput
-        condition={condition}
-        field={fieldDef}
-        value={condition.value}
-        onChange={handleValueChange}
-        disabled={readOnly}
-        shouldPreventDismiss={shouldPreventDismiss}
-        autoGrow={{ minWidth: 30, placeholderIsMinWidth: true }}
-        triggerProps={{
-          size: 'sm',
-          badgeSize: 'sm',
-          className: 'min-h-6 h-6 ps-1 pe-1 mx-0 text-xs',
-          hideIcon: true,
-          showClear: false,
-        }}
-        open={focusedSection === 'value'}
-        onOpenChange={(open) => setFocusedSection(open ? 'value' : null)}
-      />
+      {fieldDef && hasInput && (
+        <ResourceInput
+          condition={condition}
+          field={fieldDef}
+          value={condition.value}
+          onChange={handleValueChange}
+          disabled={readOnly}
+          shouldPreventDismiss={shouldPreventDismiss}
+          autoGrow={{ minWidth: 30, placeholderIsMinWidth: true }}
+          triggerProps={{
+            size: 'sm',
+            badgeSize: 'sm',
+            className: 'min-h-6 h-6 ps-1 pe-1 mx-0 text-xs',
+            hideIcon: true,
+            showClear: false,
+          }}
+          open={focusedSection === 'value'}
+          onOpenChange={(open) => setFocusedSection(open ? 'value' : null)}
+        />
+      )}
 
       {/* Remove Button */}
       {showRemoveButton && !readOnly && (

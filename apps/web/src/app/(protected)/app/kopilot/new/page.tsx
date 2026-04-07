@@ -12,7 +12,7 @@ import {
 } from '@auxx/ui/components/main-page'
 import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
 import { KopilotChat } from '~/components/kopilot/ui/kopilot-chat'
 import { KopilotSessionPicker } from '~/components/kopilot/ui/kopilot-session-picker'
@@ -20,6 +20,11 @@ import { KopilotSessionPicker } from '~/components/kopilot/ui/kopilot-session-pi
 export default function KopilotNewPage() {
   const router = useRouter()
   const startNewSession = useKopilotStore((s) => s.startNewSession)
+
+  // Clear any existing session state when navigating to /new
+  useEffect(() => {
+    startNewSession()
+  }, [startNewSession])
 
   const handleSessionChange = useCallback(
     (sessionId: string | null) => {

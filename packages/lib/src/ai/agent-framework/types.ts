@@ -43,7 +43,14 @@ export type LLMStreamEvent =
   | { type: 'text-delta'; delta: string }
   | { type: 'tool-call'; toolCall: ToolCall }
   | { type: 'usage'; usage: UsageMetrics }
-  | { type: 'done'; content: string; toolCalls: ToolCall[]; usage: UsageMetrics }
+  | {
+      type: 'done'
+      content: string
+      toolCalls: ToolCall[]
+      usage: UsageMetrics
+      providerType?: string
+      credentialSource?: string
+    }
 
 // ===== TOOL TYPES =====
 
@@ -227,6 +234,8 @@ export type AgentEvent =
       usage: UsageMetrics
       provider: string
       model: string
+      providerType?: string
+      credentialSource?: string
     }
   | { type: 'tool-started'; agent: string; tool: string; args: Record<string, unknown> }
   | {

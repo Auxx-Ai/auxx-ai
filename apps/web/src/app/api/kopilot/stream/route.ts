@@ -2,6 +2,7 @@
 
 import path from 'node:path'
 import { database as db } from '@auxx/database'
+import { type UsageTrackingRequest, UsageTrackingService } from '@auxx/lib/ai'
 import {
   AgentEngine,
   type AgentEngineConfig,
@@ -376,8 +377,33 @@ async function runInProcessPath(params: {
         })
       : engine.submitMessage(message, sessionContext)
 
+  const usageEntries: UsageTrackingRequest[] = []
+
   for await (const event of generator) {
     if (request.signal.aborted) break
+
+    // Accumulate usage from LLM completions for batch tracking
+    if (event.type === 'llm-complete') {
+      usageEntries.push({
+        organizationId,
+        userId,
+        provider: event.provider,
+        model: event.model,
+        usage: event.usage,
+        timestamp: new Date(),
+        source: 'agent',
+        sourceId: sessionId,
+        providerType: event.providerType as 'SYSTEM' | 'CUSTOM' | undefined,
+        credentialSource: event.credentialSource as
+          | 'SYSTEM'
+          | 'CUSTOM'
+          | 'MODEL_SPECIFIC'
+          | 'LOAD_BALANCED'
+          | undefined,
+        creditsUsed: event.providerType === 'SYSTEM' ? 1 : 0,
+      })
+    }
+
     send(event)
   }
 
@@ -399,6 +425,20 @@ async function runInProcessPath(params: {
     organizationId,
     domainState: domainStateToSave,
   })
+
+  // Batch usage tracking
+  if (usageEntries.length > 0) {
+    try {
+      const usageService = new UsageTrackingService()
+      await usageService.trackUsageBatch(usageEntries)
+    } catch (err) {
+      logger.error('Failed to track usage batch', {
+        sessionId,
+        entries: usageEntries.length,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
 
   // Auto-title new sessions after first exchange
   if (isNewSession) {

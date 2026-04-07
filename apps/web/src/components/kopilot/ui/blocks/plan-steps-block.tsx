@@ -18,7 +18,7 @@ const STATUS_ICONS = {
 export function PlanStepsBlock({ data, skipEntrance }: BlockRendererProps<PlanStepsData>) {
   return (
     <div className='not-prose my-2'>
-      <BlockCard primaryText='Plan' hasFooter={false}>
+      <BlockCard data-slot='plan-steps-block' primaryText='Plan' hasFooter={false}>
         <div className='space-y-1.5'>
           {data.steps.map((step, i) => (
             <motion.div

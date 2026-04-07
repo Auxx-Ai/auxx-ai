@@ -8,7 +8,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, ArrowDown, RotateCcw, Sparkles } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { getApprovalCard } from './blocks/approval-card-registry'
@@ -53,35 +53,26 @@ export function KopilotMessageList({
   const setError = useKopilotStore((s) => s.setError)
   const activeThinkingGroup = activeThinkingGroupId ? thinkingGroups[activeThinkingGroupId] : null
 
-  const bottomRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
-  const [isAtBottom, setIsAtBottom] = useState(true)
+  const isAtBottom = useRef(true)
 
-  // Observe bottom sentinel for auto-scroll using the scroll viewport as root
+  // Track scroll position to know if user is at the bottom
   useEffect(() => {
-    const sentinel = bottomRef.current
-    const viewport = viewportRef.current
-    if (!sentinel || !viewport) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry) {
-          setIsAtBottom(entry.isIntersecting)
-        }
-      },
-      { root: viewport, threshold: 0 }
-    )
-
-    observer.observe(sentinel)
-    return () => observer.disconnect()
+    const vp = viewportRef.current
+    if (!vp) return
+    const onScroll = () => {
+      isAtBottom.current = vp.scrollHeight - vp.scrollTop - vp.clientHeight < 20
+    }
+    vp.addEventListener('scroll', onScroll, { passive: true })
+    return () => vp.removeEventListener('scroll', onScroll)
   }, [])
 
   // Auto-scroll when new messages arrive or streaming updates
   useEffect(() => {
-    if (isAtBottom && viewportRef.current) {
+    if (isAtBottom.current && viewportRef.current) {
       viewportRef.current.scrollTop = viewportRef.current.scrollHeight
     }
-  }, [messages, streamingContent, isAtBottom])
+  }, [messages, streamingContent])
 
   const scrollToBottom = useCallback(() => {
     if (viewportRef.current) {
@@ -160,6 +151,7 @@ export function KopilotMessageList({
                     key={message.id}
                     message={message}
                     onEdit={onEditMessage ? () => onEditMessage(message.id) : undefined}
+                    onRetry={onRetryMessage ? () => onRetryMessage(message.id) : undefined}
                   />
                 )
                 break
@@ -169,7 +161,6 @@ export function KopilotMessageList({
                     key={message.id}
                     message={message}
                     feedback={message.feedback}
-                    onRetry={onRetryMessage ? () => onRetryMessage(message.id) : undefined}
                     onThumbsUp={onFeedback ? () => onFeedback(message.id, true) : undefined}
                     onThumbsDown={onFeedback ? () => onFeedback(message.id, false) : undefined}
                   />
@@ -244,23 +235,19 @@ export function KopilotMessageList({
             </AlertDescription>
           </Alert>
         )}
-
-        <div ref={bottomRef} className='h-px' />
       </div>
 
-      {/* Scroll to bottom button */}
-      {!isAtBottom && (
-        <div className='sticky bottom-2 flex justify-center'>
-          <Button
-            size='sm'
-            variant='outline'
-            className='h-7 gap-1 rounded-full shadow-md'
-            onClick={scrollToBottom}>
-            <ArrowDown className='size-3' />
-            New messages
-          </Button>
-        </div>
-      )}
+      {/* Scroll to bottom — visible only when BaseScrollArea sets data-overflow-y-end */}
+      <div className='pointer-events-none sticky bottom-2 flex justify-center opacity-0 transition-opacity duration-300 [[data-overflow-y-end]_&]:pointer-events-auto [[data-overflow-y-end]_&]:opacity-100'>
+        <Button
+          size='sm'
+          variant='outline'
+          className='h-7 gap-1 rounded-full shadow-md'
+          onClick={scrollToBottom}>
+          <ArrowDown className='size-3' />
+          New messages
+        </Button>
+      </div>
     </ScrollArea>
   )
 }

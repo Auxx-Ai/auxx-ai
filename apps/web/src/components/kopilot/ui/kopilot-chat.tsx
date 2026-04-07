@@ -76,7 +76,7 @@ export function KopilotChat({
 
   const handleFeedback = useCallback(
     (messageId: string, isPositive: boolean) => {
-      if (!activeSessionId) return
+      if (!activeSessionId || rateMessage.isPending) return
 
       const current = messageMap[messageId]?.feedback?.isPositive
       const newValue = current === isPositive ? null : isPositive
@@ -128,11 +128,8 @@ export function KopilotChat({
   )
 
   const handleRetryMessage = useCallback(
-    (assistantMessageId: string) => {
-      const assistantMsg = messageMap[assistantMessageId]
-      if (!assistantMsg?.parentId) return
-
-      const userMsg = messageMap[assistantMsg.parentId]
+    (userMessageId: string) => {
+      const userMsg = messageMap[userMessageId]
       if (!userMsg || userMsg.role !== 'user') return
 
       const text = userMsg.content.replace(/<[^>]*>/g, '')

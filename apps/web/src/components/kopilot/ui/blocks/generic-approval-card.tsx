@@ -25,6 +25,7 @@ export function GenericApprovalCard({
 
   return (
     <BlockCard
+      data-slot='generic-approval-card'
       indicator={<StatusIndicator status={status} />}
       primaryText='Approval required'
       secondaryText={<span className='font-mono text-xs'>{toolName}</span>}

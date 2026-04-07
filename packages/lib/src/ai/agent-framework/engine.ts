@@ -131,10 +131,21 @@ export class AgentEngine {
       // Replace the fake "awaiting_approval" tool result with a rejection so
       // the responder knows the action was denied (avoids duplicate tool results).
       const rejectionContent = JSON.stringify({ rejected: true, tool: pending.toolName })
+      const domainState = { ...(this.state.domainState as Record<string, unknown>) }
+      if (Array.isArray(domainState.toolResults)) {
+        domainState.toolResults = (
+          domainState.toolResults as { tool: string; result: unknown }[]
+        ).map((r) =>
+          r.tool === pending.toolName
+            ? { ...r, result: { rejected: true, reason: 'User declined the action' } }
+            : r
+        )
+      }
       this.state = {
         ...this.state,
         waitingForApproval: false,
         pendingToolCall: undefined,
+        domainState,
         messages: this.state.messages.map((m) =>
           m.role === 'tool' && m.toolCallId === pending.toolCallId
             ? { ...m, content: rejectionContent }
@@ -185,10 +196,17 @@ export class AgentEngine {
         result,
       }
       // Replace the fake "awaiting_approval" tool result with the real one
-      // (avoids duplicate tool results which break OpenAI message validation).
+      // in both messages and domainState.toolResults so the responder sees the actual outcome.
       const resultContent = JSON.stringify(result)
+      const domainState = { ...(this.state.domainState as Record<string, unknown>) }
+      if (Array.isArray(domainState.toolResults)) {
+        domainState.toolResults = (
+          domainState.toolResults as { tool: string; result: unknown }[]
+        ).map((r) => (r.tool === pending.toolName ? { ...r, result: result.output ?? result } : r))
+      }
       this.state = {
         ...this.state,
+        domainState,
         messages: this.state.messages.map((m) =>
           m.role === 'tool' && m.toolCallId === pending.toolCallId
             ? { ...m, content: resultContent }

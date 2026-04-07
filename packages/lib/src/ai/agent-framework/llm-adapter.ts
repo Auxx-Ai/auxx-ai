@@ -71,6 +71,8 @@ export function createCallModel(config: LLMAdapterConfig) {
     let fullContent = ''
     let lastToolCalls: ToolCall[] = []
     let lastUsage: UsageMetrics = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+    let lastProviderType: string | undefined
+    let lastCredentialSource: string | undefined
 
     const stream = orchestrator.streamInvoke(request)
 
@@ -90,6 +92,8 @@ export function createCallModel(config: LLMAdapterConfig) {
             fullContent = response.content || fullContent
             lastToolCalls = response.tool_calls ?? lastToolCalls
             lastUsage = response.usage ?? lastUsage
+            lastProviderType = response.providerType ?? lastProviderType
+            lastCredentialSource = response.credentialSource ?? lastCredentialSource
           }
           break
         }
@@ -152,6 +156,8 @@ export function createCallModel(config: LLMAdapterConfig) {
       content: fullContent,
       toolCalls: lastToolCalls,
       usage: lastUsage,
+      providerType: lastProviderType,
+      credentialSource: lastCredentialSource,
     }
   }
 }

@@ -14,7 +14,6 @@ interface AssistantMessageProps {
   message?: KopilotMessage
   /** When streaming, render this content instead of message.content */
   streamingContent?: string
-  onRetry?: () => void
   onThumbsUp?: () => void
   onThumbsDown?: () => void
   feedback?: { isPositive: boolean }
@@ -23,7 +22,6 @@ interface AssistantMessageProps {
 export function AssistantMessage({
   message,
   streamingContent,
-  onRetry,
   onThumbsUp,
   onThumbsDown,
   feedback,
@@ -48,12 +46,19 @@ export function AssistantMessage({
   // Memoize components so react-markdown can reconcile without remounting blocks
   const markdownComponents = useMemo(
     () => ({
+      pre({ children }: { children?: React.ReactNode }) {
+        return <>{children}</>
+      },
       code({ className, children }: { className?: string; children?: React.ReactNode }) {
         const match = className?.match(/^language-auxx:(.+)$/)
         if (match) {
           return <AuxxBlock type={match[1]} rawContent={String(children).trim()} />
         }
-        return <code className={className}>{children}</code>
+        return (
+          <pre>
+            <code className={className}>{children}</code>
+          </pre>
+        )
       },
     }),
     []
@@ -79,7 +84,6 @@ export function AssistantMessage({
             role='assistant'
             content={content}
             feedback={feedback}
-            onRetry={onRetry}
             onThumbsUp={onThumbsUp}
             onThumbsDown={onThumbsDown}
           />
