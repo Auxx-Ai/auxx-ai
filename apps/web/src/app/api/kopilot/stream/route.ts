@@ -7,8 +7,10 @@ import {
   AgentEngine,
   type AgentEngineConfig,
   type AgentEvent,
+  cleanDomainStateForModelSwitch,
   createCallModel,
   enqueueAgentJob,
+  flattenMessagesForModelSwitch,
   subscribeToAgentEvents,
 } from '@auxx/lib/ai/agent-framework'
 import {
@@ -28,6 +30,7 @@ import {
   getSessionById,
   saveSessionMessages,
   updateSessionDomainState,
+  updateSessionModelId,
   updateSessionTitle,
 } from '@auxx/services'
 import { headers } from 'next/headers'
@@ -149,6 +152,7 @@ export async function POST(request: NextRequest) {
         let isNewSession = false
         let savedMessages: Record<string, unknown>[] = []
         let savedDomainState: Record<string, unknown> = {}
+        let storedModelId: string | null = null
 
         if (sessionId) {
           const sessionResult = await getSessionById({ sessionId, organizationId })
@@ -159,6 +163,7 @@ export async function POST(request: NextRequest) {
           }
           savedMessages = (sessionResult.value.messages ?? []) as Record<string, unknown>[]
           savedDomainState = (sessionResult.value.domainState ?? {}) as Record<string, unknown>
+          storedModelId = sessionResult.value.modelId ?? null
         } else {
           const createResult = await createSession({
             organizationId,
@@ -207,6 +212,7 @@ export async function POST(request: NextRequest) {
                 modelId: body.modelId,
                 savedMessages,
                 savedDomainState,
+                storedModelId,
                 send,
                 request,
                 isNewSession,
@@ -267,11 +273,12 @@ async function runInProcessPath(params: {
   modelId?: string
   savedMessages: Record<string, unknown>[]
   savedDomainState: Record<string, unknown>
+  storedModelId: string | null
   send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
   request: NextRequest
   isNewSession: boolean
 }) {
-  const {
+  let {
     sessionId,
     organizationId,
     userId,
@@ -284,6 +291,7 @@ async function runInProcessPath(params: {
     modelId,
     savedMessages,
     savedDomainState,
+    storedModelId,
     send,
     request,
     isNewSession,
@@ -316,6 +324,43 @@ async function runInProcessPath(params: {
     if (systemDefault) {
       defaultProvider = systemDefault.provider
       defaultModel = systemDefault.model
+    }
+  }
+
+  // Compute resolved model ID for session tracking
+  const resolvedModelId =
+    defaultProvider && defaultModel ? `${defaultProvider}:${defaultModel}` : null
+
+  // Detect model switch on existing sessions, stamp modelId on new sessions
+  if (resolvedModelId) {
+    if (!isNewSession) {
+      if (storedModelId && storedModelId !== resolvedModelId) {
+        // Model switch detected — flatten history for the new model
+        logger.info('Model switch detected, flattening history', {
+          sessionId,
+          from: storedModelId,
+          to: resolvedModelId,
+        })
+        savedMessages = flattenMessagesForModelSwitch(savedMessages as any) as any
+        savedDomainState = cleanDomainStateForModelSwitch(savedDomainState)
+
+        // Persist flattened state and new modelId
+        await Promise.all([
+          updateSessionModelId({ sessionId, organizationId, modelId: resolvedModelId }),
+          saveSessionMessages({
+            sessionId,
+            organizationId,
+            messages: savedMessages,
+          }),
+          updateSessionDomainState({ sessionId, organizationId, domainState: savedDomainState }),
+        ])
+      } else if (!storedModelId) {
+        // Backfill: old session had no modelId — stamp it now
+        await updateSessionModelId({ sessionId, organizationId, modelId: resolvedModelId })
+      }
+    } else {
+      // New session — stamp with modelId
+      await updateSessionModelId({ sessionId, organizationId, modelId: resolvedModelId })
     }
   }
 
@@ -465,6 +510,8 @@ async function runWorkerPath(params: {
   request: NextRequest
 }) {
   const { sessionId, organizationId, userId, message, type, page, context, send, request } = params
+
+  // TODO: Add model-switch detection when worker path is enabled
 
   // 1. Subscribe to Redis events BEFORE enqueuing to avoid race conditions.
   // Use a promise to detect terminal events and close the stream.

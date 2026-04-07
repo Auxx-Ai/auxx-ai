@@ -1,0 +1,1 @@
+ALTER TABLE "AiAgentSession" ADD COLUMN "modelId" text;

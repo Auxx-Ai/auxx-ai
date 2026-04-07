@@ -46,11 +46,16 @@ export function useLoadSession() {
   const setMessages = useKopilotStore((s) => s.setMessages)
   const setActiveSessionId = useKopilotStore((s) => s.setActiveSessionId)
   const setMessageFeedback = useKopilotStore((s) => s.setMessageFeedback)
+  const setSelectedModelId = useKopilotStore((s) => s.setSelectedModelId)
   const reconstructThinkingGroups = useKopilotStore((s) => s.reconstructThinkingGroups)
 
   return async (sessionId: string) => {
     setActiveSessionId(sessionId)
     const data = await utils.kopilot.getSession.fetch({ sessionId })
+
+    // Restore model picker to the session's last-used model
+    setSelectedModelId((data as any)?.modelId ?? null)
+
     if (data?.messages) {
       const raw = data.messages as any[]
 

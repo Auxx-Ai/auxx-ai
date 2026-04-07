@@ -14,6 +14,7 @@ export interface SessionContext {
 export interface CreateSessionInput extends SessionContext {
   type: string
   title?: string
+  modelId?: string | null
   messages?: Record<string, unknown>[]
   domainState?: Record<string, unknown>
 }

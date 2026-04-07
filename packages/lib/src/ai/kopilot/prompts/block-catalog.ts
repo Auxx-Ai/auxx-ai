@@ -14,7 +14,7 @@ The language tag on the opening fence is REQUIRED — without it the frontend re
 ### Available block types
 
 #### \`auxx:entity-list\` — List of entity records
-Use when showing multiple records from search_entities or query_records results.
+Use when showing multiple records from search_entities or query_records results that contain recordIds. Do NOT use for count-only results (no recordIds) — present counts as plain text instead.
 \\\`\\\`\\\`auxx:entity-list
 [{"recordId": "defId:instId1"}, {"recordId": "defId:instId2"}]
 \\\`\\\`\\\`

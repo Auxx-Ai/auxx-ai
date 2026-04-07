@@ -17,6 +17,7 @@ export {
   getSessionById,
   saveSessionMessages,
   updateSessionDomainState,
+  updateSessionModelId,
   updateSessionTitle,
 } from './ai-agent-sessions'
 // AI Message Feedback
