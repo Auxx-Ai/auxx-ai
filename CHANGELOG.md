@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.113](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.112...auxx-v0.1.113) (2026-04-07)
+
+
+### Features
+
+* enhance MultiSelectPicker with edit and browse functionality ([#368](https://github.com/Auxx-Ai/auxx-ai/issues/368)) ([12189d4](https://github.com/Auxx-Ai/auxx-ai/commit/12189d48f7bcfbcd54103a5e73fa20335d1040fd))
+* enhance OpenAI LLM client with model retirement checks and improved capabilities ([#370](https://github.com/Auxx-Ai/auxx-ai/issues/370)) ([b7fc91b](https://github.com/Auxx-Ai/auxx-ai/commit/b7fc91b8d5b8d3b811adb3ebf169a1dbf15d87ae))
+* enhance provider configuration with unique type index and model overrides ([#371](https://github.com/Auxx-Ai/auxx-ai/issues/371)) ([5495a53](https://github.com/Auxx-Ai/auxx-ai/commit/5495a53061f1f058aae52fcf3150909b47b30fa5))
+
 ## [0.1.112](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.111...auxx-v0.1.112) (2026-04-04)
 
 
