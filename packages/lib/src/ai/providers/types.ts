@@ -557,7 +557,15 @@ export const DEFAULT_CACHE_TTL = {
   MODEL_INSTANCE: 1800, // 30 minutes
 } as const
 
-export const SUPPORTED_PROVIDERS = ['openai', 'anthropic', 'google', 'groq', 'deepseek'] as const
+export const SUPPORTED_PROVIDERS = [
+  'openai',
+  'anthropic',
+  'google',
+  'groq',
+  'deepseek',
+  'qwen',
+  'kimi',
+] as const
 
 export type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number]
 

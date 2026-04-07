@@ -125,7 +125,7 @@ export class GroqClient extends ProviderClient {
     // In a real implementation, you would return the Groq SDK client
     // For now, return a mock client
     return {
-      apiKey: credentials.groq_api_key,
+      apiKey: this.requireApiKey(credentials, 'groq_api_key'),
     }
   }
 

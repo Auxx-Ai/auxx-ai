@@ -61,6 +61,7 @@ export { ProviderClient } from './providers/base/provider-client'
 export { DeepSeekClient } from './providers/deepseek/deepseek-client'
 export { GoogleClient } from './providers/google/google-client'
 export { GroqClient } from './providers/groq/groq-client'
+export { KimiClient } from './providers/kimi/kimi-client'
 // ===== EXISTING PROVIDER CLIENTS =====
 export { OpenAIClient } from './providers/openai/openai-client'
 // ===== OPENAI SPECIALIZED CLIENTS =====
@@ -74,6 +75,7 @@ export {
 export { ProviderConfigurationService } from './providers/provider-configuration-service'
 export { ProviderManager } from './providers/provider-manager'
 export { ProviderRegistry } from './providers/provider-registry'
+export { QwenClient } from './providers/qwen/qwen-client'
 export { type SystemModelDefaultEntity, SystemModelService } from './providers/system-model-service'
 // ===== PROVIDER TYPES (Existing) =====
 export type {

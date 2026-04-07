@@ -1707,7 +1707,7 @@ export class ProviderConfigurationService {
       modelConfigurations.map(async (mc) => ({
         model: mc.model,
         modelType: mc.modelType as ModelType,
-        credentials: mc.credentials,
+        credentials: mc.credentials ? await this._decryptCredentials(mc.credentials) : undefined,
         parameters: mc.config ? [mc.config] : [], // Convert config to parameters array format
       }))
     )

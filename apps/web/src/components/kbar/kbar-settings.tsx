@@ -173,7 +173,7 @@ export const useKbarAdminSettings = () => {
         name: 'AI Models',
         icon: 'sparkles',
         shortcut: ['s', 'a'],
-        keywords: 'ai, models, openai, gemini, deepseek, chatgpt, claude',
+        keywords: 'ai, models, openai, gemini, deepseek, qwen, kimi, chatgpt, claude',
         section: 'Settings',
         parent: 'goToSettings',
         perform: () => goToSetting('/aiModels'),

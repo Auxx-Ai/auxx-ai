@@ -44,6 +44,20 @@ export const PROVIDER_THEMES: Record<string, ProviderTheme> = {
     textColor: 'text-white',
     borderColor: 'border-indigo-200',
   },
+  qwen: {
+    icon: 'qwen',
+    color: '#615EFF', // Qwen purple
+    bgColor: 'bg-violet-600',
+    textColor: 'text-white',
+    borderColor: 'border-violet-200',
+  },
+  kimi: {
+    icon: 'kimi',
+    color: '#027AFF', // Kimi blue
+    bgColor: 'bg-blue-500',
+    textColor: 'text-white',
+    borderColor: 'border-blue-200',
+  },
 }
 
 // Icon mappings for backwards compatibility
@@ -53,4 +67,6 @@ export const PROVIDER_ICON_LETTERS: Record<string, string> = {
   google: 'G',
   groq: 'Q',
   deepseek: 'D',
+  qwen: 'Qw',
+  kimi: 'Ki',
 }

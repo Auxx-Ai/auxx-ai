@@ -130,7 +130,7 @@ export class AnthropicClient extends ProviderClient {
 
   getApiClient(credentials: ProviderCredentials): Anthropic {
     return new Anthropic({
-      apiKey: credentials.anthropic_api_key,
+      apiKey: this.requireApiKey(credentials, 'anthropic_api_key'),
     })
   }
 
