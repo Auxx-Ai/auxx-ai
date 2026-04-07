@@ -87,8 +87,9 @@ function buildParams(entry: TestModelEntry, overrides: Record<string, any> = {})
   // Don't send reasoning_effort — the Chat Completions API only accepts 'medium'
   // (the default) for most models. The full range (low/high/xhigh) requires the
   // Responses API which we don't use yet.
+  // Use 200 tokens — reasoning models need headroom for thinking tokens.
   const parameters: Record<string, any> = {}
-  parameters[entry.maxTokensParam] = 10
+  parameters[entry.maxTokensParam] = 200
 
   return {
     model: entry.modelId,
@@ -178,7 +179,7 @@ describe.skipIf(!OPENAI_API_KEY)('OpenAI Integration Tests', () => {
               buildParams(entry, {
                 messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
                 tools: [SIMPLE_TOOL],
-                parameters: { [entry.maxTokensParam]: 50 },
+                parameters: { [entry.maxTokensParam]: 200 },
               })
             )
           )
@@ -198,7 +199,7 @@ describe.skipIf(!OPENAI_API_KEY)('OpenAI Integration Tests', () => {
               buildParams(entry, {
                 messages: [{ role: 'user', content: 'Say hello' }],
                 response_format: JSON_SCHEMA_FORMAT,
-                parameters: { [entry.maxTokensParam]: 50 },
+                parameters: { [entry.maxTokensParam]: 200 },
               })
             )
           )

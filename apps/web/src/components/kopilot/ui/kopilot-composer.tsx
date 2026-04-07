@@ -2,6 +2,7 @@
 
 'use client'
 
+import { ModelType } from '@auxx/lib/ai/providers/types'
 import type { PromptTemplateItem } from '@auxx/lib/prompt-templates'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
@@ -19,6 +20,8 @@ import {
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { Tooltip } from '~/components/global/tooltip'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
+import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
+import { api } from '~/trpc/react'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { usePromptTemplates } from '../hooks/use-prompt-templates'
 import type { KopilotMessage } from '../stores/kopilot-store'
@@ -94,6 +97,25 @@ export function KopilotComposer({
   const editingMessageId = useKopilotStore((s) => s.editingMessageId)
   const setEditingMessage = useKopilotStore((s) => s.setEditingMessage)
   const messageMap = useKopilotStore((s) => s.messageMap)
+  const selectedModelId = useKopilotStore((s) => s.selectedModelId)
+  const setSelectedModelId = useKopilotStore((s) => s.setSelectedModelId)
+
+  // Resolve system LLM default to show in picker when no override is selected
+  const { data: systemDefaults } = api.aiIntegration.getSystemModelDefaults.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  })
+  const systemLlmDefault = useMemo(() => {
+    const llmDefault = systemDefaults?.find((d) => d.modelType === ModelType.LLM)
+    return llmDefault ? `${llmDefault.provider}:${llmDefault.model}` : null
+  }, [systemDefaults])
+
+  /** Filter models to only those supporting structured output + tool calling (required by Kopilot) */
+  const handleModelFilter = useCallback(
+    (model: ModelPickerItem | null) => {
+      setSelectedModelId(model?.id ?? null)
+    },
+    [setSelectedModelId]
+  )
 
   const { templates } = usePromptTemplates()
   const templateMap = useMemo(() => new Map(templates.map((t) => [t.id, t.prompt])), [templates])
@@ -219,6 +241,7 @@ export function KopilotComposer({
       type: 'message',
       page,
       context,
+      modelId: selectedModelId ?? undefined,
     })
 
     // Clear edit state and editor
@@ -240,6 +263,7 @@ export function KopilotComposer({
     messages,
     templateMap,
     templateDisplayMap,
+    selectedModelId,
   ])
 
   // Keep ref in sync
@@ -326,6 +350,16 @@ export function KopilotComposer({
               }}
             />
           </InlinePickerPopover>
+        </div>
+        <div className='absolute bottom-1 left-1'>
+          <AiModelPicker
+            value={selectedModelId ?? systemLlmDefault}
+            onChange={handleModelFilter}
+            modelTypes={[ModelType.LLM]}
+            triggerVariant='transparent'
+            triggerClassName='h-7 text-xs text-muted-foreground'
+            compact
+          />
         </div>
         <div className='absolute bottom-1 right-1 flex items-center gap-0.5'>
           <Tooltip content='Insert prompt template' shortcut='/'>

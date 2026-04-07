@@ -73,7 +73,15 @@ export async function manageContext(
   // Split into: system (first), middle (to summarize), recent (to keep)
   const systemMessages = messages[0]?.role === 'system' ? [messages[0]] : []
   const startIdx = systemMessages.length
-  const recentStartIdx = Math.max(startIdx, messages.length - recentCount)
+  let recentStartIdx = Math.max(startIdx, messages.length - recentCount)
+
+  // Never split in the middle of a tool call chain. OpenAI requires every
+  // 'tool' message to follow an assistant message with the matching tool_calls.
+  // Walk back until the recent slice starts on a safe boundary (user or plain assistant).
+  while (recentStartIdx > startIdx && messages[recentStartIdx]?.role === 'tool') {
+    recentStartIdx--
+  }
+
   const middleMessages = messages.slice(startIdx, recentStartIdx)
   const recentMessages = messages.slice(recentStartIdx)
 

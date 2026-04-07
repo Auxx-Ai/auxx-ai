@@ -156,6 +156,10 @@ interface KopilotState {
   setActiveSessionId: (id: string | null) => void
   startNewSession: () => void
 
+  // Model override — null means "use system default"
+  selectedModelId: string | null
+  setSelectedModelId: (modelId: string | null) => void
+
   // Tree model
   messageMap: Record<string, KopilotMessage>
   childrenMap: Record<string, string[]>
@@ -263,6 +267,10 @@ export const useKopilotStore = create<KopilotState>()(
           activeThinkingGroupId: null,
           thinkingGroups: {},
         }),
+
+      // Model override
+      selectedModelId: null,
+      setSelectedModelId: (selectedModelId) => set({ selectedModelId }),
 
       // Tree model
       ...emptyTreeState,

@@ -51,7 +51,7 @@ export async function processAgentMessage(ctx: JobContext<AgentJobPayload>) {
 
 async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   const { data, signal } = ctx
-  const { sessionId, organizationId, userId, message, type, domain, page, context } = data
+  const { sessionId, organizationId, userId, message, type, domain, page, context, modelId } = data
 
   // 1. Load session from DB
   const sessionResult = await getSessionById({ sessionId, organizationId })
@@ -61,13 +61,14 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   const session = sessionResult.value
 
   // 2. Build domain config based on domain type
-  const domainConfig = buildDomainConfig(domain, {
+  const domainConfig = await buildDomainConfig(domain, {
     organizationId,
     userId,
     sessionId,
     page,
     context,
     signal,
+    modelId,
   })
 
   // 3. Create LLM adapter
@@ -145,16 +146,23 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     domainState: finalState.domainState as Record<string, unknown>,
   })
 
-  // 8. Fire-and-forget batch usage tracking
+  // 8. Batch usage tracking
   if (usageEntries.length > 0) {
-    const usageService = new UsageTrackingService()
-    usageService.trackUsageBatch(usageEntries).catch((err) => {
+    logger.info('Tracking agent usage batch', {
+      sessionId,
+      entries: usageEntries.length,
+      totalTokens: usageEntries.reduce((sum, e) => sum + (e.usage.total_tokens || 0), 0),
+    })
+    try {
+      const usageService = new UsageTrackingService()
+      await usageService.trackUsageBatch(usageEntries)
+    } catch (err) {
       logger.error('Failed to track usage batch', {
         sessionId,
         entries: usageEntries.length,
         error: err instanceof Error ? err.message : String(err),
       })
-    })
+    }
   }
 
   // 9. Publish terminal event
@@ -166,7 +174,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
 /**
  * Build the appropriate domain config based on the session type.
  */
-function buildDomainConfig(
+async function buildDomainConfig(
   domain: string,
   params: {
     organizationId: string
@@ -175,6 +183,7 @@ function buildDomainConfig(
     page?: string
     context?: Record<string, unknown>
     signal?: AbortSignal
+    modelId?: string
   }
 ) {
   switch (domain) {
@@ -190,9 +199,30 @@ function buildDomainConfig(
       registry.register(createEntityCapabilities(getToolDeps))
       registry.register(createMailCapabilities(getToolDeps))
 
+      // Resolve model: explicit override → system default → hardcoded fallback
+      let defaultModel: string | undefined
+      let defaultProvider: string | undefined
+      if (params.modelId) {
+        const [provider, ...modelParts] = params.modelId.split(':')
+        defaultProvider = provider
+        defaultModel = modelParts.join(':')
+      } else {
+        const { database } = await import('@auxx/database')
+        const { SystemModelService } = await import('../providers/system-model-service')
+        const { ModelType } = await import('../providers/types')
+        const systemModelService = new SystemModelService(database, params.organizationId)
+        const systemDefault = await systemModelService.getDefault(ModelType.LLM)
+        if (systemDefault) {
+          defaultProvider = systemDefault.provider
+          defaultModel = systemDefault.model
+        }
+      }
+
       return createKopilotDomainConfig({
         capabilityRegistry: registry,
         page: params.page,
+        defaultModel,
+        defaultProvider,
       })
     }
     default:

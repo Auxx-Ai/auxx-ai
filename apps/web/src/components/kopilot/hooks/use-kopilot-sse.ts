@@ -15,6 +15,8 @@ export interface KopilotRequest {
   approvalAction?: 'approve' | 'reject'
   /** Input amendment for approval actions (e.g. { saveAsDraft: true }) */
   inputAmendment?: Record<string, unknown>
+  /** Model override in "provider:model" format — omit to use system default */
+  modelId?: string
 }
 
 interface UseKopilotSSEOptions {
@@ -175,6 +177,10 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           break
         }
         case 'approval-required': {
+          // Finalize the thinking group and clear it so the active tool steps
+          // don't flash before the approval card renders.
+          finalizeThinkingGroup()
+          attachThinkingGroupToMessage('_approval_') // clears activeThinkingGroupId
           addMessage({
             id: generateId(),
             role: 'system',

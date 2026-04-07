@@ -119,7 +119,8 @@ export class AgentEngine {
 
     const route = this.state.currentRoute ?? 'unknown'
 
-    // Rejection: short-circuit without any LLM call
+    // Rejection: record the rejection and run remaining agents (responder)
+    // so the user gets an acknowledgement message.
     if (opts.action === 'reject') {
       yield {
         type: 'tool-rejected',
@@ -127,7 +128,20 @@ export class AgentEngine {
         tool: pending.toolName,
         toolCallId: pending.toolCallId,
       }
-      this.state = { ...this.state, waitingForApproval: false, pendingToolCall: undefined }
+      // Replace the fake "awaiting_approval" tool result with a rejection so
+      // the responder knows the action was denied (avoids duplicate tool results).
+      const rejectionContent = JSON.stringify({ rejected: true, tool: pending.toolName })
+      this.state = {
+        ...this.state,
+        waitingForApproval: false,
+        pendingToolCall: undefined,
+        messages: this.state.messages.map((m) =>
+          m.role === 'tool' && m.toolCallId === pending.toolCallId
+            ? { ...m, content: rejectionContent }
+            : m
+        ),
+      }
+      yield* this.runRemainingAgents(route, pending.agentName)
       yield { type: 'pipeline-completed', route }
       return
     }
@@ -170,19 +184,16 @@ export class AgentEngine {
         tool: pending.toolName,
         result,
       }
-      // Persist the tool result so it survives page refresh
+      // Replace the fake "awaiting_approval" tool result with the real one
+      // (avoids duplicate tool results which break OpenAI message validation).
+      const resultContent = JSON.stringify(result)
       this.state = {
         ...this.state,
-        messages: [
-          ...this.state.messages,
-          {
-            role: 'tool' as const,
-            content: JSON.stringify(result),
-            toolCallId: pending.toolCallId,
-            timestamp: Date.now(),
-            metadata: { agent: pending.agentName },
-          },
-        ],
+        messages: this.state.messages.map((m) =>
+          m.role === 'tool' && m.toolCallId === pending.toolCallId
+            ? { ...m, content: resultContent }
+            : m
+        ),
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -200,36 +211,45 @@ export class AgentEngine {
 
     this.state = { ...this.state, waitingForApproval: false, pendingToolCall: undefined }
 
-    // Continue the pipeline — run remaining agents after the one that paused.
-    // e.g. if executor paused, run the responder so the user gets a summary.
-    const routeDef = this.config.domainConfig.routes.find((r) => r.name === route)
-    if (routeDef) {
-      const pausedIdx = routeDef.agents.indexOf(pending.agentName)
-      const remainingAgents = routeDef.agents.slice(pausedIdx + 1)
-
-      for (const agentName of remainingAgents) {
-        if (this.config.signal?.aborted) break
-        if (agentName === this.config.domainConfig.supervisorAgent) continue
-
-        const nextAgent = this.config.domainConfig.agents[agentName]
-        if (!nextAgent) continue
-
-        yield* this.runAgentAndUpdateState(nextAgent, this.config)
-      }
-
-      // Extract final assistant message (same as executeRoute)
-      const lastMessage = this.state.messages[this.state.messages.length - 1]
-      if (lastMessage?.role === 'assistant' && lastMessage.content) {
-        yield { type: 'message', role: 'assistant', content: lastMessage.content }
-      }
-    }
-
+    // Continue the pipeline — run remaining agents (e.g. responder) so the user gets a summary.
+    yield* this.runRemainingAgents(route, pending.agentName)
     yield { type: 'pipeline-completed', route }
   }
 
   /** Abort the current pipeline execution. */
   interrupt(): void {
     this.abortController?.abort()
+  }
+
+  /**
+   * Run agents that come after `pausedAgentName` in the route's agent list.
+   * Used after approval/rejection to continue the pipeline (e.g. run responder).
+   */
+  private async *runRemainingAgents(
+    routeName: string,
+    pausedAgentName: string
+  ): AsyncGenerator<AgentEvent> {
+    const routeDef = this.config.domainConfig.routes.find((r) => r.name === routeName)
+    if (!routeDef) return
+
+    const pausedIdx = routeDef.agents.indexOf(pausedAgentName)
+    const remainingAgents = routeDef.agents.slice(pausedIdx + 1)
+
+    for (const agentName of remainingAgents) {
+      if (this.config.signal?.aborted) break
+      if (agentName === this.config.domainConfig.supervisorAgent) continue
+
+      const nextAgent = this.config.domainConfig.agents[agentName]
+      if (!nextAgent) continue
+
+      yield* this.runAgentAndUpdateState(nextAgent, this.config)
+    }
+
+    // Extract final assistant message (same as executeRoute)
+    const lastMessage = this.state.messages[this.state.messages.length - 1]
+    if (lastMessage?.role === 'assistant' && lastMessage.content) {
+      yield { type: 'message', role: 'assistant', content: lastMessage.content }
+    }
   }
 
   // ===== PIPELINE =====

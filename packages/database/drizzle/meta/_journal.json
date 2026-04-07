@@ -778,6 +778,13 @@
       "when": 1775259147259,
       "tag": "0110_add-prompt-template",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1775540308929,
+      "tag": "0111_provider-config-unique-with-type",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,2 @@
+DROP INDEX "ProviderConfiguration_organizationId_provider_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "ProviderConfiguration_org_provider_type_key" ON "ProviderConfiguration" USING btree ("organizationId","provider","providerType");
