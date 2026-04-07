@@ -37,12 +37,34 @@ export function estimateMessageTokens(messages: SessionMessage[]): number {
 }
 
 /**
+ * Strip reasoning_content from all messages except the last assistant that has it.
+ * Reasoning is turn-specific — prior reasoning is stale context that wastes tokens.
+ * Called proactively before context compression, not just at budget limits.
+ */
+export function stripStaleReasoningContent(messages: SessionMessage[]): SessionMessage[] {
+  const lastReasoningIdx = messages.findLastIndex(
+    (m) => m.role === 'assistant' && m.reasoning_content
+  )
+
+  if (lastReasoningIdx === -1) return messages
+
+  return messages.map((msg, i) => {
+    if (i < lastReasoningIdx && msg.reasoning_content) {
+      const { reasoning_content, ...rest } = msg
+      return rest as SessionMessage
+    }
+    return msg
+  })
+}
+
+/**
  * Manage conversation context by summarizing old messages when over budget.
  *
  * Strategy:
- * 1. Keep the system message (index 0) always
- * 2. Keep the most recent N messages intact
- * 3. If total tokens exceed budget, summarize the middle section
+ * 1. Strip stale reasoning_content (only keep the last assistant's)
+ * 2. Keep the system message (index 0) always
+ * 3. Keep the most recent N messages intact
+ * 4. If total tokens exceed budget, summarize the middle section
  */
 export async function manageContext(
   messages: SessionMessage[],
@@ -52,6 +74,9 @@ export async function manageContext(
   const tokenBudget =
     contextConfig?.tokenBudget ?? config.contextTokenBudget ?? DEFAULT_TOKEN_BUDGET
   const recentCount = contextConfig?.recentMessagesToKeep ?? RECENT_MESSAGES_TO_KEEP
+
+  // Proactively strip stale reasoning_content before budget check
+  messages = stripStaleReasoningContent(messages)
 
   const totalTokens = estimateMessageTokens(messages)
 

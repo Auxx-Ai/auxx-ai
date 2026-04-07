@@ -49,6 +49,7 @@ export function createExecutorAgent(
             content:
               m.role === 'assistant' && m.toolCalls?.length ? m.content || null : m.content || '',
             tool_call_id: m.toolCallId,
+            reasoning_content: m.reasoning_content,
           }
           // Include tool_calls on assistant messages so subsequent tool results are valid
           if (m.role === 'assistant' && m.toolCalls?.length) {

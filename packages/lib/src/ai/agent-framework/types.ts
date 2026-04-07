@@ -12,6 +12,8 @@ export interface SessionMessage {
   toolCallId?: string
   /** Tool calls the assistant wants to make */
   toolCalls?: ToolCall[]
+  /** Reasoning content from thinking-enabled models (DeepSeek, Kimi, Qwen) */
+  reasoning_content?: string
   /** Timestamp when this message was added */
   timestamp: number
   /** Parent message ID for conversation tree branching (null = root) */
@@ -41,6 +43,7 @@ export interface LLMCallParams {
 /** Events yielded by the LLM adapter during streaming */
 export type LLMStreamEvent =
   | { type: 'text-delta'; delta: string }
+  | { type: 'reasoning-delta'; delta: string }
   | { type: 'tool-call'; toolCall: ToolCall }
   | { type: 'usage'; usage: UsageMetrics }
   | {
@@ -50,6 +53,7 @@ export type LLMStreamEvent =
       usage: UsageMetrics
       providerType?: string
       credentialSource?: string
+      reasoning_content?: string
     }
 
 // ===== TOOL TYPES =====
@@ -227,6 +231,7 @@ export type AgentEvent =
   | { type: 'pipeline-started'; route: string; agents: string[] }
   | { type: 'agent-started'; agent: string }
   | { type: 'llm-stream'; agent: string; delta: string }
+  | { type: 'llm-reasoning-stream'; agent: string; delta: string }
   | {
       type: 'llm-complete'
       agent: string

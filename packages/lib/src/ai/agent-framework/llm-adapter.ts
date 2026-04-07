@@ -73,6 +73,7 @@ export function createCallModel(config: LLMAdapterConfig) {
     let lastUsage: UsageMetrics = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
     let lastProviderType: string | undefined
     let lastCredentialSource: string | undefined
+    let lastReasoningContent: string | undefined
 
     const stream = orchestrator.streamInvoke(request)
 
@@ -100,6 +101,26 @@ export function createCallModel(config: LLMAdapterConfig) {
       }
     }
 
+    // Reasoning content buffer (same batching strategy as content deltas)
+    let reasoningDeltaBuffer = ''
+    let reasoningFlushTimer: ReturnType<typeof setTimeout> | null = null
+    const pendingReasoningDeltas: string[] = []
+    const flushReasoningBuffer = () => {
+      if (reasoningFlushTimer) {
+        clearTimeout(reasoningFlushTimer)
+        reasoningFlushTimer = null
+      }
+      if (reasoningDeltaBuffer) {
+        pendingReasoningDeltas.push(reasoningDeltaBuffer)
+        reasoningDeltaBuffer = ''
+      }
+    }
+    const scheduleReasoningFlush = () => {
+      if (!reasoningFlushTimer) {
+        reasoningFlushTimer = setTimeout(flushReasoningBuffer, BATCH_FLUSH_MS)
+      }
+    }
+
     try {
       while (true) {
         // Check abort signal before each iteration
@@ -111,8 +132,9 @@ export function createCallModel(config: LLMAdapterConfig) {
         const { value: chunk, done } = await stream.next()
 
         if (done) {
-          // Flush any remaining buffered text
+          // Flush any remaining buffered text and reasoning
           flushBuffer()
+          flushReasoningBuffer()
 
           // The return value of the generator is the final LLMInvocationResponse
           const response = chunk
@@ -122,6 +144,7 @@ export function createCallModel(config: LLMAdapterConfig) {
             lastUsage = response.usage ?? lastUsage
             lastProviderType = response.providerType ?? lastProviderType
             lastCredentialSource = response.credentialSource ?? lastCredentialSource
+            lastReasoningContent = response.reasoning_content ?? lastReasoningContent
           }
           break
         }
@@ -135,6 +158,21 @@ export function createCallModel(config: LLMAdapterConfig) {
           } else {
             scheduleFlush()
           }
+        }
+
+        // Buffer reasoning deltas
+        if (chunk.reasoning_delta) {
+          reasoningDeltaBuffer += chunk.reasoning_delta
+          if (reasoningDeltaBuffer.length >= BATCH_CHAR_THRESHOLD) {
+            flushReasoningBuffer()
+          } else {
+            scheduleReasoningFlush()
+          }
+        }
+
+        // Yield any flushed reasoning batches
+        while (pendingReasoningDeltas.length > 0) {
+          yield { type: 'reasoning-delta' as const, delta: pendingReasoningDeltas.shift()! }
         }
 
         // Yield any flushed batches
@@ -158,10 +196,14 @@ export function createCallModel(config: LLMAdapterConfig) {
         error: error instanceof Error ? error.message : String(error),
       })
       if (flushTimer) clearTimeout(flushTimer)
+      if (reasoningFlushTimer) clearTimeout(reasoningFlushTimer)
       throw error
     }
 
     // Yield any remaining buffered deltas
+    while (pendingReasoningDeltas.length > 0) {
+      yield { type: 'reasoning-delta' as const, delta: pendingReasoningDeltas.shift()! }
+    }
     while (pendingDeltas.length > 0) {
       yield { type: 'text-delta' as const, delta: pendingDeltas.shift()! }
     }
@@ -202,6 +244,7 @@ export function createCallModel(config: LLMAdapterConfig) {
       usage: lastUsage,
       providerType: lastProviderType,
       credentialSource: lastCredentialSource,
+      reasoning_content: lastReasoningContent,
     }
   }
 }

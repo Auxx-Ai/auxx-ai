@@ -137,7 +137,7 @@ export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition
             },
           },
         ],
-        text,
+        text: articleTexts.join('\n\n---\n\n'),
       }
     },
   }

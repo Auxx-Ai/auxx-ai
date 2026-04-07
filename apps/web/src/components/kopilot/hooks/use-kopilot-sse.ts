@@ -101,6 +101,15 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           }
           break
         }
+        case 'llm-reasoning-stream': {
+          // Reasoning content from thinking-enabled models (Kimi, DeepSeek, Qwen)
+          // flows into the same thinking buffer during executor phase.
+          // Responder reasoning is internal — not shown in the response stream.
+          if (data.agent === 'executor') {
+            appendThinkingText(data.delta)
+          }
+          break
+        }
         case 'llm-complete': {
           if (data.agent === 'executor') {
             commitThinkingText()

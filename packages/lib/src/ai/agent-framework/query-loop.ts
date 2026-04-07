@@ -76,12 +76,16 @@ export async function* agentQueryLoop(
     // Call the model and stream events
     let content = ''
     let toolCalls: ToolCall[] = []
+    let reasoningContent: string | undefined
 
     try {
       for await (const event of config.callModel(callParams)) {
         switch (event.type) {
           case 'text-delta':
             yield { type: 'llm-stream', agent: agent.name, delta: event.delta }
+            break
+          case 'reasoning-delta':
+            yield { type: 'llm-reasoning-stream', agent: agent.name, delta: event.delta }
             break
           case 'tool-call':
             // Collected in the done event
@@ -92,6 +96,7 @@ export async function* agentQueryLoop(
           case 'done':
             content = event.content
             toolCalls = event.toolCalls
+            reasoningContent = event.reasoning_content
             yield {
               type: 'llm-complete',
               agent: agent.name,
@@ -130,6 +135,7 @@ export async function* agentQueryLoop(
             {
               role: 'assistant' as const,
               content,
+              reasoning_content: reasoningContent || undefined,
               timestamp: Date.now(),
               metadata: { agent: agent.name },
             },
@@ -192,6 +198,7 @@ export async function* agentQueryLoop(
       role: 'assistant' as const,
       content,
       toolCalls,
+      reasoning_content: reasoningContent || undefined,
       timestamp: Date.now(),
       metadata: { agent: agent.name },
     }
