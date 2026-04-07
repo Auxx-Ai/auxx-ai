@@ -1,6 +1,6 @@
 // apps/web/src/components/kopilot/ui/blocks/docs-results-block.tsx
 
-import { BookOpen, ExternalLink } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { BlockCard } from './block-card'
 import type { BlockRendererProps } from './block-registry'
 import type { DocsResultsData } from './block-schemas'
@@ -14,9 +14,10 @@ export function DocsResultsBlock({ data }: BlockRendererProps<DocsResultsData>) 
     <div className='not-prose my-2'>
       <BlockCard
         data-slot='docs-results-block'
-        indicator={<BookOpen className='size-3 text-muted-foreground' />}
-        primaryText='Documentation'
-        secondaryText={<span className='text-xs text-muted-foreground'>{articles.length}</span>}
+        // indicator={<BookOpen className='size-3 text-muted-foreground' />}
+        hasHeader={false}
+        // primaryText='Documentation'
+        // secondaryText={<span className='text-xs text-muted-foreground'>{articles.length}</span>}
         hasFooter={false}>
         <div className='space-y-1'>
           {articles.map((article) => (

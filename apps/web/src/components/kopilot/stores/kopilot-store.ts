@@ -62,6 +62,8 @@ export interface KopilotMessage {
   feedback?: {
     isPositive: boolean
   }
+  /** Error that occurred while generating this message */
+  error?: string
 }
 
 export interface KopilotStreamState {
@@ -205,8 +207,6 @@ interface KopilotState {
   // Status
   isStreaming: boolean
   setIsStreaming: (streaming: boolean) => void
-  error: string | null
-  setError: (error: string | null) => void
 
   // Lifecycle
   reset: () => void
@@ -262,7 +262,6 @@ export const useKopilotStore = create<KopilotState>()(
           ...emptyTreeState,
           stream: { ...initialStreamState },
           isStreaming: false,
-          error: null,
           editingMessageId: null,
           activeThinkingGroupId: null,
           thinkingGroups: {},
@@ -608,8 +607,6 @@ export const useKopilotStore = create<KopilotState>()(
       // Status
       isStreaming: false,
       setIsStreaming: (isStreaming) => set({ isStreaming }),
-      error: null,
-      setError: (error) => set({ error }),
 
       // Lifecycle
       reset: () =>
@@ -618,7 +615,6 @@ export const useKopilotStore = create<KopilotState>()(
           ...emptyTreeState,
           stream: { ...initialStreamState },
           isStreaming: false,
-          error: null,
           editingMessageId: null,
           activeThinkingGroupId: null,
           thinkingGroups: {},

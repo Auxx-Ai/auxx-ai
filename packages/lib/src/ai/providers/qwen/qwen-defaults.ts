@@ -8,7 +8,7 @@ export const QWEN_CAPABILITIES: ProviderCapabilities = {
   icon: 'qwen',
   color: '#615EFF',
   supportedModelTypes: [ModelType.LLM],
-  defaultModel: 'qwen-plus-us',
+  defaultModel: 'qwen-flash',
   requiresApiKey: true,
   toolFormat: 'openai',
   configurateMethods: ['predefined-model', 'customizable-model'],
@@ -116,6 +116,10 @@ const QWEN_PARAMETER_RULES = [
   },
 ]
 
+const QWEN_35_PARAMETER_RULES = QWEN_PARAMETER_RULES.map((rule) =>
+  rule.name === 'maxOutputTokens' ? { ...rule, max: 65536 } : rule
+)
+
 export const QWEN_MODELS: Record<string, ModelCapabilities> = {
   'qwen-plus-us': {
     provider: 'qwen',
@@ -138,6 +142,102 @@ export const QWEN_MODELS: Record<string, ModelCapabilities> = {
     },
     costPer1kTokens: { input: 0.0004, output: 0.0012 },
     description: 'Qwen Plus for the US (Virginia) region. Use with the US region endpoint.',
+    parameterRules: QWEN_PARAMETER_RULES,
+  },
+  'qwen3.5-plus': {
+    provider: 'qwen',
+    modelId: 'qwen3.5-plus',
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
+    displayName: 'Qwen 3.5 Plus',
+    icon: 'qwen',
+    color: '#615EFF',
+    contextLength: 1000000,
+    maxTokens: 65536,
+    modelType: ModelType.LLM,
+    features: ['chat', 'code'],
+    supports: {
+      streaming: true,
+      structured: true,
+      vision: true,
+      toolCalling: true,
+      systemMessages: true,
+      fileInput: false,
+    },
+    costPer1kTokens: { input: 0.000115, output: 0.000688 },
+    description:
+      'Latest generation Qwen model with vision support. Available in Singapore and China regions.',
+    parameterRules: QWEN_35_PARAMETER_RULES,
+  },
+  'qwen3.5-flash': {
+    provider: 'qwen',
+    modelId: 'qwen3.5-flash',
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
+    displayName: 'Qwen 3.5 Flash',
+    icon: 'qwen',
+    color: '#615EFF',
+    contextLength: 1000000,
+    maxTokens: 65536,
+    modelType: ModelType.LLM,
+    features: ['chat', 'code'],
+    supports: {
+      streaming: true,
+      structured: true,
+      vision: false,
+      toolCalling: true,
+      systemMessages: true,
+      fileInput: false,
+    },
+    costPer1kTokens: { input: 0.000029, output: 0.000287 },
+    description:
+      'Budget-friendly Qwen 3.5 model with wide availability. Available in Singapore, China, Hong Kong, and EU regions.',
+    parameterRules: QWEN_35_PARAMETER_RULES,
+  },
+  'qwen3-max': {
+    provider: 'qwen',
+    modelId: 'qwen3-max',
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
+    displayName: 'Qwen 3 Max',
+    icon: 'qwen',
+    color: '#615EFF',
+    contextLength: 262144,
+    maxTokens: 32768,
+    modelType: ModelType.LLM,
+    features: ['chat', 'code'],
+    supports: {
+      streaming: true,
+      structured: true,
+      vision: false,
+      toolCalling: true,
+      systemMessages: true,
+      fileInput: false,
+    },
+    costPer1kTokens: { input: 0.000359, output: 0.001434 },
+    description:
+      'Most capable Qwen 3 model. Available in Singapore, China, Hong Kong, and EU regions.',
+    parameterRules: QWEN_PARAMETER_RULES,
+  },
+  'qwen-flash': {
+    provider: 'qwen',
+    modelId: 'qwen-flash',
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
+    displayName: 'Qwen Flash',
+    icon: 'qwen',
+    color: '#615EFF',
+    contextLength: 1000000,
+    maxTokens: 32768,
+    modelType: ModelType.LLM,
+    features: ['chat', 'code'],
+    supports: {
+      streaming: true,
+      structured: true,
+      vision: false,
+      toolCalling: true,
+      systemMessages: true,
+      fileInput: false,
+    },
+    costPer1kTokens: { input: 0.000022, output: 0.000216 },
+    description:
+      'Cheapest Qwen model with the widest region availability. Available in US, Singapore, and China regions.',
     parameterRules: QWEN_PARAMETER_RULES,
   },
   'qwen-plus-latest': {

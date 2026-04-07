@@ -80,7 +80,7 @@ export class QwenClient extends ProviderClient {
       const client = this.getApiClient(extractedCreds)
       const baseUrl = (extractedCreds.qwen_api_base as string) || QWEN_DEFAULT_BASE_URL
       const isUsRegion = baseUrl.includes('dashscope-us')
-      const testModel = model || (isUsRegion ? 'qwen-plus-us' : 'qwen-plus-latest')
+      const testModel = model || (isUsRegion ? 'qwen-flash' : 'qwen-plus-latest')
 
       await client.chat.completions.create({
         model: testModel,

@@ -145,21 +145,6 @@ export function KopilotChat({
     [messageMap, activeSessionId, page, context]
   )
 
-  const handleRetryLastMessage = useCallback(() => {
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
-    if (!lastUserMsg) return
-
-    const text = lastUserMsg.content.replace(/<[^>]*>/g, '')
-
-    setPendingRequest({
-      sessionId: activeSessionId ?? undefined,
-      message: text,
-      type: 'message',
-      page,
-      context,
-    })
-  }, [messages, activeSessionId, page, context])
-
   return (
     <>
       <KopilotMessageList
@@ -167,7 +152,6 @@ export function KopilotChat({
         onApprovalAction={handleApprovalAction}
         onEditMessage={handleEditMessage}
         onRetryMessage={handleRetryMessage}
-        onRetryLastMessage={handleRetryLastMessage}
         onFeedback={handleFeedback}
         onSuggestionClick={handleSuggestionClick}
       />

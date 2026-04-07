@@ -54,6 +54,7 @@ function RelationshipCellContent({ value }: { value: unknown }) {
       items={items}
       isLoading={false} // RecordBadge handles individual loading states
       renderItem={(item) => <RecordBadge recordId={item.recordId} link />}
+      maxDisplay={3}
     />
   )
 }
@@ -126,6 +127,7 @@ function ActorCellContent({ value }: { value: unknown }) {
       items={items}
       isLoading={false} // ActorBadge handles individual loading states
       renderItem={(item) => <ActorBadge actorId={item.actorId} />}
+      maxDisplay={3}
     />
   )
 }

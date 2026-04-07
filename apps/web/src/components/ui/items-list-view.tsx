@@ -3,6 +3,7 @@
 
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
+import { useEffect, useRef, useState } from 'react'
 import { CellSelectionOverlay } from '../dynamic-table/components/cell-selection-overlay'
 
 /**
@@ -65,6 +66,36 @@ export interface ItemsCellViewProps<T extends ItemsListItem> {
   isLoading?: boolean
   /** Number of loading skeletons to show (default: 3) */
   loadingCount?: number
+  /** Maximum items to display before showing "+N more". Overflow items render lazily on cell selection. */
+  maxDisplay?: number
+}
+
+/**
+ * Detects whether the nearest ancestor with `data-selected` attribute is selected.
+ * Uses MutationObserver to react to selection changes without context coupling.
+ */
+function useIsCellSelected(ref: React.RefObject<HTMLElement | null>, enabled: boolean) {
+  const [selected, setSelected] = useState(false)
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ref.current is read inside effect, ref itself is stable
+  useEffect(() => {
+    if (!enabled) return
+
+    const el = ref.current
+    if (!el) return
+
+    const cellEl = el.closest('[data-selected]')
+    if (!cellEl) return
+
+    const check = () => setSelected(cellEl.getAttribute('data-selected') === 'true')
+    check()
+
+    const observer = new MutationObserver(check)
+    observer.observe(cellEl, { attributes: true, attributeFilter: ['data-selected'] })
+    return () => observer.disconnect()
+  }, [enabled])
+
+  return selected
 }
 
 /**
@@ -146,11 +177,22 @@ export function ItemsCellView<T extends ItemsListItem>({
   isLoading = false,
   loadingCount = 3,
   className,
+  maxDisplay,
 }: ItemsCellViewProps<T>) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
   // Normalize to array: use items if provided, otherwise wrap single item
   // Primitives (string/number/boolean) are wrapped as { id: String(value) }
   const normalizedItems: T[] =
     items ?? (item != null ? [typeof item === 'object' ? item : ({ id: String(item) } as T)] : [])
+
+  // Truncation: only render first N items in the default view
+  const hasOverflow = maxDisplay != null && normalizedItems.length > maxDisplay
+  const displayItems = hasOverflow ? normalizedItems.slice(0, maxDisplay) : normalizedItems
+  const overflowCount = hasOverflow ? normalizedItems.length - maxDisplay : 0
+
+  // Lazily mount overflow items only when the cell is selected
+  const isCellSelected = useIsCellSelected(containerRef, hasOverflow)
 
   // Empty state
   if (!isLoading && normalizedItems.length === 0) {
@@ -181,29 +223,23 @@ export function ItemsCellView<T extends ItemsListItem>({
 
   return (
     <div
+      ref={containerRef}
       data-slot='expandable-cell-inner'
       className={cn('relative min-w-full w-full min-h-9 group/items-list flex text-sm', className)}>
-      {/* Items */}
+      {/* Items — render displayItems (truncated when maxDisplay is set) */}
       <div className='flex items-center gap-1 w-full overflow-hidden ps-3 py-0.5 px-0.5 shrink-0 mask-r-from-[calc(100%-32px)] mask-r-to-[100%]'>
-        {normalizedItems.map((item, index) => (
+        {displayItems.map((item, index) => (
           <div key={item.id} className='shrink-0'>
             {renderItem(item, index)}
           </div>
         ))}
+        {overflowCount > 0 && (
+          <span className='shrink-0 text-xs text-muted-foreground'>+{overflowCount}</span>
+        )}
       </div>
 
-      {/* Fade overlay - slides out on hover/selection */}
-      {/* <div
-        className={cn(
-          'absolute inset-y-0 right-0 w-12 pointer-events-none z-10',
-          // 'bg-white dark:bg-background',
-          'mask-r-from-20',
-          'transition-transform duration-200 ease-out',
-          'group-hover/tablecell:translate-x-full',
-          '[.cell-selected_&]:translate-x-full'
-        )}></div> */}
-
       {/* Expanded view - shows when cell is selected */}
+      {/* When maxDisplay is set, only mount all items when cell is selected (lazy loading) */}
       <div
         data-self-overlay
         data-slot='expandable-cell-inner'
@@ -217,11 +253,13 @@ export function ItemsCellView<T extends ItemsListItem>({
         <CellSelectionOverlay isSelected isEditing={false} />
         <div className='my-2'>
           <div className='flex flex-wrap gap-1'>
-            {normalizedItems.map((item, index) => (
-              <div key={`expanded-${item.id}`} className='shrink-0'>
-                {renderItem(item, index)}
-              </div>
-            ))}
+            {(hasOverflow && !isCellSelected ? displayItems : normalizedItems).map(
+              (item, index) => (
+                <div key={`expanded-${item.id}`} className='shrink-0'>
+                  {renderItem(item, index)}
+                </div>
+              )
+            )}
           </div>
         </div>
       </div>
