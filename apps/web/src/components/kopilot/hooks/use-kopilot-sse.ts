@@ -39,7 +39,6 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
   const updateMessage = useKopilotStore((s) => s.updateMessage)
   const addActiveTool = useKopilotStore((s) => s.addActiveTool)
   const removeActiveTool = useKopilotStore((s) => s.removeActiveTool)
-  const setError = useKopilotStore((s) => s.setError)
 
   // Thinking step actions
   const beginThinkingGroup = useKopilotStore((s) => s.beginThinkingGroup)
@@ -230,8 +229,19 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           break
         }
         case 'pipeline-error': {
-          setError(data.error)
+          const leafId = getCurrentLeafId()
+          const errorMsgId = generateId()
+          addMessage({
+            id: errorMsgId,
+            role: 'assistant',
+            content: '',
+            timestamp: Date.now(),
+            parentId: leafId,
+            error: data.error,
+          })
+          attachThinkingGroupToMessage(errorMsgId)
           setIsStreaming(false)
+          clearStream()
           break
         }
         case 'done': {
@@ -252,7 +262,6 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
       updateMessage,
       addActiveTool,
       removeActiveTool,
-      setError,
       getCurrentLeafId,
       beginThinkingGroup,
       appendThinkingText,
@@ -267,10 +276,20 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
 
   const handleError = useCallback(
     (error: Error) => {
-      setError(error.message)
+      const leafId = getCurrentLeafId()
+      const errorMsgId = generateId()
+      addMessage({
+        id: errorMsgId,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        parentId: leafId,
+        error: error.message,
+      })
       setIsStreaming(false)
+      clearStream()
     },
-    [setError, setIsStreaming]
+    [addMessage, getCurrentLeafId, setIsStreaming, clearStream]
   )
 
   // When pendingRequest is set, build SSE config to trigger connection

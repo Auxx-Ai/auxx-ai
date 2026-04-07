@@ -1,11 +1,13 @@
 // apps/web/src/components/kopilot/ui/messages/assistant-message.tsx
 
-import { Sparkles } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { AlertTriangle, Sparkles } from 'lucide-react'
 import { useMemo } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { KopilotMessage, ThinkingGroup } from '../../stores/kopilot-store'
 import { useKopilotStore } from '../../stores/kopilot-store'
+import '../../styles/kopilot-prose.css'
 import { AuxxBlock } from '../blocks/auxx-block'
 import { MessageActions } from './message-actions'
 import { ToolStatusPills } from './tool-status-pills'
@@ -46,19 +48,25 @@ export function AssistantMessage({
   // Memoize components so react-markdown can reconcile without remounting blocks
   const markdownComponents = useMemo(
     () => ({
-      pre({ children }: { children?: React.ReactNode }) {
-        return <>{children}</>
+      pre({ children, ...props }: { children?: React.ReactNode }) {
+        // Check if the child is an AuxxBlock code fence — pass through so the
+        // code component can handle it. Otherwise render a normal <pre>.
+        const child = Array.isArray(children) ? children[0] : children
+        // biome-ignore lint/suspicious/noExplicitAny: react-markdown child type
+        const childProps = (child as any)?.props
+        if (childProps?.className?.startsWith('language-auxx:')) {
+          return <>{children}</>
+        }
+        return <pre {...props}>{children}</pre>
       },
       code({ className, children }: { className?: string; children?: React.ReactNode }) {
+        // AuxxBlock: fenced code with language-auxx:* (pre passes through)
         const match = className?.match(/^language-auxx:(.+)$/)
         if (match) {
           return <AuxxBlock type={match[1]} rawContent={String(children).trim()} />
         }
-        return (
-          <pre>
-            <code className={className}>{children}</code>
-          </pre>
-        )
+        // Inline code — block code is handled by the default <pre><code> flow
+        return <code className={className}>{children}</code>
       },
     }),
     []
@@ -74,12 +82,22 @@ export function AssistantMessage({
       </div>
       <div className='min-w-0 flex-1 space-y-1'>
         {group && group.steps.length > 0 && <ToolStatusPills group={group} />}
-        <div className='prose prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1 max-w-none text-sm dark:prose-invert'>
-          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {isStreaming ? `${content}\u258C` : content}
-          </Markdown>
-        </div>
-        {!isStreaming && message && (
+        {message?.error ? (
+          <Alert variant='destructive' className='bg-background'>
+            <AlertTriangle className='size-4' />
+            <AlertTitle>Something went wrong</AlertTitle>
+            <AlertDescription>
+              <span className='text-muted-foreground text-xs'>{message.error}</span>
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className='kopilot-prose'>
+            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {isStreaming ? `${content}\u258C` : content}
+            </Markdown>
+          </div>
+        )}
+        {!isStreaming && message && !message.error && (
           <MessageActions
             role='assistant'
             content={content}

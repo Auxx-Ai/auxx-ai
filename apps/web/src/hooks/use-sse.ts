@@ -268,6 +268,12 @@ export function useSSE(
               onEventRef.current(parsed.eventType, parsed.data)
             }
           }
+
+          // Yield to the browser after each chunk so React can paint
+          // streaming updates incrementally instead of batching everything.
+          if (messages.length > 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 0))
+          }
         }
 
         // Stream ended normally
