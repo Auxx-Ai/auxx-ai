@@ -38,6 +38,7 @@ export function DraftApprovalCard({ args, status, onApprove, onReject }: Approva
 
   return (
     <BlockCard
+      data-slot='draft-approval-card'
       indicator={<StatusIndicator status={status} />}
       primaryText='Send Reply'
       secondaryText={secondaryText}

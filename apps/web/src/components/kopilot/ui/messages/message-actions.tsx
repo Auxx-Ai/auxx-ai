@@ -82,7 +82,12 @@ export function MessageActions({
         onClick={handleCopy}
       />
 
-      {role === 'user' && onEdit && <ActionButton icon={Pencil} tooltip='Edit' onClick={onEdit} />}
+      {role === 'user' && (
+        <>
+          {onEdit && <ActionButton icon={Pencil} tooltip='Edit' onClick={onEdit} />}
+          {onRetry && <ActionButton icon={RotateCcw} tooltip='Retry' onClick={onRetry} />}
+        </>
+      )}
 
       {role === 'assistant' && (
         <>
@@ -104,7 +109,6 @@ export function MessageActions({
               activeColor='text-red-500'
             />
           )}
-          {onRetry && <ActionButton icon={RotateCcw} tooltip='Retry' onClick={onRetry} />}
         </>
       )}
     </div>

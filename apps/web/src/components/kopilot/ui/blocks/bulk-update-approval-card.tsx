@@ -48,6 +48,7 @@ export function BulkUpdateApprovalCard({ args, status, onApprove, onReject }: Ap
 
   return (
     <BlockCard
+      data-slot='bulk-update-approval-card'
       indicator={<StatusIndicator status={status} />}
       primaryText={`Update ${totalCount} ${resource?.plural ?? 'Records'}`}
       secondaryText={changeSummary}

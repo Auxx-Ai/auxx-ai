@@ -9,6 +9,7 @@ export function KBArticleBlock({ data }: BlockRendererProps<KBArticleData>) {
   return (
     <div className='not-prose my-2'>
       <BlockCard
+        data-slot='kb-article-block'
         indicator={<FileText className='size-3 text-muted-foreground' />}
         primaryText={data.title}
         hasFooter={false}>

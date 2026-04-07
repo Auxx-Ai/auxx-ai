@@ -40,6 +40,7 @@ export function EntityCreateApprovalCard({ args, status, onApprove, onReject }: 
 
   return (
     <BlockCard
+      data-slot='entity-create-approval-card'
       indicator={<StatusIndicator status={status} />}
       primaryText={`Create ${resource?.label ?? 'Record'}`}
       hasFooter={isPending}

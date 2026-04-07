@@ -81,7 +81,10 @@ export function NavMain({ menu, itemActions }: Props) {
       )
       return isActive
     }
-    return pathname.startsWith(item.url!) || pathname === item.url
+    // Match against the base path (without trailing segments like /new)
+    // so e.g. /app/kopilot/new matches /app/kopilot/<sessionId> too
+    const baseUrl = `${menu.route}/${item.slug?.split('/')[0]}`
+    return pathname.startsWith(baseUrl) || pathname === item.url
   }
 
   return (

@@ -139,32 +139,52 @@ export class UsageTrackingService {
   async trackUsageBatch(requests: UsageTrackingRequest[]): Promise<void> {
     if (requests.length === 0) return
 
-    const rows = requests.map((req) => {
+    // Aggregate entries by provider+model into a single row per combination
+    const grouped = new Map<
+      string,
+      {
+        inputTokens: number
+        outputTokens: number
+        creditsUsed: number
+        ref: UsageTrackingRequest
+      }
+    >()
+
+    for (const req of requests) {
+      const key = `${req.provider}:${req.model}`
+      const existing = grouped.get(key)
       const inputTokens = req.usage.prompt_tokens || 0
       const outputTokens = req.usage.completion_tokens || 0
-      const totalTokens = req.usage.total_tokens || inputTokens + outputTokens
 
-      return {
-        organizationId: req.organizationId,
-        userId: req.userId,
-        provider: req.provider,
-        model: req.model,
-        modelType: 'llm' as const,
-        inputTokens,
-        outputTokens,
-        totalTokens,
-        createdAt: req.timestamp || new Date(),
-        providerType: (req.providerType ?? 'CUSTOM') as 'SYSTEM' | 'CUSTOM',
-        credentialSource: (req.credentialSource ?? 'CUSTOM') as
-          | 'SYSTEM'
-          | 'CUSTOM'
-          | 'MODEL_SPECIFIC'
-          | 'LOAD_BALANCED',
-        creditsUsed: req.creditsUsed ?? 1,
-        source: req.source ?? 'other',
-        sourceId: req.sourceId ?? null,
+      if (existing) {
+        existing.inputTokens += inputTokens
+        existing.outputTokens += outputTokens
+        existing.creditsUsed += req.creditsUsed ?? 1
+      } else {
+        grouped.set(key, { inputTokens, outputTokens, creditsUsed: req.creditsUsed ?? 1, ref: req })
       }
-    })
+    }
+
+    const rows = [...grouped.values()].map(({ inputTokens, outputTokens, creditsUsed, ref }) => ({
+      organizationId: ref.organizationId,
+      userId: ref.userId,
+      provider: ref.provider,
+      model: ref.model,
+      modelType: 'llm' as const,
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      createdAt: ref.timestamp || new Date(),
+      providerType: (ref.providerType ?? 'CUSTOM') as 'SYSTEM' | 'CUSTOM',
+      credentialSource: (ref.credentialSource ?? 'CUSTOM') as
+        | 'SYSTEM'
+        | 'CUSTOM'
+        | 'MODEL_SPECIFIC'
+        | 'LOAD_BALANCED',
+      creditsUsed,
+      source: ref.source ?? 'other',
+      sourceId: ref.sourceId ?? null,
+    }))
 
     await this.database.insert(schema.AiUsage).values(rows)
   }

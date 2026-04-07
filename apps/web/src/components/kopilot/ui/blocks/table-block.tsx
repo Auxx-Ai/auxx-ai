@@ -214,6 +214,7 @@ export function TableBlock({ data }: BlockRendererProps<TableBlockData>) {
   return (
     <div className='not-prose my-2'>
       <BlockCard
+        data-slot='table-block'
         primaryText='Table'
         hasFooter={false}
         secondaryText={

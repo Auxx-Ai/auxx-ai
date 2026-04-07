@@ -99,6 +99,8 @@ export async function* agentQueryLoop(
               usage: event.usage,
               provider: callParams.provider,
               model: callParams.model,
+              providerType: event.providerType,
+              credentialSource: event.credentialSource,
             }
             break
         }

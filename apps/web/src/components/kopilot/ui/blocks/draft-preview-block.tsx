@@ -63,6 +63,7 @@ export function DraftPreviewBlock({ data }: BlockRendererProps<DraftPreviewData>
   return (
     <div className='not-prose my-2'>
       <BlockCard
+        data-slot='draft-preview-block'
         indicator={<Pencil className='size-3 text-muted-foreground' />}
         primaryText='Draft Reply'
         secondaryText={<span className='text-xs text-muted-foreground'>{secondaryText}</span>}

@@ -45,6 +45,8 @@ interface BlockCardProps {
   actionLabel?: string
   /** Action buttons in footer */
   actions?: BlockCardAction[]
+  /** Debug slot identifier */
+  'data-slot'?: string
 }
 
 export function BlockCard({
@@ -56,11 +58,14 @@ export function BlockCard({
   children,
   actionLabel,
   actions,
+  'data-slot': dataSlot,
 }: BlockCardProps) {
   const showFooter = hasFooter && (actionLabel || (actions && actions.length > 0))
 
   return (
-    <div className='rounded-3xl bg-card/25 p-2 shadow-lg shadow-black/[.065] ring-1 ring-border-illustration'>
+    <div
+      data-slot={dataSlot}
+      className='rounded-3xl bg-card/25 p-2 shadow-lg shadow-black/[.065] ring-1 ring-border-illustration'>
       {hasHeader && (
         <div className='flex items-start justify-between px-2 pt-1'>
           <div className='flex items-center gap-2'>

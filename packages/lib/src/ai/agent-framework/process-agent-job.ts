@@ -127,6 +127,14 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
         timestamp: new Date(),
         source: 'agent',
         sourceId: sessionId,
+        providerType: event.providerType as 'SYSTEM' | 'CUSTOM' | undefined,
+        credentialSource: event.credentialSource as
+          | 'SYSTEM'
+          | 'CUSTOM'
+          | 'MODEL_SPECIFIC'
+          | 'LOAD_BALANCED'
+          | undefined,
+        creditsUsed: event.providerType === 'SYSTEM' ? 1 : 0,
       })
     }
 

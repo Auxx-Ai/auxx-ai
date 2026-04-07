@@ -54,6 +54,8 @@ export interface LLMInvocationResponse extends LLMResponse {
   provider: string
   tool_results?: ToolExecutionResult[]
   structured_output?: Record<string, any>
+  providerType?: ProviderTypeValue
+  credentialSource?: CredentialSourceType
 }
 
 // ===== CALLBACK TYPES =====

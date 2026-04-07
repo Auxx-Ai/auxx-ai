@@ -262,8 +262,12 @@ export class LLMOrchestrator {
     }
 
     try {
-      // Create provider manager and get credentials
-      const llmClient = await this.getClient(provider, model, organizationId, userId)
+      // Create provider manager and get credentials (with metadata for usage tracking)
+      const {
+        client: llmClient,
+        providerType,
+        credentialSource,
+      } = await this.getClientWithMetadata(provider, model, organizationId, userId)
       // Build invocation parameters
       const invokeParams: LLMInvokeParams = {
         model,
@@ -338,6 +342,8 @@ export class LLMOrchestrator {
         provider,
         tool_results: toolResults,
         structured_output: structuredOutput,
+        providerType,
+        credentialSource,
       }
 
       return finalResponse

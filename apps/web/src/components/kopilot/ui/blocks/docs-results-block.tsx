@@ -13,6 +13,7 @@ export function DocsResultsBlock({ data }: BlockRendererProps<DocsResultsData>) 
   return (
     <div className='not-prose my-2'>
       <BlockCard
+        data-slot='docs-results-block'
         indicator={<BookOpen className='size-3 text-muted-foreground' />}
         primaryText='Documentation'
         secondaryText={<span className='text-xs text-muted-foreground'>{articles.length}</span>}
