@@ -116,8 +116,9 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
   const providerConfigured = currentProvider?.statusInfo.configured || false
 
   const hasDeprecated = !currentProvider || !currentModel
-  const modelDisabled = currentModel?.status !== 'active'
-  const disabled = hasDeprecated || modelDisabled || !providerConfigured || readonly
+  const isRetired = currentModel?.status === 'retired'
+  const modelDisabled = currentModel?.status !== 'active' && currentModel?.status !== 'deprecated'
+  const disabled = hasDeprecated || isRetired || modelDisabled || !providerConfigured || readonly
 
   // Sync local state when props change (but only when modal is closed)
   useEffect(() => {
@@ -302,6 +303,36 @@ const ModelParameterModal: FC<ModelParameterModalProps> = ({
                     className='z-[80]'
                     triggerClassName='w-full'
                   />
+                </div>
+              )}
+
+              {/* Retired model warning */}
+              {isRetired && (
+                <div className='mt-2 rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2'>
+                  <p className='text-xs text-destructive'>
+                    This model has been retired and will not work.
+                    {currentModel?.replacement && (
+                      <>
+                        {' '}
+                        Switch to <strong>{currentModel.replacement}</strong>.
+                      </>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {/* Deprecated model warning */}
+              {currentModel?.deprecated && !isRetired && (
+                <div className='mt-2 rounded-md border border-amber-500/50 bg-amber-500/5 px-3 py-2'>
+                  <p className='text-xs text-amber-600 dark:text-amber-400'>
+                    This model is deprecated.
+                    {currentModel?.replacement && (
+                      <>
+                        {' '}
+                        Consider switching to <strong>{currentModel.replacement}</strong>.
+                      </>
+                    )}
+                  </p>
                 </div>
               )}
             </div>

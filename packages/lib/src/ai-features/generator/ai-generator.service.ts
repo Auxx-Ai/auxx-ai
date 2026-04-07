@@ -107,7 +107,7 @@ export class AIGeneratorService {
     config?: Partial<AIGeneratorConfig>
   ) {
     this.config = {
-      defaultModel: 'gpt-4o-mini',
+      defaultModel: 'gpt-5.4-nano',
       defaultProvider: 'openai',
       ...config,
     }

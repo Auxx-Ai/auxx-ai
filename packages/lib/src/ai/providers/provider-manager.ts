@@ -278,12 +278,18 @@ export class ProviderManager {
       includeDefaults?: boolean
       modelTypes?: ModelType[]
       includeUnconfigured?: boolean
+      includeRetired?: boolean
     } = {}
   ): Promise<{
     providers: ProviderConfiguration[]
     defaultModels: Record<string, { provider: string; model: string }>
   }> {
-    const { includeDefaults = true, modelTypes = [], includeUnconfigured = false } = options
+    const {
+      includeDefaults = true,
+      modelTypes = [],
+      includeUnconfigured = false,
+      includeRetired = false,
+    } = options
 
     logger.info('Getting unified model data', {
       organizationId: this.organizationId,
@@ -313,8 +319,18 @@ export class ProviderManager {
                 return false
               }
 
+              // Filter out retired models unless explicitly included
+              if (!includeRetired && model.status === 'retired') {
+                return false
+              }
+
               // Filter by model status unless including unconfigured
-              if (!includeUnconfigured && model.status !== 'active') {
+              // Deprecated models are still usable, so include them
+              if (
+                !includeUnconfigured &&
+                model.status !== 'active' &&
+                model.status !== 'deprecated'
+              ) {
                 return false
               }
 

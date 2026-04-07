@@ -124,15 +124,14 @@ export class GoogleTextEmbeddingClient extends TextEmbeddingClient {
    * Get Google-specific batch size based on model
    */
   private getGoogleBatchSize(model: string): number {
-    // Google Vertex AI embedding models have specific batch limits
     const batchLimits: Record<string, number> = {
+      'gemini-embedding-2-preview': 100,
+      'gemini-embedding-001': 100,
       'text-embedding-004': 100,
       'textembedding-gecko@003': 50,
-      'textembedding-gecko@002': 50,
-      'textembedding-gecko@001': 50,
     }
 
-    return batchLimits[model] || 50 // Conservative default
+    return batchLimits[model] || 100
   }
 
   /**
@@ -140,14 +139,13 @@ export class GoogleTextEmbeddingClient extends TextEmbeddingClient {
    */
   private estimateTokens(text: string): number {
     // Google models typically have ~4 characters per token
-    // This is an approximation since Google doesn't provide exact token counts
     return Math.ceil(text.length / 4)
   }
 
   private convertUsage(totalTokens: number): UsageMetrics {
     return {
       prompt_tokens: totalTokens,
-      completion_tokens: 0, // Embeddings don't have completion tokens
+      completion_tokens: 0,
       total_tokens: totalTokens,
     }
   }
@@ -156,12 +154,7 @@ export class GoogleTextEmbeddingClient extends TextEmbeddingClient {
    * Get supported embedding models
    */
   getSupportedModels(): string[] {
-    return [
-      'text-embedding-004',
-      'textembedding-gecko@003',
-      'textembedding-gecko@002',
-      'textembedding-gecko@001',
-    ]
+    return ['gemini-embedding-2-preview', 'gemini-embedding-001']
   }
 
   /**
@@ -169,10 +162,8 @@ export class GoogleTextEmbeddingClient extends TextEmbeddingClient {
    */
   getDefaultDimensions(model: string): number {
     const dimensionMap: Record<string, number> = {
-      'text-embedding-004': 768,
-      'textembedding-gecko@003': 768,
-      'textembedding-gecko@002': 768,
-      'textembedding-gecko@001': 768,
+      'gemini-embedding-2-preview': 3072,
+      'gemini-embedding-001': 768,
     }
 
     return dimensionMap[model] || 768
@@ -183,32 +174,37 @@ export class GoogleTextEmbeddingClient extends TextEmbeddingClient {
    */
   getMaxInputLength(model: string): number {
     const lengthMap: Record<string, number> = {
-      'text-embedding-004': 2048,
-      'textembedding-gecko@003': 3072,
-      'textembedding-gecko@002': 3072,
-      'textembedding-gecko@001': 3072,
+      'gemini-embedding-2-preview': 8192,
+      'gemini-embedding-001': 2048,
     }
 
     return lengthMap[model] || 2048
   }
 
   /**
-   * Check if model supports custom dimensions (Google models generally don't)
+   * Check if model supports custom dimensions
+   * Both current Gemini embedding models support Matryoshka dimensions (128-3072)
    */
   supportsCustomDimensions(model: string): boolean {
-    return false // Google embedding models have fixed dimensions
+    return model === 'gemini-embedding-2-preview' || model === 'gemini-embedding-001'
   }
 
   /**
    * Validate model and dimensions compatibility
    */
   protected validateModelDimensions(model: string, dimensions?: number): void {
-    if (!this.getSupportedModels().includes(model)) {
+    const supported = this.getSupportedModels()
+    if (!supported.includes(model)) {
       throw new Error(`Unsupported Google embedding model: ${model}`)
     }
 
-    if (dimensions && !this.supportsCustomDimensions(model)) {
-      throw new Error(`Google model ${model} does not support custom dimensions`)
+    if (dimensions && this.supportsCustomDimensions(model)) {
+      const validDimensions = [128, 256, 512, 768, 1536, 3072]
+      if (!validDimensions.includes(dimensions)) {
+        throw new Error(
+          `Invalid dimensions ${dimensions} for ${model}. Valid options: ${validDimensions.join(', ')}`
+        )
+      }
     }
   }
 
@@ -240,7 +236,6 @@ export class GoogleTextEmbeddingClient extends TextEmbeddingClient {
    * Get task type for Google embedding (used for different use cases)
    */
   private getTaskType(purpose?: string): TaskType {
-    // Map common purposes to Google task types
     switch (purpose?.toLowerCase()) {
       case 'search':
       case 'retrieval':

@@ -1,9 +1,13 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/search-entities.ts
 
+import type { RecordId } from '@auxx/types/resource'
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { RecordPickerService } from '../../../../../resources/picker'
+import { parseRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
+import { formatEnrichedFields } from '../format-enriched-fields'
 
 const MAX_RESULTS = 25
 
@@ -104,6 +108,41 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
               ? `No records found for "${query}". Try a shorter or different search term, or use query_records with specific field filters.`
               : 'No records found. Try providing a search query.',
           },
+        }
+      }
+
+      // Auto-enrich with full entity data + custom field values for small result sets
+      // to avoid the LLM needing to copy opaque recordIds into separate get_entity calls
+      const AUTO_ENRICH_THRESHOLD = 5
+      if (items.length <= AUTO_ENRICH_THRESHOLD) {
+        const recordIds = items.map((item) => item.recordId) as RecordId[]
+        const detailed = await pickerService.getResourcesByIds(recordIds)
+
+        // Enrich with custom field values
+        const entities = recordIds.map((rid) => {
+          const { entityDefinitionId, entityInstanceId } = parseRecordId(rid)
+          return { recordId: String(rid), entityDefinitionId, entityInstanceId }
+        })
+        const enrichedFields = await enrichEntitiesWithFieldValues({
+          organizationId: agentDeps.organizationId,
+          userId: agentDeps.userId,
+          db,
+          entities,
+        })
+
+        const enrichedItems = items.map((item) => {
+          const detail = detailed[item.recordId as RecordId]
+          const fields = formatEnrichedFields(enrichedFields.get(item.recordId) ?? {})
+          return {
+            ...item,
+            fields,
+            createdAt: detail?.createdAt,
+            updatedAt: detail?.updatedAt,
+          }
+        })
+        return {
+          success: true,
+          output: { items: enrichedItems, count: enrichedItems.length },
         }
       }
 

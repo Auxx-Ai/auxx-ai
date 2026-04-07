@@ -11,7 +11,7 @@ export const AI_NODE_CONSTANTS = {
   PROVIDERS: {
     OPENAI: {
       name: 'openai',
-      models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'] as const,
+      models: ['gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4', 'gpt-4o-mini', 'gpt-4o'] as const,
     },
     ANTHROPIC: {
       name: 'anthropic',

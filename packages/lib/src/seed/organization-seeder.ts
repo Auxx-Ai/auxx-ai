@@ -25,10 +25,10 @@ const DEFAULT_SYSTEM_MODELS: Array<{
   provider: string
   model: string
 }> = [
-  { modelType: ModelType.LLM, provider: 'openai', model: 'gpt-4.1-nano' },
+  { modelType: ModelType.LLM, provider: 'openai', model: 'gpt-5.4-nano' },
   { modelType: ModelType.TEXT_EMBEDDING, provider: 'openai', model: 'text-embedding-3-small' },
-  { modelType: ModelType.MODERATION, provider: 'openai', model: 'text-moderation-stable' },
-  { modelType: ModelType.VISION, provider: 'openai', model: 'gpt-4.1-nano' },
+  { modelType: ModelType.MODERATION, provider: 'openai', model: 'omni-moderation-latest' },
+  { modelType: ModelType.VISION, provider: 'openai', model: 'gpt-5.4-nano' },
   { modelType: ModelType.TTS, provider: 'openai', model: 'tts-1' },
   { modelType: ModelType.SPEECH2TEXT, provider: 'openai', model: 'whisper-1' },
 ]

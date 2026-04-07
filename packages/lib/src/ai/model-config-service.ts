@@ -14,7 +14,7 @@ export class ModelConfigService {
     'top_logprobs',
   ]
 
-  private static readonly GPT5_1_5_2_PATTERN = /^gpt-5\.(1|2)(?:$|-)/
+  private static readonly GPT5_CONDITIONAL_PATTERN = /^gpt-5\.\d+(?:$|-)/
 
   /**
    * Filter parameters based on model's parameterRestrictions
@@ -90,7 +90,7 @@ export class ModelConfigService {
       }
     }
 
-    // 5. GPT-5.1 / GPT-5.2 conditional compatibility logic.
+    // 5. GPT-5.x conditional compatibility logic.
     // temperature/top_p/logprobs are only supported for effort=none.
     if (ModelConfigService.requiresConditionalGpt5Compatibility(capabilities.modelId)) {
       const reasoningEffort = String(filtered.reasoning_effort || '').toLowerCase()
@@ -146,7 +146,11 @@ export class ModelConfigService {
   }
 
   private static requiresConditionalGpt5Compatibility(modelId: string): boolean {
-    return ModelConfigService.GPT5_1_5_2_PATTERN.test(modelId) || modelId === 'gpt-5.2-chat-latest'
+    return (
+      ModelConfigService.GPT5_CONDITIONAL_PATTERN.test(modelId) ||
+      modelId === 'gpt-5.2-chat-latest' ||
+      modelId === 'gpt-5.3-chat-latest'
+    )
   }
 
   /**

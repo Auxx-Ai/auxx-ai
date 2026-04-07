@@ -199,6 +199,31 @@ export class AgentEngine {
     }
 
     this.state = { ...this.state, waitingForApproval: false, pendingToolCall: undefined }
+
+    // Continue the pipeline — run remaining agents after the one that paused.
+    // e.g. if executor paused, run the responder so the user gets a summary.
+    const routeDef = this.config.domainConfig.routes.find((r) => r.name === route)
+    if (routeDef) {
+      const pausedIdx = routeDef.agents.indexOf(pending.agentName)
+      const remainingAgents = routeDef.agents.slice(pausedIdx + 1)
+
+      for (const agentName of remainingAgents) {
+        if (this.config.signal?.aborted) break
+        if (agentName === this.config.domainConfig.supervisorAgent) continue
+
+        const nextAgent = this.config.domainConfig.agents[agentName]
+        if (!nextAgent) continue
+
+        yield* this.runAgentAndUpdateState(nextAgent, this.config)
+      }
+
+      // Extract final assistant message (same as executeRoute)
+      const lastMessage = this.state.messages[this.state.messages.length - 1]
+      if (lastMessage?.role === 'assistant' && lastMessage.content) {
+        yield { type: 'message', role: 'assistant', content: lastMessage.content }
+      }
+    }
+
     yield { type: 'pipeline-completed', route }
   }
 

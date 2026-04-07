@@ -81,7 +81,7 @@ export function ToolStatusPill({ step }: ToolStatusPillProps) {
         </motion.span>
       </AnimatePresence>
       <Icon className='size-3 shrink-0 text-muted-foreground' />
-      <span className='font-medium text-foreground/80'>{labelData.label}</span>
+      <span className='font-medium text-foreground/80 shrink-0'>{labelData.label}</span>
       {labelData.secondary && (
         <span className='truncate text-muted-foreground'>{labelData.secondary}</span>
       )}

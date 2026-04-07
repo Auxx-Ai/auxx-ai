@@ -59,19 +59,29 @@ Schema: single object with columns and rows.
 \\\`\\\`\\\`
 {
   "columns": [
-    {"label": "Name", "align": "left"},
-    {"label": "Status", "align": "left"},
-    {"label": "Revenue", "align": "right"}
+    {"label": "Field"},
+    {"label": "Emily Garcia"},
+    {"label": "Michael Williams"}
   ],
   "rows": [
-    [{"text": "Acme Corp", "recordId": "defId:instId1"}, {"text": "Active"}, {"text": "$50,000"}],
-    [{"text": "Globex Inc", "recordId": "defId:instId2"}, {"text": "Churned"}, {"text": "$12,000"}]
+    [{"text": "Status"}, {"text": "Active", "type": "tags", "tags": [{"label": "Active", "color": "green"}]}, {"text": "Churned", "type": "tags", "tags": [{"label": "Churned", "color": "red"}]}],
+    [{"text": "Assignee"}, {"text": "Sarah Chen", "actorId": "user:abc123"}, {"text": "—"}],
+    [{"text": "Email"}, {"text": "emily@acme.com", "type": "email"}, {"text": "michael@globex.com", "type": "email"}]
   ]
 }
 \\\`\\\`\\\`
-- Each cell is an object with \`text\` (display value).
-- Add \`recordId\` (format: \`entityDefinitionId:entityInstanceId\`) to make a cell a clickable entity link. Copy from tool results — never fabricate.
-- Add \`href\` for external links.
+- Each cell is an object with \`text\` (required — display value for all cell types).
+- Optional rich rendering hints (copy from tool result field metadata when available):
+  - \`"recordId": "defId:instId"\` — clickable entity link. Copy from tool results — never fabricate.
+  - \`"href": "https://..."\` — external link.
+  - \`"actorId": "user:userId"\` — renders user/group avatar badge. Include \`text\` as fallback name.
+  - \`"type": "date"\` — renders human-friendly date. Pass ISO string in \`text\`.
+  - \`"type": "tags", "tags": [{"label": "Active", "color": "green"}]\` — renders colored badges.
+  - \`"type": "email"\` — renders clickable mailto link.
+  - \`"type": "phone"\` — renders clickable tel link.
+  - \`"type": "currency"\` or \`"type": "number"\` — right-aligned formatting.
+- When tool results include field metadata (type, actorId, tags, recordId), copy them into the cell object.
+- For relationship fields with multiple records (\`recordIds\` array), create one cell per record using each \`recordId\`. Do NOT reuse the parent entity's recordId for relationship cells.
 - \`columns[].align\` is optional, defaults to \`"left"\`. Options: \`"left"\`, \`"center"\`, \`"right"\`.
 - Maximum ~20 rows. For larger result sets, summarize or paginate with text.
 

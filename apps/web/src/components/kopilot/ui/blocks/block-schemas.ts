@@ -58,6 +58,17 @@ export const tableCellSchema = z.object({
   text: z.string(),
   recordId: z.string().optional(),
   href: z.string().optional(),
+  // Type hint for rich rendering
+  type: z.enum(['actor', 'date', 'tags', 'email', 'phone', 'currency', 'number']).optional(),
+  actorId: z.string().optional(),
+  tags: z
+    .array(
+      z.object({
+        label: z.string(),
+        color: z.string().optional(),
+      })
+    )
+    .optional(),
 })
 
 export const tableColumnSchema = z.object({

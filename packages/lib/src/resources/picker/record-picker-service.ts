@@ -632,8 +632,25 @@ export class RecordPickerService {
         if (isCustomResourceId(resolvedId)) {
           // Custom entity - fetch EntityInstances by IDs
           const resource = await getCachedResource(this.organizationId, resolvedId)
-          if (!resource) return
+          if (!resource) {
+            logger.warn('Resource not found in cache for getResourcesByIds', {
+              organizationId: this.organizationId,
+              resolvedId,
+              requestedIds: ids,
+            })
+            return
+          }
           const fetched = await this.fetchEntityInstancesByIds(resource, ids)
+          if (fetched.length < ids.length) {
+            const fetchedIds = new Set(fetched.map((f) => f.id))
+            const missingIds = ids.filter((id) => !fetchedIds.has(id))
+            logger.warn('Some entity instances not found by getResourcesByIds', {
+              organizationId: this.organizationId,
+              entityDefinitionId: resource.entityDefinitionId,
+              requestedIds: ids,
+              missingIds,
+            })
+          }
           for (const item of fetched) {
             // Re-key with original entityDefinitionId to match the caller's RecordId format
             const key = toRecordId(originalKey, item.id) as RecordId

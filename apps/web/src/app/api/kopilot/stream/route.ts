@@ -1,6 +1,7 @@
 // apps/web/src/app/api/kopilot/stream/route.ts
 
 import path from 'node:path'
+import { database as db } from '@auxx/database'
 import {
   AgentEngine,
   type AgentEngineConfig,
@@ -197,6 +198,8 @@ export async function POST(request: NextRequest) {
                 type,
                 page,
                 context,
+                approvalAction: body.approvalAction,
+                inputAmendment: body.inputAmendment,
                 savedMessages,
                 savedDomainState,
                 send,
@@ -254,6 +257,8 @@ async function runInProcessPath(params: {
   type: 'message' | 'approval'
   page?: string
   context?: Record<string, unknown>
+  approvalAction?: 'approve' | 'reject'
+  inputAmendment?: Record<string, unknown>
   savedMessages: Record<string, unknown>[]
   savedDomainState: Record<string, unknown>
   send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
@@ -268,6 +273,8 @@ async function runInProcessPath(params: {
     type,
     page,
     context,
+    approvalAction,
+    inputAmendment,
     savedMessages,
     savedDomainState,
     send,
@@ -336,8 +343,8 @@ async function runInProcessPath(params: {
   const generator =
     type === 'approval'
       ? engine.resume({
-          action: body.approvalAction ?? 'approve',
-          inputAmendment: body.inputAmendment,
+          action: approvalAction ?? 'approve',
+          inputAmendment,
           context: sessionContext,
         })
       : engine.submitMessage(message, sessionContext)
@@ -370,7 +377,7 @@ async function runInProcessPath(params: {
     const assistantMsg =
       [...finalState.messages].reverse().find((m) => m.role === 'assistant')?.content ?? ''
 
-    generateSessionTitle(message, assistantMsg, { organizationId, userId })
+    generateSessionTitle(message, assistantMsg, { organizationId, userId, db })
       .then((title) => updateSessionTitle({ sessionId, organizationId, title }))
       .catch((err) => logger.warn('Session auto-title failed', { sessionId, error: String(err) }))
   }

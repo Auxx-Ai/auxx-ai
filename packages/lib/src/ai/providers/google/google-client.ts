@@ -78,7 +78,7 @@ export class GoogleClient extends ProviderClient {
       }
 
       // Simple test - make a basic request to Google AI API
-      const testModel = model || 'gemini-1.5-pro-latest'
+      const testModel = model || 'gemini-2.5-flash'
 
       // For now, we'll return success if the API key format is valid
       // In a real implementation, you'd make an actual API call to Google AI

@@ -33,6 +33,7 @@ ${actionWarning}
 6. If something failed, explain what happened and suggest alternatives.
 7. Do not repeat the plan steps — the user wants results, not process.
 8. Use markdown formatting when it helps readability.
+9. **Comparisons**: When the user asks to compare records, ALWAYS use an \`auxx:table\` block with one column per record and one row per field. Include all available fields even if some values are missing — show "—" for unavailable data rather than omitting the comparison. When tool results include field metadata (type, actorId, tags), pass them through to the cell objects for rich rendering.
 
 ${BLOCK_CATALOG}`
 }

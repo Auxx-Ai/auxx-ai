@@ -132,6 +132,44 @@ export class UsageTrackingService {
   }
 
   /**
+   * Batch-insert multiple usage entries in a single multi-row INSERT.
+   * Fire-and-forget — caller should catch errors externally.
+   * Does NOT update quota counters (handled by pre-call guards).
+   */
+  async trackUsageBatch(requests: UsageTrackingRequest[]): Promise<void> {
+    if (requests.length === 0) return
+
+    const rows = requests.map((req) => {
+      const inputTokens = req.usage.prompt_tokens || 0
+      const outputTokens = req.usage.completion_tokens || 0
+      const totalTokens = req.usage.total_tokens || inputTokens + outputTokens
+
+      return {
+        organizationId: req.organizationId,
+        userId: req.userId,
+        provider: req.provider,
+        model: req.model,
+        modelType: 'llm' as const,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        createdAt: req.timestamp || new Date(),
+        providerType: (req.providerType ?? 'CUSTOM') as 'SYSTEM' | 'CUSTOM',
+        credentialSource: (req.credentialSource ?? 'CUSTOM') as
+          | 'SYSTEM'
+          | 'CUSTOM'
+          | 'MODEL_SPECIFIC'
+          | 'LOAD_BALANCED',
+        creditsUsed: req.creditsUsed ?? 1,
+        source: req.source ?? 'other',
+        sourceId: req.sourceId ?? null,
+      }
+    })
+
+    await this.database.insert(schema.AiUsage).values(rows)
+  }
+
+  /**
    * Track actual usage after API call completion (Legacy interface - for direct calls)
    */
   async trackUsageLegacy(params: {

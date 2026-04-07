@@ -85,9 +85,13 @@ function computeVisibleMessages(
   if (!roots || roots.length === 0) return []
 
   const path: KopilotMessage[] = []
+  const visited = new Set<string>()
   let currentId: string | undefined = activeBranch['root'] ?? roots[0]
 
   while (currentId) {
+    if (visited.has(currentId)) break
+    visited.add(currentId)
+
     const msg = messageMap[currentId]
     if (!msg) break
 

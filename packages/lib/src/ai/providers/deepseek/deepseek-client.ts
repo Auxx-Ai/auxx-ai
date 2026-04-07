@@ -1,19 +1,27 @@
 // packages/lib/src/ai/providers/deepseek/deepseek-client.ts
 
-import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import OpenAI from 'openai'
+import { type BaseSpecializedClient, DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
 import { ProviderClient } from '../base/provider-client'
 import {
   type ConnectionTestResult,
   CredentialValidationError,
+  type ProviderCredentials,
   type ValidationResult,
 } from '../base/types'
-import type { ModelCapabilities, ModelType, ProviderCredentials } from '../types'
+import { type ModelCapabilities, ModelType } from '../types'
 import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek-defaults'
+import { DeepSeekLLMClient } from './deepseek-llm-client'
+
+const DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 
 /**
- * DeepSeek provider client implementation
+ * DeepSeek provider client implementation.
+ * Uses the OpenAI SDK with a custom base URL since DeepSeek's API is OpenAI-compatible.
  */
 export class DeepSeekClient extends ProviderClient {
+  private llmClient?: DeepSeekLLMClient
+
   constructor(organizationId: string, userId: string, cache?: any) {
     super(DEEPSEEK_CAPABILITIES, organizationId, userId, cache)
   }
@@ -21,7 +29,6 @@ export class DeepSeekClient extends ProviderClient {
   async validateCredentials(credentials: Record<string, any>): Promise<ValidationResult> {
     this.logOperationStart('validateCredentials')
 
-    // First validate schema
     const schemaResult = this.validateSchema(credentials)
     if (!schemaResult.isValid) {
       this.logOperationError('validateCredentials', schemaResult.error)
@@ -33,7 +40,6 @@ export class DeepSeekClient extends ProviderClient {
     }
 
     try {
-      // Test the API connection
       const testResult = await this.testConnection(credentials)
 
       if (testResult.success) {
@@ -68,17 +74,15 @@ export class DeepSeekClient extends ProviderClient {
 
     try {
       const extractedCreds = this.extractCredentials(credentials)
-      const apiKey = extractedCreds.deepseek_api_key
-
-      if (!apiKey) {
-        throw new Error('No API key found in credentials')
-      }
-
-      // Simple test - make a basic request to DeepSeek API
+      const client = this.getApiClient(extractedCreds)
       const testModel = model || 'deepseek-chat'
 
-      // For now, we'll return success if the API key format is valid
-      // In a real implementation, you'd make an actual API call to DeepSeek
+      await client.chat.completions.create({
+        model: testModel,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      })
+
       const responseTime = Date.now() - startTime
 
       this.logOperationSuccess('testConnection', {
@@ -89,7 +93,7 @@ export class DeepSeekClient extends ProviderClient {
       return {
         success: true,
         responseTime,
-        modelsTested: model ? [model] : [],
+        modelsTested: [testModel],
       }
     } catch (error) {
       const responseTime = Date.now() - startTime
@@ -120,12 +124,11 @@ export class DeepSeekClient extends ProviderClient {
     }
   }
 
-  getApiClient(credentials: ProviderCredentials): any {
-    // In a real implementation, you would return the DeepSeek SDK client
-    // For now, return a mock client
-    return {
-      apiKey: credentials.deepseek_api_key,
-    }
+  getApiClient(credentials: ProviderCredentials): OpenAI {
+    return new OpenAI({
+      apiKey: credentials.deepseek_api_key as string,
+      baseURL: DEEPSEEK_BASE_URL,
+    })
   }
 
   getModels(): Record<string, ModelCapabilities> {
@@ -133,7 +136,18 @@ export class DeepSeekClient extends ProviderClient {
   }
 
   getClient(modelType: ModelType, credentials: ProviderCredentials): BaseSpecializedClient {
-    throw new Error(`DeepSeek specialized clients not yet implemented for model type: ${modelType}`)
+    if (modelType === ModelType.LLM) {
+      if (!this.llmClient) {
+        this.llmClient = new DeepSeekLLMClient(
+          this.getApiClient(credentials),
+          DEFAULT_CLIENT_CONFIG,
+          this.logger
+        )
+      }
+      return this.llmClient
+    }
+
+    throw new Error(`DeepSeek does not support model type: ${modelType}`)
   }
 
   /**
@@ -145,7 +159,6 @@ export class DeepSeekClient extends ProviderClient {
     }
 
     if (error?.message) {
-      // Handle common DeepSeek error patterns
       if (error.message.includes('401')) {
         return 'Invalid API key. Please check your DeepSeek API key.'
       }

@@ -1450,14 +1450,18 @@ export class ProviderConfigurationService {
         const isProviderConfigured = this._isProviderConfigured(basicConfig)
         const modelEnabled = modelConfig?.enabled ?? true // Default: enabled
 
-        // Determine model status (moved from ProviderManager.getModelStatus)
-        let modelStatus: 'active' | 'disabled' | 'not_configured'
+        // Determine model status (priority: retired > disabled > deprecated > active)
+        let modelStatus: 'active' | 'disabled' | 'not_configured' | 'deprecated' | 'retired'
         if (!isProviderConfigured) {
-          modelStatus = 'not_configured' // Provider not set up
-        } else if (modelCapabilities.deprecated || modelConfig?.enabled === false) {
-          modelStatus = 'disabled' // Explicitly disabled or deprecated
+          modelStatus = 'not_configured'
+        } else if (modelCapabilities.retired) {
+          modelStatus = 'retired'
+        } else if (modelConfig?.enabled === false) {
+          modelStatus = 'disabled'
+        } else if (modelCapabilities.deprecated) {
+          modelStatus = 'deprecated'
         } else {
-          modelStatus = 'active' // Default: enabled for configured providers
+          modelStatus = 'active'
         }
 
         // Check load balancing configuration (moved from ProviderManager)

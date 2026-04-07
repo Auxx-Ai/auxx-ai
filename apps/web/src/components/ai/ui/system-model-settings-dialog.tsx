@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@auxx/ui/components/dialog'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { Settings2 } from 'lucide-react'
 import type React from 'react'
@@ -83,11 +84,10 @@ export function SystemModelSettingsDialog({
   const utils = api.useUtils()
 
   // Single query for all unified model data - shared across all pickers
-  const { data: unifiedModelData, isLoading: isLoadingModels } =
-    api.aiIntegration.getUnifiedModelData.useQuery(
-      { includeDefaults: true, includeUnconfigured: false },
-      { enabled: open, staleTime: 5 * 60 * 1000 }
-    )
+  const { data: unifiedModelData } = api.aiIntegration.getUnifiedModelData.useQuery(
+    { includeDefaults: true, includeUnconfigured: false },
+    { enabled: open, staleTime: 5 * 60 * 1000 }
+  )
 
   // Fetch current defaults
   const { data: defaults, isLoading: isLoadingDefaults } =
@@ -157,17 +157,21 @@ export function SystemModelSettingsDialog({
         <VarEditorField className='p-0'>
           {MODEL_TYPE_CONFIG.map(({ type, label, description }) => (
             <VarEditorFieldRow key={type} title={label} description={description}>
-              <AiModelPicker
-                data={unifiedModelData}
-                value={getCurrentValue(type)}
-                onChange={(model) => handleModelChange(type, model)}
-                modelTypes={[type]}
-                showUnconfigured={false}
-                placeholder={`Select ${label.toLowerCase()}...`}
-                triggerVariant='transparent'
-                triggerClassName='w-full justify-between flex-1'
-                isUpdating={pendingModelType === type || isLoadingModels}
-              />
+              {unifiedModelData ? (
+                <AiModelPicker
+                  data={unifiedModelData}
+                  value={getCurrentValue(type)}
+                  onChange={(model) => handleModelChange(type, model)}
+                  modelTypes={[type]}
+                  showUnconfigured={false}
+                  placeholder={`Select ${label.toLowerCase()}...`}
+                  triggerVariant='transparent'
+                  triggerClassName='w-full justify-between flex-1'
+                  isUpdating={pendingModelType === type}
+                />
+              ) : (
+                <Skeleton className='mt-2 h-5 w-25' />
+              )}
             </VarEditorFieldRow>
           ))}
         </VarEditorField>

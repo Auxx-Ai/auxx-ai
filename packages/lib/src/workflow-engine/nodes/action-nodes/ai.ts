@@ -2,6 +2,7 @@
 
 import { configService } from '@auxx/credentials'
 import OpenAI from 'openai'
+import { OPENAI_MODELS } from '../../../ai/providers/openai/openai-defaults'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -50,7 +51,7 @@ export class AIProcessor extends BaseNodeProcessor {
 
     // 2. Prepare model configuration with validation
     const modelConfig = {
-      model: data.model || 'gpt-4o-mini',
+      model: data.model || 'gpt-5.4-nano',
       temperature: this.validateTemperature(data.temperature ?? 0.7),
       max_tokens: this.validateMaxTokens(data.maxTokens),
       top_p: data.top_p,
@@ -211,7 +212,7 @@ export class AIProcessor extends BaseNodeProcessor {
     // Access flattened data directly from node.data
     const data = node.data as any
     const prompt = data.prompt
-    const model = data.model || 'gpt-4o-mini'
+    const model = data.model || 'gpt-5.4-nano'
     const temperature = data.temperature ?? 0.7
     const maxTokens = data.maxTokens
 
@@ -351,18 +352,11 @@ export class AIProcessor extends BaseNodeProcessor {
    * Estimate API cost based on model and tokens
    */
   private estimateCost(tokens: number, model: string): number {
-    // OpenAI pricing (approximate, as of 2024)
-    const pricing: Record<string, { input: number; output: number }> = {
-      'gpt-4o': { input: 0.005, output: 0.015 }, // per 1K tokens
-      'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
-      'gpt-4-turbo': { input: 0.01, output: 0.03 },
-      'gpt-4': { input: 0.03, output: 0.06 },
-      'gpt-3.5-turbo': { input: 0.001, output: 0.002 },
-    }
+    const modelCaps = OPENAI_MODELS[model]
+    const pricing = modelCaps?.costPer1kTokens ?? { input: 0.0002, output: 0.00125 }
 
-    const modelPricing = pricing[model] || pricing['gpt-4o-mini']
-    const inputCost = ((tokens * 0.7) / 1000) * modelPricing.input // 70% input tokens
-    const outputCost = ((tokens * 0.3) / 1000) * modelPricing.output // 30% output tokens
+    const inputCost = ((tokens * 0.7) / 1000) * pricing.input // 70% input tokens
+    const outputCost = ((tokens * 0.3) / 1000) * pricing.output // 30% output tokens
 
     return inputCost + outputCost
   }
@@ -373,17 +367,11 @@ export class AIProcessor extends BaseNodeProcessor {
   private calculateActualCost(usage: any, model: string): number {
     if (!usage) return 0
 
-    const pricing: Record<string, { input: number; output: number }> = {
-      'gpt-4o': { input: 0.005, output: 0.015 },
-      'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
-      'gpt-4-turbo': { input: 0.01, output: 0.03 },
-      'gpt-4': { input: 0.03, output: 0.06 },
-      'gpt-3.5-turbo': { input: 0.001, output: 0.002 },
-    }
+    const modelCaps = OPENAI_MODELS[model]
+    const pricing = modelCaps?.costPer1kTokens ?? { input: 0.0002, output: 0.00125 }
 
-    const modelPricing = pricing[model] || pricing['gpt-4o-mini']
-    const inputCost = (usage.prompt_tokens / 1000) * modelPricing.input
-    const outputCost = (usage.completion_tokens / 1000) * modelPricing.output
+    const inputCost = (usage.prompt_tokens / 1000) * pricing.input
+    const outputCost = (usage.completion_tokens / 1000) * pricing.output
 
     return inputCost + outputCost
   }
@@ -455,7 +443,6 @@ export class AIProcessor extends BaseNodeProcessor {
   }
 
   private isValidModel(model: string): boolean {
-    const validModels = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo']
-    return validModels.includes(model)
+    return model in OPENAI_MODELS
   }
 }

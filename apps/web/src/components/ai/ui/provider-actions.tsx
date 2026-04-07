@@ -16,6 +16,7 @@ interface ProviderActionsProps {
   provider: string
   configured: boolean
   configStatus: string
+  hasCustomCredentials?: boolean
   onSetup?: (provider: string) => void
   onEdit?: (provider: string) => void
   onMakeDefault?: (provider: string) => void
@@ -33,6 +34,7 @@ export const ProviderActions: React.FC<ProviderActionsProps> = ({
   provider,
   configured,
   configStatus,
+  hasCustomCredentials,
   onSetup,
   onEdit,
   onMakeDefault,
@@ -86,7 +88,50 @@ export const ProviderActions: React.FC<ProviderActionsProps> = ({
     )
   }
 
-  // Show action buttons if configured
+  // Show setup button for system-only providers without custom credentials
+  if (configured && !hasCustomCredentials) {
+    return (
+      <div className='flex'>
+        <Button
+          variant='outline'
+          size='xs'
+          onClick={handleSetupClick}
+          disabled={disabled}
+          className='rounded-r-none'>
+          <Plus />
+          Setup
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant='outline'
+              size='xs'
+              disabled={disabled}
+              className='rounded-l-none border-l-0 w-6'>
+              <MoreVertical />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='end'>
+            <DropdownMenuItem onClick={handleMakeDefaultClick}>
+              <Star />
+              Make default
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleTestConnectionClick}>
+              <Zap />
+              Test Connection
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleCreateCustomModelClick}>
+              <Plus />
+              Create Custom Model
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    )
+  }
+
+  // Show action buttons if configured with custom credentials
   return (
     <div className='flex'>
       {/* Add Model Button */}

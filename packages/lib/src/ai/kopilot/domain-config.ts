@@ -39,7 +39,7 @@ export function createKopilotDomainConfig(
     tools = [],
     capabilityRegistry,
     page,
-    defaultModel = 'gpt-4o',
+    defaultModel = 'gpt-5.4-nano',
     defaultProvider = 'openai',
   } = options
 

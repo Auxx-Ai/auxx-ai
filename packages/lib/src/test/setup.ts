@@ -1,10 +1,12 @@
 // packages/lib/src/test/setup.ts
 
+import path from 'node:path'
 import { loadEnv } from 'vite'
 import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 
-// Load test environment variables
-const env = loadEnv('test', process.cwd(), '')
+// Load test environment variables (monorepo root first, then local overrides)
+const monorepoRoot = path.resolve(__dirname, '../../../..')
+const env = { ...loadEnv('test', monorepoRoot, ''), ...loadEnv('test', process.cwd(), '') }
 Object.assign(process.env, env)
 
 // Set test environment

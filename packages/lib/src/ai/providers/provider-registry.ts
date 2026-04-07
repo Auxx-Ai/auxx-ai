@@ -224,6 +224,24 @@ export class ProviderRegistry {
     return ProviderRegistry.models[model] || null
   }
 
+  /**
+   * Throw if a model has been retired.
+   * Call before making any API request to a provider.
+   */
+  static assertModelNotRetired(modelId: string): void {
+    const capabilities = ProviderRegistry.models[modelId]
+    if (capabilities?.retired) {
+      const replacement = capabilities.replacement
+        ? ` Please switch to "${capabilities.replacement}".`
+        : ''
+      throw new ProviderError(
+        `Model "${modelId}" has been retired and is no longer available.${replacement}`,
+        capabilities.provider,
+        'MODEL_RETIRED'
+      )
+    }
+  }
+
   static getAllModelsForProvider(provider: string): string[] {
     return Object.keys(ProviderRegistry.models).filter(
       (model) => ProviderRegistry.models[model].provider === provider

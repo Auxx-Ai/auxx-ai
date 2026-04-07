@@ -39,7 +39,7 @@ export class AIComposeService {
     this.config = {
       maxContextMessages: 5,
       maxTokensPerMessage: 500,
-      defaultModel: 'gpt-4o-mini',
+      defaultModel: 'gpt-5.4-nano',
       defaultProvider: 'openai',
       ...config,
     }

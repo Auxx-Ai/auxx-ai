@@ -12,6 +12,8 @@ import {
   createMailCapabilities,
   createToolDepsFactory,
 } from '../kopilot'
+import type { UsageTrackingRequest } from '../orchestrator/types'
+import { UsageTrackingService } from '../usage/usage-tracking-service'
 import { AgentEngine } from './engine'
 import type { AgentJobPayload } from './enqueue-agent-job'
 import { createAgentEventPublisher } from './event-publisher'
@@ -96,6 +98,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
 
   // 6. Run engine and publish events
   const sessionContext = { page, ...(context ?? {}) }
+  const usageEntries: UsageTrackingRequest[] = []
 
   const generator =
     type === 'approval'
@@ -111,6 +114,21 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
       engine.interrupt()
       break
     }
+
+    // Accumulate usage from LLM completions for batch tracking
+    if (event.type === 'llm-complete') {
+      usageEntries.push({
+        organizationId,
+        userId,
+        provider: event.provider,
+        model: event.model,
+        usage: event.usage,
+        timestamp: new Date(),
+        source: 'agent',
+        sourceId: sessionId,
+      })
+    }
+
     await publisher.publish(event)
   }
 
@@ -127,7 +145,19 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     domainState: finalState.domainState as Record<string, unknown>,
   })
 
-  // 8. Publish terminal event
+  // 8. Fire-and-forget batch usage tracking
+  if (usageEntries.length > 0) {
+    const usageService = new UsageTrackingService()
+    usageService.trackUsageBatch(usageEntries).catch((err) => {
+      logger.error('Failed to track usage batch', {
+        sessionId,
+        entries: usageEntries.length,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    })
+  }
+
+  // 9. Publish terminal event
   await publisher.publish({ type: 'done' })
 
   logger.info('Agent message processed', { sessionId, domain })
