@@ -1,5 +1,6 @@
 // packages/lib/src/ai/providers/kimi/kimi-llm-client.ts
 
+import type { Message } from '../../clients/base/types'
 import { OpenAILLMClient } from '../openai/openai-llm-client'
 
 /**
@@ -10,7 +11,12 @@ import { OpenAILLMClient } from '../openai/openai-llm-client'
  *
  * kimi-k2.5 has thinking/reasoning enabled by default. The API returns
  * `reasoning_content` in responses and requires it in subsequent assistant
- * messages. The agent framework preserves reasoning_content across turns
- * so Kimi gets what it expects — no special handling needed here.
+ * messages — Kimi requires reasoning_content on ALL assistant messages
+ * in multi-turn conversations.
  */
-export class KimiLLMClient extends OpenAILLMClient {}
+export class KimiLLMClient extends OpenAILLMClient {
+  /** Kimi requires reasoning_content on all assistant messages — preserve everything. */
+  protected override prepareReasoningContent(messages: Message[]): Message[] {
+    return messages
+  }
+}

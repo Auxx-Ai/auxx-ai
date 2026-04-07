@@ -283,13 +283,23 @@ export class LLMOrchestrator {
         }),
       }
 
-      // Stream the response, accumulating content in a single pass
+      // Stream the response, accumulating content in a single pass.
+      // Use manual .next() iteration to capture the generator return value
+      // which contains reasoning_content (not available on per-chunk deltas).
       const streamResult = llmClient.streamInvoke(invokeParams)
       let finalContent = ''
       let finalToolCalls: ToolCall[] = []
       let finalUsage: UsageMetrics | undefined
+      let clientResult: LLMStreamResult | undefined
 
-      for await (const chunk of streamResult) {
+      while (true) {
+        const { value: chunk, done } = await streamResult.next()
+        if (done) {
+          // Generator return value contains the final LLMStreamResult
+          clientResult = chunk as LLMStreamResult | undefined
+          break
+        }
+
         // Trigger chunk callback
         await this.triggerNewChunkCallback(request.callbacks, chunk)
 
@@ -306,12 +316,16 @@ export class LLMOrchestrator {
         yield chunk
       }
 
-      const finalResult: LLMStreamResult = {
+      const finalResult: LLMStreamResult = clientResult ?? {
         model,
         content: finalContent,
         toolCalls: finalToolCalls,
         usage: finalUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
       }
+      // Prefer accumulated content/toolCalls/usage from chunks (more reliable)
+      finalResult.content = finalContent || finalResult.content
+      finalResult.toolCalls = finalToolCalls.length > 0 ? finalToolCalls : finalResult.toolCalls
+      finalResult.usage = finalUsage || finalResult.usage
 
       // Process final result similar to regular invoke
       let toolResults: ToolExecutionResult[] | undefined
@@ -338,6 +352,7 @@ export class LLMOrchestrator {
         content: finalResult.content,
         tool_calls: finalResult.toolCalls,
         usage: finalResult.usage,
+        reasoning_content: finalResult.reasoning_content,
         metadata: finalResult.metadata,
         provider,
         tool_results: toolResults,
@@ -603,7 +618,8 @@ export class LLMOrchestrator {
     schema?: Record<string, any>
   ): Record<string, any> | undefined {
     try {
-      return JSON.parse(content)
+      const cleaned = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/, '')
+      return JSON.parse(cleaned)
     } catch (error) {
       this.logger.warn('Failed to parse structured output as JSON', { content, error })
       return undefined

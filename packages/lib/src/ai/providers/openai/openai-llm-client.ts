@@ -24,6 +24,14 @@ import { TokenCalculator } from '../../clients/utils/token-calculator'
 import { ModelConfigService } from '../../model-config-service'
 import { ProviderRegistry } from '../provider-registry'
 
+/** Extended delta type for providers that return reasoning_content (Kimi, DeepSeek, Qwen) */
+interface ReasoningDelta {
+  content?: string | null
+  reasoning_content?: string | null
+  tool_calls?: unknown[]
+  role?: string
+}
+
 /**
  * OpenAI specialized LLM client with production features
  */
@@ -93,6 +101,7 @@ export class OpenAILLMClient extends LLMClient {
     })
 
     let fullContent = ''
+    let fullReasoningContent = ''
     let chunkCount = 0
     const toolCalls: ToolCall[] = []
     let functionCallBuffer: Partial<FunctionCall> | null = null
@@ -161,7 +170,9 @@ export class OpenAILLMClient extends LLMClient {
         if (chunk.choices.length === 0) continue
 
         const delta = chunk.choices[0]
-        const deltaContent = delta.delta.content || ''
+        const typedDelta = delta.delta as ReasoningDelta
+        const deltaContent = typedDelta.content || ''
+        const deltaReasoningContent = typedDelta.reasoning_content || ''
         const deltaFunctionCall = delta.delta.function_call
         const deltaToolCalls = (delta.delta as any).tool_calls as
           | Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>
@@ -169,6 +180,7 @@ export class OpenAILLMClient extends LLMClient {
         const finishReason = delta.finish_reason
 
         fullContent += deltaContent
+        fullReasoningContent += deltaReasoningContent
 
         // Handle modern tool_calls streaming (OpenAI streams tool calls as indexed deltas)
         if (deltaToolCalls) {
@@ -224,6 +236,7 @@ export class OpenAILLMClient extends LLMClient {
           finishReason: finishReason,
           toolCalls: finishReason ? toolCalls : [],
           usage: finishReason ? finalUsage : undefined,
+          reasoning_delta: deltaReasoningContent || undefined,
           metadata: {
             chunkIndex: ++chunkCount,
             totalLength: fullContent.length,
@@ -278,6 +291,7 @@ export class OpenAILLMClient extends LLMClient {
       content: fullContent,
       toolCalls,
       usage: finalUsage,
+      reasoning_content: fullReasoningContent || undefined,
       metadata: {
         chunkCount,
         totalLength: fullContent.length,
@@ -336,6 +350,7 @@ export class OpenAILLMClient extends LLMClient {
     }
 
     const content = message?.content || ''
+    const reasoningContent = (message as ReasoningDelta)?.reasoning_content || ''
     const toolCalls = this.extractToolCallsFromOpenAIResponse(message)
     const usage = this.convertUsage(completion.usage)
 
@@ -345,6 +360,7 @@ export class OpenAILLMClient extends LLMClient {
       content,
       tool_calls: toolCalls,
       usage,
+      reasoning_content: reasoningContent || undefined,
       metadata: {
         systemFingerprint: completion.system_fingerprint,
         finishReason: completion.choices[0]?.finish_reason,
@@ -434,6 +450,10 @@ export class OpenAILLMClient extends LLMClient {
 
     // Clean illegal prompt messages for specific models
     processedParams.messages = this.clearIllegalPromptMessages(processedParams.messages, baseModel)
+
+    // Strip reasoning_content from messages — OpenAI doesn't support this field.
+    // Subclasses that need reasoning_content override prepareReasoningContent().
+    processedParams.messages = this.prepareReasoningContent(processedParams.messages)
 
     return processedParams
   }
@@ -792,6 +812,23 @@ export class OpenAILLMClient extends LLMClient {
    */
   protected getModelCapabilitiesFromRegistry(model: string): any {
     return ProviderRegistry.getModelCapabilities(model)
+  }
+
+  /**
+   * Prepare reasoning_content on messages before sending to the API.
+   * Base implementation strips all reasoning_content (OpenAI doesn't support it).
+   * Subclasses override to implement provider-specific strategies:
+   * - Kimi: preserve all reasoning_content
+   * - DeepSeek: keep only the last assistant's reasoning_content
+   */
+  protected prepareReasoningContent(messages: Message[]): Message[] {
+    return messages.map((msg) => {
+      if (msg.reasoning_content) {
+        const { reasoning_content, ...rest } = msg
+        return rest
+      }
+      return msg
+    })
   }
 
   private shouldRetryWithoutReasoningParams(error: unknown): boolean {

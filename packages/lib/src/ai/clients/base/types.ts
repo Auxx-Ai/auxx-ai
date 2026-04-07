@@ -81,6 +81,8 @@ export interface Message {
   tool_call_id?: string
   /** Tool calls made by an assistant message (required by OpenAI for multi-turn tool use) */
   tool_calls?: ToolCall[]
+  /** Reasoning content from thinking-enabled models (DeepSeek, Kimi, Qwen) */
+  reasoning_content?: string
 }
 
 export interface Tool {
@@ -133,6 +135,8 @@ export interface LLMResponse {
   content: string
   tool_calls?: ToolCall[]
   usage: UsageMetrics
+  /** Reasoning content from thinking-enabled models (DeepSeek, Kimi, Qwen) */
+  reasoning_content?: string
   metadata?: {
     systemFingerprint?: string
     [key: string]: any
@@ -147,6 +151,8 @@ export interface LLMStreamChunk {
   finishReason?: string
   toolCalls?: ToolCall[]
   usage?: UsageMetrics
+  /** Reasoning content delta from thinking-enabled models (DeepSeek, Kimi, Qwen) */
+  reasoning_delta?: string
   metadata?: {
     chunkIndex: number
     totalLength: number
@@ -160,6 +166,8 @@ export interface LLMStreamResult {
   content: string
   toolCalls: ToolCall[]
   usage: UsageMetrics
+  /** Reasoning content from thinking-enabled models (DeepSeek, Kimi, Qwen) */
+  reasoning_content?: string
   metadata?: {
     chunkCount: number
     totalLength: number

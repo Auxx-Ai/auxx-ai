@@ -141,12 +141,21 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     await publisher.publish(event)
   }
 
-  // 7. Save final state to DB
+  // 7. Save final state to DB — strip reasoning_content to avoid bloating storage.
+  // It's ephemeral (only needed within the current tool-calling cycle) and providers
+  // re-strip or re-generate it on subsequent API calls anyway.
   const finalState = engine.getState()
+  const messagesForStorage = finalState.messages.map((m) => {
+    if (m.reasoning_content) {
+      const { reasoning_content, ...rest } = m
+      return rest
+    }
+    return m
+  })
   await saveSessionMessages({
     sessionId,
     organizationId,
-    messages: finalState.messages as Record<string, unknown>[],
+    messages: messagesForStorage as Record<string, unknown>[],
   })
   await updateSessionDomainState({
     sessionId,

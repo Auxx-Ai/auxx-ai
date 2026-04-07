@@ -1,11 +1,6 @@
 // packages/lib/src/ai/providers/deepseek/deepseek-llm-client.ts
 
-import type {
-  LLMInvokeParams,
-  LLMResponse,
-  LLMStreamChunk,
-  LLMStreamResult,
-} from '../../clients/base/types'
+import type { Message } from '../../clients/base/types'
 import { OpenAILLMClient } from '../openai/openai-llm-client'
 
 /**
@@ -13,40 +8,35 @@ import { OpenAILLMClient } from '../openai/openai-llm-client'
  *
  * DeepSeek's API is OpenAI-compatible, but the `deepseek-reasoner` model
  * returns `reasoning_content` alongside `content` in responses. This client
- * captures that field and stores it in response metadata.
+ * preserves reasoning_content on the last assistant message and strips it
+ * from all prior turns (DeepSeek requires this pattern).
  *
  * Multi-turn rules for reasoning_content:
  * - Do NOT pass reasoning_content from previous turns back in follow-up messages (causes 400 error)
- * - Within a single turn's tool-calling cycle, reasoning_content MUST be preserved between rounds
+ * - Within a single turn's tool-calling cycle, reasoning_content MUST be preserved on the last assistant
  */
 export class DeepSeekLLMClient extends OpenAILLMClient {
-  async invoke(params: LLMInvokeParams): Promise<LLMResponse> {
-    // Strip reasoning_content from any previous assistant messages to avoid 400 errors
-    const cleanedParams = this.stripReasoningContentFromHistory(params)
-    const response = await super.invoke(cleanedParams)
-    return response
-  }
-
-  async *streamInvoke(params: LLMInvokeParams): AsyncGenerator<LLMStreamChunk, LLMStreamResult> {
-    const cleanedParams = this.stripReasoningContentFromHistory(params)
-    return yield* super.streamInvoke(cleanedParams)
-  }
-
   /**
-   * Remove reasoning_content from previous assistant messages to prevent 400 errors.
-   * DeepSeek requires that reasoning_content from prior turns is NOT sent back.
+   * Strip reasoning_content from all assistant messages except the last one.
+   * DeepSeek requires that reasoning_content from prior turns is NOT sent back,
+   * but the most recent assistant message's reasoning must be preserved within
+   * the current tool-calling cycle.
    */
-  private stripReasoningContentFromHistory(params: LLMInvokeParams): LLMInvokeParams {
-    if (!params.messages) return params
+  protected override prepareReasoningContent(messages: Message[]): Message[] {
+    // Find the last assistant message that has reasoning_content
+    const lastAssistantWithReasoningIdx = messages.findLastIndex(
+      (m) => m.role === 'assistant' && m.reasoning_content
+    )
 
-    const cleanedMessages = params.messages.map((msg) => {
-      if (msg.role === 'assistant' && (msg as any).reasoning_content) {
-        const { reasoning_content, ...rest } = msg as any
+    if (lastAssistantWithReasoningIdx === -1) return messages
+
+    // Strip reasoning_content from all assistant messages except the last one
+    return messages.map((msg, i) => {
+      if (i < lastAssistantWithReasoningIdx && msg.role === 'assistant' && msg.reasoning_content) {
+        const { reasoning_content, ...rest } = msg
         return rest
       }
       return msg
     })
-
-    return { ...params, messages: cleanedMessages }
   }
 }
