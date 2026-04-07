@@ -310,10 +310,9 @@ async function runInProcessPath(params: {
     defaultProvider = provider
     defaultModel = modelParts.join(':')
   } else {
-    const { SystemModelService } = await import('@auxx/lib/ai')
+    const { getCachedDefaultModel } = await import('@auxx/lib/cache')
     const { ModelType } = await import('@auxx/lib/ai/providers/types')
-    const systemModelService = new SystemModelService(db, organizationId)
-    const systemDefault = await systemModelService.getDefault(ModelType.LLM)
+    const systemDefault = await getCachedDefaultModel(organizationId, ModelType.LLM)
     if (systemDefault) {
       defaultProvider = systemDefault.provider
       defaultModel = systemDefault.model

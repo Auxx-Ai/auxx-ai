@@ -5,6 +5,7 @@ import type {
   OrganizationMemberInfo,
   OrganizationRole,
 } from '@auxx/database/types'
+import type { CredentialsResponse, ProviderConfiguration } from '../ai/providers/types'
 import type { DehydratedOrganization } from '../dehydration/types'
 import type { Inbox } from '../inboxes/types'
 import type { Overage } from '../permissions/overage-detection-service'
@@ -103,6 +104,17 @@ export interface CachedGroup {
   }
 }
 
+/** Serialized system model default (JSON-safe, dates as ISO strings) */
+export interface CachedSystemModelDefault {
+  id: string
+  organizationId: string
+  modelType: string
+  provider: string
+  model: string
+  createdAt: string
+  updatedAt: string
+}
+
 /** Cached installed app shape (JSON-serializable) */
 export interface CachedInstalledApp {
   installationId: string
@@ -160,6 +172,11 @@ export interface OrgCacheDataMap {
   orgSettings: Record<string, SettingValue> // key → value (org defaults only)
   installedApps: CachedInstalledApp[]
   workflowApps: CachedWorkflowApp[]
+
+  // AI provider data (15-min TTL, invalidated via ai-provider/model events)
+  aiProviderConfigs: Record<string, ProviderConfiguration>
+  aiCredentials: Record<string, CredentialsResponse>
+  aiDefaultModels: Record<string, CachedSystemModelDefault>
 }
 
 export type OrgCacheKeyName = keyof OrgCacheDataMap
@@ -194,4 +211,9 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
   installedApps: { prefix: 'org:installed-apps', ttlSeconds: 900 },
   workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY },
+
+  // AI provider data (15-min TTL)
+  aiProviderConfigs: { prefix: 'org:ai-provider-configs', ttlSeconds: 900 },
+  aiCredentials: { prefix: 'org:ai-credentials', ttlSeconds: 900 },
+  aiDefaultModels: { prefix: 'org:ai-default-models', ttlSeconds: 900 },
 }

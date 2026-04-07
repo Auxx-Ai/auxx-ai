@@ -78,27 +78,6 @@ export function createExecutorAgent(
         conversationMessages.push(msg)
       }
 
-      // Debug: log message structure to diagnose orphaned tool messages
-      const toolMsgs = conversationMessages.filter((m) => m.role === 'tool')
-      const assistantWithToolCalls = conversationMessages.filter(
-        (m) => m.role === 'assistant' && m.tool_calls?.length
-      )
-      if (toolMsgs.length > 0) {
-        logger.info('Tool message chain debug', {
-          totalMessages: conversationMessages.length,
-          toolMessageCount: toolMsgs.length,
-          assistantWithToolCallsCount: assistantWithToolCalls.length,
-          toolCallIds: toolMsgs.map((m) => m.tool_call_id),
-          validToolCallIds: [...validToolCallIds],
-          messageRoles: conversationMessages.map((m, i) => ({
-            i,
-            role: m.role,
-            hasToolCalls: !!(m as any).tool_calls?.length,
-            toolCallId: (m as any).tool_call_id,
-          })),
-        })
-      }
-
       return [{ role: 'system', content: systemPrompt }, ...conversationMessages]
     },
 

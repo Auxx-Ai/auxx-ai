@@ -88,6 +88,18 @@ export async function requireCachedEntityDefId(orgId: string, entityType: string
   return id
 }
 
+// ── AI default model cache helpers ──
+
+/** Get a single cached default model by type. Returns null if not configured. */
+export async function getCachedDefaultModel(
+  orgId: string,
+  modelType: string
+): Promise<{ provider: string; model: string } | null> {
+  const defaults = await getOrgCache().get(orgId, 'aiDefaultModels')
+  const entry = defaults[modelType]
+  return entry ? { provider: entry.provider, model: entry.model } : null
+}
+
 // ── Member cache helpers ──
 
 /**

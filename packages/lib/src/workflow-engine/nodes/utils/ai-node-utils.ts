@@ -1,10 +1,9 @@
 // packages/lib/src/workflow-engine/nodes/utils/ai-node-utils.ts
 
-import type { Database } from '@auxx/database'
 import type { Message, Tool } from '../../../ai/clients/base/types'
 import type { AICallbacks } from '../../../ai/orchestrator/types'
-import { SystemModelService } from '../../../ai/providers/system-model-service'
 import { ModelType } from '../../../ai/providers/types'
+import { getCachedDefaultModel } from '../../../cache/org-cache-helpers'
 import type { ExecutionContextManager } from '../../core/execution-context'
 
 /**
@@ -84,7 +83,6 @@ export function extractModelConfig(modelConfig: any): {
  * When useDefault is true, fetches the org's system default for the given model type.
  *
  * @param modelConfig - Output from extractModelConfig()
- * @param db - Database instance
  * @param organizationId - The organization ID
  * @param modelType - The model type to resolve defaults for (defaults to 'llm')
  * @returns Resolved provider and model name
@@ -92,15 +90,13 @@ export function extractModelConfig(modelConfig: any): {
  */
 export async function resolveModelConfig(
   modelConfig: { provider: string; model: string; useDefault: boolean },
-  db: Database,
   organizationId: string,
   modelType: ModelType = ModelType.LLM
 ): Promise<{ provider: string; model: string }> {
   if (modelConfig.useDefault || (!modelConfig.provider && !modelConfig.model)) {
-    const systemModelService = new SystemModelService(db, organizationId)
-    const defaultModel = await systemModelService.getDefault(modelType)
+    const defaultModel = await getCachedDefaultModel(organizationId, modelType)
     if (defaultModel) {
-      return { provider: defaultModel.provider, model: defaultModel.model }
+      return defaultModel
     }
     throw new Error(
       `No default ${modelType} model configured for organization. ` +

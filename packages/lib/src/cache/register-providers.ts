@@ -3,6 +3,9 @@
 import type { AppCacheService } from './app-cache-service'
 import type { BuildUserCacheService } from './build-user-cache-service'
 import type { OrganizationCacheService } from './org-cache-service'
+import { aiCredentialsProvider } from './providers/ai-credentials-provider'
+import { aiDefaultModelsProvider } from './providers/ai-default-models-provider'
+import { aiProviderConfigsProvider } from './providers/ai-provider-configs-provider'
 import { appSlugMapProvider } from './providers/app-slug-map-provider'
 // Build user cache providers
 import { buildAppsProvider } from './providers/build-apps-provider'
@@ -64,6 +67,11 @@ export function registerAllProviders(
   orgCache.register('orgSettings', orgSettingsProvider)
   orgCache.register('installedApps', installedAppsProvider)
   orgCache.register('workflowApps', workflowAppsProvider)
+
+  // Org-scoped: AI provider data
+  orgCache.register('aiProviderConfigs', aiProviderConfigsProvider)
+  orgCache.register('aiCredentials', aiCredentialsProvider)
+  orgCache.register('aiDefaultModels', aiDefaultModelsProvider)
 
   // User-scoped
   userCache.register('userProfile', userProfileProvider)

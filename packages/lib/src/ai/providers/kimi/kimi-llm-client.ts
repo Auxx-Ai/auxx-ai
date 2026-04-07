@@ -8,9 +8,9 @@ import { OpenAILLMClient } from '../openai/openai-llm-client'
  * Kimi's API is OpenAI-compatible. For kimi-k2.5, the OpenAI-compatible
  * client handles everything (chat, tools, structured output, vision).
  *
- * Future: Thinking mode models (kimi-k2-thinking, kimi-k2-thinking-turbo)
- * use a `thinking` parameter ({type: "enabled"} / {type: "disabled"}) rather
- * than DeepSeek's reasoning_content field. May need stripThinkingContent()
- * when those models are added.
+ * kimi-k2.5 has thinking/reasoning enabled by default. The API returns
+ * `reasoning_content` in responses and requires it in subsequent assistant
+ * messages. The agent framework preserves reasoning_content across turns
+ * so Kimi gets what it expects — no special handling needed here.
  */
 export class KimiLLMClient extends OpenAILLMClient {}

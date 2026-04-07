@@ -40,6 +40,9 @@ export function AuxxBlock({ type, rawContent }: AuxxBlockProps) {
     // Partial/invalid JSON during streaming → skeleton
   }
 
+  // Don't render empty array blocks (e.g. entity-list with [])
+  if (isValid && Array.isArray(parsed) && parsed.length === 0) return null
+
   const showBlock = isValid && Renderer
   const blockKey = `${type}:${rawContent}`
   const alreadyShown = shownBlocks.has(blockKey)

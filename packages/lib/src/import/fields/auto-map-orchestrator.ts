@@ -2,9 +2,9 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { SystemModelService } from '../../ai/providers/system-model-service'
 import { ModelType } from '../../ai/providers/types'
 import { QuotaService } from '../../ai/quota/quota-service'
+import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
 import type { AIColumnMappingInput, AIColumnMappingResponse } from '../types/ai-mapping'
 import { aiAutoMapColumns } from './ai-auto-map-columns'
 import { autoMapColumns, type ColumnHeader } from './auto-map-columns'
@@ -41,8 +41,7 @@ async function isAIAvailable(
 ): Promise<{ available: boolean; reason?: string }> {
   try {
     // Check 1: Does user have a default LLM model configured?
-    const systemModelService = new SystemModelService(db, organizationId)
-    const defaultModel = await systemModelService.getDefault(ModelType.LLM)
+    const defaultModel = await getCachedDefaultModel(organizationId, ModelType.LLM)
 
     if (!defaultModel) {
       logger.debug('No default LLM model configured', { organizationId })

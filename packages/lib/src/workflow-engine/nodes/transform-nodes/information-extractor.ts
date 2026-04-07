@@ -149,7 +149,7 @@ export class InformationExtractorProcessor extends BaseNodeProcessor {
 
     // 8. Resolve model config (handles useDefault flag)
     const extracted = extractModelConfig(config.model)
-    const resolvedModel = await resolveModelConfig(extracted, db, organizationId)
+    const resolvedModel = await resolveModelConfig(extracted, organizationId)
 
     // 9. Extract variable references for debugging
     const usedVariables = new Set<string>()
@@ -356,7 +356,7 @@ export class InformationExtractorProcessor extends BaseNodeProcessor {
 
       // 5.5. Resolve model config (handles useDefault flag)
       const extracted = extractModelConfig(config.model)
-      const resolvedModel = await resolveModelConfig(extracted, db, organizationId)
+      const resolvedModel = await resolveModelConfig(extracted, organizationId)
       const resolvedModelConfig = {
         provider: resolvedModel.provider,
         name: resolvedModel.model,
