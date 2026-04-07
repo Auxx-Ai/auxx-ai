@@ -235,6 +235,20 @@ export abstract class ProviderClient {
   // ===== PROTECTED HELPER METHODS =====
 
   /**
+   * Require a credential field to be a non-empty string.
+   * Prevents SDKs from silently falling back to environment variables (e.g. OPENAI_API_KEY)
+   * when credentials are missing or malformed.
+   */
+  protected requireApiKey(credentials: ProviderCredentials, field: string): string {
+    const value = credentials[field]
+    if (typeof value === 'string' && value.length > 0) return value
+    throw new Error(
+      `Missing API key for ${this.getProviderId()}: credential field "${field}" is ${value === undefined ? 'undefined' : 'empty'}. ` +
+        'This usually means credentials were not configured or failed to decrypt.'
+    )
+  }
+
+  /**
    * Extract a specific credential field using multiple naming patterns
    */
   protected extractCredentialField(credentials: Record<string, any>, fieldName: string): any {

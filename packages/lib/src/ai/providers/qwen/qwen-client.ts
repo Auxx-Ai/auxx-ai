@@ -1,4 +1,4 @@
-// packages/lib/src/ai/providers/deepseek/deepseek-client.ts
+// packages/lib/src/ai/providers/qwen/qwen-client.ts
 
 import OpenAI from 'openai'
 import { type BaseSpecializedClient, DEFAULT_CLIENT_CONFIG } from '../../clients/base/types'
@@ -10,20 +10,20 @@ import {
   type ValidationResult,
 } from '../base/types'
 import { type ModelCapabilities, ModelType } from '../types'
-import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek-defaults'
-import { DeepSeekLLMClient } from './deepseek-llm-client'
+import { QWEN_CAPABILITIES, QWEN_MODELS } from './qwen-defaults'
+import { QwenLLMClient } from './qwen-llm-client'
 
-const DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
+const QWEN_DEFAULT_BASE_URL = 'https://dashscope-us.aliyuncs.com/compatible-mode/v1'
 
 /**
- * DeepSeek provider client implementation.
- * Uses the OpenAI SDK with a custom base URL since DeepSeek's API is OpenAI-compatible.
+ * Qwen provider client implementation.
+ * Uses the OpenAI SDK with a custom base URL since Qwen's DashScope API is OpenAI-compatible.
  */
-export class DeepSeekClient extends ProviderClient {
-  private llmClient?: DeepSeekLLMClient
+export class QwenClient extends ProviderClient {
+  private llmClient?: QwenLLMClient
 
   constructor(organizationId: string, userId: string, cache?: any) {
-    super(DEEPSEEK_CAPABILITIES, organizationId, userId, cache)
+    super(QWEN_CAPABILITIES, organizationId, userId, cache)
   }
 
   async validateCredentials(credentials: Record<string, any>): Promise<ValidationResult> {
@@ -31,7 +31,10 @@ export class DeepSeekClient extends ProviderClient {
 
     const schemaResult = this.validateSchema(credentials)
     if (!schemaResult.isValid) {
-      this.logOperationError('validateCredentials', schemaResult.error)
+      this.logOperationError('validateCredentials', schemaResult.error, {
+        fieldErrors: schemaResult.fieldErrors,
+        credentialKeys: Object.keys(credentials),
+      })
       return {
         isValid: false,
         error: schemaResult.error,
@@ -59,7 +62,7 @@ export class DeepSeekClient extends ProviderClient {
       this.logOperationError('validateCredentials', errorMessage)
 
       throw new CredentialValidationError(
-        `DeepSeek credential validation failed: ${errorMessage}`,
+        `Qwen credential validation failed: ${errorMessage}`,
         this.getProviderId()
       )
     }
@@ -75,7 +78,9 @@ export class DeepSeekClient extends ProviderClient {
     try {
       const extractedCreds = this.extractCredentials(credentials)
       const client = this.getApiClient(extractedCreds)
-      const testModel = model || 'deepseek-chat'
+      const baseUrl = (extractedCreds.qwen_api_base as string) || QWEN_DEFAULT_BASE_URL
+      const isUsRegion = baseUrl.includes('dashscope-us')
+      const testModel = model || (isUsRegion ? 'qwen-plus-us' : 'qwen-plus-latest')
 
       await client.chat.completions.create({
         model: testModel,
@@ -97,7 +102,7 @@ export class DeepSeekClient extends ProviderClient {
       }
     } catch (error) {
       const responseTime = Date.now() - startTime
-      const errorMessage = this.parseDeepSeekError(error)
+      const errorMessage = this.parseQwenError(error)
 
       this.logOperationError('testConnection', errorMessage, {
         responseTime,
@@ -116,29 +121,35 @@ export class DeepSeekClient extends ProviderClient {
   extractCredentials(rawCredentials: Record<string, any>): ProviderCredentials {
     const apiKey =
       this.extractCredentialField(rawCredentials, 'api_key') ||
-      this.extractCredentialField(rawCredentials, 'deepseek_api_key') ||
+      this.extractCredentialField(rawCredentials, 'qwen_api_key') ||
       rawCredentials.apiKey
 
+    const apiBase =
+      this.extractCredentialField(rawCredentials, 'api_base') ||
+      this.extractCredentialField(rawCredentials, 'qwen_api_base') ||
+      rawCredentials.apiBase
+
     return {
-      deepseek_api_key: apiKey,
+      qwen_api_key: apiKey,
+      qwen_api_base: apiBase,
     }
   }
 
   getApiClient(credentials: ProviderCredentials): OpenAI {
     return new OpenAI({
-      apiKey: this.requireApiKey(credentials, 'deepseek_api_key'),
-      baseURL: DEEPSEEK_BASE_URL,
+      apiKey: this.requireApiKey(credentials, 'qwen_api_key'),
+      baseURL: (credentials.qwen_api_base as string) || QWEN_DEFAULT_BASE_URL,
     })
   }
 
   getModels(): Record<string, ModelCapabilities> {
-    return DEEPSEEK_MODELS
+    return QWEN_MODELS
   }
 
   getClient(modelType: ModelType, credentials: ProviderCredentials): BaseSpecializedClient {
     if (modelType === ModelType.LLM) {
       if (!this.llmClient) {
-        this.llmClient = new DeepSeekLLMClient(
+        this.llmClient = new QwenLLMClient(
           this.getApiClient(credentials),
           DEFAULT_CLIENT_CONFIG,
           this.logger
@@ -147,20 +158,26 @@ export class DeepSeekClient extends ProviderClient {
       return this.llmClient
     }
 
-    throw new Error(`DeepSeek does not support model type: ${modelType}`)
+    throw new Error(`Qwen does not support model type: ${modelType}`)
   }
 
   /**
-   * Parse DeepSeek API errors into user-friendly messages
+   * Parse Qwen API errors into user-friendly messages
    */
-  private parseDeepSeekError(error: any): string {
+  private parseQwenError(error: any): string {
+    const rawMessage = error?.error?.message || error?.message || ''
+
+    if (rawMessage.includes('Access denied') || rawMessage.includes('access-denied')) {
+      return 'Access denied. This usually means the model is not available in your selected region. US region only supports models ending in "-us" (e.g. qwen-plus-us). International models like qwen-plus-latest require the Singapore or China endpoint.'
+    }
+
     if (error?.error?.message) {
-      return `DeepSeek API Error: ${error.error.message}`
+      return `Qwen API Error: ${error.error.message}`
     }
 
     if (error?.message) {
       if (error.message.includes('401')) {
-        return 'Invalid API key. Please check your DeepSeek API key.'
+        return 'Invalid API key. Please check your DashScope API key.'
       }
       if (error.message.includes('429')) {
         return 'Rate limit exceeded. Please try again later.'
@@ -175,6 +192,6 @@ export class DeepSeekClient extends ProviderClient {
       return error.message
     }
 
-    return 'Unknown DeepSeek API error occurred'
+    return 'Unknown Qwen API error occurred'
   }
 }

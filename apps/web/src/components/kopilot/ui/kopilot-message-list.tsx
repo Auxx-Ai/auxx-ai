@@ -215,7 +215,7 @@ export function KopilotMessageList({
 
         {/* Pipeline error */}
         {error && !isStreaming && (
-          <Alert variant='destructive'>
+          <Alert variant='destructive' className='bg-background'>
             <AlertTriangle className='size-4' />
             <AlertTitle>Something went wrong</AlertTitle>
             <AlertDescription className='flex items-end justify-between gap-2'>

@@ -74,8 +74,8 @@ export class ValidationUtils {
         break
 
       case 'select':
-        if (field.options && !field.options.includes(String(value))) {
-          return `${field.label} must be one of: ${field.options.join(', ')}`
+        if (field.options && !field.options.some((opt) => opt.value === String(value))) {
+          return `${field.label} must be one of: ${field.options.map((opt) => opt.label).join(', ')}`
         }
         break
     }

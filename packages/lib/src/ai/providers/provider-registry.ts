@@ -7,7 +7,9 @@ import { ProviderError } from './base/types'
 import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek/deepseek-defaults'
 import { GOOGLE_CAPABILITIES, GOOGLE_MODELS } from './google/google-defaults'
 import { GROQ_CAPABILITIES, GROQ_MODELS } from './groq/groq-defaults'
+import { KIMI_CAPABILITIES, KIMI_MODELS } from './kimi/kimi-defaults'
 import { OPENAI_CAPABILITIES, OPENAI_MODELS } from './openai/openai-defaults'
+import { QWEN_CAPABILITIES, QWEN_MODELS } from './qwen/qwen-defaults'
 import type { ModelCapabilities, ProviderCapabilities } from './types'
 
 const logger = createScopedLogger('ProviderRegistry')
@@ -19,13 +21,23 @@ const serverLoaders: Record<string, () => Promise<any>> = {
   google: () => import('./google'),
   groq: () => import('./groq'),
   deepseek: () => import('./deepseek'),
+  qwen: () => import('./qwen'),
+  kimi: () => import('./kimi'),
 }
 
 /**
  * Preferred order for provider display in UI
  * Defines the sequence: openai, anthropic, google, groq, deepseek
  */
-export const providerPositions: string[] = ['openai', 'anthropic', 'google', 'groq', 'deepseek']
+export const providerPositions: string[] = [
+  'openai',
+  'anthropic',
+  'google',
+  'groq',
+  'deepseek',
+  'qwen',
+  'kimi',
+]
 
 export interface ProviderRegistration {
   // Static metadata (from ModelRegistry)
@@ -57,6 +69,8 @@ export class ProviderRegistry {
     ...GOOGLE_MODELS,
     ...GROQ_MODELS,
     ...DEEPSEEK_MODELS,
+    ...QWEN_MODELS,
+    ...KIMI_MODELS,
   }
 
   /** Static provider capabilities imported from provider-specific files */
@@ -66,6 +80,8 @@ export class ProviderRegistry {
     google: GOOGLE_CAPABILITIES,
     groq: GROQ_CAPABILITIES,
     deepseek: DEEPSEEK_CAPABILITIES,
+    qwen: QWEN_CAPABILITIES,
+    kimi: KIMI_CAPABILITIES,
   }
 
   /** Provider definitions for dynamic loading */
@@ -94,6 +110,16 @@ export class ProviderRegistry {
       id: 'deepseek',
       modulePath: './deepseek',
       clientClassName: 'DeepSeekClient',
+    },
+    {
+      id: 'qwen',
+      modulePath: './qwen',
+      clientClassName: 'QwenClient',
+    },
+    {
+      id: 'kimi',
+      modulePath: './kimi',
+      clientClassName: 'KimiClient',
     },
   ]
 

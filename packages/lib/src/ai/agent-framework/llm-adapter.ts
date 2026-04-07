@@ -76,16 +76,44 @@ export function createCallModel(config: LLMAdapterConfig) {
 
     const stream = orchestrator.streamInvoke(request)
 
+    // Buffer text deltas to reduce SSE event count.
+    // Flush when buffer exceeds threshold or on a 50ms timer.
+    const BATCH_CHAR_THRESHOLD = 50
+    const BATCH_FLUSH_MS = 50
+    let deltaBuffer = ''
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+    const pendingDeltas: string[] = []
+    const flushBuffer = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer)
+        flushTimer = null
+      }
+      if (deltaBuffer) {
+        pendingDeltas.push(deltaBuffer)
+        deltaBuffer = ''
+      }
+    }
+    const scheduleFlush = () => {
+      if (!flushTimer) {
+        flushTimer = setTimeout(flushBuffer, BATCH_FLUSH_MS)
+      }
+    }
+
     try {
       while (true) {
         // Check abort signal before each iteration
         if (signal?.aborted) {
+          flushBuffer()
           return
         }
 
         const { value: chunk, done } = await stream.next()
 
         if (done) {
+          // Flush any remaining buffered text
+          flushBuffer()
+
           // The return value of the generator is the final LLMInvocationResponse
           const response = chunk
           if (response) {
@@ -98,10 +126,20 @@ export function createCallModel(config: LLMAdapterConfig) {
           break
         }
 
-        // Yield text deltas
+        // Buffer text deltas
         if (chunk.delta) {
           fullContent += chunk.delta
-          yield { type: 'text-delta' as const, delta: chunk.delta }
+          deltaBuffer += chunk.delta
+          if (deltaBuffer.length >= BATCH_CHAR_THRESHOLD) {
+            flushBuffer()
+          } else {
+            scheduleFlush()
+          }
+        }
+
+        // Yield any flushed batches
+        while (pendingDeltas.length > 0) {
+          yield { type: 'text-delta' as const, delta: pendingDeltas.shift()! }
         }
 
         // Yield tool calls when they appear on the final chunk
@@ -119,7 +157,13 @@ export function createCallModel(config: LLMAdapterConfig) {
         model,
         error: error instanceof Error ? error.message : String(error),
       })
+      if (flushTimer) clearTimeout(flushTimer)
       throw error
+    }
+
+    // Yield any remaining buffered deltas
+    while (pendingDeltas.length > 0) {
+      yield { type: 'text-delta' as const, delta: pendingDeltas.shift()! }
     }
 
     logger.info('LLM complete', {

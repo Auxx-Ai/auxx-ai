@@ -162,7 +162,7 @@ export class OpenAIClient extends ProviderClient {
 
   getApiClient(credentials: ProviderCredentials): OpenAI {
     const config: any = {
-      apiKey: credentials.openai_api_key,
+      apiKey: this.requireApiKey(credentials, 'openai_api_key'),
     }
 
     if (credentials.openai_organization) {

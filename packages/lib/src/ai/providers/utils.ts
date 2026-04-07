@@ -300,7 +300,7 @@ export function getQuotaStatus(used: number, limit: number): 'active' | 'warning
  * Sort providers by preference
  */
 export function sortProviders(providers: string[]): string[] {
-  const preferenceOrder = ['openai', 'anthropic', 'google', 'groq', 'deepseek']
+  const preferenceOrder = ['openai', 'anthropic', 'google', 'groq', 'deepseek', 'qwen', 'kimi']
 
   return providers.sort((a, b) => {
     const aIndex = preferenceOrder.indexOf(a)

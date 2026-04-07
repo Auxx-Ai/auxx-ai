@@ -22,6 +22,12 @@ import {
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import {
@@ -528,25 +534,24 @@ export function CredentialConfigurationDialog({
     switch (field.type) {
       case 'secret-input':
         return (
-          <div className='space-y-2'>
-            <div className='relative'>
-              <Input
-                {...formField}
-                type={visibleSecrets[field.variable] ? 'text' : 'password'}
-                placeholder={field.placeholder}
-                className='pr-10'
-                autoComplete='new-password'
-              />
-              <Button
-                type='button'
-                variant='ghost'
-                size='sm'
-                className='absolute right-0 top-0 h-full px-3'
+          <InputGroup>
+            <InputGroupInput
+              {...formField}
+              type={visibleSecrets[field.variable] ? 'text' : 'password'}
+              placeholder={field.placeholder}
+              autoComplete='new-password'
+            />
+            <InputGroupAddon align='inline-end'>
+              <InputGroupButton
+                className='mr-1'
+                aria-label={visibleSecrets[field.variable] ? 'Hide secret' : 'Show secret'}
+                aria-pressed={visibleSecrets[field.variable]}
+                size='icon-xs'
                 onClick={() => toggleSecretVisibility(field.variable)}>
                 {visibleSecrets[field.variable] ? <EyeOff /> : <Eye />}
-              </Button>
-            </div>
-          </div>
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
         )
 
       case 'select':

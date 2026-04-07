@@ -26,7 +26,9 @@ Examples:
 - All active contacts: { entity: "contact", filters: [{ field: "status", operator: "is", value: "ACTIVE" }] }
 - Recent tickets: { entity: "ticket", sort: { field: "createdAt", direction: "desc" }, limit: 10 }
 - Contacts at a company: { entity: "contact", filters: [{ field: "company", operator: "is", value: "<company-record-id>" }] }
-- Active OR VIP contacts: { entity: "contact", filters: [...], logicalOperator: "OR" }`,
+- Active OR VIP contacts: { entity: "contact", filters: [...], logicalOperator: "OR" }
+- Count all tickets: { entity: "ticket", countOnly: true }
+- Count open tickets: { entity: "ticket", filters: [{ field: "status", operator: "is", value: "OPEN" }], countOnly: true }`,
     parameters: {
       type: 'object',
       properties: {
@@ -82,6 +84,11 @@ Examples:
           description:
             'Number of results to skip for pagination (default 0). Use with limit to page through results when hasMore is true.',
         },
+        countOnly: {
+          type: 'boolean',
+          description:
+            'Return only the total count without individual records. Use for "how many" / count questions. Much faster and lighter.',
+        },
       },
       required: ['entity'],
       additionalProperties: false,
@@ -92,7 +99,8 @@ Examples:
       const filters = (args.filters as SimplifiedFilter[]) ?? []
       const logicalOperator = (args.logicalOperator as 'AND' | 'OR') ?? 'AND'
       const sort = args.sort as { field: string; direction: 'asc' | 'desc' } | undefined
-      const limit = Math.min((args.limit as number) || 25, 100)
+      const countOnly = args.countOnly === true
+      const limit = countOnly ? 0 : Math.min((args.limit as number) || 25, 100)
       const offset = Math.max((args.offset as number) || 0, 0)
 
       // Resolve entity definition
@@ -122,6 +130,17 @@ Examples:
         limit,
         cursor: offset > 0 ? { snapshotId: '', offset } : undefined,
       })
+
+      // Count-only mode — return just the total, skip hydration
+      if (countOnly) {
+        return {
+          success: true,
+          output: {
+            entityType: resource.label,
+            total: filtered.total,
+          },
+        }
+      }
 
       // Hydrate results with display data
       const recordIds = filtered.ids.map((id) => toRecordId(entityDefId, id))

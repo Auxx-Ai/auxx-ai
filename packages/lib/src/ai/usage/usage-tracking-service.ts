@@ -186,7 +186,28 @@ export class UsageTrackingService {
       sourceId: ref.sourceId ?? null,
     }))
 
-    await this.database.insert(schema.AiUsage).values(rows)
+    await this.database.transaction(async (tx) => {
+      // 1. Insert aggregated usage rows
+      await tx.insert(schema.AiUsage).values(rows)
+
+      // 2. Deduct credits from quota for SYSTEM providers
+      const systemRows = rows.filter((r) => r.providerType === 'SYSTEM' && r.creditsUsed > 0)
+      for (const row of systemRows) {
+        await tx
+          .update(schema.ProviderConfiguration)
+          .set({
+            quotaUsed: sql`${schema.ProviderConfiguration.quotaUsed} + ${row.creditsUsed}`,
+          })
+          .where(
+            and(
+              eq(schema.ProviderConfiguration.organizationId, row.organizationId),
+              eq(schema.ProviderConfiguration.provider, row.provider),
+              eq(schema.ProviderConfiguration.providerType, 'SYSTEM'),
+              isNotNull(schema.ProviderConfiguration.quotaType)
+            )
+          )
+      }
+    })
   }
 
   /**
