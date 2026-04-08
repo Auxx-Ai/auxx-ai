@@ -72,7 +72,7 @@ export function ToolStatusPill({ step }: ToolStatusPillProps) {
           initial={{ scale: 0.5, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.5, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 25 }}>
+          transition={{ type: 'spring', stiffness: 600, damping: 20 }}>
           {status === 'running' && (
             <Loader2 className='size-3 animate-spin text-muted-foreground' />
           )}

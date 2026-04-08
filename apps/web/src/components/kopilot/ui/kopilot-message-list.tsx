@@ -5,7 +5,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
-import { ArrowDown, Sparkles } from 'lucide-react'
+import { ArrowDown } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef } from 'react'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
@@ -15,8 +15,9 @@ import { GenericApprovalCard } from './blocks/generic-approval-card'
 import { KopilotEmptyState } from './kopilot-empty-state'
 import { AssistantMessage } from './messages/assistant-message'
 import { BranchNavigator } from './messages/branch-navigator'
-import { ToolStatusPills } from './messages/tool-status-pills'
+import { ThinkingSteps } from './messages/thinking-steps'
 import { UserMessage } from './messages/user-message'
+import { SparkleIcon } from './sparkle-icon'
 
 interface KopilotMessageListProps {
   onApprovalAction: (request: KopilotRequest) => void
@@ -191,14 +192,9 @@ export function KopilotMessageList({
           activeThinkingGroup &&
           activeThinkingGroup.steps.length > 0 && (
             <div className='flex gap-2'>
-              <div className='animate-hue-rotate relative size-fit'>
-                <div className='bg-conic/decreasing relative flex size-5 items-center justify-center rounded-full from-violet-500 via-lime-300 to-violet-400 blur-md' />
-                <div className='absolute inset-0 flex items-center justify-center'>
-                  <Sparkles className='size-3.5' />
-                </div>
-              </div>
+              <SparkleIcon />
               <div className='min-w-0 flex-1'>
-                <ToolStatusPills group={activeThinkingGroup} />
+                <ThinkingSteps group={activeThinkingGroup} />
               </div>
             </div>
           )}

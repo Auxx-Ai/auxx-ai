@@ -3,10 +3,11 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, ChevronRight, Loader2, X } from 'lucide-react'
+import { ChevronRight, Loader2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import type { ThinkingGroup } from '../../stores/kopilot-store'
+import { ToolStatusPill } from './tool-status-pill'
 
 interface ThinkingStepsProps {
   group: ThinkingGroup
@@ -20,15 +21,14 @@ export function ThinkingSteps({ group }: ThinkingStepsProps) {
   const completedCount = toolSteps.filter((s) => s.tool?.status === 'completed').length
   const totalCount = toolSteps.length
 
+  if (totalCount === 0) return null
+
   const headerLabel = isRunning
-    ? totalCount === 0
-      ? 'Thinking…'
-      : `Working… (${completedCount}/${totalCount})`
+    ? `Working… (${completedCount}/${totalCount})`
     : totalCount === 1
       ? '1 step completed'
       : `${totalCount} steps completed`
 
-  // Auto-expand while running, allow manual toggle
   const expanded = isRunning || isOpen
 
   return (
@@ -41,12 +41,12 @@ export function ThinkingSteps({ group }: ThinkingStepsProps) {
           'text-muted-foreground hover:bg-muted/50'
         )}>
         {isRunning && <Loader2 className='size-3 animate-spin' />}
-        <AnimatePresence mode='wait'>
+        <AnimatePresence mode='popLayout'>
           <motion.span
             key={headerLabel}
-            initial={{ filter: 'blur(4px)', opacity: 0, y: 4 }}
+            initial={{ filter: 'blur(3px)', opacity: 0, y: 6 }}
             animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
-            exit={{ filter: 'blur(4px)', opacity: 0, y: -4 }}
+            exit={{ filter: 'blur(3px)', opacity: 0, y: -6 }}
             transition={{ type: 'spring', stiffness: 200, damping: 25 }}>
             {headerLabel}
           </motion.span>
@@ -61,33 +61,52 @@ export function ThinkingSteps({ group }: ThinkingStepsProps) {
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
+            initial={{ height: 0, opacity: 0, filter: 'blur(3px)' }}
+            animate={{ height: 'auto', opacity: 1, filter: 'blur(0px)' }}
+            exit={{ height: 0, opacity: 0, filter: 'blur(3px)' }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             style={{ overflow: 'hidden' }}>
-            <div className='space-y-2 py-1.5 pl-2'>
-              {group.steps.map((step) => (
-                <motion.div
-                  key={step.id}
-                  initial={{ filter: 'blur(4px)', opacity: 0, y: 8 }}
-                  animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
-                  transition={{ type: 'spring', stiffness: 260, damping: 20 }}>
-                  {step.thinking && (
-                    <p className='text-xs text-muted-foreground/70 italic leading-relaxed'>
-                      {step.thinking}
-                    </p>
-                  )}
-                  {step.tool && <ToolStepRow tool={step.tool} />}
-                </motion.div>
-              ))}
-              {/* Show pending thinking text while running */}
+            <div className='flex flex-col gap-1 py-1.5 pl-2'>
+              <AnimatePresence initial={false}>
+                {group.steps.map((step) => {
+                  if (!step.tool) {
+                    if (!step.thinking?.trim()) return null
+                    return (
+                      <motion.p
+                        key={step.id}
+                        initial={{ filter: 'blur(3px)', opacity: 0, y: 6 }}
+                        animate={{ filter: 'blur(0px)', opacity: 0.7, y: 0 }}
+                        transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                        className='pl-2 text-xs text-muted-foreground/70 italic leading-relaxed'>
+                        {step.thinking.trim()}
+                      </motion.p>
+                    )
+                  }
+
+                  return (
+                    <motion.div
+                      key={step.id}
+                      initial={{ filter: 'blur(3px)', opacity: 0, y: 6 }}
+                      animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
+                      transition={{ type: 'spring', stiffness: 200, damping: 25 }}>
+                      <ToolStatusPill step={step} />
+                      {step.thinking?.trim() && (
+                        <p className='py-1 pl-2 text-xs text-muted-foreground/70 italic leading-relaxed'>
+                          {step.thinking.trim()}
+                        </p>
+                      )}
+                    </motion.div>
+                  )
+                })}
+              </AnimatePresence>
+
+              {/* Pending thinking while running */}
               {isRunning && group.pendingThinking.trim() && (
                 <motion.p
                   initial={{ filter: 'blur(3px)', opacity: 0 }}
                   animate={{ filter: 'blur(0px)', opacity: 0.7 }}
                   transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-                  className='text-xs text-muted-foreground/70 italic leading-relaxed'>
+                  className='pl-2 text-xs text-muted-foreground/70 italic leading-relaxed'>
                   {group.pendingThinking.trim()}
                 </motion.p>
               )}
@@ -97,41 +116,4 @@ export function ThinkingSteps({ group }: ThinkingStepsProps) {
       </AnimatePresence>
     </div>
   )
-}
-
-function ToolStepRow({
-  tool,
-}: {
-  tool: NonNullable<import('../../stores/kopilot-store').ThinkingStep['tool']>
-}) {
-  const statusIcon = {
-    running: <Loader2 className='size-3 shrink-0 animate-spin text-muted-foreground' />,
-    completed: <Check className='size-3 shrink-0 text-emerald-500' />,
-    error: <X className='size-3 shrink-0 text-destructive' />,
-  }[tool.status]
-
-  return (
-    <div className='flex items-start gap-1.5 text-xs'>
-      <AnimatePresence mode='wait'>
-        <motion.span
-          key={tool.status}
-          className='mt-0.5'
-          initial={{ scale: 0.5, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.5, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 25 }}>
-          {statusIcon}
-        </motion.span>
-      </AnimatePresence>
-      <div className='min-w-0'>
-        <span className='font-medium text-foreground/80'>{formatToolName(tool.name)}</span>
-        {tool.summary && <p className='text-muted-foreground/70 truncate'>{tool.summary}</p>}
-      </div>
-    </div>
-  )
-}
-
-/** Convert snake_case tool name to a readable label */
-function formatToolName(name: string): string {
-  return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }

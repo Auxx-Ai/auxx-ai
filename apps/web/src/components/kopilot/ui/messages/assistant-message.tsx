@@ -1,7 +1,7 @@
 // apps/web/src/components/kopilot/ui/messages/assistant-message.tsx
 
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { AlertTriangle, Sparkles } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { useMemo } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -9,8 +9,9 @@ import type { KopilotMessage, ThinkingGroup } from '../../stores/kopilot-store'
 import { useKopilotStore } from '../../stores/kopilot-store'
 import '../../styles/kopilot-prose.css'
 import { AuxxBlock } from '../blocks/auxx-block'
+import { SparkleIcon } from '../sparkle-icon'
 import { MessageActions } from './message-actions'
-import { ToolStatusPills } from './tool-status-pills'
+import { ThinkingSteps } from './thinking-steps'
 
 interface AssistantMessageProps {
   message?: KopilotMessage
@@ -74,14 +75,9 @@ export function AssistantMessage({
 
   return (
     <div className='group/message flex gap-2'>
-      <div className='animate-hue-rotate relative size-fit'>
-        <div className='bg-conic/decreasing relative flex size-5 items-center justify-center rounded-full from-violet-500 via-lime-300 to-violet-400 blur-md' />
-        <div className='absolute inset-0 flex items-center justify-center'>
-          <Sparkles className='size-3.5' />
-        </div>
-      </div>
+      <SparkleIcon />
       <div className='min-w-0 flex-1 space-y-1'>
-        {group && group.steps.length > 0 && <ToolStatusPills group={group} />}
+        {group && <ThinkingSteps group={group} />}
         {message?.error ? (
           <Alert variant='destructive' className='bg-background'>
             <AlertTriangle className='size-4' />
