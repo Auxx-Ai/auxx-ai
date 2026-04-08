@@ -6,18 +6,56 @@ import {
   parseRangeHeader,
 } from '@auxx/lib/files/server'
 import { createScopedLogger } from '@auxx/logger'
+import { isFileRef, parseFileRef } from '@auxx/types/file-ref'
 import { headers } from 'next/headers'
 import type { NextRequest } from 'next/server'
 import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('api-files-download')
 
-export async function GET(request: NextRequest, { params }: { params: { fileId: string } }) {
+interface RouteParams {
+  params: Promise<{ fileId: string }>
+}
+
+/**
+ * Resolve a fileId param to a content buffer and metadata.
+ * Accepts plain file IDs or FileRef strings (e.g. "asset:abc123", "file:xyz456").
+ */
+async function resolveFile(
+  fileIdOrRef: string,
+  organizationId: string,
+  userId: string
+): Promise<{ content: Buffer; name: string; mimeType: string | null; size: number | null } | null> {
+  // Check if this is a FileRef (asset:id or file:id)
+  if (isFileRef(fileIdOrRef)) {
+    const { sourceType, id } = parseFileRef(fileIdOrRef)
+
+    if (sourceType === 'asset') {
+      const { MediaAssetService } = await import('@auxx/lib/files/server')
+      const assetService = new MediaAssetService(organizationId, userId)
+      const asset = await assetService.get(id)
+      if (!asset) return null
+      const content = await assetService.getContent(id)
+      return { content, name: asset.name, mimeType: asset.mimeType, size: asset.size }
+    }
+
+    // sourceType === 'file' — fall through with the extracted id
+    fileIdOrRef = id
+  }
+
+  const fileService = createFileService(organizationId, userId)
+  const file = await fileService.get(fileIdOrRef)
+  if (!file) return null
+  const content = await fileService.getContent(fileIdOrRef)
+  return { content, name: file.name, mimeType: file.mimeType, size: file.size }
+}
+
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const { fileId } = await params
     const session = await auth.api.getSession({ headers: await headers() })
 
-    // Check authentication
-    if (!session || !session.user) {
+    if (!session?.user) {
       return new Response('Unauthorized', { status: 401 })
     }
 
@@ -26,40 +64,29 @@ export async function GET(request: NextRequest, { params }: { params: { fileId: 
       return new Response('Organization ID is required', { status: 400 })
     }
 
-    const { fileId } = params
-
     if (!fileId) {
       return new Response('File ID is required', { status: 400 })
     }
 
     logger.info(`Downloading file: ${fileId}`)
 
-    // Create file service with user context for permission checking
-    const fileService = createFileService(organizationId, session.user.id)
-
-    // Get file info - this checks permissions at entity level
-    const file = await fileService.get(fileId)
-    if (!file) {
+    const resolved = await resolveFile(fileId, organizationId, session.user.id)
+    if (!resolved) {
       return new Response('File not found', { status: 404 })
     }
 
-    // Get file content using the service (handles storage location lookup)
-    const fileContent = await fileService.getContent(fileId)
-
-    // Parse range header for streaming support
     const range = parseRangeHeader(request.headers.get('range'))
 
-    // Create download response with proper headers
     const downloadResponse = createFileDownloadResponse(
-      fileContent,
+      resolved.content,
       {
-        name: file.name,
-        mimeType: file.mimeType,
-        size: file.size,
+        name: resolved.name,
+        mimeType: resolved.mimeType,
+        size: resolved.size,
       },
       {
         range: range || undefined,
-        inline: false, // Always download as attachment
+        inline: false,
       }
     )
 
@@ -73,12 +100,12 @@ export async function GET(request: NextRequest, { params }: { params: { fileId: 
   }
 }
 
-// Support HEAD requests for checking file existence
-export async function HEAD(request: NextRequest, { params }: { params: { fileId: string } }) {
+export async function HEAD(_request: NextRequest, { params }: RouteParams) {
   try {
+    const { fileId } = await params
     const session = await auth.api.getSession({ headers: await headers() })
 
-    if (!session || !session.user) {
+    if (!session?.user) {
       return new Response('Unauthorized', { status: 401 })
     }
 
@@ -87,24 +114,17 @@ export async function HEAD(request: NextRequest, { params }: { params: { fileId:
       return new Response('Organization ID is required', { status: 400 })
     }
 
-    const { fileId } = params
-
-    // Create file service with user context for permission checking
-    const fileService = createFileService(organizationId, session.user.id)
-
-    // Just check if file exists and user has access
-    const file = await fileService.get(fileId)
-    if (!file) {
+    const resolved = await resolveFile(fileId, organizationId, session.user.id)
+    if (!resolved) {
       return new Response('File not found', { status: 404 })
     }
 
-    // Return only headers, no body
     return new Response(null, {
       status: 200,
       headers: {
-        'Content-Type': file.mimeType || 'application/octet-stream',
-        'Content-Length': file.size?.toString() || '0',
-        'Content-Disposition': `attachment; filename="${file.name}"`,
+        'Content-Type': resolved.mimeType || 'application/octet-stream',
+        'Content-Length': resolved.size?.toString() || '0',
+        'Content-Disposition': `attachment; filename="${resolved.name}"`,
       },
     })
   } catch (error) {

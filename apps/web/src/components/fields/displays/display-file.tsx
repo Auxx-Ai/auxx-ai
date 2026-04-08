@@ -1,6 +1,7 @@
 // apps/web/src/components/fields/displays/display-file.tsx
 
 import { Badge } from '@auxx/ui/components/badge'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useMemo } from 'react'
 import { FileIcon } from '~/components/files/utils/file-icon'
 import { type ItemsListItem, ItemsListView } from '~/components/ui/items-list-view'
@@ -28,7 +29,7 @@ export function DisplayFile() {
     return value.filter((v: any) => v?.ref).map((v: any) => v.ref as string)
   }, [value])
 
-  const { data: fileDetails } = api.file.resolveFileRefs.useQuery(
+  const { data: fileDetails, isLoading } = api.file.resolveFileRefs.useQuery(
     { refs },
     { enabled: refs.length > 0 }
   )
@@ -43,6 +44,23 @@ export function DisplayFile() {
     }))
   }, [fileDetails])
 
+  if (isLoading && refs.length > 0) {
+    return (
+      <DisplayWrapper>
+        <div className='flex flex-wrap gap-1.5'>
+          {refs.map((ref) => (
+            <div
+              key={ref}
+              className='flex h-5 items-center gap-1.5 rounded-[5px] bg-neutral-100 ps-0.5 pe-1.5 ring-1 ring-neutral-300 dark:bg-muted dark:ring-neutral-800'>
+              <Skeleton className='size-4 rounded-full' />
+              <Skeleton className='h-4 w-20 rounded-full' />
+            </div>
+          ))}
+        </div>
+      </DisplayWrapper>
+    )
+  }
+
   if (fileItems.length === 0) return null
 
   return (
@@ -51,7 +69,7 @@ export function DisplayFile() {
         items={fileItems}
         renderItem={(item) => (
           <Badge variant='pill' shape='tag' className='flex items-center gap-1.5'>
-            <FileIcon mimeType={item.mimeType} className='size-4 flex-shrink-0 text-gray-500' />
+            <FileIcon mimeType={item.mimeType} className='size-4 flex shrink-0 text-gray-500' />
             <span>{item.name}</span>
           </Badge>
         )}

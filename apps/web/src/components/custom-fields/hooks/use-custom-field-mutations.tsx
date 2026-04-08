@@ -104,7 +104,9 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         isSystem: false,
         showInPanel: true,
         capabilities,
-        options: Array.isArray(variables.options) ? { options: variables.options } : undefined,
+        options: Array.isArray(variables.options)
+          ? { options: variables.options }
+          : (variables.options ?? undefined),
       }
 
       store.addOptimisticField(tempKey, optimisticField)

@@ -142,6 +142,7 @@ function FileSelectDialogContent({
           mode='selection'
           allowFileDetailDrawer={false}
           showHeader
+          showUploadControls
           allowMultiple={allowMultiple}
         />
       </div>

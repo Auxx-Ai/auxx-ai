@@ -353,6 +353,10 @@ export function useDynamicTable<TData extends Record<string, any>>({
   // CONTROLLED ROW SELECTION
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // Track whether selection change originated internally (checkbox click)
+  // to avoid the controlled sync overwriting rapid internal changes
+  const isInternalChangeRef = useRef(false)
+
   const initialRowSelection = useMemo(() => {
     if (!controlledRowSelection) {
       return {}
@@ -368,17 +372,23 @@ export function useDynamicTable<TData extends Record<string, any>>({
     if (!controlledRowSelection) {
       return
     }
+    // Skip sync when the controlled prop changed because of our own notification
+    if (isInternalChangeRef.current) {
+      isInternalChangeRef.current = false
+      return
+    }
     setRowSelection(initialRowSelection)
   }, [initialRowSelection, controlledRowSelection, setRowSelection])
 
   // Notify parent of row selection changes
   useEffect(() => {
-    if (!onRowSelectionChange || !enableCheckbox || controlledRowSelection) {
+    if (!onRowSelectionChange || !enableCheckbox) {
       return
     }
+    isInternalChangeRef.current = true
     const selectedRows = new Set(Object.keys(rowSelection))
     onRowSelectionChange(selectedRows)
-  }, [controlledRowSelection, enableCheckbox, onRowSelectionChange, rowSelection])
+  }, [enableCheckbox, onRowSelectionChange, rowSelection])
 
   // ═══════════════════════════════════════════════════════════════════════════
   // COLUMN VISIBILITY CALLBACK
