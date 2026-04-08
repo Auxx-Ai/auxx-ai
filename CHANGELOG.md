@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.114](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.113...auxx-v0.1.114) (2026-04-08)
+
+
+### Features
+
+* add FilePicker component for file management in UI ([#380](https://github.com/Auxx-Ai/auxx-ai/issues/380)) ([6ff9727](https://github.com/Auxx-Ai/auxx-ai/commit/6ff9727246d0697be682170b1f8b0ec91127fa75))
+* add Kimi and Qwen AI providers with respective clients and capabilities ([#374](https://github.com/Auxx-Ai/auxx-ai/issues/374)) ([cfe97ed](https://github.com/Auxx-Ai/auxx-ai/commit/cfe97ed3e761e6d947bf462f2b1f7aec97752ee6))
+* add modelId to AiAgentSession and implement model switching utilities ([#377](https://github.com/Auxx-Ai/auxx-ai/issues/377)) ([4d2b249](https://github.com/Auxx-Ai/auxx-ai/commit/4d2b249e8235a878adb7cd303191d9c6dc1e3f7f))
+* enhance AI provider management with system credentials and caching ([#375](https://github.com/Auxx-Ai/auxx-ai/issues/375)) ([61ba7b4](https://github.com/Auxx-Ai/auxx-ai/commit/61ba7b40ed1e1b43eb91f1dad51da09239632737))
+* enhance Kimi and Qwen AI providers with new models, parameters ([#378](https://github.com/Auxx-Ai/auxx-ai/issues/378)) ([990a9ba](https://github.com/Auxx-Ai/auxx-ai/commit/990a9ba243cdf5cb70f9f8fd6b1d01b26b27fda9))
+* enhance reasoning content handling across AI providers and improve context management ([#376](https://github.com/Auxx-Ai/auxx-ai/issues/376)) ([1f4f242](https://github.com/Auxx-Ai/auxx-ai/commit/1f4f2427c0abcff71e40d4a93621f135bc5bf1de))
+* enhance UI components and improve functionality ([#372](https://github.com/Auxx-Ai/auxx-ai/issues/372)) ([47a52de](https://github.com/Auxx-Ai/auxx-ai/commit/47a52ded2d73c8dec61bd042045176ad8862f13e))
+* implement AI steps animation and enhance UI components with shimmer effects ([#379](https://github.com/Auxx-Ai/auxx-ai/issues/379)) ([aa71065](https://github.com/Auxx-Ai/auxx-ai/commit/aa710653baf3d0b431078d52a2d4a62936de63c0))
+
 ## [0.1.113](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.112...auxx-v0.1.113) (2026-04-07)
 
 
