@@ -37,7 +37,6 @@ function CheckboxCellInner<TData>({ row, table }: CellContext<TData, unknown>) {
   /** Handle cell click - toggles selection with shift-click support */
   const handleCellClick = useCallback(
     (event: React.MouseEvent) => {
-      console.log('[CheckboxCell] handleCellClick called:', { rowIndex, isSelected })
       event.stopPropagation()
       const newChecked = !isSelected
 

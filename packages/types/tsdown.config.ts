@@ -8,6 +8,7 @@ export default defineConfig({
     'custom-field/index.ts',
     'field/index.ts',
     'field-value/index.ts',
+    'file-ref/index.ts',
     'groups/index.ts',
     'pagination/index.ts',
     'resource/index.ts',

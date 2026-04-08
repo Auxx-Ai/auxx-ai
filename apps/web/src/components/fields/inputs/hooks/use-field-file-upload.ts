@@ -5,7 +5,9 @@ import type { FileTypeCategory } from '@auxx/lib/files/client'
 import { getMimePatternsForCategories } from '@auxx/lib/files/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { JsonFieldValue, TypedFieldValue } from '@auxx/types/field-value'
+import type { FileRef } from '@auxx/types/file-ref'
 import { toastError } from '@auxx/ui/components/toast'
+import { keepPreviousData } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileOptions } from '~/components/custom-fields/ui/file-options-editor'
@@ -171,6 +173,7 @@ interface UseFieldFileUploadOptions {
 interface UseFieldFileUploadReturn {
   displayFiles: Array<{
     id: string // fieldValueId — for removal
+    ref: FileRef
     name: string
     mimeType: string | null
     size: number | null
@@ -266,7 +269,7 @@ export function useFieldFileUpload({
   const refs = useMemo(() => fileRefs.map((fr) => fr.ref), [fileRefs])
   const { data: fileDetails } = api.file.resolveFileRefs.useQuery(
     { refs },
-    { enabled: refs.length > 0 }
+    { enabled: refs.length > 0, placeholderData: keepPreviousData }
   )
 
   // Build display files by joining fileRefs with details
@@ -278,6 +281,7 @@ export function useFieldFileUpload({
         const detail = detailMap.get(fr.ref)
         return {
           id: fr.fieldValueId,
+          ref: fr.ref as FileRef,
           name: detail?.name ?? 'Unknown file',
           mimeType: detail?.mimeType ?? null,
           size: detail?.size ?? null,

@@ -28,6 +28,12 @@
       "import": "./dist/field/index.mjs",
       "default": "./field/index.ts"
     },
+    "./file-ref": {
+      "types": "./file-ref/index.ts",
+      "source": "./file-ref/index.ts",
+      "import": "./dist/file-ref/index.mjs",
+      "default": "./file-ref/index.ts"
+    },
     "./field-value": {
       "types": "./field-value/index.ts",
       "source": "./field-value/index.ts",

@@ -19,6 +19,14 @@ export { actorIdSchema, actorTypeSchema } from './actor/schema'
 // Re-export all types from submodules
 export * from './custom-field'
 export * from './field-value'
+export {
+  type FileRef,
+  type FileRefSourceType,
+  getFileRefDownloadUrl,
+  isFileRef,
+  parseFileRef,
+  toFileRef,
+} from './file-ref'
 export * from './pagination'
 export {
   extractUniqueParticipantIds,
