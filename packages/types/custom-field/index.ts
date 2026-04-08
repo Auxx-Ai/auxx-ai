@@ -7,6 +7,7 @@ import {
 } from '@auxx/database/enums'
 import { z } from 'zod'
 import { parseResourceFieldId, type ResourceFieldId } from '../field'
+import type { SystemAttribute } from '../system-attribute'
 
 // =============================================================================
 // RE-EXPORT MODEL TYPES FROM DATABASE
@@ -412,7 +413,7 @@ export interface RelationshipOptions {
   /** Icon for the inverse field */
   inverseIcon?: string
   /** System attribute for the inverse field (e.g., 'tickets' for Contact.tickets) */
-  inverseSystemAttribute?: string
+  inverseSystemAttribute?: SystemAttribute
 }
 
 /** Zod schema for RelationshipOptions input validation */

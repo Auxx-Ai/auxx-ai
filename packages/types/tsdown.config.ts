@@ -17,6 +17,7 @@ export default defineConfig({
     'signature/index.ts',
     'config/index.ts',
     'billing/index.ts',
+    'system-attribute/index.ts',
   ],
   format: 'esm',
   target: 'es2022',

@@ -2,6 +2,7 @@
 
 import type { FieldType } from '@auxx/database/types'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { FieldOptions } from '../../custom-fields/field-options'
 import type { BaseType } from '../types'
 
@@ -164,7 +165,7 @@ export interface ResourceField {
     /** Display name for the inverse field (e.g., 'Tickets', 'Assigned Tickets') */
     inverseName: string
     /** System attribute for the inverse field (e.g., 'contact_tickets', 'user_assigned_tickets') */
-    inverseSystemAttribute: string
+    inverseSystemAttribute: SystemAttribute
   }
 
   // Default value configuration
@@ -263,7 +264,7 @@ export interface ResourceField {
    *
    * NOTE: isSystem can be derived: isSystem = !!systemAttribute
    */
-  systemAttribute?: string
+  systemAttribute?: SystemAttribute
 }
 
 /**
