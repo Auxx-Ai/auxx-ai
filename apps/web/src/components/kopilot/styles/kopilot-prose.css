@@ -112,6 +112,14 @@
     opacity: 0.8;
   }
 
+  /* Reset prose overrides inside .not-prose */
+  & .not-prose {
+    a {
+      color: unset;
+      text-decoration: none;
+    }
+  }
+
   /* Headings */
   & h1,
   & h2,
