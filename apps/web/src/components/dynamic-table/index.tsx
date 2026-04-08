@@ -64,7 +64,6 @@ export {
   renderCurrencyValue,
   renderDateValue,
   renderEmailValue,
-  renderFileValue,
   renderNumberValue,
   renderPhoneValue,
   renderRichTextValue,

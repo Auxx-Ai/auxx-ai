@@ -462,9 +462,13 @@ export async function validateSingleValue(
     }
 
     case 'FILE': {
-      const result = ctx.validator.validateFileJson(value)
-      if (!result.success) throwValidationError(result)
-      return { type: 'json', value: result.data || {} }
+      if (typeof value === 'object' && value !== null) {
+        const obj = value as { ref?: string }
+        if (obj.ref && /^(asset|file):.+/.test(obj.ref)) {
+          return { type: 'json', value: value as Record<string, unknown> }
+        }
+      }
+      return null
     }
 
     case 'ACTOR': {

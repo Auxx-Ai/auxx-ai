@@ -2,10 +2,12 @@
 import { database as db, schema } from '@auxx/database'
 import type { MediaAsset } from '@auxx/database/types'
 import { and, desc, eq, isNull } from 'drizzle-orm'
+import { getOrgCache } from '../../../cache'
 import { MemberService } from '../../../members/member-service'
 import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
 import type { ThumbnailSource } from '../../core/thumbnail-types'
 import type { AssetKind } from '../../core/types'
+import { type FileTypeCategory, getMimePatternsForCategories } from '../../file-type-constants'
 import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
 import type { PresignedUploadSession } from '../session-types'
 import { BaseAssetProcessor } from './base-asset-processor'
@@ -710,5 +712,89 @@ export class KnowledgeBaseProcessor extends BaseAttachmentProcessor {
       })
     }
     return result
+  }
+}
+// ============= Custom Field Processor =============
+export class CustomFieldProcessor extends BaseAttachmentProcessor {
+  protected readonly entityType = 'CUSTOM_FIELD'
+  protected readonly fileVisibility = 'PRIVATE'
+  protected readonly preferredProvider = 'S3'
+  protected readonly maxFileSize = 25 * 1024 * 1024 // 25MB
+  protected readonly allowedMimeTypes = ['*/*']
+  protected readonly assetKind: AssetKind = 'TEMP_UPLOAD'
+  /**
+   * Look up the custom field from the org cache and apply its file options
+   * (allowedFileTypes, allowedFileExtensions) as server-side validation.
+   */
+  async processConfig(init: UploadInitConfig): Promise<ProcessorConfigResult> {
+    const base = await super.processConfig(init)
+    const warnings = [...base.warnings]
+    if (init.expectedSize > this.maxFileSize) {
+      throw new Error(
+        `File size exceeds maximum allowed for custom field attachments (${this.maxFileSize / 1024 / 1024}MB)`
+      )
+    }
+    // Look up field from org cache to apply field-level restrictions
+    const fieldId = init.metadata?.fieldId as string | undefined
+    if (fieldId && init.organizationId) {
+      const customField = await getOrgCache()
+        .from(init.organizationId, 'customFields')
+        .byId(fieldId)
+      if (customField) {
+        const fileOpts = (customField.options as Record<string, any>)?.file as
+          | {
+              allowedFileTypes?: string[]
+              allowedFileExtensions?: string[]
+            }
+          | undefined
+        if (fileOpts) {
+          const policy = { ...base.config.policy }
+          if (fileOpts.allowedFileTypes?.length) {
+            policy.allowedMimeTypes = getMimePatternsForCategories(
+              fileOpts.allowedFileTypes as FileTypeCategory[]
+            )
+          }
+          if (fileOpts.allowedFileExtensions?.length) {
+            ;(policy as any).allowedExtensions = fileOpts.allowedFileExtensions
+          }
+          return {
+            config: Object.freeze({ ...base.config, policy }),
+            warnings,
+          }
+        }
+      } else {
+        this.logger.warn('Custom field not found in cache, using default validation', { fieldId })
+      }
+    }
+    return { config: base.config, warnings }
+  }
+  protected async validateEntityAccess(
+    entityId: string,
+    organizationId: string,
+    userId: string
+  ): Promise<void> {
+    // Skip validation for temp uploads (before field value exists)
+    if (entityId.startsWith('field-')) {
+      return
+    }
+  }
+  protected async postCreateAsset(
+    session: PresignedUploadSession,
+    storageLocationId: string,
+    assetId: string,
+    tx?: any
+  ): Promise<void> {
+    if (session.entityId?.startsWith('field-')) {
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h expiry
+      const dbClient = tx || db
+      await dbClient
+        .update(schema.MediaAsset)
+        .set({
+          kind: 'TEMP_UPLOAD',
+          expiresAt: expiresAt,
+        })
+        .where(eq(schema.MediaAsset.id, assetId))
+      this.logger.info('Scheduled custom field asset cleanup', { assetId, expiresAt })
+    }
   }
 }

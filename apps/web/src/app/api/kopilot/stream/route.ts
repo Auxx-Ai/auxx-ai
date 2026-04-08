@@ -14,11 +14,13 @@ import {
   subscribeToAgentEvents,
 } from '@auxx/lib/ai/agent-framework'
 import {
+  createActorCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
   createKnowledgeCapabilities,
   createKopilotDomainConfig,
   createMailCapabilities,
+  createTaskCapabilities,
   generateSessionTitle,
 } from '@auxx/lib/ai/kopilot'
 import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
@@ -309,6 +311,8 @@ async function runInProcessPath(params: {
   registry.register(createEntityCapabilities(getToolDeps))
   registry.register(createKnowledgeCapabilities(getToolDeps))
   registry.register(createMailCapabilities(getToolDeps))
+  registry.register(createActorCapabilities(getToolDeps))
+  registry.register(createTaskCapabilities(getToolDeps))
 
   // Resolve model: explicit override → system default → hardcoded fallback
   let defaultModel: string | undefined

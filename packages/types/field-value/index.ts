@@ -79,8 +79,8 @@ export type ValueColumn = (typeof FIELD_TYPE_TO_COLUMN)[keyof typeof FIELD_TYPE_
 export const MULTI_VALUE_FIELD_TYPES = new Set<string>([
   FieldType.MULTI_SELECT,
   FieldType.TAGS,
-  FieldType.FILE,
   FieldType.RELATIONSHIP,
+  FieldType.FILE,
 ])
 
 /**
@@ -92,8 +92,8 @@ export const ARRAY_RETURN_FIELD_TYPES = new Set<string>([
   FieldType.SINGLE_SELECT,
   FieldType.MULTI_SELECT,
   FieldType.TAGS,
-  FieldType.FILE,
   FieldType.RELATIONSHIP,
+  FieldType.FILE,
 ])
 
 // =============================================================================

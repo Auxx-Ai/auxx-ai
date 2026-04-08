@@ -92,6 +92,18 @@ export const docsResultsSchema = z.object({
   query: z.string().optional(),
 })
 
+export const taskItemSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  deadline: z.string().nullable().optional(),
+  priority: z.enum(['low', 'medium', 'high']).nullable().optional(),
+  completedAt: z.string().nullable().optional(),
+  assignees: z.array(z.string()).optional(),
+  referenceCount: z.number().optional(),
+})
+
+export const taskListSchema = z.array(taskItemSchema)
+
 /** Registry of block type → Zod schema */
 export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
   'thread-list': threadListSchema,
@@ -103,6 +115,7 @@ export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
   'action-result': actionResultSchema,
   'docs-results': docsResultsSchema,
   table: tableBlockSchema,
+  'task-list': taskListSchema,
 }
 
 /** Inferred types for block components */
@@ -118,3 +131,5 @@ export type DocsResultsData = z.infer<typeof docsResultsSchema>
 export type TableCellData = z.infer<typeof tableCellSchema>
 export type TableColumnData = z.infer<typeof tableColumnSchema>
 export type TableBlockData = z.infer<typeof tableBlockSchema>
+export type TaskItemData = z.infer<typeof taskItemSchema>
+export type TaskListData = z.infer<typeof taskListSchema>

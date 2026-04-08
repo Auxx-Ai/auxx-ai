@@ -236,117 +236,68 @@ export const nameConverter: FieldValueConverter = {
 }
 
 /**
- * FILE field value structure
+ * FILE field value structure — one file reference per FieldValue row.
  */
 export interface FileValue {
-  url: string
-  name?: string
-  size?: number
-  mimeType?: string
+  ref: string // "asset:id" or "file:id"
 }
+
+const FILE_REF_PATTERN = /^(asset|file):.+/
 
 /**
  * Converter for FILE field type.
- * Stores as valueJson with file metadata.
+ * Stores as valueJson with { ref } structure — one FieldValue row per file.
  */
 export const fileConverter: FieldValueConverter = {
-  /**
-   * Convert raw input to TypedFieldValueInput.
-   * Accepts file object or null/undefined.
-   */
   toTypedInput(value: unknown): TypedFieldValueInput | null {
-    if (value === null || value === undefined) {
-      return null
-    }
+    if (value === null || value === undefined) return null
 
     // Handle already-typed values
     if (typeof value === 'object' && value !== null && 'type' in value) {
-      const typed = value as TypedFieldValue
-      if (typed.type === 'json') {
-        const jsonValue = (typed as JsonFieldValue).value as FileValue
-        if (!jsonValue?.url) return null
-        return { type: 'json', value: jsonValue as Record<string, unknown> }
+      const typed = value as { type: string; value?: unknown }
+      if (typed.type === 'json' && typed.value) {
+        const v = typed.value as FileValue
+        if (v.ref && FILE_REF_PATTERN.test(v.ref)) {
+          return { type: 'json', value: typed.value as Record<string, unknown> }
+        }
       }
+      return null
     }
 
-    // Handle file object { url, name?, size?, mimeType? }
+    // Handle raw { ref } object
     if (typeof value === 'object' && value !== null) {
-      const obj = value as Record<string, unknown>
-
-      // Must have url
-      if (typeof obj.url !== 'string' || !obj.url) {
-        return null
+      const obj = value as FileValue
+      if (obj.ref && FILE_REF_PATTERN.test(obj.ref)) {
+        return { type: 'json', value: obj as Record<string, unknown> }
       }
-
-      const fileValue: FileValue = {
-        url: obj.url,
-      }
-
-      if (typeof obj.name === 'string') fileValue.name = obj.name
-      if (typeof obj.size === 'number') fileValue.size = obj.size
-      if (typeof obj.mimeType === 'string') fileValue.mimeType = obj.mimeType
-
-      return { type: 'json', value: fileValue as Record<string, unknown> }
-    }
-
-    // Handle URL string
-    if (typeof value === 'string' && value.trim()) {
-      return {
-        type: 'json',
-        value: { url: value.trim() } as Record<string, unknown>,
-      }
+      return null
     }
 
     return null
   },
 
-  /**
-   * Convert TypedFieldValue/Input to raw file object.
-   */
-  toRawValue(value: TypedFieldValue | TypedFieldValueInput | unknown): FileValue | null {
-    if (value === null || value === undefined) {
-      return null
-    }
+  toRawValue(value: unknown): Record<string, unknown> | null {
+    if (value === null || value === undefined) return null
 
-    // Handle TypedFieldValue or TypedFieldValueInput
     if (typeof value === 'object' && value !== null && 'type' in value) {
-      const typed = value as TypedFieldValue
-      if (typed.type === 'json') {
-        const jsonValue = (typed as JsonFieldValue).value as FileValue
-        if (!jsonValue?.url) return null
-        return jsonValue
+      const typed = value as { type: string; value?: Record<string, unknown> }
+      if (typed.type === 'json' && typed.value) {
+        const v = typed.value as FileValue
+        if (v.ref && FILE_REF_PATTERN.test(v.ref)) return typed.value
       }
       return null
     }
 
-    // Handle raw file object
-    if (typeof value === 'object' && value !== null) {
-      const obj = value as Record<string, unknown>
-      if (typeof obj.url === 'string' && obj.url) {
-        return obj as FileValue
-      }
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      const obj = value as FileValue
+      if (obj.ref && FILE_REF_PATTERN.test(obj.ref)) return value as Record<string, unknown>
     }
 
     return null
   },
 
-  /**
-   * Convert TypedFieldValue to display string.
-   * Returns the file name or URL.
-   */
-  toDisplayValue(value: TypedFieldValue): string {
-    if (!value) {
-      return ''
-    }
-
-    const typed = value as JsonFieldValue
-    const fileValue = typed.value as FileValue
-
-    if (!fileValue?.url) {
-      return ''
-    }
-
-    // Return name if available, otherwise URL
-    return fileValue.name || fileValue.url
+  toDisplayValue(value: unknown): string {
+    if (!value) return ''
+    return '1 file'
   },
 }

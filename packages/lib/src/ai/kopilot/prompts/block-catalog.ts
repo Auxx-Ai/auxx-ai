@@ -85,6 +85,15 @@ Schema: single object with columns and rows.
 - \`columns[].align\` is optional, defaults to \`"left"\`. Options: \`"left"\`, \`"center"\`, \`"right"\`.
 - Maximum ~20 rows. For larger result sets, summarize or paginate with text.
 
+#### \`auxx:task-list\` — Task list
+Use when showing task search results from list_tasks. Use \`auxx:action-result\` for task creation confirmations.
+\\\`\\\`\\\`auxx:task-list
+[
+  {"id": "task_abc", "title": "Follow up with customer", "deadline": "2026-04-10T00:00:00Z", "priority": "high", "completedAt": null, "assignees": ["user:abc"], "referenceCount": 1},
+  {"id": "task_def", "title": "Update shipping policy", "deadline": null, "priority": "medium", "completedAt": "2026-04-05T14:00:00Z", "assignees": ["user:xyz"], "referenceCount": 0}
+]
+\\\`\\\`\\\`
+
 #### \`auxx:docs-results\` — Documentation search results
 Use when presenting help center or developer documentation search results from search_docs.
 \\\`\\\`\\\`auxx:docs-results

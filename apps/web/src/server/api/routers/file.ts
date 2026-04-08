@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/file.ts
 
+import { schema } from '@auxx/database'
 import {
   createFileService,
   createFilesystemService,
@@ -7,6 +8,7 @@ import {
 } from '@auxx/lib/files'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
@@ -403,6 +405,88 @@ export const fileRouter = createTRPCRouter({
           message: error instanceof Error ? error.message : 'Failed to get preview reference',
         })
       }
+    }),
+
+  /**
+   * Resolve file ref strings ("asset:id" / "file:id") into display details.
+   * Used by FILE field components to fetch name, mimeType, size for each ref.
+   */
+  resolveFileRefs: protectedProcedure
+    .input(z.object({ refs: z.array(z.string()) }))
+    .query(async ({ ctx, input }) => {
+      if (input.refs.length === 0) return []
+
+      const assetIds: string[] = []
+      const fileIds: string[] = []
+      for (const ref of input.refs) {
+        const colonIdx = ref.indexOf(':')
+        if (colonIdx === -1) continue
+        const type = ref.slice(0, colonIdx)
+        const id = ref.slice(colonIdx + 1)
+        if (type === 'asset') assetIds.push(id)
+        else if (type === 'file') fileIds.push(id)
+      }
+
+      const results: Array<{
+        ref: string
+        name: string
+        mimeType: string | null
+        size: number | null
+      }> = []
+
+      if (assetIds.length > 0) {
+        const assets = await ctx.db
+          .select({
+            id: schema.MediaAsset.id,
+            name: schema.MediaAsset.name,
+            mimeType: schema.MediaAsset.mimeType,
+            size: schema.MediaAsset.size,
+          })
+          .from(schema.MediaAsset)
+          .where(
+            and(
+              eq(schema.MediaAsset.organizationId, ctx.session.organizationId),
+              inArray(schema.MediaAsset.id, assetIds),
+              isNull(schema.MediaAsset.deletedAt)
+            )
+          )
+        results.push(
+          ...assets.map((a) => ({
+            ref: `asset:${a.id}`,
+            name: a.name ?? 'Untitled',
+            mimeType: a.mimeType,
+            size: a.size,
+          }))
+        )
+      }
+
+      if (fileIds.length > 0) {
+        const files = await ctx.db
+          .select({
+            id: schema.FolderFile.id,
+            name: schema.FolderFile.name,
+            mimeType: schema.FolderFile.mimeType,
+            size: schema.FolderFile.size,
+          })
+          .from(schema.FolderFile)
+          .where(
+            and(
+              eq(schema.FolderFile.organizationId, ctx.session.organizationId),
+              inArray(schema.FolderFile.id, fileIds),
+              isNull(schema.FolderFile.deletedAt)
+            )
+          )
+        results.push(
+          ...files.map((f) => ({
+            ref: `file:${f.id}`,
+            name: f.name,
+            mimeType: f.mimeType,
+            size: f.size,
+          }))
+        )
+      }
+
+      return results
     }),
 
   // Mutation Procedures

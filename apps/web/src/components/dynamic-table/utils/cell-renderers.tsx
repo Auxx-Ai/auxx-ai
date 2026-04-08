@@ -11,13 +11,16 @@ import {
   type PhoneFieldOptions,
 } from '@auxx/lib/field-values/client'
 import { type ActorId, isActorId, toActorId } from '@auxx/types/actor'
+import { Badge } from '@auxx/ui/components/badge'
 import { type CurrencyDisplayOptions, formatBytes, formatCurrency } from '@auxx/utils'
 import { format, formatDistanceToNow } from 'date-fns'
-import { CheckSquare, Paperclip } from 'lucide-react'
+import { CheckSquare } from 'lucide-react'
 import { useMemo } from 'react'
+import { FileIcon } from '~/components/files/utils/file-icon'
 import { ActorBadge, RecordBadge } from '~/components/resources/ui'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { TagsCellView } from '~/components/ui/tags-view'
+import { api } from '~/trpc/react'
 import { CopyableLinkCell } from '../components/copyable-link-cell'
 import { type CellConfig, CellPadding } from '../components/formatted-cell'
 import type {
@@ -472,56 +475,49 @@ export function renderRichTextValue(value: unknown): React.ReactNode {
 }
 
 /**
- * Render file value
+ * File cell content — resolves refs and renders file badges.
+ * Same pattern as RelationshipCellContent / ActorCellContent.
  */
-export function renderFileValue(value: unknown): React.ReactNode {
-  if (value == null || value === '') return <EmptyCell />
-
-  if (typeof value !== 'object') {
-    if (typeof value === 'string') {
-      return (
-        <CellPadding expandDirection='horizontal'>
-          <span className='text-sm'>{value}</span>
-        </CellPadding>
-      )
+function FileCellContent({ value }: { value: unknown }) {
+  const refs = useMemo(() => {
+    if (!Array.isArray(value)) {
+      if (typeof value === 'object' && value !== null && (value as { ref?: string }).ref) {
+        return [(value as { ref: string }).ref]
+      }
+      return []
     }
-    return <EmptyCell />
-  }
+    return value.filter((v) => v?.ref).map((v: { ref: string }) => v.ref)
+  }, [value])
 
-  const fileValue = value as Record<string, unknown>
+  const { data: fileDetails, isLoading } = api.file.resolveFileRefs.useQuery(
+    { refs },
+    { enabled: refs.length > 0 }
+  )
 
-  // Handle attachmentIds format (new format)
-  if (fileValue.attachmentIds) {
-    const ids = Array.isArray(fileValue.attachmentIds)
-      ? fileValue.attachmentIds
-      : [fileValue.attachmentIds]
-    return (
-      <CellPadding expandDirection='horizontal'>
-        <span className='text-muted-foreground flex items-center gap-1'>
-          <Paperclip className='size-3' />
-          {ids.length} file{ids.length !== 1 ? 's' : ''}
-        </span>
-      </CellPadding>
-    )
-  }
+  const items = useMemo(() => {
+    if (!fileDetails) return []
+    return fileDetails.map((d) => ({
+      id: d.ref,
+      name: d.name,
+      mimeType: d.mimeType || 'application/octet-stream',
+    }))
+  }, [fileDetails])
 
-  // Handle legacy format with name/url
-  if (fileValue.name) {
-    return (
-      <CellPadding expandDirection='horizontal'>
-        <a
-          href={fileValue.url as string}
-          target='_blank'
-          rel='noopener noreferrer'
-          className='text-blue-600 hover:underline flex items-center gap-1'>
-          <Paperclip className='size-3' />
-          {String(fileValue.name)}
-        </a>
-      </CellPadding>
-    )
-  }
+  if (refs.length === 0) return <EmptyCell />
 
-  return <EmptyCell />
+  return (
+    <ItemsCellView
+      items={items}
+      isLoading={isLoading}
+      renderItem={(item) => (
+        <Badge variant='pill' shape='tag' className='flex items-center gap-1.5'>
+          <FileIcon mimeType={item.mimeType} className='size-3.5 flex-shrink-0 text-gray-500' />
+          <span>{item.name}</span>
+        </Badge>
+      )}
+      maxDisplay={3}
+    />
+  )
 }
 
 /**
@@ -628,8 +624,8 @@ const cellRenderers: Record<string, CellRenderer> = {
   // Rich text
   RICH_TEXT: (value) => renderRichTextValue(value),
 
-  // File
-  FILE: (value) => renderFileValue(value),
+  // File — uses FileCellContent which resolves refs and renders badges
+  FILE: (value) => <FileCellContent value={value} />,
 
   // Default text
   TEXT: (value) => renderTextValue(value),
