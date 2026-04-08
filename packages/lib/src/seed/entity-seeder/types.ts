@@ -1,6 +1,7 @@
 // packages/lib/src/seed/entity-seeder/types.ts
 
 import type { FieldType } from '@auxx/database/types'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { FieldOptions } from '../../custom-fields'
 import type { ResourceField } from '../../resources/registry/field-types'
 
@@ -30,7 +31,7 @@ export interface FieldRecord {
   /** CustomField.id (database UUID) */
   id: string
   entityDefinitionId: string
-  systemAttribute: string
+  systemAttribute: SystemAttribute
   name: string
   type: FieldType
   options: FieldOptions

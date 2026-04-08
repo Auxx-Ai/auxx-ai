@@ -87,6 +87,12 @@
       "source": "./billing/index.ts",
       "import": "./dist/billing/index.mjs",
       "default": "./billing/index.ts"
+    },
+    "./system-attribute": {
+      "types": "./system-attribute/index.ts",
+      "source": "./system-attribute/index.ts",
+      "import": "./dist/system-attribute/index.mjs",
+      "default": "./system-attribute/index.ts"
     }
   },
   "scripts": {
