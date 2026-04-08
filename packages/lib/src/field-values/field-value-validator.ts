@@ -128,12 +128,9 @@ export const fieldValueSchemas = {
       message: 'ADDRESS_STRUCT requires at least one address field',
     }),
 
-  // FILE JSON: { url, name, size?, type? }
+  // FILE JSON: { ref } — one file reference per FieldValue row ("asset:id" or "file:id")
   fileJson: z.object({
-    url: z.string().min(1, 'File URL required'),
-    name: z.string().min(1, 'File name required'),
-    size: z.number().optional(),
-    type: z.string().optional(),
+    ref: z.string().regex(/^(asset|file):.+/),
   }),
 
   // Generic JSON fallback

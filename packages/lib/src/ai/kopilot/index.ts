@@ -2,10 +2,12 @@
 
 export type { CapabilityRegistry, GetToolDeps, PageCapability, ToolDeps } from './capabilities'
 export {
+  createActorCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
   createKnowledgeCapabilities,
   createMailCapabilities,
+  createTaskCapabilities,
   createToolDepsFactory,
 } from './capabilities'
 export type { KopilotDomainConfigOptions } from './domain-config'

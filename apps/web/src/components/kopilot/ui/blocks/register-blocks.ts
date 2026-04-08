@@ -14,6 +14,8 @@ import { EntityUpdateApprovalCard } from './entity-update-approval-card'
 import { KBArticleBlock } from './kb-article-block'
 import { PlanStepsBlock } from './plan-steps-block'
 import { TableBlock } from './table-block'
+import { TaskCreateApprovalCard } from './task-create-approval-card'
+import { TaskListBlock } from './task-list-block'
 import { ThreadListBlock } from './thread-list-block'
 
 registerBlockRenderer('thread-list', ThreadListBlock)
@@ -25,8 +27,10 @@ registerBlockRenderer('plan-steps', PlanStepsBlock)
 registerBlockRenderer('action-result', ActionResultBlock)
 registerBlockRenderer('docs-results', DocsResultsBlock)
 registerBlockRenderer('table', TableBlock)
+registerBlockRenderer('task-list', TaskListBlock)
 
 registerApprovalCard('send_reply', DraftApprovalCard)
 registerApprovalCard('update_entity', EntityUpdateApprovalCard)
 registerApprovalCard('bulk_update_entity', BulkUpdateApprovalCard)
 registerApprovalCard('create_entity', EntityCreateApprovalCard)
+registerApprovalCard('create_task', TaskCreateApprovalCard)

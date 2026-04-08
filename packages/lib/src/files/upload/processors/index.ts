@@ -5,6 +5,7 @@ import { DatasetAssetProcessor } from './dataset'
 import {
   ArticleProcessor,
   CommentProcessor,
+  CustomFieldProcessor,
   KnowledgeBaseProcessor,
   MessageProcessor,
   TicketProcessor,
@@ -39,6 +40,7 @@ export function initializeProcessors(): void {
   ProcessorRegistry.registerForEntity('USER_PROFILE', (orgId) => new UserProfileProcessor(orgId))
   ProcessorRegistry.registerForEntity('WORKFLOW_RUN', (orgId) => new WorkflowRunProcessor(orgId))
   ProcessorRegistry.registerForEntity('COMMENT', (orgId) => new CommentProcessor(orgId))
+  ProcessorRegistry.registerForEntity('CUSTOM_FIELD', (orgId) => new CustomFieldProcessor(orgId))
   ProcessorRegistry.registerForEntity('MESSAGE', (orgId) => new MessageProcessor(orgId))
   ProcessorRegistry.registerForEntity(
     'KNOWLEDGE_BASE',

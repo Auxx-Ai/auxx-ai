@@ -357,8 +357,6 @@ export function PropertyProvider({
    */
   const commitValueAsync = useCallback(
     async (newValue: any): Promise<{ success: boolean; id?: string } | undefined> => {
-      if (isSaving) return undefined
-
       // Check if value actually changed (skip for empty objects used to create initial value)
       const isEmptyObject =
         newValue !== null &&
@@ -380,7 +378,7 @@ export function PropertyProvider({
       setServerValue(newValue)
       return result
     },
-    [recordId, isSaving, serverValue, storeSaveAsync, field.id, field.fieldType]
+    [recordId, serverValue, storeSaveAsync, field.id, field.fieldType]
   )
 
   /**

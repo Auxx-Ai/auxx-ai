@@ -29,6 +29,7 @@ import {
   Send,
   Trash,
 } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
@@ -294,19 +295,24 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
                   e.stopPropagation()
                 }
               }}>
-              {selected ? (
-                <>
-                  <ParticipantList participants={participantEntries} />
-                  <div className='flex text-sm'>
-                    <span className='mr-[4px] shrink-0 text-muted-foreground'>Subject:</span>
-                    <span className='flex-shrink-1 min-w-0 truncate whitespace-nowrap'>
-                      {message.subject}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <ParticipantList participants={participantEntries} />
-              )}
+              <ParticipantList participants={participantEntries} />
+              <AnimatePresence initial={false}>
+                {selected && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0, filter: 'blur(3px)' }}
+                    animate={{ height: 'auto', opacity: 1, filter: 'blur(0px)' }}
+                    exit={{ height: 0, opacity: 0, filter: 'blur(3px)' }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    style={{ overflow: 'hidden' }}>
+                    <div className='flex text-sm'>
+                      <span className='mr-[4px] shrink-0 text-muted-foreground'>Subject:</span>
+                      <span className='flex-shrink-1 min-w-0 truncate whitespace-nowrap'>
+                        {message.subject}
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             <SendStatusIndicator
               status={message.sendStatus}
@@ -347,78 +353,87 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
           </div>
         </div>
       </div>
-      {selected && (
-        <div className='border-t border-secondary'>
-          {showModeToggle && (
-            <div className='flex items-center gap-1 px-4 pt-2'>
-              <Button
-                variant={contentMode === 'text' ? 'secondary' : 'ghost'}
-                size='xs'
-                onClick={() => setContentMode('text')}>
-                Text
-              </Button>
-              <Button
-                variant={contentMode === 'html' ? 'secondary' : 'ghost'}
-                size='xs'
-                onClick={handleSwitchToHtml}>
-                HTML
-              </Button>
-            </div>
-          )}
-          {contentMode === 'html' && isHtmlLoading ? (
-            <div className='p-4'>
-              <Skeleton className='h-24 w-full' />
-            </div>
-          ) : contentMode === 'html' && htmlError ? (
-            <div className='p-4 text-sm text-destructive'>{htmlError}</div>
-          ) : contentMode === 'html' && resolvedHtml ? (
-            <div className='p-4'>
-              <SandboxedEmailHtml html={resolvedHtml} />
-            </div>
-          ) : (
-            <div className='whitespace-pre-wrap break-words p-4 text-sm'>
-              {message.textPlain || message.snippet || ''}
-            </div>
-          )}
-          {nonInlineAttachments.length > 0 && (
-            <div className='px-4 pb-4'>
-              <div className='flex items-center flex-row'>
-                {nonInlineAttachments.map((attachment) => (
-                  <AttachmentDisplay
-                    key={attachment.id}
-                    attachment={attachment as any}
-                    showRemoveButton={false}
-                    className='inline-flex w-auto'
-                  />
-                ))}
+      <AnimatePresence initial={false}>
+        {selected && (
+          <motion.div
+            initial={{ height: 0, opacity: 0, filter: 'blur(3px)' }}
+            animate={{ height: 'auto', opacity: 1, filter: 'blur(0px)' }}
+            exit={{ height: 0, opacity: 0, filter: 'blur(3px)' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            style={{ overflow: 'hidden' }}>
+            <div className='border-t border-secondary'>
+              {showModeToggle && (
+                <div className='flex items-center gap-1 px-4 pt-2'>
+                  <Button
+                    variant={contentMode === 'text' ? 'secondary' : 'ghost'}
+                    size='xs'
+                    onClick={() => setContentMode('text')}>
+                    Text
+                  </Button>
+                  <Button
+                    variant={contentMode === 'html' ? 'secondary' : 'ghost'}
+                    size='xs'
+                    onClick={handleSwitchToHtml}>
+                    HTML
+                  </Button>
+                </div>
+              )}
+              {contentMode === 'html' && isHtmlLoading ? (
+                <div className='p-4'>
+                  <Skeleton className='h-24 w-full' />
+                </div>
+              ) : contentMode === 'html' && htmlError ? (
+                <div className='p-4 text-sm text-destructive'>{htmlError}</div>
+              ) : contentMode === 'html' && resolvedHtml ? (
+                <div className='p-4'>
+                  <SandboxedEmailHtml html={resolvedHtml} />
+                </div>
+              ) : (
+                <div className='whitespace-pre-wrap break-words p-4 text-sm'>
+                  {message.textPlain || message.snippet || ''}
+                </div>
+              )}
+              {nonInlineAttachments.length > 0 && (
+                <div className='px-4 pb-4'>
+                  <div className='flex items-center flex-row'>
+                    {nonInlineAttachments.map((attachment) => (
+                      <AttachmentDisplay
+                        key={attachment.id}
+                        attachment={attachment as any}
+                        showRemoveButton={false}
+                        className='inline-flex w-auto'
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className='flex items-center flex-row gap-2 p-4'>
+                <Button
+                  variant='info'
+                  className='rounded-full'
+                  size='sm'
+                  onClick={handleDirectReplyClick}>
+                  <Reply className='opacity-70' />
+                  Reply
+                </Button>
+                <Button
+                  variant='info'
+                  className='rounded-full pr-3!'
+                  size='sm'
+                  onClick={handleDirectReplyAllClick}>
+                  <ReplyAll className='opacity-70' />
+                  Reply All
+                  {isLastMessage && (
+                    <Kbd variant='default' size='sm'>
+                      R
+                    </Kbd>
+                  )}
+                </Button>
               </div>
             </div>
-          )}
-          <div className='flex items-center flex-row gap-2 p-4'>
-            <Button
-              variant='info'
-              className='rounded-full'
-              size='sm'
-              onClick={handleDirectReplyClick}>
-              <Reply className='opacity-70' />
-              Reply
-            </Button>
-            <Button
-              variant='info'
-              className='rounded-full pr-3!'
-              size='sm'
-              onClick={handleDirectReplyAllClick}>
-              <ReplyAll className='opacity-70' />
-              Reply All
-              {isLastMessage && (
-                <Kbd variant='default' size='sm'>
-                  R
-                </Kbd>
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

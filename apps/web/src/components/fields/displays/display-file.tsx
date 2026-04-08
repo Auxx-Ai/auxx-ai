@@ -9,39 +9,39 @@ import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 
 /** File item for ItemsListView */
-interface FileItem extends ItemsListItem {
+interface DisplayFileItem extends ItemsListItem {
   name: string
   mimeType: string
 }
 
 /**
  * DisplayFile component
- * Renders file attachments in read-only mode
+ * Renders file references in read-only mode.
+ * value is now an array of { ref: "asset:xxx" } objects (FILE is in ARRAY_RETURN_FIELD_TYPES).
  */
 export function DisplayFile() {
   const { value } = useFieldContext()
 
-  // value structure: { attachmentIds: string[] | string }
-  const attachmentIds = Array.isArray(value?.attachmentIds)
-    ? value.attachmentIds
-    : value?.attachmentIds
-      ? [value.attachmentIds]
-      : []
+  // Extract refs from multi-value array
+  const refs = useMemo(() => {
+    if (!Array.isArray(value)) return []
+    return value.filter((v: any) => v?.ref).map((v: any) => v.ref as string)
+  }, [value])
 
-  const { data: attachments } = api.attachment.getByIds.useQuery(
-    { ids: attachmentIds },
-    { enabled: attachmentIds.length > 0 }
+  const { data: fileDetails } = api.file.resolveFileRefs.useQuery(
+    { refs },
+    { enabled: refs.length > 0 }
   )
 
   // Build file items for ItemsListView
-  const fileItems = useMemo<FileItem[]>(() => {
-    if (!attachments) return []
-    return attachments.map((attachment) => ({
-      id: attachment.id,
-      name: attachment.asset.name || 'Untitled file',
-      mimeType: attachment.asset.mimeType || 'application/octet-stream',
+  const fileItems = useMemo<DisplayFileItem[]>(() => {
+    if (!fileDetails) return []
+    return fileDetails.map((detail) => ({
+      id: detail.ref,
+      name: detail.name,
+      mimeType: detail.mimeType || 'application/octet-stream',
     }))
-  }, [attachments])
+  }, [fileDetails])
 
   if (fileItems.length === 0) return null
 
@@ -50,16 +50,10 @@ export function DisplayFile() {
       <ItemsListView
         items={fileItems}
         renderItem={(item) => (
-          <a
-            href={`/api/attachments/${item.id}/download`}
-            target='_blank'
-            rel='noopener noreferrer'
-            onClick={(e) => e.stopPropagation()}>
-            <Badge variant='pill' shape='tag' className='flex items-center gap-1.5'>
-              <FileIcon mimeType={item.mimeType} className='size-4 text-gray-500 flex-shrink-0' />
-              <span>{item.name}</span>
-            </Badge>
-          </a>
+          <Badge variant='pill' shape='tag' className='flex items-center gap-1.5'>
+            <FileIcon mimeType={item.mimeType} className='size-4 flex-shrink-0 text-gray-500' />
+            <span>{item.name}</span>
+          </Badge>
         )}
       />
     </DisplayWrapper>

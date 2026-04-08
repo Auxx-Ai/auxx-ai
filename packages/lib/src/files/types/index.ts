@@ -10,6 +10,7 @@ export type { UploadInitConfig } from '../upload/init-types'
 export type {
   ArticleFileMetadata,
   BaseEntityMetadata,
+  CustomFieldFileMetadata,
   DatasetFileMetadata,
   EntityCapabilities,
   EntityFileMetadata,

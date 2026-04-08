@@ -19,6 +19,7 @@ export const ENTITY_TYPES = {
   COMMENT: 'COMMENT',
   MESSAGE: 'MESSAGE',
   KNOWLEDGE_BASE: 'KNOWLEDGE_BASE',
+  CUSTOM_FIELD: 'CUSTOM_FIELD',
 } as const
 
 export type EntityType = (typeof ENTITY_TYPES)[keyof typeof ENTITY_TYPES]
@@ -163,6 +164,14 @@ export interface CommentFileMetadata extends BaseEntityMetadata {
 }
 
 /**
+ * Custom field-specific metadata
+ */
+export interface CustomFieldFileMetadata extends BaseEntityMetadata {
+  fieldId?: string
+  fieldValueId?: string
+}
+
+/**
  * Message-specific metadata (for email attachments)
  */
 export interface MessageFileMetadata extends BaseEntityMetadata {
@@ -184,6 +193,7 @@ export type EntityFileMetadata =
   | KnowledgeBaseFileMetadata
   | WorkflowFileMetadata
   | CommentFileMetadata
+  | CustomFieldFileMetadata
   | MessageFileMetadata
 
 /**
@@ -513,6 +523,33 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
       allowedExtensions: ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.txt', '.doc', '.docx'],
       scanForViruses: true,
       requireExtension: true,
+      blockExecutables: true,
+    },
+    defaultVisibility: 'private',
+    maxConcurrentUploads: 3,
+    enableBatchUpload: true,
+    supportedFeatures: { progress: true, preview: true, retry: true, pause: false, resume: false },
+  },
+
+  [ENTITY_TYPES.CUSTOM_FIELD]: {
+    entityType: ENTITY_TYPES.CUSTOM_FIELD,
+    displayName: 'Custom Field Attachment',
+    description: 'Attach files to custom field values',
+    stages: [
+      { name: 'validation', displayName: 'Validation', weight: 50, estimatedDuration: 1 },
+      {
+        name: 'attachment-creation',
+        displayName: 'Attachment Creation',
+        weight: 50,
+        estimatedDuration: 2,
+      },
+    ],
+    validation: {
+      maxFileSize: 25 * 1024 * 1024, // 25MB
+      allowedMimeTypes: ['*/*'],
+      allowedExtensions: [],
+      scanForViruses: true,
+      requireExtension: false,
       blockExecutables: true,
     },
     defaultVisibility: 'private',
