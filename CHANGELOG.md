@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.115](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.114...auxx-v0.1.115) (2026-04-09)
+
+
+### Features
+
+* column visibility handling in dynamic table components ([#385](https://github.com/Auxx-Ai/auxx-ai/issues/385)) ([5318c7a](https://github.com/Auxx-Ai/auxx-ai/commit/5318c7a16af40e0504d7ecb63379b277e083931b))
+* enhance file handling with FileRef type and related utilities ([#381](https://github.com/Auxx-Ai/auxx-ai/issues/381)) ([3742366](https://github.com/Auxx-Ai/auxx-ai/commit/374236680ca1a1a966f866b65516dcc7fc146453))
+* implement field and entity triggers for vendor parts and subparts ([#384](https://github.com/Auxx-Ai/auxx-ai/issues/384)) ([43cd9b7](https://github.com/Auxx-Ai/auxx-ai/commit/43cd9b7764f0edc3b2850dafca61479ebe536d63))
+* introduce SystemAttribute type and update related interfaces for type safety ([#383](https://github.com/Auxx-Ai/auxx-ai/issues/383)) ([4f8fd98](https://github.com/Auxx-Ai/auxx-ai/commit/4f8fd98ef92278d1628b938a3b425000e98fbe6f))
+
 ## [0.1.114](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.113...auxx-v0.1.114) (2026-04-08)
 
 
