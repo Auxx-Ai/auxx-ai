@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
-import { recalculateAffectedParts } from '../../bom/cost-calculator'
+import { recalculateAffectedParts, recalculateAllPartCosts } from '../../bom/cost-calculator'
 import type { EntityTriggerHandler, FieldTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-triggers:bom-cost')
@@ -60,8 +60,9 @@ const recalculatePartCostOnEntityChange: EntityTriggerHandler = async (event) =>
     parentPartId = extractRelatedEntityId(values, 'subpart_parent_part')
   }
 
-  // If not in event values, try to look it up from field values directly
-  if (!parentPartId && action === 'created') {
+  // If not in event values, look it up from field values directly
+  // (works for both created and deleted — field values persist after archive)
+  if (!parentPartId) {
     const ids = await batchResolvePartIds(
       [entityInstanceId],
       organizationId,
@@ -71,6 +72,15 @@ const recalculatePartCostOnEntityChange: EntityTriggerHandler = async (event) =>
   }
 
   if (!parentPartId) {
+    // For deletions, field values may be gone — fall back to full org recalculation
+    if (action === 'deleted') {
+      logger.info('Falling back to full org cost recalculation on entity deletion', {
+        entitySlug,
+        entityInstanceId,
+      })
+      await recalculateAllPartCosts(organizationId)
+      return
+    }
     logger.warn('Could not determine affected part for entity change', {
       entitySlug,
       entityInstanceId,
@@ -124,14 +134,17 @@ async function batchResolvePartIds(
 
 /**
  * Extract a related entity ID from event values.
+ * Handles both plain entity instance IDs (from create events)
+ * and RecordId format "defId:instId" (from delete events using captureEventData).
  */
 function extractRelatedEntityId(
   values: Record<string, unknown>,
   systemAttribute: string
 ): string | undefined {
   const value = values[systemAttribute]
-  if (typeof value === 'string') return value
-  return undefined
+  if (typeof value !== 'string') return undefined
+  // RecordId format contains a colon — extract the entity instance ID
+  return value.includes(':') ? parseRecordId(value as any).entityInstanceId : value
 }
 
 export { recalculatePartCost, recalculatePartCostOnEntityChange }

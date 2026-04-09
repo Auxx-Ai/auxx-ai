@@ -3,7 +3,7 @@
 import { database as db } from '@auxx/database'
 import { createChatService } from '@auxx/lib/chat'
 import { findMemberByUser } from '@auxx/lib/members'
-import { RealTimeService } from '@auxx/lib/realtime'
+import { getRealtimeService } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -33,7 +33,7 @@ export const chatRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       // Use chatService from context if available, otherwise create instance
-      const realtimeService = new RealTimeService()
+      const realtimeService = getRealtimeService()
       const chatService = createChatService(db, realtimeService)
       // Assuming direct creation for this example:
 
@@ -99,7 +99,7 @@ export const chatRouter = createTRPCRouter({
       })
 
       try {
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 
@@ -181,7 +181,7 @@ export const chatRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 
@@ -219,7 +219,7 @@ export const chatRouter = createTRPCRouter({
     .input(z.object({ sessionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       try {
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 
@@ -258,7 +258,7 @@ export const chatRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 
@@ -308,7 +308,7 @@ export const chatRouter = createTRPCRouter({
             message: 'You do not have access to this organization',
           })
         }
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 
@@ -355,7 +355,7 @@ export const chatRouter = createTRPCRouter({
       const { sessionId, content, attachmentIds } = input
       const { organizationId } = ctx.session
       try {
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 
@@ -416,7 +416,7 @@ export const chatRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       try {
         const { sessionId, isTyping } = input
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 
@@ -446,7 +446,7 @@ export const chatRouter = createTRPCRouter({
       try {
         const { sessionId, isTyping } = input
         const { userId } = ctx.session
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 
@@ -476,7 +476,7 @@ export const chatRouter = createTRPCRouter({
     .input(z.object({ sessionId: z.string() }))
     .query(async ({ ctx, input }) => {
       try {
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 
@@ -532,7 +532,7 @@ export const chatRouter = createTRPCRouter({
     .input(z.object({ sessionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       try {
-        const realtimeService = new RealTimeService()
+        const realtimeService = getRealtimeService()
 
         const chatService = createChatService(db, realtimeService)
 

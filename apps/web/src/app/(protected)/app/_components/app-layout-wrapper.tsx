@@ -13,13 +13,14 @@ import KBar from '~/components/kbar'
 import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { FloatingComposeRoot } from '~/components/mail/email-editor/floating-compose-root'
 import { ResourceProvider } from '~/components/resources'
+import { useResourceSync } from '~/components/resources/hooks/use-resource-sync'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
 import { FloatingTaskRoot } from '~/components/tasks/ui/floating-task-root'
 import { ThreadDataProvider } from '~/components/threads'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
-import { PusherProvider } from '~/providers/pusher-provider'
+import { useRealtimeLifecycle } from '~/realtime/use-realtime-lifecycle'
 
 interface AppLayoutWrapperProps {
   children: ReactNode
@@ -68,23 +69,26 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
     )
   }
 
+  // Drive realtime adapter lifecycle (connect/disconnect/org subscribe)
+  useRealtimeLifecycle()
+  // Subscribe to real-time resource events and feed into stores
+  useResourceSync()
+
   // Show normal dashboard for active subscriptions
   return (
     <ViewStoreProvider>
       <ResourceProvider>
         <ChannelProvider>
           <FilesystemProvider>
-            <PusherProvider>
-              <ThreadDataProvider>
-                <KBar>
-                  <TooltipProvider>
-                    <Dashboard user={user}>{children}</Dashboard>
-                    <FloatingComposeRoot />
-                    <FloatingTaskRoot />
-                  </TooltipProvider>
-                </KBar>
-              </ThreadDataProvider>
-            </PusherProvider>
+            <ThreadDataProvider>
+              <KBar>
+                <TooltipProvider>
+                  <Dashboard user={user}>{children}</Dashboard>
+                  <FloatingComposeRoot />
+                  <FloatingTaskRoot />
+                </TooltipProvider>
+              </KBar>
+            </ThreadDataProvider>
           </FilesystemProvider>
         </ChannelProvider>
       </ResourceProvider>

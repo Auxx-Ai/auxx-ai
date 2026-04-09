@@ -41,7 +41,12 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
+      const service = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db,
+        ctx.headers.get('x-realtime-socket-id') ?? undefined
+      )
       return await service.setValueWithBuiltIn({
         recordId: input.recordId as RecordId,
         fieldId: input.fieldId,
@@ -66,7 +71,12 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
+      const service = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db,
+        ctx.headers.get('x-realtime-socket-id') ?? undefined
+      )
       return await service.setBulkValues({
         recordIds: input.recordIds as RecordId[],
         values: input.values.map((v) => ({
@@ -88,7 +98,12 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
+      const service = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db,
+        ctx.headers.get('x-realtime-socket-id') ?? undefined
+      )
       await service.deleteValue({
         recordId: input.recordId as RecordId,
         fieldId: input.fieldId,
@@ -113,7 +128,12 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
+      const service = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db,
+        ctx.headers.get('x-realtime-socket-id') ?? undefined
+      )
       return await service.batchGetValues({
         recordIds: input.recordIds as RecordId[],
         fieldReferences: input.fieldReferences as FieldReference[],
@@ -137,7 +157,12 @@ export const fieldValueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
+      const service = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db,
+        ctx.headers.get('x-realtime-socket-id') ?? undefined
+      )
       return await service.addValue({
         recordId: input.recordId as RecordId,
         fieldId: input.fieldId,
@@ -153,7 +178,12 @@ export const fieldValueRouter = createTRPCRouter({
   remove: protectedProcedure
     .input(z.object({ valueId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const service = new FieldValueService(ctx.session.organizationId, ctx.session.user.id, ctx.db)
+      const service = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db,
+        ctx.headers.get('x-realtime-socket-id') ?? undefined
+      )
       await service.removeValue(input.valueId)
       return { success: true }
     }),

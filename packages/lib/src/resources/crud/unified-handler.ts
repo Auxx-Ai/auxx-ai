@@ -111,10 +111,11 @@ export class UnifiedCrudHandler {
   constructor(
     private organizationId: string,
     private userId: string,
-    db?: Database
+    db?: Database,
+    private socketId?: string
   ) {
     this.db = db ?? defaultDatabase
-    this.fieldValueService = new FieldValueService(organizationId, userId, this.db)
+    this.fieldValueService = new FieldValueService(organizationId, userId, this.db, socketId)
   }
 
   /**
@@ -125,6 +126,7 @@ export class UnifiedCrudHandler {
       db: this.db,
       organizationId: this.organizationId,
       userId: this.userId,
+      socketId: this.socketId,
       fieldValueService: this.fieldValueService,
       resolveEntityDefinition: this.resolveEntityDefinition.bind(this),
       getFields: this.getCustomFieldsCached.bind(this),

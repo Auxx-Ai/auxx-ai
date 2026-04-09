@@ -2,12 +2,14 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { createFieldValueContext } from '../field-values/field-value-helpers'
 import { setValueWithType } from '../field-values/field-value-mutations'
+import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 
 const logger = createScopedLogger('bom:cost-calculator')
 
@@ -401,6 +403,21 @@ async function persistCosts(
         })
       }
     }
+  }
+
+  // Publish cascaded cost changes to all clients (NO socket exclusion —
+  // the user edited vendor_part_unit_price, not part_cost, so all clients need these)
+  if (changedPartIds.length > 0) {
+    const entries = changedEntries
+      .filter(({ partId }) => changedPartIds.includes(partId))
+      .map(({ partId, cost }) => {
+        const recordId = toRecordId(partDefId, partId) as RecordId
+        return {
+          key: buildFieldValueKey(recordId, costField.id as FieldId),
+          value: { type: 'number' as const, value: cost },
+        }
+      })
+    publishFieldValueUpdates(getRealtimeService(), orgId, entries).catch(() => {})
   }
 
   return changedPartIds

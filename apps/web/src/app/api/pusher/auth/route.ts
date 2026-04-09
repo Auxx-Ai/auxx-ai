@@ -2,7 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { findMemberByUser } from '@auxx/lib/members'
-import { RealTimeService } from '@auxx/lib/realtime'
+import { getRealtimeService } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
@@ -31,16 +31,7 @@ export async function POST(req: NextRequest) {
       logger.warn('Missing required parameters', { socket_id, channel_name })
       return NextResponse.json({ error: 'Missing socket_id or channel_name' }, { status: 400 })
     }
-    const realTimeService = new RealTimeService()
-
-    // Check if Pusher is properly initialized
-    if (!realTimeService.isPusherInitialized()) {
-      logger.error('Pusher not initialized in RealTimeService')
-      return NextResponse.json(
-        { error: 'Real-time service not properly configured' },
-        { status: 500 }
-      )
-    }
+    const realTimeService = getRealtimeService()
 
     // Handle chat channels (no authentication required)
     if (channel_name.startsWith('private-chat-')) {
