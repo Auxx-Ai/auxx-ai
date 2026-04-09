@@ -5,7 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { createFieldValueContext } from '../field-values/field-value-helpers'
 import { setValueWithType } from '../field-values/field-value-mutations'
@@ -18,7 +18,15 @@ const logger = createScopedLogger('bom:cost-calculator')
 interface VendorPriceRow {
   partInstanceId: string
   unitPrice: number | null
+  shippingCost: number | null
+  tariffRate: number | null
+  otherCost: number | null
   isPreferred: boolean
+}
+
+interface VendorCostMaps {
+  unitPriceMap: Map<string, number>
+  landedCostMap: Map<string, number>
 }
 
 interface SubpartRow {
@@ -49,20 +57,35 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
   logger.info('Loading org pricing data', { orgId, vendorPartDefId, subpartDefId })
 
   // Resolve custom field IDs by systemAttribute
-  const [vpPartField, vpPriceField, vpPreferredField, spParentField, spChildField, spQtyField] =
-    await Promise.all([
-      cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_part'),
-      cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_unit_price'),
-      cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_is_preferred'),
-      cache.from(orgId, 'customFields').bySystemAttribute('subpart_parent_part'),
-      cache.from(orgId, 'customFields').bySystemAttribute('subpart_child_part'),
-      cache.from(orgId, 'customFields').bySystemAttribute('subpart_quantity'),
-    ])
+  const [
+    vpPartField,
+    vpPriceField,
+    vpPreferredField,
+    vpShippingField,
+    vpTariffField,
+    vpOtherField,
+    spParentField,
+    spChildField,
+    spQtyField,
+  ] = await Promise.all([
+    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_part'),
+    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_unit_price'),
+    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_is_preferred'),
+    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_shipping_cost'),
+    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_tariff_rate'),
+    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_other_cost'),
+    cache.from(orgId, 'customFields').bySystemAttribute('subpart_parent_part'),
+    cache.from(orgId, 'customFields').bySystemAttribute('subpart_child_part'),
+    cache.from(orgId, 'customFields').bySystemAttribute('subpart_quantity'),
+  ])
 
   logger.info('Resolved custom field IDs', {
     vpPartField: vpPartField?.id ?? null,
     vpPriceField: vpPriceField?.id ?? null,
     vpPreferredField: vpPreferredField?.id ?? null,
+    vpShippingField: vpShippingField?.id ?? null,
+    vpTariffField: vpTariffField?.id ?? null,
+    vpOtherField: vpOtherField?.id ?? null,
     spParentField: spParentField?.id ?? null,
     spChildField: spChildField?.id ?? null,
     spQtyField: spQtyField?.id ?? null,
@@ -99,7 +122,14 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
     // Group by instance and extract relevant fields
     const byInstance = new Map<
       string,
-      { partInstanceId: string | null; unitPrice: number | null; isPreferred: boolean }
+      {
+        partInstanceId: string | null
+        unitPrice: number | null
+        shippingCost: number | null
+        tariffRate: number | null
+        otherCost: number | null
+        isPreferred: boolean
+      }
     >()
 
     for (const row of rows) {
@@ -107,6 +137,9 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
         byInstance.set(row.instanceId, {
           partInstanceId: null,
           unitPrice: null,
+          shippingCost: null,
+          tariffRate: null,
+          otherCost: null,
           isPreferred: false,
         })
       }
@@ -117,6 +150,12 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
         entry.unitPrice = row.valueNumber
       } else if (row.fieldId === vpPreferredField.id) {
         entry.isPreferred = row.valueBoolean ?? false
+      } else if (vpShippingField && row.fieldId === vpShippingField.id) {
+        entry.shippingCost = row.valueNumber
+      } else if (vpTariffField && row.fieldId === vpTariffField.id) {
+        entry.tariffRate = row.valueNumber
+      } else if (vpOtherField && row.fieldId === vpOtherField.id) {
+        entry.otherCost = row.valueNumber
       }
     }
 
@@ -125,6 +164,9 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
         vendorPrices.push({
           partInstanceId: entry.partInstanceId,
           unitPrice: entry.unitPrice,
+          shippingCost: entry.shippingCost,
+          tariffRate: entry.tariffRate,
+          otherCost: entry.otherCost,
           isPreferred: entry.isPreferred,
         })
       }
@@ -195,10 +237,24 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
 // ─── Graph Building ──────────────────────────────────────────────────
 
 /**
- * Best vendor price per part: preferred vendor first, then cheapest.
+ * Compute landed cost for a vendor part row.
+ * Formula: unit_price + shipping_cost + (unit_price * tariff_rate / 100) + other_cost
  */
-function buildVendorPriceMap(vendorPrices: VendorPriceRow[]): Map<string, number> {
-  const map = new Map<string, number>()
+function computeLandedCost(row: VendorPriceRow): number | null {
+  if (row.unitPrice == null) return null
+  const shipping = row.shippingCost ?? 0
+  const tariff = row.unitPrice * ((row.tariffRate ?? 0) / 100)
+  const other = row.otherCost ?? 0
+  return row.unitPrice + shipping + tariff + other
+}
+
+/**
+ * Best vendor per part: preferred first, then cheapest landed cost.
+ * Returns two maps: raw unit price and computed landed cost.
+ */
+function buildVendorCostMaps(vendorPrices: VendorPriceRow[]): VendorCostMaps {
+  const unitPriceMap = new Map<string, number>()
+  const landedCostMap = new Map<string, number>()
 
   // Group by partInstanceId
   const byPart = new Map<string, VendorPriceRow[]>()
@@ -210,18 +266,22 @@ function buildVendorPriceMap(vendorPrices: VendorPriceRow[]): Map<string, number
   }
 
   for (const [partId, rows] of byPart) {
-    // Preferred vendors first, then sort by price ascending
+    // Preferred vendors first, then sort by landed cost ascending
     const sorted = rows.sort((a, b) => {
       if (a.isPreferred !== b.isPreferred) return a.isPreferred ? -1 : 1
-      return (a.unitPrice ?? 0) - (b.unitPrice ?? 0)
+      return (computeLandedCost(a) ?? 0) - (computeLandedCost(b) ?? 0)
     })
     const best = sorted[0]
     if (best?.unitPrice != null) {
-      map.set(partId, best.unitPrice)
+      unitPriceMap.set(partId, best.unitPrice)
+      const landed = computeLandedCost(best)
+      if (landed != null) {
+        landedCostMap.set(partId, landed)
+      }
     }
   }
 
-  return map
+  return { unitPriceMap, landedCostMap }
 }
 
 /** Adjacency list: parent → [{ childId, qty }] */
@@ -300,48 +360,67 @@ function calculateAllCosts(
 
 // ─── Persistence ─────────────────────────────────────────────────────
 
+interface CurrentPartValues {
+  costs: Map<string, number>
+  unitPrices: Map<string, number>
+}
+
 /**
- * Load current cached cost values for all parts in the org.
- * Returns a map of partInstanceId → current cost.
+ * Load current cached cost and unit price values for all parts in the org.
  */
-async function loadCurrentCosts(orgId: string): Promise<Map<string, number>> {
+async function loadCurrentPartValues(orgId: string): Promise<CurrentPartValues> {
   const cache = getOrgCache()
-  const costField = await cache.from(orgId, 'customFields').bySystemAttribute('part_cost')
-  if (!costField) return new Map()
+  const [costField, unitPriceField] = await Promise.all([
+    cache.from(orgId, 'customFields').bySystemAttribute('part_cost'),
+    cache.from(orgId, 'customFields').bySystemAttribute('part_unit_price'),
+  ])
 
-  const currentCosts = new Map<string, number>()
+  const costs = new Map<string, number>()
+  const unitPrices = new Map<string, number>()
 
-  const costValues = await database
+  const fieldIds = [costField?.id, unitPriceField?.id].filter(Boolean) as string[]
+  if (fieldIds.length === 0) return { costs, unitPrices }
+
+  const rows = await database
     .select({
       entityId: schema.FieldValue.entityId,
+      fieldId: schema.FieldValue.fieldId,
       valueNumber: schema.FieldValue.valueNumber,
     })
     .from(schema.FieldValue)
     .where(
-      and(eq(schema.FieldValue.fieldId, costField.id), eq(schema.FieldValue.organizationId, orgId))
+      and(inArray(schema.FieldValue.fieldId, fieldIds), eq(schema.FieldValue.organizationId, orgId))
     )
 
-  for (const cv of costValues) {
-    if (cv.valueNumber != null) {
-      currentCosts.set(cv.entityId, cv.valueNumber)
+  for (const row of rows) {
+    if (row.valueNumber == null) continue
+    if (costField && row.fieldId === costField.id) {
+      costs.set(row.entityId, row.valueNumber)
+    } else if (unitPriceField && row.fieldId === unitPriceField.id) {
+      unitPrices.set(row.entityId, row.valueNumber)
     }
   }
 
-  return currentCosts
+  return { costs, unitPrices }
 }
 
 /**
- * Write calculated costs back to each part's `part_cost` FieldValue.
- * Only writes parts whose cost actually changed.
- * Returns IDs of parts whose cost changed.
+ * Write calculated costs and unit prices back to each part's FieldValues.
+ * Only writes parts whose values actually changed.
+ * Returns IDs of parts whose values changed.
  */
 async function persistCosts(
   orgId: string,
-  costs: Map<string, number>,
-  previousCosts: Map<string, number>
+  landedCosts: Map<string, number>,
+  unitPrices: Map<string, number>,
+  previous: CurrentPartValues
 ): Promise<string[]> {
   const cache = getOrgCache()
-  const costField = await cache.from(orgId, 'customFields').bySystemAttribute('part_cost')
+  const [costField, unitPriceField] = await Promise.all([
+    cache.from(orgId, 'customFields').bySystemAttribute('part_cost'),
+    cache.from(orgId, 'customFields').bySystemAttribute('part_unit_price'),
+  ])
+
   if (!costField) {
     logger.warn('part_cost custom field not found, skipping cost persistence')
     return []
@@ -352,44 +431,74 @@ async function persistCosts(
 
   logger.info('Persisting costs', {
     costFieldId: costField.id,
-    costFieldType: costField.type,
+    unitPriceFieldId: unitPriceField?.id ?? null,
     partDefId,
-    totalCosts: costs.size,
-    previousCostsSize: previousCosts.size,
+    totalCosts: landedCosts.size,
+    totalUnitPrices: unitPrices.size,
   })
 
-  // Collect parts with changed costs
-  const changedEntries: Array<{ partId: string; cost: number }> = []
-  for (const [partId, cost] of costs) {
-    if (previousCosts.get(partId) !== cost) {
-      changedEntries.push({ partId, cost })
+  // Collect parts with changed values (cost or unit price)
+  interface ChangedEntry {
+    partId: string
+    cost: number | null
+    unitPrice: number | null
+    costChanged: boolean
+    unitPriceChanged: boolean
+  }
+
+  const allPartIds = new Set([...landedCosts.keys(), ...unitPrices.keys()])
+  const changedEntries: ChangedEntry[] = []
+
+  for (const partId of allPartIds) {
+    const cost = landedCosts.get(partId) ?? null
+    const unitPrice = unitPrices.get(partId) ?? null
+    const prevCost = previous.costs.get(partId) ?? null
+    const prevUnitPrice = previous.unitPrices.get(partId) ?? null
+    const costChanged = cost !== prevCost
+    const unitPriceChanged = unitPrice !== prevUnitPrice
+
+    if (costChanged || unitPriceChanged) {
+      changedEntries.push({ partId, cost, unitPrice, costChanged, unitPriceChanged })
     }
   }
 
-  logger.info('Parts with changed costs', { count: changedEntries.length })
+  logger.info('Parts with changed values', { count: changedEntries.length })
 
-  // Write all changed costs concurrently (bounded to avoid overwhelming the DB)
+  // Write all changed values concurrently (bounded to avoid overwhelming the DB)
   const BATCH_SIZE = 20
   const changedPartIds: string[] = []
 
   for (let i = 0; i < changedEntries.length; i += BATCH_SIZE) {
     const batch = changedEntries.slice(i, i + BATCH_SIZE)
     const results = await Promise.allSettled(
-      batch.map(({ partId, cost }) => {
-        const recordId = toRecordId(partDefId, partId) as RecordId
-        logger.debug('Persisting cost', {
-          partId,
-          cost,
-          recordId,
-          fieldId: costField.id,
-          fieldType: costField.type,
-        })
-        return setValueWithType(ctx, {
-          recordId,
-          fieldId: costField.id,
-          fieldType: costField.type,
-          value: { type: 'number', value: cost },
-        }).then(() => partId)
+      batch.map(async (entry) => {
+        const recordId = toRecordId(partDefId, entry.partId) as RecordId
+        const writes: Promise<unknown>[] = []
+
+        if (entry.costChanged && entry.cost != null) {
+          writes.push(
+            setValueWithType(ctx, {
+              recordId,
+              fieldId: costField.id,
+              fieldType: costField.type,
+              value: { type: 'number', value: entry.cost },
+            })
+          )
+        }
+
+        if (entry.unitPriceChanged && unitPriceField && entry.unitPrice != null) {
+          writes.push(
+            setValueWithType(ctx, {
+              recordId,
+              fieldId: unitPriceField.id,
+              fieldType: unitPriceField.type,
+              value: { type: 'number', value: entry.unitPrice },
+            })
+          )
+        }
+
+        await Promise.all(writes)
+        return entry.partId
       })
     )
 
@@ -397,7 +506,7 @@ async function persistCosts(
       if (result.status === 'fulfilled') {
         changedPartIds.push(result.value)
       } else {
-        logger.error('Failed to persist cost for part', {
+        logger.error('Failed to persist values for part', {
           error: result.reason instanceof Error ? result.reason.message : String(result.reason),
           stack: result.reason instanceof Error ? result.reason.stack : undefined,
         })
@@ -405,18 +514,26 @@ async function persistCosts(
     }
   }
 
-  // Publish cascaded cost changes to all clients (NO socket exclusion —
-  // the user edited vendor_part_unit_price, not part_cost, so all clients need these)
+  // Publish cascaded changes to all clients
   if (changedPartIds.length > 0) {
-    const entries = changedEntries
-      .filter(({ partId }) => changedPartIds.includes(partId))
-      .map(({ partId, cost }) => {
-        const recordId = toRecordId(partDefId, partId) as RecordId
-        return {
+    const entries: Array<{ key: string; value: { type: 'number'; value: number } }> = []
+    for (const entry of changedEntries) {
+      if (!changedPartIds.includes(entry.partId)) continue
+      const recordId = toRecordId(partDefId, entry.partId) as RecordId
+
+      if (entry.costChanged && entry.cost != null) {
+        entries.push({
           key: buildFieldValueKey(recordId, costField.id as FieldId),
-          value: { type: 'number' as const, value: cost },
-        }
-      })
+          value: { type: 'number', value: entry.cost },
+        })
+      }
+      if (entry.unitPriceChanged && unitPriceField && entry.unitPrice != null) {
+        entries.push({
+          key: buildFieldValueKey(recordId, unitPriceField.id as FieldId),
+          value: { type: 'number', value: entry.unitPrice },
+        })
+      }
+    }
     publishFieldValueUpdates(getRealtimeService(), orgId, entries).catch(() => {})
   }
 
@@ -432,11 +549,11 @@ async function persistCosts(
  */
 export async function recalculateAllPartCosts(orgId: string): Promise<string[]> {
   const { vendorPrices, subparts } = await loadOrgPricingData(orgId)
-  const vendorPriceMap = buildVendorPriceMap(vendorPrices)
+  const { unitPriceMap, landedCostMap } = buildVendorCostMaps(vendorPrices)
   const subpartGraph = buildSubpartGraph(subparts)
-  const costs = calculateAllCosts(vendorPriceMap, subpartGraph)
-  const previousCosts = await loadCurrentCosts(orgId)
-  const changedIds = await persistCosts(orgId, costs, previousCosts)
+  const costs = calculateAllCosts(landedCostMap, subpartGraph)
+  const previous = await loadCurrentPartValues(orgId)
+  const changedIds = await persistCosts(orgId, costs, unitPriceMap, previous)
 
   logger.info('Recalculated all part costs', {
     orgId,
@@ -457,7 +574,7 @@ export async function recalculateAffectedParts(
   affectedPartIds: string[]
 ): Promise<string[]> {
   const { vendorPrices, subparts } = await loadOrgPricingData(orgId)
-  const vendorPriceMap = buildVendorPriceMap(vendorPrices)
+  const { unitPriceMap, landedCostMap } = buildVendorCostMaps(vendorPrices)
   const subpartGraph = buildSubpartGraph(subparts)
   const parentGraph = buildParentGraph(subparts)
 
@@ -473,17 +590,20 @@ export async function recalculateAffectedParts(
   for (const id of affectedPartIds) markDirty(id)
 
   // Calculate costs for all parts (memoized, so cheap)
-  const allCosts = calculateAllCosts(vendorPriceMap, subpartGraph)
+  const allCosts = calculateAllCosts(landedCostMap, subpartGraph)
 
-  // Only persist costs for the dirty set
+  // Only persist values for the dirty set
   const dirtyCosts = new Map<string, number>()
+  const dirtyUnitPrices = new Map<string, number>()
   for (const partId of dirtySet) {
     const cost = allCosts.get(partId)
     if (cost != null) dirtyCosts.set(partId, cost)
+    const up = unitPriceMap.get(partId)
+    if (up != null) dirtyUnitPrices.set(partId, up)
   }
 
-  const previousCosts = await loadCurrentCosts(orgId)
-  const changedIds = await persistCosts(orgId, dirtyCosts, previousCosts)
+  const previous = await loadCurrentPartValues(orgId)
+  const changedIds = await persistCosts(orgId, dirtyCosts, dirtyUnitPrices, previous)
 
   logger.info('Recalculated affected part costs', {
     orgId,
@@ -497,5 +617,5 @@ export async function recalculateAffectedParts(
 
 // ─── Exported helpers for BomService ─────────────────────────────────
 
-export { loadOrgPricingData, buildVendorPriceMap, buildSubpartGraph, buildParentGraph }
-export type { VendorPriceRow, SubpartRow, OrgPricingData }
+export { loadOrgPricingData, buildVendorCostMaps, buildSubpartGraph, buildParentGraph }
+export type { VendorPriceRow, VendorCostMaps, SubpartRow, OrgPricingData }

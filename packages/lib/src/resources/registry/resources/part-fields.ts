@@ -123,6 +123,26 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter category',
   },
 
+  unitPrice: {
+    id: toFieldId('unitPrice'),
+    key: 'unitPrice',
+    label: 'Unit Price',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_unit_price',
+    systemSortOrder: 'a5a',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'Raw supplier price from preferred vendor',
+  },
+
   cost: {
     id: toFieldId('cost'),
     key: 'cost',

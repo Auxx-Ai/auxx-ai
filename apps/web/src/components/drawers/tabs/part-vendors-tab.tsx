@@ -151,6 +151,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
                   <TableHead>Supplier</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead className='text-right'>Price</TableHead>
+                  <TableHead className='text-right'>Landed</TableHead>
                   <TableHead className='text-right'>Lead Time</TableHead>
                   <TableHead className='w-10'></TableHead>
                 </TableRow>

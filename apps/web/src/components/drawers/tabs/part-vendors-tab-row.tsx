@@ -21,6 +21,9 @@ import { RecordBadge } from '~/components/resources/ui/record-badge'
 const VENDOR_PART_ATTRIBUTES = [
   'vendor_part_vendor_sku',
   'vendor_part_unit_price',
+  'vendor_part_shipping_cost',
+  'vendor_part_tariff_rate',
+  'vendor_part_other_cost',
   'vendor_part_lead_time',
   'vendor_part_is_preferred',
   'vendor_part_contact',
@@ -40,10 +43,18 @@ export function VendorPartRow({ recordId, onEdit, onDelete, onSetPreferred }: Ve
 
   const vendorSku = values.vendor_part_vendor_sku as string | undefined
   const unitPrice = values.vendor_part_unit_price as number | null | undefined
+  const shippingCost = values.vendor_part_shipping_cost as number | null | undefined
+  const tariffRate = values.vendor_part_tariff_rate as number | null | undefined
+  const otherCost = values.vendor_part_other_cost as number | null | undefined
   const leadTime = values.vendor_part_lead_time as number | null | undefined
   const isPreferred = values.vendor_part_is_preferred as boolean | undefined
   const contactId = (values.vendor_part_contact as string[] | undefined)?.[0]
-  console.log('contactId', contactId)
+
+  // Compute landed cost inline: unit_price + shipping + (unit_price * tariff / 100) + other
+  const landedCost =
+    unitPrice != null
+      ? unitPrice + (shippingCost ?? 0) + unitPrice * ((tariffRate ?? 0) / 100) + (otherCost ?? 0)
+      : null
   return (
     <TableRow>
       <TableCell className='font-medium'>
@@ -65,6 +76,13 @@ export function VendorPartRow({ recordId, onEdit, onDelete, onSetPreferred }: Ve
       <TableCell className='font-mono text-sm'>{vendorSku ?? '—'}</TableCell>
       <TableCell className='text-right'>
         {unitPrice ? formatCurrency(unitPrice) : <span className='text-muted-foreground'>—</span>}
+      </TableCell>
+      <TableCell className='text-right'>
+        {landedCost != null && landedCost !== unitPrice ? (
+          formatCurrency(landedCost)
+        ) : (
+          <span className='text-muted-foreground'>—</span>
+        )}
       </TableCell>
       <TableCell className='text-right'>
         {leadTime ? (

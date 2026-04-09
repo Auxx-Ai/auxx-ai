@@ -14,6 +14,9 @@ import { clearOtherPreferred } from './triggers/vendor-part-triggers'
 export function registerAllTriggers(): void {
   // BOM cost field triggers — fire when specific field values change
   registerFieldTriggers('vendor_part_unit_price', [recalculatePartCost])
+  registerFieldTriggers('vendor_part_shipping_cost', [recalculatePartCost])
+  registerFieldTriggers('vendor_part_tariff_rate', [recalculatePartCost])
+  registerFieldTriggers('vendor_part_other_cost', [recalculatePartCost])
   registerFieldTriggers('vendor_part_is_preferred', [recalculatePartCost, clearOtherPreferred])
   registerFieldTriggers('subpart_quantity', [recalculatePartCost])
 
