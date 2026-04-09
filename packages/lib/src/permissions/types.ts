@@ -40,6 +40,7 @@ export enum FeatureKey {
   devTools = 'devTools',
   unverifiedApps = 'unverifiedApps',
   kopilot = 'kopilot',
+  realtimeSync = 'realtimeSync',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -116,6 +117,7 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     group: 'Integrations',
   },
   { key: FeatureKey.kopilot, type: 'boolean', label: 'Kopilot', group: 'AI' },
+  { key: FeatureKey.realtimeSync, type: 'boolean', label: 'Real-Time Sync', group: 'Core' },
 
   // ── Static limits ──
   { key: FeatureKey.teammates, type: 'static', label: 'Teammates', group: 'Team', unit: 'seats' },
@@ -340,6 +342,7 @@ export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
   { key: FeatureKey.devTools, limit: false },
   { key: FeatureKey.unverifiedApps, limit: true },
   { key: FeatureKey.kopilot, limit: false },
+  { key: FeatureKey.realtimeSync, limit: false },
   { key: FeatureKey.outboundEmailsPerMonthHard, limit: 100 },
   { key: FeatureKey.outboundEmailsPerMonthSoft, limit: 80 },
   { key: FeatureKey.workflowRunsPerMonthHard, limit: 0 },

@@ -8,6 +8,7 @@ import {
   getEntityInstance,
   updateEntityInstance,
 } from '@auxx/services/entity-instances'
+import { getOrgCache } from '../../cache'
 import { CommentService } from '../../comments'
 import { publisher } from '../../events/publisher'
 import type { FieldValueService } from '../../field-values'
@@ -238,23 +239,26 @@ export async function createEntity(
 
   // Publish record:created realtime event
   if (!options.skipEvents) {
-    getRealtimeService()
-      .sendToOrganization(
-        ctx.organizationId,
-        'record:created',
-        {
-          entityDefinitionId: entityDef.id,
-          record: {
-            id: instance.id,
-            recordId,
-            displayName: instance.displayName,
-            createdAt: instance.createdAt,
-            updatedAt: instance.updatedAt,
+    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
+    if (features?.realtimeSync) {
+      getRealtimeService()
+        .sendToOrganization(
+          ctx.organizationId,
+          'record:created',
+          {
+            entityDefinitionId: entityDef.id,
+            record: {
+              id: instance.id,
+              recordId,
+              displayName: instance.displayName,
+              createdAt: instance.createdAt,
+              updatedAt: instance.updatedAt,
+            },
           },
-        },
-        { excludeSocketId: ctx.socketId }
-      )
-      .catch(() => {})
+          { excludeSocketId: ctx.socketId }
+        )
+        .catch(() => {})
+    }
   }
 
   // Return instance, recordId, and all processed values (including auto-generated ones)
@@ -381,14 +385,17 @@ export async function archiveEntity(
 
   // Publish record:archived realtime event
   if (!options.skipEvents) {
-    getRealtimeService()
-      .sendToOrganization(
-        ctx.organizationId,
-        'record:archived',
-        { recordId, entityDefinitionId: entityDef.id },
-        { excludeSocketId: ctx.socketId }
-      )
-      .catch(() => {})
+    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
+    if (features?.realtimeSync) {
+      getRealtimeService()
+        .sendToOrganization(
+          ctx.organizationId,
+          'record:archived',
+          { recordId, entityDefinitionId: entityDef.id },
+          { excludeSocketId: ctx.socketId }
+        )
+        .catch(() => {})
+    }
   }
 
   // Return the instance we already fetched (archivedAt is the only change)
@@ -505,14 +512,17 @@ export async function deleteEntity(
     })
 
     // Publish record:deleted realtime event
-    getRealtimeService()
-      .sendToOrganization(
-        ctx.organizationId,
-        'record:deleted',
-        { recordId, entityDefinitionId: entityDef.id },
-        { excludeSocketId: ctx.socketId }
-      )
-      .catch(() => {})
+    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
+    if (features?.realtimeSync) {
+      getRealtimeService()
+        .sendToOrganization(
+          ctx.organizationId,
+          'record:deleted',
+          { recordId, entityDefinitionId: entityDef.id },
+          { excludeSocketId: ctx.socketId }
+        )
+        .catch(() => {})
+    }
   }
 }
 
