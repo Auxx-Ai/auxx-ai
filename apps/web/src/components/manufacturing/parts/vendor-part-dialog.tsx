@@ -1,7 +1,6 @@
 // apps/web/src/components/manufacturing/parts/vendor-part-dialog.tsx
 'use client'
 
-import type { VendorPartEntity as VendorPart } from '@auxx/database/types'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -15,6 +14,9 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useState } from 'react'
+import { useResourceProperty } from '~/components/resources'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
@@ -23,6 +25,16 @@ import {
   VendorPartFields,
   type VendorPartFormValues,
 } from './vendor-part-fields'
+
+const VENDOR_PART_SYSTEM_ATTRIBUTES = [
+  'vendor_part_vendor_sku',
+  'vendor_part_unit_price',
+  'vendor_part_lead_time',
+  'vendor_part_min_order_qty',
+  'vendor_part_is_preferred',
+  'vendor_part_contact',
+  'vendor_part_part',
+] as const
 
 /** Props for VendorPartDialog component */
 interface VendorPartDialogProps {
@@ -34,8 +46,8 @@ interface VendorPartDialogProps {
   partId?: string
   /** Entity instance ID - provide for contact-centric mode (user selects part) */
   entityInstanceId?: string
-  /** VendorPart to edit (null for add mode) */
-  vendorPart?: VendorPart | null
+  /** RecordId for edit mode (format: "entityDefinitionId:entityInstanceId") */
+  recordId?: RecordId
   /** Callback on successful save */
   onSuccess?: () => void
 }
@@ -46,14 +58,23 @@ export function VendorPartDialog({
   onOpenChange,
   partId: partIdProp,
   entityInstanceId: entityInstanceIdProp,
-  vendorPart,
+  recordId,
   onSuccess,
 }: VendorPartDialogProps) {
-  const isEditMode = !!vendorPart
+  const isEditMode = !!recordId
 
   // Determine mode: part-centric (select contact) or contact-centric (select part)
   const isPartMode = !!partIdProp
   const isContactMode = !!entityInstanceIdProp
+
+  // Resolve vendor_part entity definition ID
+  const vendorPartDefId = useResourceProperty('vendor_part', 'id')
+
+  // Load initial values for edit mode via system attributes
+  const { values: systemValues } = useSystemValues(recordId, VENDOR_PART_SYSTEM_ATTRIBUTES, {
+    autoFetch: true,
+    enabled: isEditMode && open,
+  })
 
   // State - uses shared type plus partId for contact-centric mode
   const [values, setValues] = useState<VendorPartFormValues & { partId: string }>({
@@ -65,18 +86,25 @@ export function VendorPartDialog({
   // Initialize/reset values when dialog opens
   useEffect(() => {
     if (open) {
-      setValues({
-        entityInstanceId: (vendorPart as any)?.entityInstanceId ?? '',
-        partId: (vendorPart as any)?.partId ?? '',
-        vendorSku: vendorPart?.vendorSku ?? '',
-        unitPrice: vendorPart?.unitPrice ?? null,
-        leadTime: vendorPart?.leadTime ?? null,
-        minOrderQty: vendorPart?.minOrderQty ?? null,
-        isPreferred: vendorPart?.isPreferred ?? false,
-      })
+      if (isEditMode && systemValues) {
+        setValues({
+          entityInstanceId: (systemValues.vendor_part_contact as string) ?? '',
+          partId: (systemValues.vendor_part_part as string) ?? '',
+          vendorSku: (systemValues.vendor_part_vendor_sku as string) ?? '',
+          unitPrice: (systemValues.vendor_part_unit_price as number) ?? null,
+          leadTime: (systemValues.vendor_part_lead_time as number) ?? null,
+          minOrderQty: (systemValues.vendor_part_min_order_qty as number) ?? null,
+          isPreferred: (systemValues.vendor_part_is_preferred as boolean) ?? false,
+        })
+      } else if (!isEditMode) {
+        setValues({
+          ...defaultVendorPartValues,
+          partId: '',
+        })
+      }
       setErrors({})
     }
-  }, [open, vendorPart])
+  }, [open, isEditMode, systemValues])
 
   // Handler for vendor part field changes
   const handleVendorPartChange = useCallback((field: keyof VendorPartFormValues, value: any) => {
@@ -94,7 +122,6 @@ export function VendorPartDialog({
   // Field change handler
   const handleChange = useCallback((field: string, value: any) => {
     setValues((prev) => ({ ...prev, [field]: value }))
-    // Clear error when user edits
     setErrors((prev) => {
       if (prev[field]) {
         const next = { ...prev }
@@ -115,8 +142,8 @@ export function VendorPartDialog({
     return Object.keys(newErrors).length === 0
   }
 
-  // Mutations
-  const createVendorPart = api.vendorPart.create.useMutation({
+  // Create mutation via entity system
+  const createRecord = api.record.create.useMutation({
     onSuccess: () => {
       onSuccess?.()
       onOpenChange(false)
@@ -126,17 +153,10 @@ export function VendorPartDialog({
     },
   })
 
-  const updateVendorPart = api.vendorPart.update.useMutation({
-    onSuccess: () => {
-      onSuccess?.()
-      onOpenChange(false)
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to update supplier', description: error.message })
-    },
-  })
+  // Save field values for edit mode
+  const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue({})
 
-  const isPending = createVendorPart.isPending || updateVendorPart.isPending
+  const isPending = createRecord.isPending || isSavingFields
 
   // Submit
   const handleSubmit = async () => {
@@ -146,20 +166,35 @@ export function VendorPartDialog({
     const resolvedPartId = partIdProp ?? values.partId
     const resolvedEntityInstanceId = entityInstanceIdProp ?? values.entityInstanceId
 
-    const payload = {
-      entityInstanceId: resolvedEntityInstanceId,
-      partId: resolvedPartId,
-      vendorSku: values.vendorSku,
-      unitPrice: values.unitPrice,
-      leadTime: values.leadTime,
-      minOrderQty: values.minOrderQty,
-      isPreferred: values.isPreferred,
-    }
+    if (isEditMode && recordId) {
+      // Edit mode: use saveMultipleAsync for optimistic updates
+      const fieldValues: Array<{ fieldId: string; value: unknown; fieldType: string }> = [
+        { fieldId: 'vendor_part_vendor_sku', value: values.vendorSku, fieldType: 'TEXT' },
+        { fieldId: 'vendor_part_unit_price', value: values.unitPrice, fieldType: 'CURRENCY' },
+        { fieldId: 'vendor_part_lead_time', value: values.leadTime, fieldType: 'NUMBER' },
+        { fieldId: 'vendor_part_min_order_qty', value: values.minOrderQty, fieldType: 'NUMBER' },
+        { fieldId: 'vendor_part_is_preferred', value: values.isPreferred, fieldType: 'CHECKBOX' },
+      ]
 
-    if (isEditMode && vendorPart) {
-      await updateVendorPart.mutateAsync({ id: vendorPart.id, ...payload })
+      const success = await saveMultipleAsync(recordId, fieldValues)
+      if (success) {
+        onSuccess?.()
+        onOpenChange(false)
+      }
     } else {
-      await createVendorPart.mutateAsync(payload)
+      // Create mode: use record.create with systemAttribute keys
+      await createRecord.mutateAsync({
+        entityDefinitionId: vendorPartDefId!,
+        values: {
+          vendor_part_part: resolvedPartId,
+          vendor_part_contact: resolvedEntityInstanceId,
+          vendor_part_vendor_sku: values.vendorSku,
+          vendor_part_unit_price: values.unitPrice,
+          vendor_part_lead_time: values.leadTime,
+          vendor_part_min_order_qty: values.minOrderQty,
+          vendor_part_is_preferred: values.isPreferred,
+        },
+      })
     }
   }
 
@@ -224,6 +259,7 @@ export function VendorPartDialog({
             size='sm'
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Adding...'}
+            disabled={!vendorPartDefId}
             data-dialog-submit>
             {isEditMode ? 'Update Supplier' : 'Add Supplier'}{' '}
             <KbdSubmit variant='outline' size='sm' />

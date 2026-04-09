@@ -75,9 +75,30 @@ export const SYSTEM_ATTRIBUTES = [
   'part_description',
   'part_sku',
   'category',
-  'cost',
+  'part_cost',
   'hs_code',
   'shopify_product_link_id',
+  'part_vendor_parts',
+  'part_subparts',
+  'part_used_in_assemblies',
+
+  // ─── Vendor Part fields ────────────────────────────────────────
+  'vendor_part_part',
+  'vendor_part_contact',
+  'vendor_part_vendor_sku',
+  'vendor_part_unit_price',
+  'vendor_part_lead_time',
+  'vendor_part_min_order_qty',
+  'vendor_part_is_preferred',
+
+  // ─── Subpart fields ────────────────────────────────────────────
+  'subpart_parent_part',
+  'subpart_child_part',
+  'subpart_quantity',
+  'subpart_notes',
+
+  // ─── Contact inverse fields ────────────────────────────────────
+  'contact_vendor_parts',
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

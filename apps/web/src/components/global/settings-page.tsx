@@ -109,7 +109,7 @@ export default function SettingsPage({
         </header>
       )}
 
-      <div className='sticky top-0 z-10 backdrop-blur-sm rounded-tr-xl'>
+      <div className='sticky top-0 z-10 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
         <div className={cn('flex items-center flex-row bg-muted/50 px-5 py-3', { 'ps-2': !!icon })}>
           <div className='flex items-center gap-2'>
             {icon && <div className='flex h-10 w-10 items-center justify-center'>{icon}</div>}

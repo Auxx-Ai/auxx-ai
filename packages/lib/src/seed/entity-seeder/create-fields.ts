@@ -8,9 +8,11 @@ import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-field
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
+import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
 import { TAG_FIELDS } from '../../resources/registry/resources/tag-fields'
 import { THREAD_FIELDS } from '../../resources/registry/resources/thread-fields'
 import { TICKET_FIELDS } from '../../resources/registry/resources/ticket-fields'
+import { VENDOR_PART_FIELDS } from '../../resources/registry/resources/vendor-part-fields'
 import { ENTITY_INSTANCE_COLUMNS } from './constants'
 import type { EntityDefMap, FieldMap, FieldRecord } from './types'
 import { buildFieldOptions, mapCapabilities, shouldCreateField } from './utils'
@@ -28,6 +30,8 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   tag: TAG_FIELDS,
   thread: THREAD_FIELDS,
   signature: SIGNATURE_FIELDS,
+  vendor_part: VENDOR_PART_FIELDS,
+  subpart: SUBPART_FIELDS,
 }
 
 /**

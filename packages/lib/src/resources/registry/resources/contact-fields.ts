@@ -307,5 +307,30 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     description: 'All tickets associated with this contact',
   },
 
+  // Reverse relationship: vendorParts (one-to-many from vendor_part.contact)
+  vendorParts: {
+    id: toFieldId('vendorParts'),
+    key: 'vendorParts',
+    label: 'Vendor Parts',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_vendor_parts',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_part:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Vendor parts supplied by this contact',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

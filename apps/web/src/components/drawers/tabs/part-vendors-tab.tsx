@@ -1,76 +1,78 @@
 // apps/web/src/components/drawers/tabs/part-vendors-tab.tsx
 'use client'
 
-import type { VendorPartEntity as VendorPart } from '@auxx/database/types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { parseRecordId } from '@auxx/lib/resources/client'
-import { Badge } from '@auxx/ui/components/badge'
+import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
+import { Table, TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
-import { getContactDisplayName, pluralize } from '@auxx/utils'
-import { formatCurrency } from '@auxx/utils/currency'
-import { Edit, MoreHorizontal, Star, Store, Trash2 } from 'lucide-react'
-import Link from 'next/link'
-import { useCallback, useState } from 'react'
-import { Tooltip } from '~/components/global/tooltip'
+import { Store } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
+import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
+import { VendorPartRow } from './part-vendors-tab-row'
 
 /** Vendors tab content for parts drawer */
 export function PartVendorsTab({ recordId }: DrawerTabProps) {
-  const utils = api.useUtils()
   const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false)
-  const [editingVendorPart, setEditingVendorPart] = useState<VendorPart | null>(null)
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
   // Extract partId from recordId
   const { entityInstanceId: partId } = parseRecordId(recordId)
 
-  // Fetch part data
-  const { data: part, isLoading } = api.part.byId.useQuery({ id: partId }, { enabled: !!partId })
+  // Resolve vendor_part entity definition ID
+  const vendorPartDefId = useResourceProperty('vendor_part', 'id')
 
-  // Delete vendor part mutation
-  const deleteVendorPart = api.vendorPart.delete.useMutation({
+  // Filter vendor parts by parent part
+  const filters: ConditionGroup[] = useMemo(
+    () => [
+      {
+        id: 'part-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'part-match',
+            fieldId: 'vendor_part:part' as ResourceFieldId,
+            operator: 'is' as const,
+            value: partId,
+          },
+        ],
+      },
+    ],
+    [partId]
+  )
+
+  const { records, isLoading, refresh } = useRecordList({
+    entityDefinitionId: vendorPartDefId ?? '',
+    filters,
+    enabled: !!partId && !!vendorPartDefId,
+  })
+
+  // Delete via entity system
+  const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {
-      utils.part.byId.invalidate({ id: partId })
+      refresh()
     },
     onError: (error) => {
       toastError({ title: 'Error removing supplier', description: error.message })
     },
   })
 
-  // Update vendor part mutation (for setting preferred)
-  const updateVendorPart = api.vendorPart.update.useMutation({
-    onSuccess: () => {
-      utils.part.byId.invalidate({ id: partId })
-    },
-    onError: (error) => {
-      toastError({ title: 'Error updating supplier', description: error.message })
-    },
-  })
+  // Save field value for setting preferred
+  const { saveMultipleAsync } = useSaveFieldValue({})
 
   /** Handle delete vendor part with confirmation */
   const handleDeleteVendorPart = useCallback(
-    async (vendorPart: any) => {
+    async (instanceId: string) => {
       const confirmed = await confirmDelete({
         title: 'Remove Supplier',
         description: 'Are you sure you want to remove this supplier from the part?',
@@ -78,41 +80,40 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
         cancelText: 'Cancel',
         destructive: true,
       })
-      if (confirmed) {
-        deleteVendorPart.mutate({
-          entityInstanceId: vendorPart.entityInstanceId,
-          id: vendorPart.id,
-        })
+      if (confirmed && vendorPartDefId) {
+        deleteRecord.mutate({ recordId: toRecordId(vendorPartDefId, instanceId) })
       }
     },
-    [confirmDelete, deleteVendorPart]
+    [confirmDelete, deleteRecord, vendorPartDefId]
   )
 
   /** Handle edit vendor part */
-  const handleEditVendorPart = useCallback((vendorPart: any) => {
-    setEditingVendorPart(vendorPart)
-    setIsVendorDialogOpen(true)
-  }, [])
+  const handleEditVendorPart = useCallback(
+    (instanceId: string) => {
+      if (!vendorPartDefId) return
+      setEditingRecordId(toRecordId(vendorPartDefId, instanceId))
+      setIsVendorDialogOpen(true)
+    },
+    [vendorPartDefId]
+  )
 
   /** Handle set as preferred */
   const handleSetPreferred = useCallback(
-    (vendorPart: any) => {
-      updateVendorPart.mutate({
-        id: vendorPart.id,
-        entityInstanceId: vendorPart.entityInstanceId,
-        partId: vendorPart.partId,
-        vendorSku: vendorPart.vendorSku,
-        isPreferred: true,
-      })
+    async (instanceId: string) => {
+      if (!vendorPartDefId) return
+      const vpRecordId = toRecordId(vendorPartDefId, instanceId)
+      await saveMultipleAsync(vpRecordId, [
+        { fieldId: 'vendor_part_is_preferred', value: true, fieldType: 'CHECKBOX' },
+      ])
     },
-    [updateVendorPart]
+    [vendorPartDefId, saveMultipleAsync]
   )
 
   /** Handle dialog close */
   const handleDialogOpenChange = useCallback((open: boolean) => {
     setIsVendorDialogOpen(open)
     if (!open) {
-      setEditingVendorPart(null)
+      setEditingRecordId(null)
     }
   }, [])
 
@@ -125,16 +126,10 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
     )
   }
 
-  if (!part) {
-    return <div className='p-4 text-center text-muted-foreground'>Part not found</div>
-  }
-
-  const vendorParts = part.vendorParts ?? []
-
   return (
     <ScrollArea className='flex-1'>
       <Section
-        title={`Suppliers (${vendorParts.length})`}
+        title={`Suppliers (${records.length})`}
         initialOpen
         actions={
           <Button variant='ghost' size='xs' onClick={() => setIsVendorDialogOpen(true)}>
@@ -142,7 +137,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
             Add Supplier
           </Button>
         }>
-        {vendorParts.length === 0 ? (
+        {records.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
             <Store className='mb-2 h-6 w-6 text-muted-foreground' />
             <p className='text-sm text-muted-foreground'>No suppliers added yet</p>
@@ -161,71 +156,14 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {vendorParts.map((vendorPart: any) => (
-                  <TableRow key={vendorPart.id}>
-                    <TableCell className='font-medium'>
-                      <div className='flex items-center gap-2'>
-                        <Link
-                          href={`/app/contacts?c=${vendorPart.entityInstanceId}&tab=parts`}
-                          className='truncate hover:underline'>
-                          {getContactDisplayName(vendorPart.contact) ?? 'Unknown'}
-                        </Link>
-                        {vendorPart.isPreferred && (
-                          <Tooltip content='Preferred Supplier'>
-                            <Badge
-                              variant='green'
-                              size='sm'
-                              className='size-5 flex items-center justify-center'>
-                              <Star className='size-3 fill-current' />
-                            </Badge>
-                          </Tooltip>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className='font-mono text-sm'>{vendorPart.vendorSku}</TableCell>
-                    <TableCell className='text-right'>
-                      {vendorPart.unitPrice ? (
-                        formatCurrency(vendorPart.unitPrice)
-                      ) : (
-                        <span className='text-muted-foreground'>—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className='text-right'>
-                      {vendorPart.leadTime ? (
-                        `${vendorPart.leadTime} ${pluralize(vendorPart.leadTime, 'day')}`
-                      ) : (
-                        <span className='text-muted-foreground'>—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant='ghost' size='icon-sm'>
-                            <MoreHorizontal />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align='end'>
-                          <DropdownMenuItem onClick={() => handleEditVendorPart(vendorPart)}>
-                            <Edit />
-                            Edit
-                          </DropdownMenuItem>
-                          {!vendorPart.isPreferred && (
-                            <DropdownMenuItem onClick={() => handleSetPreferred(vendorPart)}>
-                              <Star />
-                              Set as Preferred
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant='destructive'
-                            onClick={() => handleDeleteVendorPart(vendorPart)}>
-                            <Trash2 />
-                            Remove
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
+                {records.map((record) => (
+                  <VendorPartRow
+                    key={record.id}
+                    recordId={toRecordId(vendorPartDefId!, record.id)}
+                    onEdit={() => handleEditVendorPart(record.id)}
+                    onDelete={() => handleDeleteVendorPart(record.id)}
+                    onSetPreferred={() => handleSetPreferred(record.id)}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -238,10 +176,8 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
         open={isVendorDialogOpen}
         onOpenChange={handleDialogOpenChange}
         partId={partId}
-        vendorPart={editingVendorPart}
-        onSuccess={() => {
-          utils.part.byId.invalidate({ id: partId })
-        }}
+        recordId={editingRecordId ?? undefined}
+        onSuccess={refresh}
       />
 
       <ConfirmDeleteDialog />

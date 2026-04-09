@@ -93,9 +93,12 @@ export function shouldCreateField(
   if (!field.systemAttribute) return false
   if (entityInstanceColumns.includes(field.systemAttribute)) return false
 
-  // Virtual fields with no storage don't need CustomField records.
-  // RELATIONSHIP fields store in FieldValue, NAME fields need linking — keep both.
+  // Skip virtual/computed fields that explicitly set dbColumn: undefined
+  // (e.g., thread from/to/body — resolved via cross-table joins, not stored in FieldValue).
+  // Fields that simply omit dbColumn are entity-system-native and must be created.
+  // RELATIONSHIP and NAME fields are always kept — they store in FieldValue or need linking.
   if (
+    Object.hasOwn(field, 'dbColumn') &&
     field.dbColumn === undefined &&
     field.fieldType !== FieldTypeEnum.RELATIONSHIP &&
     field.fieldType !== FieldTypeEnum.NAME

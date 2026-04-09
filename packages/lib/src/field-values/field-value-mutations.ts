@@ -23,6 +23,14 @@ import {
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
+import {
+  collectTriggeredFields,
+  deduplicateBySystemAttribute,
+} from '../field-triggers/collect-triggers'
+import {
+  publishBatchFieldTriggerEvents,
+  publishFieldTriggerEvents,
+} from '../field-triggers/publish'
 import { getModelType, isRecordId, parseRecordId } from '../resources/resource-id'
 import {
   type FieldValueContext,
@@ -754,6 +762,18 @@ export async function setValueWithBuiltIn(
     } as ContactFieldUpdatedEvent)
   }
 
+  // 8. Check for field triggers (only when publishing events, to avoid double-fire from setBulkValues)
+  if (publishEvents && ctx.userId) {
+    const triggeredFields = await collectTriggeredFields(ctx.organizationId, [fieldId])
+    if (triggeredFields.length > 0) {
+      await publishFieldTriggerEvents(
+        { organizationId: ctx.organizationId, userId: ctx.userId },
+        triggeredFields,
+        recordId
+      )
+    }
+  }
+
   // Always return arrays with state and timestamp
   return {
     state: 'complete',
@@ -981,6 +1001,22 @@ export async function setBulkValues(
       { db: ctx.db, organizationId: ctx.organizationId },
       { updates, inverseInfo: rf.inverseInfo }
     )
+  }
+
+  // Fire batched field triggers for all affected fields across all records
+  if (ctx.userId) {
+    const customFieldIds = validValues
+      .filter((v) => !isBuiltInField(v.fieldId, modelType))
+      .map((v) => v.fieldId)
+    const triggeredFields = await collectTriggeredFields(ctx.organizationId, customFieldIds)
+    if (triggeredFields.length > 0) {
+      const uniqueTriggers = deduplicateBySystemAttribute(triggeredFields)
+      await publishBatchFieldTriggerEvents(
+        { organizationId: ctx.organizationId, userId: ctx.userId },
+        uniqueTriggers,
+        recordIds
+      )
+    }
   }
 
   const count = results.filter((r) => r.status === 'fulfilled').length

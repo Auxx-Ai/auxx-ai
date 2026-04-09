@@ -4,7 +4,7 @@ import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import * as partDb from '@auxx/services/parts'
 import { insertVendorPartTx } from '@auxx/services/vendor-parts'
-import { handlePartDelete, handleVendorPartChange, updatePartCostAndPropagate } from '../bom'
+import { recalculateAffectedParts, recalculateAllPartCosts } from '../bom'
 
 const logger = createScopedLogger('part-service')
 
@@ -196,9 +196,9 @@ export class PartService {
       throw new Error('Unable to create part')
     }
 
-    // Handle cost propagation if vendor part was created with isPreferred
-    if (result.vendorPart && vendorPart?.isPreferred) {
-      await handleVendorPartChange(this.organizationId, result.part.id, false, true)
+    // Recalculate cost if vendor part was created
+    if (result.vendorPart) {
+      await recalculateAffectedParts(this.organizationId, [result.part.id])
     }
 
     logger.info('Created part', {
@@ -392,8 +392,10 @@ export class PartService {
       throw new Error(`Database error deleting part: ${deleteResult.error.message}`)
     }
 
-    // Handle cost recalculation for parent parts
-    await handlePartDelete(this.organizationId, partId, parentPartIds)
+    // Recalculate costs for parent parts affected by this deletion
+    if (parentPartIds.length > 0) {
+      await recalculateAffectedParts(this.organizationId, parentPartIds)
+    }
 
     logger.info('Deleted part', {
       partId,
@@ -407,7 +409,7 @@ export class PartService {
    * Calculate cost for a single part
    */
   async calculateCost(partId: string): Promise<{ id: string; cost: number | null }> {
-    await updatePartCostAndPropagate(this.organizationId, partId)
+    await recalculateAffectedParts(this.organizationId, [partId])
 
     // Get updated part cost
     const result = await partDb.getPartById({
@@ -437,10 +439,8 @@ export class PartService {
 
     const leafParts = leafPartsResult.value
 
-    // Update costs for all leaf parts
-    for (const part of leafParts) {
-      await updatePartCostAndPropagate(this.organizationId, part.id)
-    }
+    // Recalculate all part costs in a single pass
+    await recalculateAllPartCosts(this.organizationId)
 
     logger.info('Calculated costs for all leaf parts', {
       count: leafParts.length,

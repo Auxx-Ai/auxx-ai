@@ -115,13 +115,25 @@ interface RecordsViewProps {
   basePath?: string
   /** When true, RecordsView renders without its own MainPage wrapper (parent provides it) */
   embedded?: boolean
+  /** When false, suppresses the built-in EntityInstanceDialog. Default: true.
+   *  Use this when the parent renders its own create/edit dialog listening to ?create=true. */
+  renderCreateDialog?: boolean
+  /** Called when the user triggers an edit on a record (e.g. primary field edit button).
+   *  Only relevant when renderCreateDialog is false — lets the parent open its own edit dialog. */
+  onEditRecord?: (recordId: RecordId) => void
 }
 
 /**
  * RecordsView component
  * Displays the table of entity instances using data from context
  */
-export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
+export function RecordsView({
+  slug,
+  basePath,
+  embedded,
+  renderCreateDialog,
+  onEditRecord,
+}: RecordsViewProps) {
   const resolvedBasePath = basePath ?? `/app/custom/${slug}`
 
   // Dock state
@@ -148,10 +160,15 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
   const isCreateDialogOpen = isCreateDialogOpenInternal || createParam
   const setIsCreateDialogOpen = useCallback(
     (open: boolean) => {
-      setIsCreateDialogOpenInternal(open)
-      if (!open && createParam) setCreateParam(null)
+      if (renderCreateDialog === false) {
+        // Parent handles the dialog — communicate via URL param only
+        setCreateParam(open || null)
+      } else {
+        setIsCreateDialogOpenInternal(open)
+        if (!open && createParam) setCreateParam(null)
+      }
     },
-    [createParam, setCreateParam]
+    [createParam, setCreateParam, renderCreateDialog]
   )
 
   // State
@@ -312,10 +329,14 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
    */
   const handleOpenEditDialog = useCallback(
     (row: EntityRow) => {
-      setEditingInstance(row)
+      if (onEditRecord && entityDefinitionId) {
+        onEditRecord(toRecordId(entityDefinitionId, row.id))
+      } else {
+        setEditingInstance(row)
+      }
       setIsCreateDialogOpen(true)
     },
-    [setIsCreateDialogOpen]
+    [setIsCreateDialogOpen, onEditRecord, entityDefinitionId]
   )
 
   /**
@@ -739,7 +760,7 @@ export function RecordsView({ slug, basePath, embedded }: RecordsViewProps) {
       )}
 
       {/* Create/Edit Dialog */}
-      {entityDefinitionId && isCreateDialogOpen && (
+      {renderCreateDialog !== false && entityDefinitionId && isCreateDialogOpen && (
         <EntityInstanceDialog
           open={isCreateDialogOpen}
           onOpenChange={handleDialogOpenChange}

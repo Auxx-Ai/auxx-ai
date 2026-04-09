@@ -1,8 +1,9 @@
 // apps/web/src/components/drawers/tabs/part-subparts-tab.tsx
 'use client'
 
-import type { SubpartEntity as Subpart } from '@auxx/database/types'
-import { parseRecordId } from '@auxx/lib/resources/client'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -25,29 +26,91 @@ import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
 import { Edit, MoreHorizontal, Package, PlusCircle, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
+import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Subparts tab content for parts drawer */
 export function PartSubpartsTab({ recordId }: DrawerTabProps) {
-  const utils = api.useUtils()
   const [isSubpartDialogOpen, setIsSubpartDialogOpen] = useState(false)
-  const [editingSubpart, setEditingSubpart] = useState<Subpart | null>(null)
+  const [editingRecordId, setEditingRecordId] = useState<RecordId | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
   // Extract partId from recordId
   const { entityInstanceId: partId } = parseRecordId(recordId)
 
-  // Fetch part data
-  const { data: part, isLoading } = api.part.byId.useQuery({ id: partId }, { enabled: !!partId })
+  // Resolve subpart entity definition ID
+  const subpartDefId = useResourceProperty('subpart', 'id')
 
-  // Delete subpart mutation
-  const deleteSubpart = api.subpart.delete.useMutation({
+  // Subparts section: children of this part
+  const subpartFilters: ConditionGroup[] = useMemo(
+    () => [
+      {
+        id: 'parent-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'parent-match',
+            fieldId: 'subpart:parentPart' as ResourceFieldId,
+            operator: 'is' as const,
+            value: partId,
+          },
+        ],
+      },
+    ],
+    [partId]
+  )
+
+  const {
+    records: subpartRecords,
+    isLoading: isLoadingSubparts,
+    refresh: refreshSubparts,
+  } = useRecordList({
+    entityDefinitionId: subpartDefId ?? '',
+    filters: subpartFilters,
+    enabled: !!partId && !!subpartDefId,
+  })
+
+  // Used In Assemblies section: parents of this part
+  const parentFilters: ConditionGroup[] = useMemo(
+    () => [
+      {
+        id: 'child-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'child-match',
+            fieldId: 'subpart:childPart' as ResourceFieldId,
+            operator: 'is' as const,
+            value: partId,
+          },
+        ],
+      },
+    ],
+    [partId]
+  )
+
+  const {
+    records: parentRecords,
+    isLoading: isLoadingParents,
+    refresh: refreshParents,
+  } = useRecordList({
+    entityDefinitionId: subpartDefId ?? '',
+    filters: parentFilters,
+    enabled: !!partId && !!subpartDefId,
+  })
+
+  const isLoading = isLoadingSubparts || isLoadingParents
+
+  // Delete via entity system
+  const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {
-      utils.part.byId.invalidate({ id: partId })
+      refreshSubparts()
+      refreshParents()
     },
     onError: (error) => {
       toastError({ title: 'Error removing subpart', description: error.message })
@@ -56,7 +119,7 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
 
   /** Handle delete subpart with confirmation */
   const handleDeleteSubpart = useCallback(
-    async (subpart: Subpart) => {
+    async (instanceId: string) => {
       const confirmed = await confirmDelete({
         title: 'Remove Subpart',
         description: 'Are you sure you want to remove this subpart from the assembly?',
@@ -64,29 +127,35 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
         cancelText: 'Cancel',
         destructive: true,
       })
-      if (confirmed) {
-        deleteSubpart.mutate({
-          parentPartId: subpart.parentPartId,
-          childPartId: subpart.childPartId,
-        })
+      if (confirmed && subpartDefId) {
+        deleteRecord.mutate({ recordId: toRecordId(subpartDefId, instanceId) })
       }
     },
-    [confirmDelete, deleteSubpart]
+    [confirmDelete, deleteRecord, subpartDefId]
   )
 
   /** Handle edit subpart */
-  const handleEditSubpart = useCallback((subpart: Subpart) => {
-    setEditingSubpart(subpart)
-    setIsSubpartDialogOpen(true)
-  }, [])
+  const handleEditSubpart = useCallback(
+    (instanceId: string) => {
+      if (!subpartDefId) return
+      setEditingRecordId(toRecordId(subpartDefId, instanceId))
+      setIsSubpartDialogOpen(true)
+    },
+    [subpartDefId]
+  )
 
   /** Handle dialog close */
   const handleDialogOpenChange = useCallback((open: boolean) => {
     setIsSubpartDialogOpen(open)
     if (!open) {
-      setEditingSubpart(null)
+      setEditingRecordId(null)
     }
   }, [])
+
+  const handleRefresh = useCallback(() => {
+    refreshSubparts()
+    refreshParents()
+  }, [refreshSubparts, refreshParents])
 
   if (isLoading) {
     return (
@@ -97,18 +166,11 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
     )
   }
 
-  if (!part) {
-    return <div className='p-4 text-center text-muted-foreground'>Part not found</div>
-  }
-
-  const subparts = part.subparts ?? []
-  const parentParts = part.parentParts ?? []
-
   return (
     <ScrollArea className='flex-1'>
       {/* Subparts Section */}
       <Section
-        title={`Subparts (${subparts.length})`}
+        title={`Subparts (${subpartRecords.length})`}
         initialOpen
         actions={
           <Button variant='ghost' size='xs' onClick={() => setIsSubpartDialogOpen(true)}>
@@ -116,7 +178,7 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
             Add Subpart
           </Button>
         }>
-        {subparts.length === 0 ? (
+        {subpartRecords.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
             <Package className='mb-2 h-6 w-6 text-muted-foreground' />
             <p className='text-sm text-muted-foreground'>No subparts added yet</p>
@@ -134,46 +196,16 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {subparts.map((subpart: any) => (
-                  <TableRow key={subpart.id}>
-                    <TableCell className='font-medium'>
-                      <div className='flex flex-col'>
-                        <Link
-                          href={`/app/parts?p=${subpart.childPartId}&tab=subparts`}
-                          className='truncate hover:underline'>
-                          {subpart.childPart?.title ?? 'Unknown'}
-                        </Link>
-                        <span className='text-xs text-muted-foreground'>
-                          {subpart.childPart?.sku}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className='text-right font-medium'>{subpart.quantity}</TableCell>
-                    <TableCell className='text-right'>
-                      {subpart.childPart?.cost ? formatCurrency(subpart.childPart.cost) : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant='ghost' size='icon-sm'>
-                            <MoreHorizontal />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align='end'>
-                          <DropdownMenuItem onClick={() => handleEditSubpart(subpart)}>
-                            <Edit />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant='destructive'
-                            onClick={() => handleDeleteSubpart(subpart)}>
-                            <Trash2 />
-                            Remove
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
+                {subpartRecords.map((record) => (
+                  <SubpartRow
+                    key={record.id}
+                    recordId={toRecordId(subpartDefId!, record.id)}
+                    relatedPartField='subpart_child_part'
+                    linkTab='subparts'
+                    showActions
+                    onEdit={() => handleEditSubpart(record.id)}
+                    onDelete={() => handleDeleteSubpart(record.id)}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -182,8 +214,8 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
       </Section>
 
       {/* Parent Parts Section */}
-      {parentParts.length > 0 && (
-        <Section title={`Used In (${parentParts.length})`} initialOpen>
+      {parentRecords.length > 0 && (
+        <Section title={`Used In (${parentRecords.length})`} initialOpen>
           <div className='rounded-md border'>
             <Table>
               <TableHeader>
@@ -193,22 +225,13 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {parentParts.map((parentPart: any) => (
-                  <TableRow key={parentPart.id}>
-                    <TableCell className='font-medium'>
-                      <div className='flex flex-col'>
-                        <Link
-                          href={`/app/parts?p=${parentPart.parentPartId}&tab=subparts`}
-                          className='truncate hover:underline'>
-                          {parentPart.parentPart?.title ?? 'Unknown'}
-                        </Link>
-                        <span className='text-xs text-muted-foreground'>
-                          {parentPart.parentPart?.sku}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className='text-right font-medium'>{parentPart.quantity}</TableCell>
-                  </TableRow>
+                {parentRecords.map((record) => (
+                  <SubpartRow
+                    key={record.id}
+                    recordId={toRecordId(subpartDefId!, record.id)}
+                    relatedPartField='subpart_parent_part'
+                    linkTab='subparts'
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -221,13 +244,114 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
         open={isSubpartDialogOpen}
         onOpenChange={handleDialogOpenChange}
         parentPartId={partId}
-        subpart={editingSubpart}
-        onSuccess={() => {
-          utils.part.byId.invalidate({ id: partId })
-        }}
+        recordId={editingRecordId ?? undefined}
+        onSuccess={handleRefresh}
       />
 
       <ConfirmDeleteDialog />
     </ScrollArea>
   )
+}
+
+// ─── Row Components ─────────────────────────────────────────────────────
+
+const SUBPART_ROW_ATTRIBUTES = ['subpart_quantity'] as const
+const PART_NAME_ATTRIBUTES = ['part_title', 'part_sku'] as const
+const PART_COST_ATTRIBUTES = ['part_cost'] as const
+
+interface SubpartRowProps {
+  recordId: RecordId
+  /** Which relationship field to resolve for the part name */
+  relatedPartField: 'subpart_child_part' | 'subpart_parent_part'
+  linkTab: string
+  showActions?: boolean
+  onEdit?: () => void
+  onDelete?: () => void
+}
+
+function SubpartRow({
+  recordId,
+  relatedPartField,
+  linkTab,
+  showActions,
+  onEdit,
+  onDelete,
+}: SubpartRowProps) {
+  const attributes = useMemo(
+    () => [relatedPartField, ...SUBPART_ROW_ATTRIBUTES] as const,
+    [relatedPartField]
+  )
+  const { values } = useSystemValues(recordId, attributes, {
+    autoFetch: true,
+  })
+
+  const relatedPartId = values[relatedPartField] as string | undefined
+  const quantity = values.subpart_quantity as number | undefined
+
+  return (
+    <TableRow>
+      <TableCell className='font-medium'>
+        {relatedPartId ? (
+          <PartNameCell partId={relatedPartId} linkTab={linkTab} />
+        ) : (
+          <span className='text-muted-foreground'>Unknown</span>
+        )}
+      </TableCell>
+      <TableCell className='text-right font-medium'>{quantity ?? '—'}</TableCell>
+      {showActions && (
+        <>
+          <TableCell className='text-right'>
+            {relatedPartId ? <PartCostCell partId={relatedPartId} /> : '—'}
+          </TableCell>
+          <TableCell>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant='ghost' size='icon-sm'>
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                <DropdownMenuItem onClick={onEdit}>
+                  <Edit />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem variant='destructive' onClick={onDelete}>
+                  <Trash2 />
+                  Remove
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TableCell>
+        </>
+      )}
+    </TableRow>
+  )
+}
+
+/** Resolves and displays part title + SKU from entity system */
+function PartNameCell({ partId, linkTab }: { partId: string; linkTab: string }) {
+  const { values } = useSystemValues(`part:${partId}` as RecordId, PART_NAME_ATTRIBUTES, {
+    autoFetch: true,
+  })
+  const title = values.part_title as string | undefined
+  const sku = values.part_sku as string | undefined
+
+  return (
+    <div className='flex flex-col'>
+      <Link href={`/app/parts?p=${partId}&tab=${linkTab}`} className='truncate hover:underline'>
+        {title ?? 'Loading...'}
+      </Link>
+      {sku && <span className='text-xs text-muted-foreground'>{sku}</span>}
+    </div>
+  )
+}
+
+/** Resolves and displays part cost from entity system */
+function PartCostCell({ partId }: { partId: string }) {
+  const { values } = useSystemValues(`part:${partId}` as RecordId, PART_COST_ATTRIBUTES, {
+    autoFetch: true,
+  })
+  const cost = values.part_cost as number | null | undefined
+
+  return cost ? formatCurrency(cost) : <span className='text-muted-foreground'>—</span>
 }

@@ -1,7 +1,9 @@
 // apps/web/src/components/manufacturing/parts/subpart-dialog.tsx
 'use client'
 
-import type { SubpartEntity as Subpart } from '@auxx/database/types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { RecordId } from '@auxx/lib/resources/client'
+import type { ResourceFieldId } from '@auxx/types/field'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -16,10 +18,19 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { AlertCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
+
+const SUBPART_SYSTEM_ATTRIBUTES = [
+  'subpart_child_part',
+  'subpart_quantity',
+  'subpart_notes',
+] as const
 
 /** Props for SubpartDialog component */
 interface SubpartDialogProps {
@@ -29,8 +40,8 @@ interface SubpartDialogProps {
   onOpenChange: (open: boolean) => void
   /** Parent part ID */
   parentPartId: string
-  /** Subpart to edit (null for add mode) */
-  subpart?: Subpart | null
+  /** RecordId for edit mode */
+  recordId?: RecordId
   /** Callback on successful save */
   onSuccess?: () => void
 }
@@ -40,10 +51,10 @@ export function SubpartDialog({
   open,
   onOpenChange,
   parentPartId,
-  subpart,
+  recordId,
   onSuccess,
 }: SubpartDialogProps) {
-  const isEditMode = !!subpart
+  const isEditMode = !!recordId
 
   // State
   const [values, setValues] = useState({
@@ -52,7 +63,15 @@ export function SubpartDialog({
     notes: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [hasCyclicDependency, setHasCyclicDependency] = useState(false)
+
+  // Resolve entity definition IDs
+  const subpartDefId = useResourceProperty('subpart', 'id')
+
+  // Load initial values for edit mode
+  const { values: systemValues } = useSystemValues(recordId, SUBPART_SYSTEM_ATTRIBUTES, {
+    autoFetch: true,
+    enabled: isEditMode && open,
+  })
 
   // Fetch all parts for selection
   const { data: partsData, isLoading: isLoadingParts } = api.part.all.useQuery(
@@ -61,51 +80,62 @@ export function SubpartDialog({
   )
   const allParts = partsData?.parts ?? []
 
-  // Fetch parent part details
-  const { data: parentPart } = api.part.byId.useQuery(
-    { id: parentPartId },
-    { enabled: open && !!parentPartId }
+  // Fetch existing subparts via entity system to filter out already-added parts
+  const existingSubpartFilters: ConditionGroup[] = useMemo(
+    () => [
+      {
+        id: 'parent-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'parent-match',
+            fieldId: 'subpart:parentPart' as ResourceFieldId,
+            operator: 'is' as const,
+            value: parentPartId,
+          },
+        ],
+      },
+    ],
+    [parentPartId]
   )
 
-  // Fetch existing subparts to filter out already-added parts
-  const { data: existingSubparts = [] } = api.subpart.all.useQuery(
-    { parentPartId },
-    { enabled: open && !!parentPartId }
+  const { records: existingSubpartRecords } = useRecordList({
+    entityDefinitionId: subpartDefId ?? '',
+    filters: existingSubpartFilters,
+    enabled: open && !!parentPartId && !!subpartDefId,
+  })
+
+  // BFS cycle detection: check all descendants of the selected child part
+  const { data: descendants } = api.record.getDescendantRecordIds.useQuery(
+    {
+      recordId: toRecordId(subpartDefId ?? '', values.childPartId),
+      resourceFieldId: 'subpart:childPart' as ResourceFieldId,
+    },
+    { enabled: open && !isEditMode && !!values.childPartId && !!subpartDefId }
   )
 
-  // Check for cyclic dependencies
-  const { data: childSubparts = [] } = api.subpart.all.useQuery(
-    { parentPartId: values.childPartId },
-    { enabled: open && !isEditMode && !!values.childPartId }
-  )
+  // Build parent recordId for cycle check
+  const parentRecordId = subpartDefId ? toRecordId(subpartDefId, parentPartId) : null
 
-  // Update cyclic dependency check when child subparts load
-  useEffect(() => {
-    if (!isEditMode && values.childPartId && childSubparts.length > 0) {
-      const directCycle = childSubparts.some((sp: Subpart) => sp.childPartId === parentPartId)
-      setHasCyclicDependency(directCycle)
-    } else {
-      setHasCyclicDependency(false)
-    }
-  }, [isEditMode, values.childPartId, parentPartId, childSubparts])
+  const hasCyclicDependency =
+    values.childPartId === parentPartId ||
+    (parentRecordId != null && descendants?.includes(parentRecordId)) ||
+    false
+
+  // Build exclusion set for existing child parts
+  const existingChildPartIds = useMemo(() => {
+    return new Set(existingSubpartRecords.map((r: any) => r.id))
+  }, [existingSubpartRecords])
 
   // Filter available parts
   const availableParts = useMemo(() => {
     if (isEditMode) return allParts
     return allParts.filter((part) => {
-      // Exclude the parent part itself
       if (part.id === parentPartId) return false
-      // Exclude parts that are already parent parts of the current part
-      if (parentPart?.parentParts?.some((p: any) => p.parentPart?.id === part.id)) {
-        return false
-      }
-      // Exclude parts that are already subparts
-      if (existingSubparts.some((sp: any) => sp.childPartId === part.id)) {
-        return false
-      }
+      if (existingChildPartIds.has(part.id)) return false
       return true
     })
-  }, [allParts, isEditMode, parentPartId, parentPart, existingSubparts])
+  }, [allParts, isEditMode, parentPartId, existingChildPartIds])
 
   // Part options for ENUM
   const partOptions = useMemo(
@@ -116,20 +146,26 @@ export function SubpartDialog({
   // Initialize/reset values when dialog opens
   useEffect(() => {
     if (open) {
-      setValues({
-        childPartId: subpart?.childPartId ?? '',
-        quantity: subpart?.quantity ?? 1,
-        notes: subpart?.notes ?? '',
-      })
+      if (isEditMode && systemValues) {
+        setValues({
+          childPartId: (systemValues.subpart_child_part as string) ?? '',
+          quantity: (systemValues.subpart_quantity as number) ?? 1,
+          notes: (systemValues.subpart_notes as string) ?? '',
+        })
+      } else if (!isEditMode) {
+        setValues({
+          childPartId: '',
+          quantity: 1,
+          notes: '',
+        })
+      }
       setErrors({})
-      setHasCyclicDependency(false)
     }
-  }, [open, subpart])
+  }, [open, isEditMode, systemValues])
 
   // Field change handler
   const handleChange = useCallback((field: string, value: any) => {
     setValues((prev) => ({ ...prev, [field]: value }))
-    // Clear error when user edits
     setErrors((prev) => {
       if (prev[field]) {
         const next = { ...prev }
@@ -149,8 +185,8 @@ export function SubpartDialog({
     return Object.keys(newErrors).length === 0
   }
 
-  // Mutations
-  const createSubpart = api.subpart.create.useMutation({
+  // Create mutation via entity system
+  const createRecord = api.record.create.useMutation({
     onSuccess: () => {
       onSuccess?.()
       onOpenChange(false)
@@ -160,17 +196,10 @@ export function SubpartDialog({
     },
   })
 
-  const updateSubpart = api.subpart.update.useMutation({
-    onSuccess: () => {
-      onSuccess?.()
-      onOpenChange(false)
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to update subpart', description: error.message })
-    },
-  })
+  // Save field values for edit mode
+  const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue({})
 
-  const isPending = createSubpart.isPending || updateSubpart.isPending
+  const isPending = createRecord.isPending || isSavingFields
   const noAvailableParts = availableParts.length === 0 && !isLoadingParts && !isEditMode
 
   // Submit
@@ -181,17 +210,29 @@ export function SubpartDialog({
     }
     if (!validate()) return
 
-    const payload = {
-      parentPartId,
-      childPartId: values.childPartId,
-      quantity: values.quantity,
-      notes: values.notes || undefined,
-    }
+    if (isEditMode && recordId) {
+      // Edit mode: only quantity and notes are updatable
+      const fieldValues: Array<{ fieldId: string; value: unknown; fieldType: string }> = [
+        { fieldId: 'subpart_quantity', value: values.quantity, fieldType: 'NUMBER' },
+        { fieldId: 'subpart_notes', value: values.notes || undefined, fieldType: 'TEXT' },
+      ]
 
-    if (isEditMode && subpart) {
-      await updateSubpart.mutateAsync({ id: subpart.id, ...payload })
+      const success = await saveMultipleAsync(recordId, fieldValues)
+      if (success) {
+        onSuccess?.()
+        onOpenChange(false)
+      }
     } else {
-      await createSubpart.mutateAsync(payload)
+      // Create mode: use record.create with systemAttribute keys
+      await createRecord.mutateAsync({
+        entityDefinitionId: subpartDefId!,
+        values: {
+          subpart_parent_part: parentPartId,
+          subpart_child_part: values.childPartId,
+          subpart_quantity: values.quantity,
+          subpart_notes: values.notes || undefined,
+        },
+      })
     }
   }
 
@@ -288,7 +329,7 @@ export function SubpartDialog({
             variant='outline'
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Adding...'}
-            disabled={noAvailableParts || hasCyclicDependency}
+            disabled={noAvailableParts || hasCyclicDependency || !subpartDefId}
             data-dialog-submit>
             {isEditMode ? 'Update Subpart' : 'Add Subpart'}{' '}
             <KbdSubmit variant='outline' size='sm' />

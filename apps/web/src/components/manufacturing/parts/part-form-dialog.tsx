@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/parts/part-form-dialog.tsx
 'use client'
 
-import type { PartEntity as Part } from '@auxx/database/types'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -15,6 +15,9 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { useResourceProperty } from '~/components/resources'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
@@ -25,22 +28,40 @@ import {
   type VendorPartFormValues,
 } from './vendor-part-fields'
 
+const PART_SYSTEM_ATTRIBUTES = [
+  'part_title',
+  'part_sku',
+  'part_description',
+  'category',
+  'hs_code',
+  'shopify_product_link_id',
+] as const
+
 /** Props for PartFormDialog component */
 interface PartFormDialogProps {
   /** Whether the dialog is open */
   open: boolean
   /** Callback when open state changes */
   onOpenChange: (open: boolean) => void
-  /** Part to edit (null for create mode) */
-  part?: Part | null
+  /** RecordId for edit mode */
+  recordId?: RecordId
   /** Callback on successful save */
   onSuccess?: () => void
 }
 
 /** Dialog for creating/editing a part */
-export function PartFormDialog({ open, onOpenChange, part, onSuccess }: PartFormDialogProps) {
-  const utils = api.useUtils()
-  const isEditMode = !!part
+export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: PartFormDialogProps) {
+  const isEditMode = !!recordId
+  console.log('part dialog')
+  // Resolve entity definition IDs
+  const partDefId = useResourceProperty('part', 'id')
+  const vendorPartDefId = useResourceProperty('vendor_part', 'id')
+
+  // Load initial values for edit mode
+  const { values: systemValues } = useSystemValues(recordId, PART_SYSTEM_ATTRIBUTES, {
+    autoFetch: true,
+    enabled: isEditMode && open,
+  })
 
   // State
   const [values, setValues] = useState({
@@ -60,25 +81,35 @@ export function PartFormDialog({ open, onOpenChange, part, onSuccess }: PartForm
   // Initialize/reset values when dialog opens
   useEffect(() => {
     if (open) {
-      setValues({
-        title: part?.title ?? '',
-        description: part?.description ?? '',
-        sku: part?.sku ?? '',
-        hsCode: part?.hsCode ?? '',
-        category: part?.category ?? '',
-        shopifyProductLinkId: part?.shopifyProductLinkId ?? '',
-      })
+      if (isEditMode && systemValues) {
+        setValues({
+          title: (systemValues.part_title as string) ?? '',
+          description: (systemValues.part_description as string) ?? '',
+          sku: (systemValues.part_sku as string) ?? '',
+          hsCode: (systemValues.hs_code as string) ?? '',
+          category: (systemValues.category as string) ?? '',
+          shopifyProductLinkId: (systemValues.shopify_product_link_id as string) ?? '',
+        })
+      } else if (!isEditMode) {
+        setValues({
+          title: '',
+          description: '',
+          sku: '',
+          hsCode: '',
+          category: '',
+          shopifyProductLinkId: '',
+        })
+      }
       setErrors({})
       setShowSupplier(false)
       setVendorPartValues(defaultVendorPartValues)
       setVendorPartErrors({})
     }
-  }, [open, part])
+  }, [open, isEditMode, systemValues])
 
   // Field change handler
   const handleChange = useCallback((field: string, value: any) => {
     setValues((prev) => ({ ...prev, [field]: value }))
-    // Clear error when user edits
     setErrors((prev) => {
       if (prev[field]) {
         const next = { ...prev }
@@ -107,45 +138,82 @@ export function PartFormDialog({ open, onOpenChange, part, onSuccess }: PartForm
     return Object.keys(newErrors).length === 0 && Object.keys(vpErrors).length === 0
   }
 
-  // Mutations
-  const createPart = api.part.create.useMutation({
-    onSuccess: () => {
-      utils.part.all.invalidate()
-      onSuccess?.()
-      onOpenChange(false)
-    },
+  // Create mutation via entity system
+  const createRecord = api.record.create.useMutation({
     onError: (error) => {
       toastError({ title: 'Error creating part', description: error.message })
     },
   })
 
-  const updatePart = api.part.update.useMutation({
-    onSuccess: () => {
-      utils.part.all.invalidate()
-      if (part?.id) {
-        utils.part.byId.invalidate({ id: part.id })
-      }
-      onSuccess?.()
-      onOpenChange(false)
-    },
-    onError: (error) => {
-      toastError({ title: 'Error updating part', description: error.message })
-    },
-  })
+  // Save field values for edit mode
+  const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue({})
 
-  const isPending = createPart.isPending || updatePart.isPending
+  const isPending = createRecord.isPending || isSavingFields
 
   // Submit
   const handleSubmit = async () => {
     if (!validate()) return
 
-    if (isEditMode && part?.id) {
-      await updatePart.mutateAsync({ ...values, id: part.id })
-    } else {
-      await createPart.mutateAsync({
-        ...values,
-        vendorPart: showSupplier ? vendorPartValues : undefined,
-      })
+    try {
+      if (isEditMode && recordId) {
+        // Edit mode: use saveMultipleAsync for optimistic updates
+        const fieldValues: Array<{ fieldId: string; value: unknown; fieldType: string }> = [
+          { fieldId: 'part_title', value: values.title, fieldType: 'TEXT' },
+          { fieldId: 'part_sku', value: values.sku, fieldType: 'TEXT' },
+          {
+            fieldId: 'part_description',
+            value: values.description || undefined,
+            fieldType: 'TEXT',
+          },
+          { fieldId: 'category', value: values.category || undefined, fieldType: 'TEXT' },
+          { fieldId: 'hs_code', value: values.hsCode || undefined, fieldType: 'TEXT' },
+          {
+            fieldId: 'shopify_product_link_id',
+            value: values.shopifyProductLinkId || undefined,
+            fieldType: 'TEXT',
+          },
+        ]
+
+        const success = await saveMultipleAsync(recordId, fieldValues)
+        if (success) {
+          onSuccess?.()
+          onOpenChange(false)
+        }
+      } else {
+        // Create mode: use record.create with systemAttribute keys
+        const result = await createRecord.mutateAsync({
+          entityDefinitionId: partDefId!,
+          values: {
+            part_title: values.title,
+            part_sku: values.sku,
+            part_description: values.description || undefined,
+            category: values.category || undefined,
+            hs_code: values.hsCode || undefined,
+            shopify_product_link_id: values.shopifyProductLinkId || undefined,
+          },
+        })
+
+        // Chain vendor part creation if supplier section is shown
+        if (showSupplier && vendorPartValues.entityInstanceId && vendorPartDefId) {
+          await createRecord.mutateAsync({
+            entityDefinitionId: vendorPartDefId,
+            values: {
+              vendor_part_part: result.instance.id,
+              vendor_part_contact: vendorPartValues.entityInstanceId,
+              vendor_part_vendor_sku: vendorPartValues.vendorSku,
+              vendor_part_unit_price: vendorPartValues.unitPrice,
+              vendor_part_lead_time: vendorPartValues.leadTime,
+              vendor_part_min_order_qty: vendorPartValues.minOrderQty,
+              vendor_part_is_preferred: vendorPartValues.isPreferred,
+            },
+          })
+        }
+
+        onSuccess?.()
+        onOpenChange(false)
+      }
+    } catch {
+      // Errors handled by mutation onError
     }
   }
 
@@ -305,6 +373,7 @@ export function PartFormDialog({ open, onOpenChange, part, onSuccess }: PartForm
             size='sm'
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Creating...'}
+            disabled={!partDefId}
             data-dialog-submit>
             {isEditMode ? 'Update Part' : 'Create Part'} <KbdSubmit variant='outline' size='sm' />
           </Button>

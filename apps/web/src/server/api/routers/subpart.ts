@@ -1,5 +1,7 @@
+// @deprecated — Mutations migrated to entity system (record.create / useSaveFieldValue).
+// Remaining consumers: part-detail.tsx. Remove once that file is migrated.
 import { database as db, schema } from '@auxx/database'
-import { handlePartSubpartChange } from '@auxx/lib/bom'
+import { recalculateAffectedParts } from '@auxx/lib/bom'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, asc, eq } from 'drizzle-orm'
@@ -213,7 +215,7 @@ export const subpartRouter = createTRPCRouter({
         .where(eq(schema.Subpart.id, subpart.id))
         .limit(1)
 
-      await handlePartSubpartChange(organizationId, parentPartId)
+      await recalculateAffectedParts(organizationId, [parentPartId])
 
       return { subpart: subpartWithChild }
     }),
@@ -279,7 +281,7 @@ export const subpartRouter = createTRPCRouter({
         .where(eq(schema.Subpart.id, id))
         .limit(1)
 
-      await handlePartSubpartChange(organizationId, parentPartId)
+      await recalculateAffectedParts(organizationId, [parentPartId])
 
       return { updatedRelation }
     }),
@@ -320,7 +322,7 @@ export const subpartRouter = createTRPCRouter({
           )
         )
 
-      await handlePartSubpartChange(organizationId, parentPartId)
+      await recalculateAffectedParts(organizationId, [parentPartId])
       return { success: true }
     }),
 })
