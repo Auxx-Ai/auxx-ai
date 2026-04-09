@@ -11,8 +11,13 @@ import {
 import { CommentService } from '../../comments'
 import { publisher } from '../../events/publisher'
 import type { FieldValueService } from '../../field-values'
+import { getRealtimeService } from '../../realtime'
 import { invalidateSnapshots } from '../../snapshot'
-import { extractEventData, findRelatedRecordId } from '../events/extract-event-data'
+import {
+  captureEventData,
+  extractEventData,
+  findRelatedRecordId,
+} from '../events/extract-event-data'
 import type { MergeEntitiesResult } from '../merge'
 import { EntityMergeService } from '../merge'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
@@ -43,6 +48,8 @@ export interface MutationContext {
   db: Database
   organizationId: string
   userId: string
+  /** Pusher socket ID of the originating client — used for self-event exclusion in realtime sync. */
+  socketId?: string
   fieldValueService: FieldValueService
   resolveEntityDefinition: (entityDefinitionId: string) => Promise<EntityDefinitionEntity>
   getFields: (entityDefinitionId: string) => Promise<CustomFieldEntity[]>
@@ -229,6 +236,27 @@ export async function createEntity(
     })
   }
 
+  // Publish record:created realtime event
+  if (!options.skipEvents) {
+    getRealtimeService()
+      .sendToOrganization(
+        ctx.organizationId,
+        'record:created',
+        {
+          entityDefinitionId: entityDef.id,
+          record: {
+            id: instance.id,
+            recordId,
+            displayName: instance.displayName,
+            createdAt: instance.createdAt,
+            updatedAt: instance.updatedAt,
+          },
+        },
+        { excludeSocketId: ctx.socketId }
+      )
+      .catch(() => {})
+  }
+
   // Return instance, recordId, and all processed values (including auto-generated ones)
   return {
     instance,
@@ -351,6 +379,18 @@ export async function archiveEntity(
     })
   }
 
+  // Publish record:archived realtime event
+  if (!options.skipEvents) {
+    getRealtimeService()
+      .sendToOrganization(
+        ctx.organizationId,
+        'record:archived',
+        { recordId, entityDefinitionId: entityDef.id },
+        { excludeSocketId: ctx.socketId }
+      )
+      .catch(() => {})
+  }
+
   // Return the instance we already fetched (archivedAt is the only change)
   return { ...instance, archivedAt: new Date() }
 }
@@ -429,6 +469,15 @@ export async function deleteEntity(
 
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 
+  // Capture field values before deletion so the event carries relationship data
+  // (needed by entity triggers like BOM cost recalculation)
+  let eventData: Record<string, unknown> = { hardDelete: true }
+  if (!options.skipEvents) {
+    const fields = await ctx.getFields(entityDef.id)
+    const captured = await captureEventData(ctx.fieldValueService, recordId, fields)
+    eventData = { hardDelete: true, ...captured }
+  }
+
   // Delete comments using RecordId
   const commentService = new CommentService(ctx.organizationId, ctx.userId, ctx.db)
   await commentService.deleteCommentsByRecordId(recordId)
@@ -452,8 +501,18 @@ export async function deleteEntity(
       action: 'deleted',
       organizationId: ctx.organizationId,
       userId: ctx.userId,
-      eventData: { hardDelete: true },
+      eventData,
     })
+
+    // Publish record:deleted realtime event
+    getRealtimeService()
+      .sendToOrganization(
+        ctx.organizationId,
+        'record:deleted',
+        { recordId, entityDefinitionId: entityDef.id },
+        { excludeSocketId: ctx.socketId }
+      )
+      .catch(() => {})
   }
 }
 

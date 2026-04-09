@@ -15,7 +15,7 @@ import {
 import { TRPCError } from '@trpc/server'
 import { and, eq, ne } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
-import type { RealTimeService } from '../realtime/realtime-service'
+import type { RealtimeService } from '../realtime/realtime-service'
 import type {
   ChatAttachment,
   ChatMessage,
@@ -47,14 +47,14 @@ function isDomainAllowed(allowedDomains: string[], requestUrl?: string | null): 
  */
 export class ChatService {
   private db: Database
-  private realtimeService: RealTimeService
+  private realtimeService: RealtimeService
 
   /**
    * Creates an instance of ChatService.
    * @param {Database} db - The Drizzle database client.
-   * @param {RealTimeService} realtimeService - The service for real-time communication (Pusher).
+   * @param {RealtimeService} realtimeService - The service for real-time communication (Pusher).
    */
-  constructor(db: Database, realtimeService: RealTimeService) {
+  constructor(db: Database, realtimeService: RealtimeService) {
     this.db = db
     this.realtimeService = realtimeService
   }
@@ -1417,10 +1417,10 @@ export class ChatService {
 /**
  * Factory function to create an instance of ChatService with dependencies.
  * @param {Database} db - The Drizzle database client.
- * @param {RealTimeService} realtimeService - The instance of the real-time service.
+ * @param {RealtimeService} realtimeService - The instance of the real-time service.
  * @returns {ChatService} A new ChatService instance.
  */
-export function createChatService(db: Database, realtimeService: RealTimeService): ChatService {
+export function createChatService(db: Database, realtimeService: RealtimeService): ChatService {
   logger.info('Creating ChatService instance')
   return new ChatService(db, realtimeService)
 }

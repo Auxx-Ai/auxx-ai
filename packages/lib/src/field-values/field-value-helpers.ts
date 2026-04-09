@@ -38,6 +38,8 @@ export interface FieldValueContext {
   db: Database
   organizationId: string
   userId?: string
+  /** Pusher socket ID of the originating client — used for self-event exclusion in realtime sync. */
+  socketId?: string
   /** Cache for CustomField lookups (keyed by fieldId) */
   fieldCache: Map<string, FieldWithDefinition>
   /** Cache for batch relationship validations (keyed by relatedEntityId) */
@@ -56,12 +58,14 @@ export interface FieldValueContext {
 export function createFieldValueContext(
   organizationId: string,
   userId?: string,
-  db: Database = database
+  db: Database = database,
+  socketId?: string
 ): FieldValueContext {
   return {
     db,
     organizationId,
     userId,
+    socketId,
     fieldCache: new Map(),
     batchRelationshipValidationCache: new Map(),
     validator: new FieldValueValidator(),

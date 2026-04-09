@@ -8,6 +8,7 @@ import { useState } from 'react'
 import SuperJSON from 'superjson'
 // import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 
+import { getRealtimeSocketId } from '~/realtime/hooks'
 import type { AppRouter } from '~/server/api/root'
 import { createQueryClient } from './query-client'
 
@@ -59,6 +60,10 @@ export function TRPCReactProvider(props: { children: React.ReactNode }) {
           headers: () => {
             const headers = new Headers()
             headers.set('x-trpc-source', 'nextjs-react')
+            const socketId = getRealtimeSocketId()
+            if (socketId) {
+              headers.set('x-realtime-socket-id', socketId)
+            }
             return headers
           },
         }),

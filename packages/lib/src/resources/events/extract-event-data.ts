@@ -1,6 +1,10 @@
 // packages/lib/src/resources/events/extract-event-data.ts
 
+import type { FieldType } from '@auxx/database/types'
+import type { TypedFieldValue } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
+import type { FieldValueService } from '../../field-values/field-value-service'
+import { formatToRawValue } from '../../field-values/formatter'
 
 /**
  * Extract eventData from field values using systemAttribute names.
@@ -57,4 +61,36 @@ export function findRelatedRecordId(
   }
 
   return undefined
+}
+
+/**
+ * Capture field values from an existing entity for use as event data.
+ * Used before deletion so the event carries the entity's field values
+ * (matching the format produced by extractEventData for create/update events).
+ *
+ * @param fieldValueService - FieldValueService instance
+ * @param recordId - The entity's RecordId
+ * @param fields - Custom fields for the entity (with id, systemAttribute, type)
+ * @returns eventData object with systemAttribute keys and raw values
+ */
+export async function captureEventData(
+  fieldValueService: FieldValueService,
+  recordId: RecordId,
+  fields: Array<{ id: string; systemAttribute: string | null; type: string }>
+): Promise<Record<string, unknown>> {
+  const valuesMap = await fieldValueService.getValues({ recordId })
+
+  // Convert TypedFieldValues → raw values keyed by fieldId (matching extractEventData input)
+  const rawValues: Record<string, unknown> = {}
+  for (const field of fields) {
+    if (!field.systemAttribute) continue
+    const typedValue = valuesMap.get(field.id)
+    if (typedValue === undefined) continue
+    rawValues[field.id] = formatToRawValue(
+      typedValue as TypedFieldValue | TypedFieldValue[],
+      field.type as FieldType
+    )
+  }
+
+  return extractEventData(null, fields, rawValues)
 }

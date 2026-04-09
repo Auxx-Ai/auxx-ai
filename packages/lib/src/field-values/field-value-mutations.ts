@@ -12,6 +12,7 @@ import {
 } from '@auxx/services'
 import { isMultiValueFieldType, type TypedFieldValue, type TypedFieldValueInput } from '@auxx/types'
 import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
+import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { and, asc, eq, inArray } from 'drizzle-orm'
@@ -31,6 +32,7 @@ import {
   publishBatchFieldTriggerEvents,
   publishFieldTriggerEvents,
 } from '../field-triggers/publish'
+import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { getModelType, isRecordId, parseRecordId } from '../resources/resource-id'
 import {
   type FieldValueContext,
@@ -354,7 +356,21 @@ export async function addValue(
 
   const [inserted] = await ctx.db.insert(schema.FieldValue).values(insertRow).returning()
 
-  return rowToTypedValue(inserted as unknown as FieldValueRow, fieldType)
+  const typedResult = rowToTypedValue(inserted as unknown as FieldValueRow, fieldType)
+
+  // Re-read full field value and publish (multi-value — send complete array)
+  const fullValues = await getValue(ctx, { recordId, fieldId })
+  if (fullValues) {
+    const key = buildFieldValueKey(recordId, fieldId as FieldId)
+    publishFieldValueUpdates(
+      getRealtimeService(),
+      ctx.organizationId,
+      [{ key, value: fullValues }],
+      { excludeSocketId: ctx.socketId }
+    ).catch(() => {})
+  }
+
+  return typedResult
 }
 
 /**
@@ -713,6 +729,12 @@ export async function setValueWithBuiltIn(
   if (typedValue === null) {
     await deleteValue(ctx, { recordId, fieldId })
     await maybeUpdateDisplayValue(ctx, recordId, field, null)
+    if (publishEvents) {
+      const key = buildFieldValueKey(recordId, fieldId as FieldId)
+      publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [{ key, value: null }], {
+        excludeSocketId: ctx.socketId,
+      }).catch(() => {})
+    }
     return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
   }
 
@@ -773,6 +795,19 @@ export async function setValueWithBuiltIn(
         recordId
       )
     }
+  }
+
+  // Publish realtime sync event (sync mutation — exclude originator)
+  // Gated on publishEvents so setBulkValues can batch-publish instead
+  if (publishEvents && result.length > 0) {
+    const key = buildFieldValueKey(recordId, fieldId as FieldId)
+    const storeValue = result.length === 1 ? result[0] : result
+    publishFieldValueUpdates(
+      getRealtimeService(),
+      ctx.organizationId,
+      [{ key, value: storeValue }],
+      { excludeSocketId: ctx.socketId }
+    ).catch(() => {})
   }
 
   // Always return arrays with state and timestamp
@@ -1027,6 +1062,28 @@ export async function setBulkValues(
   }
 
   const count = results.filter((r) => r.status === 'fulfilled').length
+
+  // Batch publish realtime sync for all successful field value changes
+  const entries: Array<{ key: ReturnType<typeof buildFieldValueKey>; value: unknown }> = []
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    if (result?.status !== 'fulfilled') continue
+    const recordId = recordIds[i]!
+    for (const fieldResult of result.value) {
+      if (fieldResult.state !== 'complete' || fieldResult.values.length === 0) continue
+      const key = buildFieldValueKey(recordId, fieldResult.fieldId as FieldId)
+      entries.push({
+        key,
+        value: fieldResult.values.length === 1 ? fieldResult.values[0] : fieldResult.values,
+      })
+    }
+  }
+  if (entries.length > 0) {
+    publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, entries, {
+      excludeSocketId: ctx.socketId,
+    }).catch(() => {})
+  }
+
   return { count }
 }
 

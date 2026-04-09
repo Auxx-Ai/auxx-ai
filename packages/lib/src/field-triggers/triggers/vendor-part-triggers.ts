@@ -2,8 +2,12 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { parseRecordId } from '@auxx/types/resource'
+import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
+import type { RecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, ne } from 'drizzle-orm'
+import { requireCachedEntityDefId } from '../../cache'
+import { getRealtimeService, publishFieldValueUpdates } from '../../realtime'
 import type { FieldTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-triggers:vendor-part')
@@ -99,6 +103,17 @@ export const clearOtherPreferred: FieldTriggerHandler = async (event) => {
           eq(schema.FieldValue.organizationId, organizationId)
         )
       )
+
+    // Publish cleared preferred status to all clients
+    const vendorPartDefId = await requireCachedEntityDefId(organizationId, 'vendor_part')
+    const entries = siblingIds.map((siblingId) => {
+      const siblingRecordId = toRecordId(vendorPartDefId, siblingId) as RecordId
+      return {
+        key: buildFieldValueKey(siblingRecordId, fieldId as FieldId),
+        value: { type: 'boolean' as const, value: false },
+      }
+    })
+    publishFieldValueUpdates(getRealtimeService(), organizationId, entries).catch(() => {})
 
     logger.info('Cleared preferred status on sibling vendor parts', {
       parentPartId,

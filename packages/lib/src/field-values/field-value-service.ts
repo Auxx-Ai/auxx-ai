@@ -40,9 +40,10 @@ export class FieldValueService {
   constructor(
     private readonly organizationId: string,
     private readonly userId?: string,
-    db: Database = database
+    db: Database = database,
+    socketId?: string
   ) {
-    this.ctx = createFieldValueContext(organizationId, userId, db)
+    this.ctx = createFieldValueContext(organizationId, userId, db, socketId)
   }
 
   // ─────────────────────────────────────────────────────────────

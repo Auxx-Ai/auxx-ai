@@ -18,6 +18,11 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
+/** Extract socket ID from tRPC context headers for realtime self-event exclusion. */
+function getSocketId(ctx: { headers: Headers }): string | undefined {
+  return ctx.headers.get('x-realtime-socket-id') ?? undefined
+}
+
 /**
  * Validate entity definition ID - accepts system TableId, new system entity type, or custom entity UUID
  */
@@ -104,7 +109,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
 
         // Handle both RecordId and legacy separate params
         let recordId: RecordId
@@ -146,7 +151,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         return await handler.getByIds(input.items as RecordId[])
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -165,7 +170,7 @@ export const recordRouter = createTRPCRouter({
     const { apiSlug, entityDefinitionId, query, limit, cursor, entityDefinitionIds } = input
 
     try {
-      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
 
       // Handler handles all resolution internally (apiSlug -> entityDefinitionId, system names -> UUIDs)
       return await handler.search({
@@ -225,7 +230,7 @@ export const recordRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
 
-      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
       return handler.listFiltered({
         entityDefinitionId: input.entityDefinitionId,
         filters: input.filters,
@@ -256,7 +261,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         return await handler.listAll(input)
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -284,7 +289,7 @@ export const recordRouter = createTRPCRouter({
     const { organizationId, user } = ctx.session
 
     try {
-      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
       return await handler.create(input.entityDefinitionId, input.values ?? {})
     } catch (error: any) {
       throw new TRPCError({
@@ -301,7 +306,7 @@ export const recordRouter = createTRPCRouter({
     const { organizationId, user } = ctx.session
 
     try {
-      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
       return await handler.update(input.recordId, input.values)
     } catch (error: any) {
       if (error.message?.includes('not found')) {
@@ -326,7 +331,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         return await handler.archive(input.recordId)
       } catch (error: any) {
         if (error.message?.includes('not found')) {
@@ -351,7 +356,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         return await handler.restore(input.recordId)
       } catch (error: any) {
         if (error.message?.includes('not found')) {
@@ -376,7 +381,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         await handler.delete(input.recordId)
         return { success: true }
       } catch (error: any) {
@@ -402,7 +407,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         return await handler.bulkArchive(input.recordIds)
       } catch (error: any) {
         throw new TRPCError({
@@ -421,7 +426,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         const result = await handler.bulkDelete(input.recordIds)
 
         if (result.errors.length > 0 && result.count === 0) {
@@ -455,7 +460,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         return await handler.merge(input.targetRecordId, input.sourceRecordIds)
       } catch (error: any) {
         if (error instanceof TRPCError) throw error
@@ -480,7 +485,7 @@ export const recordRouter = createTRPCRouter({
       const { organizationId, user } = ctx.session
 
       try {
-        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db)
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
         await handler.invalidateCache(input.entityDefinitionId, input.id)
         return { success: true }
       } catch (error: unknown) {

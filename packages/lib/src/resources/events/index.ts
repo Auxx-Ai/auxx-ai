@@ -1,3 +1,3 @@
 // packages/lib/src/resources/events/index.ts
 
-export { extractEventData, findRelatedRecordId } from './extract-event-data'
+export { captureEventData, extractEventData, findRelatedRecordId } from './extract-event-data'

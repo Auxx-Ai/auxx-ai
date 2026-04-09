@@ -133,8 +133,10 @@ function handleMutationSuccess(
     const valueToStore = returnsArray ? result.values : result.values[0]
 
     store.setValue(key, valueToStore)
+    store.confirmOptimistic(key)
   } else if (fieldType && isArrayReturnFieldType(fieldType)) {
     store.setValue(key, [])
+    store.confirmOptimistic(key)
   } else {
     store.confirmOptimistic(key)
   }

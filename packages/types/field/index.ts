@@ -65,6 +65,8 @@ export type {
 } from './actor-field'
 export { fieldIdSchema, resourceFieldIdSchema } from './schema'
 export {
+  buildFieldValueKey,
+  type FieldValueKey,
   fieldPathToString,
   fieldRefToKey,
   getFieldDefinitionId,
@@ -76,6 +78,7 @@ export {
   isPlainFieldId,
   isResourceFieldId,
   keyToFieldRef,
+  normalizeFieldRef,
   parseResourceFieldId,
   toFieldId,
   toFieldPath,

@@ -2,12 +2,15 @@
 
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import {
+  buildFieldValueKey,
   type FieldPath,
   type FieldReference,
+  type FieldValueKey,
   fieldRefToKey,
   isFieldPath,
   isResourceFieldId,
   keyToFieldRef,
+  normalizeFieldRef,
   type ResourceFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
@@ -16,17 +19,8 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { computeDependentCalcValues } from './calc-value-computer'
 
-/**
- * Composite key for field values.
- * Format: `${recordId}:${fieldRefKey}` where:
- * - recordId = `${entityDefinitionId}:${entityInstanceId}`
- * - fieldRefKey = fieldRefToKey(fieldRef) (either ResourceFieldId or path with :: separator)
- *
- * Examples:
- * - Direct: "contact:abc123:contact:email" (recordId + ResourceFieldId)
- * - Path: "product:xyz789:product:vendor::vendor:name" (recordId + path)
- */
-export type FieldValueKey = `${RecordId}:${string}`
+// Re-export FieldValueKey from @auxx/types/field for consumers that import from this file
+export type { FieldValueKey } from '@auxx/types/field'
 
 /**
  * Stored value type - can be:
@@ -143,71 +137,8 @@ interface CustomFieldValueState {
 // KEY HELPERS
 // ─────────────────────────────────────────────────────────────────
 
-/**
- * Normalize a FieldReference to ResourceFieldId or FieldPath.
- *
- * If `ref` is a plain FieldId, resolves to ResourceFieldId using entityDefinitionId from recordId.
- * If already ResourceFieldId or FieldPath, returns as-is.
- *
- * @example
- * normalizeFieldRef('contact:abc123', 'email')
- * // => 'contact:email' (ResourceFieldId)
- *
- * @example
- * normalizeFieldRef('contact:abc123', 'contact:email')
- * // => 'contact:email' (already ResourceFieldId, unchanged)
- *
- * @example
- * normalizeFieldRef('product:xyz', ['product:vendor', 'vendor:name'])
- * // => ['product:vendor', 'vendor:name'] (FieldPath, unchanged)
- */
-export function normalizeFieldRef(
-  recordId: RecordId,
-  fieldRef: FieldReference
-): ResourceFieldId | FieldPath {
-  // FieldPath - return as-is
-  if (isFieldPath(fieldRef)) {
-    return fieldRef
-  }
-
-  // ResourceFieldId - return as-is (has colon)
-  if (isResourceFieldId(fieldRef)) {
-    return fieldRef
-  }
-
-  // Plain FieldId - resolve to ResourceFieldId
-  const { entityDefinitionId } = parseRecordId(recordId)
-  return toResourceFieldId(entityDefinitionId, fieldRef)
-}
-
-/**
- * Build a field value key from RecordId and FieldReference.
- *
- * Automatically normalizes FieldId to ResourceFieldId using the recordId context.
- * This ensures consistent cache keys regardless of whether caller passes
- * FieldId or ResourceFieldId.
- *
- * @example
- * // Plain FieldId - auto-resolved
- * buildFieldValueKey('contact:abc123', 'email')
- * // => 'contact:abc123:contact:email'
- *
- * @example
- * // ResourceFieldId - used directly
- * buildFieldValueKey('contact:abc123', 'contact:email')
- * // => 'contact:abc123:contact:email'
- *
- * @example
- * // FieldPath - used directly
- * buildFieldValueKey('product:xyz789', ['product:vendor', 'vendor:name'])
- * // => 'product:xyz789:product:vendor::vendor:name'
- */
-export function buildFieldValueKey(recordId: RecordId, fieldRef: FieldReference): FieldValueKey {
-  // Normalize FieldId → ResourceFieldId using recordId context
-  const normalizedRef = normalizeFieldRef(recordId, fieldRef)
-  const refKey = fieldRefToKey(normalizedRef)
-  return `${recordId}:${refKey}` as FieldValueKey
-}
+// Re-export shared key helpers from @auxx/types/field for consumers that import from this file
+export { buildFieldValueKey, normalizeFieldRef } from '@auxx/types/field'
 
 /**
  * Parse a field value key back to RecordId and FieldReference.
@@ -278,27 +209,32 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
 
     setValues: (entries) => {
       const now = Date.now()
-      const keys = entries.map((e) => e.key)
 
       set((state) => {
-        // First, apply the new values
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
-
-        // Clear fetchingKeys for values that have arrived
         const newFetchingKeys = { ...state.fetchingKeys }
-        for (const key of keys) {
-          delete newFetchingKeys[key]
-        }
+
+        // Track which keys were actually applied (for CALC recomputation)
+        const appliedKeys: FieldValueKey[] = []
 
         for (const { key, value } of entries) {
+          delete newFetchingKeys[key]
+
+          // Skip keys with pending optimistic updates — the mutation
+          // confirmation flow owns these keys until confirmed/rolled back
+          if (state.pendingUpdates[key]) continue
+
           newValues[key] = value
           newUpdatedAt[key] = now
+          appliedKeys.push(key)
         }
 
-        // Then compute dependent CALC values
-        const calcValues = computeDependentCalcValues(keys, newValues)
+        // Only recompute CALCs for keys that were actually applied
+        const calcValues = computeDependentCalcValues(appliedKeys, newValues)
         for (const [calcKey, calcValue] of Object.entries(calcValues)) {
+          // Also skip CALC keys that have pending updates
+          if (state.pendingUpdates[calcKey as FieldValueKey]) continue
           newValues[calcKey as FieldValueKey] = calcValue
           newUpdatedAt[calcKey as FieldValueKey] = now
         }

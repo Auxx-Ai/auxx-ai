@@ -1,5 +1,7 @@
 // packages/types/field/utils.ts
 
+import type { RecordId } from '../resource/index'
+import { parseRecordId } from '../resource/utils'
 import type { FieldId, FieldPath, FieldReference, ResourceFieldId } from './index'
 
 /**
@@ -203,4 +205,43 @@ export function keyToFieldRef(key: string): FieldReference {
  */
 export function isPlainFieldId(ref: FieldReference): ref is FieldId {
   return typeof ref === 'string' && !ref.includes(':')
+}
+
+/**
+ * Composite key for field values in the store.
+ * Format: `${recordId}:${fieldRefKey}`
+ */
+export type FieldValueKey = `${RecordId}:${string}`
+
+/**
+ * Normalize a FieldReference so plain FieldIds become ResourceFieldIds.
+ * ResourceFieldId and FieldPath pass through unchanged.
+ */
+export function normalizeFieldRef(
+  recordId: RecordId,
+  fieldRef: FieldReference
+): ResourceFieldId | FieldPath {
+  if (isFieldPath(fieldRef)) return fieldRef
+  if (isResourceFieldId(fieldRef)) return fieldRef
+  // Plain FieldId → ResourceFieldId
+  const { entityDefinitionId } = parseRecordId(recordId)
+  return toResourceFieldId(entityDefinitionId, fieldRef)
+}
+
+/**
+ * Build a store-compatible field value key.
+ * Automatically normalizes plain FieldId → ResourceFieldId.
+ *
+ * @example
+ * buildFieldValueKey('part:abc123', 'uuid-of-cost-field')
+ * // => 'part:abc123:part:uuid-of-cost-field'
+ *
+ * @example
+ * buildFieldValueKey('part:abc123', 'part:uuid-of-cost-field')
+ * // => 'part:abc123:part:uuid-of-cost-field'
+ */
+export function buildFieldValueKey(recordId: RecordId, fieldRef: FieldReference): FieldValueKey {
+  const normalizedRef = normalizeFieldRef(recordId, fieldRef)
+  const refKey = fieldRefToKey(normalizedRef)
+  return `${recordId}:${refKey}` as FieldValueKey
 }

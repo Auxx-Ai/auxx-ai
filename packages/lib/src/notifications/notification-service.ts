@@ -3,7 +3,8 @@ import { database as db, schema } from '@auxx/database'
 import type { NotificationType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, desc, eq, gte, inArray, lt } from 'drizzle-orm'
-import { RealTimeService } from '../realtime/realtime-service'
+import { getRealtimeService } from '../realtime'
+import type { RealtimeService } from '../realtime/realtime-service'
 
 const logger = createScopedLogger('notification-service')
 // Input interface for creating a notification
@@ -26,18 +27,10 @@ interface GetNotificationsOptions {
   since?: Date
 }
 export class NotificationService {
-  private realTimeService: RealTimeService | null = null
+  private realTimeService: RealtimeService
   // Accept an optional db; defaults to shared database instance
   constructor(private database = db) {
-    // Initialize real-time service if available
-    try {
-      this.realTimeService = new RealTimeService()
-    } catch (error) {
-      logger.warn(
-        'Real-time service not available, notifications will not be delivered in real-time'
-      )
-      this.realTimeService = null
-    }
+    this.realTimeService = getRealtimeService()
   }
   /**
    * Create and send a notification
