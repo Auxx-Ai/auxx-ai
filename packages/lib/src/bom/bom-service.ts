@@ -5,7 +5,7 @@ import { database as db, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import {
   buildSubpartGraph,
-  buildVendorPriceMap,
+  buildVendorCostMaps,
   loadOrgPricingData,
   type SubpartRow,
 } from './cost-calculator'
@@ -100,7 +100,7 @@ export class BomService {
       ? vendorPrices.filter((vp) => vp.isPreferred)
       : vendorPrices
 
-    const vendorPriceMap = buildVendorPriceMap(filteredPrices)
+    const { landedCostMap: vendorPriceMap } = buildVendorCostMaps(filteredPrices)
     const subpartGraph = buildSubpartGraph(subparts)
     const partInfoMap = await loadPartInfo(organizationId, [
       ...collectAllPartIds(partId, subpartGraph, 100),

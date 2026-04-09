@@ -148,6 +148,32 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     name: 'Default Create Dialog',
     includeFields: ['part_title', 'part_sku', 'part_description', 'category'],
   },
+
+  // ============================================================================
+  // VENDOR PART FIELD VIEWS
+  // ============================================================================
+
+  // Vendor Part panel view — show all fields except system internals
+  {
+    entityType: 'vendor_part',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'vendor_part_part'],
+  },
+
+  // Vendor Part create dialog — essential fields only
+  {
+    entityType: 'vendor_part',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: [
+      'vendor_part_part',
+      'vendor_part_contact',
+      'vendor_part_vendor_sku',
+      'vendor_part_unit_price',
+      'vendor_part_is_preferred',
+    ],
+  },
 ]
 
 /**

@@ -14,6 +14,9 @@ export const defaultVendorPartValues = {
   entityInstanceId: '',
   vendorSku: '',
   unitPrice: null as number | null,
+  shippingCost: null as number | null,
+  tariffRate: null as number | null,
+  otherCost: null as number | null,
   leadTime: null as number | null,
   minOrderQty: null as number | null,
   isPreferred: false,
@@ -99,6 +102,53 @@ export function VendorPartFields({
         <ConstantInputAdapter
           value={values.unitPrice}
           onChange={(_, val) => onChange('unitPrice', val)}
+          varType={BaseType.CURRENCY}
+          placeholder='0.00'
+          disabled={disabled}
+          fieldOptions={{ currency: { currencyCode: 'USD' } }}
+        />
+      </VarEditorFieldRow>
+
+      {/* Tariff Rate */}
+      <VarEditorFieldRow
+        title='Tariff Rate (%)'
+        description='Percentage of unit price'
+        type={BaseType.NUMBER}
+        showIcon>
+        <ConstantInputAdapter
+          value={values.tariffRate}
+          onChange={(_, val) => onChange('tariffRate', val)}
+          varType={BaseType.NUMBER}
+          placeholder='0'
+          disabled={disabled}
+        />
+      </VarEditorFieldRow>
+
+      {/* Shipping Cost */}
+      <VarEditorFieldRow
+        title='Shipping Cost'
+        description='Per-unit shipping/freight'
+        type={BaseType.CURRENCY}
+        showIcon>
+        <ConstantInputAdapter
+          value={values.shippingCost}
+          onChange={(_, val) => onChange('shippingCost', val)}
+          varType={BaseType.CURRENCY}
+          placeholder='0.00'
+          disabled={disabled}
+          fieldOptions={{ currency: { currencyCode: 'USD' } }}
+        />
+      </VarEditorFieldRow>
+
+      {/* Other Cost */}
+      <VarEditorFieldRow
+        title='Other Cost'
+        description='Insurance, brokerage, handling'
+        type={BaseType.CURRENCY}
+        showIcon>
+        <ConstantInputAdapter
+          value={values.otherCost}
+          onChange={(_, val) => onChange('otherCost', val)}
           varType={BaseType.CURRENCY}
           placeholder='0.00'
           disabled={disabled}
