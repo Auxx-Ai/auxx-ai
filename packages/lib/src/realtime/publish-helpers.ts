@@ -1,6 +1,7 @@
 // @auxx/lib/realtime/publish-helpers.ts
 
 import type { FieldValueKey } from '@auxx/types/field'
+import { getOrgCache } from '../cache'
 import type { StoredFieldValue } from './events'
 import type { RealtimeService } from './realtime-service'
 
@@ -17,6 +18,10 @@ export async function publishFieldValueUpdates(
   options?: { excludeSocketId?: string }
 ) {
   if (entries.length === 0) return
+
+  // Check realtimeSync feature flag (cached per-org, fast lookup)
+  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
+  if (!features?.realtimeSync) return
 
   if (entries.length <= CHUNK_SIZE) {
     await realtimeService.sendToOrganization(

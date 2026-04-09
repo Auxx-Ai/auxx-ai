@@ -9,6 +9,7 @@ import type {
   RecordDeletedEvent,
 } from '@auxx/lib/realtime'
 import { useCallback, useEffect } from 'react'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 import { useFieldValueStore } from '../store/field-value-store'
@@ -21,6 +22,8 @@ import { useRecordStore } from '../store/record-store'
  */
 export function useResourceSync() {
   const orgChannel = useOrgChannel()
+  const { hasAccess } = useFeatureFlags()
+  const realtimeSyncEnabled = hasAccess('realtimeSync')
   const utils = api.useUtils()
 
   // Store actions (selectors to avoid re-renders)
@@ -72,7 +75,7 @@ export function useResourceSync() {
   )
 
   useEffect(() => {
-    if (!orgChannel) return
+    if (!orgChannel || !realtimeSyncEnabled) return
 
     orgChannel.bind('fieldValues:updated', handleFieldValuesUpdated)
     orgChannel.bind('record:created', handleRecordCreated)
@@ -87,6 +90,7 @@ export function useResourceSync() {
     }
   }, [
     orgChannel,
+    realtimeSyncEnabled,
     handleFieldValuesUpdated,
     handleRecordCreated,
     handleRecordDeleted,
