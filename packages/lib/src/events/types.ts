@@ -1,5 +1,6 @@
 import type { InvitationStatus, SYNC_STATUS, UserEntity as User } from '@auxx/database/types'
 import type { RecordId } from '@auxx/types/resource'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 export type Events =
   | 'user:created'
   | 'workspace:created'
@@ -58,6 +59,7 @@ export type Events =
   | 'entity:created'
   | 'entity:updated'
   | 'entity:deleted'
+  | 'field:trigger'
   | 'integration:connected'
   | 'integration:connection_failed'
   | 'shopify:connected'
@@ -559,6 +561,17 @@ export type EntityInstanceDeletedEvent = AuxxEventGeneric<
   }
 >
 
+// Field Trigger Event — fired when a field with a registered trigger changes
+export type FieldTriggerJobEvent = AuxxEventGeneric<
+  'field:trigger',
+  {
+    systemAttribute: SystemAttribute
+    recordIds: RecordId[]
+    organizationId: string
+    userId: string
+  }
+>
+
 export type MembershipCreatedEvent = AuxxEventGeneric<
   'membership:created',
   {
@@ -674,6 +687,7 @@ export type AuxxEvent =
   | EntityInstanceCreatedEvent
   | EntityInstanceUpdatedEvent
   | EntityInstanceDeletedEvent
+  | FieldTriggerJobEvent
   | IntegrationConnectedEvent
   | IntegrationConnectionFailedEvent
   | ShopifyConnectedEvent
@@ -732,6 +746,7 @@ export interface IEventsHandlers {
   'entity:created': EventHandler<EntityInstanceCreatedEvent>[]
   'entity:updated': EventHandler<EntityInstanceUpdatedEvent>[]
   'entity:deleted': EventHandler<EntityInstanceDeletedEvent>[]
+  'field:trigger': EventHandler<FieldTriggerJobEvent>[]
   'integration:connected': EventHandler<IntegrationConnectedEvent>[]
   'integration:connection_failed': EventHandler<IntegrationConnectionFailedEvent>[]
   'shopify:connected': EventHandler<ShopifyConnectedEvent>[]

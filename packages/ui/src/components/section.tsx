@@ -2,15 +2,12 @@
 
 'use client'
 
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@auxx/ui/components/collapsible'
+import { Collapsible, CollapsibleTrigger } from '@auxx/ui/components/collapsible'
 import { Switch } from '@auxx/ui/components/switch'
 import { TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import React, { useEffect, useRef, useState } from 'react'
 
 /**
@@ -127,8 +124,11 @@ export function Section({
                 showCollapseTrigger && 'cursor-pointer',
                 !showCollapseTrigger && 'invisible'
               )}>
-              <ChevronDown className='size-4 group-data-[state=closed]:hidden' data-state='open' />
-              <ChevronRight className='size-4 group-data-[state=open]:hidden' data-state='closed' />
+              <motion.span
+                animate={{ rotate: currentOpen && (!showEnable || enabled) ? 90 : 0 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}>
+                <ChevronRight className='size-4' />
+              </motion.span>
             </CollapsibleTrigger>
           </div>
           <div className='flex items-center gap-2'>
@@ -143,9 +143,25 @@ export function Section({
             )}
           </div>
         </div>
-        <CollapsibleContent data-slot='section-content' className='flex flex-col'>
-          {children}
-        </CollapsibleContent>
+        <AnimatePresence initial={false}>
+          {currentOpen && (!showEnable || enabled) && (
+            <motion.div
+              data-slot='section-content'
+              initial={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+              animate={{
+                height: 'auto',
+                opacity: 1,
+                filter: 'blur(0px)',
+                overflow: 'hidden',
+                transitionEnd: { overflow: 'visible' },
+              }}
+              exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className='flex flex-col'>
+              {children}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </Collapsible>
   )

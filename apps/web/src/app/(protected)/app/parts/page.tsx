@@ -1,7 +1,53 @@
 // apps/web/src/app/(protected)/app/parts/page.tsx
-import { PartsContent } from '~/components/manufacturing/parts'
 
-/** Parts page - renders the main parts table with drawer */
+'use client'
+
+import type { RecordId } from '@auxx/types/resource'
+import { parseAsBoolean, useQueryState } from 'nuqs'
+import { useCallback, useState } from 'react'
+import { PartFormDialog } from '~/components/manufacturing/parts/part-form-dialog'
+import { RecordsView } from '~/components/records'
+import { useRecordInvalidation, useResourceProperty } from '~/components/resources'
+
 export default function PartsPage() {
-  return <PartsContent />
+  const [isCreateOpen, setIsCreateOpen] = useQueryState('create', parseAsBoolean.withDefault(false))
+  const [editingRecordId, setEditingRecordId] = useState<RecordId | null>(null)
+  const partDefId = useResourceProperty('part', 'id')
+  const { onRecordCreated } = useRecordInvalidation()
+
+  const handleDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setIsCreateOpen(open || null)
+      if (!open) setEditingRecordId(null)
+    },
+    [setIsCreateOpen]
+  )
+
+  const handleEditRecord = useCallback((recordId: RecordId) => {
+    setEditingRecordId(recordId)
+  }, [])
+
+  const handleSuccess = useCallback(() => {
+    handleDialogOpenChange(false)
+    if (partDefId) onRecordCreated(partDefId)
+  }, [handleDialogOpenChange, partDefId, onRecordCreated])
+
+  return (
+    <>
+      <RecordsView
+        slug='parts'
+        basePath='/app/parts'
+        embedded
+        renderCreateDialog={false}
+        onEditRecord={handleEditRecord}
+      />
+
+      <PartFormDialog
+        open={isCreateOpen || !!editingRecordId}
+        onOpenChange={handleDialogOpenChange}
+        recordId={editingRecordId ?? undefined}
+        onSuccess={handleSuccess}
+      />
+    </>
+  )
 }

@@ -75,6 +75,24 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'slate',
     isVisible: false, // Settings-only entity
   },
+  {
+    entityType: 'vendor_part',
+    apiSlug: 'vendor-parts',
+    singular: 'Vendor Part',
+    plural: 'Vendor Parts',
+    icon: 'package',
+    color: 'orange',
+    isVisible: false, // Internal entity, managed from part drawer
+  },
+  {
+    entityType: 'subpart',
+    apiSlug: 'subparts',
+    singular: 'Subpart',
+    plural: 'Subparts',
+    icon: 'layers',
+    color: 'orange',
+    isVisible: false, // Internal entity, managed from part drawer's subparts tab
+  },
 ]
 
 /**
@@ -109,6 +127,14 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   signature: {
     primaryDisplayField: 'name',
     secondaryDisplayField: undefined,
+  },
+  vendor_part: {
+    primaryDisplayField: 'vendorSku',
+    secondaryDisplayField: undefined,
+  },
+  subpart: {
+    primaryDisplayField: 'childPart',
+    secondaryDisplayField: 'quantity',
   },
 }
 

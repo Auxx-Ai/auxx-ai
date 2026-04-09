@@ -4,6 +4,7 @@ import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { BarChart3, BotIcon, Plus, RefreshCw } from 'lucide-react'
 
+import { AnimatePresence, motion } from 'motion/react'
 import React from 'react'
 import { ModelRow } from '~/components/ai/ui/model-row'
 // New components
@@ -154,39 +155,67 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
                   />
 
                   {/* Expanded Models */}
-                  {isExpanded && provider.models && provider.models.length > 0 && (
-                    <div className='p-2 inset-shadow-sm'>
-                      <div className='bg-background rounded-md animate-in slide-down-from-top-1 duration-200 ease-out'>
-                        {provider.models.map((model) => {
-                          const modelId = `${provider.provider}:${model.modelId}`
-                          return (
-                            <ModelRow
-                              key={modelId}
-                              model={model}
-                              provider={provider}
-                              providers={providersData}
-                            />
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  <AnimatePresence initial={false}>
+                    {isExpanded && provider.models && provider.models.length > 0 && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+                        animate={{
+                          height: 'auto',
+                          opacity: 1,
+                          filter: 'blur(0px)',
+                          overflow: 'hidden',
+                          transitionEnd: { overflow: 'visible' },
+                        }}
+                        exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+                        <div className='p-2 inset-shadow-sm'>
+                          <div className='bg-background rounded-md'>
+                            {provider.models.map((model) => {
+                              const modelId = `${provider.provider}:${model.modelId}`
+                              return (
+                                <ModelRow
+                                  key={modelId}
+                                  model={model}
+                                  provider={provider}
+                                  providers={providersData}
+                                />
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Empty state for expanded provider with no models */}
-                  {isExpanded && (!provider.models || provider.models.length === 0) && (
-                    <div className='py-8 px-12 text-center text-muted-foreground bg-muted/10 animate-in fade-in duration-200'>
-                      <BotIcon className='h-8 w-8 mx-auto mb-2 text-muted-foreground/50' />
-                      <p className='text-sm'>No models configured for this provider</p>
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        className='mt-2'
-                        onClick={() => handleCreateCustomModel(provider.provider)}>
-                        <Plus />
-                        Add Model
-                      </Button>
-                    </div>
-                  )}
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (!provider.models || provider.models.length === 0) && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+                        animate={{
+                          height: 'auto',
+                          opacity: 1,
+                          filter: 'blur(0px)',
+                          overflow: 'hidden',
+                          transitionEnd: { overflow: 'visible' },
+                        }}
+                        exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+                        <div className='py-8 px-12 text-center text-muted-foreground bg-muted/10'>
+                          <BotIcon className='h-8 w-8 mx-auto mb-2 text-muted-foreground/50' />
+                          <p className='text-sm'>No models configured for this provider</p>
+                          <Button
+                            variant='outline'
+                            size='sm'
+                            className='mt-2'
+                            onClick={() => handleCreateCustomModel(provider.provider)}>
+                            <Plus />
+                            Add Model
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )
             })}

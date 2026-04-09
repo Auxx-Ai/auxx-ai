@@ -74,6 +74,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     label: 'Chats',
     slug: 'kopilot/new',
     icon: <MessagesSquare />,
+    featureKey: 'kopilot',
   },
   {
     id: 'workflows',

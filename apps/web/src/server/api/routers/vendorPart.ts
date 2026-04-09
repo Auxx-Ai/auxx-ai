@@ -1,7 +1,9 @@
 // apps/web/src/server/api/routers/vendorPart.ts
+// @deprecated — Mutations migrated to entity system (record.create / useSaveFieldValue).
+// Remaining consumers: contact-parts-tab.tsx. Remove once that file is migrated.
 
 import { database as db, schema } from '@auxx/database'
-import { handleVendorPartChange, handleVendorPartDelete } from '@auxx/lib/bom'
+import { recalculateAffectedParts } from '@auxx/lib/bom'
 import { createScopedLogger } from '@auxx/logger'
 import * as vendorPartDb from '@auxx/services/vendor-parts'
 import { TRPCError } from '@trpc/server'
@@ -82,8 +84,8 @@ export const vendorPartRouter = createTRPCRouter({
 
       const vendorPart = createResult.value
 
-      // Handle cost updates
-      await handleVendorPartChange(organizationId, partId, false, isPreferred!)
+      // Recalculate cost for the affected part
+      await recalculateAffectedParts(organizationId, [partId])
 
       // Clear other preferred if setting this one
       if (isPreferred && vendorPart) {
@@ -144,13 +146,8 @@ export const vendorPartRouter = createTRPCRouter({
         })
       }
 
-      // Handle cost updates
-      await handleVendorPartChange(
-        organizationId,
-        partId,
-        existingVendorPart?.isPreferred,
-        isPreferred!
-      )
+      // Recalculate cost for the affected part
+      await recalculateAffectedParts(organizationId, [partId])
 
       if (isPreferred) {
         await vendorPartDb.clearOtherPreferred({
@@ -267,7 +264,7 @@ export const vendorPartRouter = createTRPCRouter({
         })
       }
 
-      await handleVendorPartDelete(organizationId, vendorPart.part.id)
+      await recalculateAffectedParts(organizationId, [vendorPart.part.id])
 
       return { success: true }
     }),

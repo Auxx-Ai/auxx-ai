@@ -131,8 +131,10 @@ export const ENTITY_DEFINITION_TYPES = [
   'inbox',
   'part',
   'signature',
+  'subpart',
   'tag',
   'ticket',
+  'vendor_part',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

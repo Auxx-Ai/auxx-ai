@@ -205,7 +205,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
             <div
               className={cn(
                 'w-[140px] shrink-0 truncate text-xs ms-2',
-                isUnread ? 'font-semibold text-foreground' : 'text-foreground/80'
+                isUnread ? 'text-foreground' : 'text-foreground/80'
               )}>
               {senderName}
             </div>
@@ -229,7 +229,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
               <span
                 className={cn(
                   'shrink-0 truncate text-xs',
-                  isUnread ? 'font-semibold text-foreground' : 'font-medium text-foreground/90',
+                  isUnread ? 'text-foreground' : 'font-medium text-foreground/90',
                   hasTags ? 'max-w-[40%]' : 'max-w-[50%]'
                 )}>
                 {thread.subject || '(no subject)'}
@@ -311,7 +311,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                   }}
                 />
               </div>
-              <span className='text-xs text-muted-foreground w-14 text-right'>{formattedDate}</span>
+              <span className='text-xs text-muted-foreground w-16 text-right'>{formattedDate}</span>
             </div>
           </div>
         </motion.div>

@@ -1,6 +1,8 @@
 // packages/lib/src/events/handlers/publish-event-job.ts
 
 import type { Job } from 'bullmq'
+import { handleEntityTriggers } from '../../field-triggers/entity-trigger-handler'
+import { handleFieldTriggerJob } from '../../field-triggers/field-trigger-job'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import type { AuxxEvent, IEventsHandlers } from '../types'
@@ -82,10 +84,13 @@ export const EventHandlers: IEventsHandlers = {
   'comment:deleted': [createTimelineEvent],
   'comment:replied': [createTimelineEvent],
 
-  // Entity instance events → CREATE TIMELINE
-  'entity:created': [createTimelineEvent],
+  // Entity instance events → CREATE TIMELINE + ENTITY TRIGGERS
+  'entity:created': [createTimelineEvent, handleEntityTriggers],
   'entity:updated': [createTimelineEvent],
-  'entity:deleted': [createTimelineEvent],
+  'entity:deleted': [createTimelineEvent, handleEntityTriggers],
+
+  // Field trigger events → FIELD TRIGGER HANDLERS
+  'field:trigger': [handleFieldTriggerJob],
 
   // Integration events (analytics-only, no handlers needed)
   'integration:connected': [],

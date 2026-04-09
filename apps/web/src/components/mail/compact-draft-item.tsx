@@ -97,7 +97,7 @@ export const CompactDraftItem = memo(function CompactDraftItem({ draftId }: Comp
       <div className='flex shrink-0 items-center justify-end ms-2'>
         <span
           className={cn(
-            'text-xs text-right w-14',
+            'text-xs text-right w-16',
             draft.scheduledAt ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
           )}>
           {formattedDate}

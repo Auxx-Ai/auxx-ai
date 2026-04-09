@@ -1,10 +1,4 @@
-// lib/services/bom-service.ts
+// packages/lib/src/bom/index.ts
 
 export { BomService } from './bom-service'
-export { updatePartCostAndPropagate } from './cost'
-export {
-  handlePartDelete,
-  handlePartSubpartChange,
-  handleVendorPartChange,
-  handleVendorPartDelete,
-} from './cost-handler'
+export { recalculateAffectedParts, recalculateAllPartCosts } from './cost-calculator'

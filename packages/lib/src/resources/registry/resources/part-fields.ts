@@ -1,7 +1,7 @@
 // packages/lib/src/resources/registry/resources/part-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { toFieldId } from '@auxx/types/field'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
@@ -74,6 +74,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       creatable: true,
       updatable: true,
       required: true,
+      unique: true,
       configurable: false,
     },
     placeholder: 'Enter SKU',
@@ -129,7 +130,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     type: BaseType.CURRENCY,
     fieldType: FieldType.CURRENCY,
     isSystem: true,
-    systemAttribute: 'cost',
+    systemAttribute: 'part_cost',
     systemSortOrder: 'a6',
     dbColumn: 'cost',
     nullable: true,
@@ -226,6 +227,81 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     description: 'Automatically updated when part is modified',
+  },
+
+  // Reverse relationship: vendorParts (one-to-many from vendor_part.part)
+  vendorParts: {
+    id: toFieldId('vendorParts'),
+    key: 'vendorParts',
+    label: 'Vendor Parts',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_vendor_parts',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_part:part' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Vendor parts linked to this part',
+  },
+
+  // Reverse relationship: subparts (one-to-many from subpart.parentPart)
+  subparts: {
+    id: toFieldId('subparts'),
+    key: 'subparts',
+    label: 'Subparts',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_subparts',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'subpart:parentPart' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Child parts used in this assembly',
+  },
+
+  // Reverse relationship: usedInAssemblies (one-to-many from subpart.childPart)
+  usedInAssemblies: {
+    id: toFieldId('usedInAssemblies'),
+    key: 'usedInAssemblies',
+    label: 'Used In Assemblies',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_used_in_assemblies',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'subpart:childPart' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Assemblies that use this part as a component',
   },
 
   createdBy: CREATED_BY_FIELD,

@@ -11,9 +11,11 @@ import { MESSAGE_FIELDS } from './resources/message-fields'
 import { PART_FIELDS } from './resources/part-fields'
 import { PARTICIPANT_FIELDS } from './resources/participant-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
+import { SUBPART_FIELDS } from './resources/subpart-fields'
 import { THREAD_FIELDS } from './resources/thread-fields'
 import { TICKET_FIELDS } from './resources/ticket-fields'
 import { USER_FIELDS } from './resources/user-fields'
+import { VENDOR_PART_FIELDS } from './resources/vendor-part-fields'
 
 /** Types excluded from RESOURCE_TABLE_REGISTRY: 'entity' (generic marker) + all EntityDefinition types */
 const excludedTypes = new Set<string>(['entity', ...ENTITY_DEFINITION_TYPES])
@@ -94,6 +96,8 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   dataset: DATASET_FIELDS,
   part: PART_FIELDS,
   signature: SIGNATURE_FIELDS,
+  vendor_part: VENDOR_PART_FIELDS,
+  subpart: SUBPART_FIELDS,
 }
 
 /**

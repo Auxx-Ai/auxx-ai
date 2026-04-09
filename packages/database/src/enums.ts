@@ -107,6 +107,8 @@ export const ModelTypeValues = [
   'dataset',
   'entity', // For custom EntityDefinition instances
   'part',
+  'vendor_part',
+  'subpart',
 ] as const
 
 /**
@@ -131,6 +133,8 @@ export const ModelTypes = {
   DATASET: 'dataset',
   ENTITY: 'entity',
   PART: 'part',
+  VENDOR_PART: 'vendor_part',
+  SUBPART: 'subpart',
 } as const
 
 /**
@@ -219,6 +223,22 @@ export const ModelTypeMeta: Record<
     color: 'orange',
     apiSlug: 'parts',
     dbTable: 'Part',
+  },
+  vendor_part: {
+    label: 'Vendor Part',
+    plural: 'Vendor Parts',
+    icon: 'package',
+    color: 'orange',
+    apiSlug: 'vendor-parts',
+    dbTable: 'VendorPart',
+  },
+  subpart: {
+    label: 'Subpart',
+    plural: 'Subparts',
+    icon: 'layers',
+    color: 'orange',
+    apiSlug: 'subparts',
+    dbTable: 'Subpart',
   },
 }
 
