@@ -1,6 +1,7 @@
 // packages/lib/src/field-triggers/registry.ts
 
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import { registerAllTriggers } from './register-triggers'
 import type { EntityTriggerHandler, FieldTriggerHandler } from './types'
 
 /**
@@ -15,18 +16,29 @@ export const FIELD_TRIGGERS: Partial<Record<SystemAttribute, FieldTriggerHandler
  */
 export const ENTITY_TRIGGERS: Record<string, EntityTriggerHandler[]> = {}
 
+/** Lazy-initialize triggers on first access */
+let initialized = false
+function ensureInitialized(): void {
+  if (initialized) return
+  initialized = true
+  registerAllTriggers()
+}
+
 /** Get all field trigger handlers for a given systemAttribute */
 export function getFieldTriggers(systemAttribute: SystemAttribute): FieldTriggerHandler[] {
+  ensureInitialized()
   return FIELD_TRIGGERS[systemAttribute] ?? []
 }
 
 /** Get all entity trigger handlers for a given entity slug */
 export function getEntityTriggers(entitySlug: string): EntityTriggerHandler[] {
+  ensureInitialized()
   return ENTITY_TRIGGERS[entitySlug] ?? []
 }
 
 /** Check if any field triggers are registered for a given systemAttribute */
 export function hasFieldTriggers(systemAttribute: SystemAttribute): boolean {
+  ensureInitialized()
   const triggers = FIELD_TRIGGERS[systemAttribute]
   return triggers !== undefined && triggers.length > 0
 }

@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/parts/part-form-dialog.tsx
 'use client'
 
-import type { RecordId } from '@auxx/lib/resources/client'
+import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -52,10 +52,11 @@ interface PartFormDialogProps {
 /** Dialog for creating/editing a part */
 export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: PartFormDialogProps) {
   const isEditMode = !!recordId
-  console.log('part dialog')
+
   // Resolve entity definition IDs
   const partDefId = useResourceProperty('part', 'id')
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
+  const contactDefId = useResourceProperty('contact', 'id')
 
   // Load initial values for edit mode
   const { values: systemValues } = useSystemValues(recordId, PART_SYSTEM_ATTRIBUTES, {
@@ -198,8 +199,8 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           await createRecord.mutateAsync({
             entityDefinitionId: vendorPartDefId,
             values: {
-              vendor_part_part: result.instance.id,
-              vendor_part_contact: vendorPartValues.entityInstanceId,
+              vendor_part_part: toRecordId(partDefId!, result.instance.id),
+              vendor_part_contact: toRecordId(contactDefId!, vendorPartValues.entityInstanceId),
               vendor_part_vendor_sku: vendorPartValues.vendorSku,
               vendor_part_unit_price: vendorPartValues.unitPrice,
               vendor_part_lead_time: vendorPartValues.leadTime,

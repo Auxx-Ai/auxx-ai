@@ -96,6 +96,10 @@ export const DEFAULT_VIEW_CONFIGS = {
         field_part_quantity_available: true,
         field_part_unit_cost: true,
         field_created_at: true,
+        // Hide many-to-many relationship columns — managed via drawer tabs, not the table
+        field_part_vendor_parts: false,
+        field_part_subparts: false,
+        field_part_used_in_assemblies: false,
       },
       columnOrder: [
         'field_part_sku',

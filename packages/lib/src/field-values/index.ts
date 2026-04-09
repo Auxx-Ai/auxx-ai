@@ -24,6 +24,12 @@ export {
   selectConverter,
   textConverter,
 } from './converters'
+export {
+  cascadeDependentDisplayNames,
+  type DisplayFieldDep,
+  getDisplayFieldDeps,
+  invalidateDisplayFieldDeps,
+} from './display-field-deps'
 export { DisplayFieldService } from './display-field-service'
 // Display field types and config
 export type {
@@ -36,11 +42,13 @@ export type {
 export { DEFINITION_COLUMN_TO_TYPE, DISPLAY_FIELD_CONFIG } from './display-field-types'
 // Helpers (context and shared utilities)
 export {
+  batchGetRelatedDisplayNames,
   createFieldValueContext,
   type FieldValueContext,
   getField,
   getFieldTypeMapByDefinition,
   getInverseInfoFromField,
+  getRelatedDisplayName,
   isValidTypedValue,
   maybeUpdateDisplayValue,
   preBatchValidateRelationships,

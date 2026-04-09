@@ -47,7 +47,7 @@ import {
   useTableViews,
   useViewStoreInitialized,
 } from '../stores/store-selectors'
-import type { DynamicTableProps } from '../types'
+import type { DynamicTableProps, ExtendedColumnDef } from '../types'
 import { computeInitialViewConfig } from '../utils/view-config'
 import { useViewStorePersistence } from './use-view-store-persistence'
 
@@ -303,6 +303,25 @@ export function useDynamicTable<TData extends Record<string, any>>({
   )
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // MERGED COLUMN VISIBILITY
+  // Fill in defaults for columns not present in the saved view config.
+  // Without this, TanStack treats missing entries as visible, ignoring defaultVisible.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const mergedColumnVisibility = useMemo(() => {
+    const base: Record<string, boolean> = {}
+    for (const col of enhancedColumns) {
+      const id = col.id ?? ('accessorKey' in col ? (col.accessorKey as string) : undefined)
+      if (!id) continue
+      if ((col as ExtendedColumnDef).defaultVisible === false) {
+        base[id] = false
+      }
+    }
+    // Saved/session visibility takes precedence
+    return { ...base, ...(columnVisibility ?? {}) }
+  }, [enhancedColumns, columnVisibility])
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // TANSTACK TABLE INSTANCE
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -316,7 +335,7 @@ export function useDynamicTable<TData extends Record<string, any>>({
     state: {
       sorting,
       columnFilters,
-      columnVisibility: columnVisibility ?? {},
+      columnVisibility: mergedColumnVisibility,
       columnOrder: displayColumnOrder,
       columnSizing,
       columnPinning: displayColumnPinning,

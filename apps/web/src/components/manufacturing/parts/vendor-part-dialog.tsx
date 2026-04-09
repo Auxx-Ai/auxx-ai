@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/parts/vendor-part-dialog.tsx
 'use client'
 
-import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
+import { getInstanceId, isRecordId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -67,8 +67,10 @@ export function VendorPartDialog({
   const isPartMode = !!partIdProp
   const isContactMode = !!entityInstanceIdProp
 
-  // Resolve vendor_part entity definition ID
+  // Resolve entity definition IDs
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
+  const partDefId = useResourceProperty('part', 'id')
+  const contactDefId = useResourceProperty('contact', 'id')
 
   // Load initial values for edit mode via system attributes
   const { values: systemValues } = useSystemValues(recordId, VENDOR_PART_SYSTEM_ATTRIBUTES, {
@@ -87,9 +89,24 @@ export function VendorPartDialog({
   useEffect(() => {
     if (open) {
       if (isEditMode && systemValues) {
+        // Relationship fields return RecordId[] — unwrap and extract instance ID
+        const contactRaw = systemValues.vendor_part_contact
+        const contactFirst = Array.isArray(contactRaw) ? contactRaw[0] : contactRaw
+        const contactId =
+          typeof contactFirst === 'string' && isRecordId(contactFirst)
+            ? getInstanceId(contactFirst)
+            : ((contactFirst as string) ?? '')
+
+        const partRaw = systemValues.vendor_part_part
+        const partFirst = Array.isArray(partRaw) ? partRaw[0] : partRaw
+        const partId =
+          typeof partFirst === 'string' && isRecordId(partFirst)
+            ? getInstanceId(partFirst)
+            : ((partFirst as string) ?? '')
+
         setValues({
-          entityInstanceId: (systemValues.vendor_part_contact as string) ?? '',
-          partId: (systemValues.vendor_part_part as string) ?? '',
+          entityInstanceId: contactId,
+          partId,
           vendorSku: (systemValues.vendor_part_vendor_sku as string) ?? '',
           unitPrice: (systemValues.vendor_part_unit_price as number) ?? null,
           leadTime: (systemValues.vendor_part_lead_time as number) ?? null,
@@ -144,10 +161,6 @@ export function VendorPartDialog({
 
   // Create mutation via entity system
   const createRecord = api.record.create.useMutation({
-    onSuccess: () => {
-      onSuccess?.()
-      onOpenChange(false)
-    },
     onError: (error) => {
       toastError({ title: 'Failed to add supplier', description: error.message })
     },
@@ -183,11 +196,12 @@ export function VendorPartDialog({
       }
     } else {
       // Create mode: use record.create with systemAttribute keys
+      // Relationship fields require RecordId format (entityDefId:instanceId)
       await createRecord.mutateAsync({
         entityDefinitionId: vendorPartDefId!,
         values: {
-          vendor_part_part: resolvedPartId,
-          vendor_part_contact: resolvedEntityInstanceId,
+          vendor_part_part: toRecordId(partDefId!, resolvedPartId),
+          vendor_part_contact: toRecordId(contactDefId!, resolvedEntityInstanceId),
           vendor_part_vendor_sku: values.vendorSku,
           vendor_part_unit_price: values.unitPrice,
           vendor_part_lead_time: values.leadTime,
@@ -195,6 +209,9 @@ export function VendorPartDialog({
           vendor_part_is_preferred: values.isPreferred,
         },
       })
+
+      onSuccess?.()
+      onOpenChange(false)
     }
   }
 
@@ -259,7 +276,7 @@ export function VendorPartDialog({
             size='sm'
             loading={isPending}
             loadingText={isEditMode ? 'Updating...' : 'Adding...'}
-            disabled={!vendorPartDefId}
+            disabled={!vendorPartDefId || !partDefId || !contactDefId}
             data-dialog-submit>
             {isEditMode ? 'Update Supplier' : 'Add Supplier'}{' '}
             <KbdSubmit variant='outline' size='sm' />

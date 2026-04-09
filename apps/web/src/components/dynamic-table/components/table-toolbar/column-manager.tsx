@@ -91,11 +91,8 @@ function RootStack<TData = any>() {
       .getAllColumns()
       .filter((col) => col.getCanHide() && col.id !== '_checkbox')
 
-    // Filter to visible only
-    const visible = allColumns.filter((col) => {
-      const visibility = columnVisibility?.[col.id]
-      return visibility !== false // undefined or true = visible
-    })
+    // Filter to visible only (uses TanStack state which includes defaultVisible merging)
+    const visible = allColumns.filter((col) => col.getIsVisible())
 
     // Apply column order if exists
     if (!columnOrder || columnOrder.length === 0) {
@@ -464,11 +461,8 @@ function LegacyAddColumnStack<TData = any>({ onCreateField }: { onCreateField: (
       .getAllColumns()
       .filter((col) => col.getCanHide() && col.id !== '_checkbox')
 
-    // Filter to hidden only
-    return allColumns.filter((col) => {
-      const visibility = columnVisibility?.[col.id]
-      return visibility === false // Explicitly hidden
-    })
+    // Filter to hidden only (uses TanStack state which includes defaultVisible merging)
+    return allColumns.filter((col) => !col.getIsVisible())
   }, [table, columnVisibility])
 
   // Get column name
