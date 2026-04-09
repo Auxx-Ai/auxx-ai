@@ -4,6 +4,10 @@ import type { RecordId } from '@auxx/types/resource'
 import { publisher } from '../events'
 import type { FieldTriggerJobEvent } from '../events/types'
 import type { TriggeredField } from './collect-triggers'
+import { handleFieldTriggerJob } from './field-trigger-job'
+
+/** Set to `true` to dispatch field triggers async via BullMQ instead of inline. */
+const FIELD_TRIGGERS_ASYNC = false
 
 /**
  * Publish field trigger events for a single record update.
@@ -14,9 +18,9 @@ export async function publishFieldTriggerEvents(
   triggeredFields: TriggeredField[],
   recordId: RecordId
 ): Promise<void> {
-  await Promise.all(
-    triggeredFields.map(({ systemAttribute }) =>
-      publisher.publishLater({
+  const events = triggeredFields.map(
+    ({ systemAttribute }) =>
+      ({
         type: 'field:trigger',
         data: {
           systemAttribute,
@@ -24,9 +28,16 @@ export async function publishFieldTriggerEvents(
           organizationId: ctx.organizationId,
           userId: ctx.userId,
         },
-      } as FieldTriggerJobEvent)
-    )
+      }) as FieldTriggerJobEvent
   )
+
+  if (FIELD_TRIGGERS_ASYNC) {
+    await Promise.all(events.map((event) => publisher.publishLater(event)))
+  } else {
+    for (const event of events) {
+      await handleFieldTriggerJob({ data: event })
+    }
+  }
 }
 
 /**
@@ -38,9 +49,9 @@ export async function publishBatchFieldTriggerEvents(
   triggeredFields: TriggeredField[],
   recordIds: RecordId[]
 ): Promise<void> {
-  await Promise.all(
-    triggeredFields.map(({ systemAttribute }) =>
-      publisher.publishLater({
+  const events = triggeredFields.map(
+    ({ systemAttribute }) =>
+      ({
         type: 'field:trigger',
         data: {
           systemAttribute,
@@ -48,7 +59,14 @@ export async function publishBatchFieldTriggerEvents(
           organizationId: ctx.organizationId,
           userId: ctx.userId,
         },
-      } as FieldTriggerJobEvent)
-    )
+      }) as FieldTriggerJobEvent
   )
+
+  if (FIELD_TRIGGERS_ASYNC) {
+    await Promise.all(events.map((event) => publisher.publishLater(event)))
+  } else {
+    for (const event of events) {
+      await handleFieldTriggerJob({ data: event })
+    }
+  }
 }

@@ -64,6 +64,9 @@ export function useFieldView({
     return createDefaultFieldViewConfig(fieldIds)
   }, [storedConfig, fieldIds])
 
+  // Whether we're using a stored org view or the generated default
+  const hasOrgView = !!view
+
   // Get visible fields in configured order
   const getVisibleFields = useCallback((): ResourceField[] => {
     const { fieldVisibility, fieldOrder } = config
@@ -77,21 +80,23 @@ export function useFieldView({
     // First, add fields that are in the configured order
     for (const fieldId of fieldOrder) {
       const field = fieldMap.get(fieldId)
-      if (field && fieldVisibility[fieldId] !== false) {
-        orderedFields.push(field)
-        fieldMap.delete(fieldId)
-      }
+      if (!field) continue
+      // When no org view exists, also respect showInPanel from field definitions
+      if (fieldVisibility[fieldId] === false) continue
+      if (!hasOrgView && field.showInPanel === false) continue
+      orderedFields.push(field)
+      fieldMap.delete(fieldId)
     }
 
     // Then add any remaining fields not in order (new fields added after view was configured)
     for (const [fieldId, field] of fieldMap) {
-      if (fieldVisibility[fieldId] !== false) {
-        orderedFields.push(field)
-      }
+      if (fieldVisibility[fieldId] === false) continue
+      if (!hasOrgView && field.showInPanel === false) continue
+      orderedFields.push(field)
     }
 
     return orderedFields
-  }, [config, fields])
+  }, [config, fields, hasOrgView])
 
   // Get all fields in configured order (for edit mode - includes hidden fields)
   const getAllFields = useCallback((): ResourceField[] => {
@@ -129,7 +134,7 @@ export function useFieldView({
 
   return {
     config,
-    hasOrgView: !!view,
+    hasOrgView,
     isLoading,
     getVisibleFields,
     getAllFields,

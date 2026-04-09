@@ -23,7 +23,7 @@ export const clearOtherPreferred: FieldTriggerHandler = async (event) => {
 
     // 1. Read the current isPreferred value — only proceed if it's true
     const preferredRow = await database
-      .select({ booleanValue: schema.FieldValue.booleanValue })
+      .select({ valueBoolean: schema.FieldValue.valueBoolean })
       .from(schema.FieldValue)
       .innerJoin(schema.CustomField, eq(schema.FieldValue.fieldId, schema.CustomField.id))
       .where(
@@ -35,7 +35,7 @@ export const clearOtherPreferred: FieldTriggerHandler = async (event) => {
       )
       .limit(1)
 
-    if (!preferredRow[0]?.booleanValue) continue
+    if (!preferredRow[0]?.valueBoolean) continue
 
     // 2. Resolve the parent partId for this vendor part
     const partRow = await database
@@ -91,7 +91,7 @@ export const clearOtherPreferred: FieldTriggerHandler = async (event) => {
 
     await database
       .update(schema.FieldValue)
-      .set({ booleanValue: false })
+      .set({ valueBoolean: false })
       .where(
         and(
           inArray(schema.FieldValue.entityId, siblingIds),

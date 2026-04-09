@@ -39,6 +39,7 @@ import {
   type InverseFieldInfo,
   maybeUpdateDisplayValue,
   preBatchValidateRelationships,
+  resolveFieldIds,
   rowToTypedValue,
   validateAndConvertValue,
 } from './field-value-helpers'
@@ -800,8 +801,11 @@ export async function setValuesForEntity(
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   const modelType = getModelType(entityDefinitionId)
 
-  // Filter out undefined values
-  const validValues = values.filter((v) => v.value !== undefined)
+  // Filter out undefined values and resolve any systemAttribute strings to real fieldIds
+  const validValues = await resolveFieldIds(
+    ctx.organizationId,
+    values.filter((v) => v.value !== undefined)
+  )
   if (validValues.length === 0) return []
 
   // Separate built-in from custom fields
@@ -925,8 +929,11 @@ export async function setBulkValues(
   const entityInstanceIds = parsedResources.map((p) => p.entityInstanceId)
   const modelType = getModelType(parsedResources[0]!.entityDefinitionId)
 
-  // Filter out undefined values
-  const validValues = values.filter((v) => v.value !== undefined)
+  // Filter out undefined values and resolve any systemAttribute strings to real fieldIds
+  const validValues = await resolveFieldIds(
+    ctx.organizationId,
+    values.filter((v) => v.value !== undefined)
+  )
   if (validValues.length === 0) {
     return { count: 0 }
   }
