@@ -14,7 +14,7 @@ import {
 import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { findCachedResource, getCachedResource } from '../cache'
+import { findCachedResource, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
@@ -93,6 +93,37 @@ export async function getField(
 
   ctx.fieldCache.set(fieldId, result.value)
   return result.value
+}
+
+/**
+ * Resolve systemAttribute strings to actual CustomField IDs in a batch.
+ * Single cache hit to load all custom fields, then remap any value whose
+ * fieldId matches a known systemAttribute. Values with real fieldIds pass through unchanged.
+ */
+export async function resolveFieldIds(
+  orgId: string,
+  values: Array<{ fieldId: string; value: unknown }>
+): Promise<Array<{ fieldId: string; value: unknown }>> {
+  const cache = getOrgCache()
+  const allFields = await cache.from(orgId, 'customFields').all()
+  const attrToId = new Map<string, string>()
+  for (const fields of Object.values(allFields)) {
+    for (const f of fields) {
+      if (f.systemAttribute) attrToId.set(f.systemAttribute, f.id)
+    }
+  }
+
+  let changed = false
+  const resolved = values.map((v) => {
+    const realId = attrToId.get(v.fieldId)
+    if (realId) {
+      changed = true
+      return { ...v, fieldId: realId }
+    }
+    return v
+  })
+
+  return changed ? resolved : values
 }
 
 /**

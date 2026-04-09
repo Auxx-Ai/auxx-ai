@@ -44,16 +44,27 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
   const vendorPartDefId = await requireCachedEntityDefId(orgId, 'vendor_part')
   const subpartDefId = await requireCachedEntityDefId(orgId, 'subpart')
 
+  logger.info('Loading org pricing data', { orgId, vendorPartDefId, subpartDefId })
+
   // Resolve custom field IDs by systemAttribute
   const [vpPartField, vpPriceField, vpPreferredField, spParentField, spChildField, spQtyField] =
     await Promise.all([
-      cache.from(orgId).customFields.bySystemAttribute('vendor_part_part'),
-      cache.from(orgId).customFields.bySystemAttribute('vendor_part_unit_price'),
-      cache.from(orgId).customFields.bySystemAttribute('vendor_part_is_preferred'),
-      cache.from(orgId).customFields.bySystemAttribute('subpart_parent_part'),
-      cache.from(orgId).customFields.bySystemAttribute('subpart_child_part'),
-      cache.from(orgId).customFields.bySystemAttribute('subpart_quantity'),
+      cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_part'),
+      cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_unit_price'),
+      cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_is_preferred'),
+      cache.from(orgId, 'customFields').bySystemAttribute('subpart_parent_part'),
+      cache.from(orgId, 'customFields').bySystemAttribute('subpart_child_part'),
+      cache.from(orgId, 'customFields').bySystemAttribute('subpart_quantity'),
     ])
+
+  logger.info('Resolved custom field IDs', {
+    vpPartField: vpPartField?.id ?? null,
+    vpPriceField: vpPriceField?.id ?? null,
+    vpPreferredField: vpPreferredField?.id ?? null,
+    spParentField: spParentField?.id ?? null,
+    spChildField: spChildField?.id ?? null,
+    spQtyField: spQtyField?.id ?? null,
+  })
 
   // ── Query 1: All vendor part field values (single JOIN) ──
   const vendorPrices: VendorPriceRow[] = []
@@ -293,7 +304,7 @@ function calculateAllCosts(
  */
 async function loadCurrentCosts(orgId: string): Promise<Map<string, number>> {
   const cache = getOrgCache()
-  const costField = await cache.from(orgId).customFields.bySystemAttribute('part_cost')
+  const costField = await cache.from(orgId, 'customFields').bySystemAttribute('part_cost')
   if (!costField) return new Map()
 
   const currentCosts = new Map<string, number>()
@@ -328,7 +339,7 @@ async function persistCosts(
   previousCosts: Map<string, number>
 ): Promise<string[]> {
   const cache = getOrgCache()
-  const costField = await cache.from(orgId).customFields.bySystemAttribute('part_cost')
+  const costField = await cache.from(orgId, 'customFields').bySystemAttribute('part_cost')
   if (!costField) {
     logger.warn('part_cost custom field not found, skipping cost persistence')
     return []
@@ -337,6 +348,14 @@ async function persistCosts(
   const partDefId = await requireCachedEntityDefId(orgId, 'part')
   const ctx = createFieldValueContext(orgId)
 
+  logger.info('Persisting costs', {
+    costFieldId: costField.id,
+    costFieldType: costField.type,
+    partDefId,
+    totalCosts: costs.size,
+    previousCostsSize: previousCosts.size,
+  })
+
   // Collect parts with changed costs
   const changedEntries: Array<{ partId: string; cost: number }> = []
   for (const [partId, cost] of costs) {
@@ -344,6 +363,8 @@ async function persistCosts(
       changedEntries.push({ partId, cost })
     }
   }
+
+  logger.info('Parts with changed costs', { count: changedEntries.length })
 
   // Write all changed costs concurrently (bounded to avoid overwhelming the DB)
   const BATCH_SIZE = 20
@@ -354,11 +375,18 @@ async function persistCosts(
     const results = await Promise.allSettled(
       batch.map(({ partId, cost }) => {
         const recordId = toRecordId(partDefId, partId) as RecordId
+        logger.debug('Persisting cost', {
+          partId,
+          cost,
+          recordId,
+          fieldId: costField.id,
+          fieldType: costField.type,
+        })
         return setValueWithType(ctx, {
           recordId,
           fieldId: costField.id,
-          fieldType: costField.fieldType,
-          value: cost,
+          fieldType: costField.type,
+          value: { type: 'number', value: cost },
         }).then(() => partId)
       })
     )
@@ -369,6 +397,7 @@ async function persistCosts(
       } else {
         logger.error('Failed to persist cost for part', {
           error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          stack: result.reason instanceof Error ? result.reason.stack : undefined,
         })
       }
     }

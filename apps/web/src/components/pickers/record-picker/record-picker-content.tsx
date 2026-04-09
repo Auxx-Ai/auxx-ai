@@ -118,8 +118,17 @@ export function RecordPickerContent({
     return () => onCaptureChange?.(false)
   }, [onCaptureChange])
 
-  // Track initial selected recordIds (snapshot at mount) - prevents layout shifts
+  // Track selected recordIds for layout stability — snapshot at mount,
+  // but appends new items added to value (e.g. inline create) so they render immediately
   const [initialSelectedIds, setInitialSelectedIds] = useState<RecordId[]>(() => value)
+
+  // When value gains new items (e.g. after inline create), add them to initialSelectedIds
+  useEffect(() => {
+    setInitialSelectedIds((prev) => {
+      const newIds = value.filter((id) => !prev.includes(id))
+      return newIds.length > 0 ? [...prev, ...newIds] : prev
+    })
+  }, [value])
 
   // Determine search mode
   const isGlobalSearch = !entityDefinitionId && !entityDefinitionIds

@@ -119,6 +119,35 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'ticket_child_tickets',
     ],
   },
+  // ============================================================================
+  // PART FIELD VIEWS
+  // ============================================================================
+
+  // Part panel view — hide relationship fields (managed by drawer tabs) + system internals
+  {
+    entityType: 'part',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'shopify_product_link_id',
+      // Relationship fields — dedicated drawer tabs exist for these
+      'part_vendor_parts',
+      'part_subparts',
+      'part_used_in_assemblies',
+    ],
+  },
+
+  // Part create dialog — minimal fields for quick creation
+  {
+    entityType: 'part',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: ['part_title', 'part_sku', 'part_description', 'category'],
+  },
 ]
 
 /**
