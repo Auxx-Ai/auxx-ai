@@ -2,7 +2,7 @@
 'use client'
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { getInstanceId, isRecordId, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -285,7 +285,13 @@ function SubpartRow({
     autoFetch: true,
   })
 
-  const relatedPartId = values[relatedPartField] as string | undefined
+  // Relationship fields return RecordId[] from formatToRawValue — unwrap and extract instance ID
+  const rawPartValue = values[relatedPartField]
+  const firstValue = Array.isArray(rawPartValue) ? rawPartValue[0] : rawPartValue
+  const relatedPartId =
+    typeof firstValue === 'string' && isRecordId(firstValue)
+      ? getInstanceId(firstValue)
+      : (firstValue as string | undefined)
   const quantity = values.subpart_quantity as number | undefined
 
   return (
@@ -330,8 +336,11 @@ function SubpartRow({
 
 /** Resolves and displays part title + SKU from entity system */
 function PartNameCell({ partId, linkTab }: { partId: string; linkTab: string }) {
-  const { values } = useSystemValues(`part:${partId}` as RecordId, PART_NAME_ATTRIBUTES, {
+  const partDefId = useResourceProperty('part', 'id')
+  const partRecordId = partDefId ? toRecordId(partDefId, partId) : ('' as RecordId)
+  const { values } = useSystemValues(partRecordId || undefined, PART_NAME_ATTRIBUTES, {
     autoFetch: true,
+    enabled: !!partRecordId,
   })
   const title = values.part_title as string | undefined
   const sku = values.part_sku as string | undefined
@@ -348,8 +357,11 @@ function PartNameCell({ partId, linkTab }: { partId: string; linkTab: string }) 
 
 /** Resolves and displays part cost from entity system */
 function PartCostCell({ partId }: { partId: string }) {
-  const { values } = useSystemValues(`part:${partId}` as RecordId, PART_COST_ATTRIBUTES, {
+  const partDefId = useResourceProperty('part', 'id')
+  const partRecordId = partDefId ? toRecordId(partDefId, partId) : ('' as RecordId)
+  const { values } = useSystemValues(partRecordId || undefined, PART_COST_ATTRIBUTES, {
     autoFetch: true,
+    enabled: !!partRecordId,
   })
   const cost = values.part_cost as number | null | undefined
 

@@ -13,10 +13,11 @@ import {
 } from '@auxx/types/custom-field'
 import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
-import { and, eq, sql } from 'drizzle-orm'
-import { findCachedResource } from '../cache'
+import { and, eq, inArray, sql } from 'drizzle-orm'
+import { findCachedResource, getCachedResource } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
+import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
 import type { InverseFieldInfo } from './relationship-sync'
@@ -584,6 +585,57 @@ export async function preBatchValidateRelationships(
 // =============================================================================
 
 /**
+ * Fetch the displayName for a related entity instance.
+ * Lightweight single-column query — used when a display field is a RELATIONSHIP type.
+ */
+export async function getRelatedDisplayName(
+  db: Database,
+  organizationId: string,
+  recordId: RecordId
+): Promise<string | null> {
+  const { entityInstanceId } = parseRecordId(recordId)
+  const row = await db.query.EntityInstance.findFirst({
+    where: (ei, { eq: eqOp, and: andOp }) =>
+      andOp(eqOp(ei.id, entityInstanceId), eqOp(ei.organizationId, organizationId)),
+    columns: { displayName: true },
+  })
+  return row?.displayName ?? null
+}
+
+/**
+ * Batch fetch displayNames for multiple related entity instances.
+ * Returns a Map of entityInstanceId → displayName.
+ */
+export async function batchGetRelatedDisplayNames(
+  db: Database,
+  organizationId: string,
+  recordIds: RecordId[]
+): Promise<Map<string, string | null>> {
+  if (recordIds.length === 0) return new Map()
+
+  const instanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
+
+  const rows = await db
+    .select({
+      id: schema.EntityInstance.id,
+      displayName: schema.EntityInstance.displayName,
+    })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        inArray(schema.EntityInstance.id, instanceIds),
+        eq(schema.EntityInstance.organizationId, organizationId)
+      )
+    )
+
+  const map = new Map<string, string | null>()
+  for (const row of rows) {
+    map.set(row.id, row.displayName)
+  }
+  return map
+}
+
+/**
  * Check if a field is a source field for a NAME-type primary display field.
  * If so, compose "firstName lastName" from the current value and the other source field.
  * Returns the composed display string, null to clear, or undefined if not applicable.
@@ -675,6 +727,14 @@ export async function maybeUpdateDisplayValue(
           )
         )
       await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+
+      // Cascade to dependent entities
+      const resource = await getCachedResource(ctx.organizationId, entityDef.id)
+      const entityType = resource?.entityType ?? entityDef.id
+      const deps = await getDisplayFieldDeps(ctx.organizationId, entityType)
+      if (deps.length > 0) {
+        await cascadeDependentDisplayNames(ctx, entityInstanceId, result, deps)
+      }
       return
     }
   }
@@ -710,6 +770,15 @@ export async function maybeUpdateDisplayValue(
           }
         }
       }
+    } else if (field.type === 'RELATIONSHIP') {
+      // For RELATIONSHIP display fields, resolve the related entity's displayName
+      const singleValue = Array.isArray(typedValue) ? typedValue[0] : typedValue
+      if (singleValue && singleValue.type === 'relationship' && 'recordId' in singleValue) {
+        const relRecordId = (singleValue as { recordId: RecordId }).recordId
+        if (relRecordId) {
+          displayValue = await getRelatedDisplayName(ctx.db, ctx.organizationId, relRecordId)
+        }
+      }
     } else {
       // Use centralized formatter for display value computation
       displayValue = formatToDisplayValue(typedValue, field.type, field.options as any) as
@@ -732,6 +801,14 @@ export async function maybeUpdateDisplayValue(
   // Update searchText when primary or secondary display field changes
   if (column === 'displayName' || column === 'secondaryDisplayValue') {
     await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+
+    // Cascade to dependent entities (e.g., when a part's title changes, update subpart displayNames)
+    const resource = await getCachedResource(ctx.organizationId, entityDef.id)
+    const entityType = resource?.entityType ?? entityDef.id
+    const deps = await getDisplayFieldDeps(ctx.organizationId, entityType)
+    if (deps.length > 0) {
+      await cascadeDependentDisplayNames(ctx, entityInstanceId, displayValue, deps)
+    }
   }
 }
 

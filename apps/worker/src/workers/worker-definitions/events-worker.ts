@@ -1,6 +1,8 @@
 import {
   createEventJob,
   createTimelineEvent,
+  handleEntityTriggers,
+  handleFieldTriggerJob,
   publishEventJob,
   publishToAnalyticsJob,
   sendInvitationUserJob,
@@ -23,6 +25,8 @@ const eventHandlersJobMappings = {
   updateWebhookLastTriggeredAt,
   createTimelineEvent,
   triggerResourceWorkflows,
+  handleFieldTriggerJob,
+  handleEntityTriggers,
 }
 
 export function startEventsWorker() {

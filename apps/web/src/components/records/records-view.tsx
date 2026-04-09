@@ -400,7 +400,7 @@ export function RecordsView({
         header: field.name ?? field.label,
         fieldType: field.fieldType as FieldType,
         defaultFormatting,
-        defaultVisible: true,
+        defaultVisible: field.showInPanel !== false,
         icon: getIconForFieldType(field.fieldType!),
         enableSorting: field.fieldType !== 'RELATIONSHIP' && field.capabilities.sortable !== false,
         enableFiltering:

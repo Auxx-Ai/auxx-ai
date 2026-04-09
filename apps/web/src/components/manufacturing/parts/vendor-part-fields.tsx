@@ -64,6 +64,7 @@ export function VendorPartFields({
           validationType='error'>
           <MultiRelationInput
             entityDefinitionId='contact'
+            className='w-full'
             value={values.entityInstanceId ? [toRecordId('contact', values.entityInstanceId)] : []}
             onChange={(recordIds: RecordId[]) =>
               onChange('entityInstanceId', recordIds[0] ? getInstanceId(recordIds[0]) : '')

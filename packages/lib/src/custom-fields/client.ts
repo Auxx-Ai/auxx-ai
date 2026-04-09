@@ -77,49 +77,49 @@ export const OPTION_COLORS: OptionColor[] = [
     label: 'Amber',
     swatch: 'bg-amber-500',
     badgeClasses:
-      'bg-amber-50 text-amber-600 dark:bg-[#3d2c0a] dark:text-[#FFDEA7] dark:border-[#5c4216]',
+      'bg-amber-50 text-amber-600 border-amber-200 dark:bg-[#3d2c0a] dark:text-[#FFDEA7] dark:border-[#5c4216]',
   },
   {
     id: 'green',
     label: 'Green',
     swatch: 'bg-green-500',
     badgeClasses:
-      'bg-green-50 text-green-600 dark:bg-[#1d4034] dark:text-[#A7F2CF] dark:border-[#244a3a]',
+      'bg-green-50 text-green-600 border-green-200 dark:bg-[#1d4034] dark:text-[#A7F2CF] dark:border-[#244a3a]',
   },
   {
     id: 'teal',
     label: 'Teal',
     swatch: 'bg-teal-500',
     badgeClasses:
-      'bg-teal-50 text-teal-600 dark:bg-[#1a3946] dark:text-[#A9EBFC] dark:border-[#0a4e6b]',
+      'bg-teal-50 text-teal-600 border-teal-200 dark:bg-[#1a3946] dark:text-[#A9EBFC] dark:border-[#0a4e6b]',
   },
   {
     id: 'blue',
     label: 'Blue',
     swatch: 'bg-blue-500',
     badgeClasses:
-      'bg-blue-50 text-blue-600 dark:bg-[#1d2e55] dark:text-[#C2D6FF] dark:border-[#2b3e6d]',
+      'bg-blue-50 text-blue-600 border-blue-200 dark:bg-[#1d2e55] dark:text-[#C2D6FF] dark:border-[#2b3e6d]',
   },
   {
     id: 'indigo',
     label: 'Indigo',
     swatch: 'bg-indigo-500',
     badgeClasses:
-      'bg-indigo-50 text-indigo-600 dark:bg-[#252058] dark:text-[#D0C8FF] dark:border-[#3b3578]',
+      'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-[#252058] dark:text-[#D0C8FF] dark:border-[#3b3578]',
   },
   {
     id: 'purple',
     label: 'Purple',
     swatch: 'bg-purple-500',
     badgeClasses:
-      'bg-purple-50 text-purple-600 dark:bg-[#2f1e5a]/50 dark:text-[#D8C4FF] border-purple-500/10',
+      'bg-purple-50 text-purple-600 border-purple-200 dark:bg-[#2f1e5a]/50 dark:text-[#D8C4FF] border-purple-500/10',
   },
   {
     id: 'pink',
     label: 'Pink',
     swatch: 'bg-pink-500',
     badgeClasses:
-      'bg-pink-50 text-pink-600 dark:bg-[#4e1a3e] dark:text-[#FFD1EE] dark:border-[#6b2458]',
+      'bg-pink-50 text-pink-600 border-pink-200 dark:bg-[#4e1a3e] dark:text-[#FFD1EE] dark:border-[#6b2458]',
   },
 ]
 

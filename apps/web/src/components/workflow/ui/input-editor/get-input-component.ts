@@ -98,6 +98,8 @@ export interface FieldOptions {
   relatedEntityDefinitionId?: string
   /** For RELATION types - relationship cardinality (has_many, belongs_to, etc.) */
   relationshipType?: RelationshipType
+  /** For RELATION types - entity instance IDs to exclude from picker results */
+  excludeIds?: string[]
   /** For ACTOR type — actor picker configuration */
   actor?: { target?: 'user' | 'group' | 'both'; multiple?: boolean }
   /** For MULTI_SELECT type — triggers MultiSelectInput instead of ArrayInput */
@@ -169,6 +171,7 @@ export function getSpecificPropsForType(
         fieldReference: fieldOptions?.fieldReference,
         relatedEntityDefinitionId: fieldOptions?.relatedEntityDefinitionId,
         relationshipType: fieldOptions?.relationshipType,
+        excludeIds: fieldOptions?.excludeIds,
         showClear: false,
       }
 

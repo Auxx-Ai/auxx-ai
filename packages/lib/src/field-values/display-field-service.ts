@@ -4,6 +4,7 @@ import { type Database, database, schema } from '@auxx/database'
 import { batchUpdateDisplayValues, clearDisplayValues } from '@auxx/services/entity-instances'
 import type { TypedFieldValue } from '@auxx/types'
 import { toResourceFieldId } from '@auxx/types/field'
+import type { RecordId } from '@auxx/types/resource'
 import { and, eq, sql } from 'drizzle-orm'
 import { getCachedResource } from '../cache'
 import type { ResourceField } from '../resources/registry/field-types'
@@ -14,6 +15,7 @@ import {
   type DisplayFieldType,
   type RecalculateDisplayFieldResult,
 } from './display-field-types'
+import { batchGetRelatedDisplayNames } from './field-value-helpers'
 import { FieldValueService } from './field-value-service'
 import { formatToDisplayValue } from './formatter'
 
@@ -125,10 +127,41 @@ export class DisplayFieldService {
 
       // 6. Compute display values using properly typed field
       const updates = new Map<string, string | null>()
-      for (const instanceId of instanceIds) {
-        const typedValue = valuesByEntity.get(instanceId) ?? null
-        const displayValue = this.computeDisplayValue(typedValue, field, displayFieldType)
-        updates.set(instanceId, displayValue)
+
+      // For RELATIONSHIP fields, batch-resolve related displayNames
+      if (field.fieldType === 'RELATIONSHIP') {
+        const recordIdsByInstance = new Map<string, RecordId>()
+        for (const instanceId of instanceIds) {
+          const typedValue = valuesByEntity.get(instanceId) ?? null
+          const single = Array.isArray(typedValue) ? typedValue?.[0] : typedValue
+          if (single?.type === 'relationship' && 'recordId' in single) {
+            const rid = (single as { recordId: RecordId }).recordId
+            if (rid) recordIdsByInstance.set(instanceId, rid)
+          }
+        }
+
+        const allRecordIds = [...recordIdsByInstance.values()]
+        const displayNames = await batchGetRelatedDisplayNames(
+          this.db,
+          this.organizationId,
+          allRecordIds
+        )
+
+        for (const instanceId of instanceIds) {
+          const rid = recordIdsByInstance.get(instanceId)
+          if (rid) {
+            const relInstanceId = getInstanceId(rid)
+            updates.set(instanceId, displayNames.get(relInstanceId) ?? null)
+          } else {
+            updates.set(instanceId, null)
+          }
+        }
+      } else {
+        for (const instanceId of instanceIds) {
+          const typedValue = valuesByEntity.get(instanceId) ?? null
+          const displayValue = this.computeDisplayValue(typedValue, field, displayFieldType)
+          updates.set(instanceId, displayValue)
+        }
       }
 
       // 7. Batch update

@@ -32,6 +32,8 @@ interface RelationInputProps extends NodeInputProps {
   relatedEntityDefinitionId?: string
   /** Relationship cardinality type (has_many, belongs_to, etc.) */
   relationshipType?: RelationshipType
+  /** Entity instance IDs to exclude from picker results */
+  excludeIds?: string[]
   /** Whether to show the clear button on the picker trigger (defaults to multi value) */
   showClear?: boolean
 }
@@ -50,6 +52,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
     fieldReference,
     relatedEntityDefinitionId,
     relationshipType,
+    excludeIds,
     showClear,
   }) => {
     const isMulti = isMultiRelationship(relationshipType)
@@ -138,6 +141,7 @@ export const RelationInput = createNodeInput<RelationInputProps>(
         disabled={isLoading}
         placeholder={placeholder}
         multi={isMulti}
+        excludeIds={excludeIds}
         triggerProps={{ className: 'w-full pe-1 ps-0', showClear }}
       />
     )
