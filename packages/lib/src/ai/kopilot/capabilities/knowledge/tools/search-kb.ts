@@ -60,7 +60,7 @@ export function createSearchKBTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_kb',
     description:
-      "Search the organization's own knowledge base (RAG) for relevant articles. Use this to find company-specific information like policies, FAQs, product details, and internal documentation that the organization has set up.",
+      "Search the organization's knowledge base for help articles and documentation. Only for written articles/guides (e.g. policies, how-tos, FAQs). Do NOT use this to look up contacts, customers, products, orders, vendors, or any other entity/record — use search_entities for that.",
     parameters: {
       type: 'object',
       properties: {

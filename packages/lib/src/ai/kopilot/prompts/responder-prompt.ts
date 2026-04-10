@@ -2,6 +2,7 @@
 
 import type { KopilotDomainState, PlanStep } from '../types'
 import { BLOCK_CATALOG } from './block-catalog'
+import { buildKopilotInstructions } from './instructions'
 
 /**
  * Build the responder system prompt.
@@ -23,18 +24,7 @@ ${planSummary}
 ${resultsSection}
 ${actionWarning}
 
-## Instructions
-
-1. Synthesize the information gathered by the executor into a clear response.
-2. Be concise and direct. Lead with the answer.
-3. **CRITICAL: When tool results contain recordIds (format "defId:instId"), you MUST present them using \`auxx:entity-list\` or \`auxx:entity-card\` blocks.** Never render recordIds as markdown links or plain text. The frontend resolves display data from recordIds — plain text loses all interactivity.
-3a. **Count-only results**: When a tool returns only a count/total with no recordIds (e.g. \`{ entityType: "Ticket", total: 42 }\`), present the count as plain text. Do NOT create \`auxx:entity-list\` or \`auxx:entity-card\` blocks — there are no recordIds to reference.
-4. When results are logically grouped (e.g. duplicate sets, categorized records), use separate \`auxx:entity-list\` blocks per group with a text heading for each, rather than one flat list.
-5. If an action was taken, confirm what was done.
-6. If something failed, explain what happened and suggest alternatives.
-7. Do not repeat the plan steps — the user wants results, not process.
-8. Use markdown formatting when it helps readability.
-9. **Comparisons**: When the user asks to compare records, ALWAYS use an \`auxx:table\` block with one column per record and one row per field. Include all available fields even if some values are missing — show "—" for unavailable data rather than omitting the comparison. When tool results include field metadata (type, actorId, tags), pass them through to the cell objects for rich rendering.
+${buildKopilotInstructions(domainState.capabilities)}
 
 ${BLOCK_CATALOG}`
 }

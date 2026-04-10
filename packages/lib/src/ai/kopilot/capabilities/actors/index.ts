@@ -10,5 +10,6 @@ export function createActorCapabilities(getDeps: GetToolDeps): PageCapability {
     tools: [createListMembersTool(getDeps), createListGroupsTool(getDeps)],
     systemPromptAddition:
       'You can look up organization members and groups. Use list_members to find user IDs (needed for task assignment, thread assignment, etc.). Use list_groups to find group IDs.',
+    capabilities: ['List workspace members and teams'],
   }
 }

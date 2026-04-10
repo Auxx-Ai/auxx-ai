@@ -41,4 +41,6 @@ export interface KopilotDomainState {
   currentPlanStepIndex?: number
   /** Accumulated tool results for the responder to synthesize */
   toolResults?: Array<{ tool: string; result: unknown }>
+  /** Human-friendly capability descriptions for the responder to reference */
+  capabilities?: string[]
 }

@@ -23,5 +23,10 @@ export function createMailCapabilities(getDeps: GetToolDeps): PageCapability {
     ],
     systemPromptAddition:
       "You have access to the user's email inbox. You can search threads, read messages, draft and send replies, and manage thread status/tags/assignment.",
+    capabilities: [
+      'Search email threads and read messages',
+      'Draft and send email replies on your behalf',
+      'Manage thread status, tags, and assignment',
+    ],
   }
 }

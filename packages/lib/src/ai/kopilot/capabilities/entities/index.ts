@@ -30,5 +30,10 @@ export function createEntityCapabilities(getDeps: GetToolDeps): PageCapability {
       createBulkUpdateEntityTool(getDeps),
       createCreateEntityTool(getDeps),
     ],
+    capabilities: [
+      'Search & find records like contacts, companies, tickets, and orders',
+      'Create new records',
+      'Update existing records',
+    ],
   }
 }

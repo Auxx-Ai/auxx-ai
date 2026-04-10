@@ -19,6 +19,8 @@ export interface PageCapability {
   tools: AgentToolDefinition[]
   /** Optional system prompt addition for this page's context */
   systemPromptAddition?: string
+  /** Human-friendly capability descriptions (e.g. "Search & find contacts, companies, and tickets") */
+  capabilities?: string[]
 }
 
 /** Registry mapping pages to their capabilities */
@@ -29,6 +31,8 @@ export interface CapabilityRegistry {
   getPages(): string[]
   /** Get system prompt addition for a page */
   getSystemPromptAddition(page: string): string | undefined
+  /** Get a combined human-friendly capabilities summary for the user */
+  getCapabilitiesSummary(): string[]
   /** Register a page's capabilities */
   register(capability: PageCapability): void
 }
