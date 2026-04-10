@@ -1,14 +1,31 @@
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
+import {
+  Command,
+  CommandGroup,
+  CommandList,
+  CommandSortable,
+  CommandSortableItem,
+} from '@auxx/ui/components/command'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Settings } from 'lucide-react'
 import { Tabs as TabsPrimitive } from 'radix-ui'
 import * as React from 'react'
 
@@ -120,6 +137,12 @@ export interface OverflowTabsListProps extends VariantProps<typeof tabsListVaria
   moreClassName?: string
   /** Variant toggle for the overflow "more" trigger */
   moreVariant?: VariantProps<typeof tabsTriggerVariants>['variant']
+  /** Whether tabs can be reordered via drag-and-drop dialog */
+  canReorder?: boolean
+  /** Called with the new tab value order when the user confirms reorder */
+  onReorder?: (orderedValues: string[]) => void
+  /** Called when the user resets tab order to default */
+  onResetOrder?: () => void
 }
 
 /**
@@ -136,7 +159,11 @@ function OverflowTabsList({
   moreClassName,
   moreVariant,
   variant,
+  canReorder,
+  onReorder,
+  onResetOrder,
 }: OverflowTabsListProps) {
+  const [reorderDialogOpen, setReorderDialogOpen] = React.useState(false)
   const containerRef = React.useRef<HTMLDivElement>(null)
   const tabRefs = React.useRef<Map<string, HTMLElement>>(new Map())
   const dropdownButtonRef = React.useRef<HTMLButtonElement>(null)
@@ -354,6 +381,15 @@ function OverflowTabsList({
           )
         })}
 
+        {canReorder && onReorder && overflowTabs.length === 0 && (
+          <button
+            type='button'
+            onClick={() => setReorderDialogOpen(true)}
+            className='ml-auto shrink-0 size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors'>
+            <Settings size={14} />
+          </button>
+        )}
+
         {overflowTabs.length > 0 && (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
@@ -391,15 +427,115 @@ function OverflowTabsList({
                   </DropdownMenuItem>
                 )
               })}
+              {canReorder && onReorder && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setReorderDialogOpen(true)}>
+                    <Settings size={16} />
+                    Reorder tabs
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
       </TabsList>
+
+      {canReorder && onReorder && (
+        <TabReorderDialog
+          open={reorderDialogOpen}
+          onOpenChange={setReorderDialogOpen}
+          tabs={tabs}
+          onReorder={onReorder}
+          onReset={onResetOrder}
+        />
+      )}
     </div>
   )
 }
 
 OverflowTabsList.displayName = 'OverflowTabsList'
+
+/**
+ * Dialog for reordering tabs via drag-and-drop
+ */
+function TabReorderDialog({
+  open,
+  onOpenChange,
+  tabs,
+  onReorder,
+  onReset,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  tabs: TabDefinition[]
+  onReorder: (orderedValues: string[]) => void
+  onReset?: () => void
+}) {
+  const [localOrder, setLocalOrder] = React.useState<string[]>([])
+
+  React.useEffect(() => {
+    if (open) {
+      setLocalOrder(tabs.map((t) => t.value))
+    }
+  }, [open, tabs])
+
+  const tabMap = React.useMemo(() => {
+    const map = new Map<string, TabDefinition>()
+    for (const t of tabs) map.set(t.value, t)
+    return map
+  }, [tabs])
+
+  const handleConfirm = () => {
+    onReorder(localOrder)
+    onOpenChange(false)
+  }
+
+  const handleReset = () => {
+    onReset?.()
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size='sm'>
+        <DialogHeader>
+          <DialogTitle>Reorder tabs</DialogTitle>
+        </DialogHeader>
+        <Command shouldFilter={false}>
+          <CommandList>
+            <CommandGroup>
+              <CommandSortable items={localOrder} onReorder={setLocalOrder}>
+                {localOrder.map((value) => {
+                  const tab = tabMap.get(value)
+                  if (!tab) return null
+                  const Icon = tab.icon
+                  return (
+                    <CommandSortableItem key={value} id={value}>
+                      <Icon className='opacity-60 me-2' size={16} />
+                      <span>{tab.label}</span>
+                    </CommandSortableItem>
+                  )
+                })}
+              </CommandSortable>
+            </CommandGroup>
+          </CommandList>
+        </Command>
+        <DialogFooter>
+          <Button variant='ghost' size='sm' onClick={handleReset} className='mr-auto'>
+            Reset to default
+          </Button>
+          <Button variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+          </Button>
+          <Button variant='outline' size='sm' onClick={handleConfirm}>
+            Save <KbdSubmit variant='outline' size='sm' />
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 export {
   Tabs,
