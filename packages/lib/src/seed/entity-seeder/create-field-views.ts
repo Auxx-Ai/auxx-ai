@@ -138,6 +138,7 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'part_vendor_parts',
       'part_subparts',
       'part_used_in_assemblies',
+      'part_stock_movements',
     ],
   },
 

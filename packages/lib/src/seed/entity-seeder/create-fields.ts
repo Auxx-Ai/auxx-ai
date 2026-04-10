@@ -8,6 +8,7 @@ import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-field
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
+import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
 import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
 import { TAG_FIELDS } from '../../resources/registry/resources/tag-fields'
 import { THREAD_FIELDS } from '../../resources/registry/resources/thread-fields'
@@ -32,6 +33,7 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   signature: SIGNATURE_FIELDS,
   vendor_part: VENDOR_PART_FIELDS,
   subpart: SUBPART_FIELDS,
+  stock_movement: STOCK_MOVEMENT_FIELDS,
 }
 
 /**

@@ -42,7 +42,7 @@ export function TicketMetricsCard({ recordId }: DrawerTabProps) {
   const isClosed = statusStr === 'CLOSED'
 
   return (
-    <div className='grid grid-cols-2 border-b'>
+    <div className='grid grid-cols-2'>
       {/* Status, Type & Priority */}
       <div className='border-r border-b'>
         <CardContent className='py-2'>

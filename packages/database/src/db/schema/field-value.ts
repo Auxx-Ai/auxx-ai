@@ -125,6 +125,14 @@ export const FieldValue = pgTable(
       table.entityId.asc().nullsLast()
     ),
 
+    // Composite: inventory QoH self-join (orgId + fieldId + relatedEntityId)
+    index('FieldValue_orgId_fieldId_relatedEntityId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.fieldId.asc().nullsLast(),
+      table.relatedEntityId.asc().nullsLast()
+    ),
+
     // Option and relationship lookups
     index('FieldValue_optionId_idx').using('btree', table.optionId.asc().nullsLast()),
     index('FieldValue_relatedEntityId_idx').using('btree', table.relatedEntityId.asc().nullsLast()),

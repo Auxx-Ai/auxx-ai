@@ -5,6 +5,7 @@ import {
   recalculatePartCost,
   recalculatePartCostOnEntityChange,
 } from './triggers/bom-cost-triggers'
+import { recalculatePartQoH, recalculateStockStatus } from './triggers/inventory-triggers'
 import { clearOtherPreferred } from './triggers/vendor-part-triggers'
 
 /**
@@ -23,4 +24,10 @@ export function registerAllTriggers(): void {
   // BOM cost entity triggers — fire when vendor_part or subpart entities are created/deleted
   registerEntityTriggers('vendor-parts', [recalculatePartCostOnEntityChange])
   registerEntityTriggers('subparts', [recalculatePartCostOnEntityChange])
+
+  // Inventory triggers — fire when stock movements are created/deleted
+  registerEntityTriggers('stock-movements', [recalculatePartQoH])
+
+  // Stock status trigger — fire when reorder point changes
+  registerFieldTriggers('part_reorder_point', [recalculateStockStatus])
 }

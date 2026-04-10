@@ -45,8 +45,6 @@ export const DRAWER_TAB_COMPONENTS: Record<
   // ─────────────────────────────────────────────────────────────────
   // PART TABS
   // ─────────────────────────────────────────────────────────────────
-  'part:inventory': () =>
-    import('./tabs/part-inventory-tab').then((m) => ({ default: m.PartInventoryTab })),
   'part:subparts': () =>
     import('./tabs/part-subparts-tab').then((m) => ({ default: m.PartSubpartsTab })),
   'part:vendors': () =>
@@ -73,6 +71,12 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/ticket-relationships-card').then((m) => ({
       default: m.TicketRelationshipsCard,
     })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // PART OVERVIEW CARDS
+  // ─────────────────────────────────────────────────────────────────
+  'part:inventory': () =>
+    import('./cards/part-inventory-card').then((m) => ({ default: m.PartInventoryCard })),
 }
 
 /**

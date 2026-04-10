@@ -520,6 +520,12 @@
       "import": "./dist/seed/index.mjs",
       "default": "./src/seed/index.ts"
     },
+    "./seed/entity-migrations": {
+      "types": "./src/seed/entity-migrations/index.ts",
+      "source": "./src/seed/entity-migrations/index.ts",
+      "import": "./dist/seed/entity-migrations/index.mjs",
+      "default": "./src/seed/entity-migrations/index.ts"
+    },
     "./settings": {
       "types": "./src/settings/index.ts",
       "source": "./src/settings/index.ts",

@@ -12,14 +12,14 @@ export default function StatsSection() {
           <div className='bg-muted/50 py-16 md:py-24'>
             <div className='mx-auto max-w-5xl px-6'>
               <h2 className='mx-auto max-w-2xl text-balance text-center text-3xl font-semibold lg:text-4xl'>
-                Delivering measurable Results
+                Delivering Real Results
               </h2>
               <p className='text-muted-foreground mx-auto mt-6 max-w-xl text-pretty text-center text-lg'>
-                Our platform has helped companies{' '}
+                An open-source platform that{' '}
                 <strong className='text-foreground font-semibold'>
-                  increase conversion rates and boost engagement
+                  automates repetitive support tickets
                 </strong>{' '}
-                across all digital channels.
+                so your team can focus on what matters.
               </p>
 
               <div className='relative mt-12'>
@@ -31,21 +31,21 @@ export default function StatsSection() {
                 <div className='**:text-center bg-background *:hover:bg-muted/25 @xl:grid-cols-3 grid grid-cols-2 divide-x border *:p-8'>
                   <div className='space-y-2'>
                     <div className='bg-linear-to-t from-foreground to-foreground/75 bg-clip-text text-3xl font-medium text-transparent md:text-5xl'>
-                      +85%
+                      100%
                     </div>
-                    <p className='text-muted-foreground text-sm'>Conversion Rate</p>
+                    <p className='text-muted-foreground text-sm'>Open Source</p>
                   </div>
                   <div className='@max-xl:border-0 space-y-2'>
                     <div className='bg-linear-to-t from-foreground to-foreground/75 bg-clip-text text-3xl font-medium text-transparent md:text-5xl'>
-                      12K
+                      20+
                     </div>
-                    <p className='text-muted-foreground text-sm'>Active Users</p>
+                    <p className='text-muted-foreground text-sm'>Integrations</p>
                   </div>
                   <div className='@max-xl:hidden space-y-2'>
                     <div className='bg-linear-to-t from-foreground to-foreground/75 bg-clip-text text-3xl font-medium text-transparent md:text-5xl'>
-                      40%
+                      24/7
                     </div>
-                    <p className='text-muted-foreground text-sm'>Revenue Growth</p>
+                    <p className='text-muted-foreground text-sm'>Automated Support</p>
                   </div>
                 </div>
               </div>

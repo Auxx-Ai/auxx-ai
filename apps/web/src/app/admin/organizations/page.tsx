@@ -24,9 +24,10 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
-import { ChevronLeft, ChevronRight, Search, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Database, Search, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -56,6 +57,43 @@ export default function OrganizationsPage() {
 
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
+
+  const runMigrations = api.admin.runEntityMigrations.useMutation({
+    onSuccess: (data) => {
+      const totalCreated = data.results.reduce(
+        (acc, r) =>
+          acc +
+          r.migrations.reduce((a, m) => a + m.result.entityDefsCreated + m.result.fieldsCreated, 0),
+        0
+      )
+      const errors = data.results.filter((r) => r.error).length
+      toast.success('Entity migrations complete', {
+        description:
+          errors > 0
+            ? `${totalCreated} records created, ${errors} org(s) had errors`
+            : totalCreated > 0
+              ? `${totalCreated} records created across ${data.results.length} org(s)`
+              : `All ${data.results.length} org(s) already up to date`,
+      })
+    },
+    onError: (error) => {
+      toastError({ title: 'Migration failed', description: error.message })
+    },
+  })
+
+  const handleRunMigrations = async () => {
+    const confirmed = await confirm({
+      title: 'Run entity migrations?',
+      description:
+        'This will create missing EntityDefinitions and CustomFields for all organizations. Each migration is idempotent and safe to re-run.',
+      confirmText: 'Run Migrations',
+      cancelText: 'Cancel',
+    })
+
+    if (confirmed) {
+      await runMigrations.mutateAsync()
+    }
+  }
 
   const deleteOrg = api.admin.deleteOrganization.useMutation({
     onSuccess: () => {
@@ -179,7 +217,18 @@ export default function OrganizationsPage() {
     <>
       <ConfirmDialog />
       <MainPage>
-        <MainPageHeader>
+        <MainPageHeader
+          action={
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={handleRunMigrations}
+              loading={runMigrations.isPending}
+              loadingText='Running...'>
+              <Database />
+              Run Entity Migrations
+            </Button>
+          }>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Organizations' href='/admin/organizations' last />

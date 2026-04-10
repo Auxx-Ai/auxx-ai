@@ -112,6 +112,13 @@ export interface FieldOptions {
   selectVariant?: 'transparent' | 'outline'
   /** For ENUM/SELECT type — show loading skeleton while options are being fetched */
   loading?: boolean
+  /** For NUMBER type */
+  number?: {
+    min?: number
+    max?: number
+    step?: number
+    allowDecimals?: boolean
+  }
 }
 
 /**
@@ -222,6 +229,16 @@ export function getSpecificPropsForType(
         multiline: stringOpts?.multiline,
         minLength: stringOpts?.minLength,
         maxLength: stringOpts?.maxLength,
+      }
+    }
+
+    case BaseType.NUMBER: {
+      const numberOpts = fieldOptions?.number
+      return {
+        min: numberOpts?.min,
+        max: numberOpts?.max,
+        step: numberOpts?.step,
+        allowDecimals: numberOpts?.allowDecimals,
       }
     }
 

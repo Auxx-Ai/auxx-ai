@@ -11,6 +11,7 @@ import { MESSAGE_FIELDS } from './resources/message-fields'
 import { PART_FIELDS } from './resources/part-fields'
 import { PARTICIPANT_FIELDS } from './resources/participant-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
+import { STOCK_MOVEMENT_FIELDS } from './resources/stock-movement-fields'
 import { SUBPART_FIELDS } from './resources/subpart-fields'
 import { THREAD_FIELDS } from './resources/thread-fields'
 import { TICKET_FIELDS } from './resources/ticket-fields'
@@ -98,6 +99,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   signature: SIGNATURE_FIELDS,
   vendor_part: VENDOR_PART_FIELDS,
   subpart: SUBPART_FIELDS,
+  stock_movement: STOCK_MOVEMENT_FIELDS,
 }
 
 /**

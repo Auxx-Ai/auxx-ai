@@ -101,6 +101,20 @@ export const SYSTEM_ATTRIBUTES = [
   'subpart_quantity',
   'subpart_notes',
 
+  // ─── Stock Movement fields ─────────────────────────────────────
+  'stock_movement_part',
+  'stock_movement_type',
+  'stock_movement_quantity',
+  'stock_movement_reason',
+  'stock_movement_reference',
+
+  // ─── Part inventory fields ────────────────────────────────────
+  'part_quantity_on_hand',
+  'part_stock_status',
+  'part_reorder_point',
+  'part_reorder_qty',
+  'part_stock_movements',
+
   // ─── Contact inverse fields ────────────────────────────────────
   'contact_vendor_parts',
 
