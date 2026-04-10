@@ -1,5 +1,3 @@
-import type { PartEntity as Part } from '@auxx/database/types'
-
 export type Subpart = {
   id: string
   partId: string
@@ -9,10 +7,7 @@ export type Subpart = {
   totalQuantity: number
   notes: string | null
 }
-// type SuppartItem = Pick<
-//   Part,
-//   'id' | 'title' | 'description' | 'sku' | 'hsCode' | 'category'
-// >
+
 export type PartCost = {
   partId: string
   cost: number
@@ -36,16 +31,13 @@ export type PartCost = {
   }>
   noPricing?: boolean
 }
-export type PartItem = Pick<
-  Part,
-  'id' | 'title' | 'description' | 'sku' | 'hsCode' | 'category'
-> & {
-  inventory?: {
-    quantity: number
-    location?: string
-    reorderPoint?: string
-    reorderQty?: number
-  }
+export type PartItem = {
+  id: string
+  title: string
+  description: string | null
+  sku: string
+  hsCode: string | null
+  category: string | null
 }
 export type RequieredQuantity = {
   partId: string

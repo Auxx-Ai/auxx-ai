@@ -6,6 +6,7 @@ import { getEntityDrawerConfig, parseRecordId } from '@auxx/lib/resources/client
 import type { RecordId } from '@auxx/types/resource'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
+import Loader from '@auxx/ui/components/loader'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/ui/components/tabs'
@@ -368,7 +369,11 @@ function LazyTabComponent({
   }, [componentLoader])
 
   if (!Component) {
-    return <div className='p-4'>Loading...</div>
+    return (
+      <div className='flex items-center justify-center p-4'>
+        <Loader size='sm' />
+      </div>
+    )
   }
 
   return <Component entityInstanceId={entityInstanceId} recordId={recordId} record={record} />
@@ -441,7 +446,11 @@ function LazyTabCard({
   }, [componentLoader])
 
   if (!Component) {
-    return <div className='p-2'>Loading...</div>
+    return (
+      <div className='flex items-center justify-center p-2'>
+        <Loader size='sm' />
+      </div>
+    )
   }
 
   return <Component entityInstanceId={entityInstanceId} recordId={recordId} record={record} />

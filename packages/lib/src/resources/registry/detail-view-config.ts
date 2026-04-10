@@ -68,6 +68,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     mainTabs: [
       { value: 'inventory', label: 'Inventory', icon: 'package' },
       { value: 'subparts', label: 'Subparts', icon: 'layers' },
+      { value: 'vendors', label: 'Vendors', icon: 'store' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],

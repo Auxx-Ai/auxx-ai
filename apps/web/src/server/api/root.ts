@@ -11,7 +11,6 @@ import { articleRouter } from './routers/article'
 import { attachmentRouter } from './routers/attachment'
 import { authRouter } from './routers/auth'
 import { billingRouter } from './routers/billing'
-import { bomRouter } from './routers/bom'
 import { channelRouter } from './routers/channel'
 import { channelReauthRouter } from './routers/channel-reauth'
 import { chatRouter } from './routers/chat'
@@ -34,7 +33,6 @@ import { fieldValueRouter } from './routers/fieldValue'
 import { fileRouter } from './routers/file'
 import { folderRouter } from './routers/folder'
 import { inboxRouter } from './routers/inbox'
-import { inventoryRouter } from './routers/inventory'
 import { knowledgeBaseRouter } from './routers/kb'
 import { kopilotRouter } from './routers/kopilot'
 import { labelRouter } from './routers/label'
@@ -46,7 +44,6 @@ import { messageRouter } from './routers/message'
 import { notificationRouter } from './routers/notification'
 import { orderRouter } from './routers/order'
 import { organizationRouter } from './routers/organization'
-import { partRouter } from './routers/part'
 import { participantRouter } from './routers/participant'
 import { productRouter } from './routers/product'
 import { promptTemplateRouter } from './routers/promptTemplate'
@@ -60,7 +57,6 @@ import { settingsRouter } from './routers/setting'
 import { shopifyRouter } from './routers/shopify'
 import { signatureRouter } from './routers/signature'
 import { snippetsRouter } from './routers/snippet'
-import { subpartRouter } from './routers/subpart'
 import { syncHistoryRouter } from './routers/sync-history'
 import { tableViewRouter } from './routers/tableView'
 import { tagRouter } from './routers/tag'
@@ -72,7 +68,6 @@ import { ticketSequenceRouter } from './routers/ticketSequence'
 import { timelineRouter } from './routers/timeline'
 import { usageRouter } from './routers/usage'
 import { userRouter } from './routers/user'
-import { vendorPartRouter } from './routers/vendorPart'
 import { webhookRouters } from './routers/webhook'
 import { widgetRouter } from './routers/widget'
 import { workflowRouter } from './routers/workflow'
@@ -94,7 +89,6 @@ export const appRouter = createTRPCRouter({
   attachment: attachmentRouter,
   auth: authRouter,
   billing: billingRouter,
-  bom: bomRouter,
   chat: chatRouter,
   comment: commentRouter,
   configVariable: configVariableRouter,
@@ -118,7 +112,6 @@ export const appRouter = createTRPCRouter({
   inbox: inboxRouter,
   channel: channelRouter,
   channelReauth: channelReauthRouter,
-  inventory: inventoryRouter,
   kb: knowledgeBaseRouter,
   kopilot: kopilotRouter,
   label: labelRouter,
@@ -129,7 +122,6 @@ export const appRouter = createTRPCRouter({
   notification: notificationRouter,
   order: orderRouter,
   organization: organizationRouter,
-  part: partRouter,
   participant: participantRouter,
   product: productRouter,
   promptTemplate: promptTemplateRouter,
@@ -142,7 +134,6 @@ export const appRouter = createTRPCRouter({
   shopify: shopifyRouter,
   signature: signatureRouter,
   snippet: snippetsRouter,
-  subpart: subpartRouter,
   syncHistory: syncHistoryRouter,
   tableView: tableViewRouter,
   tag: tagRouter,
@@ -154,7 +145,6 @@ export const appRouter = createTRPCRouter({
   timeline: timelineRouter,
   usage: usageRouter,
   user: userRouter,
-  vendorPart: vendorPartRouter,
   widget: widgetRouter,
   workflow: workflowRouter,
   webhook: webhookRouters,

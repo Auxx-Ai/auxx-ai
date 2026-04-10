@@ -198,7 +198,6 @@ export type { FileVersionEntity } from './db/schema/file-version'
 export type { FolderEntity } from './db/schema/folder'
 export type { FolderFileEntity } from './db/schema/folder-file'
 export type { IntegrationEntity } from './db/schema/integration'
-export type { InventoryEntity } from './db/schema/inventory'
 export type { LoadBalancingConfigEntity } from './db/schema/load-balancing-config'
 export type {
   CreateMailViewInput,
@@ -216,7 +215,6 @@ export type {
   OrganizationMemberEntity,
   OrganizationMemberInfo,
 } from './db/schema/organization-member'
-export type { PartEntity } from './db/schema/part'
 export type { ParticipantEntity } from './db/schema/participant'
 export type { ProviderConfigurationEntity } from './db/schema/provider-configuration'
 export type { ProviderPreferenceEntity } from './db/schema/provider-preference'
@@ -225,12 +223,10 @@ export type {
   CreateStorageLocationInput,
   StorageLocationEntity,
 } from './db/schema/storage-location'
-export type { SubpartEntity } from './db/schema/subpart'
 export type { TableViewEntity } from './db/schema/table-view'
 export type { ThreadEntity } from './db/schema/thread'
 export type { TimelineEventEntity } from './db/schema/timeline-event'
 export type { UserEntity } from './db/schema/user'
-export type { VendorPartEntity } from './db/schema/vendor-part'
 export type { WebhookEntity } from './db/schema/webhook'
 export type { WebhookEventEntity } from './db/schema/webhook-event'
 export type { WorkflowEntity } from './db/schema/workflow'

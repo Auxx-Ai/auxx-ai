@@ -224,7 +224,7 @@ export const ModelTypeMeta: Record<
     icon: 'package',
     color: 'orange',
     apiSlug: 'parts',
-    dbTable: 'Part',
+    dbTable: 'EntityInstance',
   },
   vendor_part: {
     label: 'Vendor Part',
@@ -232,7 +232,7 @@ export const ModelTypeMeta: Record<
     icon: 'package',
     color: 'orange',
     apiSlug: 'vendor-parts',
-    dbTable: 'VendorPart',
+    dbTable: 'EntityInstance',
   },
   subpart: {
     label: 'Subpart',
@@ -240,7 +240,7 @@ export const ModelTypeMeta: Record<
     icon: 'layers',
     color: 'orange',
     apiSlug: 'subparts',
-    dbTable: 'Subpart',
+    dbTable: 'EntityInstance',
   },
   stock_movement: {
     label: 'Stock Movement',
@@ -248,7 +248,7 @@ export const ModelTypeMeta: Record<
     icon: 'arrow-left-right',
     color: 'emerald',
     apiSlug: 'stock-movements',
-    dbTable: 'StockMovement',
+    dbTable: 'EntityInstance',
   },
 }
 
