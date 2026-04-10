@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.117](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.116...auxx-v0.1.117) (2026-04-10)
+
+
+### Features
+
+* remove part inventory tab component from detail view tab registry ([799625d](https://github.com/Auxx-Ai/auxx-ai/commit/799625d9e5ec76065c8cb769a84932d36ccbb2fc))
+
 ## [0.1.116](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.115...auxx-v0.1.116) (2026-04-10)
 
 
