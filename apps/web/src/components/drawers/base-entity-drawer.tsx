@@ -8,7 +8,7 @@ import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import { OverflowTabsList, Tabs, TabsContent } from '@auxx/ui/components/tabs'
+import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import {
   Clock,
   HouseIcon,
@@ -28,6 +28,11 @@ import DrawerComments from '~/components/global/comments/drawer-comments'
 import { useRecord, useResource } from '~/components/resources'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { TimelineTab } from '~/components/timeline'
+import { safeLocalStorage } from '~/lib/safe-localstorage'
+import {
+  useDehydratedOrganizationId,
+  useDehydratedUser,
+} from '~/providers/dehydrated-state-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { getTabCardComponent, getTabComponent } from './drawer-tab-registry'
 
@@ -65,6 +70,28 @@ interface BaseEntityDrawerProps {
 }
 
 /**
+ * Apply a saved tab order to a tabs array.
+ * Tabs in savedOrder come first, in that order.
+ * Tabs NOT in savedOrder (new tabs added after user last saved) are appended at the end.
+ * Saved values that no longer exist are silently dropped.
+ */
+function applyTabOrder(tabs: TabDefinition[], savedOrder: string[]): TabDefinition[] {
+  const tabMap = new Map(tabs.map((t) => [t.value, t]))
+  const ordered: TabDefinition[] = []
+  for (const value of savedOrder) {
+    const tab = tabMap.get(value)
+    if (tab) {
+      ordered.push(tab)
+      tabMap.delete(value)
+    }
+  }
+  for (const tab of tabs) {
+    if (tabMap.has(tab.value)) ordered.push(tab)
+  }
+  return ordered
+}
+
+/**
  * Base entity drawer that uses registry-based configuration
  * Supports both system entities (contact, part) and custom entities
  */
@@ -87,6 +114,8 @@ export function BaseEntityDrawer({
 }: BaseEntityDrawerProps) {
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
   const { hasAccess } = useFeatureFlags()
+  const organizationId = useDehydratedOrganizationId()
+  const user = useDehydratedUser()
 
   // Parse recordId
   const { entityDefinitionId, entityInstanceId } = recordId
@@ -139,6 +168,56 @@ export function BaseEntityDrawer({
     return [...baseTabs, ...additionalTabs]
   }, [drawerConfig, hasAccess])
 
+  // Tab order persistence
+  const tabOrderStorageKey = React.useMemo(() => {
+    if (!organizationId || !user?.id || !entityDefinitionId) return null
+    return `tabOrder:${organizationId}:${user.id}:${entityDefinitionId}`
+  }, [organizationId, user?.id, entityDefinitionId])
+
+  const [savedTabOrder, setSavedTabOrder] = React.useState<string[] | null>(null)
+
+  React.useEffect(() => {
+    if (!tabOrderStorageKey) {
+      setSavedTabOrder(null)
+      return
+    }
+    const raw = safeLocalStorage.get(tabOrderStorageKey)
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          setSavedTabOrder(parsed)
+          return
+        }
+      } catch {
+        // Invalid JSON, ignore
+      }
+    }
+    setSavedTabOrder(null)
+  }, [tabOrderStorageKey])
+
+  const orderedTabs = React.useMemo(() => {
+    if (!savedTabOrder || savedTabOrder.length === 0) return tabs
+    return applyTabOrder(tabs, savedTabOrder)
+  }, [tabs, savedTabOrder])
+
+  const handleTabReorder = React.useCallback(
+    (newOrder: string[]) => {
+      setSavedTabOrder(newOrder)
+      if (tabOrderStorageKey) {
+        safeLocalStorage.set(tabOrderStorageKey, JSON.stringify(newOrder))
+      }
+    },
+    [tabOrderStorageKey]
+  )
+
+  const handleResetTabOrder = React.useCallback(() => {
+    setSavedTabOrder(null)
+    if (tabOrderStorageKey) {
+      localStorage.removeItem(tabOrderStorageKey)
+    }
+  }, [tabOrderStorageKey])
+
   /** Handle close */
   const handleClose = React.useCallback(() => {
     if (onClose) {
@@ -172,10 +251,13 @@ export function BaseEntityDrawer({
           <div className='w-full h-full flex gap-0'>
             <div className='w-full h-full flex flex-col overflow-auto justify-start'>
               <OverflowTabsList
-                tabs={tabs}
+                tabs={orderedTabs}
                 value={activeTab}
                 onValueChange={setActiveTab}
                 variant='outline'
+                canReorder={!!tabOrderStorageKey}
+                onReorder={handleTabReorder}
+                onResetOrder={handleResetTabOrder}
               />
 
               {/* Card content (person card, entity card, etc.) */}
