@@ -25,6 +25,10 @@ const logger = createScopedLogger('field-triggers:inventory')
 export const recalculatePartQoH: EntityTriggerHandler = async (event) => {
   const { organizationId, entityInstanceId, action, values } = event
 
+  // BOM explosion parent — the explodeBomMovement trigger handles all QoH
+  // recalculations for child parts. Nothing to do here.
+  if (values.stock_movement_adjust_subparts === true) return
+
   // Resolve the affected part ID
   let partInstanceId = extractRelatedEntityId(values, 'stock_movement_part')
 
@@ -135,7 +139,7 @@ export const recalculateStockStatus: FieldTriggerHandler = async (event) => {
     publishFieldValueUpdates(realtimeService, organizationId, [
       {
         key: buildFieldValueKey(partRecordId, statusField.id as FieldId),
-        value: { type: 'string' as const, value: status },
+        value: { type: 'option', optionId: status },
       },
     ]).catch(() => {})
   }
@@ -154,6 +158,7 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
     .bySystemAttributes([
       'stock_movement_quantity',
       'stock_movement_part',
+      'stock_movement_adjust_subparts',
       'part_quantity_on_hand',
       'part_reorder_point',
       'part_stock_status',
@@ -161,6 +166,7 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
 
   const qtyField = fields.stock_movement_quantity
   const partRelField = fields.stock_movement_part
+  const flagField = fields.stock_movement_adjust_subparts
   const qohField = fields.part_quantity_on_hand
   const reorderPointField = fields.part_reorder_point
   const statusField = fields.part_stock_status
@@ -175,6 +181,7 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
   }
 
   // Single self-join: SUM movement quantities where the movement's part = partInstanceId
+  // Excludes movements where adjust_subparts=true (parent BOM explosion movements)
   const [sumRow] = await database
     .select({
       total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
@@ -187,10 +194,17 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
         AND fv_part."relatedEntityId" = ${partInstanceId}
         AND fv_part."organizationId" = ${organizationId}`
     )
+    .leftJoin(
+      sql`"FieldValue" fv_flag`,
+      sql`${schema.FieldValue.entityId} = fv_flag."entityId"
+        AND fv_flag."fieldId" = ${flagField?.id ?? ''}
+        AND fv_flag."organizationId" = ${organizationId}`
+    )
     .where(
       and(
         eq(schema.FieldValue.fieldId, qtyField.id),
-        eq(schema.FieldValue.organizationId, organizationId)
+        eq(schema.FieldValue.organizationId, organizationId),
+        sql`(fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
       )
     )
 
@@ -241,7 +255,7 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
   if (statusField) {
     entries.push({
       key: buildFieldValueKey(recordId, statusField.id as FieldId),
-      value: { type: 'string' as const, value: status },
+      value: { type: 'option', optionId: status },
     })
   }
 

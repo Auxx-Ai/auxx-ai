@@ -5,6 +5,7 @@ import {
   recalculatePartCost,
   recalculatePartCostOnEntityChange,
 } from './triggers/bom-cost-triggers'
+import { explodeBomMovement } from './triggers/bom-movement-triggers'
 import { recalculatePartQoH, recalculateStockStatus } from './triggers/inventory-triggers'
 import { clearOtherPreferred } from './triggers/vendor-part-triggers'
 
@@ -26,7 +27,9 @@ export function registerAllTriggers(): void {
   registerEntityTriggers('subparts', [recalculatePartCostOnEntityChange])
 
   // Inventory triggers — fire when stock movements are created/deleted
-  registerEntityTriggers('stock-movements', [recalculatePartQoH])
+  // explodeBomMovement must run BEFORE recalculatePartQoH so child movements
+  // exist before the parent's QoH is recalculated
+  registerEntityTriggers('stock-movements', [explodeBomMovement, recalculatePartQoH])
 
   // Stock status trigger — fire when reorder point changes
   registerFieldTriggers('part_reorder_point', [recalculateStockStatus])

@@ -62,6 +62,7 @@ export {
 // Mutations (for direct usage)
 export {
   addValue,
+  buildFieldValueRow,
   deleteValue,
   extractRelatedIdsFromRaw,
   removeValue,

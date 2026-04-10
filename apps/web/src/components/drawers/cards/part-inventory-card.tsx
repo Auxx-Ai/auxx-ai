@@ -98,10 +98,12 @@ function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: 
 function MovementsList({
   partId,
   currentQoH,
+  hasSubparts,
   onAdjustSuccess,
 }: {
   partId: string
   currentQoH: number
+  hasSubparts: boolean
   onAdjustSuccess: () => void
 }) {
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
@@ -126,7 +128,7 @@ function MovementsList({
 
   const sorting = useMemo(() => [{ id: 'createdAt', desc: true }], [])
 
-  const { records, isLoading, refresh } = useRecordList({
+  const { records, isLoading, isLoadingRecords, refresh } = useRecordList({
     entityDefinitionId: stockMovementDefId ?? '',
     filters,
     sorting,
@@ -146,6 +148,7 @@ function MovementsList({
         <StockAdjustmentPopover
           partId={partId}
           currentQoH={currentQoH}
+          hasSubparts={hasSubparts}
           onSuccess={handleAdjustSuccess}>
           <Button variant='outline' size='xs'>
             Adjust
@@ -153,7 +156,7 @@ function MovementsList({
         </StockAdjustmentPopover>
       </div>
 
-      {isLoading ? (
+      {isLoading || isLoadingRecords ? (
         <div className='space-y-2'>
           <Skeleton className='h-6 w-full' />
           <Skeleton className='h-6 w-full' />
@@ -162,7 +165,7 @@ function MovementsList({
       ) : records.length === 0 ? (
         <p className='text-xs text-muted-foreground text-center py-3'>No movements yet</p>
       ) : (
-        <ScrollArea className='max-h-[250px]'>
+        <ScrollArea className='max-h-[250px]' allowScrollChaining>
           <div className='divide-y divide-border/50'>
             {records.map((record) => (
               <MovementRow
@@ -187,6 +190,35 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
   const partId = entityInstanceId
   const { values, isLoading } = useSystemValues(recordId, [...PART_ATTRIBUTES], { autoFetch: true })
   const [isOpen, setIsOpen] = useState(false)
+  const subpartDefId = useResourceProperty('subpart', 'id')
+
+  // Check if part has subparts (for "Adjust subparts" toggle)
+  const subpartFilters: ConditionGroup[] = useMemo(
+    () => [
+      {
+        id: 'parent-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'parent-match',
+            fieldId: 'subpart:parentPart' as ResourceFieldId,
+            operator: 'is' as const,
+            value: partId,
+          },
+        ],
+      },
+    ],
+    [partId]
+  )
+
+  const { records: subpartRecords } = useRecordList({
+    entityDefinitionId: subpartDefId ?? '',
+    filters: subpartFilters,
+    limit: 1,
+    enabled: !!partId && !!subpartDefId,
+  })
+
+  const hasSubparts = subpartRecords.length > 0
 
   const qoh = (values.part_quantity_on_hand as number) ?? 0
   const stockStatus =
@@ -265,7 +297,12 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
               }}
               exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-              <MovementsList partId={partId} currentQoH={qoh} onAdjustSuccess={() => {}} />
+              <MovementsList
+                partId={partId}
+                currentQoH={qoh}
+                hasSubparts={hasSubparts}
+                onAdjustSuccess={() => {}}
+              />
             </motion.div>
           )}
         </AnimatePresence>

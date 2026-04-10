@@ -271,10 +271,17 @@ export async function setValueWithType(
     return []
   }
 
-  // Generate sort keys for each value - pass recordId to buildInsertRow
+  // Generate sort keys for each value
   const insertRows = values.map((v, index) => {
     const sortKey = generateKeyBetween(index === 0 ? null : `a${index - 1}`, null)
-    return buildInsertRow(ctx, recordId, fieldId, fieldType, v, sortKey)
+    return buildFieldValueRow({
+      organizationId: ctx.organizationId,
+      entityId: entityInstanceId,
+      entityDefinitionId,
+      fieldId,
+      value: v,
+      sortKey,
+    })
   })
 
   // Insert all values
@@ -353,7 +360,15 @@ export async function addValue(
     }
   }
 
-  const insertRow = buildInsertRow(ctx, recordId, fieldId, fieldType, value, sortKey)
+  const { entityDefinitionId: addDefId, entityInstanceId: addInstId } = parseRecordId(recordId)
+  const insertRow = buildFieldValueRow({
+    organizationId: ctx.organizationId,
+    entityId: addInstId,
+    entityDefinitionId: addDefId,
+    fieldId,
+    value,
+    sortKey,
+  })
 
   const [inserted] = await ctx.db.insert(schema.FieldValue).values(insertRow).returning()
 
@@ -1381,22 +1396,22 @@ function buildUpdateData(value: TypedFieldValueInput): {
 
 /**
  * Build a FieldValue insert row from typed input (for direct DB insert).
+ * Exported for use in batch inserts (e.g., BOM explosion trigger).
  */
-function buildInsertRow(
-  ctx: FieldValueContext,
-  recordId: RecordId,
-  fieldId: string,
-  _fieldType: FieldType,
-  value: TypedFieldValueInput,
-  sortKey: string
-) {
-  // Split RecordId at DB boundary
-  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+export function buildFieldValueRow(params: {
+  organizationId: string
+  entityId: string
+  entityDefinitionId: string
+  fieldId: string
+  value: TypedFieldValueInput
+  sortKey?: string
+}): typeof schema.FieldValue.$inferInsert {
+  const { organizationId, entityId, entityDefinitionId, fieldId, value, sortKey = 'a' } = params
 
   const base = {
-    organizationId: ctx.organizationId,
-    entityId: entityInstanceId,
-    entityDefinitionId: entityDefinitionId,
+    organizationId,
+    entityId,
+    entityDefinitionId,
     fieldId,
     sortKey,
     valueText: null as string | null,
