@@ -799,6 +799,13 @@
       "when": 1775781146860,
       "tag": "0113_add_field_value_composite_index",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1775839202884,
+      "tag": "0114_drop_legacy_part_tables",
+      "breakpoints": true
     }
   ]
 }

@@ -1,23 +1,15 @@
 // packages/lib/src/custom-fields/built-in-fields/index.ts
 
 import type { FieldType } from '@auxx/database/types'
-import { type ModelType, ModelTypes } from '../types'
-import { contactBuiltInFields } from './contact'
-import { conversationBuiltInFields } from './conversation'
-import { partBuiltInFields } from './part'
-import { ticketBuiltInFields } from './ticket'
+import type { ModelType } from '../types'
 import type { BuiltInFieldHandler, BuiltInFieldRegistry } from './types'
 
 /**
- * Master registry of all built-in fields across all models
- * Note: 'thread' is the new name for 'conversation', 'entity' uses EntityDefinition
+ * Master registry of all built-in fields across all models.
+ * Empty — all models now use EntityInstance + FieldValue exclusively.
+ * Kept for backwards compat with field-value-mutations callers.
  */
-export const BUILT_IN_FIELDS: Partial<Record<ModelType, BuiltInFieldRegistry>> = {
-  [ModelTypes.CONTACT]: contactBuiltInFields,
-  [ModelTypes.TICKET]: ticketBuiltInFields,
-  [ModelTypes.THREAD]: conversationBuiltInFields,
-  [ModelTypes.PART]: partBuiltInFields,
-}
+export const BUILT_IN_FIELDS: Partial<Record<ModelType, BuiltInFieldRegistry>> = {}
 
 /**
  * Check if a field is a built-in field

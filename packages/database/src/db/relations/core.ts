@@ -44,7 +44,6 @@ import {
   InboxIntegration,
   Integration,
   IntegrationTagLabel,
-  Inventory,
   Invoice,
   KnowledgeBase,
   Label,
@@ -61,7 +60,6 @@ import {
   OrganizationInvitation,
   OrganizationMember,
   OrganizationSetting,
-  Part,
   Participant,
   Passkey,
   PasswordResetToken,
@@ -79,7 +77,6 @@ import {
   SignatureIntegrationShare,
   Snippet,
   SnippetFolder,
-  Subpart,
   Subscription,
   SyncJob,
   SystemModelDefault,
@@ -97,7 +94,6 @@ import {
   User,
   UserInboxUnreadCount,
   UserSetting,
-  VendorPart,
   VerificationToken,
   Webhook,
   WebhookEvent,
@@ -141,7 +137,6 @@ export const userRelations = relations(User, ({ one, many }) => ({
   promptHistory: many(PromptHistory),
   ApiKey: many(ApiKey),
   articleRevisions: many(ArticleRevision),
-  parts: many(Part),
   avatarAsset: one(MediaAsset, {
     fields: [User.avatarAssetId],
     references: [MediaAsset.id],
@@ -237,10 +232,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   apiKeys: many(ApiKey),
   articleTags: many(ArticleTag),
   articleRevisions: many(ArticleRevision),
-  parts: many(Part),
-  subparts: many(Subpart),
-  vendorParts: many(VendorPart),
-  inventories: many(Inventory),
   ticketSequences: many(TicketSequence),
   knowledgeBases: many(KnowledgeBase),
   mailDomains: many(MailDomain),
@@ -388,68 +379,6 @@ export const apiKeyRelations = relations(ApiKey, ({ one }) => ({
   user: one(User, {
     fields: [ApiKey.userId],
     references: [User.id],
-  }),
-}))
-
-export const partRelations = relations(Part, ({ one, many }) => ({
-  createdBy: one(User, {
-    fields: [Part.createdById],
-    references: [User.id],
-  }),
-  organization: one(Organization, {
-    fields: [Part.organizationId],
-    references: [Organization.id],
-  }),
-  parentParts: many(Subpart, {
-    relationName: 'subpart_childPartId_part_id',
-  }),
-  subparts: many(Subpart, {
-    relationName: 'subpart_parentPartId_part_id',
-  }),
-  vendorParts: many(VendorPart),
-  inventory: one(Inventory),
-}))
-
-export const subpartRelations = relations(Subpart, ({ one }) => ({
-  childPart: one(Part, {
-    fields: [Subpart.childPartId],
-    references: [Part.id],
-    relationName: 'subpart_childPartId_part_id',
-  }),
-  organization: one(Organization, {
-    fields: [Subpart.organizationId],
-    references: [Organization.id],
-  }),
-  parentPart: one(Part, {
-    fields: [Subpart.parentPartId],
-    references: [Part.id],
-    relationName: 'subpart_parentPartId_part_id',
-  }),
-}))
-
-export const vendorPartRelations = relations(VendorPart, ({ one }) => ({
-  organization: one(Organization, {
-    fields: [VendorPart.organizationId],
-    references: [Organization.id],
-  }),
-  part: one(Part, {
-    fields: [VendorPart.partId],
-    references: [Part.id],
-  }),
-  contact: one(EntityInstance, {
-    fields: [VendorPart.entityInstanceId],
-    references: [EntityInstance.id],
-  }),
-}))
-
-export const inventoryRelations = relations(Inventory, ({ one }) => ({
-  organization: one(Organization, {
-    fields: [Inventory.organizationId],
-    references: [Organization.id],
-  }),
-  part: one(Part, {
-    fields: [Inventory.partId],
-    references: [Part.id],
   }),
 }))
 

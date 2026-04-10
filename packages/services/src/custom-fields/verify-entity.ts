@@ -28,12 +28,13 @@ export async function verifyEntityExistsQuery(input: VerifyEntityInput) {
   let entityResult
 
   switch (modelType) {
-    // Contact and Ticket tables have been dropped - they now use EntityInstance.
+    // Contact, Ticket, and Part tables have been dropped - they now use EntityInstance.
     // Fall through to ENTITY case for these types.
     case ModelTypes.CONTACT:
     case ModelTypes.TICKET:
+    case ModelTypes.PART:
     case ModelTypes.ENTITY:
-      // All entity types (contact, ticket, custom) are verified via EntityInstance table
+      // All entity types (contact, ticket, part, custom) are verified via EntityInstance table
       entityResult = await fromDatabase(
         database
           .select({ id: schema.EntityInstance.id })
@@ -59,17 +60,6 @@ export async function verifyEntityExistsQuery(input: VerifyEntityInput) {
           )
           .limit(1),
         'verify-thread'
-      )
-      break
-
-    case ModelTypes.PART:
-      entityResult = await fromDatabase(
-        database
-          .select({ id: schema.Part.id })
-          .from(schema.Part)
-          .where(and(eq(schema.Part.id, entityId), eq(schema.Part.organizationId, organizationId)))
-          .limit(1),
-        'verify-part'
       )
       break
 

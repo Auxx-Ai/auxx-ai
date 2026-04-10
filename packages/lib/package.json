@@ -76,12 +76,6 @@
       "import": "./dist/apps/index.mjs",
       "default": "./src/apps/index.ts"
     },
-    "./bom": {
-      "types": "./src/bom/index.ts",
-      "source": "./src/bom/index.ts",
-      "import": "./dist/bom/index.mjs",
-      "default": "./src/bom/index.ts"
-    },
     "./cache": {
       "types": "./src/cache/index.ts",
       "source": "./src/cache/index.ts",
@@ -423,12 +417,6 @@
       "source": "./src/participants/index.ts",
       "import": "./dist/participants/index.mjs",
       "default": "./src/participants/index.ts"
-    },
-    "./parts": {
-      "types": "./src/parts/index.ts",
-      "source": "./src/parts/index.ts",
-      "import": "./dist/parts/index.mjs",
-      "default": "./src/parts/index.ts"
     },
     "./permissions": {
       "types": "./src/permissions/index.ts",
