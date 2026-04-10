@@ -69,7 +69,7 @@ export function CustomFieldRow({
       </TableCell>
       <TableCell className='py-1'>
         <div className='text-sm'>
-          {field.name}
+          {field.name ?? field.label}
           {field.required && <span className='ml-2 text-orange-500 text-xs'>Required</span>}
           {field.isUnique && <span className='ml-2 text-purple-500 text-xs'>Unique</span>}
         </div>
@@ -114,7 +114,7 @@ export function CustomFieldRow({
                 <Copy />
                 Copy Id
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => copy(field.name)}>
+              <DropdownMenuItem onClick={() => copy(field.name ?? field.label)}>
                 <Copy />
                 Copy Name
               </DropdownMenuItem>
@@ -127,7 +127,7 @@ export function CustomFieldRow({
                   <DropdownMenuItem
                     variant='destructive'
                     disabled={isPending}
-                    onClick={() => onDelete(field.id, field.name)}>
+                    onClick={() => onDelete(field.id, field.name ?? field.label)}>
                     <Trash2 />
                     Delete
                   </DropdownMenuItem>

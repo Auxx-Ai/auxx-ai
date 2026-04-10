@@ -56,28 +56,30 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
 
   logger.info('Loading org pricing data', { orgId, vendorPartDefId, subpartDefId })
 
-  // Resolve custom field IDs by systemAttribute
-  const [
-    vpPartField,
-    vpPriceField,
-    vpPreferredField,
-    vpShippingField,
-    vpTariffField,
-    vpOtherField,
-    spParentField,
-    spChildField,
-    spQtyField,
-  ] = await Promise.all([
-    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_part'),
-    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_unit_price'),
-    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_is_preferred'),
-    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_shipping_cost'),
-    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_tariff_rate'),
-    cache.from(orgId, 'customFields').bySystemAttribute('vendor_part_other_cost'),
-    cache.from(orgId, 'customFields').bySystemAttribute('subpart_parent_part'),
-    cache.from(orgId, 'customFields').bySystemAttribute('subpart_child_part'),
-    cache.from(orgId, 'customFields').bySystemAttribute('subpart_quantity'),
-  ])
+  // Resolve custom field IDs by systemAttribute (single pass)
+  const cfFields = await cache
+    .from(orgId, 'customFields')
+    .bySystemAttributes([
+      'vendor_part_part',
+      'vendor_part_unit_price',
+      'vendor_part_is_preferred',
+      'vendor_part_shipping_cost',
+      'vendor_part_tariff_rate',
+      'vendor_part_other_cost',
+      'subpart_parent_part',
+      'subpart_child_part',
+      'subpart_quantity',
+    ] as const)
+
+  const vpPartField = cfFields.vendor_part_part
+  const vpPriceField = cfFields.vendor_part_unit_price
+  const vpPreferredField = cfFields.vendor_part_is_preferred
+  const vpShippingField = cfFields.vendor_part_shipping_cost
+  const vpTariffField = cfFields.vendor_part_tariff_rate
+  const vpOtherField = cfFields.vendor_part_other_cost
+  const spParentField = cfFields.subpart_parent_part
+  const spChildField = cfFields.subpart_child_part
+  const spQtyField = cfFields.subpart_quantity
 
   logger.info('Resolved custom field IDs', {
     vpPartField: vpPartField?.id ?? null,

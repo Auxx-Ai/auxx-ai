@@ -108,7 +108,7 @@ export function EntityAppearanceEditor({
                       )
                       .map((field) => (
                         <SelectItem key={field.id} value={field.id}>
-                          {field.name}
+                          {field.name ?? field.label}
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -120,7 +120,7 @@ export function EntityAppearanceEditor({
               description='Optional subtitle below the name'>
               {disabled ? (
                 <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
-                  {secondaryField?.name ?? 'None'}
+                  {secondaryField?.name ?? secondaryField?.label ?? 'None'}
                 </span>
               ) : (
                 <Select
@@ -135,7 +135,7 @@ export function EntityAppearanceEditor({
                     <SelectItem value='none'>None</SelectItem>
                     {customFields.map((field) => (
                       <SelectItem key={field.id} value={field.id}>
-                        {field.name}
+                        {field.name ?? field.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -145,7 +145,7 @@ export function EntityAppearanceEditor({
             <VarEditorFieldRow title='Avatar Field' description='Image field for avatar'>
               {disabled ? (
                 <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
-                  {avatarField?.name ?? 'None'}
+                  {avatarField?.name ?? avatarField?.label ?? 'None'}
                 </span>
               ) : (
                 <Select
@@ -160,7 +160,7 @@ export function EntityAppearanceEditor({
                       .filter((f) => f.fieldType === 'URL' || f.fieldType === 'FILE')
                       .map((field) => (
                         <SelectItem key={field.id} value={field.id}>
-                          {field.name}
+                          {field.name ?? field.label}
                         </SelectItem>
                       ))}
                   </SelectContent>

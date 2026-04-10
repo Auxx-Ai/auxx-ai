@@ -93,6 +93,15 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'orange',
     isVisible: false, // Internal entity, managed from part drawer's subparts tab
   },
+  {
+    entityType: 'stock_movement',
+    apiSlug: 'stock-movements',
+    singular: 'Stock Movement',
+    plural: 'Stock Movements',
+    icon: 'arrow-left-right',
+    color: 'emerald',
+    isVisible: false, // Internal entity, managed from part drawer
+  },
 ]
 
 /**
@@ -134,6 +143,10 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   },
   subpart: {
     primaryDisplayField: 'childPart',
+    secondaryDisplayField: 'quantity',
+  },
+  stock_movement: {
+    primaryDisplayField: 'type',
     secondaryDisplayField: 'quantity',
   },
 }

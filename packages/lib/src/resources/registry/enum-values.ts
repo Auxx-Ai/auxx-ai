@@ -244,6 +244,50 @@ export const DatasetStatusEnum = {
  * Source: packages/database/src/db/schema/_shared.ts:469
  * Database enum: vectorDbType
  */
+/**
+ * Stock Movement Type Enum
+ * Entity-system field options for stock_movement_type
+ */
+export const StockMovementType = {
+  RECEIVE: 'receive',
+  SHIP: 'ship',
+  ADJUST: 'adjust',
+  BUILD_CONSUME: 'build_consume',
+  BUILD_PRODUCE: 'build_produce',
+  SCRAP: 'scrap',
+  RETURN_IN: 'return_in',
+  RETURN_OUT: 'return_out',
+  INITIAL: 'initial',
+
+  values: [
+    { value: 'receive', label: 'Receive', color: 'green' },
+    { value: 'ship', label: 'Ship', color: 'blue' },
+    { value: 'adjust', label: 'Adjustment', color: 'amber' },
+    { value: 'build_consume', label: 'Build (consume)', color: 'orange' },
+    { value: 'build_produce', label: 'Build (produce)', color: 'teal' },
+    { value: 'scrap', label: 'Scrap', color: 'red' },
+    { value: 'return_in', label: 'Return (inbound)', color: 'purple' },
+    { value: 'return_out', label: 'Return (outbound)', color: 'pink' },
+    { value: 'initial', label: 'Initial Stock', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Stock Status Enum
+ * Entity-system field options for part_stock_status
+ */
+export const StockStatus = {
+  OUT_OF_STOCK: 'out_of_stock',
+  LOW_STOCK: 'low_stock',
+  IN_STOCK: 'in_stock',
+
+  values: [
+    { value: 'out_of_stock', label: 'Out of Stock', color: 'red' },
+    { value: 'low_stock', label: 'Low Stock', color: 'yellow' },
+    { value: 'in_stock', label: 'In Stock', color: 'green' },
+  ] satisfies FieldOptionItem[],
+} as const
+
 export const VectorDbTypeEnum = {
   POSTGRESQL: 'POSTGRESQL',
   CHROMA: 'CHROMA',

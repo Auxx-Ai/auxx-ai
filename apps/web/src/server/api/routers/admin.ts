@@ -777,15 +777,24 @@ export const adminRouter = createTRPCRouter({
           .select({
             customFeatureLimits: schema.PlanSubscription.customFeatureLimits,
             planFeatureLimits: schema.Plan.featureLimits,
+            planTrialFeatureLimits: schema.Plan.trialFeatureLimits,
+            hasTrial: schema.Plan.hasTrial,
+            status: schema.PlanSubscription.status,
+            hasTrialEnded: schema.PlanSubscription.hasTrialEnded,
           })
           .from(schema.PlanSubscription)
           .leftJoin(schema.Plan, eq(schema.PlanSubscription.planId, schema.Plan.id))
           .where(eq(schema.PlanSubscription.organizationId, input.organizationId))
           .limit(1)
 
+        const isTrialing = result?.status === 'trialing' && !result?.hasTrialEnded
+
         return {
           planDefaults: result?.planFeatureLimits || {},
+          planTrialDefaults: result?.planTrialFeatureLimits || null,
           customOverrides: result?.customFeatureLimits || {},
+          hasTrial: result?.hasTrial ?? false,
+          isTrialing,
           effectiveLimits: {
             ...(result?.planFeatureLimits || {}),
             ...(result?.customFeatureLimits || {}),
@@ -1246,4 +1255,42 @@ export const adminRouter = createTRPCRouter({
       }
     }),
   }),
+
+  /**
+   * Flush all cached data for a specific organization.
+   */
+  flushOrgCache: superAdminProcedure
+    .input(z.object({ organizationId: z.string() }))
+    .mutation(async ({ input }) => {
+      await flushOrganization(input.organizationId)
+      return { success: true }
+    }),
+
+  /**
+   * Run entity migrations for all organizations (or a specific one).
+   * Adds missing EntityDefinitions, CustomFields, and relationships.
+   * Each migration is idempotent — safe to re-run.
+   */
+  runEntityMigrations: superAdminProcedure
+    .input(
+      z
+        .object({
+          organizationId: z.string().optional(),
+        })
+        .optional()
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { listEntityMigrations, runAllEntityMigrations, runEntityMigrationsForOrg } =
+        await import('@auxx/lib/seed/entity-migrations')
+
+      const migrations = listEntityMigrations()
+
+      if (input?.organizationId) {
+        const result = await runEntityMigrationsForOrg(ctx.db, input.organizationId)
+        return { migrations, results: [result] }
+      }
+
+      const results = await runAllEntityMigrations(ctx.db)
+      return { migrations, results }
+    }),
 })

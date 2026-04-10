@@ -49,6 +49,7 @@ import {
   Mail,
   MessageSquare,
   Plus,
+  RefreshCw,
   Sliders,
   Ticket,
   Trash2,
@@ -124,6 +125,18 @@ export default function OrganizationDetailsPage() {
         title: 'Seeding Failed',
         description: error.message,
       })
+    },
+  })
+
+  const flushCache = api.admin.flushOrgCache.useMutation({
+    onSuccess: () => {
+      toastSuccess({
+        title: 'Cache flushed',
+        description: 'All cached data cleared for this organization',
+      })
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to flush cache', description: error.message })
     },
   })
 
@@ -589,6 +602,20 @@ export default function OrganizationDetailsPage() {
                           <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
                             <TableCell className='bg-muted/50 py-2 font-medium'>Updated</TableCell>
                             <TableCell className='py-2'>{format(org.updatedAt, 'PPP p')}</TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>Cache</TableCell>
+                            <TableCell className='py-2'>
+                              <Button
+                                variant='outline'
+                                size='sm'
+                                onClick={() => flushCache.mutate({ organizationId: org.id })}
+                                loading={flushCache.isPending}
+                                loadingText='Flushing...'>
+                                <RefreshCw />
+                                Flush Cache
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         </TableBody>
                       </Table>

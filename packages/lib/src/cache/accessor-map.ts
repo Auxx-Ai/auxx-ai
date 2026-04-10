@@ -59,6 +59,8 @@ export interface CustomFieldAccessor extends NestedRecordAccessor<CustomFieldEnt
   in(entityDefId: string): CustomFieldGroupAccessor
   /** Deep search by systemAttribute across all entities */
   bySystemAttribute(attr: string): Promise<CustomFieldEntity | null>
+  /** Batch resolve multiple systemAttributes in a single pass. Returns a map keyed by attribute. */
+  bySystemAttributes<T extends string>(attrs: T[]): Promise<Record<T, CustomFieldEntity | null>>
   /** Deep search by field ID across all entities */
   byId(fieldId: string): Promise<CustomFieldEntity | null>
 }

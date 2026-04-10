@@ -13,6 +13,7 @@ import {
   Archive,
   ArrowDown,
   ArrowLeft,
+  ArrowLeftRight,
   ArrowRight,
   ArrowUp,
   ArrowUpDown,
@@ -279,6 +280,16 @@ export const ICON_COLORS: IconColor[] = [
       '[--icon-bg:var(--color-green-50)] [--icon-bg-hover:var(--color-green-100)] [--icon-color:var(--color-green-600)] dark:[--icon-bg:var(--color-green-950)] dark:[--icon-bg-hover:var(--color-green-900)] dark:[--icon-color:var(--color-green-400)]',
   },
   {
+    id: 'emerald',
+    label: 'Emerald',
+    swatch: 'bg-emerald-500',
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    bgClasses: 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950 dark:hover:bg-emerald-900',
+    inverseColor: 'bg-emerald-500 text-emerald-100 dark:bg-emerald-500',
+    groupClasses:
+      '[--icon-bg:var(--color-emerald-50)] [--icon-bg-hover:var(--color-emerald-100)] [--icon-color:var(--color-emerald-600)] dark:[--icon-bg:var(--color-emerald-950)] dark:[--icon-bg-hover:var(--color-emerald-900)] dark:[--icon-color:var(--color-emerald-400)]',
+  },
+  {
     id: 'teal',
     label: 'Teal',
     swatch: 'bg-teal-500',
@@ -368,6 +379,7 @@ export const ICON_DATA: IconItem[] = [
   { id: 'arrow-right', label: 'Arrow Right', icon: ArrowRight },
   { id: 'arrow-up', label: 'Arrow Up', icon: ArrowUp },
   { id: 'arrow-down', label: 'Arrow Down', icon: ArrowDown },
+  { id: 'arrow-left-right', label: 'Arrow Left Right', icon: ArrowLeftRight },
   // Communication
   { id: 'mail', label: 'Mail', icon: Mail },
   { id: 'message-square', label: 'Message Square', icon: MessageSquare },

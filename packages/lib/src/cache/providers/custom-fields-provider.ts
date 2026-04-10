@@ -62,6 +62,27 @@ export const customFieldsProvider: CacheProvider<Record<string, CustomFieldEntit
         }
         return null
       },
+      // Batch resolve: single pass through all fields for multiple attributes
+      async bySystemAttributes<T extends string>(
+        attrs: T[]
+      ): Promise<Record<T, CustomFieldEntity | null>> {
+        const data = await dataFn()
+        const remaining = new Set<T>(attrs)
+        const result = Object.fromEntries(attrs.map((a) => [a, null])) as Record<
+          T,
+          CustomFieldEntity | null
+        >
+        for (const fields of Object.values(data)) {
+          if (remaining.size === 0) break
+          for (const f of fields) {
+            if (f.systemAttribute && remaining.has(f.systemAttribute as T)) {
+              result[f.systemAttribute as T] = f
+              remaining.delete(f.systemAttribute as T)
+            }
+          }
+        }
+        return result
+      },
       // Deep sugar: search by field ID across all entities
       async byId(fieldId: string): Promise<CustomFieldEntity | null> {
         const data = await dataFn()

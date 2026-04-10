@@ -4,6 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
+import { StockStatus } from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -247,6 +248,116 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     description: 'Automatically updated when part is modified',
+  },
+
+  quantityOnHand: {
+    id: toFieldId('quantityOnHand'),
+    key: 'quantityOnHand',
+    label: 'Qty on Hand',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'part_quantity_on_hand',
+    systemSortOrder: 'a6a',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description: 'Calculated from stock movements',
+  },
+
+  stockStatus: {
+    id: toFieldId('stockStatus'),
+    key: 'stockStatus',
+    label: 'Stock Status',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'part_stock_status',
+    systemSortOrder: 'a6b',
+    nullable: true,
+    options: { options: StockStatus.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description: 'Derived from quantity on hand and reorder point',
+  },
+
+  reorderPoint: {
+    id: toFieldId('reorderPoint'),
+    key: 'reorderPoint',
+    label: 'Reorder Point',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'part_reorder_point',
+    systemSortOrder: 'a6c',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Enter reorder point',
+    description: 'Minimum quantity before reorder is needed',
+  },
+
+  reorderQty: {
+    id: toFieldId('reorderQty'),
+    key: 'reorderQty',
+    label: 'Reorder Qty',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'part_reorder_qty',
+    systemSortOrder: 'a6d',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Enter reorder quantity',
+    description: 'Quantity to reorder when stock is low',
+  },
+
+  // Reverse relationship: stockMovements (one-to-many from stock_movement.part)
+  stockMovements: {
+    id: toFieldId('stockMovements'),
+    key: 'stockMovements',
+    label: 'Stock Movements',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_stock_movements',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'stock_movement:part' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Stock movements for this part',
   },
 
   // Reverse relationship: vendorParts (one-to-many from vendor_part.part)

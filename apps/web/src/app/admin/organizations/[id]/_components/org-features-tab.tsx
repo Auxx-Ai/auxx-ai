@@ -2,6 +2,7 @@
 'use client'
 
 import type { FeatureDefinition, FeatureLimit } from '@auxx/lib/permissions/client'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
@@ -39,27 +40,19 @@ function normalizePlanDefaults(raw: unknown): FeatureDefinition[] {
   return recordToDefinitions(raw as Record<string, FeatureLimit>)
 }
 
-/** Compute only the overrides (values that differ from plan defaults) */
-function computeOverrides(
-  current: FeatureDefinition[],
-  defaults: FeatureDefinition[]
-): Record<string, number | boolean> {
-  const defaultMap = new Map(defaults.map((d) => [d.key, d.limit]))
-  const overrides: Record<string, number | boolean> = {}
-
-  for (const { key, limit } of current) {
-    const defaultVal = defaultMap.get(key)
-    if (limit !== defaultVal) {
-      overrides[key] = limit === '+' ? -1 : (limit as number | boolean)
-    }
+/** Convert limits array to a record for the API — saves all explicit overrides */
+function limitsToRecord(limits: FeatureDefinition[]): Record<string, number | boolean> {
+  const record: Record<string, number | boolean> = {}
+  for (const { key, limit } of limits) {
+    record[key] = limit === '+' ? -1 : (limit as number | boolean)
   }
-
-  return overrides
+  return record
 }
 
 export function OrgFeaturesTab({ organizationId, currentPlan }: OrgFeaturesTabProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const [limits, setLimits] = useState<FeatureDefinition[]>([])
+  const [trialMode, setTrialMode] = useState(false)
   const initialLimitsRef = useRef<string>('')
   const utils = api.useUtils()
 
@@ -93,7 +86,9 @@ export function OrgFeaturesTab({ organizationId, currentPlan }: OrgFeaturesTabPr
     }
   }, [data])
 
-  const planDefaults = normalizePlanDefaults(data?.planDefaults)
+  const planDefaults = trialMode
+    ? normalizePlanDefaults(data?.planTrialDefaults ?? data?.planDefaults)
+    : normalizePlanDefaults(data?.planDefaults)
 
   const hasAnyOverrides =
     data?.customOverrides && Object.keys(data.customOverrides as Record<string, unknown>).length > 0
@@ -101,7 +96,7 @@ export function OrgFeaturesTab({ organizationId, currentPlan }: OrgFeaturesTabPr
   const isDirty = JSON.stringify(limits) !== initialLimitsRef.current
 
   const handleSave = () => {
-    const overrides = computeOverrides(limits, planDefaults)
+    const overrides = limitsToRecord(limits)
     configureLimits.mutate({ organizationId, limits: overrides })
   }
 
@@ -137,6 +132,9 @@ export function OrgFeaturesTab({ organizationId, currentPlan }: OrgFeaturesTabPr
           onChange={setLimits}
           planDefaults={planDefaults}
           overrideMode
+          trialMode={trialMode}
+          onTrialModeChange={setTrialMode}
+          showTrialToggle={data?.hasTrial}
         />
 
         {/* Actions */}
@@ -154,6 +152,11 @@ export function OrgFeaturesTab({ organizationId, currentPlan }: OrgFeaturesTabPr
           {currentPlan && (
             <span className='ml-auto text-sm text-muted-foreground'>
               Plan: <span className='font-medium'>{currentPlan}</span>
+              {data?.isTrialing && (
+                <Badge variant='secondary' className='ml-2'>
+                  Trialing
+                </Badge>
+              )}
             </span>
           )}
         </div>

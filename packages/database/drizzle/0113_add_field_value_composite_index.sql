@@ -1,0 +1,1 @@
+CREATE INDEX "FieldValue_orgId_fieldId_relatedEntityId_idx" ON "FieldValue" USING btree ("organizationId","fieldId","relatedEntityId");

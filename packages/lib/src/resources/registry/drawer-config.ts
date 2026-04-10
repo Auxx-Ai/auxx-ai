@@ -53,13 +53,15 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
   part: {
     entityType: 'part',
     additionalTabs: [
-      { value: 'inventory', label: 'Inventory', icon: 'package' },
       { value: 'subparts', label: 'Subparts', icon: 'layers' },
       { value: 'vendors', label: 'Vendors', icon: 'truck' },
     ],
     actions: {
       enableArchive: true,
       enableDelete: true,
+    },
+    tabCards: {
+      overview: [{ value: 'inventory', label: 'Inventory' }],
     },
   },
 }

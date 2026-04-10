@@ -63,6 +63,8 @@ export type {
 } from './registry/drawer-config-types'
 // Enum values (for badge labels, select options, etc.)
 export {
+  StockMovementType,
+  StockStatus,
   TicketPriority,
   TicketStatus,
   TicketType,

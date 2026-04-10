@@ -400,8 +400,7 @@ function TabCards({
   return (
     <>
       {cards.map((card) => (
-        <div key={card.value} className='space-y-1 p-4'>
-          <h4 className='text-sm'>{card.label}</h4>
+        <Section key={card.value} title={card.label} initialOpen collapsible={false}>
           <LazyTabCard
             entityType={entityType}
             cardValue={card.value}
@@ -409,7 +408,7 @@ function TabCards({
             recordId={recordId}
             record={record}
           />
-        </div>
+        </Section>
       ))}
     </>
   )
