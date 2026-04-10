@@ -57,6 +57,18 @@ export async function getCachedCustomFields(
 }
 
 /**
+ * Get all custom fields for an entity definition as a Map keyed by field ID.
+ * Single cache read — ideal for batch operations that need multiple fields from the same entity.
+ */
+export async function getCachedFieldMap(
+  orgId: string,
+  entityDefId: string
+): Promise<Map<string, CustomFieldEntity>> {
+  const fields = await getCachedCustomFields(orgId, entityDefId)
+  return new Map(fields.map((f) => [f.id, f]))
+}
+
+/**
  * Get all cached custom fields across all entity definitions.
  */
 export async function getAllCachedCustomFields(orgId: string): Promise<CustomFieldEntity[]> {

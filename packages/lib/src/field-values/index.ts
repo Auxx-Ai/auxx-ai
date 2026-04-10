@@ -43,6 +43,7 @@ export { DEFINITION_COLUMN_TO_TYPE, DISPLAY_FIELD_CONFIG } from './display-field
 // Helpers (context and shared utilities)
 export {
   batchGetRelatedDisplayNames,
+  type CachedField,
   createFieldValueContext,
   type FieldValueContext,
   getField,

@@ -5,7 +5,6 @@ import type { FieldType } from '@auxx/database/types'
 import {
   batchInsertFieldValues,
   deleteFieldValues,
-  type FieldWithDefinition,
   getExistingFieldValue,
   insertFieldValue,
   updateFieldValue,
@@ -16,6 +15,7 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { and, asc, eq, inArray } from 'drizzle-orm'
+import { getCachedFieldMap, getCachedResource } from '../cache'
 import {
   getBuiltInFieldHandler,
   getBuiltInFieldType,
@@ -35,6 +35,7 @@ import {
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { getModelType, isRecordId, parseRecordId } from '../resources/resource-id'
 import {
+  type CachedField,
   type FieldValueContext,
   getField,
   getInverseInfoFromField,
@@ -82,7 +83,7 @@ async function validateRelationshipValue(
     entityId: string
     entityDefinitionId: string
     fieldId: string
-    field: FieldWithDefinition
+    field: CachedField
     newValue: TypedFieldValueInput | TypedFieldValueInput[] | null
   }
 ): Promise<void> {
@@ -723,7 +724,7 @@ export async function setValueWithBuiltIn(
   const field = await getField(ctx, fieldId)
 
   // 3. Validate and convert raw value to typed input using FieldValueValidator
-  const typedValue = await validateAndConvertValue(ctx, value, field.type, field as any)
+  const typedValue = await validateAndConvertValue(ctx, value, field.type, field)
 
   // Handle null values (deletion)
   if (typedValue === null) {
@@ -739,7 +740,7 @@ export async function setValueWithBuiltIn(
   }
 
   // 4. Check uniqueness if applicable (if field has unique constraint)
-  if ((field as any).isUnique && typedValue !== null) {
+  if (field.isUnique && typedValue !== null) {
     await checkUniqueValueTyped(
       {
         fieldId,
@@ -899,8 +900,24 @@ export async function setValuesForEntity(
 
   // Handle custom fields - batch prefetch all field definitions and validate relationships
   if (customs.length > 0) {
-    // Prefetch all fields (fills cache)
-    await Promise.all(customs.map((v) => getField(ctx, v.fieldId).catch(() => null)))
+    // Load all fields for this entity definition in one cache read
+    const fieldMap = await getCachedFieldMap(ctx.organizationId, entityDefinitionId)
+    const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
+
+    const entityDefinition = resource
+      ? {
+          id: resource.entityDefinitionId ?? resource.id,
+          primaryDisplayFieldId: resource.display.primaryDisplayField?.id ?? null,
+          secondaryDisplayFieldId: resource.display.secondaryDisplayField?.id ?? null,
+          avatarFieldId: resource.display.avatarField?.id ?? null,
+        }
+      : null
+
+    // Warm ctx.fieldCache for all custom fields in one pass
+    for (const v of customs) {
+      const f = fieldMap.get(v.fieldId)
+      if (f) ctx.fieldCache.set(v.fieldId, { ...f, entityDefinition })
+    }
 
     // Pre-batch validate all relationships (fills cache for later)
     const fieldTypes = customs.map((c) => {
@@ -973,17 +990,33 @@ export async function setBulkValues(
     return { count: 0 }
   }
 
-  // Prefetch all field definitions once (outside the loop)
+  // Load all fields for this entity definition in one cache read
+  const entityDefinitionId = parsedResources[0]!.entityDefinitionId
+  const fieldMap = await getCachedFieldMap(ctx.organizationId, entityDefinitionId)
+  const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
+
+  const entityDefinition = resource
+    ? {
+        id: resource.entityDefinitionId ?? resource.id,
+        primaryDisplayFieldId: resource.display.primaryDisplayField?.id ?? null,
+        secondaryDisplayFieldId: resource.display.secondaryDisplayField?.id ?? null,
+        avatarFieldId: resource.display.avatarField?.id ?? null,
+      }
+    : null
+
+  // Warm ctx.fieldCache for all custom fields in one pass
   const customFieldIds = validValues
     .filter((v) => !isBuiltInField(v.fieldId, modelType))
     .map((v) => v.fieldId)
-  const uniqueFieldIds = [...new Set(customFieldIds)]
-  await Promise.all(uniqueFieldIds.map((id) => getField(ctx, id).catch(() => null)))
+  for (const fieldId of customFieldIds) {
+    const f = fieldMap.get(fieldId)
+    if (f) ctx.fieldCache.set(fieldId, { ...f, entityDefinition })
+  }
 
   // Identify relationship fields and prepare for bulk sync
   const relationshipFields: Array<{
     fieldId: string
-    field: FieldWithDefinition
+    field: CachedField
     inverseInfo: InverseFieldInfo
     rawValue: unknown
   }> = []

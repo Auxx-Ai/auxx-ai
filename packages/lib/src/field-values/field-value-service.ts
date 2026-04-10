@@ -1,11 +1,14 @@
 // packages/lib/src/field-values/field-value-service.ts
 
 import { type Database, database } from '@auxx/database'
-import type { FieldWithDefinition } from '@auxx/services'
 import type { TypedFieldValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import { getCachedResourceFields } from '../cache'
-import { createFieldValueContext, type FieldValueContext } from './field-value-helpers'
+import {
+  type CachedField,
+  createFieldValueContext,
+  type FieldValueContext,
+} from './field-value-helpers'
 import * as mutations from './field-value-mutations'
 import * as queries from './field-value-queries'
 import type {
@@ -195,12 +198,12 @@ export class FieldValueService {
    * Returns TypedFieldValue for single-value fields, TypedFieldValue[] for multi-value fields, or null.
    *
    * @param params - Get value input
-   * @param cachedField - Optional pre-fetched FieldWithDefinition to avoid lookup
+   * @param cachedField - Optional pre-fetched CachedField to avoid lookup
    * @returns TypedFieldValue | TypedFieldValue[] | null
    */
   getValue(
     params: GetValueInput,
-    cachedField?: FieldWithDefinition
+    cachedField?: CachedField
   ): Promise<TypedFieldValue | TypedFieldValue[] | null> {
     return queries.getValue(this.ctx, params, cachedField)
   }

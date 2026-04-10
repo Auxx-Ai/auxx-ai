@@ -3,7 +3,6 @@
 import { schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
-import type { FieldWithDefinition } from '@auxx/services'
 import { isArrayReturnFieldType, type TypedFieldValue } from '@auxx/types'
 import {
   type FieldPath,
@@ -20,6 +19,7 @@ import type { TableId } from '../resources/registry/field-registry'
 import { isSystemResourceId } from '../resources/registry/types'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import {
+  type CachedField,
   type FieldValueContext,
   getField,
   getFieldInfoFromRegistry,
@@ -54,7 +54,7 @@ import type {
  * @param ctx - Field value context
  * @param params.recordId - RecordId of the entity (e.g. "contact:abc123")
  * @param params.fieldId - UUID of the field
- * @param cachedField - Optional pre-fetched FieldWithDefinition to avoid lookup
+ * @param cachedField - Optional pre-fetched CachedField to avoid lookup
  * @returns TypedFieldValue | TypedFieldValue[] | null
  *
  * @example
@@ -63,7 +63,7 @@ import type {
 export async function getValue(
   ctx: FieldValueContext,
   params: GetValueInput,
-  cachedField?: FieldWithDefinition
+  cachedField?: CachedField
 ): Promise<TypedFieldValue | TypedFieldValue[] | null> {
   const { entityInstanceId } = parseRecordId(params.recordId)
 
