@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.116](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.115...auxx-v0.1.116) (2026-04-10)
+
+
+### Features
+
+* add realtime sync feature flag support across various components ([#389](https://github.com/Auxx-Ai/auxx-ai/issues/389)) ([832d7b3](https://github.com/Auxx-Ai/auxx-ai/commit/832d7b3b6cfc99da51158c653bf4e1c5c395d032))
+* add stock movement and vendor part event handling with triggers and types ([#393](https://github.com/Auxx-Ai/auxx-ai/issues/393)) ([a811ad0](https://github.com/Auxx-Ai/auxx-ai/commit/a811ad056365d4250b309509e74a45fce096b9ae))
+* add stock movement entity and related fields ([#392](https://github.com/Auxx-Ai/auxx-ai/issues/392)) ([e055826](https://github.com/Auxx-Ai/auxx-ai/commit/e055826133f03a6c58cd2338b2c7bdcee85548b2))
+* add vendor part cost fields and update BOM calculations for landed cost ([#390](https://github.com/Auxx-Ai/auxx-ai/issues/390)) ([95f69a0](https://github.com/Auxx-Ai/auxx-ai/commit/95f69a093df205977f086520d3e0f04b49848042))
+* enhance parts page functionality and improve vendor part triggers with new field handling ([#386](https://github.com/Auxx-Ai/auxx-ai/issues/386)) ([09921e3](https://github.com/Auxx-Ai/auxx-ai/commit/09921e374fead6fb857ce378585cb4d63130394a))
+* enhance realtime capabilities with Pusher integration ([#388](https://github.com/Auxx-Ai/auxx-ai/issues/388)) ([8b67edd](https://github.com/Auxx-Ai/auxx-ai/commit/8b67eddfd40bf6c5782713147c732d0fab51c9ed))
+* implement tab reordering functionality with drag-and-drop support ([#391](https://github.com/Auxx-Ai/auxx-ai/issues/391)) ([c6ffe4f](https://github.com/Auxx-Ai/auxx-ai/commit/c6ffe4f0df266f262ba7fc31b38c4b7c298d4dff))
+
 ## [0.1.115](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.114...auxx-v0.1.115) (2026-04-09)
 
 
