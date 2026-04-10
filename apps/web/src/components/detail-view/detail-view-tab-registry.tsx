@@ -41,8 +41,6 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
   // ─────────────────────────────────────────────────────────────────
   // PART TABS
   // ─────────────────────────────────────────────────────────────────
-  'part:inventory': () =>
-    import('../drawers/tabs/part-inventory-tab').then((m) => ({ default: m.PartInventoryTab })),
   'part:subparts': () =>
     import('../drawers/tabs/part-subparts-tab').then((m) => ({ default: m.PartSubpartsTab })),
 }
