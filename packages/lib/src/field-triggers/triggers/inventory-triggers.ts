@@ -129,7 +129,7 @@ export const recalculateStockStatus: FieldTriggerHandler = async (event) => {
       recordId: partRecordId,
       fieldId: statusField.id,
       fieldType: statusField.type,
-      value: { type: 'string', value: status },
+      value: { type: 'option', optionId: status },
     })
 
     publishFieldValueUpdates(realtimeService, organizationId, [
@@ -222,7 +222,7 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
         recordId,
         fieldId: statusField.id,
         fieldType: statusField.type,
-        value: { type: 'string', value: status },
+        value: { type: 'option', optionId: status },
       })
     )
   }
@@ -245,7 +245,12 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
     })
   }
 
-  publishFieldValueUpdates(realtimeService, organizationId, entries).catch(() => {})
+  publishFieldValueUpdates(realtimeService, organizationId, entries).catch((err) => {
+    logger.error('Failed to publish QoH realtime update', {
+      partInstanceId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
 
   logger.info('QoH recalculated', { partInstanceId, qoh, status })
 }

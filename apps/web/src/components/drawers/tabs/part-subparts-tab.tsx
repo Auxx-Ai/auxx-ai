@@ -347,7 +347,7 @@ function PartNameCell({ partId, linkTab }: { partId: string; linkTab: string }) 
 
   return (
     <div className='flex flex-col'>
-      <Link href={`/app/parts?p=${partId}&tab=${linkTab}`} className='truncate hover:underline'>
+      <Link href={`/app/parts?id=${partId}&tab=${linkTab}`} className='truncate hover:underline'>
         {title ?? 'Loading...'}
       </Link>
       {sku && <span className='text-xs text-muted-foreground'>{sku}</span>}

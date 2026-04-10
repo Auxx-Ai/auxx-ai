@@ -129,17 +129,15 @@ function publishEvent(params: PublishEventParams): void {
   const eventPrefix = entityType || 'entity'
   const eventType = `${eventPrefix}:${action}` as const
 
-  // For custom entities, include entityDefinitionId and entitySlug for filtering
-  const customEntityMetadata = !entityType ? { entityDefinitionId, entitySlug } : {}
-
   publisher.publishLater({
     type: eventType,
     data: {
       recordId,
+      entityDefinitionId,
+      entitySlug,
       organizationId,
       userId,
       eventData,
-      ...customEntityMetadata,
       ...(relatedRecordId && { relatedRecordId }),
     },
   })

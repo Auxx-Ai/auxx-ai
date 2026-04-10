@@ -1,25 +1,41 @@
 // packages/lib/src/field-triggers/entity-trigger-handler.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { EntityInstanceCreatedEvent, EntityInstanceDeletedEvent } from '../events/types'
+import type {
+  EntityInstanceCreatedEvent,
+  EntityInstanceDeletedEvent,
+  StockMovementCreatedEvent,
+  StockMovementDeletedEvent,
+  SubpartCreatedEvent,
+  SubpartDeletedEvent,
+  VendorPartCreatedEvent,
+  VendorPartDeletedEvent,
+} from '../events/types'
 import { getEntityTriggers } from './registry'
 
 const logger = createScopedLogger('field-triggers:entity')
 
+/** All entity event types that can carry entity triggers */
+type EntityTriggerEvent =
+  | EntityInstanceCreatedEvent
+  | EntityInstanceDeletedEvent
+  | StockMovementCreatedEvent
+  | StockMovementDeletedEvent
+  | VendorPartCreatedEvent
+  | VendorPartDeletedEvent
+  | SubpartCreatedEvent
+  | SubpartDeletedEvent
+
 /**
- * Event handler for entity:created and entity:deleted events.
+ * Event handler for entity lifecycle events (created/deleted).
  * Looks up registered entity triggers by entitySlug and calls each handler.
  */
-export async function handleEntityTriggers({
-  data,
-}: {
-  data: EntityInstanceCreatedEvent | EntityInstanceDeletedEvent
-}): Promise<void> {
+export async function handleEntityTriggers({ data }: { data: EntityTriggerEvent }): Promise<void> {
   const { entitySlug } = data.data
   const triggers = getEntityTriggers(entitySlug)
   if (triggers.length === 0) return
 
-  const action = data.type === 'entity:created' ? 'created' : 'deleted'
+  const action = data.type.endsWith(':created') ? 'created' : 'deleted'
 
   logger.info(`Processing entity trigger: ${entitySlug} ${action}`, {
     handlerCount: triggers.length,

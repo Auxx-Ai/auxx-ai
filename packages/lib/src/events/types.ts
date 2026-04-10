@@ -59,6 +59,12 @@ export type Events =
   | 'entity:created'
   | 'entity:updated'
   | 'entity:deleted'
+  | 'stock_movement:created'
+  | 'stock_movement:deleted'
+  | 'vendor_part:created'
+  | 'vendor_part:deleted'
+  | 'subpart:created'
+  | 'subpart:deleted'
   | 'field:trigger'
   | 'integration:connected'
   | 'integration:connection_failed'
@@ -561,6 +567,78 @@ export type EntityInstanceDeletedEvent = AuxxEventGeneric<
   }
 >
 
+// Stock Movement Events
+export type StockMovementCreatedEvent = AuxxEventGeneric<
+  'stock_movement:created',
+  {
+    recordId: RecordId
+    entityDefinitionId: string
+    entitySlug: string
+    organizationId: string
+    userId: string
+    eventData: Record<string, unknown>
+  }
+>
+export type StockMovementDeletedEvent = AuxxEventGeneric<
+  'stock_movement:deleted',
+  {
+    recordId: RecordId
+    entityDefinitionId: string
+    entitySlug: string
+    organizationId: string
+    userId: string
+    eventData: Record<string, unknown>
+  }
+>
+
+// Vendor Part Events
+export type VendorPartCreatedEvent = AuxxEventGeneric<
+  'vendor_part:created',
+  {
+    recordId: RecordId
+    entityDefinitionId: string
+    entitySlug: string
+    organizationId: string
+    userId: string
+    eventData: Record<string, unknown>
+  }
+>
+export type VendorPartDeletedEvent = AuxxEventGeneric<
+  'vendor_part:deleted',
+  {
+    recordId: RecordId
+    entityDefinitionId: string
+    entitySlug: string
+    organizationId: string
+    userId: string
+    eventData: Record<string, unknown>
+  }
+>
+
+// Subpart Events
+export type SubpartCreatedEvent = AuxxEventGeneric<
+  'subpart:created',
+  {
+    recordId: RecordId
+    entityDefinitionId: string
+    entitySlug: string
+    organizationId: string
+    userId: string
+    eventData: Record<string, unknown>
+  }
+>
+export type SubpartDeletedEvent = AuxxEventGeneric<
+  'subpart:deleted',
+  {
+    recordId: RecordId
+    entityDefinitionId: string
+    entitySlug: string
+    organizationId: string
+    userId: string
+    eventData: Record<string, unknown>
+  }
+>
+
 // Field Trigger Event — fired when a field with a registered trigger changes
 export type FieldTriggerJobEvent = AuxxEventGeneric<
   'field:trigger',
@@ -687,6 +765,12 @@ export type AuxxEvent =
   | EntityInstanceCreatedEvent
   | EntityInstanceUpdatedEvent
   | EntityInstanceDeletedEvent
+  | StockMovementCreatedEvent
+  | StockMovementDeletedEvent
+  | VendorPartCreatedEvent
+  | VendorPartDeletedEvent
+  | SubpartCreatedEvent
+  | SubpartDeletedEvent
   | FieldTriggerJobEvent
   | IntegrationConnectedEvent
   | IntegrationConnectionFailedEvent
@@ -746,6 +830,12 @@ export interface IEventsHandlers {
   'entity:created': EventHandler<EntityInstanceCreatedEvent>[]
   'entity:updated': EventHandler<EntityInstanceUpdatedEvent>[]
   'entity:deleted': EventHandler<EntityInstanceDeletedEvent>[]
+  'stock_movement:created': EventHandler<StockMovementCreatedEvent>[]
+  'stock_movement:deleted': EventHandler<StockMovementDeletedEvent>[]
+  'vendor_part:created': EventHandler<VendorPartCreatedEvent>[]
+  'vendor_part:deleted': EventHandler<VendorPartDeletedEvent>[]
+  'subpart:created': EventHandler<SubpartCreatedEvent>[]
+  'subpart:deleted': EventHandler<SubpartDeletedEvent>[]
   'field:trigger': EventHandler<FieldTriggerJobEvent>[]
   'integration:connected': EventHandler<IntegrationConnectedEvent>[]
   'integration:connection_failed': EventHandler<IntegrationConnectionFailedEvent>[]

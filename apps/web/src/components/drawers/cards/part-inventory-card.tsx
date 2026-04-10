@@ -8,12 +8,14 @@ import type { RecordId } from '@auxx/types/resource'
 import type { Variant } from '@auxx/ui/components/badge'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils'
 import { ChevronRight } from 'lucide-react'
-import { useMemo } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
+import { useMemo, useState } from 'react'
 import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
@@ -69,7 +71,7 @@ function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: 
   const color = type ? TYPE_COLOR_MAP[type] : undefined
 
   return (
-    <div className='flex items-center gap-2 py-1.5 text-sm'>
+    <div className='flex items-center gap-2 py-1.5 text-sm ps-0.5'>
       <Badge variant={color} size='xs' className='shrink-0 w-[90px] justify-center'>
         {label}
       </Badge>
@@ -90,19 +92,17 @@ function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: 
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Movements Popover
+// Movements List (inline collapsible content)
 // ─────────────────────────────────────────────────────────────────
 
-function MovementsPopover({
+function MovementsList({
   partId,
   currentQoH,
   onAdjustSuccess,
-  children,
 }: {
   partId: string
   currentQoH: number
   onAdjustSuccess: () => void
-  children: React.ReactNode
 }) {
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
 
@@ -124,10 +124,7 @@ function MovementsPopover({
     [partId]
   )
 
-  const sorting = useMemo(
-    () => [{ id: 'stock_movement:createdAt' as ResourceFieldId, desc: true }],
-    []
-  )
+  const sorting = useMemo(() => [{ id: 'createdAt', desc: true }], [])
 
   const { records, isLoading, refresh } = useRecordList({
     entityDefinitionId: stockMovementDefId ?? '',
@@ -143,44 +140,41 @@ function MovementsPopover({
   }
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent className='w-96' align='start'>
-        <div className='flex items-center justify-between mb-3'>
-          <h4 className='text-sm font-semibold'>Stock Movements</h4>
-          <StockAdjustmentPopover
-            partId={partId}
-            currentQoH={currentQoH}
-            onSuccess={handleAdjustSuccess}>
-            <Button variant='outline' size='xs'>
-              Adjust
-            </Button>
-          </StockAdjustmentPopover>
-        </div>
+    <div className='border-t border-border/50 pt-2 mt-1'>
+      <div className='flex items-center justify-between mb-2'>
+        <h4 className='text-xs font-semibold text-muted-foreground'>Stock Movements</h4>
+        <StockAdjustmentPopover
+          partId={partId}
+          currentQoH={currentQoH}
+          onSuccess={handleAdjustSuccess}>
+          <Button variant='outline' size='xs'>
+            Adjust
+          </Button>
+        </StockAdjustmentPopover>
+      </div>
 
-        {isLoading ? (
-          <div className='space-y-2'>
-            <Skeleton className='h-6 w-full' />
-            <Skeleton className='h-6 w-full' />
-            <Skeleton className='h-6 w-full' />
+      {isLoading ? (
+        <div className='space-y-2'>
+          <Skeleton className='h-6 w-full' />
+          <Skeleton className='h-6 w-full' />
+          <Skeleton className='h-6 w-full' />
+        </div>
+      ) : records.length === 0 ? (
+        <p className='text-xs text-muted-foreground text-center py-3'>No movements yet</p>
+      ) : (
+        <ScrollArea className='max-h-[250px]'>
+          <div className='divide-y divide-border/50'>
+            {records.map((record) => (
+              <MovementRow
+                key={record.id}
+                recordId={toRecordId(stockMovementDefId!, record.id)}
+                createdAt={record.createdAt}
+              />
+            ))}
           </div>
-        ) : records.length === 0 ? (
-          <p className='text-sm text-muted-foreground text-center py-4'>No movements yet</p>
-        ) : (
-          <ScrollArea className='max-h-[300px]'>
-            <div className='divide-y divide-border/50'>
-              {records.map((record) => (
-                <MovementRow
-                  key={record.id}
-                  recordId={toRecordId(stockMovementDefId!, record.id)}
-                  createdAt={record.createdAt}
-                />
-              ))}
-            </div>
-          </ScrollArea>
-        )}
-      </PopoverContent>
-    </Popover>
+        </ScrollArea>
+      )}
+    </div>
   )
 }
 
@@ -192,32 +186,90 @@ function MovementsPopover({
 export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps) {
   const partId = entityInstanceId
   const { values, isLoading } = useSystemValues(recordId, [...PART_ATTRIBUTES], { autoFetch: true })
+  const [isOpen, setIsOpen] = useState(false)
 
   const qoh = (values.part_quantity_on_hand as number) ?? 0
-  const stockStatus = values.part_stock_status as string | undefined
+  const stockStatus =
+    (values.part_stock_status as string | undefined) ?? (qoh <= 0 ? 'out_of_stock' : 'in_stock')
 
-  const statusVariant = stockStatus ? STATUS_VARIANT_MAP[stockStatus] : undefined
-  const statusLabel = stockStatus ? STATUS_LABEL_MAP[stockStatus] : undefined
+  const statusVariant = STATUS_VARIANT_MAP[stockStatus]
+  const statusLabel = STATUS_LABEL_MAP[stockStatus]
 
   return (
-    <MovementsPopover partId={partId} currentQoH={qoh} onAdjustSuccess={() => {}}>
-      <button
-        type='button'
-        className='flex w-full items-center justify-between rounded-lg border bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/50'>
-        {isLoading ? (
-          <Skeleton className='h-7 w-16' />
-        ) : (
-          <span className='text-xl font-bold tabular-nums'>{qoh}</span>
-        )}
-        <div className='flex items-center gap-2'>
-          {!isLoading && statusVariant && statusLabel && (
-            <Badge variant={statusVariant} size='sm'>
-              {statusLabel}
-            </Badge>
-          )}
-          <ChevronRight className='size-4 text-muted-foreground' />
+    <div className='group/entity-card bg-primary-100/50 dark:bg-[#23272e]/50 dark:border rounded-2xl relative outline-none focus:outline-none ring-border-illustration shadow-black/6.5 shadow-md ring-1 w-full'>
+      <div className='flex flex-col gap-0 p-3 pe-2'>
+        {/* Quantity on Hand */}
+        <div className='flex w-full h-fit min-h-[30px] items-center'>
+          <div className='items-center self-start flex gap-[4px] h-[24px] shrink-0'>
+            <EntityIcon
+              iconId='package'
+              variant='default'
+              size='default'
+              className='text-neutral-400'
+            />
+            <div className='w-[120px] flex items-center text-sm text-neutral-400 shrink-0'>
+              <div className='truncate me-1'>Qty on Hand</div>
+            </div>
+          </div>
+          <div className='flex-1 flex items-center justify-end me-3'>
+            {isLoading ? (
+              <Skeleton className='h-5 w-12' />
+            ) : (
+              <span className='text-sm font-semibold tabular-nums'>{qoh}</span>
+            )}
+          </div>
         </div>
-      </button>
-    </MovementsPopover>
+
+        {/* Stock Status (clickable to toggle movements) */}
+        <button
+          type='button'
+          className='flex w-full h-[30px] items-center cursor-pointer rounded-md -mx-1 px-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5'
+          onClick={() => setIsOpen(!isOpen)}>
+          <div className='items-center self-start flex gap-[4px] h-[24px] shrink-0 mt-1'>
+            <EntityIcon
+              iconId='activity'
+              variant='default'
+              size='default'
+              className='text-neutral-400 '
+            />
+            <div className='w-[120px] flex items-center text-sm text-neutral-400 shrink-0'>
+              <div className='truncate me-1'>Status</div>
+            </div>
+          </div>
+          <div className='flex-1 flex items-center justify-end gap-2'>
+            {!isLoading && (
+              <Badge variant={statusVariant} size='xs'>
+                {statusLabel}
+              </Badge>
+            )}
+            <ChevronRight
+              className={cn(
+                'size-4 text-muted-foreground transition-transform duration-200',
+                isOpen && 'rotate-90'
+              )}
+            />
+          </div>
+        </button>
+
+        {/* Collapsible movements list */}
+        <AnimatePresence initial={false}>
+          {isOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+              animate={{
+                height: 'auto',
+                opacity: 1,
+                filter: 'blur(0px)',
+                overflow: 'hidden',
+                transitionEnd: { overflow: 'visible' },
+              }}
+              exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+              <MovementsList partId={partId} currentQoH={qoh} onAdjustSuccess={() => {}} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
   )
 }
