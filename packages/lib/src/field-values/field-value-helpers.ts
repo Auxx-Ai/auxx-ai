@@ -2,8 +2,7 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import type { FieldType } from '@auxx/database/types'
-import { type FieldWithDefinition, getFieldWithDefinition } from '@auxx/services'
+import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
 import { getValueType, type TypedFieldValue, type TypedFieldValueInput } from '@auxx/types'
 import { type ActorId, isActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import {
@@ -27,6 +26,20 @@ import type { FieldReference, FieldValueRow } from './types'
 export type { InverseFieldInfo }
 
 // =============================================================================
+// CACHED FIELD TYPE
+// =============================================================================
+
+/** Field definition enriched with display config from the resource cache. */
+export type CachedField = CustomFieldEntity & {
+  entityDefinition: {
+    id: string
+    primaryDisplayFieldId: string | null
+    secondaryDisplayFieldId: string | null
+    avatarFieldId: string | null
+  } | null
+}
+
+// =============================================================================
 // CONTEXT INTERFACE
 // =============================================================================
 
@@ -41,7 +54,7 @@ export interface FieldValueContext {
   /** Pusher socket ID of the originating client — used for self-event exclusion in realtime sync. */
   socketId?: string
   /** Cache for CustomField lookups (keyed by fieldId) */
-  fieldCache: Map<string, FieldWithDefinition>
+  fieldCache: Map<string, CachedField>
   /** Cache for batch relationship validations (keyed by relatedEntityId) */
   batchRelationshipValidationCache: Map<string, { success: boolean; message?: string }>
   /** Shared validator instance (stateless, reusable) */
@@ -78,25 +91,33 @@ export function createFieldValueContext(
 
 /**
  * Get CustomField with EntityDefinition (cached within context).
+ * Uses the org cache — zero DB queries.
  */
-export async function getField(
-  ctx: FieldValueContext,
-  fieldId: string
-): Promise<FieldWithDefinition> {
+export async function getField(ctx: FieldValueContext, fieldId: string): Promise<CachedField> {
   const cached = ctx.fieldCache.get(fieldId)
   if (cached) return cached
 
-  const result = await getFieldWithDefinition({
-    fieldId,
-    organizationId: ctx.organizationId,
-  })
+  const cachedField = await getOrgCache().from(ctx.organizationId, 'customFields').byId(fieldId)
+  if (!cachedField) throw new Error(`Field "${fieldId}" not found`)
 
-  if (result.isErr()) {
-    throw new Error(result.error.message)
+  const resource = cachedField.entityDefinitionId
+    ? await getCachedResource(ctx.organizationId, cachedField.entityDefinitionId)
+    : null
+
+  const field: CachedField = {
+    ...cachedField,
+    entityDefinition: resource
+      ? {
+          id: resource.entityDefinitionId ?? resource.id,
+          primaryDisplayFieldId: resource.display.primaryDisplayField?.id ?? null,
+          secondaryDisplayFieldId: resource.display.secondaryDisplayField?.id ?? null,
+          avatarFieldId: resource.display.avatarField?.id ?? null,
+        }
+      : null,
   }
 
-  ctx.fieldCache.set(fieldId, result.value)
-  return result.value
+  ctx.fieldCache.set(fieldId, field)
+  return field
 }
 
 /**
@@ -136,7 +157,7 @@ export async function resolveFieldIds(
  */
 export async function getInverseInfoFromField(
   ctx: FieldValueContext,
-  field: FieldWithDefinition
+  field: CachedField
 ): Promise<InverseFieldInfo | null> {
   if (field.type !== 'RELATIONSHIP') return null
 
@@ -349,7 +370,7 @@ export async function validateAndConvertValue(
   ctx: FieldValueContext,
   value: unknown,
   fieldType: FieldType,
-  field: FieldWithDefinition
+  field: CachedField
 ): Promise<TypedFieldValueInput | TypedFieldValueInput[] | null> {
   // Handle null/undefined
   if (value === null || value === undefined) {
@@ -679,7 +700,7 @@ async function resolveNameFieldDisplayValue(
   ctx: FieldValueContext,
   recordId: RecordId,
   entityDef: { primaryDisplayFieldId: string | null },
-  field: FieldWithDefinition,
+  field: CachedField,
   value: TypedFieldValueInput | TypedFieldValueInput[] | null
 ): Promise<string | null | undefined> {
   if (!entityDef.primaryDisplayFieldId) return undefined
@@ -729,7 +750,7 @@ async function resolveNameFieldDisplayValue(
 export async function maybeUpdateDisplayValue(
   ctx: FieldValueContext,
   recordId: RecordId,
-  field: FieldWithDefinition,
+  field: CachedField,
   value: TypedFieldValueInput | TypedFieldValueInput[] | null
 ): Promise<void> {
   const { entityInstanceId } = parseRecordId(recordId)
@@ -744,7 +765,7 @@ export async function maybeUpdateDisplayValue(
     column = 'displayName'
   } else if (entityDef.secondaryDisplayFieldId === field.id) {
     column = 'secondaryDisplayValue'
-  } else if ((entityDef as any).avatarFieldId === field.id) {
+  } else if (entityDef.avatarFieldId === field.id) {
     column = 'avatarUrl'
   }
 

@@ -51,6 +51,7 @@ export {
   getCachedCustomFields,
   getCachedDefaultModel,
   getCachedEntityDefId,
+  getCachedFieldMap,
   getCachedGroups,
   getCachedMembers,
   getCachedMembersByUserIds,
