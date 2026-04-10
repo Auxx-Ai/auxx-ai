@@ -11,7 +11,7 @@ export function createSearchRagTool(_getDeps: GetToolDeps): AgentToolDefinition 
   return {
     name: 'search_rag',
     description:
-      "Search the organization's knowledge datasets using semantic/hybrid search. Use this to find company-specific information like policies, FAQs, product details, and internal documentation from uploaded documents and data sources.",
+      "Search the organization's uploaded documents and datasets using semantic search. Only for uploaded files/documents (e.g. PDFs, manuals, policy docs). Do NOT use this to look up contacts, customers, products, orders, vendors, or any other entity/record — use search_entities for that.",
     parameters: {
       type: 'object',
       properties: {

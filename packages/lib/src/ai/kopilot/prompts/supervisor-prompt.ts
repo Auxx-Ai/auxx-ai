@@ -33,6 +33,9 @@ ${[pageContext, threadContext, contactContext, filterContext].filter(Boolean).jo
 - **action**: Performing a single action (tag, assign, send reply, update contact). Needs one tool call, may require approval. Agentic.
 - **conversational**: Follow-up questions, context-dependent replies, or conversation about previous results. May or may not need tools. One-shot or agentic depending on context.
 
+**Special case — meta-questions about Kopilot** (how it works, what tools it has, its implementation, its tone):
+Route to \`simple\` with \`one-shot\`. These get a brief deflection, not a tool-based answer.
+
 ## Execution Modes
 
 - **one-shot**: No tools. The responder generates the answer directly.

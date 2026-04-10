@@ -1,6 +1,10 @@
 // packages/lib/src/ai/kopilot/domain-config.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import type { AgentDomainConfig, AgentToolDefinition } from '../agent-framework/types'
+
+const logger = createScopedLogger('kopilot-domain-config')
+
 import { createExecutorAgent } from './agents/executor'
 import { createPlannerAgent } from './agents/planner'
 import { createResponderAgent } from './agents/responder'
@@ -52,6 +56,14 @@ export function createKopilotDomainConfig(
   }
   const resolvedTools = [...toolMap.values()]
 
+  logger.info('Resolved tools', {
+    page,
+    registryToolCount: registryTools.length,
+    manualToolCount: tools.length,
+    resolvedToolCount: resolvedTools.length,
+    toolNames: resolvedTools.map((t) => t.name),
+  })
+
   const supervisor = createSupervisorAgent()
   const planner = createPlannerAgent(resolvedTools)
   const executor = createExecutorAgent(resolvedTools)
@@ -94,7 +106,8 @@ export function createKopilotDomainConfig(
     ],
 
     createInitialState(context: Record<string, unknown>): KopilotDomainState {
-      return { context }
+      const capabilities = capabilityRegistry?.getCapabilitiesSummary() ?? []
+      return { context, capabilities }
     },
 
     applyContext(state: KopilotDomainState, context: Record<string, unknown>): KopilotDomainState {

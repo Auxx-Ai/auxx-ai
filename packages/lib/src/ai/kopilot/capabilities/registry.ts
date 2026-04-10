@@ -31,8 +31,30 @@ export function createCapabilityRegistry(): CapabilityRegistry {
       return additions.length > 0 ? additions.join('\n\n') : undefined
     },
 
+    getCapabilitiesSummary(): string[] {
+      const all: string[] = []
+      for (const capability of pages.values()) {
+        if (capability.capabilities) all.push(...capability.capabilities)
+      }
+      return all
+    },
+
     register(capability: PageCapability): void {
-      pages.set(capability.page, capability)
+      const existing = pages.get(capability.page)
+      if (existing) {
+        // Merge tools and system prompt additions for the same page key
+        existing.tools.push(...capability.tools)
+        if (capability.systemPromptAddition) {
+          existing.systemPromptAddition = existing.systemPromptAddition
+            ? `${existing.systemPromptAddition}\n\n${capability.systemPromptAddition}`
+            : capability.systemPromptAddition
+        }
+        if (capability.capabilities) {
+          existing.capabilities = [...(existing.capabilities ?? []), ...capability.capabilities]
+        }
+      } else {
+        pages.set(capability.page, { ...capability })
+      }
     },
   }
 }

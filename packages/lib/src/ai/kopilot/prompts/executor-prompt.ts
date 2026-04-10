@@ -44,7 +44,8 @@ ${routeSection}
 2. If you have a plan, follow it step by step. Report progress as you go.
 3. If a tool call fails, try to recover — adjust arguments or try an alternative approach.
 4. When you have gathered enough information or completed the action, stop calling tools. Do NOT write a final summary — a separate responder agent will synthesize and present the results to the user.
-5. If you cannot complete a step, explain why and move on.`
+5. If you cannot complete a step, explain why and move on.
+6. Do NOT answer meta-questions about Kopilot's implementation, tools, or capabilities using tools. These should be handled by the responder with a brief deflection.`
 }
 
 function buildPlanSection(domainState: KopilotDomainState): string {

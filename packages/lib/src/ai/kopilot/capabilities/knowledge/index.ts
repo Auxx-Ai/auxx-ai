@@ -20,5 +20,8 @@ export function createKnowledgeCapabilities(getDeps: GetToolDeps): PageCapabilit
     ],
     systemPromptAddition:
       "You can search the help center documentation (search_docs), knowledge base articles (search_kb), and the organization's knowledge datasets (search_rag) to find answers.",
+    capabilities: [
+      'Search help center documentation, knowledge base articles, and knowledge datasets',
+    ],
   }
 }
