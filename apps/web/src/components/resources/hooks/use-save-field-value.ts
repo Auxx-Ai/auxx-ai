@@ -8,7 +8,7 @@ import {
   getRelatedEntityDefinitionId,
   type RelationshipConfig,
 } from '@auxx/types/custom-field'
-import { type FieldId, toResourceFieldId } from '@auxx/types/field'
+import { type FieldId, type FieldReference, toResourceFieldId } from '@auxx/types/field'
 import { toastError } from '@auxx/ui/components/toast'
 import { getInverseCardinality } from '@auxx/utils'
 import { useCallback } from 'react'
@@ -18,12 +18,24 @@ import {
   type StoredFieldValue,
   useFieldValueStore,
 } from '~/components/resources/store/field-value-store'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 import { api } from '~/trpc/react'
 import {
   extractRelatedRecordIds,
   type InverseSyncInfo,
   useRelationshipSync,
 } from './use-relationship-sync'
+
+/**
+ * Resolve a field identifier to a FieldReference suitable for store key building.
+ * If the identifier is a systemAttribute (e.g. 'vendor_part_vendor_sku'), returns
+ * the corresponding ResourceFieldId (e.g. 'defId:vendorSku') so store keys match
+ * what useSystemValues subscribes to. Otherwise returns the identifier as-is.
+ */
+function resolveFieldRef(fieldId: string): FieldReference {
+  const resourceFieldId = useResourceStore.getState().systemAttributeMap[fieldId]
+  return (resourceFieldId ?? fieldId) as FieldReference
+}
 
 /** Field metadata for relationship sync - uses raw RelationshipConfig */
 interface FieldMetadata {
@@ -56,7 +68,7 @@ function prepareOptimisticUpdate(
   fieldType: FieldType,
   getFieldMetadata?: (fieldId: FieldId) => FieldMetadata | undefined
 ): OptimisticUpdatePrep {
-  const key = buildFieldValueKey(recordId, fieldId)
+  const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId))
   const store = useFieldValueStore.getState()
 
   // Capture old value for relationship sync rollback
@@ -335,14 +347,14 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
-        const key = buildFieldValueKey(recordId, fieldId)
+        const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId))
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
         store.setValueOptimistic(key, typedValue)
       }
 
-      // Build API payload
+      // Build API payload (keep original fieldIds — server resolves systemAttributes)
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       try {
@@ -391,14 +403,15 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
 
+      const resolvedRef = resolveFieldRef(fieldId)
       for (const recordId of recordIds) {
-        const key = buildFieldValueKey(recordId, fieldId)
+        const key = buildFieldValueKey(recordId, resolvedRef)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         store.setValueOptimistic(key, typedValue)
       }
 
-      // Fire mutation
+      // Fire mutation (keep original fieldId — server resolves systemAttributes)
       bulkMutation.mutate(
         { recordIds, values: [{ fieldId, value }] },
         {
@@ -446,7 +459,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
       for (const recordId of recordIds) {
         for (const { fieldId, value, fieldType } of fieldValues) {
-          const key = buildFieldValueKey(recordId, fieldId)
+          const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId))
           const version = store.incrementMutationVersion(key)
           keyVersions.push({ key, version })
           const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -454,7 +467,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         }
       }
 
-      // Build API payload
+      // Build API payload (keep original fieldIds — server resolves systemAttributes)
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       bulkMutation.mutate(

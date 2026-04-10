@@ -89,6 +89,16 @@ export const EventHandlers: IEventsHandlers = {
   'entity:updated': [createTimelineEvent],
   'entity:deleted': [createTimelineEvent, handleEntityTriggers],
 
+  // Stock movement events → ENTITY TRIGGERS (inventory QoH recalculation)
+  'stock_movement:created': [handleEntityTriggers],
+  'stock_movement:deleted': [handleEntityTriggers],
+
+  // Vendor part / subpart events → ENTITY TRIGGERS (BOM cost recalculation)
+  'vendor_part:created': [handleEntityTriggers],
+  'vendor_part:deleted': [handleEntityTriggers],
+  'subpart:created': [handleEntityTriggers],
+  'subpart:deleted': [handleEntityTriggers],
+
   // Field trigger events → FIELD TRIGGER HANDLERS
   'field:trigger': [handleFieldTriggerJob],
 

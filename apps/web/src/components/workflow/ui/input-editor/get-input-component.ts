@@ -118,6 +118,8 @@ export interface FieldOptions {
     max?: number
     step?: number
     allowDecimals?: boolean
+    /** Stepper control style: 'buttons' (default +/- buttons) or 'arrows' (compact vertical arrows) */
+    stepper?: 'buttons' | 'arrows'
   }
 }
 
@@ -239,6 +241,7 @@ export function getSpecificPropsForType(
         max: numberOpts?.max,
         step: numberOpts?.step,
         allowDecimals: numberOpts?.allowDecimals,
+        stepper: numberOpts?.stepper,
       }
     }
 

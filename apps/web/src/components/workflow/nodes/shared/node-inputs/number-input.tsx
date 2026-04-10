@@ -2,6 +2,7 @@
 
 import { InputGroup, InputGroupAddon } from '@auxx/ui/components/input-group'
 import {
+  NumberInputArrows,
   NumberInputDecrement,
   NumberInputField,
   NumberInputIncrement,
@@ -22,6 +23,8 @@ interface NumberInputProps extends NodeInputProps {
   step?: number
   /** Whether to allow decimals */
   allowDecimals?: boolean
+  /** Stepper control style: 'buttons' (default +/- buttons) or 'arrows' (compact vertical arrows) */
+  stepper?: 'buttons' | 'arrows'
 }
 
 /**
@@ -40,6 +43,7 @@ export const NumberInput = createNodeInput<NumberInputProps>(
     max,
     step,
     allowDecimals = true,
+    stepper = 'arrows',
   }) => {
     // Parse value to ensure it's a number, not a string (prevents "3" + 1 = "31" bug)
     const rawValue = inputs[name]
@@ -101,10 +105,14 @@ export const NumberInput = createNodeInput<NumberInputProps>(
               placeholder={placeholder}
               className='text-start ps-0 placeholder:text-primary-400'
             />
-            <InputGroupAddon align='inline-end' className='gap-1 pe-1.5'>
-              <NumberInputDecrement />
-              <NumberInputIncrement />
-            </InputGroupAddon>
+            {stepper === 'arrows' ? (
+              <NumberInputArrows />
+            ) : (
+              <InputGroupAddon align='inline-end' className='gap-1 pe-1.5'>
+                <NumberInputDecrement />
+                <NumberInputIncrement />
+              </InputGroupAddon>
+            )}
           </InputGroup>
         </div>
       </NumberInputUi>
