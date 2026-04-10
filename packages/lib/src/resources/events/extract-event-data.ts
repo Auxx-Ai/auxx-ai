@@ -29,10 +29,13 @@ export function extractEventData(
 ): Record<string, unknown> {
   const eventData: Record<string, unknown> = {}
 
-  // Add all field values keyed by their systemAttribute
+  // Add all field values keyed by their systemAttribute.
+  // Values may be keyed by fieldId (UUID) or systemAttribute — check both.
   for (const field of fields) {
-    if (field.systemAttribute && field.id in values) {
-      eventData[field.systemAttribute] = values[field.id]
+    if (!field.systemAttribute) continue
+    const value = field.id in values ? values[field.id] : values[field.systemAttribute]
+    if (value !== undefined) {
+      eventData[field.systemAttribute] = value
     }
   }
 

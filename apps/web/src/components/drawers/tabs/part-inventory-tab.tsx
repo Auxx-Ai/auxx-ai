@@ -69,10 +69,39 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
     refetch,
   } = useSystemValues(recordId, [...PART_ATTRIBUTES], { autoFetch: true })
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
+  const subpartDefId = useResourceProperty('subpart', 'id')
 
   const qoh = (values.part_quantity_on_hand as number) ?? 0
   const stockStatus =
     (values.part_stock_status as string | undefined) ?? (qoh <= 0 ? 'out_of_stock' : 'in_stock')
+
+  // Check if part has subparts (for "Adjust subparts" toggle)
+  const subpartFilters: ConditionGroup[] = useMemo(
+    () => [
+      {
+        id: 'parent-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'parent-match',
+            fieldId: 'subpart:parentPart' as ResourceFieldId,
+            operator: 'is' as const,
+            value: partId,
+          },
+        ],
+      },
+    ],
+    [partId]
+  )
+
+  const { records: subpartRecords } = useRecordList({
+    entityDefinitionId: subpartDefId ?? '',
+    filters: subpartFilters,
+    limit: 1,
+    enabled: !!partId && !!subpartDefId,
+  })
+
+  const hasSubparts = subpartRecords.length > 0
 
   const filters: ConditionGroup[] = useMemo(
     () => [
@@ -142,7 +171,11 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
         title={`Stock Movements (${records.length})`}
         initialOpen
         actions={
-          <StockAdjustmentPopover partId={partId} currentQoH={qoh} onSuccess={handleAdjustSuccess}>
+          <StockAdjustmentPopover
+            partId={partId}
+            currentQoH={qoh}
+            hasSubparts={hasSubparts}
+            onSuccess={handleAdjustSuccess}>
             <Button variant='ghost' size='xs'>
               <Package />
               Adjust Stock

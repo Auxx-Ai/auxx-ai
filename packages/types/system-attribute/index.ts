@@ -107,6 +107,9 @@ export const SYSTEM_ATTRIBUTES = [
   'stock_movement_quantity',
   'stock_movement_reason',
   'stock_movement_reference',
+  'stock_movement_adjust_subparts',
+  'stock_movement_parent_movement',
+  'stock_movement_child_movements',
 
   // ─── Part inventory fields ────────────────────────────────────
   'part_quantity_on_hand',

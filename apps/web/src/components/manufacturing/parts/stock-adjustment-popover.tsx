@@ -29,6 +29,8 @@ interface StockAdjustmentPopoverProps {
   partId: string
   /** Current quantity on hand (needed for "Set to" mode) */
   currentQoH: number
+  /** Whether this part has subparts (BOM) — enables "Adjust subparts" toggle */
+  hasSubparts?: boolean
   onSuccess?: () => void
   children: React.ReactNode
 }
@@ -37,6 +39,7 @@ interface StockAdjustmentPopoverProps {
 export function StockAdjustmentPopover({
   partId,
   currentQoH,
+  hasSubparts = false,
   onSuccess,
   children,
 }: StockAdjustmentPopoverProps) {
@@ -46,6 +49,7 @@ export function StockAdjustmentPopover({
   const [quantity, setQuantity] = useState<number | null>(null)
   const [reason, setReason] = useState('')
   const [reference, setReference] = useState('')
+  const [adjustSubparts, setAdjustSubparts] = useState(false)
 
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
   const partDefId = useResourceProperty('part', 'id')
@@ -58,6 +62,7 @@ export function StockAdjustmentPopover({
       setQuantity(null)
       setReason('')
       setReference('')
+      setAdjustSubparts(false)
     }
   }, [open])
 
@@ -86,6 +91,7 @@ export function StockAdjustmentPopover({
         stock_movement_part: toRecordId(partDefId, partId),
         stock_movement_type: 'adjust',
         stock_movement_quantity: finalQuantity,
+        ...(adjustSubparts && { stock_movement_adjust_subparts: true }),
         ...(reason && { stock_movement_reason: reason }),
         ...(reference && { stock_movement_reference: reference }),
       },
@@ -101,6 +107,7 @@ export function StockAdjustmentPopover({
     quantityMode,
     direction,
     currentQoH,
+    adjustSubparts,
     reason,
     reference,
     createRecord,
@@ -123,10 +130,19 @@ export function StockAdjustmentPopover({
 
           <VarEditorField className='p-0'>
             {/* Mode */}
-            <VarEditorFieldRow title='Mode' type={BaseType.ENUM} showIcon isRequired>
+            <VarEditorFieldRow
+              title='Mode'
+              type={BaseType.ENUM}
+              showIcon
+              isRequired
+              description='Adjust by a relative amount or set to an absolute quantity'>
               <ConstantInputAdapter
                 value={quantityMode}
-                onChange={(_, val) => setQuantityMode((val as QuantityMode) ?? 'adjust_by')}
+                onChange={(_, val) => {
+                  const mode = (val as QuantityMode) ?? 'adjust_by'
+                  setQuantityMode(mode)
+                  if (mode === 'set_to') setAdjustSubparts(false)
+                }}
                 varType={BaseType.ENUM}
                 fieldOptions={quantityModeFieldOptions}
                 disabled={isPending}
@@ -135,7 +151,12 @@ export function StockAdjustmentPopover({
 
             {/* Direction */}
             {!isSetToMode && (
-              <VarEditorFieldRow title='Direction' type={BaseType.ENUM} showIcon isRequired>
+              <VarEditorFieldRow
+                title='Direction'
+                type={BaseType.ENUM}
+                showIcon
+                isRequired
+                description='Whether to add or remove stock'>
                 <ConstantInputAdapter
                   value={direction}
                   onChange={(_, val) => setDirection((val as Direction) ?? 'add')}
@@ -185,7 +206,31 @@ export function StockAdjustmentPopover({
                 disabled={isPending}
               />
             </VarEditorFieldRow>
+
+            {/* Adjust subparts toggle — only shown when part has subparts and in "Adjust by" mode */}
+            {hasSubparts && !isSetToMode && (
+              <VarEditorFieldRow
+                title='Adjust subparts'
+                type={BaseType.BOOLEAN}
+                showIcon
+                description='Cascade this adjustment to all leaf component parts based on the bill of materials'>
+                <ConstantInputAdapter
+                  value={adjustSubparts}
+                  onChange={(_, val) => setAdjustSubparts(val ?? false)}
+                  varType={BaseType.BOOLEAN}
+                  fieldOptions={{ variant: 'switch' }}
+                  disabled={isPending}
+                />
+              </VarEditorFieldRow>
+            )}
           </VarEditorField>
+
+          {/* Info hint when adjust subparts is enabled */}
+          {adjustSubparts && (
+            <p className='text-xs text-muted-foreground'>
+              Adjustment will be applied to all component parts based on the bill of materials.
+            </p>
+          )}
 
           {/* Actions */}
           <div className='flex justify-end gap-2'>

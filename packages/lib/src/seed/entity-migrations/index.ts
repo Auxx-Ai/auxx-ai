@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { getOrgCache } from '../../cache'
 import { migration001VendorPartSubpart } from './migrations/001-vendor-part-subpart'
 import { migration002StockMovement } from './migrations/002-stock-movement-inventory'
+import { migration003BomStockMovementFields } from './migrations/003-bom-stock-movement-fields'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -12,7 +13,11 @@ const logger = createScopedLogger('entity-migrations')
 // ─── Migration Registry ──────────────────────────────────────────────
 // Add new migrations here in order. Each must be idempotent.
 
-const ALL_MIGRATIONS: EntityMigration[] = [migration001VendorPartSubpart, migration002StockMovement]
+const ALL_MIGRATIONS: EntityMigration[] = [
+  migration001VendorPartSubpart,
+  migration002StockMovement,
+  migration003BomStockMovementFields,
+]
 
 // ─── Public API ──────────────────────────────────────────────────────
 
