@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.118](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.117...auxx-v0.1.118) (2026-04-10)
+
+
+### Features
+
+* add BOM-aware stock movement functionality ([#398](https://github.com/Auxx-Ai/auxx-ai/issues/398)) ([05ef5b3](https://github.com/Auxx-Ai/auxx-ai/commit/05ef5b37655eca21d44925d24e0e92d6aa6f4d52))
+* enhance field value handling with cached field support and new utility functions ([#396](https://github.com/Auxx-Ai/auxx-ai/issues/396)) ([20fa88f](https://github.com/Auxx-Ai/auxx-ai/commit/20fa88f0e53c3b780000e5a0f2a2b208992f0304))
+
 ## [0.1.117](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.116...auxx-v0.1.117) (2026-04-10)
 
 
