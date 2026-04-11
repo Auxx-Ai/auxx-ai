@@ -9,7 +9,7 @@ import SettingsPage from '~/components/global/settings-page'
 export default function ImportHistoryLoading() {
   return (
     <SettingsPage title='Import History'>
-      <div className='p-6 space-y-4'>
+      <div className='p-3 sm:p-6 space-y-4'>
         <div className='flex items-center gap-4'>
           <Skeleton className='h-9 flex-1' />
           <Skeleton className='h-9 w-32' />

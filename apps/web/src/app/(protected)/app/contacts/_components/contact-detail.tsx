@@ -212,7 +212,7 @@ export function ContactDetail({ id }: { id: string }) {
 
           <TabsContent value='timeline' className='flex flex-col flex-1 min-h-0'>
             <ScrollArea className='flex-1'>
-              <div className='p-6 flex-1 flex-col flex'>
+              <div className='p-3 sm:p-6 flex-1 flex-col flex'>
                 <TimelineTab recordId={recordId} />
               </div>
             </ScrollArea>

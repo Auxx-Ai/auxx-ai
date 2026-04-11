@@ -340,7 +340,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
         </Button>
       }>
       <ConfirmDialog />
-      <div className=' space-y-6 p-6'>
+      <div className=' space-y-6 p-2 sm:p-6'>
         {/* Header */}
         <div className='flex flex-wrap items-center justify-between gap-4'>
           <div className='flex shrink-0 items-center space-x-2'>

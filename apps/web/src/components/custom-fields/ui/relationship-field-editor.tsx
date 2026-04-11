@@ -132,7 +132,7 @@ export function RelationshipFieldEditor(props: RelationshipFieldEditorProps) {
   }
 
   return (
-    <div className='grid grid-cols-[1fr_auto_1fr] gap-4 items-start'>
+    <div className='grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-4 items-start'>
       {/* LEFT: Current entity field */}
       <Card>
         <CardHeader className='p-0 border-b'>
@@ -153,7 +153,7 @@ export function RelationshipFieldEditor(props: RelationshipFieldEditorProps) {
       </Card>
 
       {/* MIDDLE: Relationship type selector */}
-      <div className='flex items-center h-full'>
+      <div className='flex items-center justify-center sm:justify-start h-full'>
         <Select
           value={relationshipType}
           onValueChange={(v) =>

@@ -104,7 +104,7 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
             </Button>
           </CreateTicketDialog>
         }>
-        <div className='space-y-4 p-4'>
+        <div className='space-y-4 sm:p-4'>
           {records.map((record) => (
             <TicketRow
               key={record.id}

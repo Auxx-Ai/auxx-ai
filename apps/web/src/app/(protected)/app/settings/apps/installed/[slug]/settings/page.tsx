@@ -18,7 +18,7 @@ async function AppInstalledSettingsPage({ params }: Props) {
 
   // Check if app is installed
   if (!appData.installation.isInstalled) {
-    return <div className='p-6'>App not installed</div>
+    return <div className='p-3 sm:p-6'>App not installed</div>
   }
 
   const installationType = appData.installation.installationType!

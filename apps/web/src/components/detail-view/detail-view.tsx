@@ -2,6 +2,8 @@
 'use client'
 
 import { getDetailViewConfig, type ModelType } from '@auxx/lib/resources/client'
+import { Button } from '@auxx/ui/components/button'
+import { Drawer, DrawerContent, DrawerHandle, DrawerTitle } from '@auxx/ui/components/drawer'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -9,9 +11,11 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { PanelRight } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { toRecordId, useRecord, useResourceProperty } from '~/components/resources'
+import { useIsMobile } from '~/hooks/use-mobile'
 import { useDockStore } from '~/stores/dock-store'
 import { DetailViewActions } from './components/detail-view-actions'
 import { DetailViewMainTabs } from './detail-view-main-tabs'
@@ -55,6 +59,10 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
   })
   const [sidebarTab, setSidebarTab] = useState(config.defaultSidebarTab ?? 'overview')
 
+  // Mobile detection
+  const isMobile = useIsMobile()
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+
   // Dock state for resizable sidebar
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
@@ -85,16 +93,36 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
 
   const displayName = (record.displayName as string) || (record.name as string) || 'Untitled'
 
+  const sidebarContent = (
+    <DetailViewSidebar
+      recordId={recordId}
+      record={record}
+      config={config}
+      activeTab={sidebarTab}
+      onTabChange={setSidebarTab}
+      icon={icon}
+      color={color}
+      displayName={displayName}
+    />
+  )
+
   return (
     <MainPage>
       <MainPageHeader
         action={
-          <DetailViewActions
-            entityType={entityType}
-            recordId={recordId}
-            record={record}
-            config={config}
-          />
+          <div className='flex gap-2'>
+            {isMobile && (
+              <Button variant='outline' size='sm' onClick={() => setMobileSidebarOpen(true)}>
+                <PanelRight />
+              </Button>
+            )}
+            <DetailViewActions
+              entityType={entityType}
+              recordId={recordId}
+              record={record}
+              config={config}
+            />
+          </div>
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title={plural ?? label ?? 'Records'} href={backUrl} />
@@ -103,27 +131,20 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
       </MainPageHeader>
 
       <MainPageContent
-        dockedPanels={[
-          {
-            key: 'sidebar',
-            content: (
-              <DetailViewSidebar
-                recordId={recordId}
-                record={record}
-                config={config}
-                activeTab={sidebarTab}
-                onTabChange={setSidebarTab}
-                icon={icon}
-                color={color}
-                displayName={displayName}
-              />
-            ),
-            width: dockedWidth,
-            onWidthChange: setDockedWidth,
-            minWidth,
-            maxWidth,
-          },
-        ]}>
+        dockedPanels={
+          isMobile
+            ? []
+            : [
+                {
+                  key: 'sidebar',
+                  content: sidebarContent,
+                  width: dockedWidth,
+                  onWidthChange: setDockedWidth,
+                  minWidth,
+                  maxWidth,
+                },
+              ]
+        }>
         <DetailViewMainTabs
           recordId={recordId}
           entityType={entityType}
@@ -133,6 +154,23 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
           record={record}
         />
       </MainPageContent>
+
+      {/* Mobile sidebar drawer */}
+      {isMobile && (
+        <Drawer
+          direction='right'
+          open={mobileSidebarOpen}
+          onOpenChange={setMobileSidebarOpen}
+          defaultWidth={dockedWidth}
+          minWidth={minWidth}
+          maxWidth={maxWidth}>
+          <DrawerContent>
+            <DrawerHandle />
+            <DrawerTitle className='sr-only'>{displayName}</DrawerTitle>
+            {sidebarContent}
+          </DrawerContent>
+        </Drawer>
+      )}
     </MainPage>
   )
 }

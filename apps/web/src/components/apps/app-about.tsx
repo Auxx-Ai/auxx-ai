@@ -33,7 +33,7 @@ function AppAbout({ app }: Props) {
   return (
     <div className='flex-1 flex-col space-y-6 px-6 py-6'>
       <div className='flex w-full  flex-row'>
-        <div className='w-full grid grid-cols-3 gap-3'>
+        <div className='w-full grid grid-cols-1 sm:grid-cols-3 gap-3'>
           {app.app.screenshots && app.app.screenshots.length > 0
             ? app.app.screenshots.map((url, i) => (
                 <div
@@ -47,7 +47,7 @@ function AppAbout({ app }: Props) {
               ))}
         </div>
       </div>
-      <div className='grid grid-cols-3 gap-3'>
+      <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
         <ItemGroup className='gap-4'>
           {app.app.category && (
             <Item className='p-0 gap-1'>

@@ -285,7 +285,7 @@ export function TagTreeView() {
 
         <Button variant='outline' onClick={handleCreateTag}>
           <Plus />
-          Add Tag
+          <span className='hidden sm:inline'>Add Tag</span>
         </Button>
       </div>
 

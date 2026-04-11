@@ -52,7 +52,7 @@ export default function IntegrationTabs() {
           { title: 'Channels', href: '/app/settings/channels' },
           { title: 'Loading...' },
         ]}>
-        <div className='space-y-6 p-6'>
+        <div className='space-y-6 p-3 sm:p-6'>
           <Skeleton className='h-64 w-full' />
         </div>
       </SettingsPage>

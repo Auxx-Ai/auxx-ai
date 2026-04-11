@@ -105,7 +105,7 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
   }
 
   return (
-    <div className='flex flex-col h-full'>
+    <div className='flex flex-col h-full overflow-x-auto'>
       {/* Confirm Delete Dialog */}
       <ConfirmDeleteDialog />
 

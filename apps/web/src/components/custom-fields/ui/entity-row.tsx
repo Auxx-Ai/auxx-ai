@@ -33,7 +33,7 @@ export function EntityRow({ label, type, iconId, color, onClick }: EntityRowProp
           {type}
         </Badge>
       </TableCell>
-      <TableCell>&nbsp;</TableCell>
+      <TableCell className='hidden sm:table-cell'>&nbsp;</TableCell>
       <TableCell className='text-right' data-clickable='true'>
         <div className='justify-end flex items-center w-full h-full pe-3'>
           <ChevronRight className='size-4' />

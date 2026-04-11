@@ -26,9 +26,9 @@ export function CheckboxHeaderCell<TData>({ header }: CheckboxHeaderCellProps<TD
       style={{
         minWidth: header.column.columnDef.minSize,
         maxWidth: header.column.columnDef.maxSize,
-        ...(isPinned && { position: 'sticky', left: header.column.getStart('left'), zIndex: 20 }),
+        ...(isPinned && { left: header.column.getStart('left') }),
       }}
-      className={`relative ${isPinned ? 'z-10 from-white to-white/50 bg-gradient-to-b dark:from-transparent dark:to-transparent  backdrop-blur' : ''}`}>
+      className={`relative ${isPinned ? 'sm:sticky sm:z-20 z-10 from-white to-white/50 bg-gradient-to-b dark:from-transparent dark:to-transparent sm:backdrop-blur' : ''}`}>
       <div className='group min-w-min h-full font-inter font-medium'>
         <div className=' h-full relative flex'>
           <div className='flex items-center justify-end px-2 ' style={{ width: 40 }}>

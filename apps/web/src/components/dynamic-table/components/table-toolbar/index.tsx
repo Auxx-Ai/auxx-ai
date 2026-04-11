@@ -12,7 +12,16 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { cn } from '@auxx/ui/lib/utils'
-import { ArrowDownUp, Download, RefreshCw, Save, Upload } from 'lucide-react'
+import {
+  ArrowDownUp,
+  ArrowLeft,
+  ChevronLeft,
+  Download,
+  RefreshCw,
+  Save,
+  Search,
+  Upload,
+} from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
@@ -101,6 +110,10 @@ export function TableToolbar<TData = any>({
   // State for controlling create view dialog from "Save as new view" button
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
+  // Mobile search toggle
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  console.log('[toolbar] mobileSearchOpen:', mobileSearchOpen)
+
   // Local search state for immediate UI feedback
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery)
   const debouncedSearchQuery = useDebounce(localSearchQuery, 300)
@@ -117,101 +130,160 @@ export function TableToolbar<TData = any>({
 
   return (
     <div
+      data-search-expanded={mobileSearchOpen || undefined}
+      data-slot='toolbar-controls'
       className={cn(
-        'flex @container/controls border-b items-start gap-1.5 py-2 px-3 bg-background overflow-x-auto no-scrollbar w-full',
+        'group/toolbar flex @container/controls border-b items-start gap-1.5 py-2 px-1 sm:px-3 bg-background overflow-x-auto no-scrollbar w-full',
         className
       )}>
       {/* View Selector - Always shown */}
-      <ViewSelector
-        views={views}
-        activeView={currentView}
-        tableId={tableId}
-        onViewSelect={(viewId) => setActiveView(tableId, viewId)}
-        isSaving={isSavingView}
-        hasUnsavedChanges={hasUnsavedViewChanges}
-        onSave={saveCurrentView}
-        onReset={resetViewChanges}
-        selectFields={selectFields}
-        entityDefinitionId={entityDefinitionId}
-        currentFilters={filters}
-        openCreateDialog={isCreateDialogOpen}
-        onCreateDialogChange={setIsCreateDialogOpen}
-        table={table}
-      />
+      <div className='group-data-[search-expanded]/toolbar:hidden'>
+        <ViewSelector
+          views={views}
+          activeView={currentView}
+          tableId={tableId}
+          onViewSelect={(viewId) => setActiveView(tableId, viewId)}
+          isSaving={isSavingView}
+          hasUnsavedChanges={hasUnsavedViewChanges}
+          onSave={saveCurrentView}
+          onReset={resetViewChanges}
+          selectFields={selectFields}
+          entityDefinitionId={entityDefinitionId}
+          currentFilters={filters}
+          openCreateDialog={isCreateDialogOpen}
+          onCreateDialogChange={setIsCreateDialogOpen}
+          table={table}
+        />
+      </div>
 
       {/* Filter Button - only shown when entityDefinitionId is available */}
       {enableFiltering && entityDefinitionId && (
-        <TableFilterBuilder
-          filters={filters}
-          onFiltersChange={setFilters}
-          filterableFields={filterableFields}
-          resourceType={entityDefinitionId}
-        />
+        <div className='group-data-[search-expanded]/toolbar:hidden'>
+          <TableFilterBuilder
+            filters={filters}
+            onFiltersChange={setFilters}
+            filterableFields={filterableFields}
+            resourceType={entityDefinitionId}
+          />
+        </div>
       )}
 
       {/* Save as new view button - shown when filters differ from active view */}
       {hasUnsavedFilters && filters.length > 0 && (
-        <Button variant='outline' size='sm' onClick={() => setIsCreateDialogOpen(true)}>
+        <Button
+          variant='outline'
+          size='sm'
+          className='group-data-[search-expanded]/toolbar:hidden'
+          onClick={() => setIsCreateDialogOpen(true)}>
           <Save className='size-3' />
           <span className='hidden @lg/controls:block'>Save as new view</span>
         </Button>
       )}
 
       {/* Columns/Settings Button - different component for kanban vs table */}
-      {isKanbanView ? <KanbanViewSettings /> : <ColumnManager />}
+      <div className='group-data-[search-expanded]/toolbar:hidden'>
+        {isKanbanView ? <KanbanViewSettings /> : <ColumnManager />}
+      </div>
 
       {/* Import / Export Dropdown */}
       {enableImport && importHref && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant='ghost' size='sm'>
-              <ArrowDownUp />
-              <span className='hidden @lg/controls:block'>Import / Export</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='start'>
-            <DropdownMenuItem asChild>
-              <Link href={importHref}>
-                <Upload />
-                Import data
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem disabled>
-              <Download />
-              Export current view as CSV
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled>
-              <Download />
-              Export all records as CSV
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className='group-data-[search-expanded]/toolbar:hidden'>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='ghost' size='sm'>
+                <ArrowDownUp />
+                <span className='hidden @lg/controls:block'>Import / Export</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='start'>
+              <DropdownMenuItem asChild>
+                <Link href={importHref}>
+                  <Upload />
+                  Import data
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled>
+                <Download />
+                Export current view as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                <Download />
+                Export all records as CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       )}
       {/* Custom Filter */}
-      {customFilter}
+      {customFilter && (
+        <div className='group-data-[search-expanded]/toolbar:hidden'>{customFilter}</div>
+      )}
 
-      {/* Search Input */}
+      {/* Mobile search toggle button — visible only on small screens when search is collapsed */}
+      {enableSearch && (
+        <Button
+          variant='ghost'
+          size='sm'
+          className='sm:hidden group-data-[search-expanded]/toolbar:hidden'
+          onClick={() => {
+            console.log('[toolbar] search toggle clicked, opening')
+            setMobileSearchOpen(true)
+          }}>
+          <Search />
+        </Button>
+      )}
+
+      {/* Search Input — hidden on mobile until expanded */}
       {renderSearch ? (
-        renderSearch()
+        <div className='hidden sm:flex flex-1 group-data-[search-expanded]/toolbar:flex'>
+          <Button
+            variant='ghost'
+            size='icon-xs'
+            className='hidden group-data-[search-expanded]/toolbar:flex sm:hidden shrink-0 mt-0.5 sm:mt-0'
+            onClick={() => {
+              setMobileSearchOpen(false)
+              setLocalSearchQuery('')
+            }}>
+            <ChevronLeft />
+          </Button>
+          {renderSearch()}
+        </div>
       ) : enableSearch ? (
-        <InputSearch
-          placeholder='Search...'
-          value={localSearchQuery}
-          onChange={(e) => setLocalSearchQuery(e.target.value)}
-        />
+        <div className='hidden sm:flex flex-1 group-data-[search-expanded]/toolbar:flex'>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='hidden group-data-[search-expanded]/toolbar:flex sm:hidden shrink-0'
+            onClick={() => {
+              setMobileSearchOpen(false)
+              setLocalSearchQuery('')
+            }}>
+            <ArrowLeft />
+          </Button>
+          <InputSearch
+            className=''
+            placeholder='Search...'
+            value={localSearchQuery}
+            onChange={(e) => setLocalSearchQuery(e.target.value)}
+          />
+        </div>
       ) : null}
 
       {onRefresh && (
         <Tooltip content='Refresh Data'>
-          <Button variant='ghost' size='sm' className='text-xs' onClick={onRefresh}>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='text-xs group-data-[search-expanded]/toolbar:hidden'
+            onClick={onRefresh}>
             <RefreshCw />
           </Button>
         </Tooltip>
       )}
 
       {/* Custom children */}
-      {children}
+      {children && <div className='group-data-[search-expanded]/toolbar:hidden'>{children}</div>}
     </div>
   )
 }

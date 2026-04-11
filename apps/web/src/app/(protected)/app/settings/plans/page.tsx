@@ -26,7 +26,7 @@ export default function PlansPage() {
       title='Billing'
       description='Manage your subscription, plan, and payment details'
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Plans' }]}>
-      <div className='p-6 space-y-10'>
+      <div className='p-3 sm:p-6 space-y-6 sm:space-y-10'>
         <PlanViewTracker />
         <UpgradeConfetti />
         <DemoBillingCycleGuard>
@@ -108,7 +108,7 @@ function PlanChangeCardSkeleton() {
 
 function InvoiceListSkeleton() {
   return (
-    <div className='p-6'>
+    <div className='p-2 sm:p-6'>
       <div className='space-y-4'>
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className='flex items-center justify-between py-2'>

@@ -129,12 +129,12 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
 
   // Show plan summary with preview table
   return (
-    <div className='flex flex-col flex-1 min-h-0'>
+    <div className='flex flex-col flex-1 min-h-0 min-w-0'>
       {/* Plan Summary - fixed at top */}
       {plan && <ImportPlanSummary plan={plan} />}
 
       {/* Preview Table - scrolls independently with sticky header */}
-      <div className='flex-1 min-h-0'>
+      <div className='flex-1 min-h-0 min-w-0'>
         <PlanPreviewTable
           rows={previewRows}
           mappings={mappings}

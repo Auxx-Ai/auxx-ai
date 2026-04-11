@@ -75,7 +75,7 @@ export default function IntegrationSettingsAdvanced({
   }
 
   return (
-    <div className='space-y-10 p-6'>
+    <div className='space-y-4 sm:space-y-10 p-3 sm:p-6'>
       {/* Record Creation */}
       <div className='space-y-4'>
         <div className='space-y-1'>

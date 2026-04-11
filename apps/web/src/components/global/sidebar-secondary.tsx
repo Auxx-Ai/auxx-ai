@@ -31,14 +31,10 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
           <div className='sticky top-0 z-10 bg-neutral-50 dark:bg-primary-50 border-b border-neutral-200 dark:border-primary-200 p-2'>
             <Button
               variant='ghost'
-              className='w-full justify-between h-10 px-3'
+              className='w-full justify-between h-6 px-3'
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
               <span className='font-medium'>{title}</span>
-              {isDropdownOpen ? (
-                <ChevronUp className='h-4 w-4' />
-              ) : (
-                <ChevronDown className='h-4 w-4' />
-              )}
+              {isDropdownOpen ? <ChevronUp /> : <ChevronDown />}
             </Button>
           </div>
         )}
@@ -55,7 +51,15 @@ function SidebarSecondary({ items, baseUrl, title, current }: Props) {
           )}>
           {items.map((group) => (
             <React.Fragment key={group.id}>
-              {createSidebarGroup(group, baseUrl, current, role, selfHosted, hasFeatureAccess)}
+              {createSidebarGroup(
+                group,
+                baseUrl,
+                current,
+                role,
+                selfHosted,
+                hasFeatureAccess,
+                isMobile ? () => setIsDropdownOpen(false) : undefined
+              )}
             </React.Fragment>
           ))}
         </div>
@@ -70,7 +74,8 @@ function createSidebarGroup(
   current: string | undefined,
   role: 'ADMIN' | 'USER',
   selfHosted: boolean,
-  hasFeatureAccess: (key: string) => boolean
+  hasFeatureAccess: (key: string) => boolean,
+  onItemClick?: () => void
 ) {
   const title = group.label
   // Filter out cloud-only items in self-hosted mode, then by feature access
@@ -99,6 +104,7 @@ function createSidebarGroup(
             <Link
               prefetch={false}
               href={`${baseUrl}/${item.slug}`}
+              onClick={onItemClick}
               data-active={item.slug == current}
               className={cn(
                 'peer/menu-button flex h-7 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring text-neutral-500 dark:text-sidebar-foreground',

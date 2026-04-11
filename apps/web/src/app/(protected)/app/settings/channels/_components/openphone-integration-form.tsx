@@ -82,7 +82,7 @@ function OpenPhoneIntegrationForm({}: Props) {
           Back
         </Button>
       }>
-      <div className='p-6'>
+      <div className='p-3 sm:p-6'>
         <Form {...openPhoneForm}>
           <form onSubmit={openPhoneForm.handleSubmit(onOpenPhoneSubmit)} className='space-y-6'>
             <div className='flex flex-col space-y-1.5'>

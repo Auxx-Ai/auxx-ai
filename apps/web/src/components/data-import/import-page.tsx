@@ -188,7 +188,7 @@ export function ImportPage({
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>
-        <div className='flex flex-col flex-1 min-h-0 '>
+        <div className='flex flex-col flex-1 min-h-0 min-w-0'>
           {/* Step navigation as Stepper */}
           <ImportStepCards
             currentStep={currentStep}
@@ -198,7 +198,7 @@ export function ImportPage({
           />
 
           {/* Current step content */}
-          <div className='flex-1 overflow-y-auto relative flex flex-col min-h-0'>
+          <div className='flex-1 overflow-y-auto relative flex flex-col min-h-0 min-w-0'>
             {renderStep()}
           </div>
         </div>

@@ -262,7 +262,7 @@ export function VirtualTableBody<TData>({
           )
         })}
         <div
-          className='sticky top-0 w-0'
+          className='hidden sm:block sticky top-0 w-0'
           style={{
             left: `${shadowLeftPosition}px`,
             zIndex: 22,

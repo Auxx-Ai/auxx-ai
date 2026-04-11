@@ -209,8 +209,8 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
   return (
     <div className=''>
       {/* Header with auto-map */}
-      <div className='flex items-center justify-between sticky top-0 px-4 border-b bg-muted/80 backdrop-blur h-12 z-10'>
-        <div className='flex flex-row items-center gap-2'>
+      <div className='flex sm:items-center justify-between sticky top-0 px-4 border-b bg-muted/80 backdrop-blur py-3 sm:py-0 sm:h-12 z-10 flex-col sm:flex-row space-y-2 sm:space-y-0'>
+        <div className='flex  items-center gap-2'>
           <h3 className='font-medium'>Column Mappings</h3>
           <p className='text-sm text-muted-foreground'>
             {mappedCount} of {mappings.length} columns mapped
@@ -233,7 +233,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
       </div>
 
       {/* Two-panel layout: mapping table + sample values preview */}
-      <div className='flex gap-4'>
+      <div className='flex gap-4 flex-col sm:flex-row'>
         {/* Left: Mapping table (CSV Column | Maps To) */}
         <div className='flex-1 min-w-0 shrink-0'>
           <ColumnMappingTable
@@ -246,7 +246,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         </div>
 
         {/* Right: Sample values panel (shows on hover/click, defaults to first column) */}
-        <div className='w-[300px] shrink-0 pe-6'>
+        <div className='w-[300px] shrink-0 pe-6 mx-auto sm:mx-0'>
           <SampleValuesPanel mapping={mappings.find((m) => m.sourceColumnIndex === activeColumn)} />
         </div>
       </div>

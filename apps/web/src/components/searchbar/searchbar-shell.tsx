@@ -259,7 +259,7 @@ export function SearchBarShell({
       <div
         ref={searchInputRowRef}
         className={cn(
-          'flex items-center h-8 bg-primary-50 hover:bg-background pe-1 transition-colors border',
+          'flex items-center h-7 sm:h-8 bg-primary-50 hover:bg-background pe-1 transition-colors border',
           isOpen
             ? 'rounded-t-2xl bg-background border border-b-0 border-foreground/15'
             : 'rounded-full border-transparent'

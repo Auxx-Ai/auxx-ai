@@ -168,7 +168,7 @@ function DrawerContent({
       <DrawerResizeContext.Provider value={context}>
         <DrawerPrimitive.Content
           className={cn(
-            'right-0 top-0 bottom-0 fixed z-50 outline-hidden flex flex-col shadow-left dark:border-l bg-background/70 backdrop-blur-sm overflow-visible',
+            'right-0 top-0 bottom-0 fixed z-50 outline-hidden flex flex-col shadow-left dark:border-l bg-background/70 backdrop-blur-sm overflow-visible max-sm:w-screen!',
             className
           )}
           style={width ? { width: `${width}px` } : undefined}

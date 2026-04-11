@@ -88,7 +88,7 @@ export default function IntegrationChooserPage() {
           Back to Channels
         </Button>
       }>
-      <div className='space-y-6 p-6'>
+      <div className='space-y-4 sm:space-y-6 p-3 sm:p-6'>
         <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
           {integrations.map((integration) => (
             <AppListCard

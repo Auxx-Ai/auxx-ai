@@ -514,9 +514,9 @@ export function EntityTemplateDialog({
                   </div>
                 </DialogHeader>
 
-                <div className='flex flex-1 flex-row justify-start w-full min-h-0'>
+                <div className='flex flex-1 flex-col sm:flex-row justify-start w-full min-h-0'>
                   {/* Sidebar */}
-                  <div className='w-64 border-r bg-muted/30 flex flex-col rounded-bl-[16px]'>
+                  <div className='hidden sm:flex w-64 border-r bg-muted/30 flex-col rounded-bl-[16px]'>
                     <ScrollArea>
                       <h3 className='p-3 pb-0 text-sm font-semibold text-muted-foreground sticky top-0'>
                         Categories
@@ -577,7 +577,7 @@ export function EntityTemplateDialog({
                       </Empty>
                     ) : filteredTemplates.length > 0 ? (
                       <ScrollArea className='flex-1'>
-                        <div className='p-6 space-y-2'>
+                        <div className='p-3 sm:p-6 space-y-2'>
                           {filteredTemplates.map((template) => (
                             <div
                               key={template.id}
@@ -671,11 +671,11 @@ export function EntityTemplateDialog({
                   </div>
                 </DialogHeader>
 
-                <div className='flex flex-1 overflow-hidden'>
+                <div className='flex flex-col sm:flex-row flex-1 sm:overflow-hidden'>
                   {/* Left: Preview cards — horizontally scrollable */}
-                  <div className='flex-2 border-r bg-muted/30 overflow-hidden'>
+                  <div className='sm:flex-2 sm:border-r bg-muted/30 overflow-hidden'>
                     {templateDetail ? (
-                      <ScrollArea orientation='both' className='h-full'>
+                      <ScrollArea orientation='both' className='h-full min-h-[400px]'>
                         <div className='flex gap-4 p-6 items-start [&>[data-slot=preview-card]:last-child]:pr-6'>
                           {/* Primary template card */}
                           <EntityPreviewCard

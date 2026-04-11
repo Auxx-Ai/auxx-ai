@@ -166,15 +166,15 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
                   className='border border-primary-200 flex flex-1 w-full'>
                   <RadioTabItem value='editor' size='sm'>
                     <Workflow />
-                    Editor
+                    <span className='hidden sm:inline'>Editor</span>
                   </RadioTabItem>
                   <RadioTabItem value='analytics' size='sm'>
                     <ChartColumn />
-                    Analytics
+                    <span className='hidden sm:inline'>Analytics</span>
                   </RadioTabItem>
                   <RadioTabItem value='executions' size='sm'>
                     <History />
-                    Executions
+                    <span className='hidden sm:inline'>Executions</span>
                   </RadioTabItem>
                 </RadioTab>
                 <Tooltip content='Edit Workflow Details'>

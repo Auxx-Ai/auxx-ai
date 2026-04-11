@@ -58,7 +58,7 @@ export default function AppsInstalledListPage() {
         { title: 'Installed' },
       ]}
       button={<></>}>
-      <div className='flex flex-col flex-1 p-6 space-y-6 @container'>
+      <div className='flex flex-col flex-1 p-3 sm:p-6 space-y-6 @container'>
         <Input
           placeholder='Search installed apps'
           value={searchQuery}
