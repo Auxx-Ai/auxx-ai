@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.119](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.118...auxx-v0.1.119) (2026-04-11)
+
+
+### Features
+
+* add avatar field support across entity templates and UI components ([#401](https://github.com/Auxx-Ai/auxx-ai/issues/401)) ([ef1aa5a](https://github.com/Auxx-Ai/auxx-ai/commit/ef1aa5a7d1508c80af6bcd7acde5969618864972))
+* enhance Kopilot capabilities with detailed descriptions and logging ([#399](https://github.com/Auxx-Ai/auxx-ai/issues/399)) ([e8fb09d](https://github.com/Auxx-Ai/auxx-ai/commit/e8fb09d65c585a002b9dce93619c68a0bf0cf3d7))
+* enhance responsive design across various components ([#402](https://github.com/Auxx-Ai/auxx-ai/issues/402)) ([40e6679](https://github.com/Auxx-Ai/auxx-ai/commit/40e6679b0b889f647c5c9c97afd4286569c461ef))
+
 ## [0.1.118](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.117...auxx-v0.1.118) (2026-04-10)
 
 
