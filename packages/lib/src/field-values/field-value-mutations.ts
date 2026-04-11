@@ -33,7 +33,7 @@ import {
   publishFieldTriggerEvents,
 } from '../field-triggers/publish'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
-import { getModelType, isRecordId, parseRecordId } from '../resources/resource-id'
+import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import {
   type CachedField,
   type FieldValueContext,
@@ -374,6 +374,10 @@ export async function addValue(
 
   const typedResult = rowToTypedValue(inserted as unknown as FieldValueRow, fieldType)
 
+  // Update display value if this is a display field (e.g., avatar for FILE fields)
+  const field = await getField(ctx, fieldId)
+  await maybeUpdateDisplayValue(ctx, recordId, field, value)
+
   // Re-read full field value and publish (multi-value — send complete array)
   const fullValues = await getValue(ctx, { recordId, fieldId })
   if (fullValues) {
@@ -396,6 +400,21 @@ export async function addValue(
  * @param valueId - The FieldValue record ID (UUID)
  */
 export async function removeValue(ctx: FieldValueContext, valueId: string): Promise<void> {
+  // Look up the row before deleting so we can update display values (e.g., clear avatar)
+  const [row] = await ctx.db
+    .select({
+      fieldId: schema.FieldValue.fieldId,
+      entityId: schema.FieldValue.entityId,
+      entityDefinitionId: schema.FieldValue.entityDefinitionId,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.id, valueId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+
   await ctx.db
     .delete(schema.FieldValue)
     .where(
@@ -404,6 +423,15 @@ export async function removeValue(ctx: FieldValueContext, valueId: string): Prom
         eq(schema.FieldValue.organizationId, ctx.organizationId)
       )
     )
+
+  // Update display value after removal (e.g., clear avatarUrl when avatar file is removed)
+  if (row) {
+    const field = await getField(ctx, row.fieldId)
+    const recordId = toRecordId(row.entityDefinitionId, row.entityId)
+    // Check if there are remaining values (multi-value field might still have others)
+    const remaining = await getValue(ctx, { recordId, fieldId: row.fieldId })
+    await maybeUpdateDisplayValue(ctx, recordId, field, remaining ?? null)
+  }
 }
 
 /**

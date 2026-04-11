@@ -112,6 +112,7 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   contact: {
     primaryDisplayField: 'fullName',
     secondaryDisplayField: 'primaryEmail',
+    avatarField: 'avatarUrl',
   },
   ticket: {
     primaryDisplayField: 'title',
@@ -120,6 +121,7 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   part: {
     primaryDisplayField: 'title',
     secondaryDisplayField: 'sku',
+    avatarField: 'image',
   },
   inbox: {
     primaryDisplayField: 'name',

@@ -10,7 +10,7 @@ const logger = createScopedLogger('entity-seeder:link-display-fields')
 
 /**
  * Pass 4: Link Display Fields
- * Update EntityDefinitions with primaryDisplayFieldId and secondaryDisplayFieldId.
+ * Update EntityDefinitions with primaryDisplayFieldId, secondaryDisplayFieldId, and avatarFieldId.
  */
 export async function linkDisplayFields(
   db: Database,
@@ -29,10 +29,14 @@ export async function linkDisplayFields(
     // fieldMap is keyed by entityType:field.id
     const primaryField = fieldMap.get(`${entityType}:${config.primaryDisplayField}`)
     const secondaryField = fieldMap.get(`${entityType}:${config.secondaryDisplayField}`)
+    const avatarField = config.avatarField
+      ? fieldMap.get(`${entityType}:${config.avatarField}`)
+      : undefined
 
     const updates: Record<string, string> = {}
     if (primaryField) updates.primaryDisplayFieldId = primaryField.id
     if (secondaryField) updates.secondaryDisplayFieldId = secondaryField.id
+    if (avatarField) updates.avatarFieldId = avatarField.id
 
     if (Object.keys(updates).length > 0) {
       await db
@@ -45,6 +49,7 @@ export async function linkDisplayFields(
       logger.warn(`No display fields found for ${entityType}`, {
         primaryField: config.primaryDisplayField,
         secondaryField: config.secondaryDisplayField,
+        avatarField: config.avatarField,
       })
     }
   }

@@ -193,6 +193,7 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, SystemResourceDisplayConfi
   part: {
     identifierField: 'sku',
     primaryDisplayFieldId: 'title',
+    avatarFieldId: 'image',
     searchFields: ['title', 'sku', 'category', 'description'],
     defaultSortField: 'updatedAt',
     defaultSortDirection: 'desc',

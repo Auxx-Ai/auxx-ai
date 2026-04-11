@@ -3,8 +3,9 @@
 import { database, schema } from '@auxx/database'
 import type { CalcOptions } from '@auxx/types/custom-field'
 import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { clearDisplayValues } from '../entity-instances/batch-update-display-values'
 import { fromDatabase } from '../shared/utils'
 import type { AccessDeniedError, CustomFieldNotFoundError } from './errors'
 import { getInverseFieldId, type RelationshipConfig } from './types'
@@ -61,6 +62,10 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
   const relationshipConfig = (field.options as { relationship?: RelationshipConfig })?.relationship
   const inverseFieldId =
     isRelationship && relationshipConfig ? getInverseFieldId(relationshipConfig) : null
+
+  // Find EntityDefinitions that use this field as a display field BEFORE deletion
+  // (the onDelete:'set null' constraint will clear the FK during the transaction)
+  const affectedDefs = await findAffectedDisplayFieldDefs(id, organizationId)
 
   // Delete in transaction
   const deleteResult = await fromDatabase(
@@ -158,5 +163,67 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
     return deleteResult
   }
 
+  // Clear stale denormalized display values on EntityInstances.
+  // The DB onDelete:'set null' clears the FK on EntityDefinition, but the
+  // cached displayName/secondaryDisplayValue/avatarUrl on EntityInstance remains stale.
+  for (const { entityDefinitionId, column } of affectedDefs) {
+    await clearDisplayValues({ entityDefinitionId, organizationId, column })
+  }
+
   return ok(deleteResult.value)
+}
+
+/**
+ * Find EntityDefinitions that reference the given field as a display field.
+ * Must be called BEFORE the field is deleted (onDelete:'set null' clears the FK).
+ */
+async function findAffectedDisplayFieldDefs(
+  fieldId: string,
+  organizationId: string
+): Promise<
+  Array<{
+    entityDefinitionId: string
+    column: 'displayName' | 'secondaryDisplayValue' | 'avatarUrl'
+  }>
+> {
+  const result = await fromDatabase(
+    database
+      .select({
+        id: schema.EntityDefinition.id,
+        primaryDisplayFieldId: schema.EntityDefinition.primaryDisplayFieldId,
+        secondaryDisplayFieldId: schema.EntityDefinition.secondaryDisplayFieldId,
+        avatarFieldId: schema.EntityDefinition.avatarFieldId,
+      })
+      .from(schema.EntityDefinition)
+      .where(
+        and(
+          eq(schema.EntityDefinition.organizationId, organizationId),
+          or(
+            eq(schema.EntityDefinition.primaryDisplayFieldId, fieldId),
+            eq(schema.EntityDefinition.secondaryDisplayFieldId, fieldId),
+            eq(schema.EntityDefinition.avatarFieldId, fieldId)
+          )
+        )
+      ),
+    'find-affected-display-field-defs'
+  )
+
+  if (result.isErr()) return []
+
+  const affected: Array<{
+    entityDefinitionId: string
+    column: 'displayName' | 'secondaryDisplayValue' | 'avatarUrl'
+  }> = []
+  for (const def of result.value) {
+    if (def.primaryDisplayFieldId === fieldId) {
+      affected.push({ entityDefinitionId: def.id, column: 'displayName' })
+    }
+    if (def.secondaryDisplayFieldId === fieldId) {
+      affected.push({ entityDefinitionId: def.id, column: 'secondaryDisplayValue' })
+    }
+    if (def.avatarFieldId === fieldId) {
+      affected.push({ entityDefinitionId: def.id, column: 'avatarUrl' })
+    }
+  }
+  return affected
 }

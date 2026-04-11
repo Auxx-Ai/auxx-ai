@@ -302,12 +302,21 @@ export async function installTemplates(
         ? fieldIdMap.get(`${template.id}:${template.secondaryDisplayField}`)
         : undefined
 
-    if (primaryFieldId || secondaryFieldId) {
+    const avatarMod = template.avatarField
+      ? fieldModifications?.[template.id]?.[template.avatarField]
+      : undefined
+    const avatarFieldId =
+      template.avatarField && !avatarMod?.removed
+        ? fieldIdMap.get(`${template.id}:${template.avatarField}`)
+        : undefined
+
+    if (primaryFieldId || secondaryFieldId || avatarFieldId) {
       await database
         .update(schema.EntityDefinition)
         .set({
           ...(primaryFieldId && { primaryDisplayFieldId: primaryFieldId }),
           ...(secondaryFieldId && { secondaryDisplayFieldId: secondaryFieldId }),
+          ...(avatarFieldId && { avatarFieldId }),
           updatedAt: new Date(),
         })
         .where(eq(schema.EntityDefinition.id, entityDefinitionId))

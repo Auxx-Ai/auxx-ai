@@ -813,7 +813,7 @@ export async function maybeUpdateDisplayValue(
 
     const typedValue = Array.isArray(value) ? value.map(toTypedValue) : toTypedValue(value)
 
-    // For avatar fields, extract URL directly
+    // For avatar fields, extract URL directly or queue thumbnail for FILE refs
     if (column === 'avatarUrl') {
       const singleValue = Array.isArray(typedValue) ? typedValue[0] : typedValue
       if (singleValue) {
@@ -823,6 +823,16 @@ export async function maybeUpdateDisplayValue(
           const json = singleValue.value as Record<string, unknown>
           if (typeof json?.url === 'string') {
             displayValue = json.url
+          } else if (typeof json?.ref === 'string') {
+            // FILE field: { ref: "asset:abc123" } — queue avatar thumbnail
+            const match = (json.ref as string).match(/^asset:(.+)$/)
+            if (match) {
+              const assetId = match[1]
+              // Set null interim — thumbnail callback will set the CDN URL
+              displayValue = null
+              // Fire-and-forget: queue thumbnail generation in background
+              void queueAvatarThumbnail(ctx.organizationId, ctx.userId, assetId)
+            }
           }
         }
       }
@@ -865,6 +875,34 @@ export async function maybeUpdateDisplayValue(
     if (deps.length > 0) {
       await cascadeDependentDisplayNames(ctx, entityInstanceId, displayValue, deps)
     }
+  }
+}
+
+// =============================================================================
+// AVATAR THUMBNAIL HELPERS
+// =============================================================================
+
+/**
+ * Queue avatar thumbnail generation for a FILE field asset.
+ * Fire-and-forget — the thumbnail job callback will update EntityInstance.avatarUrl.
+ */
+async function queueAvatarThumbnail(
+  organizationId: string,
+  userId: string | undefined,
+  assetId: string
+): Promise<void> {
+  try {
+    const { ensureThumbnailPresets } = await import('../files/core/thumbnail-batch')
+    await ensureThumbnailPresets({
+      organizationId,
+      userId: userId ?? 'system',
+      source: { type: 'asset', assetId },
+      presets: ['avatar-128'],
+      defaultOptions: { queue: true, visibility: 'PUBLIC' },
+    })
+  } catch (error) {
+    // Non-critical — avatar will show fallback icon until retry
+    console.warn('[avatar] Failed to queue avatar thumbnail', { assetId, error })
   }
 }
 

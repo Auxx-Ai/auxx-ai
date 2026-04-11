@@ -6,9 +6,10 @@ import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { memo, type ReactNode, useMemo } from 'react'
-import { toRecordId } from '~/components/resources'
+import { toRecordId, useRecord, useResource } from '~/components/resources'
 import { useField } from '~/components/resources/hooks/use-field'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { PrimaryCell } from './primary-cell'
 
 /**
@@ -52,6 +53,10 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
   // autoFetch ensures isLoading=true on first render (queues synchronously)
   const { value, isLoading } = useFieldValue(recordId, fieldId, { autoFetch: true })
 
+  // Get record (already in store from batch fetch) for avatarUrl
+  const { record } = useRecord({ recordId })
+  const { resource } = useResource(entityDefinitionId)
+
   // Get field metadata
   const field = useField(resourceFieldId)
   const fieldType = field?.fieldType
@@ -79,7 +84,18 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
   }
 
   return (
-    <PrimaryCell value={displayValue} onTitleClick={onTitleClick}>
+    <PrimaryCell
+      value={displayValue}
+      onTitleClick={onTitleClick}
+      prefixIcon={
+        <RecordIcon
+          avatarUrl={record?.avatarUrl}
+          iconId={resource?.icon || 'circle'}
+          color={resource?.color || 'gray'}
+          size='xs'
+          inverse
+        />
+      }>
       {children}
     </PrimaryCell>
   )

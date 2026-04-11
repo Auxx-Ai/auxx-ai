@@ -36,6 +36,8 @@ import { Tooltip } from '~/components/global/tooltip'
 import { MergeDialog } from '~/components/merge'
 import { useRecord, useResource } from '~/components/resources'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
+import { AvatarUploadIcon } from '~/components/resources/ui/avatar-upload-icon'
+import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
@@ -96,6 +98,11 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   // Get display field configurations from resource
   const primaryDisplayFieldId = resource?.display.primaryDisplayField?.id ?? null
   const secondaryDisplayFieldId = resource?.display.secondaryDisplayField?.id ?? null
+  const avatarField = resource?.display.avatarField ?? null
+  const avatarFieldDef = React.useMemo(
+    () => (avatarField ? resource?.fields.find((f) => f.id === avatarField.id) : null),
+    [avatarField, resource?.fields]
+  )
 
   // Get field definitions from resource
   const primaryField = React.useMemo(() => {
@@ -383,11 +390,24 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         }
         cardContent={
           <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
-            <EntityIcon
-              iconId={resource?.icon || 'circle'}
-              color={resource?.color || 'gray'}
-              className='size-10'
-            />
+            {avatarField && recordId ? (
+              <AvatarUploadIcon
+                recordId={recordId}
+                avatarUrl={cachedRecord?.avatarUrl as string}
+                avatarFieldId={avatarField.id}
+                avatarFieldOptions={avatarFieldDef?.options}
+                iconId={resource?.icon || 'circle'}
+                color={resource?.color || 'gray'}
+              />
+            ) : (
+              <RecordIcon
+                avatarUrl={cachedRecord?.avatarUrl as string}
+                iconId={resource?.icon || 'circle'}
+                color={resource?.color || 'gray'}
+                size='xl'
+                inverse
+              />
+            )}
             <div className='flex flex-col align-start w-full'>
               <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
                 {isRecordLoading ? (

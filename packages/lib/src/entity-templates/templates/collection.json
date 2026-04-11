@@ -11,6 +11,7 @@
     "color": "indigo"
   },
   "primaryDisplayField": "collectionName",
+  "avatarField": "image",
   "companions": ["product", "campaign"],
   "fields": [
     {
@@ -27,7 +28,10 @@
     {
       "templateFieldId": "image",
       "name": "Image",
-      "type": "FILE"
+      "type": "FILE",
+      "options": {
+        "file": { "allowMultiple": false, "allowedFileTypes": ["image"] }
+      }
     },
     {
       "templateFieldId": "sortOrder",

@@ -25,10 +25,17 @@ async function handler(request: NextRequest) {
     body,
   })
 
-  return new Response(response.body, {
+  // Fully consume the response to avoid truncation from content-encoding mismatches
+  const data = await response.arrayBuffer()
+  const responseHeaders = new Headers(response.headers)
+  responseHeaders.delete('content-encoding')
+  responseHeaders.delete('content-length')
+  responseHeaders.delete('transfer-encoding')
+
+  return new Response(data, {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers,
+    headers: responseHeaders,
   })
 }
 

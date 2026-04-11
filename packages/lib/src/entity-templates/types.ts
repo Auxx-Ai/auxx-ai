@@ -28,6 +28,8 @@ export interface EntityTemplate {
   primaryDisplayField: string
   /** Secondary display field (optional) */
   secondaryDisplayField?: string
+  /** Avatar display field — FILE or URL field shown as entity avatar (optional) */
+  avatarField?: string
 
   /** Suggested companion template IDs (shown as "works best with") */
   companions?: string[]

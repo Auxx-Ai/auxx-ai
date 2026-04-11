@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Check, Palette } from 'lucide-react'
+import { AlertTriangle, Check, Palette } from 'lucide-react'
 import { useEntityDefinitionMutations } from '~/components/resources/hooks'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 
@@ -42,8 +42,8 @@ export function EntityAppearanceEditor({
 
   // All fields for looking up display field names (includes system fields)
   const allFields = resource.fields
-  // For dropdown options, only show custom fields (system fields can't be changed)
-  const customFields = allFields.filter((f) => !f.isSystem)
+  // For dropdown options, show all active fields (template entities have system fields that should still be selectable)
+  const selectableFields = allFields.filter((f) => f.active !== false)
 
   // Update mutation
   const { updateEntity } = useEntityDefinitionMutations()
@@ -64,6 +64,30 @@ export function EntityAppearanceEditor({
   const primaryField = allFields.find((f) => f.id === primaryDisplayFieldId)
   const secondaryField = allFields.find((f) => f.id === secondaryDisplayFieldId)
   const avatarField = allFields.find((f) => f.id === avatarFieldId)
+
+  // Compute avatar field warnings for FILE fields
+  const avatarWarnings: string[] = []
+  if (avatarField?.fieldType === 'FILE') {
+    const fileOpts = (avatarField.options as Record<string, any>)?.file
+    if (fileOpts?.allowMultiple || (fileOpts?.maxFiles && fileOpts.maxFiles > 1)) {
+      avatarWarnings.push('Only the first file will be used as the avatar')
+    }
+    // allowedFileTypes stores categories like 'image', 'document', 'video', 'audio', 'custom'
+    const allowed = fileOpts?.allowedFileTypes as string[] | undefined
+    if (!allowed || allowed.length === 0) {
+      avatarWarnings.push(
+        'This field has no file type restrictions — non-image files will be ignored'
+      )
+    } else if (!allowed.includes('image')) {
+      avatarWarnings.push(
+        'This field does not allow image file types — no avatars will be generated'
+      )
+    } else if (allowed.length > 1) {
+      avatarWarnings.push(
+        'This field allows non-image file types — only images will generate avatars'
+      )
+    }
+  }
 
   return (
     <div className='p-4 border-b'>
@@ -100,7 +124,7 @@ export function EntityAppearanceEditor({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='none'>None</SelectItem>
-                    {customFields
+                    {selectableFields
                       .filter(
                         (f) =>
                           f.fieldType &&
@@ -133,7 +157,7 @@ export function EntityAppearanceEditor({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='none'>None</SelectItem>
-                    {customFields.map((field) => (
+                    {selectableFields.map((field) => (
                       <SelectItem key={field.id} value={field.id}>
                         {field.name ?? field.label}
                       </SelectItem>
@@ -156,7 +180,7 @@ export function EntityAppearanceEditor({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='none'>None</SelectItem>
-                    {customFields
+                    {selectableFields
                       .filter((f) => f.fieldType === 'URL' || f.fieldType === 'FILE')
                       .map((field) => (
                         <SelectItem key={field.id} value={field.id}>
@@ -167,6 +191,16 @@ export function EntityAppearanceEditor({
                 </Select>
               )}
             </VarEditorFieldRow>
+            {avatarWarnings.length > 0 && (
+              <div className='flex gap-2 px-3 py-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md mx-2 mb-2'>
+                <AlertTriangle className='size-3.5 shrink-0 mt-0.5' />
+                <div className='space-y-0.5'>
+                  {avatarWarnings.map((w) => (
+                    <p key={w}>{w}</p>
+                  ))}
+                </div>
+              </div>
+            )}
           </VarEditorField>
         </div>
 

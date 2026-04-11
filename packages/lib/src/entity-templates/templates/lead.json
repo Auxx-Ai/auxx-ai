@@ -11,9 +11,18 @@
     "color": "blue"
   },
   "primaryDisplayField": "name",
+  "avatarField": "avatar",
   "companions": ["company", "deal"],
   "fields": [
     { "templateFieldId": "name", "name": "Name", "type": "TEXT", "required": true },
+    {
+      "templateFieldId": "avatar",
+      "name": "Avatar",
+      "type": "FILE",
+      "options": {
+        "file": { "allowMultiple": false, "allowedFileTypes": ["image"] }
+      }
+    },
     { "templateFieldId": "email", "name": "Email", "type": "EMAIL" },
     { "templateFieldId": "phone", "name": "Phone", "type": "PHONE" },
     {

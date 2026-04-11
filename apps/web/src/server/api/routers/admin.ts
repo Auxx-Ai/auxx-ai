@@ -41,6 +41,20 @@ export const adminRouter = createTRPCRouter({
     }),
 
   /**
+   * Get count of active demo accounts
+   */
+  getActiveDemoCount: superAdminProcedure.query(async ({ ctx }) => {
+    const [result] = await ctx.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.Organization)
+      .where(
+        sql`${schema.Organization.demoExpiresAt} IS NOT NULL AND ${schema.Organization.demoExpiresAt} > NOW()`
+      )
+
+    return { activeDemoCount: result?.count ?? 0 }
+  }),
+
+  /**
    * Get single organization details
    */
   getOrganization: superAdminProcedure

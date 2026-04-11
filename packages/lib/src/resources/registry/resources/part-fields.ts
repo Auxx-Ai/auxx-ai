@@ -103,6 +103,26 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter description',
   },
 
+  image: {
+    id: toFieldId('image'),
+    key: 'image',
+    label: 'Image',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
+    isSystem: true,
+    systemAttribute: 'part_image',
+    systemSortOrder: 'a3a',
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Product image used as the part avatar',
+  },
+
   category: {
     id: toFieldId('category'),
     key: 'category',
