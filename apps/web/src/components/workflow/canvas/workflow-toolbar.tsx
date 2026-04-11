@@ -251,7 +251,7 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
               onClick={handleTest}
               disabled={isReadOnly}>
               <Play />
-              Test
+              <span className='hidden sm:inline'>Test</span>
             </Button>
           </Tooltip>
           <Popover open={historyPopoverOpen} onOpenChange={setHistoryPopoverOpen}>
@@ -263,7 +263,7 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
                     variant={historyPopoverOpen ? 'secondary' : 'ghost'}
                     className='shrink-0'>
                     <ClockArrowUp />
-                    History
+                    <span className='hidden sm:inline'>History</span>
                   </Button>
                 </Tooltip>
               </div>
@@ -276,7 +276,7 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
               variant={settingsPanelOpen ? 'secondary' : 'ghost'}
               onClick={() => (settingsPanelOpen ? closeSettingsPanel() : openSettingsPanel())}>
               <Settings />
-              Settings
+              <span className='hidden sm:inline'>Settings</span>
             </Button>
           </Tooltip>
           <Separator orientation='vertical' className='h-6' />
@@ -300,7 +300,7 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
               loading={publishMutation.isPending}
               loadingText='Publishing...'>
               <Upload />
-              Publish
+              <span className='hidden sm:inline'>Publish</span>
             </Button>
           </Tooltip>
           <WorkflowVersionsPopover

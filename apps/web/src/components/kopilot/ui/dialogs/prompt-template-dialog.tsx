@@ -148,7 +148,7 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
 
               <div className='flex flex-1 flex-row justify-start w-full min-h-0'>
                 {/* Sidebar */}
-                <div className='w-64 border-r bg-muted/30 flex flex-col rounded-bl-[16px]'>
+                <div className='w-64 border-r bg-muted/30 flex-col rounded-bl-[16px] hidden sm:flex'>
                   <ScrollArea>
                     <h3 className='p-3 pb-0 text-sm font-semibold text-muted-foreground sticky top-0'>
                       Categories
@@ -209,7 +209,7 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
                     </Empty>
                   ) : filteredTemplates.length > 0 ? (
                     <ScrollArea className='flex-1'>
-                      <div className='p-6 grid grid-cols-2 gap-3'>
+                      <div className='p-6 grid sm:grid-cols-2 gap-3'>
                         {filteredTemplates.map((template) => (
                           <div
                             key={template.id}

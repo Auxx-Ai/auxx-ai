@@ -102,7 +102,7 @@ export function EntityAppearanceEditor({
         </div>
       )}
 
-      <div className='grid grid-cols-2 gap-6'>
+      <div className='grid grid-cols-1 sm:grid-cols-2 gap-6'>
         {/* Left column: Select fields */}
         <div>
           <VarEditorField className='p-0 dark:bg-primary-50'>

@@ -65,7 +65,7 @@ export default function NewIntegrationSuccess() {
         { title: 'Add New Channel', href: '/app/settings/channels/new' },
         { title: integrationType },
       ]}>
-      <div className='p-6'>
+      <div className='p-3 sm:p-6'>
         <Card className='max-w-md mx-auto mt-10'>
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>

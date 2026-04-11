@@ -99,7 +99,7 @@ export function TableBody<TData extends object>({
                       return (
                         <div
                           key={header.id}
-                          className='sticky shrink-0 z-30 backdrop-blur bg-background/40 dark:bg-transparent'
+                          className='sm:sticky shrink-0 sm:z-30 sm:backdrop-blur sm:bg-background/40 dark:bg-transparent'
                           style={{ left: header.column.getStart('left') }}>
                           <HeaderCellWrapper header={header} />
                         </div>

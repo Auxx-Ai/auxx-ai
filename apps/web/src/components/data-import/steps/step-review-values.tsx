@@ -260,9 +260,9 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
   }
 
   return (
-    <div className='flex flex-1 flex-row justify-start w-full min-h-0 overflow-hidden'>
+    <div className='flex flex-1 flex-col sm:flex-row justify-start w-full min-h-0 overflow-hidden'>
       {/* Sidebar - Column Selection */}
-      <div className='w-64 border-r bg-muted/30 flex flex-col'>
+      <div className='sm:w-64 border-r bg-muted/30 flex flex-col'>
         <ScrollArea className='flex-1'>
           <h3 className='px-3 h-10 flex z-10 items-center pb-0 text-sm font-semibold text-muted-foreground sticky top-0 bg-muted/30 backdrop-blur border-b'>
             Columns
@@ -293,8 +293,8 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
           </div>
         </ScrollArea>
 
-        {/* Continue button in sidebar footer */}
-        <div className='px-3 h-12 flex items-center border-t bg-muted/50'>
+        {/* Continue button in sidebar footer — desktop only */}
+        <div className='hidden sm:flex px-3 h-12 items-center border-t bg-muted/50'>
           <Button onClick={onComplete} disabled={!canContinue} className='w-full'>
             {totalErrors > 0 ? `Fix ${totalErrors} Errors` : 'Continue'}
           </Button>
@@ -386,6 +386,13 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
             </p>
           </div>
         )}
+      </div>
+
+      {/* Continue button — mobile only, pinned to bottom */}
+      <div className='sm:hidden px-3 py-2 border-t bg-muted/50'>
+        <Button onClick={onComplete} disabled={!canContinue} className='w-full'>
+          {totalErrors > 0 ? `Fix ${totalErrors} Errors` : 'Continue'}
+        </Button>
       </div>
     </div>
   )

@@ -32,7 +32,7 @@ export function ColumnMappingTable({
   return (
     <div className='border border-l-0 border-t-0'>
       {/* Header */}
-      <div className='flex items-center ps-6 px-3 py-2 bg-primary-200/50 border-b text-sm font-medium text-muted-foreground sticky top-[48px] backdrop-blur-sm h-fit min-h-0 z-10'>
+      <div className='flex items-center ps-6 px-3 py-2 bg-primary-200/50 border-b text-sm font-medium text-muted-foreground sticky sm:top-[48px] backdrop-blur-sm h-fit min-h-0 z-10'>
         <div className='flex-[0.4]'>CSV Column</div>
         <div className='flex-[0.2] text-center' />
         <div className='flex-[0.4]'>Maps To</div>

@@ -173,7 +173,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
   }
 
   return (
-    <div className='p-6 space-y-10'>
+    <div className='p-3 sm:p-6 space-y-6 sm:space-y-10'>
       {/* Data Sync — hidden for forwarding integrations */}
       {!isForwarding && (
         <div className='space-y-1'>

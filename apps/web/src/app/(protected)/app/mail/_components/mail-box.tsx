@@ -14,7 +14,7 @@ import {
 } from '@auxx/ui/components/main-page'
 import { PanelResizeHandle } from '@auxx/ui/components/panel-resize-handle'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { Columns2, Mail, Plus, Rows3, Waypoints } from 'lucide-react'
+import { ChevronLeft, Columns2, Mail, Plus, Rows3, Search, Waypoints } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryState } from 'nuqs'
@@ -35,7 +35,6 @@ import {
 } from '~/components/mail/mail-filter-context'
 // import SearchBar from '~/components/mail/mail-searchbar'
 import { ThreadList } from '~/components/mail/mail-thread-list'
-import { MobileThreadHeader } from '~/components/mail/mobile-thread-header'
 // import { ProposedActionsView } from './proposed-actions-view'
 import { MailSearchBar } from '~/components/mail/searchbar'
 // import { MailFilterProvider } from '~/context/mail-filter-context' // Import the provider
@@ -261,6 +260,9 @@ function MailboxInner({
   }, [activeThreadId, activeThreadVersion, setTid])
   const setViewMode = useThreadSelectionStore((s) => s.setViewMode)
 
+  // Mobile search toggle
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+
   // State for sorting - default to newest first
   const [sortBy, setSortBy] = useState<SortOption>('newest')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
@@ -478,26 +480,49 @@ function MailboxInner({
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent dockedPanels={dockedPanels}>
-          <div className='flex items-center justify-between bg-primary-150 border-b w-full rounded-t-lg px-2 h-10.5 '>
+          <div
+            data-search-expanded={mobileSearchOpen || undefined}
+            className='group/toolbar flex items-center justify-between bg-primary-150 border-b w-full rounded-t-lg px-2 h-10.5 shrink-0'>
             {/* Status Dropdown and Search Bar */}
             <div className='w-full flex flex-1 justify-between overflow-x-auto no-scrollbar gap-2'>
               <div className='flex flex-1 items-center gap-2'>
                 {displayTabs.length > 0 && (
-                  <MailboxStatusDropdown
-                    availableStatuses={displayTabs}
-                    selectedStatus={activeStatusSlug}
-                    onStatusChange={handleTabChange}
-                  />
+                  <div className='group-data-[search-expanded]/toolbar:hidden'>
+                    <MailboxStatusDropdown
+                      availableStatuses={displayTabs}
+                      selectedStatus={activeStatusSlug}
+                      onStatusChange={handleTabChange}
+                    />
+                  </div>
                 )}
 
-                <MailSearchBar
-                  onSearch={handleSearch}
-                  // Pass the non-deferred query for immediate display feedback in input
-                  initialQuery={searchQuery}
-                  isLoading={isListLoading} // Pass loading state from ThreadList
-                />
+                {/* Mobile search toggle — visible only on small screens when search is collapsed */}
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='sm:hidden group-data-[search-expanded]/toolbar:hidden'
+                  onClick={() => setMobileSearchOpen(true)}>
+                  <Search />
+                </Button>
 
-                {/* Show pending actions badge in mail mode */}
+                {/* Search bar — hidden on mobile until expanded */}
+                <div className='hidden sm:flex flex-1 group-data-[search-expanded]/toolbar:flex'>
+                  <Button
+                    variant='ghost'
+                    size='icon-xs'
+                    className='hidden group-data-[search-expanded]/toolbar:flex sm:hidden shrink-0 mt-0.5'
+                    onClick={() => {
+                      setMobileSearchOpen(false)
+                      setSearchQuery('')
+                    }}>
+                    <ChevronLeft />
+                  </Button>
+                  <MailSearchBar
+                    onSearch={handleSearch}
+                    initialQuery={searchQuery}
+                    isLoading={isListLoading}
+                  />
+                </div>
               </div>
               <div className='hidden items-center shrink-0 gap-2 sm:flex'>
                 <RadioTab
@@ -523,7 +548,11 @@ function MailboxInner({
               {selectedThreadId ? (
                 // Detail view: Show ThreadDisplay with back button
                 <div className='h-full flex flex-col'>
-                  <MobileThreadHeader onBack={handleBackToList} />
+                  <ThreadNavToolbar
+                    activeThreadId={selectedThreadId}
+                    onBack={handleBackToList}
+                    onNavigate={(id) => void setTid(id)}
+                  />
                   <div className='flex-1 overflow-hidden'>
                     <ThreadDisplay />
                   </div>

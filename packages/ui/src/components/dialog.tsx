@@ -147,10 +147,13 @@ function DialogContent({
     <DialogPortal>
       <DialogOverlay />
       <div
-        className='z-50 pb-20 overflow-y-auto absolute inset-0'
+        className='z-50 pb-6 sm:pb-20 overflow-y-auto absolute inset-0 max-sm:flex max-sm:flex-col max-sm:items-center max-sm:px-2 max-sm:pt-4'
         onWheel={(e) => e.stopPropagation()}>
         <DialogPrimitive.Content
-          className={cn(dialogVariants({ variant, size, position, className }))}
+          className={cn(
+            dialogVariants({ variant, size, position, className }),
+            'max-sm:inset-auto max-sm:translate-x-0 max-sm:translate-y-0'
+          )}
           {...props}>
           <DialogContext.Provider value={{ isInsideDialog: true, portalContainerRef }}>
             <div

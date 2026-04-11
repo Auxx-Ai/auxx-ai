@@ -119,7 +119,7 @@ function VirtualTableRowInner<TData>({
     isSelected && CELL_SELECTED,
     isLastClicked && CELL_LAST_CLICKED
   )
-  const pinnedCellClassName = cn(cellClassName, 'backdrop-blur-sm')
+  const pinnedCellClassName = cn(cellClassName, 'sm:backdrop-blur-sm')
 
   return (
     <div ref={mergedRef} data-index={virtualRow.index} className='absolute w-full' style={style}>
@@ -155,7 +155,10 @@ function VirtualTableRowInner<TData>({
 
         {/* Pinned left cells */}
         {pinnedLeftCells.map((cell) => (
-          <div key={cell.id} className='sticky z-19' style={{ left: cell.column.getStart('left') }}>
+          <div
+            key={cell.id}
+            className='sm:sticky sm:z-19'
+            style={{ left: cell.column.getStart('left') }}>
             {cellSelectionEnabled ? (
               <SelectableTableCell
                 cell={cell}

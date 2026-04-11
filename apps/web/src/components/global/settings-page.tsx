@@ -110,7 +110,10 @@ export default function SettingsPage({
       )}
 
       <div className='sticky top-0 z-10 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
-        <div className={cn('flex items-center flex-row bg-muted/50 px-5 py-3', { 'ps-2': !!icon })}>
+        <div
+          className={cn('flex flex-col sm:flex-row sm:items-center gap-2 bg-muted/50 px-5 py-3', {
+            'ps-2': !!icon,
+          })}>
           <div className='flex items-center gap-2'>
             {icon && <div className='flex h-10 w-10 items-center justify-center'>{icon}</div>}
             <div className='me-3'>
@@ -118,7 +121,7 @@ export default function SettingsPage({
               {description && <div className='text-sm text-muted-foreground'>{description}</div>}
             </div>
           </div>
-          <div className='ml-auto shrink-0'>{button && button}</div>
+          {button && <div className='sm:ml-auto shrink-0'>{button}</div>}
         </div>
         <Separator className='bg-background' />
         <Separator />

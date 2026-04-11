@@ -44,9 +44,9 @@ function PanelFrame({
       {...props}>
       {/* Nested borders for depth effect */}
       <div className='flex flex-1 min-h-0 min-w-0 flex-col rounded-[calc(var(--radius-2xl)-1px)] border dark:border-neutral-900/80 border-black/10'>
-        <div className='flex flex-1 min-h-0 border dark:border-[#23272e] border-white/50 rounded-[calc(var(--radius-2xl)-2px)]'>
-          <div className='flex flex-1 min-h-0 border dark:border-neutral-900/70 border-neutral-950/20 rounded-[calc(var(--radius-2xl)-3px)]'>
-            <div className='flex flex-1 flex-col min-h-0 bg-clip-padding rounded-[calc(var(--radius-2xl)-4px)] overflow-clip'>
+        <div className='flex flex-1 min-h-0 min-w-0 border dark:border-[#23272e] border-white/50 rounded-[calc(var(--radius-2xl)-2px)]'>
+          <div className='flex flex-1 min-h-0 min-w-0 border dark:border-neutral-900/70 border-neutral-950/20 rounded-[calc(var(--radius-2xl)-3px)]'>
+            <div className='flex flex-1 flex-col min-h-0 min-w-0 bg-clip-padding rounded-[calc(var(--radius-2xl)-4px)] overflow-clip'>
               {children}
             </div>
           </div>

@@ -290,7 +290,7 @@ export function MemberList({
     }
   }
   return (
-    <div className='p-6'>
+    <div className='p-3 sm:p-6'>
       <div className='space-y-4'>
         <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
           <Users className='size-4' /> Members

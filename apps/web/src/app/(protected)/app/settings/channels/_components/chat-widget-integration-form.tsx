@@ -156,7 +156,7 @@ export default function ChatWidgetIntegrationForm() {
           Back
         </Button>
       }>
-      <div className='p-6'>
+      <div className='p-3 sm:p-6'>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
             <Card className='mx-auto max-w-4xl'>

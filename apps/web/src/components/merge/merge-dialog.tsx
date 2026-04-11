@@ -155,9 +155,9 @@ export function MergeDialog({
         </DialogHeader>
 
         {/* Main content: 3-column layout */}
-        <div className='flex items-stretch gap-0 min-h-[200px]'>
+        <div className='flex flex-col sm:flex-row sm:items-stretch gap-4 sm:gap-0 min-h-0 sm:min-h-[200px]'>
           {/* Double-width box containing sources + target */}
-          <div className='flex-[2] flex'>
+          <div className='flex-[2] flex flex-col sm:flex-row'>
             {/* Source panel */}
             <MergeSourcePanel
               entityDefinitionId={entityDefinitionId}
@@ -170,8 +170,13 @@ export function MergeDialog({
             />
 
             {/* Divider strip (empty) */}
-            <div className='w-[50px] bg-muted/30 shrink-0 flex items-center justify-center'>
-              <EntityIcon variant='muted' iconId='arrow-right' size='lg' />
+            <div className='h-[40px] sm:h-auto sm:w-[50px] bg-muted/30 shrink-0 flex items-center justify-center'>
+              <EntityIcon
+                variant='muted'
+                iconId='arrow-right'
+                size='lg'
+                className='rotate-90 sm:rotate-0'
+              />
             </div>
 
             {/* Target panel */}
@@ -183,7 +188,7 @@ export function MergeDialog({
           </div>
 
           {/* Equals sign strip */}
-          <div className='w-[50px] shrink-0 flex items-center justify-center'>
+          <div className='h-[40px] sm:h-auto sm:w-[50px] shrink-0 flex items-center justify-center'>
             <EntityIcon variant='muted' iconId='equal' size='lg' />
           </div>
 

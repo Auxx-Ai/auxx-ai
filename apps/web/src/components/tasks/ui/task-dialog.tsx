@@ -338,7 +338,7 @@ export function TaskDialog({
 
         {/* Footer with pickers and actions (merged inline) */}
         <DialogFooter className='border-t py-1 px-4'>
-          <div className='flex items-center justify-between w-full'>
+          <div className='flex items-center justify-between w-full flex-col sm:flex-row gap-2 sm:gap-0'>
             {/* Left side: Pickers */}
             <div className='flex items-center gap-1'>
               {/* Date Picker with clear button */}

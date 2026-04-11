@@ -34,7 +34,7 @@ function WorkflowsTabContent() {
         <div className='sticky top-0 z-10 backdrop-blur-sm shrink-0'>
           <WorkflowsFilterBar />
         </div>
-        <div className='p-6 flex-1 flex flex-col min-h-0'>
+        <div className='p-3 sm:p-6 flex-1 flex flex-col min-h-0'>
           <WorkflowsList />
         </div>
       </ScrollArea>

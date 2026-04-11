@@ -296,7 +296,7 @@ function MainPageContent({
   // Always render flex wrapper to keep a stable tree — toggling panels
   // only adds/removes siblings, never remounts the main content.
   return (
-    <div className='flex flex-row flex-1 min-h-0'>
+    <div className='flex flex-row flex-1 min-h-0 min-w-0'>
       <PanelFrame data-main='content' flex shrink={false} className={className} {...props}>
         {children}
       </PanelFrame>

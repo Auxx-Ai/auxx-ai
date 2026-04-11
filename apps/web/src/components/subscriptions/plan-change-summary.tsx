@@ -393,9 +393,9 @@ function PlanChangeSummaryContent({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
-      <div className='grid grid-cols-3 gap-6'>
+      <div className='grid grid-cols-1 sm:grid-cols-3 gap-6'>
         {/* Column 1: Main Content (2/3 width) */}
-        <div className='col-span-2 space-y-4'>
+        <div className='sm:col-span-2 space-y-4'>
           {/* Plan Selection Card */}
           <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
             <div className='flex flex-row items-center gap-2'>
@@ -442,11 +442,17 @@ function PlanChangeSummaryContent({
                 value={billingCycle}
                 onValueChange={(v) => setBillingCycle(v as any)}>
                 <RadioTabItem value='MONTHLY'>
-                  Monthly (${monthlyPricePerMonth.toFixed(0)} / user / month)
+                  <span className='hidden sm:inline'>
+                    Monthly (${monthlyPricePerMonth.toFixed(0)} / user / month)
+                  </span>
+                  <span className='sm:hidden'>Monthly ${monthlyPricePerMonth.toFixed(0)}/mo</span>
                 </RadioTabItem>
                 <RadioTabItem value='ANNUAL'>
                   <div className='flex items-center gap-2'>
-                    Annually (${annualPricePerMonth.toFixed(0)} / user / month)
+                    <span className='hidden sm:inline'>
+                      Annually (${annualPricePerMonth.toFixed(0)} / user / month)
+                    </span>
+                    <span className='sm:hidden'>Annual ${annualPricePerMonth.toFixed(0)}/mo</span>
                     {savingsPercentage > 0 && (
                       <Badge size='xs' variant='blue' className='absolute -right-4 -top-4'>
                         {savingsPercentage}% off
@@ -485,7 +491,7 @@ function PlanChangeSummaryContent({
           <div className='space-y-3'>
             <Label>Billing information</Label>
             <div className='space-y-3'>
-              <div className='grid grid-cols-2 gap-3'>
+              <div className='grid sm:grid-cols-2 gap-3'>
                 <div>
                   <Input
                     {...register('email', { required: 'Email is required' })}
@@ -509,7 +515,7 @@ function PlanChangeSummaryContent({
                 <p className='text-xs text-destructive mt-1'>{errors.line1.message}</p>
               )}
 
-              <div className='grid grid-cols-3 gap-3'>
+              <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
                 <div>
                   <Input
                     {...register('city', { required: 'City is required' })}
@@ -597,7 +603,7 @@ function PlanChangeSummaryContent({
         </div>
 
         {/* Column 2: Summary Card (1/3 width) */}
-        <div className='col-span-1'>
+        <div className='sm:col-span-1'>
           <div className='rounded-2xl border p-4 space-y-4 sticky top-4'>
             <div className='space-y-2 text-sm'>
               {/* Seat change indicator */}

@@ -100,7 +100,7 @@ export function ImportHistoryList({ onDeleteJob }: ImportHistoryListProps) {
   }
 
   return (
-    <div className='space-y-4 p-6 flex flex-col flex-1'>
+    <div className='space-y-4 p-3 sm:p-6 flex flex-col flex-1'>
       {/* Search bar */}
       <div className='flex items-center'>
         <div className='relative flex-1'>

@@ -80,7 +80,7 @@ export default function CustomFieldsPage() {
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Type</TableHead>
-            <TableHead>Fields</TableHead>
+            <TableHead className='hidden sm:table-cell'>Fields</TableHead>
             <TableHead className='w-[100px]'>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
