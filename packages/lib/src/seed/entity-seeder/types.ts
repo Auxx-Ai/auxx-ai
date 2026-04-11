@@ -63,4 +63,6 @@ export interface DisplayFieldConfig {
   primaryDisplayField: string
   /** field.id for secondary display (e.g., 'primaryEmail', 'number'), undefined if none */
   secondaryDisplayField?: string
+  /** field.id for avatar display (e.g., 'image', 'avatarUrl'), undefined if none */
+  avatarField?: string
 }

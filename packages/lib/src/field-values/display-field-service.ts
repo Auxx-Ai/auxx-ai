@@ -157,10 +157,28 @@ export class DisplayFieldService {
           }
         }
       } else {
+        const assetIdsToThumbnail: string[] = []
         for (const instanceId of instanceIds) {
           const typedValue = valuesByEntity.get(instanceId) ?? null
           const displayValue = this.computeDisplayValue(typedValue, field, displayFieldType)
           updates.set(instanceId, displayValue)
+
+          // Collect asset IDs that need avatar thumbnails during batch recalc
+          if (displayFieldType === 'avatar' && displayValue === null && typedValue) {
+            const single = Array.isArray(typedValue) ? typedValue[0] : typedValue
+            if (single?.type === 'json') {
+              const json = single.value as Record<string, unknown>
+              if (typeof json?.ref === 'string') {
+                const match = (json.ref as string).match(/^asset:(.+)$/)
+                if (match) assetIdsToThumbnail.push(match[1])
+              }
+            }
+          }
+        }
+
+        // Queue avatar thumbnails for FILE field refs (fire-and-forget)
+        if (assetIdsToThumbnail.length > 0) {
+          void this.queueAvatarThumbnails(assetIdsToThumbnail)
         }
       }
 
@@ -240,7 +258,8 @@ export class DisplayFieldService {
   ): string | null {
     if (!typedValue) return null
 
-    // For avatar fields, extract URL directly
+    // For avatar fields, extract URL directly or return null for FILE refs
+    // (FILE ref thumbnails are queued separately in the batch recalc loop)
     if (displayFieldType === 'avatar') {
       const single = Array.isArray(typedValue) ? typedValue[0] : typedValue
       if (!single) return null
@@ -251,6 +270,9 @@ export class DisplayFieldService {
       if (single.type === 'json') {
         const json = single.value as Record<string, unknown>
         if (typeof json?.url === 'string') return json.url
+        // FILE field: { ref: "asset:abc123" } — return null as interim
+        // The batch recalc loop handles thumbnail queuing
+        if (typeof json?.ref === 'string' && /^asset:.+/.test(json.ref as string)) return null
       }
       return null
     }
@@ -262,5 +284,31 @@ export class DisplayFieldService {
     const displayValue = formatToDisplayValue(typedValue, fieldType, field.options)
 
     return typeof displayValue === 'string' ? displayValue : null
+  }
+
+  /**
+   * Queue avatar thumbnails for a batch of asset IDs.
+   * Fire-and-forget — the thumbnail job callback updates EntityInstance.avatarUrl.
+   */
+  private async queueAvatarThumbnails(assetIds: string[]): Promise<void> {
+    try {
+      const { ensureThumbnailPresets } = await import('../files/core/thumbnail-batch')
+      await Promise.all(
+        assetIds.map((assetId) =>
+          ensureThumbnailPresets({
+            organizationId: this.organizationId,
+            userId: 'system',
+            source: { type: 'asset', assetId },
+            presets: ['avatar-128'],
+            defaultOptions: { queue: true, visibility: 'PUBLIC' },
+          })
+        )
+      )
+    } catch (error) {
+      console.warn('[avatar] Failed to queue batch avatar thumbnails', {
+        count: assetIds.length,
+        error,
+      })
+    }
   }
 }

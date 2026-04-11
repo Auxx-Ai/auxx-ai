@@ -12,6 +12,7 @@
   },
   "primaryDisplayField": "companyName",
   "secondaryDisplayField": "website",
+  "avatarField": "logo",
   "companions": [
     "order",
     "vendor",
@@ -28,6 +29,14 @@
       "name": "Company Name",
       "type": "TEXT",
       "required": true
+    },
+    {
+      "templateFieldId": "logo",
+      "name": "Logo",
+      "type": "FILE",
+      "options": {
+        "file": { "allowMultiple": false, "allowedFileTypes": ["image"] }
+      }
     },
     {
       "templateFieldId": "website",

@@ -12,6 +12,7 @@
   },
   "primaryDisplayField": "productName",
   "secondaryDisplayField": "sku",
+  "avatarField": "thumbnail",
   "companions": [
     "vendor",
     "campaign",
@@ -28,6 +29,14 @@
       "name": "Product Name",
       "type": "TEXT",
       "required": true
+    },
+    {
+      "templateFieldId": "thumbnail",
+      "name": "Thumbnail",
+      "type": "FILE",
+      "options": {
+        "file": { "allowMultiple": false, "allowedFileTypes": ["image"] }
+      }
     },
     {
       "templateFieldId": "sku",

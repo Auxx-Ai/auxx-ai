@@ -375,7 +375,7 @@ export class ThumbnailService {
    * Enqueue job for background processing
    */
   private async enqueueJob(payload: GenerateThumbnailPayload): Promise<string> {
-    const jobId = `thumb:${payload.key}`
+    const jobId = `thumb-${payload.key}`
     const redis = await getRedisClient(true)
 
     // Check Redis cache first (prevents thundering herd)

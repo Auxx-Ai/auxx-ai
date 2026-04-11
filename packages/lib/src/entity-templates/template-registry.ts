@@ -107,6 +107,16 @@ for (const template of allTemplates) {
     }
   }
 
+  // Validate avatar field if specified
+  if (template.avatarField) {
+    const hasAvatar = template.fields.some((f) => f.templateFieldId === template.avatarField)
+    if (!hasAvatar) {
+      throw new Error(
+        `Template "${template.id}": avatarField "${template.avatarField}" not found in fields`
+      )
+    }
+  }
+
   // Validate symbolic refs point to known templates or system entities
   for (const field of template.fields) {
     if (

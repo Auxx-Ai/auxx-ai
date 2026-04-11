@@ -34,6 +34,6 @@ export async function enqueueAgentJob(payload: AgentJobPayload) {
     attempts: 1, // No auto-retry — would re-run tools
     removeOnComplete: { count: 200 },
     removeOnFail: { count: 100 },
-    jobId: `agent:${payload.sessionId}:${Date.now()}`,
+    jobId: `agent-${payload.sessionId}-${Date.now()}`,
   })
 }

@@ -12,6 +12,7 @@
   },
   "primaryDisplayField": "vendorName",
   "secondaryDisplayField": "email",
+  "avatarField": "logo",
   "companions": [
     "product",
     "inventory-location",
@@ -25,6 +26,14 @@
       "name": "Vendor Name",
       "type": "TEXT",
       "required": true
+    },
+    {
+      "templateFieldId": "logo",
+      "name": "Logo",
+      "type": "FILE",
+      "options": {
+        "file": { "allowMultiple": false, "allowedFileTypes": ["image"] }
+      }
     },
     {
       "templateFieldId": "contactPerson",

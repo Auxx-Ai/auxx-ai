@@ -6,8 +6,6 @@ import type { RecordId } from '@auxx/lib/resources/client'
 // Utility imports
 import { getDefinitionId } from '@auxx/lib/resources/client'
 // UI component imports
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 // External libraries
@@ -17,6 +15,7 @@ import Link from 'next/link'
 // Hook imports
 import { useRecord, useResource } from '~/components/resources'
 import { type GetRecordLinkOptions, useRecordLink } from '../utils/get-record-link'
+import { RecordIcon } from './record-icon'
 
 /**
  * Variants for the RecordBadge component
@@ -134,8 +133,6 @@ export function RecordBadge({
   // Choose the component type based on link prop
   const Comp = link && href ? Link : 'div'
 
-  const avatarSize = size === 'sm' ? 'size-3' : 'size-4'
-
   return (
     <Comp
       data-slot='record-badge'
@@ -150,20 +147,14 @@ export function RecordBadge({
         </>
       ) : (
         <>
-          {/* Show Avatar if avatarUrl exists, else show EntityIcon if showIcon=true */}
-          {record?.avatarUrl ? (
-            <Avatar className={avatarSize} data-slot='record-icon'>
-              <AvatarImage src={record.avatarUrl} />
-              <AvatarFallback>{displayName?.[0]}</AvatarFallback>
-            </Avatar>
-          ) : showIcon ? (
-            <EntityIcon
-              data-slot='record-icon'
+          {showIcon && (
+            <RecordIcon
+              avatarUrl={record?.avatarUrl}
               iconId={resource?.icon || 'circle'}
               color={resource?.color || 'gray'}
-              size='xs'
+              size={size === 'sm' ? 'xs' : 'xs'}
             />
-          ) : null}
+          )}
           <span data-slot='record-display' className='truncate'>
             {displayName}
           </span>

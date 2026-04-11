@@ -8,12 +8,11 @@ import {
   type RecordId,
   type RecordPickerItem,
 } from '@auxx/lib/resources/client'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { CommandItem } from '@auxx/ui/components/command'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { Check } from 'lucide-react'
 import { useResource } from '~/components/resources'
+import { RecordIcon } from '~/components/resources/ui/record-icon'
 
 /**
  * Props for RecordItem display component
@@ -51,20 +50,14 @@ export function RecordItem({
       value={item.id}
       onSelect={handleSelect}
       className='flex items-center gap-2'>
-      {item.avatarUrl ? (
-        <Avatar className='size-5'>
-          <AvatarImage src={item.avatarUrl} />
-          <AvatarFallback>{item.displayName?.[0]}</AvatarFallback>
-        </Avatar>
-      ) : (
-        <EntityIcon
-          iconId={resource?.icon ?? 'circle'}
-          color={iconColor ?? 'gray'}
-          size='sm'
-          inverse
-          className='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
-        />
-      )}
+      <RecordIcon
+        avatarUrl={item.avatarUrl}
+        iconId={resource?.icon ?? 'circle'}
+        color={iconColor ?? 'gray'}
+        size='sm'
+        inverse
+        className='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
+      />
       <div className='flex flex-1 items-center gap-1 flex-row'>
         <span className='truncate'>{item.displayName}</span>
         {item.secondaryInfo && (

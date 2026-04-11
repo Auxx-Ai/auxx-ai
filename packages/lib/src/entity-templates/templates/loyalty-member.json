@@ -11,6 +11,7 @@
     "color": "amber"
   },
   "primaryDisplayField": "memberId",
+  "avatarField": "avatar",
   "companions": ["company"],
   "fields": [
     {
@@ -19,6 +20,14 @@
       "type": "TEXT",
       "required": true,
       "isUnique": true
+    },
+    {
+      "templateFieldId": "avatar",
+      "name": "Avatar",
+      "type": "FILE",
+      "options": {
+        "file": { "allowMultiple": false, "allowedFileTypes": ["image"] }
+      }
     },
     {
       "templateFieldId": "tier",

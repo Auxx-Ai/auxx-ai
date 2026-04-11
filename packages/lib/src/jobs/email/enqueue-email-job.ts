@@ -27,7 +27,7 @@ export async function enqueueEmailJob<T extends EmailType>(
 ) {
   const { actorId, source, organizationId, requestId, idempotencyKey, ...payload } = data
   const queue = getQueue(Queues.emailQueue)
-  const jobId = idempotencyKey ? `email:${emailType}:${idempotencyKey}` : undefined
+  const jobId = idempotencyKey ? `email-${emailType}-${idempotencyKey}` : undefined
 
   const jobData: SendEmailJobData<T> = {
     emailType,

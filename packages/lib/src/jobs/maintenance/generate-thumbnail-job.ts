@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { MediaAssetService } from '../../files/core/media-asset-service'
 import {
@@ -128,7 +128,7 @@ export const generateThumbnailJob = async (job: any): Promise<void> => {
     const processed = await processImage(sourceBuffer, preset as PresetKey, opts)
 
     // Upload to storage using the new uploadContent method
-    const storageKey = `/thumbs/${orgId}/${versionId}/${preset}.${processed.format}`
+    const storageKey = `thumbs/${orgId}/${versionId}/${preset}.${processed.format}`
     const storageLocation = await storageManager.uploadContent({
       provider: 'S3',
       key: storageKey,
@@ -210,6 +210,15 @@ export const generateThumbnailJob = async (job: any): Promise<void> => {
         preset,
       })
 
+      // Update entity avatar URLs if applicable (avatar-128)
+      await updateEntityAvatarIfApplicable({
+        tx,
+        orgId,
+        sourceVersion,
+        storageLocation,
+        preset,
+      })
+
       // Update user avatar if requested
       if (opts.updateUser) {
         await updateUserAvatarIfBeneficial({
@@ -225,7 +234,7 @@ export const generateThumbnailJob = async (job: any): Promise<void> => {
     // Clear processing cache
     const redis = await getRedisClient()
     if (redis) {
-      await redis.del(`processing:thumb:${key}`)
+      await redis.del(`processing:thumb-${key}`)
     }
   } catch (error) {
     logger.error('Failed to generate thumbnail', {
@@ -238,7 +247,7 @@ export const generateThumbnailJob = async (job: any): Promise<void> => {
     // Clear processing cache on error
     const redis = await getRedisClient()
     if (redis) {
-      await redis.del(`processing:thumb:${key}`)
+      await redis.del(`processing:thumb-${key}`)
     }
 
     throw error
@@ -360,4 +369,71 @@ async function updateKBLogoIfApplicable(params: {
     const data = variant === 'dark' ? { logoDark: url } : { logoLight: url }
     await tx.update(schema.KnowledgeBase).set(data).where(eq(schema.KnowledgeBase.id, a.entityId))
   }
+}
+
+/**
+ * Updates EntityInstance.avatarUrl when an avatar-128 preset thumbnail is generated.
+ * Follows the KB logo callback pattern: looks up which EntityInstances reference
+ * the source asset via their avatar field, then sets avatarUrl to the public CDN URL.
+ */
+async function updateEntityAvatarIfApplicable(params: {
+  tx: any
+  orgId: string
+  sourceVersion: any
+  storageLocation: any
+  preset: string
+}): Promise<void> {
+  const { tx, orgId, sourceVersion, storageLocation, preset } = params
+  if (preset !== 'avatar-128') return
+
+  const cdnUrl = storageLocation?.externalUrl
+  if (!cdnUrl) return
+
+  const assetId = sourceVersion.assetId
+  if (!assetId) return
+
+  // Build the ref string that FILE field values store
+  const refValue = `asset:${assetId}`
+
+  // Find EntityInstances whose avatar field value references this asset.
+  // Join path: FieldValue → CustomField → EntityDefinition (avatarFieldId) → EntityInstance
+  const instances = await tx
+    .select({
+      entityInstanceId: schema.FieldValue.entityId,
+    })
+    .from(schema.FieldValue)
+    .innerJoin(schema.CustomField, eq(schema.FieldValue.fieldId, schema.CustomField.id))
+    .innerJoin(
+      schema.EntityDefinition,
+      and(
+        eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id),
+        eq(schema.EntityDefinition.avatarFieldId, schema.CustomField.id)
+      )
+    )
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, orgId),
+        sql`${schema.FieldValue.valueJson}->>'ref' = ${refValue}`
+      )
+    )
+
+  if (instances.length === 0) return
+
+  // Update all matching EntityInstances with the CDN URL
+  const instanceIds = instances.map((i: { entityInstanceId: string }) => i.entityInstanceId)
+  await tx
+    .update(schema.EntityInstance)
+    .set({ avatarUrl: cdnUrl })
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, orgId),
+        inArray(schema.EntityInstance.id, instanceIds)
+      )
+    )
+
+  logger.info('Updated entity avatar URLs from thumbnail', {
+    preset,
+    assetId,
+    instanceCount: instanceIds.length,
+  })
 }

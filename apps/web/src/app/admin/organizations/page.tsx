@@ -23,6 +23,7 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
+import { pluralize } from '@auxx/utils/strings'
 import { formatDistanceToNow } from 'date-fns'
 import { ChevronLeft, ChevronRight, Database, Search, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -49,6 +50,8 @@ export default function OrganizationsPage() {
   })
 
   const orgIds = data?.map((org) => org.id) ?? []
+  const { data: demoStats } = api.admin.getActiveDemoCount.useQuery()
+
   const { data: usageSummary } = api.admin.getOrganizationsUsageSummary.useQuery(
     { organizationIds: orgIds },
     { enabled: orgIds.length > 0 }
@@ -219,15 +222,22 @@ export default function OrganizationsPage() {
       <MainPage>
         <MainPageHeader
           action={
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={handleRunMigrations}
-              loading={runMigrations.isPending}
-              loadingText='Running...'>
-              <Database />
-              Run Entity Migrations
-            </Button>
+            <div className='flex items-center gap-2'>
+              {demoStats && demoStats.activeDemoCount > 0 && (
+                <Badge variant='secondary'>
+                  {demoStats.activeDemoCount} active {pluralize(demoStats.activeDemoCount, 'demo')}
+                </Badge>
+              )}
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={handleRunMigrations}
+                loading={runMigrations.isPending}
+                loadingText='Running...'>
+                <Database />
+                Run Entity Migrations
+              </Button>
+            </div>
           }>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
