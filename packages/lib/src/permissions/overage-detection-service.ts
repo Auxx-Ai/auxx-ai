@@ -4,9 +4,10 @@ import { type Database, database as ddb, schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { getAppCache } from '../cache'
+import { getOrgCache } from '../cache/singletons'
 import { createScopedLogger } from '../logger'
 import type { FeatureDefinition } from './types'
-import { DEFAULT_FREE_PLAN_FEATURES, FEATURE_REGISTRY_MAP, FeatureKey } from './types'
+import { FEATURE_REGISTRY_MAP, FeatureKey, parseFeatureLimits } from './types'
 
 const logger = createScopedLogger('overage-detection-service')
 
@@ -47,7 +48,7 @@ export class OverageDetectionService {
       return []
     }
 
-    const featureDefs = this.parseFeaturesFromJson(plan.featureLimits)
+    const featureDefs = parseFeatureLimits(plan.featureLimits)
 
     // Merge custom feature limits from subscription if present
     const [subscription] = await this.db
@@ -86,21 +87,40 @@ export class OverageDetectionService {
       .where(eq(schema.PlanSubscription.organizationId, organizationId))
       .limit(1)
 
-    if (!subscription?.planId) return []
-
-    // Fetch plan limits from cache — use trial limits if still trialing
+    // Fetch plan limits from cache
     const planMap = await getAppCache().get('planMap')
-    const plan = planMap[subscription.planId]
+    let featureDefs: FeatureDefinition[] = []
+    let customFeatureLimits: unknown = null
 
-    if (!plan) return []
+    if (subscription?.planId) {
+      const plan = planMap[subscription.planId]
+      if (!plan) return []
 
-    const isTrialing = subscription.status === 'trialing' && !subscription.hasTrialEnded
-    const rawLimits = isTrialing
-      ? (plan.trialFeatureLimits ?? plan.featureLimits)
-      : plan.featureLimits
+      const isTrialing = subscription.status === 'trialing' && !subscription.hasTrialEnded
+      const rawLimits = isTrialing
+        ? (plan.trialFeatureLimits ?? plan.featureLimits)
+        : plan.featureLimits
 
-    const featureDefs = this.parseFeaturesFromJson(rawLimits)
-    const effectiveLimits = this.buildEffectiveLimits(featureDefs, subscription.customFeatureLimits)
+      featureDefs = parseFeatureLimits(rawLimits)
+      customFeatureLimits = subscription.customFeatureLimits
+    } else {
+      // No subscription — resolve from org type (demo vs free)
+      const { orgProfile } = await getOrgCache().getOrRecompute(organizationId, ['orgProfile'])
+      const isDemo = orgProfile.demoExpiresAt !== null
+
+      const fallbackPlan = isDemo
+        ? Object.values(planMap).find((p) => p.name === 'Demo')
+        : Object.values(planMap).find((p) => p.isFree)
+
+      if (!fallbackPlan) {
+        logger.warn('No fallback plan found for overage detection', { organizationId, isDemo })
+        return []
+      }
+
+      featureDefs = parseFeatureLimits(fallbackPlan.featureLimits)
+    }
+
+    const effectiveLimits = this.buildEffectiveLimits(featureDefs, customFeatureLimits)
 
     return this.compareCountsToLimits(organizationId, effectiveLimits)
   }
@@ -294,17 +314,6 @@ export class OverageDetectionService {
       default:
         logger.warn('Unknown feature key for resource count', { featureKey })
         return 0
-    }
-  }
-
-  /** Parse features JSON from plan, falling back to free plan defaults */
-  private parseFeaturesFromJson(featuresJson: unknown): FeatureDefinition[] {
-    if (!featuresJson) return DEFAULT_FREE_PLAN_FEATURES
-    try {
-      const parsed = typeof featuresJson === 'string' ? JSON.parse(featuresJson) : featuresJson
-      return Array.isArray(parsed) ? (parsed as FeatureDefinition[]) : DEFAULT_FREE_PLAN_FEATURES
-    } catch {
-      return DEFAULT_FREE_PLAN_FEATURES
     }
   }
 }

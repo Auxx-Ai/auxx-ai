@@ -5,9 +5,9 @@ import { isSelfHosted } from '@auxx/deployment'
 import { eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
 import type { FeatureDefinition, FeatureLimit, FeatureMapObject } from '../../permissions/types'
-import { DEFAULT_FREE_PLAN_FEATURES, FeatureKey } from '../../permissions/types'
+import { FeatureKey, parseFeatureLimits } from '../../permissions/types'
 import type { CacheProvider } from '../org-cache-provider'
-import { getAppCache } from '../singletons'
+import { getAppCache, getOrgCache } from '../singletons'
 
 const logger = createScopedLogger('features-provider')
 
@@ -35,18 +35,32 @@ export const featuresProvider: CacheProvider<FeatureMapObject> = {
       .where(eq(schema.PlanSubscription.organizationId, orgId))
       .limit(1)
 
-    let featureDefinitions: FeatureDefinition[] = DEFAULT_FREE_PLAN_FEATURES
+    const { planMap } = await getAppCache().getOrRecompute(['planMap'])
+    let featureDefinitions: FeatureDefinition[] = []
 
     if (subscription?.planId) {
-      // Use planMap from appCache instead of querying Plan table directly
-      const { planMap } = await getAppCache().getOrRecompute(['planMap'])
       const plan = planMap[subscription.planId]
 
-      if (subscription.status === 'trialing' && !subscription.hasTrialEnded) {
-        const trialSource = plan?.trialFeatureLimits ?? plan?.featureLimits
-        featureDefinitions = parseFeaturesFromJson(trialSource)
+      if (!plan) {
+        logger.warn('Plan not found in planMap', { orgId, planId: subscription.planId })
+      } else if (subscription.status === 'trialing' && !subscription.hasTrialEnded) {
+        featureDefinitions = parseFeatureLimits(plan.trialFeatureLimits ?? plan.featureLimits)
       } else if (subscription.status === 'active' || subscription.status === 'past_due') {
-        featureDefinitions = parseFeaturesFromJson(plan?.featureLimits)
+        featureDefinitions = parseFeatureLimits(plan.featureLimits)
+      }
+    } else {
+      // No subscription — resolve from org type (demo vs free)
+      const { orgProfile } = await getOrgCache().getOrRecompute(orgId, ['orgProfile'])
+      const isDemo = orgProfile.demoExpiresAt !== null
+
+      const fallbackPlan = isDemo
+        ? Object.values(planMap).find((p) => p.name === 'Demo')
+        : Object.values(planMap).find((p) => p.isFree)
+
+      if (fallbackPlan) {
+        featureDefinitions = parseFeatureLimits(fallbackPlan.featureLimits)
+      } else {
+        logger.error('No fallback plan found in planMap', { orgId, isDemo })
       }
     }
 
@@ -85,14 +99,4 @@ export const featuresProvider: CacheProvider<FeatureMapObject> = {
 
     return result
   },
-}
-
-function parseFeaturesFromJson(featuresJson: unknown): FeatureDefinition[] {
-  if (!featuresJson) return DEFAULT_FREE_PLAN_FEATURES
-  try {
-    const parsed = typeof featuresJson === 'string' ? JSON.parse(featuresJson) : featuresJson
-    return Array.isArray(parsed) ? (parsed as FeatureDefinition[]) : DEFAULT_FREE_PLAN_FEATURES
-  } catch {
-    return DEFAULT_FREE_PLAN_FEATURES
-  }
 }
