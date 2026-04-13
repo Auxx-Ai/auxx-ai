@@ -134,7 +134,7 @@ export function EmailTemplatesList() {
     <div className='container mx-auto'>
       <ConfirmDialog />
 
-      <div className='mb-6 flex items-center justify-end'>
+      <div className='mb-6 hidden sm:flex items-center justify-end'>
         <Button onClick={() => setIsCreating(true)} size='sm'>
           <PlusIcon />
           New Template
@@ -220,6 +220,14 @@ export function EmailTemplatesList() {
           </CardContent>
         </Card>
       )}
+
+      {/* Mobile: fixed full-width button at bottom */}
+      <div className='fixed bottom-3 left-3 right-3 z-40 p-4 sm:hidden'>
+        <Button onClick={() => setIsCreating(true)} className='w-full'>
+          <PlusIcon />
+          New Template
+        </Button>
+      </div>
 
       {/* Template Editor Dialog (Create/Edit) */}
       <TemplateEditorDialog

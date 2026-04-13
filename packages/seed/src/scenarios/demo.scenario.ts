@@ -16,7 +16,7 @@ export const demoScenario: SeedingScenarioDefinition = {
     orders: 0,
     threads: 50,
     messages: 200,
-    tickets: 100,
+    tickets: 30,
     datasets: 1,
   },
   features: {

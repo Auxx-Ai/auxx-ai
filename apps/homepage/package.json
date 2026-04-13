@@ -11,6 +11,7 @@
     "clean": "rm -rf node_modules .turbo .next .open-next *.tsbuildinfo"
   },
   "dependencies": {
+    "@auxx/config": "workspace:*",
     "@number-flow/react": "^0.5.10",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-avatar": "^1.1.10",
@@ -18,15 +19,17 @@
     "@radix-ui/react-navigation-menu": "^1.2.14",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@auxx/config": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "gray-matter": "^4.0.3",
     "lucide-react": "catalog:",
     "motion": "^12.23.16",
     "next": "catalog:",
+    "next-mdx-remote": "^6.0.0",
     "next-themes": "^0.4.4",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "reading-time": "^1.5.0",
     "recharts": "^2.15.4",
     "tailwind-merge": "^3.3.1"
   },

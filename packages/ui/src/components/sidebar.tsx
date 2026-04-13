@@ -366,7 +366,7 @@ function SidebarContent({ className, children, ...props }: React.ComponentProps<
       {...props}>
       <div
         data-sidebar='content'
-        className='flex flex-col gap-2 py-2 pe-2 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pe-0'>
+        className='flex flex-col gap-2 py-2 pe-0.5 sm:pe-2 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pe-0'>
         {children}
       </div>
     </ScrollArea>
@@ -378,7 +378,7 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-sidebar='group'
       className={cn(
-        'relative flex w-full min-w-0 flex-col px-2 has-[>[data-state=open]]:pb-2',
+        'relative flex w-full min-w-0 flex-col ps-0.5 pe-0 sm:ps-2 sm:pe-2 has-[>[data-state=open]]:pb-2',
         className
       )}
       {...props}

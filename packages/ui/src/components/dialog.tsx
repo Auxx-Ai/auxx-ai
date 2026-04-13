@@ -147,7 +147,7 @@ function DialogContent({
     <DialogPortal>
       <DialogOverlay />
       <div
-        className='z-50 pb-6 sm:pb-20 overflow-y-auto absolute inset-0 max-sm:flex max-sm:flex-col max-sm:items-center max-sm:px-2 max-sm:pt-4'
+        className='z-50 pb-6 sm:pb-20 overflow-y-auto absolute inset-0 max-sm:flex max-sm:flex-col max-sm:items-center'
         onWheel={(e) => e.stopPropagation()}>
         <DialogPrimitive.Content
           className={cn(

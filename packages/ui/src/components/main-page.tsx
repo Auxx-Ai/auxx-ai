@@ -98,10 +98,23 @@ function MainPageHeader({
   action?: React.ReactNode
   children?: React.ReactNode
 }) {
-  // const { loading } = useMainPage()
+  const headerRef = React.useRef<HTMLDivElement>(null)
+  const triggerWrapperRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const onScroll = () => {
+      const scrolled = el.scrollLeft > 0
+      triggerWrapperRef.current?.toggleAttribute('data-scrolled', scrolled)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
 
   return (
     <div
+      ref={headerRef}
       data-main='header'
       className={cn(
         'flex items-center justify-between shrink-0 py-2 overflow-x-auto no-scrollbar h-[44px]',
@@ -109,7 +122,11 @@ function MainPageHeader({
       )}
       {...props}>
       <div className='flex items-center shrink-0'>
-        <SidebarTrigger className='sticky left-0 hover:bg-primary-200 h-6' />
+        <div
+          ref={triggerWrapperRef}
+          className='sticky left-0 z-10 flex items-center bg-neutral-100 dark:bg-background after:pointer-events-none after:absolute after:right-0 after:translate-x-full after:top-0 after:h-full after:w-3 after:bg-gradient-to-r after:from-neutral-100 after:to-transparent after:dark:from-background after:opacity-0 after:transition-opacity [&[data-scrolled]]:after:opacity-100'>
+          <SidebarTrigger className='hover:bg-primary-200 h-6' />
+        </div>
         {children && <div className='flex items-center gap-1.5'>{children}</div>}
         {title && <span className='text-base'>{title}</span>}
       </div>

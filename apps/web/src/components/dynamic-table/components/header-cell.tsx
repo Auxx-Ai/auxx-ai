@@ -372,7 +372,7 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
       )}>
       {/* Sort menu (visible on hover) */}
       {(canSort || canFilter || canHide) && (
-        <div className='pointer-events-auto absolute inset-y-0 right-1 z-20 flex items-start pt-0.5 opacity-0 transition-opacity group-hover:opacity-100'>
+        <div className='pointer-events-auto absolute inset-y-0 right-1 z-20 flex items-start pt-0.5 opacity-100 sm:opacity-0 transition-opacity sm:group-hover:opacity-100'>
           <HeaderCellOptionsDropdown
             column={column}
             columnDef={columnDef}

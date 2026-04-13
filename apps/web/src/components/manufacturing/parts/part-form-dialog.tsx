@@ -241,7 +241,9 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-50'>
+        <VarEditorField
+          orientation='responsive'
+          className='p-0 sm:[&_[data-slot=field-row-label]]:w-50'>
           {/* Title */}
           <VarEditorFieldRow
             title='Title'
@@ -264,6 +266,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             title='SKU'
             description='This must be unique across all parts'
             type={BaseType.STRING}
+            orientation='responsive'
             showIcon
             isRequired
             validationError={errors.sku}
@@ -278,7 +281,11 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           </VarEditorFieldRow>
 
           {/* Category */}
-          <VarEditorFieldRow title='Category' type={BaseType.STRING} showIcon>
+          <VarEditorFieldRow
+            title='Category'
+            type={BaseType.STRING}
+            showIcon
+            orientation='responsive'>
             <ConstantInputAdapter
               value={values.category}
               onChange={(_, val) => handleChange('category', val)}
@@ -293,6 +300,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             title='HS Code'
             description='Harmonized System Code for customs'
             type={BaseType.STRING}
+            orientation='responsive'
             showIcon>
             <ConstantInputAdapter
               value={values.hsCode}
@@ -307,6 +315,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           <VarEditorFieldRow
             title='Shopify Product ID'
             description='Link to a Shopify product'
+            orientation='responsive'
             type={BaseType.STRING}
             showIcon>
             <ConstantInputAdapter
@@ -319,7 +328,11 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           </VarEditorFieldRow>
 
           {/* Description */}
-          <VarEditorFieldRow title='Description' type={BaseType.STRING} showIcon>
+          <VarEditorFieldRow
+            title='Description'
+            type={BaseType.STRING}
+            orientation='responsive'
+            showIcon>
             <ConstantInputAdapter
               value={values.description}
               onChange={(_, val) => handleChange('description', val)}
@@ -347,7 +360,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             </button>
 
             {showSupplier && (
-              <VarEditorField className='p-0 mt-4 [&_[data-slot=field-row-label]]:w-50'>
+              <VarEditorField className='p-0 mt-4 ' orientation='responsive'>
                 <VendorPartFields
                   values={vendorPartValues}
                   onChange={handleVendorPartChange}

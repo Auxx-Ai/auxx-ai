@@ -24,6 +24,10 @@ const links = [
         title: 'Pricing',
         href: '/pricing',
       },
+      {
+        title: 'Blog',
+        href: '/blog',
+      },
     ],
   },
   {
