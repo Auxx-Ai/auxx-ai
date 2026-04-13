@@ -39,7 +39,7 @@ export default function TicketSettingsLayout({ children }: { children: React.Rea
 
   return (
     <MainPageContent>
-      <div className='flex h-full flex-1 overflow-hidden'>
+      <div className='flex flex-col sm:flex-row h-full flex-1 overflow-hidden'>
         <SidebarSecondary
           items={TICKET_SETTINGS}
           baseUrl={baseUrl}

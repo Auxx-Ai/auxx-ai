@@ -25,7 +25,7 @@ function TicketSequenceSettings({}: Props) {
             </Button> */}
         </div>
       }>
-      <div className='p-8'>
+      <div className='p-0 sm:p-8'>
         <TicketNumberingSettings />
       </div>
       {/* <InviteForm organizationId={defaultOrganizationId} /> */}

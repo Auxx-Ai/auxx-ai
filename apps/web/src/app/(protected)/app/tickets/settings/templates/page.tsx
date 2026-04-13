@@ -14,18 +14,8 @@ function EmailTemplateListPage({}: Props) {
         { title: 'Support Tickets', href: '/app/tickets' },
         { title: 'Settings', href: '/app/tickets/settings' },
         { title: 'Email Templates' },
-      ]}
-      button={
-        <div className='flex items-center gap-2'>
-          {/* <Button variant='outline' size='sm' asChild>
-              <Link href='/app/settings/members'>
-                <RefreshCw className='h-4 w-4' />
-                Refresh
-              </Link>
-            </Button> */}
-        </div>
-      }>
-      <div className='p-8'>
+      ]}>
+      <div className='pt-3 sm:pt-8 p-0 sm:p-8'>
         <EmailTemplatesList />
       </div>
       {/* <InviteForm organizationId={defaultOrganizationId} /> */}

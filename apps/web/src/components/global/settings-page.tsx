@@ -111,9 +111,12 @@ export default function SettingsPage({
 
       <div className='sticky top-0 z-10 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
         <div
-          className={cn('flex flex-col sm:flex-row sm:items-center gap-2 bg-muted/50 px-5 py-3', {
-            'ps-2': !!icon,
-          })}>
+          className={cn(
+            'flex flex-col sm:flex-row sm:items-center gap-2 bg-muted/50 px-5 py-3 pe-2 sm:pe-5',
+            {
+              'ps-2': !!icon,
+            }
+          )}>
           <div className='flex items-center gap-2'>
             {icon && <div className='flex h-10 w-10 items-center justify-center'>{icon}</div>}
             <div className='me-3'>

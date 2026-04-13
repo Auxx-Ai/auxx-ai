@@ -80,17 +80,17 @@ function TicketsLayoutHeader() {
             size='sm'
             radioGroupClassName='grid w-full'
             className='border border-primary-200 flex flex-1 w-full'>
-            <RadioTabItem value='list' size='sm'>
+            <RadioTabItem value='list' size='sm' tooltip='Tickets'>
               <Tags />
-              Tickets
+              <span className='hidden sm:inline'>Tickets</span>
             </RadioTabItem>
-            <RadioTabItem value='dashboard' size='sm'>
+            <RadioTabItem value='dashboard' size='sm' tooltip='Dashboard'>
               <ChartColumn />
-              Dashboard
+              <span className='hidden sm:inline'>Dashboard</span>
             </RadioTabItem>
-            <RadioTabItem value='settings' size='sm'>
+            <RadioTabItem value='settings' size='sm' tooltip='Settings'>
               <Settings />
-              Settings
+              <span className='hidden sm:inline'>Settings</span>
             </RadioTabItem>
           </RadioTab>
           {activeTab === 'list' && (
@@ -100,7 +100,7 @@ function TicketsLayoutHeader() {
               className='px-2'
               onClick={() => setCreateDialogOpen(true)}>
               <Plus />
-              New Ticket
+              <span className='hidden sm:inline'>New Ticket</span>
             </Button>
           )}
           {activeTab === 'dashboard' && (

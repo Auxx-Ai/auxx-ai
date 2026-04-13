@@ -73,6 +73,11 @@ export function SidebarItem({
           <span className='group-data-[collapsible=icon]:hidden'>{name}</span>
         </div>
         <div className='flex items-center group-data-[collapsible=icon]:hidden'>
+          {!popoverOpen && typeof count === 'number' && (
+            <span className='pointer-events-none text-xs text-muted-foreground sm:group-hover/item:opacity-0'>
+              {count}
+            </span>
+          )}
           {hasDropdownContent && (
             <div
               onClick={(e) => {
@@ -85,10 +90,10 @@ export function SidebarItem({
                     variant='ghost'
                     size='icon'
                     className={cn(
-                      'size-6 rounded-md opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
+                      'size-6 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
                       {
                         'bg-primary-200 opacity-100': popoverOpen,
-                        'group-hover/item:opacity-100': !popoverOpen,
+                        'sm:group-hover/item:opacity-100': !popoverOpen,
                       }
                     )}
                     onClick={(e) => {
@@ -112,11 +117,6 @@ export function SidebarItem({
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-          )}
-          {!popoverOpen && (
-            <div className='pointer-events-none absolute right-[11px] top-1/2 flex -translate-y-1/2 text-right text-xs group-hover/item:opacity-0'>
-              {typeof count === 'number' && count}
             </div>
           )}
         </div>

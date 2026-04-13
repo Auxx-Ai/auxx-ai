@@ -326,7 +326,7 @@ export function TemplateEditorDialog({
                 />
               </div>
 
-              <div className='grid grid-cols-2 gap-4'>
+              <div className='grid sm:grid-cols-2 gap-4'>
                 <div className='relative flex flex-col space-y-2'>
                   <div className='flex items-center justify-between'>
                     <Label htmlFor='bodyHtml'>HTML Body</Label>
@@ -364,7 +364,7 @@ export function TemplateEditorDialog({
               </div>
             </div>
 
-            <div className='flex justify-between pt-4'>
+            <div className='flex justify-between pt-4 pb-4 sm:pb-0'>
               <div className='flex gap-2'>
                 <Button variant='outline' onClick={handleCancel}>
                   Cancel

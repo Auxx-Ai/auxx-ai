@@ -31,7 +31,7 @@ import { ValidationErrorBadge } from './validation-error-badge'
  */
 const varEditorFieldVariants = cva(
   [
-    'relative grow rounded-2xl px-1.5 py-0.5',
+    '@container relative grow rounded-2xl px-1.5 py-0.5',
     'bg-primary-200/30 dark:bg-[#23272e]/30 border flex flex-col focus-within:border-primary-300',
     '[&>[data-slot=field-row]:not(:has(~[data-slot=field-row]))]:border-b-0',
   ],
@@ -51,10 +51,21 @@ const varEditorFieldVariants = cva(
           '[&_[data-slot=field-row-label]]:w-full [&_[data-slot=field-row-label]]:shrink [&_[data-slot=field-row-label]]:pt-1.5 [&_[data-slot=field-row-label]]:pb-1 [&_[data-slot=field-row-content]]:ps-2',
           '[&_[data-slot=field-row]]:pb-1',
         ],
+        responsive: [
+          // Base (mobile): vertical layout
+          '[&_[data-slot=field-row]]:flex-col [&_[data-slot=field-row]]:items-stretch',
+          '[&_[data-slot=field-row-label]]:w-full [&_[data-slot=field-row-label]]:shrink [&_[data-slot=field-row-label]]:pt-1.5 [&_[data-slot=field-row-label]]:pb-1 [&_[data-slot=field-row-content]]:ps-2',
+          '[&_[data-slot=field-row]]:pb-1',
+          // @sm+ (container >= 640px): horizontal layout
+          '@sm:[&_[data-slot=field-row]]:flex-row @sm:[&_[data-slot=field-row]]:items-start',
+          '@sm:[&_[data-slot=field-row-label]]:w-40 @sm:[&_[data-slot=field-row-label]]:shrink-0 @sm:[&_[data-slot=field-row-label]]:min-h-8',
+          '@sm:[&_[data-slot=field-row-label]]:pt-0 @sm:[&_[data-slot=field-row-label]]:pb-0 @sm:[&_[data-slot=field-row-content]]:ps-0',
+          '@sm:[&_[data-slot=field-row]]:pb-0',
+        ],
       },
     },
     defaultVariants: {
-      orientation: 'horizontal',
+      orientation: 'responsive',
     },
   }
 )
@@ -73,7 +84,7 @@ const VarEditorField: React.FC<VarEditorFieldProps> = ({
   children,
   validationError,
   validationType = 'error',
-  orientation = 'horizontal',
+  orientation = 'responsive',
   className,
 }) => {
   return (

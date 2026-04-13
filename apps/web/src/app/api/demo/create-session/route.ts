@@ -154,9 +154,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 8. Enqueue async demo data seeding job (customers, tickets, etc.)
+    let seedJobId: string | undefined
     try {
       const maintenanceQueue = getQueue(Queues.maintenanceQueue)
-      await maintenanceQueue.add(
+      const job = await maintenanceQueue.add(
         'demoSeedJob',
         {
           organizationId,
@@ -166,10 +167,11 @@ export async function POST(request: NextRequest) {
         {
           attempts: 3,
           backoff: { type: 'exponential', delay: 5000 },
-          removeOnComplete: true,
+          removeOnComplete: { age: 300 },
           removeOnFail: { count: 10 },
         }
       )
+      seedJobId = job.id
     } catch (error) {
       // Non-fatal: org still works without extra demo data
       logger.error('Failed to enqueue demo seed job', { organizationId, error })
@@ -193,7 +195,7 @@ export async function POST(request: NextRequest) {
     // - Form submissions (browser navigation) get a redirect
     const acceptsJson = request.headers.get('accept')?.includes('application/json')
     if (acceptsJson) {
-      return NextResponse.json({ success: true, redirectTo: '/app' })
+      return NextResponse.json({ success: true, redirectTo: '/app', seedJobId: seedJobId ?? null })
     }
     return NextResponse.redirect(new URL('/app', request.url), { status: 303 })
   } catch (error) {

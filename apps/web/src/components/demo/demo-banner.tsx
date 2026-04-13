@@ -49,16 +49,16 @@ export function DemoBanner() {
 
   return (
     <div className='relative z-10 '>
-      <div className='h-10 relative flex items-center justify-center gap-3 bg-blue-100 dark:bg-blue-600/10 px-4 py-2 text-sm text-info '>
-        <span className='font-medium'>You're exploring a demo</span>
-        <span className='text-blue-200'>·</span>
+      <div className='h-10 relative flex items-center justify-start sm:justify-center gap-3 bg-blue-100 dark:bg-blue-600/10 px-4 py-2 text-sm text-info '>
+        <span className='font-medium hidden sm:inline'>You're exploring a demo</span>
+        <span className='text-blue-200 hidden sm:inline'>·</span>
         <span className='tabular-nums'>{remaining} remaining</span>
         <span className='text-blue-200'>·</span>
         <Button
           asChild
           variant='secondary'
           size='sm'
-          className='h-7 text-xs bg-info hover:bg-info/80 text-white'>
+          className='h-6 sm:h-7 text-xs bg-info hover:bg-info/80 text-white '>
           <Link href='/signup?from=demo'>Sign Up Free</Link>
         </Button>
         <Button
