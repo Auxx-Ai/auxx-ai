@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.120](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.119...auxx-v0.1.120) (2026-04-13)
+
+
+### Features
+
+* add multiple blog post images for enhanced content presentation ([#404](https://github.com/Auxx-Ai/auxx-ai/issues/404)) ([9c0e228](https://github.com/Auxx-Ai/auxx-ai/commit/9c0e22874dc9cac97ae59d9deef5fdd7f05a1cbb))
+* enhance notification center with mobile support and improve feature limit parsing ([#406](https://github.com/Auxx-Ai/auxx-ai/issues/406)) ([e17a659](https://github.com/Auxx-Ai/auxx-ai/commit/e17a659abf0856a063d99085d3126b30a4f269a0))
+* improve mobile layout for mailbox and thread components ([#407](https://github.com/Auxx-Ai/auxx-ai/issues/407)) ([2b1cbda](https://github.com/Auxx-Ai/auxx-ai/commit/2b1cbdae2b5a9e0a7bb00a84e15f7963adade102))
+
 ## [0.1.119](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.118...auxx-v0.1.119) (2026-04-11)
 
 
