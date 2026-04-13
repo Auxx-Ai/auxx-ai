@@ -36,6 +36,7 @@
   "devDependencies": {
     "@opennextjs/aws": "3.9.15",
     "@tailwindcss/postcss": "^4",
+    "@types/mdx": "^2.0.13",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
