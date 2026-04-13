@@ -70,16 +70,11 @@ export const Tooltip = ({
     [allowInteraction]
   )
 
-  /** Handles mobile toggle behavior */
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (isTouchDevice && !allowInteraction) {
-        e.preventDefault()
-        setIsOpen((prev) => !prev)
-      }
-    },
-    [allowInteraction]
-  )
+  /** Handles mobile toggle behavior — no-op, let clicks pass through */
+  const handleClick = useCallback((_e: React.MouseEvent) => {
+    // On touch devices, don't intercept clicks — tooltips are a hover concept.
+    // Let the click propagate to the underlying interactive element.
+  }, [])
 
   /** Prevents closing when clicking the trigger */
   const handlePointerDownOutside = useCallback(
