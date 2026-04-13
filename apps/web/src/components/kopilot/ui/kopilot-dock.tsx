@@ -8,6 +8,7 @@ import { useHotkey } from '@tanstack/react-hotkeys'
 import { AnimatePresence, motion } from 'motion/react'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
+import { useIsMobile } from '~/hooks/use-mobile'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { KopilotPanel } from './kopilot-panel'
@@ -30,6 +31,7 @@ export function KopilotDock() {
   const context = useKopilotStore((s) => s.context)
 
   const [isResizing, setIsResizing] = useState(false)
+  const isMobile = useIsMobile()
 
   // Global keyboard shortcut — registered once here
   useHotkey('mod+shift+k', () => togglePanel(), {
@@ -38,6 +40,23 @@ export function KopilotDock() {
   })
 
   if (!kopilotEnabled || isOnKopilotPage) return null
+
+  if (isMobile) {
+    return (
+      <AnimatePresence initial={false}>
+        {panelOpen && (
+          <motion.div
+            className='fixed inset-0 z-50 bg-background'
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ duration: 0.2, ease: [0.165, 0.84, 0.44, 1] }}>
+            <KopilotPanel page={context?.page ?? 'unknown'} context={context ?? undefined} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    )
+  }
 
   return (
     <AnimatePresence initial={false}>
