@@ -382,8 +382,8 @@ export const MailThreadItem = memo(function MailThreadItem({
             />
           </div>
 
-          {/* Processing menu */}
-          <div className='z-1 me-0.5 relative border-primary-500 rounded-r-lg -ms-1.5 ps-2 py-0.5 pe-0.5 bg-primary-200 dark:bg-[#252931] flex flex-row shrink-0'>
+          {/* Processing menu — desktop: right panel, mobile: bottom-right corner */}
+          <div className='hidden sm:flex z-1 me-0.5 relative border-primary-500 rounded-r-lg -ms-1.5 ps-2 py-0.5 pe-0.5 bg-primary-200 dark:bg-[#252931] flex-row shrink-0'>
             <div
               className='absolute inset-0 rounded-r-lg pointer-events-none mask-y-from-98% mask-y-to-100%'
               style={{ boxShadow: 'inset 25px 0 25px -25px #000, 1px 1px 3px rgba(0,0,0,0.2)' }}
@@ -401,6 +401,19 @@ export const MailThreadItem = memo(function MailThreadItem({
                 isUpdating={isUpdating}
               />
             </div>
+          </div>
+          <div className='sm:hidden absolute bottom-1.5 right-1.5 z-3'>
+            <ProcessingMenu
+              threadId={threadId}
+              integrationId={thread?.integrationId}
+              senderEmail={
+                senderParticipant?.identifierType === 'EMAIL'
+                  ? senderParticipant.identifier
+                  : undefined
+              }
+              update={update}
+              isUpdating={isUpdating}
+            />
           </div>
         </motion.div>
       )}

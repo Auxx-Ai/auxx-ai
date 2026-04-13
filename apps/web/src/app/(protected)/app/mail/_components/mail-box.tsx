@@ -487,7 +487,7 @@ function MailboxInner({
             <div className='w-full flex flex-1 justify-between overflow-x-auto no-scrollbar gap-2'>
               <div className='flex flex-1 items-center gap-2'>
                 {displayTabs.length > 0 && (
-                  <div className='group-data-[search-expanded]/toolbar:hidden'>
+                  <div className='group-data-search-expanded/toolbar:hidden'>
                     <MailboxStatusDropdown
                       availableStatuses={displayTabs}
                       selectedStatus={activeStatusSlug}
@@ -500,17 +500,17 @@ function MailboxInner({
                 <Button
                   variant='ghost'
                   size='sm'
-                  className='sm:hidden group-data-[search-expanded]/toolbar:hidden'
+                  className='sm:hidden group-data-search-expanded/toolbar:hidden'
                   onClick={() => setMobileSearchOpen(true)}>
                   <Search />
                 </Button>
 
                 {/* Search bar — hidden on mobile until expanded */}
-                <div className='hidden sm:flex flex-1 group-data-[search-expanded]/toolbar:flex'>
+                <div className='hidden sm:flex flex-1 group-data-search-expanded/toolbar:flex'>
                   <Button
                     variant='ghost'
                     size='icon-xs'
-                    className='hidden group-data-[search-expanded]/toolbar:flex sm:hidden shrink-0 mt-0.5'
+                    className='hidden group-data-search-expanded/toolbar:flex sm:hidden shrink-0 mt-0.5'
                     onClick={() => {
                       setMobileSearchOpen(false)
                       setSearchQuery('')
