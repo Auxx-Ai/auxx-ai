@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.121](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.120...auxx-v0.1.121) (2026-04-13)
+
+
+### Features
+
+* add @types/mdx dependency for improved TypeScript support ([#408](https://github.com/Auxx-Ai/auxx-ai/issues/408)) ([e12c3ac](https://github.com/Auxx-Ai/auxx-ai/commit/e12c3ac0fae892a0e2f5fe794b77d14cbeb8f99a))
+
 ## [0.1.120](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.119...auxx-v0.1.120) (2026-04-13)
 
 
