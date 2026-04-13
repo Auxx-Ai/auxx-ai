@@ -77,7 +77,7 @@ export function PrimaryCell({
               <Button
                 variant='ghost'
                 size='icon-sm'
-                className='opacity-0 group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full'>
+                className='sm:opacity-0 sm:group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full'>
                 <MoreVertical />
               </Button>
             </DropdownMenuTrigger>

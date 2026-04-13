@@ -4,6 +4,7 @@ import { getPusherClient } from '@auxx/lib/realtime/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@auxx/ui/components/dialog'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
@@ -18,6 +19,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
+import { useIsMobile } from '~/hooks/use-mobile'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
@@ -252,149 +254,155 @@ export const NotificationCenter = () => {
       window.removeEventListener('popstate', handleRouteChange)
     }
   }, [])
+  const isMobile = useIsMobile()
+
+  const trigger = (
+    <SidebarMenuItem>
+      <SidebarMenuButton tooltip='Notifications'>
+        <Bell />
+        <span>Notifications</span>
+      </SidebarMenuButton>
+      {unreadData?.count && unreadData.count > 0 ? (
+        <SidebarMenuBadge>{unreadData.count > 99 ? '99+' : unreadData.count}</SidebarMenuBadge>
+      ) : null}
+    </SidebarMenuItem>
+  )
+
+  const notificationContent = (
+    <>
+      <div className='flex items-center justify-between px-3 py-2 border-b sticky top-0 backdrop-blur-sm dark:bg-black/40 bg-white/40 z-1'>
+        <div className='font-medium text-sm'>Notifications</div>
+        {unreadData && unreadData?.count > 0 && (
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={handleMarkAllAsRead}
+            loading={markAllAsRead.isPending || isLoading}
+            loadingText='Marking...'
+            disabled={isLoading || markAllAsRead.isPending}>
+            <Check />
+            Mark all read
+          </Button>
+        )}
+      </div>
+
+      <div className='p-2 pt-3 '>
+        <RadioTab
+          value={mode}
+          onValueChange={setMode}
+          size='sm'
+          radioGroupClassName='grid w-full'
+          className='border border-primary-200 flex flex-1 w-full'>
+          <RadioTabItem value='all' size='sm'>
+            <MailIcon />
+            All
+          </RadioTabItem>
+          <RadioTabItem value='unread' size='sm'>
+            <Play />
+            Unread
+            {unreadData?.count && unreadData.count > 0 ? (
+              <Badge variant='secondary' className='ml-2 h-5 min-w-[20px] px-1.5 text-xs'>
+                {unreadData.count}
+              </Badge>
+            ) : null}
+          </RadioTabItem>
+        </RadioTab>
+      </div>
+
+      <div className='flex flex-col m-0 flex-1 min-h-[200px]'>
+        {isLoading ? (
+          <div className='max-h-96 overflow-y-auto py-2'>
+            <NotificationSkeleton />
+            <NotificationSkeleton />
+            <NotificationSkeleton />
+          </div>
+        ) : mode === 'all' ? (
+          data?.notifications.length === 0 ? (
+            <div className='flex flex-1 items-center justify-center'>
+              <EmptyState
+                icon={Bell}
+                title='No notifications yet'
+                className='py-8'
+                iconClassName='h-8 w-8'
+              />
+            </div>
+          ) : (
+            <div className='max-h-96 overflow-y-auto py-2'>
+              {data?.notifications.map((notification) => (
+                <NotificationItem
+                  key={notification.id!}
+                  notification={notification}
+                  onRead={handleMarkAsRead}
+                  onDelete={handleDelete}
+                  onOpenApprovalDialog={openHumanConfirmationDialog}
+                />
+              ))}
+            </div>
+          )
+        ) : mode === 'unread' ? (
+          data?.notifications.filter((n) => !n.isRead).length === 0 ? (
+            <div className='flex flex-1 items-center justify-center'>
+              <EmptyState
+                icon={Bell}
+                title='No unread notifications'
+                className='py-8'
+                iconClassName='h-8 w-8'
+              />
+            </div>
+          ) : (
+            <div className='max-h-96 overflow-y-auto py-2'>
+              {data?.notifications
+                .filter((notification) => !notification.isRead)
+                .map((notification) => (
+                  <NotificationItem
+                    key={notification.id}
+                    notification={notification}
+                    onRead={handleMarkAsRead}
+                    onDelete={handleDelete}
+                    onOpenApprovalDialog={openHumanConfirmationDialog}
+                  />
+                ))}
+            </div>
+          )
+        ) : null}
+
+        {data?.totalCount && data.totalCount > 10 ? (
+          <div className='p-2 text-center'>
+            <Button
+              variant='link'
+              size='sm'
+              onClick={() => {
+                router.push(`/app/notifications`)
+                setOpen(false)
+              }}>
+              View all {data.totalCount} notifications
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </>
+  )
+
   return (
     <>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <SidebarMenuItem>
-            <SidebarMenuButton tooltip='Notifications'>
-              <Bell />
-              <span>Notifications</span>
-            </SidebarMenuButton>
-            {unreadData?.count && unreadData.count > 0 ? (
-              <SidebarMenuBadge>
-                {unreadData.count > 99 ? '99+' : unreadData.count}
-              </SidebarMenuBadge>
-            ) : null}
-          </SidebarMenuItem>
-
-          {/* <Button
-          size="icon"
-          className="size-9 relative rounded-full duration-300 animate-in zoom-in ">
-          <Bell className="h-5 w-5" />
-          {unreadData?.count && unreadData.count > 0 ? (
-            <Badge className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center bg-red-500 p-0">
-              {unreadData.count > 99 ? '99+' : unreadData.count}
-            </Badge>
-          ) : null}
-        </Button> sideOffset={-36} */}
-        </PopoverTrigger>
-        <PopoverContent
-          className='w-110 mr-4 p-0 min-h-[300px] backdrop-blur-sm bg-white/40 dark:bg-white/5'
-          align='start'>
-          <div className='flex items-center justify-between px-3 py-2 border-b sticky top-0 backdrop-blur-sm dark:bg-black/40 bg-white/40 z-1'>
-            <div className='font-medium text-sm'>Notifications</div>
-            {unreadData && unreadData?.count > 0 && (
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={handleMarkAllAsRead}
-                loading={markAllAsRead.isPending || isLoading}
-                loadingText='Marking...'
-                disabled={isLoading || markAllAsRead.isPending}>
-                <Check />
-                Mark all read
-              </Button>
-            )}
-          </div>
-
-          <div className='p-2 pt-0'>
-            <RadioTab
-              value={mode}
-              onValueChange={setMode}
-              size='sm'
-              radioGroupClassName='grid w-full'
-              className='border border-primary-200 flex flex-1 w-full'>
-              <RadioTabItem value='all' size='sm'>
-                <MailIcon />
-                All
-              </RadioTabItem>
-              <RadioTabItem value='unread' size='sm'>
-                <Play />
-                Unread
-                {unreadData?.count && unreadData.count > 0 ? (
-                  <Badge variant='secondary' className='ml-2 h-5 min-w-[20px] px-1.5 text-xs'>
-                    {unreadData.count}
-                  </Badge>
-                ) : null}
-              </RadioTabItem>
-            </RadioTab>
-          </div>
-
-          <div className='flex flex-col m-0 flex-1'>
-            {isLoading ? (
-              <div className='max-h-96 overflow-y-auto py-2'>
-                <NotificationSkeleton />
-                <NotificationSkeleton />
-                <NotificationSkeleton />
-              </div>
-            ) : mode === 'all' ? (
-              data?.notifications.length === 0 ? (
-                <div className='flex flex-1 items-center justify-center'>
-                  <EmptyState
-                    icon={Bell}
-                    title='No notifications yet'
-                    className='py-8'
-                    iconClassName='h-8 w-8'
-                  />
-                </div>
-              ) : (
-                <div className='max-h-96 overflow-y-auto py-2'>
-                  {data?.notifications.map((notification) => (
-                    <NotificationItem
-                      key={notification.id!}
-                      notification={notification}
-                      onRead={handleMarkAsRead}
-                      onDelete={handleDelete}
-                      onOpenApprovalDialog={openHumanConfirmationDialog}
-                    />
-                  ))}
-                </div>
-              )
-            ) : mode === 'unread' ? (
-              data?.notifications.filter((n) => !n.isRead).length === 0 ? (
-                <div className='flex flex-1 items-center justify-center'>
-                  <EmptyState
-                    icon={Bell}
-                    title='No unread notifications'
-                    className='py-8'
-                    iconClassName='h-8 w-8'
-                  />
-                </div>
-              ) : (
-                <div className='max-h-96 overflow-y-auto py-2'>
-                  {data?.notifications
-                    .filter((notification) => !notification.isRead)
-                    .map((notification) => (
-                      <NotificationItem
-                        key={notification.id}
-                        notification={notification}
-                        onRead={handleMarkAsRead}
-                        onDelete={handleDelete}
-                        onOpenApprovalDialog={openHumanConfirmationDialog}
-                      />
-                    ))}
-                </div>
-              )
-            ) : null}
-
-            {data?.totalCount && data.totalCount > 10 ? (
-              <div className='p-2 text-center'>
-                <Button
-                  variant='link'
-                  size='sm'
-                  onClick={() => {
-                    // Navigate to full notifications page
-                    router.push(`/app/notifications`)
-                    setOpen(false)
-                  }}>
-                  View all {data.totalCount} notifications
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </PopoverContent>
-      </Popover>
+      {isMobile ? (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>{trigger}</DialogTrigger>
+          <DialogContent size='md' showClose={true} innerClassName='p-0 overflow-hidden'>
+            <DialogTitle className='sr-only'>Notifications</DialogTitle>
+            {notificationContent}
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+          <PopoverContent
+            className='w-110 mr-4 p-0 min-h-[300px] backdrop-blur-sm bg-white/40 dark:bg-white/5'
+            align='start'>
+            {notificationContent}
+          </PopoverContent>
+        </Popover>
+      )}
 
       {/* Human Confirmation Dialog */}
       <HumanConfirmationDialog

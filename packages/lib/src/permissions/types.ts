@@ -317,42 +317,13 @@ export const USAGE_METRICS = [
   ),
 ]
 
-/**
- * Represents the default features for a free plan or when no subscription exists.
- */
-export const DEFAULT_FREE_PLAN_FEATURES: FeatureDefinition[] = [
-  { key: FeatureKey.teammates, limit: 1 },
-  { key: FeatureKey.channels, limit: 1 },
-  { key: FeatureKey.workflowsLimit, limit: 3 },
-  { key: FeatureKey.savedViews, limit: 5 },
-  { key: FeatureKey.knowledgeBase, limit: false },
-  { key: FeatureKey.knowledgeBases, limit: 0 },
-  { key: FeatureKey.kbPublishedArticles, limit: 0 },
-  { key: FeatureKey.apiAccess, limit: false },
-  { key: FeatureKey.workflows, limit: true },
-  { key: FeatureKey.aiAgent, limit: false },
-  { key: FeatureKey.sso, limit: false },
-  { key: FeatureKey.entities, limit: 3 },
-  { key: FeatureKey.importRowsLimit, limit: 50 },
-  { key: FeatureKey.datasets, limit: true },
-  { key: FeatureKey.datasetsLimit, limit: 0 },
-  { key: FeatureKey.files, limit: true },
-  { key: FeatureKey.webhooks, limit: false },
-  { key: FeatureKey.shopify, limit: false },
-  { key: FeatureKey.devTools, limit: false },
-  { key: FeatureKey.unverifiedApps, limit: true },
-  { key: FeatureKey.kopilot, limit: false },
-  { key: FeatureKey.realtimeSync, limit: true },
-  { key: FeatureKey.outboundEmailsPerMonthHard, limit: 100 },
-  { key: FeatureKey.outboundEmailsPerMonthSoft, limit: 80 },
-  { key: FeatureKey.workflowRunsPerMonthHard, limit: 100 },
-  { key: FeatureKey.workflowRunsPerMonthSoft, limit: 80 },
-  { key: FeatureKey.aiCompletionsPerMonthHard, limit: 50 },
-  { key: FeatureKey.aiCompletionsPerMonthSoft, limit: 40 },
-  { key: FeatureKey.apiCallsPerMonthHard, limit: 0 },
-  { key: FeatureKey.apiCallsPerMonthSoft, limit: 0 },
-  { key: FeatureKey.storageGbHard, limit: 1 },
-  { key: FeatureKey.storageGbSoft, limit: 0.8 },
-  { key: FeatureKey.appMutationsPerMinuteHard, limit: 30 },
-  { key: FeatureKey.appMutationsPerMinuteSoft, limit: 25 },
-]
+/** Parse feature limits JSON from a plan into typed definitions. Returns [] on invalid input. */
+export function parseFeatureLimits(limitsJson: unknown): FeatureDefinition[] {
+  if (!limitsJson) return []
+  try {
+    const parsed = typeof limitsJson === 'string' ? JSON.parse(limitsJson) : limitsJson
+    return Array.isArray(parsed) ? (parsed as FeatureDefinition[]) : []
+  } catch {
+    return []
+  }
+}
