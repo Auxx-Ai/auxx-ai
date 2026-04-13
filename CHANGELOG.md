@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.122](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.121...auxx-v0.1.122) (2026-04-13)
+
+
+### Features
+
+* update mobile tooltip behavior to allow click propagation on touch devices ([98a07f3](https://github.com/Auxx-Ai/auxx-ai/commit/98a07f304ca338bc4be69757a41caaa335690b83))
+
 ## [0.1.121](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.120...auxx-v0.1.121) (2026-04-13)
 
 
