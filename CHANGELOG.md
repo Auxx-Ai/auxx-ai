@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.123](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.122...auxx-v0.1.123) (2026-04-14)
+
+
+### Features
+
+* add multi-provider AI system blog post and related images ([#413](https://github.com/Auxx-Ai/auxx-ai/issues/413)) ([4078217](https://github.com/Auxx-Ai/auxx-ai/commit/4078217c9b8bf64c02786a8f0161d961f9b82452))
+* add TouchSensor support for drag-and-drop functionality across various components ([#411](https://github.com/Auxx-Ai/auxx-ai/issues/411)) ([7ec38cb](https://github.com/Auxx-Ai/auxx-ai/commit/7ec38cbf325073f23891fd7a7ccc2f9600222108))
+
 ## [0.1.122](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.121...auxx-v0.1.122) (2026-04-13)
 
 
