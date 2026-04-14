@@ -342,6 +342,19 @@
   .line:first-of-type {
     counter-set: line var(--counter-start);
   }
+
+  /* Shiki dual-theme: light theme by default, dark theme when [data-theme='dark'] */
+  .shiki,
+  .shiki span {
+    color: var(--shiki-light) !important;
+    background-color: var(--shiki-light-bg) !important;
+  }
+
+  [data-theme='dark'] .shiki,
+  [data-theme='dark'] .shiki span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+  }
 }
 
 [data-theme='quartz'] {

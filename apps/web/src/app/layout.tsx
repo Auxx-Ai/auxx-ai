@@ -8,12 +8,19 @@ import '~/lib/immer-config' // Enable Immer MapSet plugin
 
 import { WEBAPP_URL } from '@auxx/config/client'
 import { IS_MAC_SCRIPT } from '@auxx/utils'
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 
 const inter = Inter({ subsets: ['latin'], weight: ['400', '500', '700'] })
 
 import { ClientProviders } from './client-providers'
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+}
 
 export const metadata: Metadata = {
   metadataBase: new URL(WEBAPP_URL),

@@ -18,6 +18,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   pointerWithin,
+  TouchSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
@@ -352,9 +353,10 @@ export function KanbanView<TData extends KanbanRow>({
     return grouped
   }, [data, allColumns, config.groupByFieldId, getValue])
 
-  // DnD sensors
+  // DnD sensors — TouchSensor uses delay so scrolling doesn't trigger drag on mobile
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor)
   )
 

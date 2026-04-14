@@ -19,9 +19,47 @@ export const metadata: Metadata = {
   description: `Scale delightful support with ${config.shortName}'s AI-powered inbox, instant Shopify insights, and automated workflows that convert every customer interaction into revenue.`,
 }
 
+function SoftwareApplicationJsonLd() {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Auxx.ai',
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web, Docker, AWS',
+    description:
+      'Open-source AI-powered CRM and customer support automation for Shopify businesses. Combines a shared inbox, workflow automation, and AI-generated responses.',
+    url: 'https://auxx.ai',
+    offers: {
+      '@type': 'AggregateOffer',
+      priceCurrency: 'USD',
+      lowPrice: '0',
+      offerCount: '4',
+    },
+    featureList: [
+      'AI-powered email support',
+      'Shopify integration',
+      'Workflow automation',
+      'Shared inbox',
+      'Knowledge base builder',
+      'Live chat',
+      'CRM',
+      'Multi-LLM support',
+      'Self-hostable',
+    ],
+  }
+
+  return (
+    <script
+      type='application/ld+json'
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+    />
+  )
+}
+
 export default function MainPage() {
   return (
     <div id='root' className='relative overflow-y-auto h-screen'>
+      <SoftwareApplicationJsonLd />
       <Header />
       <HeroSection />
       <LogoCloudTwo />

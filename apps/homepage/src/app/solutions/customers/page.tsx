@@ -4,6 +4,7 @@ import { config } from '~/lib/config'
 import FooterSection from '../../_components/main/footer-section'
 import Header from '../../_components/main/header'
 import TestimonialsSection from '../../_components/sections/testimonials-section'
+import { BreadcrumbJsonLd } from '../../_components/seo/breadcrumb-json-ld'
 
 export const metadata: Metadata = {
   title: `Customer Stories | ${config.shortName}`,
@@ -13,6 +14,13 @@ export const metadata: Metadata = {
 export default function EnterprisePage() {
   return (
     <div id='root' className='relative h-screen overflow-y-auto bg-background'>
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'Home', href: 'https://auxx.ai' },
+          { name: 'Solutions' },
+          { name: 'Customer Stories' },
+        ]}
+      />
       <Header />
       <main className=''>
         <TestimonialsSection />

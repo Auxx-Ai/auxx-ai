@@ -67,7 +67,7 @@ function ScrollArea({
         <BaseScrollArea.Scrollbar
           orientation='vertical'
           className={cn(
-            'flex justify-center w-2 rounded-md my-2 mr-1.5 bg-foreground/10 dark:bg-primary-100',
+            'flex justify-center w-2 rounded-md my-2 mr-1.5 bg-foreground/10 dark:bg-primary-100 max-sm:hidden',
             'opacity-0 transition-opacity duration-150',
             'data-[scrolling]:opacity-100 data-[scrolling]:transition-none',
             'data-[hovering]:opacity-100',
@@ -82,7 +82,7 @@ function ScrollArea({
         <BaseScrollArea.Scrollbar
           orientation='horizontal'
           className={cn(
-            'flex items-center h-2 rounded-md mx-2 mb-1.5 bg-foreground/10 dark:bg-primary-100',
+            'flex items-center h-2 rounded-md mx-2 mb-1.5 bg-foreground/10 dark:bg-primary-100 max-sm:hidden',
             'opacity-0 transition-opacity duration-150',
             'data-[scrolling]:opacity-100 data-[scrolling]:transition-none',
             'data-[hovering]:opacity-100',

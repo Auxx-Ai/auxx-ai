@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { config } from '~/lib/config'
 import FooterSection from '../../_components/main/footer-section'
 import Header from '../../_components/main/header'
+import { BreadcrumbJsonLd } from '../../_components/seo/breadcrumb-json-ld'
 import CrmCenterSection from './_components/crm-center-section'
 import CrmHero from './_components/crm-hero'
 import CustomerProfilesSection from './_components/customer-profiles-section'
@@ -16,6 +17,13 @@ export const metadata: Metadata = {
 export default function CrmPage() {
   return (
     <div id='root' className='relative h-screen overflow-y-auto bg-background'>
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'Home', href: 'https://auxx.ai' },
+          { name: 'Platform', href: 'https://auxx.ai/platform' },
+          { name: 'AI-Powered CRM' },
+        ]}
+      />
       <Header />
       <main className=''>
         <CrmHero />

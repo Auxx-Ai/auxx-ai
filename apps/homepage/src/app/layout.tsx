@@ -69,6 +69,58 @@ export const metadata: Metadata = {
   },
 }
 
+function OrganizationJsonLd() {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Auxx AI',
+    url: config.urls.homepage,
+    logo: `${config.urls.homepage}/logo.png`,
+    description: 'Open-source AI-powered CRM and customer support platform for Shopify businesses',
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: '5160 Gabbert Rd',
+      addressLocality: 'Moorpark',
+      addressRegion: 'CA',
+      postalCode: '93021',
+      addressCountry: 'US',
+    },
+    contactPoint: [
+      { '@type': 'ContactPoint', email: 'support@auxx.ai', contactType: 'customer support' },
+      { '@type': 'ContactPoint', email: 'sales@auxx.ai', contactType: 'sales' },
+    ],
+    sameAs: [config.links.twitter, config.links.linkedin, config.links.github],
+  }
+
+  return (
+    <script
+      type='application/ld+json'
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+    />
+  )
+}
+
+function WebSiteJsonLd() {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Auxx.ai',
+    url: config.urls.homepage,
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: `${config.urls.docs}?search={search_term_string}`,
+      'query-input': 'required name=search_term_string',
+    },
+  }
+
+  return (
+    <script
+      type='application/ld+json'
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+    />
+  )
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -78,6 +130,8 @@ export default function RootLayout({
     <html lang='en' data-theme='dark' suppressHydrationWarning>
       <head>
         <ThemeScript />
+        <OrganizationJsonLd />
+        <WebSiteJsonLd />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>

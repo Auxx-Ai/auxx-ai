@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { config } from '~/lib/config'
 import FooterSection from '../_components/main/footer-section'
 import Header from '../_components/main/header'
+import { BreadcrumbJsonLd } from '../_components/seo/breadcrumb-json-ld'
 import { AnalyticsAndReportingSection } from './_components/analytics-and-reporting-section'
 import { CoreFeaturesOverviewSection } from './_components/core-features-overview-section'
 import { EmailIntelligenceSection } from './_components/email-intelligence-section'
@@ -21,6 +22,7 @@ export const metadata: Metadata = {
 export default function FeaturesPage() {
   return (
     <div id='root' className='relative h-screen overflow-y-auto bg-background'>
+      <BreadcrumbJsonLd items={[{ name: 'Home', href: 'https://auxx.ai' }, { name: 'Platform' }]} />
       <Header />
       <main className='bg-muted/30'>
         <FeaturesHeroSection />

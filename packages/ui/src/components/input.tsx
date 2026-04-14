@@ -7,7 +7,7 @@ import type * as React from 'react'
 
 // Input variants using cva
 const inputVariants = cva(
-  'flex w-full rounded-xl border px-3 py-1 text-base shadow-xs transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
+  'flex w-full rounded-xl border px-3 py-1 text-base sm:text-sm shadow-xs transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
   {
     variants: {
       variant: {
@@ -19,7 +19,7 @@ const inputVariants = cva(
         translucent:
           'border-none bg-[#0519453d] text-white shadow-none placeholder:text-white/60 focus-visible:ring-white/30',
       },
-      size: { default: '', sm: 'h-7 px-2 text-xs', lg: 'h-9 px-4 text-lg' },
+      size: { default: '', sm: 'h-7 px-2 text-xs max-sm:text-base', lg: 'h-9 px-4' },
     },
     defaultVariants: { variant: 'default', size: 'default' },
   }

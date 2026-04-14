@@ -1,0 +1,241 @@
+---
+title: "How We Implemented Caching — Part 2: Invalidation & Production Patterns"
+description: "The invalidation graph, cross-process staleness detection, distributed locking, and singleton patterns that keep our multi-tenant cache correct in production."
+date: "2026-02-17"
+slug: "how-we-implemented-caching-part-2"
+image: "/blog/how-we-implemented-caching-part-2.png"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["caching", "redis", "architecture", "typescript", "open-source"]
+published: true
+---
+
+This is Part 2 of our caching deep dive. [Part 1](/blog/how-we-implemented-caching-part-1) covered the dual-layer foundation, scoped services, providers, type-safe accessors, and TTL strategy. This post covers the hard part — knowing when to throw cached data away, and keeping it correct across multiple processes.
+
+## The invalidation graph
+
+The hardest problem in caching isn't storing data — it's knowing when to throw it away.
+
+Our answer: a single file called `invalidation-graph.ts` that maps every domain event to every cache key it affects.
+
+```typescript
+const INVALIDATION_GRAPH = {
+  'plan.changed': ['features', 'subscription', 'overages'],
+  'member.added': {
+    user: ['userMemberships'],
+    org: ['members', 'memberRoleMap', 'overages'],
+  },
+  'workflow.published': ['workflowApps'],
+  'customField.changed': ['customFields'],
+  'resource.changed': ['resources'],
+  // ... 40+ event mappings
+}
+```
+
+Two mapping types. **Org-only** mappings are simple arrays — just org cache keys. **Mixed** mappings are objects with `user`, `org`, and `build` keys — they can invalidate across cache services in a single event.
+
+Why a graph? All invalidation logic lives in one file. No scattered `cache.delete()` calls sprinkled across the codebase. Adding a new cache key means adding one line to the graph. You can read the graph and understand all cache dependencies at a glance. And it's testable — you can verify that every cache key has at least one invalidation path.
+
+## Event-driven invalidation
+
+The public API for invalidation is `onCacheEvent()`:
+
+```typescript
+onCacheEvent('member.added', {
+  orgId: '123',
+  userId: '456',
+  broadcastUserKeys: true,
+})
+```
+
+The context parameters control scope:
+
+- **`orgId`** — required for org/user mappings
+- **`userId`** — target a specific user's cache
+- **`broadcastUserKeys`** — invalidate for ALL org members. Used when org settings change and every member's user cache needs refreshing
+- **`developerAccountId`** — invalidate all members of a developer account in the build portal
+
+One critical timing rule: call `onCacheEvent` AFTER the database transaction commits. Never inside it. Two reasons:
+
+1. If the transaction rolls back, invalidation already happened — cache is stale for no reason.
+2. If invalidation happens first, another process might recompute from the pre-commit state and cache the old data.
+
+Subtle but important. Getting this wrong creates intermittent bugs that are extremely hard to reproduce.
+
+Cascading invalidation happens naturally through the graph. `member.added` invalidates the org cache (members list) AND the user cache (memberships). The graph makes these cascades explicit and auditable — you can trace exactly what gets invalidated when.
+
+## Cross-process staleness detection
+
+The hardest cache bug we hit: Process A invalidates a key, Process B still serves stale local data.
+
+You can't directly message between Node.js processes without infrastructure — pub/sub, shared memory, something. But Redis is already there. So we use it as the coordination layer.
+
+The trick: store a UUID hash alongside every cached value in Redis.
+
+**Write path:**
+
+1. Compute data from provider
+2. Generate a random UUID as the hash
+3. Write to Redis via pipeline: `data key` + `hash key`, both with TTL
+4. Write to local cache with the same hash
+
+**Read path:**
+
+1. Check local cache — if present and not expired, check the hash
+2. Fetch hash from Redis — one cheap single-key read
+3. If local hash matches Redis hash → local data is fresh, return it
+4. If hash mismatch → local data is stale, fetch full data from Redis
+5. If Redis miss → compute from provider
+
+**Invalidation:**
+
+- Delete both `data` and `hash` keys from Redis
+- Clear local cache for the key
+- Other processes: their local hash won't match (Redis hash is gone) → they'll recompute on next access
+
+The hash check is one small Redis read vs. fetching the full cached payload. For a 500KB serialized member list, that's a massive savings on the common case where the data hasn't changed.
+
+## Distributed locking
+
+The promise memoizer from Part 1 handles concurrent misses within one process. But what about multiple processes?
+
+`OrganizationCacheService` acquires a Redis lock before computing:
+
+- Lock key: `lock:prefix:orgId:keyName`
+- If the lock is held by another process, wait and retry up to a timeout
+- If the lock is acquired, compute → write → release
+- Lock auto-expires as a safety net for crashed processes
+
+Combined with the promise memoizer, this creates two layers of thundering herd protection:
+
+- **Within one process:** memoizer deduplicates concurrent calls
+- **Across processes:** distributed lock serializes computation
+
+Result: N processes × M concurrent requests = exactly 1 `provider.compute()` call.
+
+## Helper functions
+
+Most code never touches cache services directly. Helper functions provide clean access:
+
+```typescript
+// Org cache helpers
+const members = await getCachedMembers(orgId)
+const resource = await getCachedResource(orgId, resourceId)
+const fields = await getCachedCustomFields(orgId, entityDefId)
+const fieldMap = await getCachedFieldMap(orgId, entityDefId)
+
+// App cache helpers
+const app = await getCachedAppBySlug('shopify')
+const appId = await resolveAppSlug('gmail')
+const apps = await getCachedPublishedApps()
+```
+
+All of these delegate to singleton cache services. They return typed accessors — callers get autocomplete and type checking. The abstraction hides which cache service, which key, and which accessor is involved.
+
+## Singleton management — surviving Next.js module isolation
+
+This one caught us off guard. Next.js with Turbopack can re-evaluate server modules in separate scopes. Module-level variables become isolated:
+
+```typescript
+// This creates separate instances per module scope:
+let cache = new OrganizationCacheService()
+
+// This shares one instance across all scopes:
+const globalForCache = globalThis as { _auxxOrgCache?: OrganizationCacheService }
+```
+
+Why it matters: Process A invalidates cache via its module scope's instance. Process A's *other* module scope still has stale data in its separate instance. You've invalidated, but the app is still serving stale data. From the same process.
+
+`globalThis` ensures one cache instance per Node.js process. Combined with the Redis hash check, this handles both intra-process and cross-process staleness.
+
+Initialization is lazy. `initCaches()` creates all 5 services and registers all 33 providers. Called on first `getOrgCache()` / `getUserCache()` / etc. Subsequent calls return the same instance.
+
+## App-specific invalidation helpers
+
+Some operations need bulk invalidation across organizations.
+
+**`invalidateOrgsByAppId(appId)`** finds all organizations with a given app installed and invalidates their `installedApps` cache. Used when an app is updated, unpublished, or deprecated.
+
+**`invalidateOrgsByDeploymentId(deploymentId)`** is similar but finds orgs via deployment reference. Used when a specific deployment changes status.
+
+**`flushOrganization(orgId)`** is the nuclear option. Invalidates ALL cache keys for an org. Iterates every registered key and invalidates. Used for org deletion, migration, or debugging when you just need a clean slate.
+
+## Workflow app cache queries
+
+The workflow engine gets specialized query functions:
+
+```typescript
+getCachedWorkflowApp(orgId, appSlug, blockOrTriggerId)
+getCachedWorkflowAppsByTrigger(orgId, triggerType)
+getCachedWorkflowAppsByAppTrigger(orgId, appSlug)
+```
+
+Workflow execution is latency-sensitive — every millisecond counts in automation pipelines. These functions compose multiple cache lookups (app → deployment → blocks/triggers) into single calls and return exactly the shape the workflow engine needs. No post-processing required.
+
+## The full picture
+
+Zooming out, here's how the whole system fits together:
+
+```
+Request arrives (org-scoped)
+  → Helper function (getCachedMembers)
+    → Singleton cache service (OrganizationCacheService)
+      → Local cache check (100ms TTL, hash match?)
+        → HIT: return cached accessor
+        → MISS: Redis hash check
+          → Hash matches local: return local data
+          → Hash mismatch or miss: Redis data fetch
+            → HIT: update local cache, return accessor
+            → MISS: acquire distributed lock
+              → Promise memoizer (dedupe concurrent callers)
+                → Provider.compute() (single DB query)
+                  → Write to Redis (data + hash + tags)
+                  → Write to local cache
+                  → Return typed accessor
+```
+
+And invalidation:
+
+```
+Database mutation commits
+  → onCacheEvent('member.added', { orgId, userId })
+    → Invalidation graph lookup
+      → Org keys: ['members', 'memberRoleMap', 'overages']
+      → User keys: ['userMemberships']
+    → Delete Redis data + hash keys
+    → Clear local cache
+    → Other processes: hash mismatch on next read → recompute
+```
+
+## What we'd do differently
+
+A few things we'd change if starting over:
+
+**The 100ms local TTL is probably too short for some keys.** Org settings change once a month. We could bump those to 1-2 seconds without any correctness issues. We kept everything at 100ms for simplicity, but the Redis round-trips add up.
+
+**Tag-based invalidation is underused.** We built it but mostly rely on the invalidation graph for precision. Tags would be useful for "invalidate everything for this org" without iterating all keys. We have `flushOrganization()` for that, but tags would be cleaner.
+
+**Provider testing could be better.** Each provider is a pure function, which makes them easy to test in theory. In practice, we test them through integration tests that hit the full cache path. Unit tests on individual providers would catch regressions faster.
+
+## Key files
+
+If you want to dig into the code, here's where to look:
+
+| File | Purpose |
+|------|---------|
+| `packages/lib/src/cache/base-cache-service.ts` | Dual-layer cache foundation |
+| `packages/lib/src/cache/org-cache-service.ts` | Org-scoped multi-tier cache |
+| `packages/lib/src/cache/local-cache.ts` | In-process LRU with hash staleness |
+| `packages/lib/src/cache/promise-memoizer.ts` | Concurrent call deduplication |
+| `packages/lib/src/cache/accessors.ts` | Typed accessor implementations |
+| `packages/lib/src/cache/invalidation-graph.ts` | Domain event → cache key mappings |
+| `packages/lib/src/cache/invalidate.ts` | Event-driven invalidation API |
+| `packages/lib/src/cache/singletons.ts` | globalThis singleton management |
+| `packages/lib/src/cache/register-providers.ts` | All 33 provider registrations |
+| `packages/lib/src/cache/org-cache-helpers.ts` | Public helper functions |
+
+Auxx.ai is open source. The full caching implementation is in the repository if you want to see how all the pieces connect.

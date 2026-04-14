@@ -489,7 +489,7 @@ export function EntityTemplateDialog({
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
-          className='h-[550px]'
+          className='h-dvh sm:h-[550px]'
           innerClassName='p-0'
           position='tc'
           size='3xl'
@@ -555,7 +555,7 @@ export function EntityTemplateDialog({
 
                   {/* Template grid */}
                   <div className='flex-1 overflow-hidden flex flex-col'>
-                    <div className='py-3 px-6'>
+                    <div className='py-3 px-3 sm:px-6'>
                       <InputSearch
                         ref={searchInputRef}
                         placeholder='Search templates...'
@@ -582,7 +582,7 @@ export function EntityTemplateDialog({
                             <div
                               key={template.id}
                               onClick={() => handleSelectTemplate(template.id)}
-                              className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
+                              className='group flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
                               <div className='flex items-start gap-3 flex-1 min-w-0'>
                                 <div className='size-8 rounded-lg flex items-center justify-center shrink-0'>
                                   <EntityIcon
@@ -608,7 +608,7 @@ export function EntityTemplateDialog({
                                 </div>
                               </div>
                               {template.categories.length > 0 && (
-                                <div className='flex gap-1 shrink-0'>
+                                <div className='flex gap-1 shrink-0 ml-11 sm:ml-0'>
                                   {template.categories.slice(0, 2).map((cat) => (
                                     <Badge key={cat} variant='outline' className='text-xs'>
                                       {cat}
@@ -671,11 +671,11 @@ export function EntityTemplateDialog({
                   </div>
                 </DialogHeader>
 
-                <div className='flex flex-col sm:flex-row flex-1 sm:overflow-hidden'>
+                <div className='flex flex-col sm:flex-row flex-1 min-h-0 overflow-hidden'>
                   {/* Left: Preview cards — horizontally scrollable */}
-                  <div className='sm:flex-2 sm:border-r bg-muted/30 overflow-hidden'>
+                  <div className='h-1/2 sm:h-auto sm:flex-2 border-b sm:border-b-0 sm:border-r bg-muted/30 overflow-hidden'>
                     {templateDetail ? (
-                      <ScrollArea orientation='both' className='h-full min-h-[400px]'>
+                      <ScrollArea orientation='both' className='h-full sm:min-h-[400px]'>
                         <div className='flex gap-4 p-6 items-start [&>[data-slot=preview-card]:last-child]:pr-6'>
                           {/* Primary template card */}
                           <EntityPreviewCard
@@ -748,7 +748,7 @@ export function EntityTemplateDialog({
                   </div>
 
                   {/* Right: Template info + companions + install */}
-                  <div className='flex-1 flex flex-col'>
+                  <div className='h-1/2 sm:h-auto sm:flex-1 flex flex-col'>
                     <ScrollArea className='flex-1'>
                       <div className='p-3 space-y-6'>
                         {/* Template info */}

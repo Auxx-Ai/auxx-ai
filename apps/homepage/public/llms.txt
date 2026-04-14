@@ -1,0 +1,69 @@
+# Auxx.ai
+
+> Auxx.ai is an open-source AI-powered CRM and customer support platform for Shopify businesses. It combines a shared inbox, workflow automation engine, and AI-generated responses to help e-commerce teams automate support at scale.
+
+## What Auxx.ai Does
+
+- AI-powered email support with automated response generation (supports OpenAI, Anthropic Claude, Google Gemini, Groq, DeepSeek, Ollama, Qwen, Kimi)
+- Shared inbox unifying Gmail, Outlook, SMS, live chat, Facebook, and Instagram
+- Deep Shopify integration: order context, tracking info, return/refund automation, inventory lookup
+- Visual no-code workflow automation builder with triggers, conditions, actions, and human-in-the-loop approvals
+- Customer relationship management (CRM) with custom fields, entities, and relationships
+- Knowledge base builder for self-service support
+- Ticketing system with AI triage, routing, and prioritization
+- Multi-tenant with team management, roles, and permissions
+
+## Who It's For
+
+- Shopify store owners (1-person shops to growing teams handling 50-500+ orders/day)
+- E-commerce customer support teams
+- Small businesses needing CRM + support automation
+- Manufacturing teams managing parts requests and warranty claims
+
+## Key Differentiators
+
+- Open source (AGPL-3.0) — self-hostable via Docker or deploy to AWS/Railway
+- Not locked to a single AI provider — bring your own LLM
+- Combines CRM + helpdesk + workflow automation in one tool
+- Native Shopify integration with real-time order context
+- Alternative to Front, Attio, Gorgias, Zendesk, Freshdesk, Tidio, and n8n
+
+## Pricing
+
+- Free tier available
+- 14-day free trial on paid plans
+- No credit card required to start
+
+## Links
+
+- Website: https://auxx.ai
+- Documentation: https://docs.auxx.ai
+- GitHub: https://github.com/Auxx-Ai/auxx-ai
+- Blog: https://auxx.ai/blog
+- Pricing: https://auxx.ai/pricing
+
+## Platform Features
+
+- [Omnichannel Messaging](https://auxx.ai/platform/messaging): Unify email, chat, SMS, and social messages with AI-driven routing
+- [AI-Powered CRM](https://auxx.ai/platform/crm): Centralize customer history, automate follow-ups, surface revenue opportunities
+- [Workflow Automation](https://auxx.ai/platform/workflow): Drag-and-drop automations to triage tickets and trigger actions
+- [Ticketing System](https://auxx.ai/platform/ticketing): AI-suggested replies, smart routing, and real-time Shopify context
+- [Knowledge Base Builder](https://auxx.ai/platform/knowledge-base): Self-service libraries with SEO-ready articles
+- [Live Chat Suite](https://auxx.ai/platform/live-chat): Real-time chat with AI suggestions and proactive prompts
+- [Integrations & API](https://auxx.ai/platform/integration): Connect with Shopify, email providers, and internal tools
+
+## Solutions
+
+- [Shopify Store Support](https://auxx.ai/solutions/shopify-stores): Resolve tickets, automate refunds, deliver upsell-ready responses
+- [Small Business Automation](https://auxx.ai/solutions/small-business): AI-powered support without growing headcount
+- [Customer Support Teams](https://auxx.ai/solutions/customer-support-teams): Unified inbox and AI workflows for dedicated support departments
+
+## Tech Stack
+
+- Framework: Next.js with React Server Components
+- API: tRPC with React Query
+- Database: PostgreSQL with Drizzle ORM
+- Auth: Better-auth (Google, GitHub, Email/Password, Passkey, 2FA)
+- UI: TailwindCSS with shadcn components
+- Deployment: Docker, AWS (SST), Railway
+- License: AGPL-3.0
