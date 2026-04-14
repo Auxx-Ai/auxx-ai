@@ -1,0 +1,666 @@
+---
+title: "How We Replaced process.env with a Multi-Layer Config Service"
+description: "Env vars, SST secrets, database overrides, and registry defaults — how we built a unified config service for a monorepo with 8 apps and 100+ variables."
+date: "2026-04-14"
+slug: "modernizing-env-variables-config-service"
+image: "/blog/blog-config-service.png"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["architecture", "typescript", "open-source", "configuration", "sst"]
+published: false
+---
+
+## The problem with process.env everywhere
+
+Every Node.js app starts the same way. `process.env.DATABASE_URL` here, `process.env.STRIPE_KEY` there, scattered across dozens of files. It works fine when you have one app and 10 environment variables.
+
+Auxx.ai has 8 apps, 12 packages, and 100+ config variables. It's deployed to AWS via SST. At that scale, `process.env` everywhere starts to hurt.
+
+The problems we ran into:
+
+- **No source of truth.** Which env vars does the system actually need? The only way to find out was to grep the entire monorepo.
+- **No type safety.** `process.env.API_PORT` is always a string. Every consumer casts it differently.
+- **No defaults.** Forget to set `REDIS_PORT` in a new environment? Silent `undefined` propagates until something crashes.
+- **SST secrets lived in a parallel universe.** SST's `Resource` proxy provides secrets at runtime, but accessing them required a completely different API — `Resource.OPENAI_API_KEY.value` instead of `process.env.OPENAI_API_KEY` — with different error handling and different failure modes.
+- **No runtime overrides.** Changing an API key meant redeploying. When you integrate with 19 external providers (Google, Outlook, Shopify, Stripe, Mailgun, etc.), that gets painful fast.
+- **No per-org configuration.** Self-hosted customers need their own Google OAuth credentials and their own Stripe keys. Env vars are global.
+
+We needed one API that every app and package could call, with consistent resolution, automatic type coercion, encryption for secrets, and the ability to change values without redeploying.
+
+## What we had before
+
+The old approach was a small package called `@auxx/config` with a helper that tried SST first and fell back to `process.env`:
+
+```typescript
+// packages/config/src/sst-resources.ts — the old way
+
+export const getSecret = (key: string): string | undefined => {
+  try {
+    const resource = (Resource as any)[key]
+    if (resource?.value) return resource.value
+  } catch (error) {
+    // Silent fail, try env var
+  }
+  return process.env[key]
+}
+```
+
+It returned `string | undefined` for everything. Numbers, booleans, arrays — all strings. No validation. Pass a typo'd key, get `undefined`, no warning. The batch version `getSecrets()` had an empty try/catch that literally did nothing.
+
+And most code didn't even use this helper. It just read `process.env` directly, with every file doing its own parsing:
+
+```typescript
+// Three files, three casting strategies, same variable:
+const port = parseInt(process.env.API_PORT || '3007', 10)
+const port = Number(process.env.API_PORT) || 3007
+const port = process.env.API_PORT ? +process.env.API_PORT : 3007
+```
+
+## The config service
+
+The replacement is a `ConfigService` class that lives in `@auxx/credentials` and resolves every value through a 5-step waterfall:
+
+```
+1. DB override     (if enabled and variable allows it)
+       ↓ miss
+2. process.env     (read at call time, not a snapshot)
+       ↓ miss
+3. SST Resource    (if running in Lambda or sst dev)
+       ↓ miss
+4. Registry default
+       ↓ miss
+5. Caller fallback
+```
+
+Here's the core method:
+
+```typescript
+// packages/credentials/src/config/config-service.ts
+
+get<T extends string | number | boolean | string[] = string>(
+  key: ConfigKey | (string & {}),
+  fallback?: T
+): T | undefined {
+  const definition = getConfigDefinition(key)
+
+  // 1. DB override (from in-memory cache)
+  if (this.isDbEnabled && definition && !definition.isEnvOnly) {
+    const cached = this.cache.get(key)
+    if (cached.found && cached.value !== undefined) {
+      return cached.value as T
+    }
+  }
+
+  // 2. process.env at call time
+  const envRaw = process.env[key]
+  if (envRaw !== undefined && envRaw !== '') {
+    if (definition) {
+      const converted = convertEnvValue(envRaw, definition.type)
+      if (converted !== undefined) return converted as T
+    }
+    return envRaw as T
+  }
+
+  // 3. SST Resource (if in SST runtime)
+  if (this.isSstRuntime) {
+    const resourceValue = this.getSstResourceValue(key)
+    if (resourceValue !== undefined) {
+      if (definition) {
+        const converted = convertEnvValue(resourceValue, definition.type)
+        if (converted !== undefined) return converted as T
+      }
+      return resourceValue as T
+    }
+  }
+
+  // 4. Default from registry
+  if (definition?.defaultValue !== undefined) {
+    return definition.defaultValue as T
+  }
+
+  // 5. Fallback
+  return fallback
+}
+```
+
+Usage across the codebase looks like this:
+
+```typescript
+import { configService } from '@auxx/credentials'
+
+const apiKey = configService.get<string>('OPENAI_API_KEY')
+const port = configService.get<number>('API_PORT', 3007)
+const enabled = configService.get<boolean>('DEMO_ENABLED', false)
+```
+
+No parsing. No casting. No `|| 'fallback'`. The generic type parameter tells the converter what to return, and the registry definition tells it how to convert.
+
+## Why get() is synchronous
+
+This was a deliberate choice. Config reads happen in hot paths — middleware, request handlers, factory constructors. Making `get()` async would require `await` at every call site and infect the entire call chain.
+
+The trick: database overrides are loaded into an in-memory `Map` on startup and refreshed every 5 minutes. The `get()` method reads from the map, not the database. It's sub-microsecond.
+
+```typescript
+// packages/credentials/src/config/config-cache.ts
+
+class ConfigCache {
+  private cache = new Map<string, unknown>()
+
+  warmUp(entries: Array<{ key: string; value: unknown }>): void {
+    const next = new Map<string, unknown>()
+    for (const entry of entries) {
+      next.set(entry.key, entry.value)
+    }
+    this.cache = next  // Atomic reference swap
+    this.isWarmed = true
+  }
+}
+```
+
+The `warmUp()` method builds a completely new `Map` and swaps the reference in one assignment. This prevents a scenario where a consumer reads from a half-updated cache during a refresh cycle. No locking, no mutex — just a reference swap.
+
+The refresh runs on a 5-minute interval with `unref()` so it doesn't keep Node.js alive during shutdown:
+
+```typescript
+private startAutoRefresh(): void {
+  this.refreshTimer = setInterval(() => {
+    void this.refreshCache()
+  }, 5 * 60 * 1000)
+
+  // Don't prevent graceful shutdown
+  if (this.refreshTimer?.unref) {
+    this.refreshTimer.unref()
+  }
+}
+```
+
+When an admin sets a DB override, the cache updates immediately — no waiting for the next refresh:
+
+```typescript
+async set(key: ConfigKey, value: unknown, userId?: string): Promise<void> {
+  this.validate(definition, value)
+  await this.storage.setSystem(key, value, userId)
+  this.cache.set(key, value)  // Takes effect on next get() call
+}
+```
+
+## The config registry
+
+Every config variable is defined in a single registry file. Adding a new variable means adding one entry:
+
+```typescript
+// packages/credentials/src/config/config-registry.ts
+
+export const CONFIG_VARIABLES = {
+  OPENAI_API_KEY: {
+    key: 'OPENAI_API_KEY',
+    description: 'OpenAI API key for GPT models',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.AI,
+    isSensitive: true,
+    isEnvOnly: false,
+  },
+  API_PORT: {
+    key: 'API_PORT',
+    description: 'The port the API server listens on',
+    type: ConfigVariableType.NUMBER,
+    group: ConfigVariableGroup.SERVER,
+    defaultValue: 3007,
+    isSensitive: false,
+    isEnvOnly: true,
+    min: 1,
+    max: 65535,
+  },
+  // ...100+ more entries
+} satisfies Record<string, ConfigVariableDefinition>
+```
+
+That's it. The admin UI, API, validation, and type coercion all pick it up automatically. No wiring needed.
+
+Each definition carries metadata that drives behavior throughout the system:
+
+```typescript
+interface ConfigVariableDefinition {
+  key: string              // Env var name
+  description: string      // Shown in admin UI
+  type: ConfigVariableType // STRING | NUMBER | BOOLEAN | ENUM | ARRAY
+  group: ConfigVariableGroup // UI grouping (19 categories)
+  defaultValue?: string | number | boolean | string[]
+  isSensitive: boolean     // Encrypted in DB, masked in admin UI
+  isEnvOnly: boolean       // Cannot be overridden via DB
+  infraManaged?: boolean   // Owned by SST/infra
+  options?: string[]       // Allowed values for ENUM type
+  min?: number             // NUMBER validation
+  max?: number             // NUMBER validation
+  pattern?: string         // Regex for STRING validation
+}
+```
+
+The `satisfies Record<string, ConfigVariableDefinition>` constraint means TypeScript validates every entry at compile time. A typo in a property name or a wrong type fails the build.
+
+### ConfigKey — autocomplete for free
+
+```typescript
+export type ConfigKey = keyof typeof CONFIG_VARIABLES
+```
+
+This creates a union of all 100+ variable names as string literals. The `get()` method accepts `ConfigKey | (string & {})` — known keys get IDE autocomplete, but arbitrary strings still work for unregistered variables. You get the best of both worlds without maintaining a separate enum.
+
+### 19 variable groups
+
+Variables are organized into categories that map directly to the admin UI. Server settings, database, Redis, auth, Google Workspace, Outlook, Facebook, email, storage, AI providers, Shopify, billing, realtime, analytics, cache, worker, frontend, and captcha. Each group has a label, description, and icon.
+
+## The isEnvOnly guard
+
+Some variables cannot be overridden via the database. This is the most important constraint in the system.
+
+```typescript
+DATABASE_URL: {
+  key: 'DATABASE_URL',
+  type: ConfigVariableType.STRING,
+  group: ConfigVariableGroup.DATABASE,
+  isSensitive: true,
+  isEnvOnly: true,     // Can't read this from the DB it connects to
+  infraManaged: true,  // SST/infra owns this value
+}
+```
+
+Think about it: `DATABASE_URL` tells the app how to connect to Postgres. If that value lived in Postgres, you'd need to connect to the database to find out how to connect to the database. Same for `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`.
+
+Variables marked `isEnvOnly: true` skip the DB cache entirely. They always resolve from `process.env` or SST Resources. Attempting to set them via the admin UI throws an error.
+
+This also applies to infrastructure-managed values like S3 bucket names — SST creates these resources and injects the names at deploy time. Overriding them via DB would point the app at a bucket that doesn't exist.
+
+## SST Resource integration
+
+SST provides secrets and resource references through a `Resource` proxy object. It's only available inside Lambda functions or during `sst dev`. Trying to import it during `next build` crashes the process because SST injects values at runtime, not build time.
+
+The config service handles this with a runtime guard:
+
+```typescript
+private get isSstRuntime(): boolean {
+  return process.env.SST === '1'
+    && process.env.NEXT_PHASE !== 'phase-production-build'
+}
+```
+
+The SST module is loaded via dynamic import during `init()` because it's ESM-only:
+
+```typescript
+if (this.isSstRuntime && this.sstResource === null) {
+  try {
+    const sst = await import('sst')
+    this.sstResource = sst.Resource
+  } catch (error) {
+    this.sstResource = false  // Mark as unavailable, don't retry
+  }
+}
+```
+
+Setting `this.sstResource = false` on failure prevents the service from retrying the import on every `get()` call. `null` means unchecked, `false` means unavailable, and anything else is the loaded proxy.
+
+Only `sst.Secret` resources have a `.value` property — buckets have `.name`, RDS has `.host`, etc. The config service only reads `.value`:
+
+```typescript
+private getSstResourceValue(key: string): string | undefined {
+  if (this.sstResource === null || this.sstResource === false) return undefined
+  try {
+    const res = this.sstResource[key]
+    return typeof res?.value === 'string' ? res.value : undefined
+  } catch {
+    return undefined  // SST throws for unlinked resources
+  }
+}
+```
+
+## Type coercion
+
+Environment variables are strings. `process.env.API_PORT` is `"3007"`, not `3007`. The config service converts automatically based on the registry's `type` field:
+
+```typescript
+// packages/credentials/src/config/config-value-converter.ts
+
+function convertEnvValue(raw: string, type: ConfigVariableType) {
+  switch (type) {
+    case 'STRING': return raw
+    case 'NUMBER': {
+      const num = Number(raw)
+      return Number.isNaN(num) ? undefined : num
+    }
+    case 'BOOLEAN':
+      return raw === 'true' || raw === '1' || raw === 'yes'
+    case 'ENUM': return raw
+    case 'ARRAY':
+      try { return JSON.parse(raw) }
+      catch { return raw.split(',').map(s => s.trim()) }
+  }
+}
+```
+
+Arrays try JSON parsing first (`["a","b"]`) and fall back to comma-separated splitting (`a, b`). This handles both structured values from DB overrides and the typical comma-separated format from `.env` files.
+
+Validation happens on write, not read — when an admin sets a value via the UI, it's checked against constraints:
+
+```typescript
+private validate(definition: ConfigVariableDefinition, value: unknown): void {
+  switch (definition.type) {
+    case 'NUMBER': {
+      const num = Number(value)
+      if (Number.isNaN(num)) throw new Error(`must be a number`)
+      if (definition.min !== undefined && num < definition.min)
+        throw new Error(`must be >= ${definition.min}`)
+      if (definition.max !== undefined && num > definition.max)
+        throw new Error(`must be <= ${definition.max}`)
+      break
+    }
+    case 'ENUM':
+      if (definition.options && !definition.options.includes(String(value)))
+        throw new Error(`must be one of: ${definition.options.join(', ')}`)
+      break
+    // ...
+  }
+}
+```
+
+## Database storage and encryption
+
+Config overrides are stored in a `KeyValuePair` table that supports three scopes through nullable foreign keys:
+
+```typescript
+// packages/database/src/db/schema/key-value-pair.ts
+
+export const KeyValuePair = pgTable('KeyValuePair', {
+  id: text().$defaultFn(() => createId()).primaryKey(),
+  key: text().notNull(),
+  value: jsonb().notNull(),
+  type: text().notNull(),          // 'CONFIG_VARIABLE' or 'USER_VARIABLE'
+  isEncrypted: text().default('false').notNull(),
+  organizationId: text(),          // NULL = system-wide
+  userId: text(),                  // NULL = not user-scoped
+  updatedById: text(),             // Audit trail
+})
+```
+
+The scope is implicit from the combination of nullable columns:
+
+| organizationId | userId | Scope |
+|---------------|--------|-------|
+| NULL | NULL | System-wide config |
+| SET | NULL | Org-level override |
+| NULL | SET | User preference |
+
+Four partial unique indexes enforce one value per key per scope. The system-level index is the interesting one — it uses a `WHERE` clause to only enforce uniqueness when both nullable columns are null:
+
+```sql
+CREATE UNIQUE INDEX ON "KeyValuePair" (key)
+  WHERE "userId" IS NULL AND "organizationId" IS NULL;
+```
+
+When a variable is marked `isSensitive: true`, the storage layer encrypts it before writing and decrypts transparently on read:
+
+```typescript
+// packages/credentials/src/config/config-storage.ts
+
+async setSystem(key: string, value: unknown, updatedById?: string): Promise<void> {
+  const definition = getConfigDefinition(key)
+  const shouldEncrypt = definition?.isSensitive ?? false
+  const storedValue = shouldEncrypt
+    ? CredentialService.encrypt({ value })
+    : value
+
+  await db.insert(schema.KeyValuePair).values({
+    key,
+    value: storedValue,
+    isEncrypted: shouldEncrypt ? 'true' : 'false',
+    organizationId: null,
+    userId: null,
+    updatedById,
+  }).onConflictDoUpdate({
+    target: schema.KeyValuePair.key,
+    targetWhere: sql`"userId" IS NULL AND "organizationId" IS NULL`,
+    set: { value: storedValue, isEncrypted: shouldEncrypt ? 'true' : 'false', updatedById },
+  })
+}
+```
+
+If decryption fails (key rotation, corrupted data), the value is treated as missing and resolution falls through to the next layer. This means a broken DB override degrades gracefully to the env var instead of crashing the app:
+
+```typescript
+private decryptIfNeeded(row: KeyValuePairEntity): unknown {
+  if (row.isEncrypted === 'true' && typeof row.value === 'string') {
+    try {
+      const decrypted = CredentialService.decrypt(row.value)
+      return (decrypted as any).value
+    } catch {
+      return null  // Fall through to env
+    }
+  }
+  return row.value
+}
+```
+
+## Org-scoped configuration
+
+Auxx.ai supports self-hosted deployments. Different organizations might need their own Google OAuth credentials, their own Stripe keys, or different AI model preferences. System-wide env vars can't handle that.
+
+The config service has a separate `getForOrg()` method that adds an org-level layer to the resolution chain:
+
+```typescript
+async getForOrg<T>(
+  organizationId: string,
+  key: ConfigKey | (string & {}),
+  fallback?: T
+): Promise<T | undefined> {
+  const definition = getConfigDefinition(key)
+
+  // 1. Try org-level DB override
+  if (this.isDbEnabled && definition && !definition.isEnvOnly) {
+    const orgOverrides = await this.storage.getAllForOrg(organizationId)
+    const match = orgOverrides.find(o => o.key === key)
+    if (match?.value !== undefined) return match.value as T
+  }
+
+  // 2. Fall through to system resolution
+  return this.get<T>(key, fallback)
+}
+```
+
+Unlike `get()`, this is async. Org overrides aren't cached in the system-wide in-memory cache because they're per-org — caching every org's overrides would use too much memory and go stale quickly. The full resolution chain becomes:
+
+```
+org DB override → system DB override → env → SST → default → fallback
+```
+
+## Initialization across 3 apps
+
+The config service is a singleton exported from `@auxx/credentials`. It needs to be initialized once per process — after the database connection is established (for DB overrides) but before any config reads happen.
+
+Each app handles this differently based on its lifecycle:
+
+**Next.js** — lazy initialization on first request:
+
+```typescript
+// apps/web/src/server/bootstrap.ts
+
+let initPromise: Promise<void> | null = null
+
+export async function ensureWebAppInitialized(): Promise<void> {
+  if (initPromise) return initPromise
+
+  initPromise = (async () => {
+    await configService.init()
+  })()
+
+  try {
+    await initPromise
+  } catch (error) {
+    initPromise = null  // Allow retry on next request
+    throw error
+  }
+}
+```
+
+**API server** — init at startup before listening:
+
+```typescript
+// apps/api/src/index.ts
+
+async function main() {
+  await configService.init()
+  // ...setup routes, start listening
+}
+```
+
+**Worker** — init before starting job processors:
+
+```typescript
+// apps/worker/src/server.ts
+
+async function initializeApp() {
+  await configService.init()
+  // ...setup schedules, start workers
+}
+```
+
+The `init()` method itself is idempotent. It stores its promise and returns it on subsequent calls. Calling it 10 times from 10 concurrent requests in the Next.js app is fine — the first call does the work, the rest get the same resolved promise.
+
+## The admin UI
+
+Super admins get a config panel that shows every registered variable grouped by category, with its current value, source, and whether a DB override exists.
+
+The tRPC router is simple — four endpoints behind `superAdminProcedure`:
+
+```typescript
+// apps/web/src/server/api/routers/config-variable.ts
+
+export const configVariableRouter = createTRPCRouter({
+  getGrouped: superAdminProcedure.query(async () => {
+    return await configService.getGrouped()
+  }),
+
+  set: superAdminProcedure
+    .input(z.object({
+      key: z.string().min(1),
+      value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!configService.isDbEnabled) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Set IS_CONFIG_VARIABLES_IN_DB_ENABLED=true to enable DB overrides',
+        })
+      }
+      await configService.set(input.key, input.value, ctx.session.user.id)
+      return { success: true }
+    }),
+
+  delete: superAdminProcedure
+    .input(z.object({ key: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      await configService.delete(input.key)
+      return { success: true }
+    }),
+
+  getStatus: superAdminProcedure.query(() => ({
+    isDbEnabled: configService.isDbEnabled,
+  })),
+})
+```
+
+Each resolved variable includes its source so the UI can show where the value is actually coming from:
+
+```typescript
+interface ResolvedConfigVariable {
+  definition: ConfigVariableDefinition
+  value: string | number | boolean | string[] | null
+  source: 'DATABASE' | 'ENVIRONMENT' | 'SST_RESOURCE' | 'DEFAULT'
+  hasDbOverride: boolean
+}
+```
+
+Sensitive values are masked as `••••••••`. The admin can see that a value exists and where it came from, but not the actual secret. Deleting a DB override reverts the variable to whatever the next layer provides — env var, SST Resource, or default.
+
+## How the frontend gets config
+
+The dehydration service is the bridge between server config and the client. It assembles a `DehydratedEnvironment` object on every page load:
+
+```typescript
+// packages/lib/src/dehydration/service.ts
+
+export function buildEnvironment(): DehydratedEnvironment {
+  return {
+    deploymentMode: getDeploymentMode(),
+    domain: configService.get<string>('DOMAIN') || '',
+    appUrl: WEBAPP_URL || '',
+    apiUrl: `${API_URL}/api/v1` || '',
+    cdnUrl: configService.get<string>('CDN_URL') || '',
+    stripe: {
+      publishableKey: configService.get<string>('STRIPE_PUBLISHABLE_KEY') || '',
+    },
+    pusher: {
+      key: configService.get<string>('PUSHER_KEY') || '',
+      cluster: configService.get<string>('PUSHER_CLUSTER') || '',
+    },
+    posthog: {
+      key: configService.get<string>('POSTHOG_KEY') || '',
+      host: configService.get<string>('POSTHOG_HOST') || 'https://app.posthog.com',
+    },
+    demoEnabled: configService.get<boolean>('DEMO_ENABLED', false) === true,
+    // ...version info, storage config, turnstile
+  }
+}
+```
+
+Notice the mix of old and new. `WEBAPP_URL` comes from `@auxx/config/client` — it's a static build-time constant baked in by Next.js. `configService.get('DOMAIN')` is runtime-resolved. The old `@auxx/config` package still exists for those build-time values, but its scope is much smaller now.
+
+## Client-safe exports
+
+The config service has DB queries, encryption, and SST imports. None of that belongs in a browser bundle. The `client.ts` export is types only:
+
+```typescript
+// packages/credentials/src/config/client.ts
+
+export type {
+  ConfigVariableDefinition,
+  ConfigVariableGroupData,
+  ResolvedConfigVariable,
+} from './types'
+```
+
+The admin UI components import these types to render the config table. The actual data comes through the tRPC router, which runs server-side. This follows the same `/client` export pattern we use across the monorepo to keep server dependencies out of the browser.
+
+## What we'd do differently
+
+The system works well. 77 files use it. But there are a few things we'd reconsider:
+
+**Org overrides should probably be cached.** Right now `getForOrg()` queries the database every time. In practice, most orgs don't have overrides, so the query returns empty and falls through to `get()`. But for orgs that do have overrides, a per-org LRU cache with a short TTL would cut out unnecessary DB hits.
+
+**The `isDbEnabled` flag is clunky.** It's an env var that gates whether DB overrides work. This means the first deployment always uses env-only mode — you have to set `IS_CONFIG_VARIABLES_IN_DB_ENABLED=true` and redeploy before the admin UI becomes useful. We should default to enabled when a database connection exists.
+
+**The 5-minute refresh is a compromise.** For most config changes it's fine. But if you rotate an API key via the admin UI, there's up to a 5-minute window where other processes still use the old value. The immediate cache update only affects the process that handled the write. A pub/sub-based cache invalidation across processes would close this gap.
+
+## The files
+
+Here's everything involved if you want to trace the implementation:
+
+| File | What it does |
+|------|-------------|
+| `packages/credentials/src/config/config-service.ts` | Core service — resolution waterfall, cache, SST integration |
+| `packages/credentials/src/config/config-registry.ts` | 100+ variable definitions with metadata |
+| `packages/credentials/src/config/config-cache.ts` | In-memory cache with atomic bulk loading |
+| `packages/credentials/src/config/config-storage.ts` | DB layer — encryption, multi-scope upserts |
+| `packages/credentials/src/config/config-value-converter.ts` | Type coercion (string to number/boolean/array) |
+| `packages/credentials/src/config/types.ts` | TypeScript interfaces |
+| `packages/credentials/src/config/index.ts` | Barrel export and singleton |
+| `packages/types/config/index.ts` | Shared enums (ConfigVariableType, ConfigSource) |
+| `packages/database/src/db/schema/key-value-pair.ts` | KeyValuePair table schema |
+| `packages/lib/src/dehydration/service.ts` | Server-to-client config assembly |
+| `apps/web/src/server/bootstrap.ts` | Next.js initialization |
+| `apps/web/src/server/api/routers/config-variable.ts` | Admin tRPC router |
+
+The full source is on [GitHub](https://github.com/auxxai/auxx). If you're building something similar, the registry + cache + waterfall pattern works well for any Node.js monorepo with more than a handful of services.

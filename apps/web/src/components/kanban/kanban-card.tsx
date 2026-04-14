@@ -1,16 +1,18 @@
 // apps/web/src/components/kanban/kanban-card.tsx
 'use client'
 
-import { formatToRawValue } from '@auxx/lib/field-values/client'
-import type { FieldReference } from '@auxx/types/field'
+import { formatToDisplayValue } from '@auxx/lib/field-values/client'
+import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
+import type { TypedFieldValue } from '@auxx/types/field-value'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils/date'
 import { useDraggable } from '@dnd-kit/core'
 import { Box, CheckSquare, MessageSquare, StickyNote } from 'lucide-react'
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import type { CustomField } from '~/components/dynamic-table/types'
+import { useField } from '~/components/resources/hooks/use-field'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { toRecordId } from '~/components/resources/store/field-value-store'
 import { KanbanCardField } from './kanban-card-field'
@@ -70,11 +72,19 @@ export const KanbanCard = memo(function KanbanCard({
   // Fetch title directly from store (same pattern as KanbanCardField)
   const { value: primaryValue } = useFieldValue(recordId, primaryFieldId, { autoFetch: true })
 
-  // Format title for display
-  const title =
-    primaryFieldId && primaryValue
-      ? String(formatToRawValue(primaryValue, 'TEXT') ?? 'Untitled')
-      : 'Untitled'
+  // Get field metadata for correct type-aware formatting (e.g., NAME fields)
+  const field = useField(primaryFieldId as ResourceFieldId)
+  const fieldType = field?.fieldType
+
+  // Format title for display (matches PrimaryFieldCell pattern)
+  const title = useMemo(() => {
+    if (!primaryFieldId || primaryValue == null) return 'Untitled'
+    if (typeof primaryValue === 'object' && 'type' in primaryValue) {
+      const formatted = formatToDisplayValue(primaryValue as TypedFieldValue, fieldType ?? 'TEXT')
+      return typeof formatted === 'string' && formatted ? formatted : 'Untitled'
+    }
+    return String(primaryValue) || 'Untitled'
+  }, [primaryFieldId, primaryValue, fieldType])
   const {
     attributes,
     listeners,
