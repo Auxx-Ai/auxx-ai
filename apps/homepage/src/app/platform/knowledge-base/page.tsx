@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { config } from '~/lib/config'
 import FooterSection from '../../_components/main/footer-section'
 import Header from '../../_components/main/header'
+import { BreadcrumbJsonLd } from '../../_components/seo/breadcrumb-json-ld'
 import KBCenterSection from './_components/kb-center-section'
 import KBHero from './_components/kb-hero'
 import PublishArticle from './_components/publish-article'
@@ -15,6 +16,13 @@ export const metadata: Metadata = {
 export default function MessagingPage() {
   return (
     <div id='root' className='relative h-screen overflow-y-auto bg-background'>
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'Home', href: 'https://auxx.ai' },
+          { name: 'Platform', href: 'https://auxx.ai/platform' },
+          { name: 'Knowledge Base Builder' },
+        ]}
+      />
       <Header />
       <main className=''>
         <KBHero />

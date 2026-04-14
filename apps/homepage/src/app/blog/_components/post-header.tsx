@@ -34,7 +34,7 @@ export function PostHeader({ post }: { post: BlogPost }) {
         </h1>
       </header>
 
-      {post.image && (
+      {post.image && post.image !== '/blog/default-og.jpg' && (
         <div className='relative overflow-hidden rounded-xl border shadow shadow-black/5'>
           <Image
             src={post.image}

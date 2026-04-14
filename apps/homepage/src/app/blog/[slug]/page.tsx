@@ -1,8 +1,10 @@
 // apps/homepage/src/app/blog/[slug]/page.tsx
 
+import rehypeShiki from '@shikijs/rehype'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { MDXRemote } from 'next-mdx-remote/rsc'
+import remarkGfm from 'remark-gfm'
 import { getAllSlugs, getPostBySlug } from '~/lib/blog'
 import { config } from '~/lib/config'
 import { mdxComponents } from '../_components/mdx-components'
@@ -65,7 +67,26 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       <PostHeader post={post} />
 
       <div className='mx-auto max-w-2xl px-6'>
-        <MDXRemote source={content} components={mdxComponents} />
+        <MDXRemote
+          source={content}
+          components={mdxComponents}
+          options={{
+            mdxOptions: {
+              remarkPlugins: [remarkGfm],
+              rehypePlugins: [
+                [
+                  rehypeShiki,
+                  {
+                    themes: {
+                      light: 'github-light',
+                      dark: 'vesper',
+                    },
+                  },
+                ],
+              ],
+            },
+          }}
+        />
       </div>
 
       <script

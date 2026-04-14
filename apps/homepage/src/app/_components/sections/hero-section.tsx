@@ -87,7 +87,7 @@ export default function HeroSection() {
           </p>
         </div>
 
-        {/* <SocialProofBanner /> */}
+        <SocialProofBanner />
       </section>
       <MessagingFeatures />
     </main>

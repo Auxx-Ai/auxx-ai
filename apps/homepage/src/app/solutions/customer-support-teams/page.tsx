@@ -4,6 +4,7 @@ import { FinalCtaSection } from '@/app/platform/_components/final-cta-section'
 import { config } from '~/lib/config'
 import FooterSection from '../../_components/main/footer-section'
 import Header from '../../_components/main/header'
+import { BreadcrumbJsonLd } from '../../_components/seo/breadcrumb-json-ld'
 import { AutomationImpact } from './_components/automation-impact'
 import AutomationSection from './_components/automation-section'
 import IntegrationSection from './_components/integration-section'
@@ -19,6 +20,13 @@ export const metadata: Metadata = {
 export default function ShopifyStoresPage() {
   return (
     <div id='root' className='relative h-screen overflow-y-auto bg-background'>
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'Home', href: 'https://auxx.ai' },
+          { name: 'Solutions' },
+          { name: 'Customer Support Teams' },
+        ]}
+      />
       <Header />
       <main className=''>
         <ShopifyHero />

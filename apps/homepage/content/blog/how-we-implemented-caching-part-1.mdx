@@ -1,0 +1,201 @@
+---
+title: "How We Implemented Caching — Part 1: The Architecture"
+description: "A deep dive into the dual-layer cache abstraction, scoped services, provider pattern, and type-safe accessors powering Auxx.ai's multi-tenant caching system."
+date: "2026-02-10"
+slug: "how-we-implemented-caching-part-1"
+image: "/blog/how-we-implemented-caching-part-1.png"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["caching", "redis", "architecture", "typescript", "open-source"]
+published: true
+---
+
+## Why build a custom cache layer?
+
+Auxx.ai is multi-tenant. Every request is org-scoped. Members, resources, custom fields, settings — all loaded per-org on nearly every page load.
+
+Hitting the database on every request doesn't scale. But naive caching in a multi-tenant system creates correctness problems: stale data, cross-tenant leaks, thundering herds.
+
+Off-the-shelf solutions don't cut it either. Simple Redis get/set doesn't solve the multi-tenant invalidation problem. HTTP cache headers don't help when the data changes based on who's looking at it and what org they belong to.
+
+What we needed: a cache that understands org boundaries, degrades gracefully, invalidates precisely, and gives TypeScript developers compile-time safety on cached data access.
+
+This isn't a "how to use Redis" article. It's about the abstraction layer on top of Redis that makes caching safe and predictable in a complex app.
+
+## The dual-layer foundation
+
+The core abstraction is `BaseCacheService`. Every cache operation writes to both Redis and an in-memory `Map`.
+
+Two layers, different roles:
+
+- **Redis is authoritative.** If Redis says miss, it's a miss. No fallback to memory.
+- **Memory is the fallback.** Only used when Redis is unavailable.
+
+This distinction matters. Both layers being authoritative would create consistency nightmares. Redis controls truth. Memory is the safety net.
+
+Every entry follows the same structure:
+
+```typescript
+interface CacheEntry<T> {
+  value: T
+  expires: number      // Timestamp in ms
+  tags: string[]       // For grouped invalidation
+  createdAt: number
+}
+```
+
+Tags enable grouped invalidation. Every cache entry can be tagged — `org:123`, `user:456`, whatever makes sense. Tags are stored as Redis Sets mapping a tag name to a list of cache keys. Invalidate by tag = look up the Set, delete all referenced keys. Tag Sets auto-expire with the same TTL as the data they reference.
+
+Why dual-layer? Redis connection drops shouldn't take down the app. Memory cache serves stale-but-available data during Redis outages. Once Redis recovers, it becomes authoritative again — no manual intervention needed.
+
+## Scoped cache services
+
+Five services built on `BaseCacheService`, each scoped differently.
+
+### OrganizationCacheService
+
+The most complex. Multi-tier read path:
+
+1. **Local cache** (100ms TTL) — in-process LRU for hot data
+2. **Redis hash check** — detects cross-process invalidation via UUID
+3. **Redis data fetch** — retrieves serialized payload
+4. **Provider.compute()** — falls back to database
+
+Keys are org-scoped: `prefix:orgId:data` / `prefix:orgId:hash`. Distributed locking prevents thundering herd on cache miss. Some keys are marked `localOnly` to reduce Redis pressure — things like org settings that rarely change cross-process.
+
+### AppCacheService
+
+Global singleton cache for app-wide data — plans, published apps, workflow templates. No scope ID. Keys are singletons like `app:plans:data`. Higher local TTL (5 seconds vs 100ms) because there's no cross-org staleness concern. No distributed locking needed since global data is idempotent to compute.
+
+### UserCacheService
+
+User-scoped with an org dimension. Some keys are `user:orgId` scoped — mail views, table views. These are tracked in an `ORG_SCOPED_USER_KEYS` Set for broadcast invalidation. When org settings change, invalidation broadcasts to all org member caches.
+
+### BuildUserCacheService
+
+Same pattern as UserCacheService, scoped to the build portal. Developer accounts, apps, that kind of thing. Has a special `invalidateAllMembers()` method for developer account changes.
+
+### TokenCacheService
+
+Short-lived, one-time-use tokens. 10-minute TTL. Has a `consume()` method: get + delete in one operation. Used for CSRF tokens and verification codes.
+
+## The provider pattern
+
+Every cache key has a provider that knows how to compute it from scratch:
+
+```typescript
+interface CacheProvider<T> {
+  compute(scopeId: string, db: Database): Promise<T>
+  createAccessor?: (dataFn: () => Promise<T>) => Accessor
+}
+```
+
+We have 33 providers across org, user, app, and build scopes. They come in three flavors.
+
+**Simple providers** are straight database queries. Members, groups, inboxes — query the table, return the rows.
+
+**Derived providers** compose from other providers. `memberRoleMap` calls the members provider and transforms the result. This enables independent invalidation — you can invalidate the role map without recomputing the full member list.
+
+**Complex providers** handle expensive aggregations. The resources provider resolves inverse references, builds field lookups, computes entity hierarchies. The custom fields provider groups fields by entity definition and builds index maps. These are where caching matters most — the compute cost justifies the complexity.
+
+All 33 providers are registered in a single `register-providers.ts` file. One call wires everything up during singleton initialization. Provider name matches the cache key name — no mapping indirection.
+
+## Type-safe accessors
+
+Raw cached data is arrays and objects. Accessors wrap them in typed, query-like interfaces.
+
+**ArrayAccessor** — for array-shaped data like members and resources:
+
+```typescript
+accessor.all()           // Full array
+accessor.byId(id)        // Find by ID
+accessor.find(predicate) // First match
+accessor.filter(pred)    // All matches
+accessor.count()         // Length
+accessor.has(id)         // Existence check
+```
+
+**RecordAccessor** — for map-shaped data like slug maps and role maps:
+
+```typescript
+accessor.all()           // Full record
+accessor.byKey(key)      // Lookup by key
+accessor.values()        // All values
+accessor.keys()          // All keys
+accessor.has(key)        // Existence check
+```
+
+**NestedRecordAccessor** — for grouped data like custom fields by entity:
+
+```typescript
+accessor.all()           // Full nested record
+accessor.in(groupKey)    // Array for a specific group
+accessor.deep()          // Flattened across all groups
+accessor.keys()          // Group keys
+```
+
+**ScalarAccessor** — single values like org settings or the system user.
+
+Custom accessors extend these with domain-specific methods. `ResourceAccessor.bySlug()` finds a resource by API slug. `CustomFieldAccessor.bySystemAttribute()` finds a field by system attribute name. `WorkflowAppsAccessor.byTrigger()` finds apps by trigger type.
+
+Why accessors? Most cache layers return `any` and pray. Accessors give you `ArrayAccessor<OrgMemberInfo>` with `.byId()`, `.filter()`, `.count()`. The IDE autocomplete works on cached data. `OrgCacheAccessorMap` maps each key name to its accessor type — compile-time safety end to end.
+
+```typescript
+// This is fully typed. IDE knows the return type.
+const members = getOrgCache().get('members')
+// members: ArrayAccessor<OrgMemberInfo>
+
+const member = members.byId(userId)
+// member: OrgMemberInfo | undefined
+```
+
+## TTL strategy
+
+Not all data ages the same. We use three tiers.
+
+**Near-immutable (30 days):** entity definitions, system user, channel providers. Schema-level data that only changes on deploy or admin action. Long TTL keeps these effectively permanent in cache.
+
+**Business data (1 day):** members, resources, custom fields, groups, inboxes, org settings. Changes when admins configure things. Daily is fine because event-driven invalidation handles freshness — TTL is the safety net.
+
+**Volatile (15 minutes):** overages, installed apps, AI provider configs. Data that's computed from external state or changes frequently. Short TTL ensures eventual consistency even if invalidation misses.
+
+The key insight: TTL is the backup. Event-driven invalidation is the primary freshness mechanism. TTL catches the cases invalidation misses — bugs, race conditions, missed events. Most entries are invalidated long before TTL expires.
+
+## The local cache — an LRU layer inside the process
+
+`LocalCache` is a standalone in-process cache used by `OrganizationCacheService`:
+
+- **100ms TTL** — extremely short, just to deduplicate within a single request lifecycle
+- **LRU eviction** — drops oldest entry when max capacity (1000) is reached
+- **Hash tracking** — stores a UUID alongside data. If the Redis hash doesn't match, local cache is stale
+
+Why 100ms? A single page load might call `getCachedMembers()` dozens of times — sidebar, header, permissions checks, record list. Without local cache, each call round-trips to Redis. 100ms means one Redis call per key per request, not dozens. Short enough that invalidation propagates within one second.
+
+## Promise memoizer — deduplicating concurrent misses
+
+When cache misses, the provider's `compute()` runs. But what if 10 requests miss simultaneously?
+
+```typescript
+class PromiseMemoizer {
+  memoize(key: string, factory: () => Promise<T>): Promise<T> {
+    // If a promise for this key already exists, return it
+    // Otherwise, start a new one, cache the promise, clean up when done
+  }
+}
+```
+
+First miss starts the computation. Concurrent misses get the same promise back. When the promise resolves, all waiters get the result. Promise reference is cleaned up after resolution.
+
+This prevents the thundering herd problem: 10 simultaneous cache misses = 1 database query, not 10.
+
+## What's next
+
+This covers the architectural foundation — dual-layer storage, scoped services, providers, accessors, TTL strategy, and in-process deduplication. But storing cached data is the easy part.
+
+The hard problem is knowing when to throw it away.
+
+In [Part 2](/blog/how-we-implemented-caching-part-2), we'll cover the invalidation graph, event-driven invalidation, cross-process staleness detection via UUID hashing, distributed locking, and the singleton patterns that keep everything working under Next.js module isolation.

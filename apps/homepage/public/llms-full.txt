@@ -1,0 +1,200 @@
+# Auxx.ai — Full Product Reference
+
+> Auxx.ai is an open-source AI-powered CRM and customer support platform for Shopify businesses. It combines a shared inbox, workflow automation engine, and AI-generated responses to help e-commerce teams automate support at scale.
+
+## Overview
+
+Auxx.ai helps Shopify store owners and e-commerce teams automate customer support. Instead of manually answering repetitive questions about orders, tracking, returns, and refunds, Auxx.ai uses AI to draft responses with real-time Shopify order data and can fully automate common workflows.
+
+The platform is open source under the AGPL-3.0 license. Teams can self-host with Docker or use the managed cloud version. It supports multiple AI providers (OpenAI, Anthropic Claude, Google Gemini, Groq, DeepSeek, Ollama, Qwen, Kimi) so users are not locked to a single vendor.
+
+## Core Features
+
+### Shared Inbox
+- Unified inbox for Gmail, Outlook, SMS, live chat, Facebook Messenger, and Instagram DMs
+- AI-powered message suggestions and auto-replies
+- Real-time notifications and team collaboration
+- Conversation threading and history
+
+### AI-Powered Responses
+- Automatic response generation using the connected AI model
+- Context-aware replies that pull Shopify order data (tracking, status, customer history)
+- Human-in-the-loop approval workflows before AI responses are sent
+- Knowledge base integration for consistent, accurate answers
+- Supports 8+ AI providers: OpenAI GPT-4, Anthropic Claude, Google Gemini, Groq, DeepSeek, Ollama, Qwen, Kimi
+
+### Workflow Automation
+- Visual drag-and-drop workflow builder
+- Triggers: new ticket, status change, keyword match, time-based, Shopify events
+- Actions: send reply, assign agent, update ticket, trigger Shopify action, HTTP request
+- Conditions and branching logic
+- Human approval steps
+- Workflow templates for common scenarios (WISMO, returns, refunds)
+
+### CRM (Customer Relationship Management)
+- Unified customer profiles with order history, conversation history, and custom fields
+- Custom entities and relationships for flexible data modeling
+- Automated follow-ups and reminders
+- Pipeline and deal tracking
+- Contact importing and deduplication
+
+### Ticketing System
+- AI triage: automatic priority assignment and categorization
+- Smart routing to the right team member
+- SLA tracking and escalation rules
+- Bulk actions for high-volume periods
+- Custom views and filters (mail views)
+- Ticket merging and linking
+
+### Knowledge Base
+- Self-service article editor
+- AI-generated article suggestions from resolved tickets
+- SEO-optimized public knowledge base
+- Internal knowledge base for agents
+- Article versioning and categories
+
+### Live Chat
+- Embeddable chat widget for any website
+- AI-powered suggestions for agents
+- Proactive chat triggers based on visitor behavior
+- Chat-to-ticket conversion
+- Customizable widget appearance
+
+### Integrations
+- **Shopify**: Real-time order data, customer history, inventory, returns, refunds
+- **Email**: Gmail API and Outlook/Microsoft Graph integration
+- **Social**: Facebook Messenger, Instagram DMs
+- **Phone**: OpenPhone integration
+- **Payments**: Stripe for billing
+- **Notifications**: Real-time via Pusher
+- **Storage**: AWS S3 for file storage
+- **Custom**: REST API and webhooks for custom integrations
+
+### Datasets
+- Structured data collections for custom use cases
+- Import/export capabilities
+- Search and filtering
+- Custom field types
+
+### Custom Entities
+- Define custom data types beyond contacts and tickets
+- Custom fields (text, number, date, select, multi-select, etc.)
+- Relationships between entities
+- Display field configuration
+- Record importing
+
+### Files Management
+- Centralized file storage
+- Folder organization
+- Attachment handling in tickets and conversations
+- S3-backed storage
+
+### Tasks
+- Task creation and assignment
+- Filtering and views
+- Integration with tickets and workflows
+
+## Target Audience
+
+### Shopify Store Owners
+- Solo operators handling 1-50 orders/day who need to automate repetitive support
+- Growing stores (50-500+ orders/day) scaling support without hiring
+- Stores dealing with high WISMO (Where Is My Order) ticket volume
+- Businesses wanting to turn support interactions into revenue opportunities
+
+### Customer Support Teams
+- Teams of 2-20 agents managing multi-channel support
+- Departments looking to reduce response times and improve CSAT
+- Teams transitioning from email-only to omnichannel support
+
+### Small Businesses
+- Lean teams that need CRM + helpdesk + automation in one tool
+- Businesses currently using spreadsheets or basic email for customer management
+- Companies looking for an open-source alternative to expensive SaaS tools
+
+### Manufacturing
+- Teams managing parts requests and warranty claims
+- Dealer communication coordination
+- Technical support workflows
+
+## Competitive Positioning
+
+Auxx.ai is positioned as an open-source alternative to:
+
+| Competitor | What Auxx.ai does differently |
+|------------|------------------------------|
+| Gorgias | Open source, multi-LLM support, includes workflow automation, not just Shopify-focused helpdesk |
+| Zendesk | Open source, built specifically for e-commerce/Shopify, includes CRM and workflow builder |
+| Front | Open source, AI-native rather than bolt-on, includes Shopify integration and workflow automation |
+| Freshdesk | Open source, native Shopify integration, multi-LLM support, visual workflow builder |
+| Tidio | Full CRM + ticketing + workflows vs just chat, open source, self-hostable |
+| n8n | Purpose-built for customer support vs general automation, includes inbox/CRM/ticketing |
+| Attio | Includes helpdesk and automation, built for e-commerce, open source |
+
+## Pricing
+
+- **Free tier**: Available for getting started
+- **Paid plans**: Scale with support volume
+- **14-day free trial**: No credit card required
+- **Self-hosted**: Free forever with AGPL-3.0 license
+- Visit https://auxx.ai/pricing for current plan details
+
+## Getting Started
+
+### Cloud (Managed)
+1. Sign up at https://auxx.ai (no credit card required)
+2. Connect your Gmail or Outlook inbox
+3. Connect your Shopify store
+4. Configure AI provider and workflow automations
+5. Start handling tickets with AI assistance
+
+### Self-Hosted (Docker)
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/Auxx-Ai/auxx-ai/main/docker/scripts/install.sh)
+```
+- Automatic dependency checking
+- Secret generation
+- Port conflict handling
+- Opens browser when ready
+
+### Prerequisites (Self-Hosted)
+- Node.js 22+
+- pnpm 10.17+
+- PostgreSQL database
+- Redis
+
+## Technical Architecture
+
+- **Framework**: Next.js 16.1 with React Server Components and App Router
+- **API Layer**: tRPC v11 with React Query for type-safe API calls
+- **Database**: PostgreSQL with Drizzle ORM, pgvector for embeddings
+- **Authentication**: Better-auth v1.3 (Google, GitHub, Email/Password, Passkey, 2FA)
+- **Frontend**: TailwindCSS v4, shadcn component library, Zustand for state
+- **Job Processing**: BullMQ with Redis for background jobs
+- **Caching**: Redis
+- **Build System**: Turborepo monorepo with pnpm workspaces
+- **Infrastructure**: AWS (SST), Docker, Railway
+- **License**: AGPL-3.0
+
+## Links
+
+- **Website**: https://auxx.ai
+- **Documentation**: https://docs.auxx.ai
+- **GitHub Repository**: https://github.com/Auxx-Ai/auxx-ai
+- **Blog**: https://auxx.ai/blog
+- **Pricing**: https://auxx.ai/pricing
+- **Twitter/X**: https://x.com/auxxaiapp
+- **LinkedIn**: https://www.linkedin.com/company/auxx-ai
+- **Support Email**: support@auxx.ai
+- **Sales Email**: sales@auxx.ai
+
+## Documentation
+
+Full documentation is available at https://docs.auxx.ai covering:
+- Getting started guides
+- User guides for all features
+- Integration setup (Gmail, Outlook, Shopify, Facebook, Instagram)
+- AI configuration and workflow building
+- Developer documentation and API reference
+- Self-hosting guides (Docker Compose)
+- Troubleshooting

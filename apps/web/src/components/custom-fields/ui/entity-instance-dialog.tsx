@@ -610,7 +610,7 @@ export function EntityInstanceDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size='md' position='tc' {...guardProps}>
+        <DialogContent size='lg' position='tc' {...guardProps}>
           <DialogHeader>
             <DialogTitle>
               {isConfigMode

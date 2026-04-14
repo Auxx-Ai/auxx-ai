@@ -28,6 +28,47 @@ const links = [
         title: 'Blog',
         href: '/blog',
       },
+      {
+        title: 'What is Auxx.ai?',
+        href: '/what-is-auxx-ai',
+      },
+      {
+        title: 'FAQ',
+        href: '/faq',
+      },
+    ],
+  },
+  {
+    group: 'Compare',
+    items: [
+      {
+        title: 'Auxx.ai vs Zendesk',
+        href: '/blog/auxx-ai-vs-zendesk',
+      },
+      {
+        title: 'Auxx.ai vs Salesforce',
+        href: '/blog/auxx-ai-vs-salesforce',
+      },
+      {
+        title: 'Auxx.ai vs Freshworks',
+        href: '/blog/auxx-ai-vs-freshworks',
+      },
+      {
+        title: 'Auxx.ai vs Monday.com',
+        href: '/blog/auxx-ai-vs-monday',
+      },
+      {
+        title: 'Auxx.ai vs Pipedrive',
+        href: '/blog/auxx-ai-vs-pipedrive',
+      },
+      {
+        title: 'Auxx.ai vs Attio',
+        href: '/blog/auxx-ai-vs-attio',
+      },
+      {
+        title: 'Auxx.ai vs n8n',
+        href: '/blog/auxx-ai-vs-n8n',
+      },
     ],
   },
   {
@@ -76,7 +117,7 @@ export default function FooterSection() {
             </div>
           </div>
 
-          <div className='col-span-3 grid gap-6 sm:grid-cols-3'>
+          <div className='col-span-3 grid gap-6 sm:grid-cols-4'>
             {links.map((link, index) => (
               <div key={index} className='space-y-4 text-sm'>
                 <span className='block font-medium'>{link.group}</span>

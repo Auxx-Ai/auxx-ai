@@ -10,6 +10,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   rectIntersection,
+  TouchSensor,
   useDndMonitor,
   useSensor,
   useSensors,
@@ -41,6 +42,7 @@ export function RowDndProvider<TData>({ children }: RowDndProviderProps<TData>) 
   // Row-specific sensors with larger activation distance for better UX (only used when NOT external)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor)
   )
 

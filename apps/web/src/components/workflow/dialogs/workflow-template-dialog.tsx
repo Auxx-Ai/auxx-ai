@@ -287,8 +287,8 @@ export function WorkflowTemplateDialog({
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
-          className=' h-[550px]'
-          innerClassName='p-0'
+          className='h-dvh sm:h-[550px] '
+          innerClassName='p-0 '
           position='tc'
           size='3xl'
           onOpenAutoFocus={(e) => {
@@ -315,7 +315,7 @@ export function WorkflowTemplateDialog({
                 {/* Main Content: Sidebar + Templates */}
                 <div className='flex flex-1 flex-row justify-start w-full min-h-0'>
                   {/* Sidebar */}
-                  <div className='w-64 border-r bg-muted/30 flex flex-col rounded-bl-[16px]'>
+                  <div className='hidden w-64 border-r bg-muted/30 sm:flex flex-col rounded-bl-[16px]'>
                     <ScrollArea>
                       <h3 className='p-3 pb-0 text-sm font-semibold text-muted-foreground sticky top-0'>
                         Categories
@@ -355,7 +355,7 @@ export function WorkflowTemplateDialog({
 
                   {/* Template List */}
                   <div className='flex-1 overflow-hidden flex flex-col'>
-                    <div className='py-3 px-6'>
+                    <div className='py-3 px-3 sm:px-6'>
                       <InputSearch
                         ref={searchInputRef}
                         placeholder='Search templates by name or description...'
@@ -377,12 +377,12 @@ export function WorkflowTemplateDialog({
                       </Empty>
                     ) : filteredTemplates.length > 0 ? (
                       <ScrollArea className='flex-1'>
-                        <div className='p-6 space-y-2'>
+                        <div className='px-3 py-3 sm:py-6 sm:px-6 space-y-2'>
                           {filteredTemplates.map((template) => (
                             <div
                               key={template.id}
                               onClick={() => handleSelectTemplate(template)}
-                              className='group flex items-center justify-between gap-3 rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
+                              className='group flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200 cursor-pointer'>
                               <div className='flex items-start gap-3 flex-1 min-w-0'>
                                 <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
                                   {template.imgUrl ? (
@@ -413,7 +413,7 @@ export function WorkflowTemplateDialog({
                                 </div>
                               </div>
                               {(template.categories as string[])?.length > 0 && (
-                                <div className='flex gap-2 shrink-0 flex-col'>
+                                <div className='flex gap-2 shrink-0 ml-11 sm:ml-0 sm:flex-col'>
                                   {(template.categories as string[]).slice(0, 2).map((cat) => (
                                     <Badge
                                       key={cat}
@@ -481,9 +481,9 @@ export function WorkflowTemplateDialog({
                   </div>
                 </DialogHeader>
 
-                <div className='flex flex-1 overflow-hidden'>
-                  {/* Left Column: Preview (2/3 width) */}
-                  <div className='flex-[2] border-r bg-muted/30 flex flex-col overflow-hidden'>
+                <div className='flex flex-col sm:flex-row flex-1 overflow-hidden min-h-0'>
+                  {/* Preview (top on mobile, left 2/3 on desktop) */}
+                  <div className='h-1/2 sm:h-auto sm:flex-[2] border-b sm:border-b-0 sm:border-r bg-muted/30 flex flex-col overflow-hidden'>
                     {isLoadingDetail ? (
                       <div className='flex-1 flex items-center justify-center'>
                         <Loader2 className='w-8 h-8 animate-spin text-muted-foreground' />
@@ -508,8 +508,8 @@ export function WorkflowTemplateDialog({
                     )}
                   </div>
 
-                  {/* Right Column: Form (1/3 width) */}
-                  <div className='flex-1 flex flex-col'>
+                  {/* Form (bottom on mobile, right 1/3 on desktop) */}
+                  <div className='h-1/2 sm:h-auto sm:flex-1 flex flex-col'>
                     <ScrollArea className='flex-1'>
                       <div className='p-3 space-y-6'>
                         {/* Template Info */}
