@@ -1,0 +1,445 @@
+---
+title: "Building a Custom Fields System (Part 2): Instances, Field Values, and the Backend"
+description: "How we write, validate, and query dynamic field values at scale — the unified CRUD handler, EAV query patterns that dont suck, snapshot caching for stable pagination, and bidirectional relationship sync."
+date: "2025-12-15"
+slug: "custom-fields-part-2-instances-and-backend"
+image: "/blog/custom-fields-part-2-instances-and-backend.png"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["custom-fields", "architecture", "typescript", "open-source", "database"]
+published: true
+---
+
+This is Part 2 of our custom fields deep dive. [Part 1](/blog/custom-fields-part-1-entity-definitions) covered the four-table schema, the type system, display field denormalization, and the template engine. This post covers the hard part — making it fast and correct at runtime.
+
+Three challenges define the backend:
+
+1. **Writing.** How do you validate, convert, and persist field values for 20+ field types without a giant switch statement?
+2. **Reading.** How do you query an EAV table with filtering and sorting without the queries being terrible?
+3. **Consistency.** How do you keep denormalized display values, relationship inverses, and search text in sync?
+
+Lets walk through each one.
+
+## The unified CRUD handler
+
+Early on, we had separate services — `ContactService`, `TicketService`, `EntityInstanceService`. Every new entity type meant a new service with copy-pasted CRUD logic. That doesnt scale.
+
+The `UnifiedCrudHandler` replaces all of them with a single interface that works for both system and custom entities:
+
+```typescript
+class UnifiedCrudHandler {
+  // queries
+  listFiltered(entityDefId, filters, sorting, pagination)
+  getById(recordId)
+  getByIds(recordIds)
+  search(query, entityDefId?)
+
+  // mutations
+  create(entityDefId, fieldValues)
+  update(recordId, fieldValues)
+  delete(recordId)
+  archive(recordId)
+
+  // bulk
+  bulkCreate(entityDefId, records[])
+  bulkUpdate(recordIds[], fieldValues)
+  bulkSetFieldValue(recordIds[], fieldId, value)
+
+  // convenience
+  findByField(entityDefId, fieldId, value)
+  findOrCreate(entityDefId, matchField, fieldValues)
+}
+```
+
+One handler for contacts, tickets, companies, deals, or whatever custom entity type your org has created. Same code path. Same validation. Same caching.
+
+### RecordId — the universal identifier
+
+Every record in the system is identified by a `RecordId`:
+
+```typescript
+// format: "entityDefinitionId:entityInstanceId"
+type RecordId = `${string}:${string}`
+
+// examples:
+"cuid_contact_def:cuid_instance_123"   // a contact
+"cuid_company_def:cuid_instance_456"   // a custom company entity
+```
+
+Any function that receives a RecordId knows both the entity type and the specific instance. No extra lookups needed. `parseRecordId()` splits it, `toRecordId()` joins it.
+
+## The entity creation flow
+
+Creating a record is a multi-step pipeline.
+
+### Step 1: validate the entity definition
+
+Is the entity definition active (not archived)? Does this org have permission to create this entity type? Has the org hit their custom entity limit? Fail fast before doing any real work.
+
+### Step 2: run pre-hooks
+
+System hooks run before creation for specific entity types:
+- **Contacts:** email normalization (lowercase, trim), phone E.164 formatting
+- **Tickets:** auto-generate ticket number, set initial status
+- **Parts:** validate SKU uniqueness
+
+Custom entities skip this step — they dont have system-specific validation.
+
+### Step 3: check unique constraints
+
+For any field marked `isUnique: true`, check if the value already exists. Since FieldValue uses typed columns, the query uses native comparison:
+
+```sql
+SELECT 1 FROM field_value
+WHERE field_id = $fieldId
+  AND organization_id = $orgId
+  AND value_text = $value
+LIMIT 1
+```
+
+No casting. The typed column (`valueText`, `valueNumber`, etc.) matches the field type. PostgreSQL can use an index directly.
+
+### Step 4: create the EntityInstance
+
+Single INSERT with denormalized display values computed upfront if the primary display field is in the input:
+
+```typescript
+const instance = await db.insert(EntityInstance).values({
+  id: generateId(),
+  entityDefinitionId,
+  organizationId,
+  createdById: userId,
+  displayName: computeDisplayName(fieldValues, displayFieldId),
+  searchText: computeSearchText(fieldValues, displayFieldIds),
+})
+```
+
+### Step 5: set field values
+
+Delegates to `FieldValueService.setValuesForEntity()` — which handles type conversion, multi-value fields, and relationship inverse sync for each field. This is the bulk of the work.
+
+### Step 6: publish events and invalidate
+
+Publish an entity created event (triggers workflows, webhooks). Invalidate list snapshots so the next list query re-fetches. Broadcast via WebSocket to other connected clients.
+
+## The field value write pipeline
+
+Every field value write — regardless of field type — goes through the same pipeline:
+
+```
+Raw Input → Validator → Converter → Persistence → Inverse Sync → Display Update → Event
+```
+
+### Validation
+
+Zod-based validation per field type:
+
+| Field Type | Validation |
+|-----------|-----------|
+| EMAIL | `z.email()`, lowercase normalization |
+| URL | protocol inference (`https://` if missing), `z.url()` |
+| PHONE_INTL | E.164 format via `formatPhoneNumber()` |
+| NUMBER | `z.number().finite()` |
+| BOOLEAN | coerces `"true"`, `"1"`, `1` to `true` |
+| DATE | ISO 8601 or Date object parsing |
+| RELATIONSHIP | RecordId format validation |
+| NAME | `{ firstName?, lastName? }` with at-least-one requirement |
+| ADDRESS_STRUCT | `{ street?, city?, state?, zip?, country? }` with at-least-one |
+
+Invalid inputs return a validation error via the Result pattern. No exceptions thrown.
+
+### Conversion
+
+After validation, the converter transforms raw input into a `TypedFieldValueInput`. For example, the relationship converter:
+
+```typescript
+toTypedInput(value: unknown): TypedFieldValueInput | null {
+  // accept RecordId string: "entityDefId:instanceId"
+  // accept legacy format: { id, entityDefinitionId }
+  // returns: { type: 'relationship', recordId: RecordId }
+}
+```
+
+Converters are pure functions. No side effects, no database calls. Easy to test.
+
+### Persistence strategy
+
+**Single-value fields** (TEXT, NUMBER, CHECKBOX, etc.):
+
+```
+Check if FieldValue row exists for (entityId, fieldId)
+  → exists: UPDATE the typed column
+  → doesnt exist: INSERT new row
+```
+
+UPDATE instead of DELETE + INSERT. Less index thrash, preserves row identity, more efficient for the common case of editing an existing value.
+
+**Multi-value fields** (MULTI_SELECT, TAGS, RELATIONSHIP has_many):
+
+```
+DELETE all existing rows for (entityId, fieldId)
+INSERT new rows with fractional-indexed sortKeys
+```
+
+Multi-value fields are replaced wholesale because the client sends the complete array. Adding or removing individual values uses separate `addValue()` / `removeValue()` methods.
+
+### Relationship inverse sync
+
+When a RELATIONSHIP field changes, both sides need to stay in sync:
+
+```typescript
+// 1. capture old state
+const oldRelatedIds = await getExistingRelatedIds(entityId, fieldId)
+
+// 2. apply new values
+await persistFieldValues(entityId, fieldId, newValues)
+
+// 3. calculate diff
+const removed = oldRelatedIds.filter(id => !newRelatedIds.includes(id))
+const added = newRelatedIds.filter(id => !oldRelatedIds.includes(id))
+
+// 4. sync inverse field
+// for removed: delete inverse FieldValue rows pointing back
+// for added: insert inverse FieldValue rows pointing back
+```
+
+Cardinality matters:
+- **has_one inverse:** clear existing before setting new (at most one value)
+- **has_many inverse:** append with new fractional sortKey
+- **many_to_many:** both sides are arrays, append/remove independently
+
+Uses `inArray()` for batch operations. Not N separate queries.
+
+### Display field cascade
+
+If the field being updated is a display field, update the denormalized columns:
+
+```typescript
+if (fieldId === entityDef.primaryDisplayFieldId) {
+  await db.update(EntityInstance)
+    .set({
+      displayName: converter.toDisplayValue(newValue),
+      searchText: rebuildSearchText(...)
+    })
+    .where(eq(EntityInstance.id, entityId))
+}
+```
+
+Targeted single-instance update, not a full recalculation.
+
+## Reading field values
+
+### Single entity reads
+
+**`getValues(entityId, fieldIds[])`** — the workhorse query:
+
+```sql
+SELECT fv.*, cf.type, cf.options
+FROM field_value fv
+JOIN custom_field cf ON cf.id = fv.field_id
+WHERE fv.entity_id = $entityId AND fv.field_id = ANY($fieldIds)
+ORDER BY fv.field_id, fv.sort_key
+```
+
+Groups results by fieldId, converts each group using the appropriate converter. **One query, not N+1.**
+
+### Batch reads with relationship path traversal
+
+The real powerhouse is `batchGetValues()`:
+
+```typescript
+batchGetValues({
+  recordIds: ["contact:abc", "contact:def"],
+  fieldReferences: [
+    "contact:email",                         // direct field
+    ["contact:company", "company:name"],     // relationship path
+  ],
+})
+```
+
+For relationship paths, the system:
+
+1. Fetches the relationship field values (gets related entity IDs)
+2. Batch-fetches target field values from the related entities
+3. Returns flattened results keyed by `(recordId, fieldRef)`
+
+This is how the frontend can display "Company Name" in a Contact table — it traverses the relationship at query time.
+
+## Filtered list queries — making EAV fast
+
+### The problem
+
+A user wants: "show me all Companies where Industry = Technology AND Annual Revenue > $1M, sorted by Company Name."
+
+In a normal schema, this is trivial. In an EAV schema, its a nightmare of self-joins. Each filter condition adds another JOIN on the same table. Five filters means five self-joins.
+
+### Our approach: EXISTS subqueries
+
+Instead of JOINs, we use `EXISTS` subqueries:
+
+```sql
+SELECT ei.id FROM entity_instance ei
+WHERE ei.entity_definition_id = $entityDefId
+  AND ei.organization_id = $orgId
+  AND ei.archived_at IS NULL
+  AND EXISTS (
+    SELECT 1 FROM field_value
+    WHERE entity_id = ei.id
+      AND field_id = $industryFieldId
+      AND option_id = $techOptionId
+  )
+  AND EXISTS (
+    SELECT 1 FROM field_value
+    WHERE entity_id = ei.id
+      AND field_id = $revenueFieldId
+      AND value_number > 1000000
+  )
+ORDER BY ei.display_name
+```
+
+Why EXISTS over JOINs?
+
+- **Each subquery is independent.** PostgreSQL can evaluate them in any order and short-circuit. If the first EXISTS returns false, it skips the rest.
+- **No row multiplication.** A JOIN on a multi-value field (MULTI_SELECT) produces duplicate rows. EXISTS doesnt.
+- **Index-friendly.** The query planner uses the `(entity_id, field_id)` composite index efficiently for each subquery.
+
+### Sorting by arbitrary fields
+
+Sorting by `displayName` is free — its denormalized on EntityInstance. Sorting by any other field requires a correlated subquery:
+
+```sql
+ORDER BY (
+  SELECT fv.value_number FROM field_value fv
+  WHERE fv.entity_id = ei.id AND fv.field_id = $sortFieldId
+  LIMIT 1
+)
+```
+
+The `buildOrderBySql()` function selects the appropriate typed column based on field type.
+
+## Snapshot caching — stable pagination
+
+### The problem with cursors
+
+Cursor-based pagination breaks when data changes between page fetches. If record #50 gets deleted while youre viewing page 1, page 2 skips a record. Or if a new record is inserted, you see duplicates.
+
+### The solution: Redis snapshots
+
+The filtered query returns a list of IDs. We cache this list in Redis:
+
+```
+Key: snapshot:{orgId}:{resourceType}:{filterHash}
+Value: Redis List of entity instance IDs
+TTL: 120 seconds
+```
+
+The flow:
+
+1. **First request:** execute the full query, cache all matching IDs in Redis
+2. **Subsequent pages:** slice the cached ID list by offset + limit
+3. **Mutations:** set a dirty flag on the snapshot
+4. **Next list request:** if dirty, rebuild the snapshot
+
+Distributed locking prevents thundering herd — only one process rebuilds a snapshot at a time. Others wait for the lock to release, then read the fresh result.
+
+### The cursor format
+
+```typescript
+// cursor sent from frontend
+{ snapshotId: string, offset: number }
+```
+
+The frontend doesnt know about filter hashes or Redis keys. It just sends back whatever cursor the server gave it. First page sends no cursor. Each subsequent page sends the snapshotId and offset from the previous response.
+
+## The tRPC router layer
+
+### Why batchGet is a mutation
+
+```typescript
+fieldValueRouter = createTRPCRouter({
+  batchGet: protectedProcedure
+    .input(z.object({
+      recordIds: z.array(recordIdSchema).max(500),
+      fieldReferences: z.array(fieldReferenceSchema).max(50),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return fieldValueService.batchGetValues(input)
+    }),
+})
+```
+
+This is technically a read operation but its defined as a mutation. Why? tRPC queries are GET requests with URL-encoded params. 500 record IDs times 50 field references doesnt fit in a URL. Mutations use POST bodies. Pragmatism over purity.
+
+### Socket exclusion
+
+Every mutation includes a `socketId` from the request headers (`x-realtime-socket-id`). The realtime broadcast excludes this socket — the originating client already applied the change optimistically. Without this, the client would see a flicker: optimistic update → server echo overwrites with the same value.
+
+## Bulk operations
+
+### Bulk create
+
+```typescript
+bulkCreate(entityDefId, records[]) {
+  // 1. validate all records upfront (fail fast)
+  // 2. batch INSERT EntityInstances (single query)
+  // 3. batch INSERT FieldValues (chunked to avoid param limits)
+  // 4. compute display values in bulk
+  // 5. single snapshot invalidation at the end
+}
+```
+
+Side effects are deferred. No events published per record. One snapshot invalidation after the entire batch. This makes imports 10-100x faster than creating records individually.
+
+### Bulk field update
+
+Used by kanban drag (change status for 10 selected cards) and the bulk edit dialog:
+
+```typescript
+bulkSetFieldValue(recordIds[], fieldId, value) {
+  // single FieldValue upsert per record (batched)
+  // inverse sync in bulk if RELATIONSHIP
+  // display field update if applicable
+  // single event with all affected IDs
+}
+```
+
+## Event publishing and realtime
+
+After mutations, the system publishes typed events:
+
+```typescript
+publish('contact:created', { recordId, fieldValues })
+publish('ticket:updated', { recordId, changedFields })
+publish('entity:deleted', { recordId, entityDefinitionId })
+```
+
+These events drive three things:
+- **Workflows** — trigger automation rules (send email, update field, notify team)
+- **Webhooks** — notify external integrations
+- **Realtime** — push updates to other connected clients via WebSocket
+
+The originating client is excluded from the WebSocket broadcast via the socket ID header. It already applied the change optimistically.
+
+## Trade-offs
+
+| Decision | Trade-off | Why |
+|----------|-----------|-----|
+| EXISTS subqueries over JOINs | potentially slower for single-filter queries | predictable with any number of filters; no row multiplication |
+| Redis snapshot caching | 120s stale window | stable pagination; dirty flag ensures freshness on next request |
+| batchGet as mutation (POST) | breaks REST convention | URL length limits are real; pragmatism wins |
+| UPDATE over DELETE+INSERT for single-value | more complex persistence logic | less index thrash; preserves row identity |
+| metadata JSONB over FieldValue | two storage mechanisms | hot-path queries need proper indexes; EAV adds overhead |
+| converter pattern (pure functions) | one more abstraction layer | testable in isolation; type coercion centralized |
+| socket ID exclusion | extra header on every request | prevents optimistic update flicker |
+
+## Whats next
+
+This covers the backend — writing, validating, querying, caching, and keeping everything in sync. The backend does the heavy lifting. But the user doesnt see any of that.
+
+What they see is a table that loads instantly, edits that feel immediate, and relationships that update on both sides without a page refresh.
+
+In [Part 3](/blog/custom-fields-part-3-frontend-sync-engine), well cover the frontend sync engine — three Zustand stores, a batched fetch queue that turns 500 cell requests into 5 API calls, optimistic updates with automatic rollback, client-side computed field evaluation, and the mutation version system that prevents race conditions. The holiday finale.

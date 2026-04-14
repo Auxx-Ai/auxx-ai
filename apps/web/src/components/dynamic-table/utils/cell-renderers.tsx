@@ -627,6 +627,27 @@ const cellRenderers: Record<string, CellRenderer> = {
   // File — uses FileCellContent which resolves refs and renders badges
   FILE: (value) => <FileCellContent value={value} />,
 
+  // Name — composed firstName + lastName
+  NAME: (value) => {
+    if (value == null) return <EmptyCell />
+    if (typeof value === 'object' && value !== null) {
+      const { firstName, lastName } = value as { firstName?: string; lastName?: string }
+      const display = [firstName, lastName].filter(Boolean).join(' ').trim()
+      return display ? (
+        <CellPadding>
+          <span className='text-sm'>{display}</span>
+        </CellPadding>
+      ) : (
+        <EmptyCell />
+      )
+    }
+    return (
+      <CellPadding>
+        <span className='text-sm'>{String(value)}</span>
+      </CellPadding>
+    )
+  },
+
   // Default text
   TEXT: (value) => renderTextValue(value),
 }

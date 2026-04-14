@@ -1,0 +1,540 @@
+---
+title: "Building a Multi-Provider AI System — Part 2: Credits, Quotas & Usage Tracking"
+description: "How we meter AI usage with a credit system, enforce quotas tied to billing plans, track every invocation, and wire it all together in the LLM orchestrator."
+date: "2026-01-28"
+slug: "multi-provider-ai-system-part-2"
+image: "/blog/multi-provider-ai-system-part-2.png"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["ai", "architecture", "typescript", "open-source", "billing"]
+published: true
+---
+
+## Why credits instead of pass-through billing?
+
+[Part 1](/blog/multi-provider-ai-system-part-1) covered the provider registry and credential routing — how we pick the right API key for every AI call. This post covers what happens around that call: metering, quotas, and usage tracking.
+
+Early on, we considered charging users for exact token costs. The problem: unpredictable bills, complex per-model pricing, and users afraid to experiment. "I don't want to click that button if it costs me $0.50."
+
+Credits solve this. Every subscription plan includes a monthly credit allowance. One credit equals one AI invocation. Users who want unlimited usage bring their own API keys and pay their provider directly.
+
+```typescript
+// packages/lib/src/ai/providers/types.ts
+
+const PLAN_CREDIT_LIMITS = {
+  starter: 1000,        // 1,000 AI calls/month
+  growth: 5000,         // 5,000 AI calls/month
+  business: 20000,      // 20,000 AI calls/month
+  enterprise: 100000,   // 100,000 AI calls/month
+} as const
+
+const DEFAULT_QUOTA_LIMITS = {
+  [ProviderQuotaType.TRIAL]: 50,    // 50 calls during trial
+  [ProviderQuotaType.FREE]: 100,    // 100 calls/month on free tier
+  [ProviderQuotaType.PAID]: 1000,   // Starter plan default
+} as const
+```
+
+### Why 1 credit = 1 invocation?
+
+We deliberately didn't do per-token billing. A few reasons:
+
+- **Predictability.** "I process ~500 tickets/month, that's ~500 AI calls, the Starter plan covers it." No calculator needed.
+- **Simplicity.** No token counting, no model-specific pricing tiers, no surprise bills from a verbose GPT-4 response.
+- **Upgrade signal.** Running out of credits is clear and actionable. Token-based billing creates vague "am I spending too much?" anxiety.
+
+Yes, a GPT-4o call costs us more than a Haiku call. We absorb that variance at the platform level. The alternative — per-token billing with model-specific rates — adds complexity users don't want.
+
+## The QuotaService — credit lifecycle
+
+The `QuotaService` handles upgrades, downgrades, trials, and quota checks. It's scoped to an organization and operates on SYSTEM provider configuration records.
+
+```typescript
+// packages/lib/src/ai/quota/quota-service.ts
+
+export class QuotaService {
+  constructor(
+    private db: Database,
+    private organizationId: string
+  ) {}
+
+  async upgradeToPaid(creditLimit: number): Promise<void> {
+    const now = new Date()
+    const periodEnd = new Date(now)
+    periodEnd.setMonth(periodEnd.getMonth() + 1)
+
+    await this.db
+      .update(schema.ProviderConfiguration)
+      .set({
+        quotaType: ProviderQuotaType.PAID,
+        quotaLimit: creditLimit,
+        quotaUsed: 0,
+        quotaPeriodStart: now,
+        quotaPeriodEnd: periodEnd,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.ProviderConfiguration.organizationId, this.organizationId),
+          eq(schema.ProviderConfiguration.providerType, 'SYSTEM')
+        )
+      )
+  }
+
+  async downgradeToFree(): Promise<void> {
+    // Same pattern — sets quotaType to FREE, limit to 100
+  }
+
+  async setTrialQuota(trialCredits = DEFAULT_QUOTA_LIMITS[ProviderQuotaType.TRIAL]): Promise<void> {
+    // Same pattern — sets quotaType to TRIAL, limit to 50
+  }
+
+  async resetQuota(): Promise<void> {
+    // Zeroes quotaUsed, sets new period start/end
+  }
+}
+```
+
+A few things to note:
+
+**Quota lives on the ProviderConfiguration row.** Not in a separate table. The hot path — "check quota, get credentials" — hits one row. Since quotas only apply to SYSTEM providers, colocating them with the SYSTEM configuration row avoids a JOIN.
+
+**`quotaLimit: -1` means unlimited.** Used for enterprise plans and self-hosted deployments.
+
+**No rollover.** Unused credits don't carry to the next month. This keeps accounting simple and the upgrade incentive clear.
+
+### The self-hosted escape hatch
+
+Self-hosted deployments skip all quota logic:
+
+```typescript
+async getQuotaStatus() {
+  if (isSelfHosted()) {
+    return {
+      quotaType: ProviderQuotaType.PAID,
+      quotaUsed: 0,
+      quotaLimit: -1,        // Unlimited
+      quotaPeriodStart: null,
+      quotaPeriodEnd: null,
+      percentUsed: 0,
+      isExceeded: false,
+    }
+  }
+  // ... normal DB query
+}
+```
+
+Self-hosted users manage their own provider costs. The system still records usage for analytics, but never enforces limits.
+
+### Stripe integration
+
+When subscription events fire from Stripe:
+
+```
+subscription.created  → quotaService.upgradeToPaid(planCreditLimit)
+subscription.updated  → quotaService.upgradeToPaid(newPlanLimit)
+subscription.deleted  → quotaService.downgradeToFree()
+invoice.paid          → quotaService.resetQuota()
+```
+
+Credit resets align with the Stripe billing cycle. When a new invoice is paid, `quotaUsed` goes back to 0 and the period starts fresh.
+
+## Usage tracking — every invocation recorded
+
+Every AI call — whether it uses platform credits or the org's own key — gets logged.
+
+```typescript
+// packages/database/src/db/schema/ai-usage.ts
+
+export const AiUsage = pgTable(
+  'AiUsage',
+  {
+    id: text().$defaultFn(() => createId()).primaryKey().notNull(),
+    createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
+    organizationId: text().notNull()
+      .references(() => Organization.id, { onDelete: 'cascade' }),
+    userId: text().references(() => User.id, { onDelete: 'set null' }),
+
+    // What was called
+    provider: text().notNull(),
+    model: text().notNull(),
+    modelType: text().default('llm').notNull(),
+
+    // Token breakdown
+    inputTokens: integer().default(0).notNull(),
+    outputTokens: integer().default(0).notNull(),
+    totalTokens: integer().default(0).notNull(),
+    cost: doublePrecision(),
+
+    // Credit tracking
+    creditsUsed: integer().default(1),
+    providerType: providerType('providerType'),       // "SYSTEM" | "CUSTOM"
+    credentialSource: credentialSource('credentialSource'), // detailed source
+
+    // Source attribution
+    source: text(),                                    // "compose" | "workflow" | "dataset" | "chat"
+    sourceId: text(),                                  // workflow ID, dataset ID, etc.
+
+    // Performance
+    responseTime: integer(),
+  },
+  (table) => [
+    index('AiUsage_organizationId_createdAt_idx').using(
+      'btree', table.organizationId.asc().nullsLast(), table.createdAt.asc().nullsLast()
+    ),
+    index('AiUsage_source_idx').using('btree', table.source.asc().nullsLast()),
+  ]
+)
+```
+
+### Track everything, meter selectively
+
+Both SYSTEM and CUSTOM invocations are logged. But only SYSTEM invocations deduct credits. CUSTOM usage is recorded for analytics — orgs can see total AI usage regardless of who's paying the provider.
+
+`creditsUsed` and `cost` are deliberately different fields. `creditsUsed` is what the user pays us (always 1 per invocation for SYSTEM, 0 for CUSTOM). `cost` is what we estimate the provider charges based on token counts and registry pricing.
+
+### Source attribution
+
+Every invocation is tagged with where it came from:
+
+| Source | What triggers it |
+|--------|-----------------|
+| `compose` | Reply drafting in the ticket view |
+| `workflow` | Workflow automation AI nodes |
+| `dataset` | Training dataset generation |
+| `chat` | Kopilot copilot conversations |
+| `other` | Everything else |
+
+The `sourceId` points to the specific workflow, dataset, or session. This enables per-feature usage dashboards — "workflows consume 60% of our credits" — which helps orgs decide where to optimize.
+
+## The tracking flow
+
+Here's what happens when an AI call completes:
+
+```typescript
+// packages/lib/src/ai/usage/usage-tracking-service.ts
+
+async trackUsage(request: UsageTrackingRequest): Promise<void> {
+  const inputTokens = request.usage.prompt_tokens || 0
+  const outputTokens = request.usage.completion_tokens || 0
+  const totalTokens = request.usage.total_tokens || inputTokens + outputTokens
+  const creditsUsed = request.creditsUsed ?? 1
+
+  await this.database.transaction(async (tx) => {
+    // 1. Insert usage record
+    await tx.insert(schema.AiUsage).values({
+      organizationId: request.organizationId,
+      userId: request.userId,
+      provider: request.provider,
+      model: request.model,
+      modelType: 'llm',
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      createdAt: request.timestamp || new Date(),
+      providerType: request.providerType ?? 'CUSTOM',
+      credentialSource: request.credentialSource ?? 'CUSTOM',
+      creditsUsed,
+      source: request.source ?? 'other',
+      sourceId: request.sourceId ?? null,
+    })
+
+    // 2. Increment quota — SYSTEM only
+    if (request.providerType === 'SYSTEM') {
+      await tx
+        .update(schema.ProviderConfiguration)
+        .set({
+          quotaUsed: sql`${schema.ProviderConfiguration.quotaUsed} + ${creditsUsed}`,
+        })
+        .where(
+          and(
+            eq(schema.ProviderConfiguration.organizationId, request.organizationId),
+            eq(schema.ProviderConfiguration.provider, request.provider),
+            eq(schema.ProviderConfiguration.providerType, 'SYSTEM'),
+            isNotNull(schema.ProviderConfiguration.quotaType)
+          )
+        )
+    }
+  })
+}
+```
+
+Two things worth calling out:
+
+**Atomic quota increment.** `quotaUsed + 1` in SQL, not a read-modify-write in application code. Under concurrent AI calls, this prevents the classic "two calls read 99, both write 100" race condition.
+
+**Single transaction.** The usage record and quota increment are in the same transaction. If the usage insert succeeds but the quota update fails, neither persists. No orphaned records.
+
+### Batch tracking
+
+For workflows that make multiple AI calls in sequence, there's a batch variant that aggregates by provider+model before inserting:
+
+```typescript
+async trackUsageBatch(requests: UsageTrackingRequest[]): Promise<void> {
+  // Aggregate entries by provider:model into single rows
+  const grouped = new Map<string, { inputTokens, outputTokens, creditsUsed, ref }>()
+
+  for (const req of requests) {
+    const key = `${req.provider}:${req.model}`
+    const existing = grouped.get(key)
+    if (existing) {
+      existing.inputTokens += req.usage.prompt_tokens || 0
+      existing.outputTokens += req.usage.completion_tokens || 0
+      existing.creditsUsed += req.creditsUsed ?? 1
+    } else {
+      grouped.set(key, { /* ... */ })
+    }
+  }
+
+  // Single multi-row INSERT + quota updates in one transaction
+  await this.database.transaction(async (tx) => {
+    await tx.insert(schema.AiUsage).values(rows)
+    // Deduct credits for SYSTEM providers
+    for (const row of systemRows) {
+      await tx.update(schema.ProviderConfiguration).set({
+        quotaUsed: sql`${schema.ProviderConfiguration.quotaUsed} + ${row.creditsUsed}`,
+      }).where(/* ... */)
+    }
+  })
+}
+```
+
+A workflow running 5 AI steps against the same model produces 1 aggregated usage row instead of 5. Fewer rows, same credit deduction.
+
+## The LLM Orchestrator — tying it all together
+
+The `LLMOrchestrator` is the single entry point for all AI calls in the product. It wires together four concerns:
+
+```
+┌──────────────────────────────────────────┐
+│            LLM Orchestrator              │
+│                                          │
+│  1. Quota Guard        (can we call?)    │
+│  2. Credential Routing (which key?)      │
+│  3. Provider Client    (make the call)   │
+│  4. Usage Tracking     (record it)       │
+└──────────────────────────────────────────┘
+```
+
+Here's the actual `invoke` method, condensed to the important parts:
+
+```typescript
+// packages/lib/src/ai/orchestrator/llm-orchestrator.ts
+
+async invoke(request: LLMInvocationRequest): Promise<LLMInvocationResponse> {
+  const { model, provider, messages, organizationId, userId, context } = request
+
+  // 1. Quota guard — fail fast before making an API call
+  if (this.config.enableQuotaEnforcement && this.db) {
+    const guard = await createUsageGuard(this.db)
+    if (guard) {
+      const usageResult = await guard.consume(organizationId, 'aiCompletions', { userId })
+      if (!usageResult.allowed) {
+        throw new UsageLimitError({
+          metric: 'aiCompletions',
+          current: usageResult.current ?? 0,
+          limit: usageResult.limit ?? 0,
+          message: 'You have reached your monthly AI usage limit. Upgrade your plan for more AI completions.',
+        })
+      }
+    }
+  }
+
+  // 2. Credential routing — resolve the right key (from Part 1)
+  const { client: llmClient, providerType, credentialSource } =
+    await this.getClientWithMetadata(provider, model, organizationId, userId)
+
+  // 3. Make the call
+  const response = await llmClient.invoke(invokeParams)
+
+  // 4. Track usage — deduct credits if SYSTEM
+  if (this.config.enableUsageTracking && this.usageService && response.usage) {
+    const source = (context?.source as UsageSource) ?? 'other'
+    const sourceId = context?.workflowId ?? context?.datasetId ?? context?.sessionId
+
+    await this.usageService.trackUsage({
+      organizationId,
+      userId,
+      provider,
+      model,
+      usage: response.usage,
+      providerType,
+      credentialSource,
+      creditsUsed: 1,
+      source,
+      sourceId,
+    })
+  }
+
+  return { ...response, provider }
+}
+```
+
+### The credential metadata pipeline
+
+Notice how `providerType` and `credentialSource` flow through the entire invocation:
+
+```typescript
+async getClientWithMetadata(provider, model, organizationId, userId) {
+  const providerManager = new ProviderManager(this.db!, organizationId, userId)
+
+  // Resolve credentials (this runs the fallback chain from Part 1)
+  const credentials = await providerManager.getCurrentCredentials(
+    provider, model, ModelType.LLM, false
+  )
+
+  // Create the provider client
+  const providerClient = await ProviderRegistry.createClient(provider, organizationId, userId)
+  const llmClient = providerClient.getClient(ModelType.LLM, credentials.credentials)
+
+  return {
+    client: llmClient,
+    providerType: credentials.providerType || 'CUSTOM',
+    credentialSource: credentials.credentialSource || 'CUSTOM',
+  }
+}
+```
+
+The metadata isn't inferred after the fact. It's determined during credential resolution and carried through to usage tracking. The usage record knows exactly which credential type was used because that information traveled with the request.
+
+### Streaming works the same way
+
+The streaming variant (`streamInvoke`) follows the same pattern — quota check before streaming starts, usage tracking after the stream completes:
+
+```typescript
+async *streamInvoke(request: LLMInvocationRequest): AsyncGenerator<LLMStreamChunk, LLMInvocationResponse> {
+  // Quota guard before streaming
+  if (this.config.enableQuotaEnforcement && this.db) {
+    const guard = await createUsageGuard(this.db)
+    if (guard) {
+      const usageResult = await guard.consume(organizationId, 'aiCompletions', { userId })
+      if (!usageResult.allowed) throw new UsageLimitError(/* ... */)
+    }
+  }
+
+  const { client: llmClient, providerType, credentialSource } =
+    await this.getClientWithMetadata(provider, model, organizationId, userId)
+
+  // Stream chunks to caller
+  const streamResult = llmClient.streamInvoke(invokeParams)
+  while (true) {
+    const { value: chunk, done } = await streamResult.next()
+    if (done) break
+    yield chunk
+  }
+
+  // Return final response with metadata
+  return { ...finalResponse, providerType, credentialSource }
+}
+```
+
+Every feature that uses AI — compose, workflows, datasets, copilot chat — goes through this orchestrator. No feature can accidentally bypass quota checks or use the wrong credentials.
+
+## Edge cases and failure modes
+
+### Race conditions on quota
+
+Multiple concurrent AI calls could all pass the quota guard before any of them track usage. We accept slight over-usage rather than adding pessimistic locking. The guard is a soft limit — similar to how API rate limiters work. An org at 999/1000 credits that fires 3 concurrent calls will end up at 1002/1000, not get two calls rejected.
+
+### Provider errors don't deduct credits
+
+If the LLM call fails after passing the quota guard, no credit is deducted. The `trackUsage` call happens after a successful response. Users don't pay for errors.
+
+### Mid-period plan changes
+
+- **Upgrading:** New `quotaLimit` takes effect immediately. `quotaUsed` is preserved. If you've used 800 of 1000 Starter credits and upgrade to Growth (5000), you have 4200 remaining.
+- **Downgrading:** New lower limit may already be exceeded. Usage continues to be tracked but new calls are blocked until the next period.
+- **Period reset:** Happens on the next `invoice.paid` event from Stripe. `quotaUsed` goes to 0, new period dates set.
+
+### Switching from CUSTOM to SYSTEM
+
+If an org removes their custom API keys, they switch to SYSTEM with whatever credits remain. Previous CUSTOM usage doesn't count against SYSTEM credits — they're tracked with different `providerType` values.
+
+## What orgs see
+
+The `AiUsage` table powers several analytics views via the `getUsageStatsByPeriod` method:
+
+```typescript
+async getUsageStatsByPeriod(
+  organizationId: string,
+  options: { days?: number; periodStart?: Date; periodEnd?: Date }
+): Promise<UsageStatsByPeriodResponse> {
+  const results = await this.database
+    .select({
+      date: sql<string>`DATE(${schema.AiUsage.createdAt})`.as('date'),
+      provider: schema.AiUsage.provider,
+      model: schema.AiUsage.model,
+      modelType: schema.AiUsage.modelType,
+      source: schema.AiUsage.source,
+      sourceId: schema.AiUsage.sourceId,
+      totalTokens: sum(schema.AiUsage.totalTokens).as('totalTokens'),
+      runCount: count(schema.AiUsage.id).as('runCount'),
+    })
+    .from(schema.AiUsage)
+    .where(/* org + date range */)
+    .groupBy(
+      sql`DATE(${schema.AiUsage.createdAt})`,
+      schema.AiUsage.provider,
+      schema.AiUsage.model,
+      schema.AiUsage.modelType,
+      schema.AiUsage.source,
+      schema.AiUsage.sourceId
+    )
+    .orderBy(sql`DATE(${schema.AiUsage.createdAt})`)
+
+  // Transform into { statisticsByDay, totalUsageForPeriod }
+}
+```
+
+This gives orgs:
+
+- **Credit usage over time.** Daily/weekly/monthly charts.
+- **Per-feature breakdown.** Which features consume the most credits (workflows vs compose vs chat).
+- **Per-model breakdown.** How usage distributes across different models.
+- **Provider cost estimation.** For own-key users, estimated costs based on token counts and registry pricing.
+
+## Key trade-offs
+
+| Decision | Trade-off | Why we chose it |
+|----------|-----------|----------------|
+| 1 credit = 1 invocation | We absorb model cost variance | Predictable billing, simpler UX |
+| No credit rollover | Less generous to light users | Simpler accounting, consistent upgrade incentive |
+| Track CUSTOM usage too | Storage cost for unmetered calls | Analytics for all orgs, not just credit users |
+| Soft quota enforcement | Slight over-usage possible | No pessimistic locking, better latency |
+| Atomic SQL increment | Can't do complex deduction | Race-condition-free for 1-credit-per-call |
+| Source attribution on every row | More columns, more data | Per-feature dashboards justify the storage |
+| Credits deducted post-call | Failed calls don't cost credits | Trust-building — users don't pay for errors |
+
+## How it all connects
+
+Here's the full picture across both posts:
+
+```
+Organization decides: platform credits or own API key?
+                     ↓
+         ProviderPreference.preferredType
+                     ↓
+        ┌────────────┴────────────┐
+        ↓                         ↓
+    SYSTEM Mode            CUSTOM Mode
+  (Platform Credits)    (User's Own Keys)
+        ↓                         ↓
+ Quotas enforced      No quota enforcement
+ Credits tracked      Unlimited usage
+        ↓                         ↓
+ One credential       Three-tier fallback:
+ per provider         1. Model-specific key
+                      2. Load-balanced keys
+                      3. Provider-level key
+        ↓                         ↓
+    LLM Orchestrator: guard → route → call → track
+        ↓                         ↓
+  Usage: credits=1    Usage: credits=0
+  Quota incremented   Usage logged (no deduction)
+```
+
+The core insight: by separating *what providers exist* (registry) from *how they're configured* (provider configuration) from *how they're metered* (quota + usage), each concern evolves independently. Adding a new provider doesn't touch billing. Changing credit limits doesn't touch credential routing. And the orchestrator ensures every AI call in the product goes through the same enforcement and tracking path.
