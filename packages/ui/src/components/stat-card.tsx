@@ -124,19 +124,20 @@ export function StatCards({
   className,
   columns = { default: 'grid-cols-1', md: 'md:grid-cols-4' },
 }: StatCardsProps) {
-  const gridClasses = [
-    'grid',
-    columns.default || 'grid-cols-1',
-    columns.sm,
-    columns.md || 'md:grid-cols-4',
-    columns.lg,
-    'bg-primary-50 border-b', // border rounded-t-lg
-  ]
-    .filter(Boolean)
-    .join(' ')
-
   return (
-    <div className={cn(gridClasses, className)}>
+    <div
+      className={cn(
+        // Mobile: horizontal scroll with snap, two cards visible
+        'flex overflow-x-auto snap-x snap-mandatory no-scrollbar',
+        // Desktop: grid layout
+        'md:grid md:overflow-visible',
+        'bg-primary-50 border-b',
+        // Grid column classes (only apply at md+ since flex overrides grid below md)
+        columns.sm,
+        columns.md || 'md:grid-cols-4',
+        columns.lg,
+        className
+      )}>
       {cards.map((card, index) => (
         <StatCard
           key={index}
@@ -148,7 +149,13 @@ export function StatCards({
           color={card.color}
           first={card.first ?? index === 0}
           loading={loading}
-          className={card.className}
+          className={cn(
+            // Mobile: each card takes exactly 50% width, snaps into place
+            'min-w-[50%] snap-start flex-shrink-0',
+            // Desktop: reset flex constraints, let grid control sizing
+            'md:min-w-0 md:flex-shrink',
+            card.className
+          )}
         />
       ))}
     </div>
