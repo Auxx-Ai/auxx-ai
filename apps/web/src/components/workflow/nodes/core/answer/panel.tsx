@@ -238,9 +238,9 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
                   }
                 : undefined
             }>
-            <div className='relative'>
+            <div className='relative flex items-center'>
               {isReplyMode && (
-                <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+                <div className='shrink-0 me-0.5 z-10 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
                   <AutoResolveBadge
                     isAuto={nodeData.subjectIsAuto ?? true}
                     onChange={(isAuto) => setNodeData({ ...nodeData, subjectIsAuto: isAuto })}
@@ -279,9 +279,9 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
             isRequired={nodeData.messageType === 'new' || nodeData.toIsAuto === false}
             validationError={showValidation ? getFieldErrorMessage('to') : undefined}
             validationType={hasFieldErrorOfType('to', 'error') ? 'error' : 'warning'}>
-            <div className='relative'>
+            <div className='relative flex items-center'>
               {isReplyMode && (
-                <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+                <div className='shrink-0 me-0.5 z-10 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
                   <AutoResolveBadge
                     isAuto={nodeData.toIsAuto ?? true}
                     onChange={(isAuto) => setNodeData({ ...nodeData, toIsAuto: isAuto })}
@@ -317,9 +317,9 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
             title='CC'
             description='Carbon copy recipients'
             type={BaseType.EMAIL}>
-            <div className='relative'>
+            <div className='relative flex items-center'>
               {isReplyMode && (
-                <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+                <div className='shrink-0 me-0.5 z-10 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
                   <AutoResolveBadge
                     isAuto={nodeData.ccIsAuto ?? true}
                     onChange={(isAuto) => setNodeData({ ...nodeData, ccIsAuto: isAuto })}
@@ -353,9 +353,9 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
             title='BCC'
             description='Blind carbon copy recipients'
             type={BaseType.EMAIL}>
-            <div className='relative'>
+            <div className='relative flex items-center'>
               {isReplyMode && (
-                <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+                <div className='shrink-0 me-0.5 z-10 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
                   <AutoResolveBadge
                     isAuto={nodeData.bccIsAuto ?? true}
                     onChange={(isAuto) => setNodeData({ ...nodeData, bccIsAuto: isAuto })}

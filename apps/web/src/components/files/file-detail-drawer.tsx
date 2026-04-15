@@ -19,7 +19,7 @@ import { Input } from '@auxx/ui/components/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { formatBytes } from '@auxx/utils/file'
+import { formatBytes, getStandardFileType } from '@auxx/utils/file'
 import { format, formatDistanceToNow } from 'date-fns'
 import {
   Calendar,
@@ -41,7 +41,6 @@ import { AttachmentPreview } from '../attachments/attachment-preview'
 import type { FileItem } from './files-store'
 import { useFileSystemStore } from './files-store'
 import { getFileIconId } from './utils/file-icon'
-import { getStandardFileType } from './utils/file-type'
 
 /**
  * Props for the FileDetailDrawer component

@@ -1,5 +1,6 @@
 // apps/web/src/components/files/index.ts
 
+export { getFileCategory, getStandardFileType } from '@auxx/utils/file'
 export { CreateFolderDialog } from './create-folder-dialog'
 // Table columns
 export { createFileColumns } from './file-columns'
@@ -18,7 +19,6 @@ export type {
   FileSystemStore,
   FolderTreeNode,
 } from './files-store'
-
 // Store
 export { useFileSystemStore } from './files-store'
 // Hook
@@ -27,4 +27,3 @@ export { useFilesystem } from './hooks/use-filesystem'
 export { FilesystemProvider, useFilesystemContext } from './provider/filesystem-provider'
 // Utils
 export { getFileIcon } from './utils/file-icon'
-export { getFileCategory, getStandardFileType } from './utils/file-type'

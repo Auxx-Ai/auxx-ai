@@ -157,13 +157,13 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
           <MainPageHeader
             className='justify-start'
             action={
-              <div className='flex items-center gap-2'>
+              <div className='flex items-center gap-2 shrink-0'>
                 <RadioTab
                   value={mode}
                   onValueChange={setMode}
                   size='sm'
                   radioGroupClassName='grid w-full'
-                  className='border border-primary-200 flex flex-1 w-full'>
+                  className='border border-primary-200 flex flex-1 w-full shrink-0'>
                   <RadioTabItem value='editor' size='sm'>
                     <Workflow />
                     <span className='hidden sm:inline'>Editor</span>

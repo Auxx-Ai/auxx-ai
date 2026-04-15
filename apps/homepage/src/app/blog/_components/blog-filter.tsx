@@ -2,10 +2,7 @@
 
 'use client'
 
-import { Rss } from 'lucide-react'
-import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/utils'
 import type { Category } from '~/types/blog'
 
@@ -22,10 +19,10 @@ export function BlogFilter({ categories }: { categories: Category[] }) {
   }
 
   return (
-    <div className='mx-auto my-8 max-w-5xl md:px-6'>
-      <div className='flex items-center justify-between gap-4'>
+    <div className='pb-[0.5px] pr-[0.5px] max-lg:w-screen'>
+      <div className='bg-card/75 lg:bg-card rounded-md md:px-6'>
         <div
-          className='-ml-0.5 flex snap-x snap-mandatory overflow-x-auto py-3 max-md:pl-6'
+          className='-ml-0.5 flex py-3 max-lg:snap-x max-lg:snap-mandatory max-lg:overflow-x-auto max-md:px-6 lg:flex-col lg:py-5'
           role='tablist'
           aria-label='Blog categories'>
           <FilterButton
@@ -41,14 +38,6 @@ export function BlogFilter({ categories }: { categories: Category[] }) {
               handleClick={handleClick}
             />
           ))}
-        </div>
-
-        <div className='flex gap-1 max-md:pr-3'>
-          <Button size='sm' variant='ghost' asChild aria-label='RSS Feed'>
-            <Link href='/blog/rss.xml'>
-              <Rss />
-            </Link>
-          </Button>
         </div>
       </div>
     </div>
@@ -70,12 +59,12 @@ function FilterButton({
       onClick={() => handleClick(category.slug)}
       role='tab'
       aria-selected={activeCategory === category.slug}
-      className='text-muted-foreground group snap-center px-1 disabled:pointer-events-none disabled:opacity-50'>
+      className='text-muted-foreground group snap-center max-lg:px-1 lg:py-1'>
       <span
         className={cn(
-          'flex w-fit items-center gap-2 rounded-full px-3 py-1 text-sm transition-colors [&>svg]:size-4',
+          'flex w-fit items-center gap-2 rounded-md px-3 py-1 text-sm transition-colors [&>svg]:size-4',
           activeCategory === category.slug
-            ? 'bg-foreground ring-foreground/5 text-background font-medium shadow-sm ring-1'
+            ? 'bg-card ring-foreground/5 text-primary font-medium shadow-sm ring-1'
             : 'hover:text-foreground group-hover:bg-foreground/5'
         )}>
         <span className='capitalize'>{category.title}</span>

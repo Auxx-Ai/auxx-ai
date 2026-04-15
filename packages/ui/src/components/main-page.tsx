@@ -130,7 +130,7 @@ function MainPageHeader({
         {children && <div className='flex items-center gap-1.5'>{children}</div>}
         {title && <span className='text-base'>{title}</span>}
       </div>
-      {action && <div className='ml-4 space-x-2'>{action}</div>}
+      {action && <div className='ml-4 shrink-0 space-x-2'>{action}</div>}
     </div>
   )
 }

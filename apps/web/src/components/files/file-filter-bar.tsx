@@ -11,10 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { getFileCategory } from '@auxx/utils/file'
 import { X } from 'lucide-react'
 import { useMemo } from 'react'
 import type { FileFilterSettings, FileItem } from './files-store'
-import { getFileCategory } from './utils/file-type'
 
 /**
  * Props for the FileFilterBar component

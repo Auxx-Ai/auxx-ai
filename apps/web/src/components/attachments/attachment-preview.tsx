@@ -7,6 +7,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent } from '@auxx/ui/components/card'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
+import { canPreviewInline, getStandardFileType } from '@auxx/utils/file'
 import { AlertTriangle, Download, ExternalLink, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
@@ -32,6 +33,10 @@ interface AttachmentPreviewProps {
   width?: string | number
   /** Height of the preview container */
   height?: string | number
+  /** Known MIME type — used to skip fetching presigned URLs for non-previewable types */
+  knownMimeType?: string
+  /** Filename — used for display in the fallback state */
+  filename?: string
 }
 
 /**
@@ -47,10 +52,13 @@ export function AttachmentPreview({
   interactive = false,
   width = '100%',
   height = 300,
+  knownMimeType,
+  filename: filenameProp,
 }: AttachmentPreviewProps) {
+  const isPreviewable = knownMimeType ? canPreviewInline(knownMimeType) : true
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [filename, setFilename] = useState<string>('')
-  const [mimeType, setMimeType] = useState<string>('')
+  const [filename, setFilename] = useState<string>(filenameProp || '')
+  const [mimeType, setMimeType] = useState<string>(knownMimeType || '')
   const [size, setSize] = useState<bigint | undefined>()
   const [expiresAt, setExpiresAt] = useState<Date | undefined>()
   const [versionNumber, setVersionNumber] = useState<number>(0)
@@ -71,7 +79,7 @@ export function AttachmentPreview({
       disposition: 'inline',
     },
     {
-      enabled: Boolean(id),
+      enabled: Boolean(id) && isPreviewable,
       staleTime: 5 * 60 * 1000, // 5 minutes
       refetchOnWindowFocus: false,
     }
@@ -172,6 +180,27 @@ export function AttachmentPreview({
     }
   }, [previewUrl])
 
+  // On-demand download query for non-previewable files
+  const { refetch: fetchDownloadRef, isFetching: isDownloading } =
+    api.file.getAttachmentPreviewRef.useQuery(
+      { type, id, version, disposition: 'attachment' },
+      { enabled: false }
+    )
+
+  const handleFallbackDownload = useCallback(async () => {
+    const result = await fetchDownloadRef()
+    const ref = result.data
+    if (ref?.type === 'url') {
+      const link = document.createElement('a')
+      link.href = ref.url
+      link.download = ref.filename
+      link.setAttribute('target', '_blank')
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
+  }, [fetchDownloadRef])
+
   // Render loading state
   if (isLoading) {
     return (
@@ -214,6 +243,20 @@ export function AttachmentPreview({
 
   // Render preview based on file type
   const renderPreview = () => {
+    if (!isPreviewable) {
+      return (
+        <div className='flex flex-col items-center justify-center h-full text-center p-4'>
+          <div className='flex items-center justify-center w-16 h-16 rounded-lg bg-muted mb-4'>
+            {getFileIcon(knownMimeType || '', undefined, 'h-8 w-8')}
+          </div>
+          <p className='text-sm font-medium mb-1'>{filenameProp || 'File'}</p>
+          <p className='text-xs text-muted-foreground'>
+            Preview not available for {getStandardFileType(knownMimeType)} files
+          </p>
+        </div>
+      )
+    }
+
     const renderer = getRenderer()
 
     if (!previewUrl) {
@@ -326,34 +369,39 @@ export function AttachmentPreview({
     <Card className={cn('overflow-hidden', className)} style={{ width, height }}>
       <CardContent className='p-0 h-full flex flex-col'>
         {/* Interactive toolbar */}
-        {interactive && previewUrl && (
+        {interactive && (previewUrl || !isPreviewable) && (
           <div className='flex items-center justify-between p-2 border-b bg-muted/50'>
             <div className='flex items-center gap-2 text-xs text-muted-foreground'>
-              <span>Version {versionNumber}</span>
+              {isPreviewable && <span>Version {versionNumber}</span>}
               {size && <span>• {(Number(size) / 1024 / 1024).toFixed(2)} MB</span>}
             </div>
             <div className='flex gap-1'>
               <Button
                 variant='ghost'
                 size='sm'
-                onClick={handleDownload}
+                onClick={isPreviewable ? handleDownload : handleFallbackDownload}
+                loading={isDownloading}
                 className='h-7 px-2 text-xs'>
                 <Download className='h-3 w-3' />
               </Button>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={handleOpenExternal}
-                className='h-7 px-2 text-xs'>
-                <ExternalLink className='h-3 w-3' />
-              </Button>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={handleRefresh}
-                className='h-7 px-2 text-xs'>
-                <RefreshCw className='h-3 w-3' />
-              </Button>
+              {isPreviewable && (
+                <>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    onClick={handleOpenExternal}
+                    className='h-7 px-2 text-xs'>
+                    <ExternalLink className='h-3 w-3' />
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    onClick={handleRefresh}
+                    className='h-7 px-2 text-xs'>
+                    <RefreshCw className='h-3 w-3' />
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         )}
