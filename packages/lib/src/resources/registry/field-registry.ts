@@ -4,6 +4,7 @@ import { type ModelType, ModelTypeMeta, ModelTypeValues } from '@auxx/database/e
 import type { FieldId } from '@auxx/types/field'
 import { ENTITY_DEFINITION_TYPES } from '@auxx/types/resource'
 import type { ResourceField, ResourceFieldRegistry, ResourceTableDefinition } from './field-types'
+import { COMPANY_FIELDS } from './resources/company-fields'
 import { CONTACT_FIELDS } from './resources/contact-fields'
 import { DATASET_FIELDS } from './resources/dataset-fields'
 import { INBOX_FIELDS } from './resources/inbox-fields'
@@ -100,6 +101,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   vendor_part: VENDOR_PART_FIELDS,
   subpart: SUBPART_FIELDS,
   stock_movement: STOCK_MOVEMENT_FIELDS,
+  company: COMPANY_FIELDS,
 }
 
 /**

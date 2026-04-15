@@ -77,7 +77,9 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
         ? '/app/tickets'
         : entityType === 'part'
           ? '/app/parts'
-          : `/app/custom/${apiSlug}`
+          : entityType === 'company'
+            ? '/app/companies'
+            : `/app/custom/${apiSlug}`
 
   const backUrl = backUrlOverride ?? defaultBackUrl
 

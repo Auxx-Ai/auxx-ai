@@ -12,7 +12,7 @@
   },
   "primaryDisplayField": "quoteNumber",
   "secondaryDisplayField": "title",
-  "companions": ["company", "deal"],
+  "companions": ["deal"],
   "fields": [
     {
       "templateFieldId": "quoteNumber",
@@ -66,7 +66,7 @@
       "name": "Company",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:company",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Quotes"
       }

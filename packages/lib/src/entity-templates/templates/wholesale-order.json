@@ -11,7 +11,7 @@
     "color": "teal"
   },
   "primaryDisplayField": "poNumber",
-  "companions": ["company", "product", "vendor"],
+  "companions": ["product", "vendor"],
   "fields": [
     {
       "templateFieldId": "poNumber",
@@ -84,7 +84,7 @@
       "name": "Company",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:company",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Wholesale Orders"
       }

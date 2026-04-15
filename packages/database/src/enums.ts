@@ -110,6 +110,7 @@ export const ModelTypeValues = [
   'vendor_part',
   'subpart',
   'stock_movement',
+  'company',
 ] as const
 
 /**
@@ -137,6 +138,7 @@ export const ModelTypes = {
   VENDOR_PART: 'vendor_part',
   SUBPART: 'subpart',
   STOCK_MOVEMENT: 'stock_movement',
+  COMPANY: 'company',
 } as const
 
 /**
@@ -248,6 +250,14 @@ export const ModelTypeMeta: Record<
     icon: 'arrow-left-right',
     color: 'emerald',
     apiSlug: 'stock-movements',
+    dbTable: 'EntityInstance',
+  },
+  company: {
+    label: 'Company',
+    plural: 'Companies',
+    icon: 'building-2',
+    color: 'blue',
+    apiSlug: 'companies',
     dbTable: 'EntityInstance',
   },
 }

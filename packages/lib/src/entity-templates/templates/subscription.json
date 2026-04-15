@@ -11,7 +11,7 @@
     "color": "teal"
   },
   "primaryDisplayField": "subscriptionName",
-  "companions": ["product", "company"],
+  "companions": ["product"],
   "fields": [
     {
       "templateFieldId": "subscriptionName",
@@ -34,7 +34,7 @@
       "name": "Company",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:company",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Subscriptions"
       }

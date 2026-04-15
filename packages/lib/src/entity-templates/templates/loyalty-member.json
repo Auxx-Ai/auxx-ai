@@ -12,7 +12,7 @@
   },
   "primaryDisplayField": "memberId",
   "avatarField": "avatar",
-  "companions": ["company"],
+  "companions": [],
   "fields": [
     {
       "templateFieldId": "memberId",

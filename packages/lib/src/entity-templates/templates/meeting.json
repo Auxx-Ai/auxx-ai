@@ -11,7 +11,7 @@
     "color": "blue"
   },
   "primaryDisplayField": "title",
-  "companions": ["company", "deal"],
+  "companions": ["deal"],
   "fields": [
     { "templateFieldId": "title", "name": "Title", "type": "TEXT", "required": true },
     {
@@ -44,7 +44,7 @@
       "name": "Company",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:company",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Meetings"
       }

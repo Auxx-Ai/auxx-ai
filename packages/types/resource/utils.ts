@@ -136,6 +136,7 @@ export const ENTITY_DEFINITION_TYPES = [
   'ticket',
   'vendor_part',
   'stock_movement',
+  'company',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */
