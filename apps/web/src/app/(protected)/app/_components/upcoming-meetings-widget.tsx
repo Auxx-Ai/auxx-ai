@@ -2,28 +2,18 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { formatDistanceToNow } from 'date-fns'
 import { CalendarDays, ExternalLink, Users, Video } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { api, type RouterOutputs } from '~/trpc/react'
 
-/**
- * Meeting widget props.
- */
-interface UpcomingMeetingsWidgetProps {
-  limit?: number
-}
-
-/**
- * Single upcoming meeting item returned by the calendar router.
- */
 type UpcomingMeeting = RouterOutputs['calendar']['getUpcoming'][number]
 
 /**
- * Upcoming meetings summary card backed by the calendar router.
+ * Upcoming meetings summary panel for the Calls page.
+ * Renders as a top section with rounded top corners and bottom border.
  */
-export function UpcomingMeetingsWidget({ limit = 5 }: UpcomingMeetingsWidgetProps) {
+export function UpcomingMeetingsWidget({ limit = 5 }: { limit?: number }) {
   const router = useRouter()
   const { data: meetings, isLoading } = api.calendar.getUpcoming.useQuery({ limit })
   const { data: syncStatus } = api.calendar.getSyncStatus.useQuery()
@@ -31,79 +21,72 @@ export function UpcomingMeetingsWidget({ limit = 5 }: UpcomingMeetingsWidgetProp
   const hasCalendarIntegration =
     syncStatus?.integrations.some((integration) => integration.calendarSyncEnabled) ?? false
 
-  /**
-   * Navigate to either the linked Meeting record or the meetings index.
-   */
   const handleOpenMeeting = (meetingId: string | null) => {
     if (meetingId) {
-      router.push(`/app/meetings/${meetingId}`)
+      router.push(`/app/custom/meetings/${meetingId}`)
       return
     }
-
-    router.push('/app/meetings')
+    router.push('/app/calls')
   }
 
-  /**
-   * Navigate to channel settings when the user needs to connect Google Calendar.
-   */
   const handleConnectCalendar = () => {
     router.push('/app/settings/channels')
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className='flex items-center gap-2'>
-          <CalendarDays />
-          Upcoming Meetings
-        </CardTitle>
-        <CardDescription>
-          The next synced meetings with attendees and linked Meeting records.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className='space-y-3'>
-        {!hasCalendarIntegration && !isLoading ? (
-          <div className='flex flex-col gap-3 rounded-lg border border-dashed p-4'>
-            <p className='text-sm text-muted-foreground'>
-              Connect Google Calendar on a channel to start syncing meetings.
-            </p>
-            <Button variant='outline' onClick={handleConnectCalendar}>
-              <CalendarDays />
-              Connect Calendar
-            </Button>
-          </div>
-        ) : null}
+    <div className='bg-primary-50 border-b px-4 py-3 sm:px-6'>
+      <div className='mb-2 flex items-center gap-2 text-sm font-medium'>
+        <CalendarDays className='size-4' />
+        Upcoming Meetings
+      </div>
 
-        {isLoading ? <p className='text-sm text-muted-foreground'>Loading meetings...</p> : null}
+      {!hasCalendarIntegration && !isLoading ? (
+        <div className='flex items-center gap-3 rounded-lg border border-dashed bg-background p-3'>
+          <p className='text-sm text-muted-foreground'>
+            Connect Google Calendar to start syncing meetings.
+          </p>
+          <Button variant='outline' size='sm' onClick={handleConnectCalendar}>
+            <CalendarDays />
+            Connect
+          </Button>
+        </div>
+      ) : null}
 
-        {hasCalendarIntegration && meetings?.length === 0 ? (
-          <p className='text-sm text-muted-foreground'>No upcoming synced meetings yet.</p>
-        ) : null}
+      {isLoading ? <p className='text-sm text-muted-foreground'>Loading meetings...</p> : null}
 
-        {meetings?.map((meeting: UpcomingMeeting) => (
-          <button
-            type='button'
-            key={meeting.id}
-            onClick={() => handleOpenMeeting(meeting.linkedMeetingId)}
-            className='flex w-full items-start justify-between rounded-lg border p-4 text-left transition-colors hover:bg-muted/50'>
-            <div className='space-y-2'>
-              <div className='font-medium'>{meeting.title}</div>
-              <div className='flex flex-wrap items-center gap-3 text-xs text-muted-foreground'>
-                <span>{formatDistanceToNow(new Date(meeting.startTime), { addSuffix: true })}</span>
-                <span className='flex items-center gap-1'>
-                  <Users />
-                  {meeting.participantCount}
-                </span>
-                <span className='flex items-center gap-1'>
-                  <Video />
-                  {meeting.meetingPlatform ?? 'unknown'}
-                </span>
+      {hasCalendarIntegration && meetings?.length === 0 ? (
+        <p className='text-sm text-muted-foreground'>No upcoming meetings.</p>
+      ) : null}
+
+      {meetings && meetings.length > 0 ? (
+        <div className='flex gap-2 overflow-x-auto'>
+          {meetings.map((meeting: UpcomingMeeting) => (
+            <button
+              type='button'
+              key={meeting.id}
+              onClick={() => handleOpenMeeting(meeting.linkedMeetingId)}
+              className='flex min-w-[220px] shrink-0 items-start justify-between gap-3 rounded-lg border bg-background p-3 text-left transition-colors hover:bg-primary-100'>
+              <div className='space-y-1'>
+                <div className='text-sm font-medium leading-tight'>{meeting.title}</div>
+                <div className='flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
+                  <span>
+                    {formatDistanceToNow(new Date(meeting.startTime), { addSuffix: true })}
+                  </span>
+                  <span className='flex items-center gap-1'>
+                    <Users className='size-3' />
+                    {meeting.participantCount}
+                  </span>
+                  <span className='flex items-center gap-1'>
+                    <Video className='size-3' />
+                    {meeting.meetingPlatform ?? 'unknown'}
+                  </span>
+                </div>
               </div>
-            </div>
-            <ExternalLink />
-          </button>
-        ))}
-      </CardContent>
-    </Card>
+              <ExternalLink className='mt-0.5 size-3.5 shrink-0 text-muted-foreground' />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }

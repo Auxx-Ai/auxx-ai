@@ -16,7 +16,7 @@ import {
 } from './_shared'
 import { CalendarEvent } from './calendar-event'
 import { EntityInstance } from './entity-instance'
-import { File } from './file'
+import { MediaAsset } from './media-asset'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -53,31 +53,31 @@ export const CallRecording = pgTable(
 
     meetingPlatform: meetingPlatform().notNull(),
 
-    /** Recall.ai bot ID */
-    externalBotId: text().notNull(),
+    /** Recall.ai bot ID — nullable because row is created before provider returns the ID */
+    externalBotId: text(),
 
     status: recordingStatus().notNull().default('created'),
 
     /** Video recording */
-    videoFileId: text().references((): AnyPgColumn => File.id, {
+    videoAssetId: text().references((): AnyPgColumn => MediaAsset.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
 
     /** Audio-only extract */
-    audioFileId: text().references((): AnyPgColumn => File.id, {
+    audioAssetId: text().references((): AnyPgColumn => MediaAsset.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
 
     /** Thumbnail/preview image */
-    videoPreviewFileId: text().references((): AnyPgColumn => File.id, {
+    videoPreviewAssetId: text().references((): AnyPgColumn => MediaAsset.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
 
     /** Timeline storyboard image */
-    videoStoryboardFileId: text().references((): AnyPgColumn => File.id, {
+    videoStoryboardAssetId: text().references((): AnyPgColumn => MediaAsset.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),

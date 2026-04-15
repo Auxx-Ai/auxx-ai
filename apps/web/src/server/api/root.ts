@@ -50,6 +50,7 @@ import { productRouter } from './routers/product'
 import { promptTemplateRouter } from './routers/promptTemplate'
 import { quickActionRouter } from './routers/quick-actions'
 import { recordRouter } from './routers/record'
+import { recordingRouter } from './routers/recording'
 import { resourceRouter } from './routers/resource'
 import { resourceAccessRouter } from './routers/resourceAccess'
 import { searchRouter } from './routers/search'
@@ -129,6 +130,7 @@ export const appRouter = createTRPCRouter({
   promptTemplate: promptTemplateRouter,
   quickAction: quickActionRouter,
   record: recordRouter,
+  recording: recordingRouter,
   resource: resourceRouter,
   resourceAccess: resourceAccessRouter,
   search: searchRouter,

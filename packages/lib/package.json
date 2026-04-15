@@ -478,11 +478,29 @@
       "import": "./dist/realtime/client/index.mjs",
       "default": "./src/realtime/client/index.ts"
     },
+    "./recording": {
+      "types": "./src/recording/index.ts",
+      "source": "./src/recording/index.ts",
+      "import": "./dist/recording/index.mjs",
+      "default": "./src/recording/index.ts"
+    },
+    "./recording/bot": {
+      "types": "./src/recording/bot/index.ts",
+      "source": "./src/recording/bot/index.ts",
+      "import": "./dist/recording/bot/index.mjs",
+      "default": "./src/recording/bot/index.ts"
+    },
     "./recording/calendar": {
       "types": "./src/recording/calendar/index.ts",
       "source": "./src/recording/calendar/index.ts",
       "import": "./dist/recording/calendar/index.mjs",
       "default": "./src/recording/calendar/index.ts"
+    },
+    "./recording/client": {
+      "types": "./src/recording/client/index.ts",
+      "source": "./src/recording/client/index.ts",
+      "import": "./dist/recording/client/index.mjs",
+      "default": "./src/recording/client/index.ts"
     },
     "./resource-access": {
       "types": "./src/resource-access/index.ts",

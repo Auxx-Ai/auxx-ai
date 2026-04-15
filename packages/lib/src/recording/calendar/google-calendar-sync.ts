@@ -118,7 +118,8 @@ export async function syncCalendarForIntegration(ctx: {
           logger.error('Failed to create meeting from calendar event', {
             integrationId: ctx.integrationId,
             calendarEventId: event.id,
-            error: createdMeetingResult.error.message,
+            error:
+              createdMeetingResult.error.cause?.toString?.() ?? createdMeetingResult.error.message,
           })
           continue
         }

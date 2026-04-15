@@ -1,0 +1,24 @@
+// apps/worker/src/workers/worker-definitions/recording-processing-worker.ts
+
+import { processRecordingJob } from '@auxx/lib/jobs'
+import { Queues } from '@auxx/lib/jobs/queues'
+import { createScopedLogger } from '@auxx/logger'
+import { createWorker } from '../utils/createWorker'
+
+const logger = createScopedLogger('worker:recording-processing')
+
+const recordingProcessingJobMappings = {
+  processRecordingJob,
+}
+
+/**
+ * Start the BullMQ worker for recording media processing jobs.
+ * Lower concurrency — media downloads are heavy.
+ */
+export function startRecordingProcessingWorker() {
+  logger.info(`Starting worker for queue: ${Queues.recordingProcessingQueue}`)
+
+  return createWorker(Queues.recordingProcessingQueue, recordingProcessingJobMappings, {
+    concurrency: 3,
+  })
+}

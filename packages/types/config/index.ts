@@ -51,6 +51,7 @@ export const ConfigVariableGroupValues = [
   'WORKER',
   'FRONTEND',
   'CAPTCHA',
+  'RECORDING',
 ] as const
 export type ConfigVariableGroup = (typeof ConfigVariableGroupValues)[number]
 
@@ -74,6 +75,7 @@ export const ConfigVariableGroup = {
   WORKER: 'WORKER',
   FRONTEND: 'FRONTEND',
   CAPTCHA: 'CAPTCHA',
+  RECORDING: 'RECORDING',
 } as const
 
 /** Where the active value came from */

@@ -37,4 +37,8 @@ export enum Queues {
   appPollingTriggerQueue = 'app-polling-trigger-queue',
   // AI agent session processing queue (Kopilot, Builder)
   aiAgentQueue = 'ai-agent',
+  // Recording bot queue (schedule, webhook handling, polling, timeouts)
+  recordingBotQueue = 'recording-bot',
+  // Recording media processing queue (download + S3 upload)
+  recordingProcessingQueue = 'recording-processing',
 }

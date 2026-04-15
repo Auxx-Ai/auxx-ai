@@ -673,7 +673,7 @@ export const CONFIG_VARIABLES = {
     description: 'AWS region (used by SST/infra stacks)',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.STORAGE,
-    defaultValue: 'us-west-1',
+    defaultValue: 'us-west-2',
     isSensitive: false,
     isEnvOnly: true,
   },
@@ -1078,6 +1078,33 @@ export const CONFIG_VARIABLES = {
     isSensitive: false,
     isEnvOnly: false,
   },
+
+  // ── RECORDING ──────────────────────────────────────────────
+  RECALL_AI_API_KEY: {
+    key: 'RECALL_AI_API_KEY',
+    description: 'Recall.ai API key for meeting recording bots',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.RECORDING,
+    isSensitive: true,
+    isEnvOnly: true,
+  },
+  RECALL_AI_WEBHOOK_SECRET: {
+    key: 'RECALL_AI_WEBHOOK_SECRET',
+    description: 'Recall.ai webhook signing secret (Svix)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.RECORDING,
+    isSensitive: true,
+    isEnvOnly: true,
+  },
+  RECALL_AI_REGION: {
+    key: 'RECALL_AI_REGION',
+    description: 'Recall.ai API region (e.g. us-west-1)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.RECORDING,
+    defaultValue: 'us-west-2',
+    isSensitive: false,
+    isEnvOnly: true,
+  },
 } satisfies Record<string, ConfigVariableDefinition>
 
 /** Union of all known config variable keys. */
@@ -1164,6 +1191,11 @@ export const CONFIG_GROUP_META: Record<
     label: 'Captcha',
     description: 'Cloudflare Turnstile bot protection for auth endpoints',
     iconId: 'shield',
+  },
+  RECORDING: {
+    label: 'Recording',
+    description: 'Meeting recording bot service (Recall.ai)',
+    iconId: 'video',
   },
 }
 

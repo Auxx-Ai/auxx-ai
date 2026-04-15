@@ -22,6 +22,7 @@ import health from './routes/health'
 import installations from './routes/installations'
 import me from './routes/me'
 import organizations from './routes/organizations'
+import recordingWebhooks from './routes/recording-webhooks'
 import settings from './routes/settings'
 import webhookHandlers from './routes/webhook-handlers'
 import webhooks from './routes/webhooks'
@@ -73,6 +74,7 @@ async function main() {
   app.route('/api/v1/sdk/settings', settings) // SDK callback: Lambda → API
   app.route('/api/v1/workflows', workflows) // Workflow execution routes
   app.route('/webhooks', webhooks) // Public webhook receiver (no /api/v1 prefix)
+  app.route('/webhooks/recording', recordingWebhooks) // Recording bot provider webhooks
 
   // 404 handler
   app.notFound((c) => {

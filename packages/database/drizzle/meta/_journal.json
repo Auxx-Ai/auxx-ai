@@ -813,6 +813,20 @@
       "when": 1776233962873,
       "tag": "0115_add_recording_domain_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1776279698072,
+      "tag": "0116_make-external-bot-id-nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1776282517604,
+      "tag": "0117_recording-use-media-assets",
+      "breakpoints": true
     }
   ]
 }
