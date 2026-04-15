@@ -402,6 +402,7 @@ export const settingScope = pgEnum('SettingScope', [
   'INTEGRATION',
   'GENERAL',
   'SIDEBAR',
+  'RECORDING',
 ])
 export const signatureSharingType = pgEnum('SignatureSharingType', [
   'PRIVATE',
@@ -563,6 +564,62 @@ export const importMappingTargetType = pgEnum('ImportMappingTargetType', [
   'relation', // Maps to a relation
   'skip', // Skip this column
 ])
+
+// Calendar / meeting platform
+export const calendarProvider = pgEnum('CalendarProvider', ['google', 'outlook'])
+export const meetingPlatform = pgEnum('MeetingPlatform', [
+  'google_meet',
+  'teams',
+  'zoom',
+  'unknown',
+])
+export const calendarEventStatus = pgEnum('CalendarEventStatus', [
+  'confirmed',
+  'tentative',
+  'cancelled',
+])
+export const rsvpStatus = pgEnum('RsvpStatus', [
+  'accepted',
+  'declined',
+  'tentative',
+  'needs_action',
+])
+
+// Recording
+export const recordingProvider = pgEnum('RecordingProvider', ['recall', 'babl', 'self_hosted'])
+export const recordingStatus = pgEnum('RecordingStatus', [
+  'created',
+  'joining',
+  'waiting',
+  'admitted',
+  'recording',
+  'processing',
+  'completed',
+  'failed',
+  'kicked',
+  'denied',
+  'timeout',
+  'cancelled',
+])
+
+// Transcription
+export const transcriptionProvider = pgEnum('TranscriptionProvider', [
+  'deepgram',
+  'whisper',
+  'assemblyai',
+  'gladia',
+  'meeting_captions',
+])
+export const transcriptType = pgEnum('TranscriptType', ['realtime', 'async'])
+export const transcriptStatus = pgEnum('TranscriptStatus', ['processing', 'completed', 'failed'])
+
+// Insights
+export const insightTemplateStatus = pgEnum('InsightTemplateStatus', [
+  'enabled',
+  'disabled',
+  'archived',
+])
+export const insightStatus = pgEnum('InsightStatus', ['processing', 'completed', 'failed'])
 
 export { sql } from 'drizzle-orm'
 // Re-export builders and sql for consumers
