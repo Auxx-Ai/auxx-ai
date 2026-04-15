@@ -58,7 +58,7 @@ export function WorkflowRunsFilterBar({ filter, setFilter }: WorkflowRunsFilterB
         }}
         onChange={handleDateChange}
         showShortLabel
-        triggerClassName='w-[200px]'
+        triggerClassName='sm:w-[200px] '
         triggerVariant='ghost'
       />
 

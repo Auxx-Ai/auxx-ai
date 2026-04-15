@@ -415,6 +415,14 @@
   @apply scheme-dark;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 [data-theme='svelte'] {
   --radius: 0.5rem;
   --color-background: var(--color-white);
