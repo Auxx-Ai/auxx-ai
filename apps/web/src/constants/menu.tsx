@@ -78,9 +78,9 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     featureKey: 'kopilot',
   },
   {
-    id: 'meetings',
-    label: 'Meetings',
-    slug: 'meetings',
+    id: 'calls',
+    label: 'Calls',
+    slug: 'calls',
     icon: <Video />,
     featureKey: 'callRecordings',
   },

@@ -42,6 +42,8 @@ export const VALID_ASSET_KINDS = [
   'TEMP_UPLOAD',
   'EMAIL_ATTACHMENT',
   'DOCUMENT',
+  'VIDEO',
+  'AUDIO',
 ] as const
 /**
  * Asset kinds for MediaAsset categorization

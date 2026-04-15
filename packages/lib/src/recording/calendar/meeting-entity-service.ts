@@ -1,11 +1,11 @@
 // packages/lib/src/recording/calendar/meeting-entity-service.ts
 
 import type { CalendarEventEntity } from '@auxx/database'
-import { database as db, schema } from '@auxx/database'
+import { database as db } from '@auxx/database'
+import { createEntityInstance } from '@auxx/services/entity-instances'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { requireCachedEntityDefId } from '../../cache'
+import { getCachedCustomFields, requireCachedEntityDefId } from '../../cache'
 import { FieldValueService } from '../../field-values'
 import { linkCalendarEventToMeeting } from './calendar-event-service'
 import type { RecordingResult, ResolvedParticipant } from './types'
@@ -22,7 +22,7 @@ export async function createMeetingFromCalendarEvent(
   try {
     const entityDefinitionId = await requireCachedEntityDefId(organizationId, 'meeting')
 
-    const created = await createEntityInstanceRecord({
+    const created = await createEntityInstance({
       entityDefinitionId,
       organizationId,
       createdById: userId,
@@ -30,7 +30,7 @@ export async function createMeetingFromCalendarEvent(
     })
 
     if (created.isErr()) {
-      return err(toError(created.error))
+      return err(new Error(created.error.message))
     }
 
     const entityInstanceId = created.value.id
@@ -109,20 +109,9 @@ export async function syncMeetingEntityFromCalendarEvent(
  * Resolve the Meeting custom-field IDs for the canonical sync attributes.
  */
 async function getMeetingFieldIdMap(organizationId: string, entityDefinitionId: string) {
-  const rows = await db
-    .select({
-      id: schema.CustomField.id,
-      systemAttribute: schema.CustomField.systemAttribute,
-    })
-    .from(schema.CustomField)
-    .where(
-      and(
-        eq(schema.CustomField.organizationId, organizationId),
-        eq(schema.CustomField.entityDefinitionId, entityDefinitionId)
-      )
-    )
+  const fields = await getCachedCustomFields(organizationId, entityDefinitionId)
+  const map = new Map(fields.map((f) => [f.systemAttribute, f.id]))
 
-  const map = new Map(rows.map((row) => [row.systemAttribute, row.id]))
   const requiredAttributes = [
     'meeting_title',
     'meeting_type',
@@ -141,47 +130,10 @@ async function getMeetingFieldIdMap(organizationId: string, entityDefinitionId: 
     }
   }
 
-  return {
-    meeting_title: map.get('meeting_title')!,
-    meeting_type: map.get('meeting_type')!,
-    meeting_date_time: map.get('meeting_date_time')!,
-    meeting_duration_minutes: map.get('meeting_duration_minutes')!,
-    meeting_location: map.get('meeting_location')!,
-    meeting_url: map.get('meeting_url')!,
-    meeting_organizer: map.get('meeting_organizer')!,
-    meeting_company: map.get('meeting_company')!,
-    meeting_contact: map.get('meeting_contact')!,
-  }
-}
-
-/**
- * Create an EntityInstance row for a synced Meeting record.
- */
-async function createEntityInstanceRecord(params: {
-  entityDefinitionId: string
-  organizationId: string
-  createdById?: string | null
-  displayName?: string | null
-}): RecordingResult<typeof schema.EntityInstance.$inferSelect> {
-  try {
-    const [created] = await db
-      .insert(schema.EntityInstance)
-      .values({
-        entityDefinitionId: params.entityDefinitionId,
-        organizationId: params.organizationId,
-        createdById: params.createdById ?? null,
-        displayName: params.displayName ?? null,
-      })
-      .returning()
-
-    if (!created) {
-      return err(new Error('Failed to create meeting entity instance'))
-    }
-
-    return ok(created)
-  } catch (error) {
-    return err(toError(error))
-  }
+  return Object.fromEntries(requiredAttributes.map((a) => [a, map.get(a)!])) as Record<
+    (typeof requiredAttributes)[number],
+    string
+  >
 }
 
 /**

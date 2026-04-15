@@ -118,6 +118,19 @@ export {
   pollingStaleCheckJob,
   pollingSyncScannerJob,
 } from './polling'
+// Recording
+export {
+  type HandleBotTimeoutJobData,
+  type HandleRecordingWebhookJobData,
+  handleBotTimeoutJob,
+  handleRecordingWebhookJob,
+  type PollActiveBotsJobData,
+  type ProcessRecordingJobData,
+  pollActiveBotsJob,
+  processRecordingJob,
+  type ScheduleBotsJobData,
+  scheduleBotsForUpcomingMeetingsJob,
+} from './recording'
 // Shopify
 export { customerWebhookJob } from './shopify/customer-webhook-job'
 export { orderWebhookJob } from './shopify/order-webhook-job'

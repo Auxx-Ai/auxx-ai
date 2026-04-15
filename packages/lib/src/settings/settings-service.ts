@@ -150,6 +150,61 @@ export const SETTINGS_CATALOG: Record<string, SettingConfig> = {
     organizationOnly: true,
   },
   ...sidebarSettings,
+
+  // ── RECORDING ──────────────────────────────────────────────
+  'recording.enabled': {
+    key: 'recording.enabled',
+    scope: 'RECORDING',
+    defaultValue: false,
+    type: 'boolean',
+    description: 'Enable meeting recording feature',
+    organizationOnly: true,
+  },
+  'recording.botProvider': {
+    key: 'recording.botProvider',
+    scope: 'RECORDING',
+    defaultValue: 'recall',
+    type: 'string',
+    description: 'Bot provider for meeting recordings',
+    organizationOnly: true,
+    options: [{ label: 'Recall.ai', value: 'recall' }],
+  },
+  'recording.defaultBotName': {
+    key: 'recording.defaultBotName',
+    scope: 'RECORDING',
+    defaultValue: 'Auxx Recorder',
+    type: 'string',
+    description: 'Bot display name shown in meetings',
+    organizationOnly: true,
+  },
+  'recording.defaultConsentMessage': {
+    key: 'recording.defaultConsentMessage',
+    scope: 'RECORDING',
+    defaultValue: 'This meeting is being recorded by Auxx.',
+    type: 'string',
+    description: 'Chat message sent when bot joins a meeting',
+    organizationOnly: true,
+  },
+  'recording.captureVideo': {
+    key: 'recording.captureVideo',
+    scope: 'RECORDING',
+    defaultValue: true,
+    type: 'boolean',
+    description: 'Record video in addition to audio',
+    organizationOnly: true,
+  },
+  'recording.autoRecord': {
+    key: 'recording.autoRecord',
+    scope: 'RECORDING',
+    defaultValue: 'none',
+    type: 'string',
+    description: 'Auto-record preference for meetings',
+    options: [
+      { label: 'All meetings', value: 'all' },
+      { label: 'External only', value: 'external' },
+      { label: 'None', value: 'none' },
+    ],
+  },
 }
 
 export class SettingsService {

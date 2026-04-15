@@ -1,0 +1,1 @@
+ALTER TABLE "CallRecording" ALTER COLUMN "externalBotId" DROP NOT NULL;

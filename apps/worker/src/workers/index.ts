@@ -16,6 +16,8 @@ import { startMessageSyncWorker } from './worker-definitions/message-sync-worker
 import { startOAuth2RefreshWorker } from './worker-definitions/oauth2-refresh-worker'
 import { startPollingSyncWorker } from './worker-definitions/polling-sync-worker'
 import { startPollingTriggerWorker } from './worker-definitions/polling-trigger-worker'
+import { startRecordingBotWorker } from './worker-definitions/recording-bot-worker'
+import { startRecordingProcessingWorker } from './worker-definitions/recording-processing-worker'
 import { startScheduledTriggerWorker } from './worker-definitions/scheduled-trigger-worker'
 import { startShopifyWorker } from './worker-definitions/shopify-worker'
 import { startThumbnailWorker } from './worker-definitions/thumbnail-worker'
@@ -78,6 +80,12 @@ export async function startWorkers() {
   // AI agent worker (Kopilot, Builder session processing)
   const aiAgentWorker = startAiAgentWorker()
 
+  // Recording bot lifecycle worker
+  const recordingBotWorker = startRecordingBotWorker()
+
+  // Recording media processing worker
+  const recordingProcessingWorker = startRecordingProcessingWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -101,6 +109,8 @@ export async function startWorkers() {
     appTriggerWorker,
     pollingTriggerWorker,
     aiAgentWorker,
+    recordingBotWorker,
+    recordingProcessingWorker,
   ]
 
   return Promise.all(workers)
@@ -524,6 +534,37 @@ export async function setupSchedules() {
         priority: 10,
         removeOnComplete: { count: 20 },
         removeOnFail: { count: 50 },
+      },
+    }
+  )
+
+  // ── Recording Bot Schedules ──────────────────────────────────
+  const recordingBotQueue = getQueue(Queues.recordingBotQueue)
+
+  // Auto-schedule bots for upcoming meetings (every 2 min)
+  await recordingBotQueue.upsertJobScheduler(
+    'scheduleBotsForUpcomingMeetingsJob',
+    { pattern: '*/2 * * * *' },
+    {
+      data: {},
+      opts: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 5,
+      },
+    }
+  )
+
+  // Poll active bot statuses as safety net for missed webhooks (every 1 min)
+  await recordingBotQueue.upsertJobScheduler(
+    'pollActiveBotsJob',
+    { pattern: '*/1 * * * *' },
+    {
+      data: {},
+      opts: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 30000 },
+        priority: 5,
       },
     }
   )
