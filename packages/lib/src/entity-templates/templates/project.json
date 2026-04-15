@@ -11,7 +11,7 @@
     "color": "purple"
   },
   "primaryDisplayField": "projectName",
-  "companions": ["task", "company"],
+  "companions": ["task"],
   "fields": [
     { "templateFieldId": "projectName", "name": "Project Name", "type": "TEXT", "required": true },
     { "templateFieldId": "description", "name": "Description", "type": "RICH_TEXT" },
@@ -68,7 +68,7 @@
       "name": "Company",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:company",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Projects"
       }

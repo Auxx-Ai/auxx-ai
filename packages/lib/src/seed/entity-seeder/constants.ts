@@ -102,6 +102,14 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'emerald',
     isVisible: false, // Internal entity, managed from part drawer
   },
+  {
+    entityType: 'company',
+    apiSlug: 'companies',
+    singular: 'Company',
+    plural: 'Companies',
+    icon: 'building-2',
+    color: 'blue',
+  },
 ]
 
 /**
@@ -150,6 +158,11 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   stock_movement: {
     primaryDisplayField: 'type',
     secondaryDisplayField: 'quantity',
+  },
+  company: {
+    primaryDisplayField: 'companyName',
+    secondaryDisplayField: 'website',
+    avatarField: 'logo',
   },
 }
 

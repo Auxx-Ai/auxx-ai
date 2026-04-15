@@ -12,7 +12,7 @@
   },
   "primaryDisplayField": "name",
   "avatarField": "avatar",
-  "companions": ["company", "deal"],
+  "companions": ["deal"],
   "fields": [
     { "templateFieldId": "name", "name": "Name", "type": "TEXT", "required": true },
     {
@@ -82,7 +82,7 @@
       "name": "Company",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:company",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Leads"
       }

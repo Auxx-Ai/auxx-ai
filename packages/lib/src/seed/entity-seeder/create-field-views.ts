@@ -177,6 +177,39 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'vendor_part_is_preferred',
     ],
   },
+
+  // ============================================================================
+  // COMPANY FIELD VIEWS
+  // ============================================================================
+
+  // Company panel view — show most fields except system internals
+  {
+    entityType: 'company',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+  },
+
+  // Company table view — hide logo (avatar shown inline in table row)
+  {
+    entityType: 'company',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'company_logo'],
+  },
+
+  // Company create dialog — minimal fields for quick creation
+  {
+    entityType: 'company',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: [
+      'company_name',
+      'company_website',
+      'company_industry',
+      'company_primary_contact',
+    ],
+  },
 ]
 
 /**

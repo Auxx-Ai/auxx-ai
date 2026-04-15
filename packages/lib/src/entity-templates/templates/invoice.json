@@ -11,7 +11,7 @@
     "color": "green"
   },
   "primaryDisplayField": "invoiceNumber",
-  "companions": ["company", "order"],
+  "companions": ["order"],
   "fields": [
     {
       "templateFieldId": "invoiceNumber",
@@ -72,7 +72,7 @@
       "name": "Company",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:company",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Invoices"
       }

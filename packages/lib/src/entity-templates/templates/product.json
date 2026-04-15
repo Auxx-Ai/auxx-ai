@@ -106,7 +106,7 @@
       "name": "Supplier",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:company",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Products Supplied"
       }

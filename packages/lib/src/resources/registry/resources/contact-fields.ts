@@ -332,5 +332,55 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     description: 'Vendor parts supplied by this contact',
   },
 
+  // Reverse relationship: company (from company.primaryContact)
+  company: {
+    id: toFieldId('company'),
+    key: 'company',
+    label: 'Company',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_company',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'company:primaryContact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Companies where this contact is the primary contact',
+  },
+
+  // Reverse relationship: employer (from company.employees)
+  employer: {
+    id: toFieldId('employer'),
+    key: 'employer',
+    label: 'Employer',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_employer',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'company:employees' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Companies where this contact is an employee',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

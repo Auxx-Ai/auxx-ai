@@ -2,7 +2,6 @@
 
 import campaignTemplate from './templates/campaign.json'
 import collectionTemplate from './templates/collection.json'
-import companyTemplate from './templates/company.json'
 import complaintTemplate from './templates/complaint.json'
 import customerFeedbackTemplate from './templates/customer-feedback.json'
 import dealTemplate from './templates/deal.json'
@@ -41,7 +40,6 @@ const templateMap = new Map<string, EntityTemplate>()
 
 const allTemplates: EntityTemplate[] = [
   // Existing
-  companyTemplate,
   orderTemplate,
   productTemplate,
   vendorTemplate,

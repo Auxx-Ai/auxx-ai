@@ -12,7 +12,6 @@
   },
   "primaryDisplayField": "orderNumber",
   "companions": [
-    "company",
     "return-request",
     "shipment",
     "customer-feedback",
@@ -43,7 +42,7 @@
       "name": "Company",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:company",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Orders"
       }
