@@ -53,8 +53,8 @@ const AutoResolveBadge: React.FC<AutoResolveBadgeProps> = ({ isAuto, onChange })
         className={cn(
           'inline-block overflow-hidden whitespace-nowrap',
           'transition-all duration-200 ease-out',
-          isAuto ? 'max-w-[8px]' : 'max-w-[9px]',
-          'group-hover/mode:max-w-20'
+          isAuto ? '@sm:max-w-[8px]' : '@sm:max-w-[9px]',
+          '@sm:group-hover/mode:max-w-20'
         )}>
         {config.label}
       </span>

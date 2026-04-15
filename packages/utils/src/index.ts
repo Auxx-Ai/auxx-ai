@@ -73,12 +73,15 @@ export {
 // File utilities
 export {
   calculateBase64Size,
+  canPreviewInline,
   formatBytes,
   getAttachmentByteSize,
   getDirectoryPath,
+  getFileCategory,
   getFileExtension,
   getFilenameFromPath,
   getMimeTypeFromExtension,
+  getStandardFileType,
   isImageFile,
   isPreviewableImage,
   sanitizeFilename,

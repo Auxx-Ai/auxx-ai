@@ -5,12 +5,10 @@ import { PostCard } from './post-card'
 
 export function PostGrid({ posts }: { posts: BlogPost[] }) {
   return (
-    <div className='mx-auto max-w-5xl px-6'>
-      <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-        {posts.map((post) => (
-          <PostCard key={post.slug} post={post} />
-        ))}
-      </div>
+    <div className='grid gap-px sm:grid-cols-2'>
+      {posts.map((post, index) => (
+        <PostCard key={post.slug} post={post} priority={index === 0} />
+      ))}
     </div>
   )
 }

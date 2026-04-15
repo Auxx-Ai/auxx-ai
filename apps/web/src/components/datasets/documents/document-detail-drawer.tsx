@@ -17,7 +17,7 @@ import { Input } from '@auxx/ui/components/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError, toastInfo } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { formatBytes } from '@auxx/utils/file'
+import { formatBytes, getFileExtension, getStandardFileType } from '@auxx/utils/file'
 import { format, formatDistanceToNow } from 'date-fns'
 import {
   AlertTriangle,
@@ -380,7 +380,12 @@ export function DocumentDetailDrawer({
                 <div className='flex items-center gap-2'>
                   <FileText className='size-4 text-muted-foreground' />
                   <span className='text-sm font-medium'>
-                    {displayDocument.mimeType?.split('/')[1]?.toUpperCase() || 'Unknown'}
+                    {getStandardFileType(
+                      displayDocument.mimeType ?? undefined,
+                      displayDocument.filename
+                        ? getFileExtension(displayDocument.filename)
+                        : undefined
+                    )}
                   </span>
                 </div>
                 <p className='text-xs text-muted-foreground mt-1'>
@@ -432,6 +437,8 @@ export function DocumentDetailDrawer({
                     version='current'
                     className='h-full min-h-[400px]'
                     interactive
+                    knownMimeType={displayDocument.mimeType ?? undefined}
+                    filename={displayDocument.title || displayDocument.filename || undefined}
                   />
                 ) : (
                   <div className='flex flex-col items-center justify-center h-64 text-center'>

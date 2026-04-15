@@ -145,8 +145,8 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
           title='Thread'
           description='Select a thread to auto-fill or enter info manually'
           validationError={errors._threadId}>
-          <div className='relative'>
-            <div className='absolute right-full top-1/2 -translate-y-1/2 me-0.5 z-10'>
+          <div className='relative flex items-center'>
+            <div className='shrink-0 me-0.5 z-10 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
               <AutoResolveBadge isAuto={isAutoMode} onChange={handleModeChange} />
             </div>
             {isAutoMode ? (

@@ -2,7 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
+import { InputSearch } from '@auxx/ui/components/input-search'
 import {
   Select,
   SelectContent,
@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { LayoutGrid, List, Search } from 'lucide-react'
+import { LayoutGrid, List } from 'lucide-react'
 import { useState } from 'react'
 import { CreateCredentialDialog } from '~/components/workflow/credentials/create-credential-dialog'
 import { CREDENTIAL_REGISTRY } from '~/components/workflow/credentials/credential-registry'
@@ -34,36 +34,35 @@ export function CredentialsFilterBar() {
       <div className='flex items-center gap-3 p-2 border-b bg-background'>
         <div className='flex flex-1 items-center gap-3'>
           {/* Search */}
-          <div className='relative flex-1'>
-            <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-            <Input
-              placeholder='Search credentials...'
-              size='sm'
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className='pl-8 w-full min-w-50'
-            />
-          </div>
+          <InputSearch
+            placeholder='Search credentials...'
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className='min-w-50'
+          />
         </div>
 
         <div className='flex items-center gap-3'>
           {/* Type Filter */}
-          <Select
-            value={selectedType || 'all'}
-            onValueChange={(value) => setSelectedType(value === 'all' ? null : value)}>
-            <SelectTrigger className='w-48' size='sm'>
-              <SelectValue placeholder='All types' />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='all'>All types</SelectItem>
-              <SelectSeparator />
-              {CREDENTIAL_REGISTRY.map((cred) => (
-                <SelectItem key={cred.id} value={cred.credentialType.name}>
-                  {cred.displayName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+
+          <div className='hidden sm:flex items-center gap-2'>
+            <Select
+              value={selectedType || 'all'}
+              onValueChange={(value) => setSelectedType(value === 'all' ? null : value)}>
+              <SelectTrigger className='w-48' size='sm'>
+                <SelectValue placeholder='All types' />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='all'>All types</SelectItem>
+                <SelectSeparator />
+                {CREDENTIAL_REGISTRY.map((cred) => (
+                  <SelectItem key={cred.id} value={cred.credentialType.name}>
+                    {cred.displayName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {/* View Mode Toggle */}
           <div className='items-center gap-2 md:flex hidden'>
             <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>

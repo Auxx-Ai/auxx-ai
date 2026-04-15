@@ -3,12 +3,11 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { formatBytes, getDirectoryPath } from '@auxx/utils/file'
+import { formatBytes, getDirectoryPath, getStandardFileType } from '@auxx/utils/file'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { CellPadding, FormattedCell } from '~/components/dynamic-table'
 import { FileNameCell } from './file-name-cell'
 import type { FileItem } from './files-store'
-import { getStandardFileType } from './utils/file-type'
 
 /**
  * Interface for actions that can be performed on files

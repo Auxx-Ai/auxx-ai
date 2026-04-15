@@ -17,7 +17,7 @@ export function BlogListWithPagination({ posts }: { posts: BlogPost[] }) {
     <>
       <PostGrid posts={posts.slice(0, visibleCount)} />
       {hasMore && (
-        <div className='mx-auto mt-12 max-w-5xl px-6 text-center'>
+        <div className='bg-card rounded-md p-6 text-center'>
           <Button
             onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
             variant='outline'

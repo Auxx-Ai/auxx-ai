@@ -1,10 +1,10 @@
 // apps/web/src/components/files/utils/file-display.tsx
 
 import { cn } from '@auxx/ui/lib/utils'
+import { getStandardFileType } from '@auxx/utils/file'
 import { cva, type VariantProps } from 'class-variance-authority'
 import type * as React from 'react'
 import { getFileIcon } from './file-icon'
-import { getStandardFileType } from './file-type'
 
 const fileDisplayVariants = cva('flex items-center', {
   variants: {

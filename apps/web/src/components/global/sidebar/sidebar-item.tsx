@@ -74,9 +74,14 @@ export function SidebarItem({
         </div>
         <div className='flex items-center group-data-[collapsible=icon]:hidden'>
           {!popoverOpen && typeof count === 'number' && (
-            <span className='pointer-events-none text-xs text-muted-foreground sm:group-hover/item:opacity-0'>
-              {count}
-            </span>
+            <>
+              <span className='pointer-events-none text-xs text-muted-foreground sm:hidden'>
+                {count}
+              </span>
+              <div className='pointer-events-none absolute right-[11px] top-1/2 hidden -translate-y-1/2 text-right text-xs sm:flex sm:group-hover/item:opacity-0'>
+                {count}
+              </div>
+            </>
           )}
           {hasDropdownContent && (
             <div

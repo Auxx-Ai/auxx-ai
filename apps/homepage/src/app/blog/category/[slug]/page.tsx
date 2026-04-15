@@ -4,7 +4,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getAllCategories, getPostsByCategory } from '~/lib/blog'
 import { config } from '~/lib/config'
-import { BlogFilter } from '../../_components/blog-filter'
+import { BlogLayout } from '../../_components/blog-layout'
 import { BlogListWithPagination } from '../../_components/blog-list-with-pagination'
 
 export function generateStaticParams() {
@@ -40,19 +40,8 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
   }
 
   return (
-    <>
-      <div className='mx-auto max-w-5xl px-6 pb-8'>
-        <div className='mx-auto max-w-3xl text-center'>
-          <h1 className='mb-4 text-balance text-5xl font-semibold md:text-6xl'>Blog</h1>
-          <p className='text-muted-foreground text-balance text-lg'>
-            Insights on AI-powered customer support, e-commerce automation, and growing your Shopify
-            business.
-          </p>
-        </div>
-      </div>
-
-      <BlogFilter categories={categories} />
+    <BlogLayout categories={categories}>
       <BlogListWithPagination posts={posts} />
-    </>
+    </BlogLayout>
   )
 }

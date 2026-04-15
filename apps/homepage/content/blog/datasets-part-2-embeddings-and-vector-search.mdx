@@ -1,0 +1,284 @@
+---
+title: "Building a Dataset Engine (Part 2): Embeddings & Vector Search"
+description: "How we generate embeddings across multiple providers with smart chunking and quota management, store them in PostgreSQL with multi-dimensional columns, and run vector search with dimension-grouped multi-dataset queries."
+date: "2025-07-28"
+slug: "datasets-part-2-embeddings-and-vector-search"
+image: "/blog/datasets-part-2-embeddings-and-vector-search.png"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["datasets", "embeddings", "pgvector", "vector-search", "typescript", "open-source"]
+published: true
+---
+
+[Part 1](/blog/datasets-part-1-schema-and-document-processing) covered the data model and document processing pipeline — how files get uploaded, extracted, and chunked into segments. This post is about what happens next: turning those text chunks into vectors and searching them.
+
+Text is not searchable by meaning — only by keywords. To find "whats your return policy?" when the document says "items may be returned within 30 days", you need semantic search. Embeddings convert text chunks into high-dimensional vectors where semantic similarity equals geometric proximity. Two sentences that mean the same thing land close together in vector space, regardless of word choice.
+
+[Part 3](/blog/datasets-part-3-hybrid-search-and-ui) covers the layer that ties everything together — full-text search, hybrid result combination, search analytics, and the dataset management UI.
+
+## The EmbeddingService — multi-provider, quota-aware
+
+The embedding service is the single entry point for all embedding generation. It handles provider routing, smart chunking, quota management, and usage tracking.
+
+```typescript
+// packages/lib/src/datasets/services/embedding-service.ts
+
+export class EmbeddingService {
+  private providerManager: ProviderManager
+  private usageTracker?: UsageTrackingService
+
+  constructor(
+    private db: any,
+    private organizationId: string,
+    private userId?: string
+  ) {
+    this.providerManager = new ProviderManager(db, organizationId, userId || 'system')
+    this.usageTracker = new UsageTrackingService(db)
+  }
+
+  async generateEmbeddings(
+    texts: string | string[],
+    options?: EmbeddingOptions
+  ): Promise<EmbeddingResult> {
+    const inputTexts = Array.isArray(texts) ? texts : [texts]
+
+    // Validate dimension is supported for database storage
+    if (options?.dimensions && !isSupportedDimension(options.dimensions)) {
+      const normalized = normalizeToSupportedDimension(options.dimensions)
+      options = { ...options, dimensions: normalized }
+    }
+
+    // Resolve provider from "provider:model" format
+    const { provider, model } = await this.resolveProviderAndModel(options)
+
+    // Get embedding client WITH credential metadata for quota tracking
+    const { client, providerType, credentialSource } = await this.getEmbeddingClient(provider, model)
+
+    // Pre-flight quota check (throws QuotaExceededError if exhausted)
+    await this.checkQuotaForSystemProvider(provider, providerType)
+
+    // Apply smart chunking if enabled
+    let processedTexts = inputTexts
+    let chunkMapping = []
+    let wasChunked = false
+
+    if (options?.enableChunking !== false) {
+      const chunkingResult = await this.applySmartChunking(inputTexts, provider, model)
+      processedTexts = chunkingResult.texts
+      chunkMapping = chunkingResult.mapping
+      wasChunked = chunkingResult.wasChunked
+    }
+
+    // Generate embeddings in batch
+    const response = await client.batchInvoke({
+      texts: processedTexts,
+      model,
+      dimensions: options?.dimensions,
+      batchSize: options?.batchSize,
+    })
+
+    // Aggregate chunked embeddings back to original texts
+    let finalEmbeddings = response.embeddings
+    if (wasChunked && chunkMapping.length > 0) {
+      finalEmbeddings = this.aggregateChunkedEmbeddings(response.embeddings, chunkMapping, processedTexts)
+    }
+
+    // Track usage (only SYSTEM providers deduct quota)
+    if (options?.trackUsage !== false && this.usageTracker) {
+      await this.trackUsage({ provider, model, providerType, credentialSource, /* ... */ })
+    }
+
+    return { embeddings: finalEmbeddings, model, provider, usage: response.usage }
+  }
+}
+```
+
+**`provider:model` routing.** The EmbeddingService doesnt know how to call OpenAI or Cohere — it splits the model string on `:`, looks up the provider in the ProviderRegistry (the same registry our AI providers use, covered in a [previous blog series](/blog/multi-provider-ai-system-part-1)), and delegates. Adding a new embedding provider means implementing one interface, not touching the service.
+
+**Dimension validation at the boundary.** Before doing anything, the service checks if the requested dimension is one we can store (512, 768, 1024, 1536, 3072). If not, it normalizes to the nearest supported dimension. This catches misconfiguration early — before processing 500 segments.
+
+## Smart chunking — hiding token limits
+
+Embedding APIs have per-request token limits (8,191 for OpenAI). If a text chunk exceeds the limit, the embedding will be truncated or the API will reject it. The EmbeddingService handles this transparently.
+
+When smart chunking is enabled (the default), the service checks each input text against the models token limit. Texts that exceed the limit are split into sub-chunks, each sub-chunk gets its own embedding, and the results are aggregated back into a single embedding per original text using weighted averaging.
+
+The caller never sees the sub-chunking. They send text, they get back embeddings. The fact that a 12,000-token passage was split into 3 sub-chunks, embedded separately, and averaged back together is invisible. This is the right abstraction boundary — embedding consumers shouldnt think about token limits.
+
+## Quota management — SYSTEM vs CUSTOM providers
+
+```typescript
+// packages/lib/src/datasets/services/embedding-service.ts
+
+// Pre-flight check before generating embeddings
+await this.checkQuotaForSystemProvider(provider, providerType)
+```
+
+We have two provider types with different billing models.
+
+**SYSTEM providers** use Auxx-managed API keys. We pay OpenAI, so we enforce quotas. Before generating embeddings, the service checks the organizations quota via a Redis counter lookup. If theyre over, it throws `QuotaExceededError` immediately.
+
+**CUSTOM providers** use the customers own API key. Their bill, their limits. No quota check.
+
+The key decision is **pre-flight, not post-flight** checking. Generating 10,000 embeddings and then discovering the org is over quota wastes API spend. The Redis counter lookup costs microseconds. The wasted API calls cost dollars.
+
+Both provider types record usage metrics (tokens consumed, segments processed). CUSTOM providers dont deduct credits, but the data feeds into analytics — "how much would this org spend on our system plan?"
+
+## The embedding processor — batch pipeline
+
+After the document processor creates segments, the embedding processor generates vectors for them.
+
+```typescript
+// packages/lib/src/datasets/workers/embedding-processor.ts
+
+// Called by BullMQ after document processing completes
+async processBatchEmbeddings(datasetId: string, documentId: string) {
+  // 1. Fetch all PENDING segments for this document
+  // 2. Batch into groups of 20
+  // 3. Generate embeddings per batch
+  // 4. Store in dimension-specific column
+  // 5. Mark segments as INDEXED
+}
+```
+
+**Batch size of 20.** Embedding APIs have per-request token limits. Batching 20 segments per API call amortizes HTTP overhead while staying within rate limits. For a 200-segment document, this is 10 API calls instead of 200.
+
+**Segment-level status tracking.** Each segment has its own `indexStatus` (PENDING/INDEXED/FAILED). If batch 3 of 10 fails, batches 1-2 remain INDEXED and searchable. Retry only processes PENDING segments — no re-embedding already-indexed content.
+
+**Dimension-aware storage.** The processor reads the datasets `vectorDimension` to know which column to write. A 1536-d dataset writes to `embedding_1536`. The `embeddingDimension` field on the segment records which column is populated.
+
+**Idempotent processing.** Re-running the processor for an already-indexed document is a no-op — it fetches PENDING segments, finds none, and completes. This makes retry safe.
+
+## PostgreSQL as vector database — pgvector + HNSW
+
+This is probably the most controversial decision in the stack. We use PostgreSQL for vector search. Not Pinecone. Not Weaviate. Not Qdrant. PostgreSQL with pgvector and HNSW indexes.
+
+```typescript
+// packages/lib/src/datasets/vector/postgresql.ts
+
+async createCollection(datasetId: string, dimension: number) {
+  // 1. Ensure pgvector extension exists
+  // 2. Create HNSW index on the dimension-specific column
+  // 3. Partial index: WHERE dataset_id = ? AND index_status = 'INDEXED'
+}
+```
+
+Heres why.
+
+We already run PostgreSQL for everything else. Adding a dedicated vector DB means another service to deploy, another connection pool, another failure mode, another billing line item, another set of credentials to manage. pgvector with HNSW indexes handles our scale with sub-100ms search latency. The operational simplicity is worth more than the marginal performance gain of a purpose-built system.
+
+**HNSW over IVFFlat.** HNSW (Hierarchical Navigable Small World) gives better recall at the same speed. IVFFlat requires periodic re-clustering as data grows — HNSW doesnt. We fall back to IVFFlat (100 lists) only if HNSW index creation fails, which is rare.
+
+**Partial indexes.** The HNSW index is built only on segments where `indexStatus = 'INDEXED'` and `enabled = true`. PENDING and FAILED segments are excluded. This keeps the index smaller and avoids searching segments that arent ready.
+
+**Cosine similarity, not L2 distance.** Cosine similarity measures the angle between vectors (semantic direction). L2 measures raw distance. For text embeddings, cosine is the standard — its what the models are trained to optimize. pgvector uses the `<=>` operator for cosine distance.
+
+## Vector search — dimension grouping
+
+The interesting problem is multi-dataset search. When a user searches across 5 datasets, those datasets might use different embedding dimensions. 3 might use 1536-d, 2 might use 768-d.
+
+```typescript
+// packages/lib/src/datasets/search/vector-search.ts
+
+export class VectorSearchService {
+  static async search(
+    query: SearchQuery,
+    datasetConfigs: DatasetConfig[],
+    organizationId: string,
+    userId?: string
+  ): Promise<{ results: SearchResult[]; metrics: SearchPerformanceMetrics }> {
+    // ...
+    const vectorResults = await VectorSearchService.searchMultipleDatasets(
+      query.query,
+      datasetConfigs,
+      organizationId,
+      userId,
+      {
+        similarityThreshold: query.similarityThreshold || 0.7,
+        maxResults: query.maxResults || query.limit || 20,
+      }
+    )
+    // ...
+  }
+}
+```
+
+The naive approach is one embedding API call per dataset. If you have 5 datasets, thats 5 embedding calls — even though 3 of them use the same dimension and could share a query embedding.
+
+Our approach: **group datasets by dimension, generate one query embedding per dimension, search each group in parallel.**
+
+For 5 datasets (3 at 1536-d, 2 at 768-d), thats 2 embedding API calls instead of 5. For 20 datasets all using 1536-d, its 1 call instead of 20.
+
+The VectorService orchestrates this:
+
+```typescript
+// packages/lib/src/datasets/services/vector.service.ts
+
+// 1-minute in-memory cache for dataset vector configs
+private static configCache = new Map<string, { config: VectorConfig, timestamp: number }>()
+private static CACHE_TTL = 60_000
+
+static async searchMultipleDatasets(query, datasetIds, options) {
+  // 1. Fetch configs (cached) for all datasets
+  // 2. Group by dimension
+  // 3. Generate query embeddings per dimension (parallel)
+  // 4. Search per dimension group (parallel)
+  // 5. Merge, deduplicate, sort by score
+}
+```
+
+**Config caching with 1-minute TTL.** Dataset embedding configs (model, dimension) rarely change. Caching avoids a DB query per search request. 1-minute TTL means config changes propagate quickly — fast enough for a config change, not so stale that it causes incorrect searches.
+
+**Global sort by score after merge.** Results from all dimension groups are merged into a single array and sorted by cosine similarity score. A 0.95 match from the 768-d group outranks a 0.80 match from the 1536-d group. Dimension doesnt affect ranking — only semantic relevance does.
+
+**Similarity threshold filtering (default: 0.7).** Results below the threshold are discarded server-side. This prevents "best match is still terrible" results. The threshold is configurable per search — lower for broad exploratory queries, higher for precision-critical retrieval.
+
+**Parallel execution with error resilience.** If one dimension groups search fails (e.g., embedding API timeout for that model), the other groups results still return. A partial result set is better than no results.
+
+## The multi-column strategy
+
+The 5-column approach deserves a deeper explanation because it looks wrong at first glance.
+
+```typescript
+// packages/lib/src/datasets/utils/embedding-columns.ts
+
+const EMBEDDING_COLUMNS = {
+  512:  'embedding_512',
+  768:  'embedding_768',
+  1024: 'embedding_1024',
+  1536: 'embedding_1536',
+  3072: 'embedding_3072',
+}
+```
+
+The naive alternative: create `embedding vector(N)` with dynamic N per dataset. But this requires DDL at runtime (`ALTER TABLE ADD COLUMN`), which takes locks, cant be indexed ahead of time, and makes migrations a nightmare.
+
+Another alternative: one `embedding vector(3072)` column that stores all dimensions by zero-padding. But this wastes storage (padding 512-d to 3072-d is 5x overhead), confuses HNSW (the index cant optimize for the actual data distribution), and makes dimension validation impossible.
+
+The 5-column approach trades schema aesthetics for operational correctness:
+
+- **No runtime DDL.** All columns exist upfront.
+- **Null columns are free.** PostgreSQL doesnt store null values. Zero overhead for unused dimensions.
+- **Per-dimension HNSW indexes.** Each column gets its own optimized index with the correct distance metric.
+- **Dimension validation at write time.** Writing a 1536-d vector to `embedding_512` fails immediately.
+- **Adding a new dimension = one migration.** Add `embedding_2048`, deploy. No existing data changes.
+
+## Key trade-offs
+
+| Decision | Trade-off | Why we chose it |
+|----------|-----------|----------------|
+| PostgreSQL over dedicated vector DB | No purpose-built optimizations | Operational simplicity, one fewer service, sub-100ms is fast enough |
+| 5 embedding columns | Ugly schema | No runtime DDL, free nulls, per-dimension indexes |
+| Dimension grouping for multi-dataset search | More complex orchestration | O(D) API calls instead of O(N), where D << N |
+| Pre-flight quota checks | Extra Redis lookup per generation | Prevents wasted API spend on over-quota orgs |
+| Smart chunking with weighted averaging | Slight quality loss vs single-pass | Handles all text sizes without token limit errors |
+| HNSW over IVFFlat | Slower index build | Better recall, no re-clustering needed |
+| 1-minute config cache | Stale config possible for 60s | Avoids DB query per search request |
+
+## Next up
+
+[Part 3](/blog/datasets-part-3-hybrid-search-and-ui) covers the search layer that ties everything together — full-text search using PostgreSQL's native tsvector, hybrid search that combines vector and keyword results with configurable weighting strategies, search analytics, and the dataset management UI.
