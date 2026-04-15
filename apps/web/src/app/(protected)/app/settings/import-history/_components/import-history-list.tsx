@@ -27,19 +27,6 @@ import { useState } from 'react'
 import { useResources } from '~/components/resources'
 import { api } from '~/trpc/react'
 
-/** Returns base path for a given entity definition ID */
-function getBasePath(entityDefinitionId: string): string {
-  if (entityDefinitionId === 'contact') return '/app/contacts'
-  if (entityDefinitionId === 'ticket') return '/app/tickets'
-  // Custom entity IDs are UUIDs, need to get slug from resource
-  if (entityDefinitionId.length > 20) {
-    // Likely a custom entity UUID
-    // Note: We'd need to resolve this properly, but for now assume slug pattern
-    return `/app/custom/${entityDefinitionId}`
-  }
-  return '/app'
-}
-
 /** Status badge variant mapping */
 function getStatusBadgeVariant(
   status: string
@@ -77,6 +64,19 @@ export function ImportHistoryList({ onDeleteJob }: ImportHistoryListProps) {
   })
 
   const isLoading = isLoadingResources || isLoadingJobs
+
+  /** Returns the import base path for a given resource. */
+  const getBasePath = (entityDefinitionId: string): string => {
+    const resource = getResourceById(entityDefinitionId)
+    if (resource?.entityType) return `/app/${resource.apiSlug}`
+    if (resource) return `/app/custom/${resource.apiSlug}`
+
+    if (entityDefinitionId.length > 20) {
+      return `/app/custom/${entityDefinitionId}`
+    }
+
+    return '/app'
+  }
 
   /** Navigate to the appropriate import page based on job status */
   const handleJobClick = (job: NonNullable<typeof jobs>[number]) => {

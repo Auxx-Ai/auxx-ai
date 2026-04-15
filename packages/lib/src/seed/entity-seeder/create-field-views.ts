@@ -46,6 +46,7 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'first_name',
       'last_name',
       'contact_tickets',
+      'contact_meetings',
     ],
   },
 
@@ -187,7 +188,7 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'company',
     contextType: 'panel',
     name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'company_meetings'],
   },
 
   // Company table view — hide logo (avatar shown inline in table row)
@@ -208,6 +209,49 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
       'company_website',
       'company_industry',
       'company_primary_contact',
+    ],
+  },
+
+  // ============================================================================
+  // MEETING FIELD VIEWS
+  // ============================================================================
+
+  // Meeting panel view — show most fields except system internals
+  {
+    entityType: 'meeting',
+    contextType: 'panel',
+    name: 'Default Panel View',
+    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id'],
+  },
+
+  // Meeting table view — hide long-form note fields in the default list
+  {
+    entityType: 'meeting',
+    contextType: 'table',
+    name: 'Default Table View',
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'meeting_agenda',
+      'meeting_notes',
+      'meeting_action_items',
+    ],
+  },
+
+  // Meeting create dialog — essential scheduling fields only
+  {
+    entityType: 'meeting',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: [
+      'meeting_title',
+      'meeting_date_time',
+      'meeting_type',
+      'meeting_company',
+      'meeting_contact',
+      'meeting_url',
     ],
   },
 ]

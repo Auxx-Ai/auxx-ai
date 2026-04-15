@@ -16,7 +16,6 @@ import inventoryLocationTemplate from './templates/inventory-location.json'
 import invoiceTemplate from './templates/invoice.json'
 import leadTemplate from './templates/lead.json'
 import loyaltyMemberTemplate from './templates/loyalty-member.json'
-import meetingTemplate from './templates/meeting.json'
 import orderTemplate from './templates/order.json'
 import productTemplate from './templates/product.json'
 import projectTemplate from './templates/project.json'
@@ -72,7 +71,6 @@ const allTemplates: EntityTemplate[] = [
   invoiceTemplate,
   expenseTemplate,
   supplierContractTemplate,
-  meetingTemplate,
   // Marketing / Other
   emailSequenceTemplate,
   socialProofTemplate,

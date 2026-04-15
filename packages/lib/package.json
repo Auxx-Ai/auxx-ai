@@ -478,6 +478,12 @@
       "import": "./dist/realtime/client/index.mjs",
       "default": "./src/realtime/client/index.ts"
     },
+    "./recording/calendar": {
+      "types": "./src/recording/calendar/index.ts",
+      "source": "./src/recording/calendar/index.ts",
+      "import": "./dist/recording/calendar/index.mjs",
+      "default": "./src/recording/calendar/index.ts"
+    },
     "./resource-access": {
       "types": "./src/resource-access/index.ts",
       "source": "./src/resource-access/index.ts",

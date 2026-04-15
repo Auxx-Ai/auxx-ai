@@ -7,6 +7,7 @@ import { migration001VendorPartSubpart } from './migrations/001-vendor-part-subp
 import { migration002StockMovement } from './migrations/002-stock-movement-inventory'
 import { migration003BomStockMovementFields } from './migrations/003-bom-stock-movement-fields'
 import { migration004Company } from './migrations/004-company'
+import { migration005Meeting } from './migrations/005-meeting'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -19,6 +20,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration002StockMovement,
   migration003BomStockMovementFields,
   migration004Company,
+  migration005Meeting,
 ]
 
 // ─── Public API ──────────────────────────────────────────────────────

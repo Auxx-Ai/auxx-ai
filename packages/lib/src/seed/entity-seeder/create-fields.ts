@@ -7,6 +7,7 @@ import type { ResourceField } from '../../resources/registry/field-types'
 import { COMPANY_FIELDS } from '../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
+import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
 import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
@@ -36,6 +37,7 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   subpart: SUBPART_FIELDS,
   stock_movement: STOCK_MOVEMENT_FIELDS,
   company: COMPANY_FIELDS,
+  meeting: MEETING_FIELDS,
 }
 
 /**

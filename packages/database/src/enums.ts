@@ -111,6 +111,7 @@ export const ModelTypeValues = [
   'subpart',
   'stock_movement',
   'company',
+  'meeting',
 ] as const
 
 /**
@@ -139,6 +140,7 @@ export const ModelTypes = {
   SUBPART: 'subpart',
   STOCK_MOVEMENT: 'stock_movement',
   COMPANY: 'company',
+  MEETING: 'meeting',
 } as const
 
 /**
@@ -258,6 +260,14 @@ export const ModelTypeMeta: Record<
     icon: 'building-2',
     color: 'blue',
     apiSlug: 'companies',
+    dbTable: 'EntityInstance',
+  },
+  meeting: {
+    label: 'Meeting',
+    plural: 'Meetings',
+    icon: 'calendar',
+    color: 'blue',
+    apiSlug: 'meetings',
     dbTable: 'EntityInstance',
   },
 }

@@ -115,6 +115,8 @@ export interface FieldOptions {
   // ADDRESS (structured address field)
   // ─────────────────────────────────────────────────────────────
   address?: AddressFieldOptions
+  /** Structured address components stored for ADDRESS_STRUCT fields */
+  addressComponents?: string[]
 
   // ─────────────────────────────────────────────────────────────
   // NAME (composite name field)

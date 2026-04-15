@@ -335,11 +335,17 @@ export const auth = betterAuth({
         preferredTimezone?: string | null
       }
 
-      if (extendedUser && !extendedUser.defaultOrganizationId) {
-        const freshUser = await getUserById(extendedUser.id)
-        Object.assign(extendedUser, freshUser ?? {})
+      // Verify user still exists in DB (session may reference a deleted user)
+      const dbUser = await getUserById(extendedUser.id)
+      if (!dbUser) {
+        logger.warn('Session references non-existent user, invalidating', {
+          userId: extendedUser.id,
+        })
+        return null
+      }
 
-        // console.log('new user with org id', extendedUser)
+      if (!extendedUser.defaultOrganizationId) {
+        Object.assign(extendedUser, dbUser)
       }
 
       // Update lastLoginAt only if cache is expired (respects session.cookieCache.maxAge)

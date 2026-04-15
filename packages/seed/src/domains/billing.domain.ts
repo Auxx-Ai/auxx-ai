@@ -111,6 +111,7 @@ const BOOLEAN_GATES = {
     unverifiedApps: false,
     kopilot: false,
     realtimeSync: true,
+    callRecordings: false,
   },
   free: {
     knowledgeBase: false,
@@ -126,6 +127,7 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
     kopilot: false,
     realtimeSync: true,
+    callRecordings: false,
   },
   starter: {
     knowledgeBase: false,
@@ -141,6 +143,7 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
     kopilot: false,
     realtimeSync: true,
+    callRecordings: false,
   },
   growth: {
     knowledgeBase: false,
@@ -156,6 +159,7 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
     kopilot: false,
     realtimeSync: true,
+    callRecordings: false,
   },
   enterprise: {
     knowledgeBase: false,
@@ -171,12 +175,15 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
     kopilot: false,
     realtimeSync: true,
+    callRecordings: false,
   },
 } as const
 
 /** Usage limits (per billing cycle) keyed by plan tier */
 const USAGE_LIMITS = {
   demo: {
+    callRecordingsHoursPerMonthHard: 0,
+    callRecordingsHoursPerMonthSoft: 0,
     outboundEmailsPerMonthHard: 0,
     outboundEmailsPerMonthSoft: 0,
     workflowRunsPerMonthHard: 10,
@@ -191,6 +198,8 @@ const USAGE_LIMITS = {
     appMutationsPerMinuteSoft: 8,
   },
   free: {
+    callRecordingsHoursPerMonthHard: 0,
+    callRecordingsHoursPerMonthSoft: 0,
     outboundEmailsPerMonthHard: 100,
     outboundEmailsPerMonthSoft: 80,
     workflowRunsPerMonthHard: 100,
@@ -205,6 +214,8 @@ const USAGE_LIMITS = {
     appMutationsPerMinuteSoft: 25,
   },
   starter: {
+    callRecordingsHoursPerMonthHard: 0,
+    callRecordingsHoursPerMonthSoft: 0,
     outboundEmailsPerMonthHard: 1000,
     outboundEmailsPerMonthSoft: 800,
     workflowRunsPerMonthHard: 5000,
@@ -219,6 +230,8 @@ const USAGE_LIMITS = {
     appMutationsPerMinuteSoft: 50,
   },
   growth: {
+    callRecordingsHoursPerMonthHard: 10,
+    callRecordingsHoursPerMonthSoft: 8,
     outboundEmailsPerMonthHard: 10000,
     outboundEmailsPerMonthSoft: 8000,
     workflowRunsPerMonthHard: 15000,
@@ -233,6 +246,8 @@ const USAGE_LIMITS = {
     appMutationsPerMinuteSoft: 100,
   },
   enterprise: {
+    callRecordingsHoursPerMonthHard: -1,
+    callRecordingsHoursPerMonthSoft: -1,
     outboundEmailsPerMonthHard: -1,
     outboundEmailsPerMonthSoft: -1,
     workflowRunsPerMonthHard: -1,

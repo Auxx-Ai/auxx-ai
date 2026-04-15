@@ -3,6 +3,7 @@ import { isSelfHosted } from '@auxx/deployment'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { startAiAgentWorker } from './worker-definitions/ai-agent-worker'
 import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
+import { startCalendarSyncWorker } from './worker-definitions/calendar-sync-worker'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
 import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedding-worker'
 import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-maintenance-worker'
@@ -59,6 +60,9 @@ export async function startWorkers() {
   // Polling sync worker (two-phase email sync pipeline)
   const pollingSyncWorker = startPollingSyncWorker()
 
+  // Calendar sync worker
+  const calendarSyncWorker = startCalendarSyncWorker()
+
   // Email delivery worker (transactional/system emails)
   const emailWorker = startEmailWorker()
 
@@ -91,6 +95,7 @@ export async function startWorkers() {
     oauth2RefreshWorker,
     dataImportWorker,
     pollingSyncWorker,
+    calendarSyncWorker,
     emailWorker,
     messageProcessingWorker,
     appTriggerWorker,
@@ -103,7 +108,21 @@ export async function startWorkers() {
 
 export async function setupSchedules() {
   const maintenanceQueue = getQueue(Queues.maintenanceQueue)
+  const calendarSyncQueue = getQueue(Queues.calendarSyncQueue)
   const datasetMaintenanceQueue = getQueue(Queues.datasetMaintenanceQueue)
+
+  await calendarSyncQueue.upsertJobScheduler(
+    'calendarSyncScannerJob',
+    { pattern: '*/5 * * * *' },
+    {
+      data: { dryRun: false },
+      opts: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+      },
+    }
+  )
 
   // Every day at 8 AM
   await maintenanceQueue.upsertJobScheduler(

@@ -169,7 +169,12 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a6',
     nullable: true,
     options: {
-      currency: { currencyCode: 'USD', showSymbol: true },
+      currency: {
+        currencyCode: 'USD',
+        decimalPlaces: 'two-places',
+        displayType: 'symbol',
+        groups: 'default',
+      },
     },
     capabilities: {
       filterable: true,
@@ -262,6 +267,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'contact:company' as ResourceFieldId,
       relationshipType: 'belongs_to',
+      isInverse: false,
     },
     description: 'Primary contact person at this company',
   },
@@ -286,8 +292,34 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'contact:employer' as ResourceFieldId,
       relationshipType: 'has_many',
+      isInverse: false,
     },
     description: 'Employees associated with this company',
+  },
+
+  meetings: {
+    id: toFieldId('meetings'),
+    key: 'meetings',
+    label: 'Meetings',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'company_meetings',
+    systemSortOrder: 'b2',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'meeting:company' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Meetings associated with this company',
   },
 
   createdAt: {

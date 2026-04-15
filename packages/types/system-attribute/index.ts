@@ -120,6 +120,38 @@ export const SYSTEM_ATTRIBUTES = [
 
   // ─── Contact inverse fields ────────────────────────────────────
   'contact_vendor_parts',
+  'contact_company',
+  'contact_employer',
+  'contact_meetings',
+
+  // ─── Company fields ────────────────────────────────────────────
+  'company_name',
+  'company_logo',
+  'company_website',
+  'company_industry',
+  'company_size',
+  'company_annual_revenue',
+  'company_founded',
+  'company_headquarters',
+  'company_notes',
+  'company_primary_contact',
+  'company_employees',
+  'company_meetings',
+
+  // ─── Meeting fields ────────────────────────────────────────────
+  'meeting_title',
+  'meeting_type',
+  'meeting_date_time',
+  'meeting_duration_minutes',
+  'meeting_location',
+  'meeting_url',
+  'meeting_organizer',
+  'meeting_agenda',
+  'meeting_notes',
+  'meeting_action_items',
+  'meeting_recording_url',
+  'meeting_company',
+  'meeting_contact',
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

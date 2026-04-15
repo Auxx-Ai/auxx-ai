@@ -124,4 +124,43 @@ export const DEFAULT_VIEW_CONFIGS = {
       columnFormatting: {},
     } satisfies ViewConfig,
   },
+
+  meeting: {
+    name: 'All Meetings',
+    description: 'Default view for meetings',
+    config: {
+      viewType: 'table' as const,
+      columnVisibility: {
+        field_meeting_title: true,
+        field_meeting_date_time: true,
+        field_meeting_type: true,
+        field_meeting_company: true,
+        field_meeting_contact: true,
+        field_meeting_recording_url: true,
+        field_updated_at: true,
+      },
+      columnOrder: [
+        'field_meeting_title',
+        'field_meeting_date_time',
+        'field_meeting_type',
+        'field_meeting_company',
+        'field_meeting_contact',
+        'field_meeting_recording_url',
+        'field_updated_at',
+      ],
+      columnPinning: {
+        left: ['_checkbox', 'field_meeting_title'],
+      },
+      sorting: [
+        {
+          id: 'field_meeting_date_time',
+          desc: true,
+        },
+      ],
+      filters: [],
+      columnSizing: {},
+      columnLabels: {},
+      columnFormatting: {},
+    } satisfies ViewConfig,
+  },
 } as const

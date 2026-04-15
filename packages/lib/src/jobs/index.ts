@@ -18,6 +18,13 @@ export {
   type StripeSubscriptionSyncResult,
   stripeSubscriptionSyncJob,
 } from './billing/stripe-subscription-sync-job'
+// Calendar
+export {
+  type CalendarSyncJobData,
+  type CalendarSyncScannerJobData,
+  calendarSyncJob,
+  calendarSyncScannerJob,
+} from './calendar'
 // Datasets
 export {
   batchOperationJob,
