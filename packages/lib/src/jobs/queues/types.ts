@@ -27,6 +27,8 @@ export enum Queues {
   dataImportQueue = 'data-import',
   // Polling sync queue
   pollingSyncQueue = 'polling-sync',
+  // Calendar sync queue
+  calendarSyncQueue = 'calendar-sync',
   // Email delivery queue
   emailQueue = 'email',
   // App trigger dispatch queue

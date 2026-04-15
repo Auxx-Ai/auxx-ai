@@ -213,15 +213,11 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   /** Handle expand to full page */
   const handleExpand = React.useCallback(() => {
     if (!resource?.apiSlug || !entityInstanceId) return
-    // System entities use their slug path, custom entities use /app/custom/
-    const entityType = resource.entityType
-    if (entityType === 'ticket') {
-      router.push(`/app/tickets/${entityInstanceId}`)
-    } else if (entityType === 'contact') {
-      router.push(`/app/contacts/${entityInstanceId}`)
-    } else {
-      router.push(`/app/custom/${resource.apiSlug}/${entityInstanceId}`)
+    if (resource.entityType) {
+      router.push(`/app/${resource.apiSlug}/${entityInstanceId}`)
+      return
     }
+    router.push(`/app/custom/${resource.apiSlug}/${entityInstanceId}`)
   }, [resource?.apiSlug, resource?.entityType, entityInstanceId, router])
 
   // Memoize the createdAt text to avoid recalculating on every render

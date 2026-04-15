@@ -28,6 +28,7 @@ import {
   Trash2,
   Users,
   UsersRound,
+  Video,
   Waypoints,
   Webhook,
   Zap,
@@ -75,6 +76,13 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'kopilot/new',
     icon: <MessagesSquare />,
     featureKey: 'kopilot',
+  },
+  {
+    id: 'meetings',
+    label: 'Meetings',
+    slug: 'meetings',
+    icon: <Video />,
+    featureKey: 'callRecordings',
   },
   {
     id: 'workflows',

@@ -15,7 +15,8 @@ export const userProfileProvider: CacheProvider<DehydratedUser> = {
     const [user] = await db.select().from(schema.User).where(eq(schema.User.id, userId)).limit(1)
 
     if (!user) {
-      throw new Error(`User not found: ${userId}`)
+      logger.warn(`User not found in DB, returning null`, { userId })
+      return null as unknown as DehydratedUser
     }
 
     // Fetch memberships

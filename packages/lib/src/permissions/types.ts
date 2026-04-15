@@ -41,6 +41,7 @@ export enum FeatureKey {
   unverifiedApps = 'unverifiedApps',
   kopilot = 'kopilot',
   realtimeSync = 'realtimeSync',
+  callRecordings = 'callRecordings',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -54,6 +55,8 @@ export enum FeatureKey {
   importRowsLimit = 'importRowsLimit',
 
   // ── Usage limits (per billing cycle, Soft + Hard) ──
+  callRecordingsHoursPerMonthHard = 'callRecordingsHoursPerMonthHard',
+  callRecordingsHoursPerMonthSoft = 'callRecordingsHoursPerMonthSoft',
   outboundEmailsPerMonthHard = 'outboundEmailsPerMonthHard',
   outboundEmailsPerMonthSoft = 'outboundEmailsPerMonthSoft',
   workflowRunsPerMonthHard = 'workflowRunsPerMonthHard',
@@ -118,6 +121,12 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
   },
   { key: FeatureKey.kopilot, type: 'boolean', label: 'Kopilot', group: 'AI' },
   { key: FeatureKey.realtimeSync, type: 'boolean', label: 'Real-Time Sync', group: 'Core' },
+  {
+    key: FeatureKey.callRecordings,
+    type: 'boolean',
+    label: 'Call Recordings',
+    group: 'Communication',
+  },
 
   // ── Static limits ──
   { key: FeatureKey.teammates, type: 'static', label: 'Teammates', group: 'Team', unit: 'seats' },
@@ -179,6 +188,27 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
   },
 
   // ── Usage limits (paired) ──
+  {
+    key: FeatureKey.callRecordingsHoursPerMonthHard,
+    type: 'usage',
+    label: 'Recording Hours',
+    group: 'Communication',
+    metric: 'callRecordingsHours',
+    variant: 'hard',
+    pairedKey: FeatureKey.callRecordingsHoursPerMonthSoft,
+    unit: 'hrs/mo',
+  },
+  {
+    key: FeatureKey.callRecordingsHoursPerMonthSoft,
+    type: 'usage',
+    label: 'Recording Hours',
+    group: 'Communication',
+    metric: 'callRecordingsHours',
+    variant: 'soft',
+    pairedKey: FeatureKey.callRecordingsHoursPerMonthHard,
+    unit: 'hrs/mo',
+  },
+
   {
     key: FeatureKey.outboundEmailsPerMonthHard,
     type: 'usage',

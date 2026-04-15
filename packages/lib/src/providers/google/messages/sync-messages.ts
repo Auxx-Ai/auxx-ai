@@ -73,21 +73,46 @@ export async function syncGmailMessages(
     let highestHistoryId = lastHistoryId ? BigInt(lastHistoryId) : BigInt(0)
 
     if (lastHistoryId && !since) {
-      // Use History API
-      const result = await syncViaHistory(
-        gmail,
-        integrationId,
-        inboxId,
-        organizationId,
-        lastHistoryId,
-        throttler,
-        storageService,
-        userEmails,
-        accessToken
-      )
-      totalProcessed = result.messagesProcessed
-      totalDeleted = result.messagesDeleted
-      highestHistoryId = BigInt(result.newHistoryId)
+      // Use History API — fall back to full list sync if history ID is expired (404)
+      try {
+        const result = await syncViaHistory(
+          gmail,
+          integrationId,
+          inboxId,
+          organizationId,
+          lastHistoryId,
+          throttler,
+          storageService,
+          userEmails,
+          accessToken
+        )
+        totalProcessed = result.messagesProcessed
+        totalDeleted = result.messagesDeleted
+        highestHistoryId = BigInt(result.newHistoryId)
+      } catch (historyError: any) {
+        const status = historyError?.response?.status ?? historyError?.status
+        if (status === 404) {
+          logger.warn('History ID expired (404) — falling back to full message list sync', {
+            integrationId,
+            expiredHistoryId: lastHistoryId,
+          })
+          const result = await syncViaMessageList(
+            gmail,
+            integrationId,
+            inboxId,
+            organizationId,
+            undefined,
+            throttler,
+            storageService,
+            userEmails,
+            accessToken
+          )
+          totalProcessed = result.messagesProcessed
+          highestHistoryId = BigInt(result.newHistoryId)
+        } else {
+          throw historyError
+        }
+      }
     } else {
       // Use Message List API
       const result = await syncViaMessageList(

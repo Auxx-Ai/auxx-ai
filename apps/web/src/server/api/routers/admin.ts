@@ -1057,7 +1057,7 @@ export const adminRouter = createTRPCRouter({
           featureLimits: z.array(
             z.object({
               key: z.string(),
-              limit: z.union([z.number().int(), z.boolean()]),
+              limit: z.union([z.number(), z.boolean()]),
             })
           ),
           hierarchyLevel: z.number().int().min(0).max(10),
@@ -1094,7 +1094,7 @@ export const adminRouter = createTRPCRouter({
             .array(
               z.object({
                 key: z.string(),
-                limit: z.union([z.number().int(), z.boolean()]),
+                limit: z.union([z.number(), z.boolean()]),
               })
             )
             .optional(),
@@ -1102,7 +1102,7 @@ export const adminRouter = createTRPCRouter({
             .array(
               z.object({
                 key: z.string(),
-                limit: z.union([z.number().int(), z.boolean()]),
+                limit: z.union([z.number(), z.boolean()]),
               })
             )
             .nullable()

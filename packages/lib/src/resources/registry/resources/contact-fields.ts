@@ -382,5 +382,30 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     description: 'Companies where this contact is an employee',
   },
 
+  // Reverse relationship: meetings (from meeting.contact)
+  meetings: {
+    id: toFieldId('meetings'),
+    key: 'meetings',
+    label: 'Meetings',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_meetings',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'meeting:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Meetings associated with this contact',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

@@ -110,6 +110,15 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     icon: 'building-2',
     color: 'blue',
   },
+  {
+    entityType: 'meeting',
+    apiSlug: 'meetings',
+    singular: 'Meeting',
+    plural: 'Meetings',
+    icon: 'calendar',
+    color: 'blue',
+    isVisible: false, // Accessed via dedicated Meetings page, not entity sidebar
+  },
 ]
 
 /**
@@ -163,6 +172,10 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     primaryDisplayField: 'companyName',
     secondaryDisplayField: 'website',
     avatarField: 'logo',
+  },
+  meeting: {
+    primaryDisplayField: 'title',
+    secondaryDisplayField: 'dateTime',
   },
 }
 

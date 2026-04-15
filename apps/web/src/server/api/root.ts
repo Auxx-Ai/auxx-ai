@@ -11,6 +11,7 @@ import { articleRouter } from './routers/article'
 import { attachmentRouter } from './routers/attachment'
 import { authRouter } from './routers/auth'
 import { billingRouter } from './routers/billing'
+import { calendarRouter } from './routers/calendar'
 import { channelRouter } from './routers/channel'
 import { channelReauthRouter } from './routers/channel-reauth'
 import { chatRouter } from './routers/chat'
@@ -89,6 +90,7 @@ export const appRouter = createTRPCRouter({
   attachment: attachmentRouter,
   auth: authRouter,
   billing: billingRouter,
+  calendar: calendarRouter,
   chat: chatRouter,
   comment: commentRouter,
   configVariable: configVariableRouter,

@@ -1,6 +1,7 @@
 // ~/app/(protected)/app/settings/channels/_components/integration-routing.tsx
 'use client'
 import type { IntegrationSyncStatus } from '@auxx/database/types'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -42,7 +43,9 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
+import { CalendarSyncToggle } from './calendar-sync-toggle'
 import { EmailListDialog } from './email-list-dialog'
 import IntegrationLabels from './integration-labels'
 
@@ -57,6 +60,7 @@ interface IntegrationRoutingProps {
  */
 export default function IntegrationRouting({ integration }: IntegrationRoutingProps) {
   const router = useRouter()
+  const { hasAccess } = useFeatureFlags()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [isRemoving, setIsRemoving] = useState(false)
   const [selectedRecordId, setSelectedRecordId] = useState<string>('')
@@ -174,6 +178,11 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
 
   return (
     <div className='p-3 sm:p-6 space-y-6 sm:space-y-10'>
+      {/* Calendar Sync — Google integrations with call recordings enabled */}
+      {integration.provider === 'google' && hasAccess(FeatureKey.callRecordings) && (
+        <CalendarSyncToggle integrationId={integration.id} />
+      )}
+
       {/* Data Sync — hidden for forwarding integrations */}
       {!isForwarding && (
         <div className='space-y-1'>

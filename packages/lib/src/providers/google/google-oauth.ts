@@ -14,6 +14,29 @@ type GaxiosError = Common.GaxiosError
 
 const logger = createScopedLogger('google-oauth')
 
+const OAUTH_SCOPES = {
+  gmail: [
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.labels',
+    'https://www.googleapis.com/auth/gmail.modify',
+    'https://www.googleapis.com/auth/pubsub',
+    'https://www.googleapis.com/auth/userinfo.email',
+  ],
+  calendar: [
+    'https://www.googleapis.com/auth/calendar.readonly',
+    'https://www.googleapis.com/auth/userinfo.email',
+  ],
+} as const
+
+type OAuthPurpose = keyof typeof OAUTH_SCOPES
+
+interface TokenSet {
+  refreshToken: string
+  accessToken: string | null
+  expiresAt: Date | null
+}
+
 export class GoogleOAuthService {
   /**
    * Resolve OAuth credentials for a specific organization.
@@ -119,13 +142,13 @@ export class GoogleOAuthService {
   }
 
   /**
-   * Generates a Google OAuth URL for authorizing access to Gmail APIs.
-   * Enhanced to support both initial authentication and re-authentication flows.
+   * Generates a Google OAuth URL for the given purpose (gmail or calendar).
    */
   public static async getAuthUrl(
     organizationId: string,
     userId: string,
     options: {
+      purpose?: OAuthPurpose
       redirectPath?: string
       integrationId?: string
       isReauth?: boolean
@@ -133,12 +156,14 @@ export class GoogleOAuthService {
       csrfToken?: string
     } = {}
   ): Promise<string> {
+    const purpose = options.purpose ?? 'gmail'
     const { client } = await GoogleOAuthService.getOAuthClientForOrg(organizationId)
     const stateWithContext = {
       orgId: organizationId,
       userId: userId,
       timestamp: Date.now(),
-      redirectPath: options.redirectPath,
+      ...(purpose !== 'gmail' && { purpose }),
+      ...(options.redirectPath && { redirectPath: options.redirectPath }),
       ...(options.integrationId && { integrationId: options.integrationId }),
       ...(options.isReauth && { type: 'reauth' }),
       ...(options.type && { type: options.type }),
@@ -148,21 +173,15 @@ export class GoogleOAuthService {
     const url = client.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
-      scope: [
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/gmail.send',
-        'https://www.googleapis.com/auth/gmail.labels',
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/pubsub',
-        'https://www.googleapis.com/auth/userinfo.email',
-      ],
+      scope: OAUTH_SCOPES[purpose],
       state: JSON.stringify(stateWithContext),
       include_granted_scopes: true,
     })
 
-    logger.info('Generated Google OAuth URL', {
+    logger.info(`Generated Google OAuth URL (${purpose})`, {
       organizationId,
       userId,
+      purpose,
       isReauth: options.isReauth,
       integrationId: options.integrationId,
     })
@@ -176,7 +195,12 @@ export class GoogleOAuthService {
   public static async handleCallback(
     code: string,
     stateString: string
-  ): Promise<{ success: boolean; integration: any; isReauth?: boolean }> {
+  ): Promise<{
+    success: boolean
+    integration: any
+    isReauth?: boolean
+    isCalendarGrant?: boolean
+  }> {
     try {
       let state
       try {
@@ -186,205 +210,83 @@ export class GoogleOAuthService {
         throw new Error('Invalid state parameter')
       }
 
-      const { orgId, userId, type, integrationId } = state
+      const { orgId, userId, type, integrationId, purpose } = state
       if (!orgId || !userId) {
         throw new Error('Missing organization or user ID in state')
       }
 
       const isReauth = type === 'reauth'
-      logger.info('Handling Google OAuth callback', { orgId, userId, isReauth, integrationId })
+      logger.info('Handling Google OAuth callback', {
+        orgId,
+        userId,
+        isReauth,
+        integrationId,
+        purpose,
+      })
 
+      // Exchange code for tokens and resolve email
       const { client: oauth2Client, isCustom } =
         await GoogleOAuthService.getOAuthClientForOrg(orgId)
       const { tokens } = await oauth2Client.getToken(code)
-
-      if (!tokens.refresh_token) {
-        logger.error('No refresh token received')
-        throw new Error('No refresh token received from Google')
-      }
-
       oauth2Client.setCredentials(tokens)
 
-      // Get user email using the userinfo API (more reliable than Gmail profile)
       const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client })
       const userInfo = await oauth2.userinfo.get()
       const email = userInfo.data.email
-
       if (!email) {
         throw new Error('Could not retrieve email address from Google')
       }
 
-      // Resolve the current client ID to store as credential snapshot
-      const creds = await GoogleOAuthService.resolveCredentials(orgId)
+      // Resolve refresh token (new from Google, or existing from prior auth)
+      const existingTokens = integrationId
+        ? await ChannelTokenAccessor.getTokens(integrationId).catch(() => null)
+        : null
+      const refreshToken = tokens.refresh_token ?? existingTokens?.refreshToken ?? null
+      if (!refreshToken) {
+        logger.error('No refresh token available')
+        throw new Error('No refresh token received from Google')
+      }
 
-      // Prepare metadata including the email address and credential snapshot
+      const creds = await GoogleOAuthService.resolveCredentials(orgId)
       const integrationMetadata = {
         email,
         isCustomCredentials: isCustom,
         credentialClientId: creds.clientId,
       }
+      const tokenSet: TokenSet = {
+        refreshToken,
+        accessToken: tokens.access_token ?? null,
+        expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+      }
 
-      // Handle re-authentication flow
-      if (isReauth && integrationId) {
-        logger.info('Processing re-authentication for existing integration', { integrationId })
-
-        await ChannelTokenAccessor.setTokens(
+      // Dispatch to the appropriate handler
+      if (purpose === 'calendar' && integrationId) {
+        return GoogleOAuthService.handleCalendarGrant(
           integrationId,
-          {
-            refreshToken: tokens.refresh_token!,
-            accessToken: tokens.access_token ?? null,
-            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-          },
-          { createdById: userId }
-        )
-
-        const [integration] = await db
-          .update(schema.Integration)
-          .set({
-            email: email,
-            metadata: integrationMetadata,
-            enabled: true,
-            authStatus: 'AUTHENTICATED',
-            lastAuthError: null,
-            lastAuthErrorAt: null,
-            requiresReauth: false,
-            lastSuccessfulSync: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.Integration.id, integrationId))
-          .returning()
-
-        logger.info('Re-authentication successful', { integrationId, email })
-
-        // Set up Gmail webhooks (push notifications) - may have expired
-        if (!isCustom) {
-          try {
-            await GoogleOAuthService.setupPushNotifications(integrationId)
-          } catch (webhookError) {
-            logger.warn('Failed to setup webhooks during re-auth', {
-              integrationId,
-              error: (webhookError as Error).message,
-            })
-          }
-        }
-
-        return {
-          success: true,
-          integration,
-          isReauth: true,
-        }
-      }
-
-      // Handle initial authentication flow
-      const [existingIntegration] = await db
-        .select()
-        .from(schema.Integration)
-        .where(
-          and(
-            eq(schema.Integration.organizationId, orgId),
-            eq(schema.Integration.provider, 'google'),
-            eq(schema.Integration.email, email)
-          )
-        )
-        .limit(1)
-
-      let integration
-      if (existingIntegration) {
-        ;[integration] = await db
-          .update(schema.Integration)
-          .set({
-            enabled: true,
-            metadata: integrationMetadata,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.Integration.id, existingIntegration.id))
-          .returning()
-
-        await ChannelTokenAccessor.setTokens(
-          existingIntegration.id,
-          {
-            refreshToken: tokens.refresh_token!,
-            accessToken: tokens.access_token ?? null,
-            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-          },
-          { createdById: userId }
-        )
-      } else {
-        ;[integration] = await db
-          .insert(schema.Integration)
-          .values({
-            organizationId: orgId,
-            provider: 'google',
-            enabled: true,
-            metadata: integrationMetadata,
-            email: email,
-            updatedAt: new Date(),
-          })
-          .returning()
-
-        await ChannelTokenAccessor.setTokens(
-          integration!.id,
-          {
-            refreshToken: tokens.refresh_token!,
-            accessToken: tokens.access_token ?? null,
-            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-          },
-          { createdById: userId }
+          userId,
+          email,
+          integrationMetadata,
+          tokenSet
         )
       }
-
-      const inboxService = new InboxService(db, orgId, userId)
-      await inboxService.addIntegrationToDefaultInbox(integration!.id)
-
-      // Force polling for custom credentials (PubSub won't work with custom OAuth apps)
-      if (isCustom) {
-        await db
-          .update(schema.Integration)
-          .set({ syncMode: 'polling', updatedAt: new Date() })
-          .where(eq(schema.Integration.id, integration!.id))
-      }
-
-      // Set up Gmail webhooks (push notifications) or kick off polling
-      const { resolveEffectiveSyncMode } = await import('../sync-mode-resolver')
-      const effectiveMode = resolveEffectiveSyncMode({
-        syncMode: isCustom ? 'polling' : (integration!.syncMode ?? 'auto'),
-        provider: 'google',
-      })
-
-      if (effectiveMode === 'webhook') {
-        await GoogleOAuthService.setupPushNotifications(integration!.id)
-      } else {
-        // Kick off polling pipeline immediately for new integrations
-        const { getQueue, Queues } = await import('../../jobs/queues')
-
-        await db
-          .update(schema.Integration)
-          .set({ syncStage: 'MESSAGE_LIST_FETCH_PENDING', updatedAt: new Date() })
-          .where(eq(schema.Integration.id, integration!.id))
-
-        const pollingSyncQueue = getQueue(Queues.pollingSyncQueue)
-        await pollingSyncQueue.add(
-          'messageListFetchJob',
-          {
-            integrationId: integration!.id,
-            organizationId: orgId,
-            provider: 'google',
-          },
-          {
-            jobId: `poll-list-fetch-${integration!.id}-${Date.now()}`,
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 60000 },
-            removeOnComplete: { count: 50 },
-            removeOnFail: { count: 100 },
-          }
+      if (isReauth && integrationId) {
+        return GoogleOAuthService.handleReauth(
+          integrationId,
+          userId,
+          email,
+          integrationMetadata,
+          tokenSet,
+          isCustom
         )
-
-        logger.info('Kicked off polling pipeline for new Google integration', {
-          integrationId: integration!.id,
-        })
       }
-
-      return { success: true, integration }
+      return GoogleOAuthService.handleInitialAuth(
+        orgId,
+        userId,
+        email,
+        integrationMetadata,
+        tokenSet,
+        isCustom
+      )
     } catch (error: any) {
       logger.error('Error handling Google OAuth callback:', {
         message: error.message,
@@ -393,6 +295,206 @@ export class GoogleOAuthService {
       })
       throw new Error(`Google OAuth callback failed: ${error.message}`)
     }
+  }
+
+  /**
+   * Handles a calendar-only scope grant for an existing integration.
+   */
+  private static async handleCalendarGrant(
+    integrationId: string,
+    userId: string,
+    email: string,
+    metadata: Record<string, unknown>,
+    tokenSet: TokenSet
+  ) {
+    const [existing] = await db
+      .select({ id: schema.Integration.id, metadata: schema.Integration.metadata })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
+
+    if (!existing) {
+      throw new Error(`Integration ${integrationId} not found for calendar grant`)
+    }
+
+    await saveTokensAndUpdateIntegration(integrationId, userId, tokenSet, {
+      email,
+      metadata: mergeIntegrationMetadata(existing.metadata, {
+        ...metadata,
+        calendarSyncEnabled: true,
+        calendarSyncToken: null,
+      }),
+      enabled: true,
+      authStatus: 'AUTHENTICATED',
+      lastAuthError: null,
+      lastAuthErrorAt: null,
+      requiresReauth: false,
+    })
+
+    const [integration] = await db
+      .select()
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
+
+    return { success: true as const, integration, isCalendarGrant: true }
+  }
+
+  /**
+   * Handles re-authentication for an existing integration.
+   */
+  private static async handleReauth(
+    integrationId: string,
+    userId: string,
+    email: string,
+    metadata: Record<string, unknown>,
+    tokenSet: TokenSet,
+    isCustom: boolean
+  ) {
+    logger.info('Processing re-authentication for existing integration', { integrationId })
+
+    const [existing] = await db
+      .select({ metadata: schema.Integration.metadata })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
+
+    await saveTokensAndUpdateIntegration(integrationId, userId, tokenSet, {
+      email,
+      metadata: mergeIntegrationMetadata(existing?.metadata, metadata),
+      enabled: true,
+      authStatus: 'AUTHENTICATED',
+      lastAuthError: null,
+      lastAuthErrorAt: null,
+      requiresReauth: false,
+      lastSuccessfulSync: new Date(),
+    })
+
+    logger.info('Re-authentication successful', { integrationId, email })
+
+    // Re-setup Gmail webhooks (may have expired)
+    if (!isCustom) {
+      try {
+        await GoogleOAuthService.setupPushNotifications(integrationId)
+      } catch (webhookError) {
+        logger.warn('Failed to setup webhooks during re-auth', {
+          integrationId,
+          error: (webhookError as Error).message,
+        })
+      }
+    }
+
+    const [integration] = await db
+      .select()
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
+
+    return { success: true as const, integration, isReauth: true }
+  }
+
+  /**
+   * Handles first-time authentication (upserts the integration).
+   */
+  private static async handleInitialAuth(
+    orgId: string,
+    userId: string,
+    email: string,
+    metadata: Record<string, unknown>,
+    tokenSet: TokenSet,
+    isCustom: boolean
+  ) {
+    // Check for an existing integration with the same email
+    const [existingIntegration] = await db
+      .select()
+      .from(schema.Integration)
+      .where(
+        and(
+          eq(schema.Integration.organizationId, orgId),
+          eq(schema.Integration.provider, 'google'),
+          eq(schema.Integration.email, email)
+        )
+      )
+      .limit(1)
+
+    let integration
+    if (existingIntegration) {
+      await saveTokensAndUpdateIntegration(existingIntegration.id, userId, tokenSet, {
+        enabled: true,
+        metadata: mergeIntegrationMetadata(existingIntegration.metadata, metadata),
+      })
+      ;[integration] = await db
+        .select()
+        .from(schema.Integration)
+        .where(eq(schema.Integration.id, existingIntegration.id))
+        .limit(1)
+    } else {
+      ;[integration] = await db
+        .insert(schema.Integration)
+        .values({
+          organizationId: orgId,
+          provider: 'google',
+          enabled: true,
+          metadata,
+          email,
+          updatedAt: new Date(),
+        })
+        .returning()
+
+      await ChannelTokenAccessor.setTokens(integration!.id, tokenSet, { createdById: userId })
+    }
+
+    const inboxService = new InboxService(db, orgId, userId)
+    await inboxService.addIntegrationToDefaultInbox(integration!.id)
+
+    // Force polling for custom credentials (PubSub won't work with custom OAuth apps)
+    if (isCustom) {
+      await db
+        .update(schema.Integration)
+        .set({ syncMode: 'polling', updatedAt: new Date() })
+        .where(eq(schema.Integration.id, integration!.id))
+    }
+
+    // Set up Gmail webhooks (push notifications) or kick off polling
+    const { resolveEffectiveSyncMode } = await import('../sync-mode-resolver')
+    const effectiveMode = resolveEffectiveSyncMode({
+      syncMode: isCustom ? 'polling' : (integration!.syncMode ?? 'auto'),
+      provider: 'google',
+    })
+
+    if (effectiveMode === 'webhook') {
+      await GoogleOAuthService.setupPushNotifications(integration!.id)
+    } else {
+      const { getQueue, Queues } = await import('../../jobs/queues')
+
+      await db
+        .update(schema.Integration)
+        .set({ syncStage: 'MESSAGE_LIST_FETCH_PENDING', updatedAt: new Date() })
+        .where(eq(schema.Integration.id, integration!.id))
+
+      const pollingSyncQueue = getQueue(Queues.pollingSyncQueue)
+      await pollingSyncQueue.add(
+        'messageListFetchJob',
+        {
+          integrationId: integration!.id,
+          organizationId: orgId,
+          provider: 'google',
+        },
+        {
+          jobId: `poll-list-fetch-${integration!.id}-${Date.now()}`,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60000 },
+          removeOnComplete: { count: 50 },
+          removeOnFail: { count: 100 },
+        }
+      )
+
+      logger.info('Kicked off polling pipeline for new Google integration', {
+        integrationId: integration!.id,
+      })
+    }
+
+    return { success: true as const, integration }
   }
 
   /**
@@ -420,7 +522,7 @@ export class GoogleOAuthService {
         await db
           .update(schema.Integration)
           .set({
-            authStatus: 'AUTH_ERROR',
+            authStatus: 'PROVIDER_ERROR',
             requiresReauth: true,
             lastAuthError: 'OAuth credentials were changed. Please reconnect this channel.',
             lastAuthErrorAt: new Date(),
@@ -636,5 +738,39 @@ export class GoogleOAuthService {
         })
       }
     }
+  }
+}
+
+/**
+ * Saves tokens and updates an existing integration in a single sequence.
+ */
+async function saveTokensAndUpdateIntegration(
+  integrationId: string,
+  userId: string,
+  tokenSet: TokenSet,
+  updates: Record<string, unknown>
+) {
+  await ChannelTokenAccessor.setTokens(integrationId, tokenSet, { createdById: userId })
+  await db
+    .update(schema.Integration)
+    .set({ ...updates, updatedAt: new Date() })
+    .where(eq(schema.Integration.id, integrationId))
+}
+
+/**
+ * Merge provider metadata into an existing integration metadata object.
+ */
+function mergeIntegrationMetadata(
+  existingMetadata: unknown,
+  updates: Record<string, unknown>
+): Record<string, unknown> {
+  const base =
+    existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata)
+      ? (existingMetadata as Record<string, unknown>)
+      : {}
+
+  return {
+    ...base,
+    ...updates,
   }
 }
