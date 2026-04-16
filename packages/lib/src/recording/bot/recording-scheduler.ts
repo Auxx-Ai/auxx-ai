@@ -11,7 +11,6 @@ import {
   findUpcomingCalendarEvents,
 } from '../recording-queries'
 import { scheduleBotForRecording } from './bot-manager'
-import { TERMINAL_STATUSES } from './types'
 
 const logger = createScopedLogger('recording:scheduler')
 const settingsService = new SettingsService()
@@ -59,38 +58,18 @@ export async function scheduleBotsForUpcomingMeetings(): Promise<
     })
 
     for (const event of upcomingEvents) {
-      // Check for existing non-terminal recording for this event
-      const eventRecordings = await findRecording(
+      // Skip if any recording already exists for this event — terminal or not.
+      // Retries are user-initiated via the manual scheduleRecording procedure;
+      // the cron must never silently re-create a recording that already failed.
+      const existing = await findRecording(
         { calendarEventId: event.id, organizationId },
         { multi: true }
       )
 
-      const hasActiveRecording = eventRecordings.some(
-        (r) => !TERMINAL_STATUSES.includes(r.status as any)
-      )
-
-      if (hasActiveRecording) {
+      if (existing.length > 0) {
         skipped++
         continue
       }
-
-      // Check user's autoRecord setting
-      // TODO: Re-enable autoRecord filtering once the settings UI is built
-      // const autoRecord = (await settingsService.getUserSetting({
-      //   organizationId,
-      //   userId: event.userId,
-      //   key: 'recording.autoRecord',
-      // })) as string
-      //
-      // if (autoRecord === 'none') {
-      //   skipped++
-      //   continue
-      // }
-      //
-      // if (autoRecord === 'external' && !event.isExternal) {
-      //   skipped++
-      //   continue
-      // }
 
       // Create CallRecording row
       const recordingId = generateId()

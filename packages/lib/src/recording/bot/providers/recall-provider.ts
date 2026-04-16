@@ -136,22 +136,33 @@ function mapRecallApiError(error: RecallApiError): Error {
 
 // --- Recall.ai API Response Types ---
 
+interface RecallMediaShortcuts {
+  video_mixed?: { data?: { download_url?: string } }
+  audio_mixed?: { data?: { download_url?: string } }
+  transcript?: { data?: { download_url?: string } }
+}
+
 interface RecallBotResponse {
   id: string
   status_changes: { code: string; created_at: string }[]
-  media_shortcuts?: {
-    video_mixed?: { data?: { download_url?: string } }
-    audio_mixed?: { data?: { download_url?: string } }
-  }
+  recordings?: { id: string; media_shortcuts?: RecallMediaShortcuts }[]
+  media_shortcuts?: RecallMediaShortcuts
   metadata?: Record<string, unknown>
   join_at?: string
 }
 
-interface RecallTranscriptResponse {
-  results: {
-    speaker: string
-    speaker_id: number
-    words: { text: string; start_timestamp: number; end_timestamp: number }[]
+interface RecallTranscriptEntry {
+  participant: {
+    id: number
+    name: string
+    is_host: boolean
+    platform: string
+    extra_data: unknown
+  }
+  words: {
+    text: string
+    start_timestamp: { relative: number; absolute: string }
+    end_timestamp: { relative: number; absolute: string }
   }[]
 }
 
@@ -277,9 +288,7 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
       try {
         const response = await client.request<RecallBotResponse>('GET', `/bot/${externalBotId}/`)
 
-        // Media shortcuts live on recordings[0], not on the bot root
-        const recording = (response as any).recordings?.[0]
-        const mediaShortcuts = recording?.media_shortcuts ?? response.media_shortcuts
+        const mediaShortcuts = response.recordings?.[0]?.media_shortcuts ?? response.media_shortcuts
 
         const videoUrl = mediaShortcuts?.video_mixed?.data?.download_url
         const audioUrl = mediaShortcuts?.audio_mixed?.data?.download_url
@@ -300,31 +309,56 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
       externalBotId: string
     ): Promise<Result<ExternalTranscriptData | null, Error>> {
       try {
-        const response = await client.request<RecallTranscriptResponse>(
-          'GET',
-          `/bot/${externalBotId}/transcript/`
-        )
+        // Step 1: Get bot details to find transcript download URL
+        const botResponse = await client.request<RecallBotResponse>('GET', `/bot/${externalBotId}/`)
 
-        if (!response.results || response.results.length === 0) {
+        const transcriptUrl =
+          botResponse.recordings?.[0]?.media_shortcuts?.transcript?.data?.download_url
+
+        if (!transcriptUrl) {
           return ok(null)
         }
 
-        const utterances: ExternalUtterance[] = response.results.map((result) => {
-          const words = result.words ?? []
+        // Step 2: Download the transcript from the presigned S3 URL.
+        // No Authorization header — the URL already carries auth via query params,
+        // and S3 rejects requests that combine both.
+        logger.debug('Downloading transcript', { externalBotId })
+        const transcriptRes = await fetch(transcriptUrl)
+
+        if (!transcriptRes.ok) {
+          if (transcriptRes.status === 404) {
+            return ok(null)
+          }
+          const text = await transcriptRes.text()
+          throw new RecallApiError(transcriptRes.status, text, transcriptUrl)
+        }
+
+        const entries = (await transcriptRes.json()) as RecallTranscriptEntry[]
+
+        if (!entries || entries.length === 0) {
+          return ok(null)
+        }
+
+        // Step 3: Map to our internal format
+        const utterances: ExternalUtterance[] = entries.map((entry) => {
+          const words = entry.words ?? []
           const text = words.map((w) => w.text).join(' ')
-          const startMs = words[0]?.start_timestamp ?? 0
-          const endMs = words[words.length - 1]?.end_timestamp ?? 0
+          // Timestamps are in seconds (relative), convert to milliseconds
+          const startMs = words[0] ? Math.round(words[0].start_timestamp.relative * 1000) : 0
+          const endMs = words[words.length - 1]
+            ? Math.round(words[words.length - 1].end_timestamp.relative * 1000)
+            : 0
 
           return {
-            speakerName: result.speaker,
-            speakerId: String(result.speaker_id),
+            speakerName: entry.participant.name,
+            speakerId: String(entry.participant.id),
             text,
             startMs,
             endMs,
             words: words.map((w) => ({
               text: w.text,
-              startMs: w.start_timestamp,
-              endMs: w.end_timestamp,
+              startMs: Math.round(w.start_timestamp.relative * 1000),
+              endMs: Math.round(w.end_timestamp.relative * 1000),
             })),
           }
         })
@@ -332,7 +366,6 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
         return ok({ utterances })
       } catch (error) {
         if (error instanceof RecallApiError) {
-          // 404 means no transcript available
           if (error.statusCode === 404) {
             return ok(null)
           }
