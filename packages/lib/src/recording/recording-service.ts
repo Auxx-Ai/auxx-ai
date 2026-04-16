@@ -114,11 +114,18 @@ export async function scheduleRecording(
 // getRecordingVideoUrl
 // ---------------------------------------------------------------------------
 
-/** Get a presigned video URL for a recording (15-min TTL). */
+interface RecordingVideoUrls {
+  url: string | null
+  storyboardUrl: string | null
+  previewUrl: string | null
+  message?: string
+}
+
+/** Get presigned video, storyboard, and preview-thumbnail URLs for a recording (15-min TTL). */
 export async function getRecordingVideoUrl(
   id: string,
   organizationId: string
-): Promise<{ url: string | null; message?: string }> {
+): Promise<RecordingVideoUrls> {
   const recording = await findRecording({ id, organizationId })
 
   if (!recording) {
@@ -126,15 +133,41 @@ export async function getRecordingVideoUrl(
   }
 
   if (!recording.videoAssetId) {
-    return { url: null, message: 'Video not yet available' }
+    return {
+      url: null,
+      storyboardUrl: null,
+      previewUrl: null,
+      message: 'Video not yet available',
+    }
   }
 
   const mediaAssetService = createMediaAssetService(organizationId)
-  const downloadRef = await mediaAssetService.getDownloadRefForVersion(recording.videoAssetId, {
-    disposition: 'inline',
-  })
 
-  return { url: downloadRef.type === 'url' ? downloadRef.url : null }
+  const [videoRef, storyboardUrl, previewUrl] = await Promise.all([
+    mediaAssetService.getDownloadRefForVersion(recording.videoAssetId, { disposition: 'inline' }),
+    presignAssetUrl(mediaAssetService, recording.videoStoryboardAssetId),
+    presignAssetUrl(mediaAssetService, recording.videoPreviewAssetId),
+  ])
+
+  return {
+    url: videoRef.type === 'url' ? videoRef.url : null,
+    storyboardUrl,
+    previewUrl,
+  }
+}
+
+async function presignAssetUrl(
+  mediaAssetService: ReturnType<typeof createMediaAssetService>,
+  assetId: string | null
+): Promise<string | null> {
+  if (!assetId) return null
+  try {
+    const ref = await mediaAssetService.getDownloadRefForVersion(assetId, { disposition: 'inline' })
+    return ref.type === 'url' ? ref.url : null
+  } catch {
+    // Asset may have been deleted out from under the recording; treat as missing.
+    return null
+  }
 }
 
 // ---------------------------------------------------------------------------

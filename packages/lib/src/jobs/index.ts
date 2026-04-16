@@ -122,6 +122,9 @@ export {
 export {
   type AIPostProcessJobData,
   aiPostProcessJob,
+  enqueueGenerateVideoAssetsJob,
+  GENERATE_VIDEO_ASSETS_JOB_NAME,
+  type GenerateVideoAssetsJobData,
   type HandleBotTimeoutJobData,
   type HandleRecordingWebhookJobData,
   handleBotTimeoutJob,

@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { downloadAndStoreRecordingMedia } from '../../recording/bot'
+import { enqueueGenerateVideoAssetsJob } from './generate-video-assets-job'
 
 const logger = createScopedLogger('job:process-recording')
 
@@ -45,6 +46,19 @@ export const processRecordingJob = async (jobOrCtx: Job<ProcessRecordingJobData>
     videoAssetId: result.value.videoAssetId,
     audioAssetId: result.value.audioAssetId,
   })
+
+  // Kick off storyboard + preview-thumbnail generation. Best-effort: a failure
+  // here shouldn't fail the parent job — the recording is already usable.
+  if (result.value.videoAssetId) {
+    try {
+      await enqueueGenerateVideoAssetsJob({ recordingId, organizationId })
+    } catch (error) {
+      logger.error('Failed to enqueue generateVideoAssetsJob', {
+        recordingId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 
   return result.value
 }

@@ -106,6 +106,8 @@ interface UpdateRecordingParams {
   metadata?: Record<string, unknown>
   videoAssetId?: string
   audioAssetId?: string
+  videoStoryboardAssetId?: string
+  videoPreviewAssetId?: string
 }
 
 interface UpdateRecordingOptions {

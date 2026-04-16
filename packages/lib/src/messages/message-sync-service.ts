@@ -1,8 +1,8 @@
 // packages/lib/src/messages/message-sync-service.ts
 import { database as db, schema } from '@auxx/database'
+import { IntegrationAuthStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull, lt, or } from 'drizzle-orm'
-import { AuthErrorHandler } from '../providers/auth-error-handler'
+import { and, eq, isNull, lt, or, sql } from 'drizzle-orm'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
 import type { ChannelProviderType } from '../providers/types'
 
@@ -51,14 +51,23 @@ export class MessageSyncService {
       // Call provider's sync method
       await provider.syncMessages(since)
 
-      // Update last synced timestamp in the database for this integration
+      // Single write: stamp lastSyncedAt, mark authenticated, clear failure counter in metadata.
+      // Replaces the previous two-step update (lastSyncedAt UPDATE + resetFailureCounter SELECT+UPDATE).
+      const now = new Date()
       await db
         .update(schema.Integration)
-        .set({ lastSyncedAt: new Date() })
+        .set({
+          lastSyncedAt: now,
+          authStatus: IntegrationAuthStatus.AUTHENTICATED,
+          metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object(
+            'auth',
+            COALESCE(${schema.Integration.metadata}->'auth', '{}'::jsonb) || jsonb_build_object(
+              'consecutiveFailures', 0,
+              'lastSuccessAt', ${now.toISOString()}::text
+            )
+          )`,
+        })
         .where(eq(schema.Integration.id, integrationId))
-
-      // Reset consecutive failure counter after successful sync
-      await AuthErrorHandler.resetFailureCounter(integrationId)
 
       logger.info(`Sync completed and lastSyncedAt updated for ${type} - ${integrationId}`)
     } catch (error) {
@@ -68,18 +77,6 @@ export class MessageSyncService {
         integrationId,
         organizationId: this.organizationId,
       })
-
-      // Update last synced time even on failure to indicate an attempt was made
-      await db
-        .update(schema.Integration)
-        .set({ lastSyncedAt: new Date() })
-        .where(eq(schema.Integration.id, integrationId))
-        .catch((updateErr) =>
-          logger.error('Failed to update lastSyncedAt after sync error', {
-            updateErr,
-            integrationId,
-          })
-        )
 
       throw error
     }

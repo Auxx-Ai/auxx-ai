@@ -553,6 +553,8 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
                       <VideoPlayer
                         videoId={recordingId}
                         sourceUrl={videoSession.url}
+                        thumbnailStoryboardUrl={videoSession.storyboardUrl ?? undefined}
+                        previewThumbnailUrl={videoSession.previewUrl ?? undefined}
                         borderRadius='8'
                         hasBorder={false}
                         chapters={chapters?.map((c) => ({

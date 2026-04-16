@@ -44,6 +44,7 @@ export const VALID_ASSET_KINDS = [
   'DOCUMENT',
   'VIDEO',
   'AUDIO',
+  'STORYBOARD',
 ] as const
 /**
  * Asset kinds for MediaAsset categorization

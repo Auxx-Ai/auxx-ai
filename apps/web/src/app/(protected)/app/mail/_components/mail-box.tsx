@@ -366,10 +366,9 @@ function MailboxInner({
       const newPath = constructTabNavigationPath(pathname, newStatusSlug)
 
       console.debug(`Routing tab change to: ${newPath}`)
-      void setTid('')
       router.push(newPath)
     },
-    [pathname, router, setTid]
+    [pathname, router]
   )
 
   // Handles updates from the SearchBar component (called after debounce)
