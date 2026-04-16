@@ -3,6 +3,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
+  aiProcessingStatus,
   index,
   integer,
   jsonb,
@@ -20,6 +21,17 @@ import { EntityInstance } from './entity-instance'
 import { MediaAsset } from './media-asset'
 import { Organization } from './organization'
 import { User } from './user'
+
+export type ActionItem = {
+  id: string
+  title: string
+  description?: string
+  owner?: string
+  participantId?: string
+  dueDate?: string
+  priority?: 'low' | 'medium' | 'high'
+  sourceUtteranceIds?: string[]
+}
 
 export const CallRecording = pgTable(
   'CallRecording',
@@ -98,6 +110,16 @@ export const CallRecording = pgTable(
 
     /** Provider-specific data */
     metadata: jsonb(),
+
+    /** Markdown summary generated from the transcript */
+    summaryText: text(),
+
+    /** Structured action items extracted from the transcript */
+    actionItems: jsonb().$type<ActionItem[]>(),
+
+    aiProcessingStatus: aiProcessingStatus().default('pending').notNull(),
+    aiProcessingError: text(),
+    aiProcessedAt: timestamp({ precision: 3, withTimezone: true }),
 
     /** Who initiated */
     createdById: text()

@@ -6,6 +6,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   sql,
   text,
@@ -52,6 +53,9 @@ export const TranscriptUtterance = pgTable(
 
     /** Spoken text */
     text: text().notNull(),
+
+    /** Per-word timings from the provider — provider-agnostic shape. Null for older rows or providers that don't emit word-level timing. */
+    words: jsonb().$type<{ text: string; startMs: number; endMs: number }[]>(),
 
     confidence: doublePrecision(),
 

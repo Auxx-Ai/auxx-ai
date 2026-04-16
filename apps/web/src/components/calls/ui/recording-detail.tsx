@@ -6,6 +6,13 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import {
   MainPage,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
@@ -19,6 +26,9 @@ import {
   BookOpen,
   CalendarDays,
   FileText,
+  MoreVertical,
+  RefreshCw,
+  Sparkles,
   Trash2,
   Users,
   Video,
@@ -58,6 +68,23 @@ const STATUS_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'destructiv
 }
 
 // TODO: Remove mock data once real recordings exist
+export type MockRecordingParticipant = {
+  id: string
+  name: string | null
+  email: string | null
+  isOrganizer: boolean
+  rsvpStatus: 'accepted' | 'declined' | 'tentative' | 'needs_action'
+  contactEntityInstanceId: string | null
+}
+
+export type MockRecordingCalendarEvent = {
+  title: string
+  meetingUrl: string | null
+  startTime: Date | null
+  endTime: Date | null
+  timezone: string | null
+} | null
+
 export type MockRecording = {
   id: string
   status: string
@@ -70,8 +97,8 @@ export type MockRecording = {
   failureReason: string | null
   videoAssetId: string | null
   createdAt: Date
-  calendarEvent: { title: string } | null
-  participants: { id: string; name: string | null; email: string | null }[]
+  calendarEvent: MockRecordingCalendarEvent
+  participants: MockRecordingParticipant[]
 }
 
 const MOCK_RECORDINGS: Record<string, MockRecording> = {
@@ -87,11 +114,38 @@ const MOCK_RECORDINGS: Record<string, MockRecording> = {
     failureReason: null,
     videoAssetId: 'asset_video_1',
     createdAt: new Date('2026-04-14T13:58:00Z'),
-    calendarEvent: { title: 'Q2 Product Roadmap Review' },
+    calendarEvent: {
+      title: 'Q2 Product Roadmap Review',
+      meetingUrl: 'https://meet.google.com/oqs-weiw-iyo',
+      startTime: new Date('2026-04-14T14:00:00Z'),
+      endTime: new Date('2026-04-14T15:00:00Z'),
+      timezone: 'America/Los_Angeles',
+    },
     participants: [
-      { id: 'p1', name: 'Markus Klooth', email: 'markus@auxx-lift.com' },
-      { id: 'p2', name: 'Sarah Chen', email: 'sarah@acme.com' },
-      { id: 'p3', name: null, email: 'john@partner.co' },
+      {
+        id: 'p1',
+        name: 'Markus Klooth',
+        email: 'markus@auxx-lift.com',
+        isOrganizer: true,
+        rsvpStatus: 'accepted',
+        contactEntityInstanceId: null,
+      },
+      {
+        id: 'p2',
+        name: 'Sarah Chen',
+        email: 'sarah@acme.com',
+        isOrganizer: false,
+        rsvpStatus: 'accepted',
+        contactEntityInstanceId: null,
+      },
+      {
+        id: 'p3',
+        name: null,
+        email: 'john@partner.co',
+        isOrganizer: false,
+        rsvpStatus: 'tentative',
+        contactEntityInstanceId: null,
+      },
     ],
   },
   rec_002: {
@@ -106,10 +160,30 @@ const MOCK_RECORDINGS: Record<string, MockRecording> = {
     failureReason: null,
     videoAssetId: null,
     createdAt: new Date('2026-04-15T09:58:00Z'),
-    calendarEvent: { title: 'Weekly Customer Success Sync' },
+    calendarEvent: {
+      title: 'Weekly Customer Success Sync',
+      meetingUrl: 'https://zoom.us/j/8234567890',
+      startTime: new Date('2026-04-15T10:00:00Z'),
+      endTime: new Date('2026-04-15T10:30:00Z'),
+      timezone: 'America/Los_Angeles',
+    },
     participants: [
-      { id: 'p4', name: 'Markus Klooth', email: 'markus@auxx-lift.com' },
-      { id: 'p5', name: 'Emily Rodriguez', email: 'emily@client.com' },
+      {
+        id: 'p4',
+        name: 'Markus Klooth',
+        email: 'markus@auxx-lift.com',
+        isOrganizer: true,
+        rsvpStatus: 'accepted',
+        contactEntityInstanceId: null,
+      },
+      {
+        id: 'p5',
+        name: 'Emily Rodriguez',
+        email: 'emily@client.com',
+        isOrganizer: false,
+        rsvpStatus: 'accepted',
+        contactEntityInstanceId: null,
+      },
     ],
   },
   rec_003: {
@@ -124,12 +198,46 @@ const MOCK_RECORDINGS: Record<string, MockRecording> = {
     failureReason: null,
     videoAssetId: null,
     createdAt: new Date('2026-04-13T15:58:00Z'),
-    calendarEvent: { title: 'Sprint Retrospective' },
+    calendarEvent: {
+      title: 'Sprint Retrospective',
+      meetingUrl: 'https://teams.microsoft.com/l/meetup-join/xyz',
+      startTime: new Date('2026-04-13T16:00:00Z'),
+      endTime: new Date('2026-04-13T16:30:00Z'),
+      timezone: 'America/Los_Angeles',
+    },
     participants: [
-      { id: 'p6', name: 'Markus Klooth', email: 'markus@auxx-lift.com' },
-      { id: 'p7', name: 'Alex Kim', email: 'alex@auxx-lift.com' },
-      { id: 'p8', name: 'Jordan Lee', email: 'jordan@auxx-lift.com' },
-      { id: 'p9', name: 'Priya Sharma', email: 'priya@auxx-lift.com' },
+      {
+        id: 'p6',
+        name: 'Markus Klooth',
+        email: 'markus@auxx-lift.com',
+        isOrganizer: true,
+        rsvpStatus: 'accepted',
+        contactEntityInstanceId: null,
+      },
+      {
+        id: 'p7',
+        name: 'Alex Kim',
+        email: 'alex@auxx-lift.com',
+        isOrganizer: false,
+        rsvpStatus: 'accepted',
+        contactEntityInstanceId: null,
+      },
+      {
+        id: 'p8',
+        name: 'Jordan Lee',
+        email: 'jordan@auxx-lift.com',
+        isOrganizer: false,
+        rsvpStatus: 'declined',
+        contactEntityInstanceId: null,
+      },
+      {
+        id: 'p9',
+        name: 'Priya Sharma',
+        email: 'priya@auxx-lift.com',
+        isOrganizer: false,
+        rsvpStatus: 'accepted',
+        contactEntityInstanceId: null,
+      },
     ],
   },
   rec_004: {
@@ -144,7 +252,13 @@ const MOCK_RECORDINGS: Record<string, MockRecording> = {
     failureReason: 'Bot was denied entry to the meeting',
     videoAssetId: null,
     createdAt: new Date('2026-04-12T11:00:00Z'),
-    calendarEvent: { title: 'Investor Update Call' },
+    calendarEvent: {
+      title: 'Investor Update Call',
+      meetingUrl: 'https://meet.google.com/abc-defg-hij',
+      startTime: new Date('2026-04-12T11:00:00Z'),
+      endTime: new Date('2026-04-12T12:00:00Z'),
+      timezone: 'America/Los_Angeles',
+    },
     participants: [],
   },
   rec_005: {
@@ -159,8 +273,23 @@ const MOCK_RECORDINGS: Record<string, MockRecording> = {
     failureReason: null,
     videoAssetId: null,
     createdAt: new Date('2026-04-15T15:00:00Z'),
-    calendarEvent: { title: 'Design Review — Calls Page' },
-    participants: [{ id: 'p10', name: 'Markus Klooth', email: 'markus@auxx-lift.com' }],
+    calendarEvent: {
+      title: 'Design Review — Calls Page',
+      meetingUrl: 'https://meet.google.com/xyz-uvwx-ijk',
+      startTime: new Date('2026-04-16T15:00:00Z'),
+      endTime: new Date('2026-04-16T16:00:00Z'),
+      timezone: 'America/Los_Angeles',
+    },
+    participants: [
+      {
+        id: 'p10',
+        name: 'Markus Klooth',
+        email: 'markus@auxx-lift.com',
+        isOrganizer: true,
+        rsvpStatus: 'accepted',
+        contactEntityInstanceId: null,
+      },
+    ],
   },
 }
 
@@ -242,6 +371,32 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
     },
   })
 
+  const regenerateAi = api.recording.regenerate.useMutation({
+    onSuccess: () => {
+      utils.recording.getById.invalidate({ id: recordingId })
+      utils.recording.chapters.list.invalidate({ recordingId })
+      utils.recording.insights.list.invalidate({ recordingId })
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to start regeneration', description: error.message })
+    },
+  })
+
+  const regenerateTranscript = api.recording.regenerateTranscript.useMutation({
+    onSuccess: () => {
+      utils.recording.getById.invalidate({ id: recordingId })
+      utils.recording.getTranscript.invalidate({ recordingId })
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to start transcript re-run', description: error.message })
+    },
+  })
+
+  const { data: chapters } = api.recording.chapters.list.useQuery(
+    { recordingId },
+    { enabled: !USE_MOCK_DATA }
+  )
+
   const breadcrumbTitle = recording?.calendarEvent?.title ?? recording?.botName ?? 'Recording'
   const isActive = recording ? !TERMINAL_STATUSES.includes(recording.status as BotStatus) : false
 
@@ -290,25 +445,63 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
               </Button>
             )}
 
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={async () => {
-                const confirmed = await confirm({
-                  title: 'Delete recording?',
-                  description:
-                    'This will permanently delete the recording and all associated media.',
-                  confirmText: 'Delete',
-                  cancelText: 'Cancel',
-                  destructive: true,
-                })
-                if (confirmed) {
-                  deleteRecording.mutate({ id: recordingId })
-                }
-              }}
-              loading={deleteRecording.isPending}>
-              <Trash2 />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant='ghost' size='icon-sm' aria-label='Recording actions'>
+                  <MoreVertical />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                <DropdownMenuItem
+                  onSelect={async (e) => {
+                    e.preventDefault()
+                    const confirmed = await confirm({
+                      title: 'Regenerate transcript?',
+                      description:
+                        'This will re-fetch the transcript from the provider and re-run all AI analysis.',
+                      confirmText: 'Regenerate',
+                      cancelText: 'Cancel',
+                    })
+                    if (confirmed) {
+                      regenerateTranscript.mutate({ recordingId })
+                    }
+                  }}>
+                  <RefreshCw /> Regenerate transcript
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => regenerateAi.mutate({ recordingId, scope: 'summary' })}>
+                  <Sparkles /> Regenerate summary
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => regenerateAi.mutate({ recordingId, scope: 'chapters' })}>
+                  <Sparkles /> Regenerate chapters
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => regenerateAi.mutate({ recordingId, scope: 'all' })}>
+                  <Sparkles /> Regenerate all AI
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className='text-destructive focus:text-destructive'
+                  onSelect={async (e) => {
+                    e.preventDefault()
+                    const confirmed = await confirm({
+                      title: 'Delete recording?',
+                      description:
+                        'This will permanently delete the recording and all associated media.',
+                      confirmText: 'Delete',
+                      cancelText: 'Cancel',
+                      destructive: true,
+                    })
+                    if (confirmed) {
+                      deleteRecording.mutate({ id: recordingId })
+                    }
+                  }}>
+                  <Trash2 /> Delete recording
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         }>
         <MainPageBreadcrumb>
@@ -325,12 +518,9 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
                 {
                   key: 'summary-sidebar',
                   content: (
-                    <>
-                      <DrawerHeader icon={<BookOpen className='size-4' />} title='Summary' />
-                      <div className='h-full overflow-y-auto'>
-                        <RecordingSummary />
-                      </div>
-                    </>
+                    <div className='h-full overflow-y-auto'>
+                      <RecordingSummary recordingId={recordingId} />
+                    </div>
                   ),
                   width: dockedWidth,
                   onWidthChange: setDockedWidth,
@@ -359,12 +549,17 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
                 <div className='p-3'>
                   {recording.status === 'completed' && videoSession?.url ? (
-                    <div className='overflow-hidden rounded-lg border'>
+                    <div className='overflow-hidden rounded-lg'>
                       <VideoPlayer
                         videoId={recordingId}
                         sourceUrl={videoSession.url}
                         borderRadius='8'
                         hasBorder={false}
+                        chapters={chapters?.map((c) => ({
+                          start: c.startMs / 1000,
+                          end: c.endMs / 1000,
+                          title: c.title,
+                        }))}
                       />
                     </div>
                   ) : (
@@ -392,12 +587,15 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
             onValueChange={setTab}
             className='flex-1 flex flex-col min-h-0'>
             <motion.div
+              initial={false}
               animate={{
                 borderTopLeftRadius: showVideo ? 0 : 8,
                 borderTopRightRadius: showVideo ? 0 : 8,
+                borderTopWidth: showVideo ? 1 : 0,
               }}
+              style={{ borderTopStyle: 'solid', borderTopColor: 'var(--border)' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-              <TabsList className='border-b w-full justify-start rounded-none bg-primary-150 px-3 sm:px-6'>
+              <TabsList className='border-b w-full justify-start rounded-none bg-primary-150 px-2'>
                 <TabsTrigger value='summary' variant='outline' className='lg:hidden'>
                   <BookOpen /> Summary
                 </TabsTrigger>
@@ -423,7 +621,7 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
             </motion.div>
 
             <TabsContent value='summary' className='flex flex-col flex-1 min-h-0 overflow-y-auto'>
-              <RecordingSummary />
+              <RecordingSummary recordingId={recordingId} />
             </TabsContent>
 
             <TabsContent value='transcript' className='flex flex-col flex-1 min-h-0'>
@@ -479,7 +677,7 @@ function RecordingDetailSkeleton() {
               ]
             : []
         }>
-        <div className='p-6 space-y-4'>
+        <div className='p-3 space-y-4'>
           <Skeleton className='aspect-video w-full rounded-lg' />
           <Skeleton className='h-10 w-full' />
           <Skeleton className='h-64 w-full' />

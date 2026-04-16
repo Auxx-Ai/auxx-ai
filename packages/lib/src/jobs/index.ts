@@ -120,6 +120,8 @@ export {
 } from './polling'
 // Recording
 export {
+  type AIPostProcessJobData,
+  aiPostProcessJob,
   type HandleBotTimeoutJobData,
   type HandleRecordingWebhookJobData,
   handleBotTimeoutJob,
