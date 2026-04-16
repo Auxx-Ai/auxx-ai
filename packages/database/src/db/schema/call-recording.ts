@@ -13,6 +13,7 @@ import {
   sql,
   text,
   timestamp,
+  uniqueIndex,
 } from './_shared'
 import { CalendarEvent } from './calendar-event'
 import { EntityInstance } from './entity-instance'
@@ -129,6 +130,15 @@ export const CallRecording = pgTable(
     ),
     index('CallRecording_externalBotId_idx').using('btree', table.externalBotId.asc().nullsLast()),
     index('CallRecording_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
+    // At most one recording per calendar event per org — the cron scheduler
+    // must never silently re-create a recording for the same event.
+    uniqueIndex('CallRecording_organizationId_calendarEventId_key')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.calendarEventId.asc().nullsLast()
+      )
+      .where(sql`"calendarEventId" IS NOT NULL`),
   ]
 )
 

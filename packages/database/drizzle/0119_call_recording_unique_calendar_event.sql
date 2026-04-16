@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "CallRecording_organizationId_calendarEventId_key" ON "CallRecording" USING btree ("organizationId","calendarEventId") WHERE "calendarEventId" IS NOT NULL;

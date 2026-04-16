@@ -28,9 +28,10 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { Tooltip } from '~/components/global/tooltip'
+import { getOrCreateStore, VideoPlayer } from '~/components/video-player'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
@@ -174,26 +175,9 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'transcript' })
   const [showVideo, setShowVideo] = useState(true)
   const utils = api.useUtils()
-  const videoRef = useRef<HTMLVideoElement>(null)
   const setCurrentTimeMs = useRecordingPlayer((s) => s.setCurrentTimeMs)
   const registerSeekTo = useRecordingPlayer((s) => s.registerSeekTo)
   const unregisterSeekTo = useRecordingPlayer((s) => s.unregisterSeekTo)
-
-  // Register seekTo so transcript can seek the video
-  useEffect(() => {
-    registerSeekTo((ms: number) => {
-      if (videoRef.current) {
-        videoRef.current.currentTime = ms / 1000
-      }
-    })
-    return () => unregisterSeekTo()
-  }, [registerSeekTo, unregisterSeekTo])
-
-  const handleTimeUpdate = useCallback(() => {
-    if (videoRef.current) {
-      setCurrentTimeMs(Math.floor(videoRef.current.currentTime * 1000))
-    }
-  }, [setCurrentTimeMs])
 
   // Sidebar visible on desktop — Summary tab takes over on mobile
   const isDesktop = useMedia('(min-width: 1024px)')
@@ -219,6 +203,26 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
     { id: recordingId },
     { enabled: !USE_MOCK_DATA && !!recording?.videoAssetId }
   )
+
+  // Sync VideoPlayer store → useRecordingPlayer bridge
+  useEffect(() => {
+    if (!videoSession?.url) return
+
+    const store = getOrCreateStore(recordingId)
+    const unsub = store.subscribe((state) => {
+      setCurrentTimeMs(Math.floor(state.played * 1000))
+    })
+
+    registerSeekTo((ms: number) => {
+      const store = getOrCreateStore(recordingId)
+      store.setState({ pendingSeek: ms / 1000, videoLoadRequested: true })
+    })
+
+    return () => {
+      unsub()
+      unregisterSeekTo()
+    }
+  }, [recordingId, videoSession?.url, setCurrentTimeMs, registerSeekTo, unregisterSeekTo])
 
   const cancelRecording = api.recording.cancel.useMutation({
     onSuccess: () => {
@@ -355,16 +359,13 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
                 <div className='p-3'>
                   {recording.status === 'completed' && videoSession?.url ? (
-                    <div className='overflow-hidden rounded-lg border bg-black'>
-                      <video
-                        ref={videoRef}
-                        controls
-                        className='aspect-video w-full'
-                        src={videoSession.url}
-                        preload='metadata'
-                        onTimeUpdate={handleTimeUpdate}>
-                        Your browser does not support the video tag.
-                      </video>
+                    <div className='overflow-hidden rounded-lg border'>
+                      <VideoPlayer
+                        videoId={recordingId}
+                        sourceUrl={videoSession.url}
+                        borderRadius='8'
+                        hasBorder={false}
+                      />
                     </div>
                   ) : (
                     <div className='flex items-center justify-center rounded-lg border bg-muted aspect-video'>

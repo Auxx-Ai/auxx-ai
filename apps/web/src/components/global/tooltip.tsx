@@ -41,6 +41,7 @@ export const Tooltip = ({
   side,
   align,
   className,
+  delayDuration,
   allowInteraction = false,
   variant,
 }: TooltipProps) => {
@@ -99,7 +100,11 @@ export const Tooltip = ({
   })
 
   return (
-    <ShadcnTooltip open={isOpen} onOpenChange={handleOpenChange} disableHoverableContent>
+    <ShadcnTooltip
+      open={isOpen}
+      onOpenChange={handleOpenChange}
+      delayDuration={delayDuration}
+      disableHoverableContent>
       <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent
         sideOffset={sideOffset}

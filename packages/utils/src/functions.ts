@@ -29,3 +29,33 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
 
   return debounced
 }
+
+/**
+ * Creates a throttled version of a function that limits execution
+ * to at most once per the specified interval.
+ */
+export function throttle<T extends (...args: unknown[]) => void>(
+  fn: T,
+  ms: number
+): (...args: Parameters<T>) => void {
+  let last = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  return (...args: Parameters<T>) => {
+    const now = Date.now()
+    const remaining = ms - (now - last)
+    if (remaining <= 0) {
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+      last = now
+      fn(...args)
+    } else if (!timer) {
+      timer = setTimeout(() => {
+        last = Date.now()
+        timer = null
+        fn(...args)
+      }, remaining)
+    }
+  }
+}

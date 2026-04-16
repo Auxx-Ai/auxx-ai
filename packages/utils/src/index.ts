@@ -99,7 +99,7 @@ export {
 } from './fractional-indexing'
 
 // Function utilities
-export { debounce } from './functions'
+export { debounce, throttle } from './functions'
 
 // ID generation
 export { generateId } from './generateId'
