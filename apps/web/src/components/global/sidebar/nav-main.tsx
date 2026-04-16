@@ -90,7 +90,7 @@ export function NavMain({ menu, itemActions }: Props) {
   return (
     <SidebarGroup className='group'>
       <SidebarGroupHeader
-        title='Configurations'
+        title='Workspace'
         isEditMode={false}
         onToggleEditMode={() => {}}
         isOpen={isOpen}

@@ -5,6 +5,11 @@ export {
   aiPostProcessJob,
 } from './ai-post-process-job'
 export {
+  enqueueGenerateVideoAssetsJob,
+  GENERATE_VIDEO_ASSETS_JOB_NAME,
+  type GenerateVideoAssetsJobData,
+} from './generate-video-assets-job'
+export {
   type HandleBotTimeoutJobData,
   handleBotTimeoutJob,
 } from './handle-bot-timeout-job'
