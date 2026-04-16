@@ -10,7 +10,6 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Lock, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { CreateMeetingDialog, RecordingsList } from '~/components/calls'
@@ -41,12 +40,10 @@ function CallsPageContent() {
       )}
 
       <MainPageContent>
-        <ScrollArea className='flex-1 min-h-0 flex flex-col'>
+        <div className='flex flex-col h-full min-h-0'>
           <UpcomingMeetingsWidget />
-          <div className='p-3 sm:p-6 flex-1 flex flex-col min-h-0'>
-            <RecordingsList />
-          </div>
-        </ScrollArea>
+          <RecordingsList />
+        </div>
       </MainPageContent>
     </MainPage>
   )

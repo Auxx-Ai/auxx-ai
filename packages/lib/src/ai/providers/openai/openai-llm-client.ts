@@ -527,6 +527,22 @@ export class OpenAILLMClient extends LLMClient {
             rawSchema.schema && typeof rawSchema.schema === 'object' && !rawSchema.type
           const innerSchema = isWrapped ? rawSchema.schema : rawSchema
 
+          // Older OpenAI chat models (gpt-4-turbo, gpt-4, gpt-3.5-turbo, gpt-4o-2024-05-13)
+          // support JSON mode (`json_object`) but not strict Structured Outputs (`json_schema`).
+          // Downgrade so recording/AI features still return parseable JSON on those models.
+          if (!this.modelSupportsStrictJsonSchema(params.model)) {
+            processed.messages = this.injectSchemaIntoSystemPrompt(processed.messages, innerSchema)
+            processed.response_format = { type: 'json_object' }
+            delete processed.json_schema
+            this.logger.info(
+              'Downgraded json_schema to json_object for model without strict schema support',
+              {
+                model: params.model,
+              }
+            )
+            return processed
+          }
+
           // OpenAI strict mode requires all properties to be in the required array
           const schemaForOpenAI = { ...innerSchema }
           if (schemaForOpenAI.properties && typeof schemaForOpenAI.properties === 'object') {
@@ -561,6 +577,39 @@ export class OpenAILLMClient extends LLMClient {
     }
 
     return processed
+  }
+
+  /**
+   * Whether a model supports strict Structured Outputs via `response_format: { type: 'json_schema' }`.
+   * Pre-gpt-4o models (gpt-4-turbo, gpt-4, gpt-3.5-turbo) and the original gpt-4o-2024-05-13
+   * only support legacy JSON mode (`json_object`), not strict schema enforcement.
+   */
+  private modelSupportsStrictJsonSchema(model: string): boolean {
+    const base = this.getBaseModel(model)
+    if (base === 'gpt-4o-2024-05-13') return false
+    if (base.startsWith('gpt-4-turbo')) return false
+    if (base === 'gpt-4' || base.startsWith('gpt-4-0')) return false
+    if (base.startsWith('gpt-3.5')) return false
+    return true
+  }
+
+  /**
+   * Prepend a JSON schema description to the system message so `json_object` mode
+   * still produces output matching the requested schema.
+   */
+  private injectSchemaIntoSystemPrompt(messages: Message[], schema: any): Message[] {
+    const schemaText = `Respond with a single JSON object that strictly matches this JSON Schema. Do not include any prose, markdown, or code fences — only the JSON object.\n\nSchema:\n${JSON.stringify(schema, null, 2)}`
+
+    const firstSystemIdx = messages.findIndex((m) => m.role === 'system')
+    if (firstSystemIdx === -1) {
+      return [{ role: 'system', content: schemaText }, ...messages]
+    }
+
+    return messages.map((msg, idx) => {
+      if (idx !== firstSystemIdx) return msg
+      const existing = typeof msg.content === 'string' ? msg.content : ''
+      return { ...msg, content: existing ? `${existing}\n\n${schemaText}` : schemaText }
+    })
   }
 
   /**

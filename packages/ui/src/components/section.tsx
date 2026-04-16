@@ -17,7 +17,7 @@ export interface SectionProps {
   className?: string
   /** Icon to display before the title */
   icon?: React.ReactNode
-  title: string
+  title: React.ReactNode
   titleClassName?: string
   /** Custom className for the CollapsibleContent wrapper */
   description?: string

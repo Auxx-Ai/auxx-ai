@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../../errors'
 import { getProvider } from '../bot/providers'
@@ -63,114 +63,135 @@ export async function processTranscript(
     return err(new Error('Transcript not available or empty'))
   }
 
-  // 4. Insert Transcript row
   const transcriptId = generateId()
-  await db.insert(schema.Transcript).values({
-    id: transcriptId,
-    organizationId,
-    callRecordingId: recordingId,
-    transcriptionProvider: 'recall',
-    type: 'async',
-    status: 'processing',
-    language: transcriptData.language ?? null,
-    updatedAt: new Date(),
-  })
 
-  try {
-    // 5. Build speaker map and insert TranscriptSpeaker rows
-    const speakerMap = new Map<string, string>() // externalSpeakerId → our speakerId
-    const seenSpeakers = new Set<string>()
+  // Build derived fields up front so we can do the full write inside a single transaction.
+  const speakerMap = new Map<string, string>() // externalSpeakerId → our speakerId
+  const speakerRows: (typeof schema.TranscriptSpeaker.$inferInsert)[] = []
+  const seenSpeakers = new Set<string>()
+  let speakerIndex = 0
 
-    for (const utterance of transcriptData.utterances) {
-      if (!seenSpeakers.has(utterance.speakerId)) {
-        seenSpeakers.add(utterance.speakerId)
-        const speakerId = generateId()
-        speakerMap.set(utterance.speakerId, speakerId)
-
-        await db.insert(schema.TranscriptSpeaker).values({
-          id: speakerId,
-          organizationId,
-          transcriptId,
-          callRecordingId: recordingId,
-          name: utterance.speakerName || `Speaker ${seenSpeakers.size}`,
-        })
-      }
-    }
-
-    // 6. Insert TranscriptUtterance rows in bulk
-    const utteranceRows = transcriptData.utterances.map((u, idx) => ({
-      id: generateId(),
+  for (const utterance of transcriptData.utterances) {
+    if (seenSpeakers.has(utterance.speakerId)) continue
+    seenSpeakers.add(utterance.speakerId)
+    speakerIndex += 1
+    const speakerId = generateId()
+    speakerMap.set(utterance.speakerId, speakerId)
+    speakerRows.push({
+      id: speakerId,
       organizationId,
       transcriptId,
-      speakerId: speakerMap.get(u.speakerId)!,
-      startMs: u.startMs,
-      endMs: u.endMs,
-      text: u.text,
-      sortOrder: idx,
-    }))
+      callRecordingId: recordingId,
+      name: utterance.speakerName || `Speaker ${speakerIndex}`,
+    })
+  }
 
-    if (utteranceRows.length > 0) {
-      // Insert in batches of 500 to avoid query size limits
-      const batchSize = 500
-      for (let i = 0; i < utteranceRows.length; i += batchSize) {
-        const batch = utteranceRows.slice(i, i + batchSize)
-        await db.insert(schema.TranscriptUtterance).values(batch)
-      }
+  const utteranceRows = transcriptData.utterances.map((u, idx) => ({
+    id: generateId(),
+    organizationId,
+    transcriptId,
+    speakerId: speakerMap.get(u.speakerId)!,
+    startMs: u.startMs,
+    endMs: u.endMs,
+    text: u.text,
+    words: u.words ?? null,
+    sortOrder: idx,
+  }))
+
+  const speakerNames = new Map<string, string>()
+  let nameIndex = 0
+  for (const utterance of transcriptData.utterances) {
+    if (!speakerNames.has(utterance.speakerId)) {
+      nameIndex += 1
+      speakerNames.set(utterance.speakerId, utterance.speakerName || `Speaker ${nameIndex}`)
     }
+  }
+  const fullText = transcriptData.utterances
+    .map((u) => `${speakerNames.get(u.speakerId)}: ${u.text}`)
+    .join('\n')
 
-    // 7. Build fullText (speaker-attributed)
-    const speakerNames = new Map<string, string>()
-    for (const utterance of transcriptData.utterances) {
-      if (!speakerNames.has(utterance.speakerId)) {
-        speakerNames.set(
-          utterance.speakerId,
-          utterance.speakerName || `Speaker ${speakerNames.size + 1}`
-        )
+  const wordCount = transcriptData.utterances.reduce(
+    (sum, u) => sum + u.text.split(/\s+/).filter(Boolean).length,
+    0
+  )
+
+  try {
+    await db.transaction(async (tx) => {
+      // Idempotent: remove any existing transcript + children for this recording.
+      const existing = await tx
+        .select({ id: schema.Transcript.id })
+        .from(schema.Transcript)
+        .where(eq(schema.Transcript.callRecordingId, recordingId))
+
+      if (existing.length > 0) {
+        const existingIds = existing.map((e) => e.id)
+        await tx
+          .delete(schema.TranscriptUtterance)
+          .where(inArray(schema.TranscriptUtterance.transcriptId, existingIds))
+        await tx
+          .delete(schema.TranscriptSpeaker)
+          .where(inArray(schema.TranscriptSpeaker.transcriptId, existingIds))
+        await tx.delete(schema.Transcript).where(inArray(schema.Transcript.id, existingIds))
       }
-    }
 
-    const fullText = transcriptData.utterances
-      .map((u) => `${speakerNames.get(u.speakerId)}: ${u.text}`)
-      .join('\n')
-
-    const wordCount = transcriptData.utterances.reduce(
-      (sum, u) => sum + u.text.split(/\s+/).filter(Boolean).length,
-      0
-    )
-
-    // 8. Update Transcript to completed
-    await db
-      .update(schema.Transcript)
-      .set({
+      await tx.insert(schema.Transcript).values({
+        id: transcriptId,
+        organizationId,
+        callRecordingId: recordingId,
+        transcriptionProvider: 'recall',
+        type: 'async',
         status: 'completed',
+        language: transcriptData.language ?? null,
         fullText,
         wordCount,
-        language: transcriptData.language ?? null,
+        updatedAt: new Date(),
       })
-      .where(eq(schema.Transcript.id, transcriptId))
 
-    // 9. Speaker matching (best-effort)
-    try {
-      await matchSpeakersToParticipants({
-        organizationId,
-        transcriptId,
-        callRecordingId: recordingId,
-      })
-    } catch (matchError) {
-      logger.warn('Speaker matching failed (non-fatal)', {
-        transcriptId,
-        error: matchError instanceof Error ? matchError.message : String(matchError),
-      })
-    }
+      if (speakerRows.length > 0) {
+        await tx.insert(schema.TranscriptSpeaker).values(speakerRows)
+      }
 
-    return ok({ transcriptId })
+      if (utteranceRows.length > 0) {
+        const batchSize = 500
+        for (let i = 0; i < utteranceRows.length; i += batchSize) {
+          const batch = utteranceRows.slice(i, i + batchSize)
+          await tx.insert(schema.TranscriptUtterance).values(batch)
+        }
+      }
+    })
   } catch (error) {
-    // Mark transcript as failed
+    // If the transaction rolled back, no partial rows to clean up. Still record a failed
+    // placeholder row so the UI can show the error state.
     await db
-      .update(schema.Transcript)
-      .set({ status: 'failed' })
-      .where(eq(schema.Transcript.id, transcriptId))
+      .insert(schema.Transcript)
+      .values({
+        id: generateId(),
+        organizationId,
+        callRecordingId: recordingId,
+        transcriptionProvider: 'recall',
+        type: 'async',
+        status: 'failed',
+        language: transcriptData.language ?? null,
+        updatedAt: new Date(),
+      })
+      .onConflictDoNothing()
 
     return err(error instanceof Error ? error : new Error(String(error)))
   }
+
+  // Speaker matching runs outside the transaction (best-effort, slower lookups).
+  try {
+    await matchSpeakersToParticipants({
+      organizationId,
+      transcriptId,
+      callRecordingId: recordingId,
+    })
+  } catch (matchError) {
+    logger.warn('Speaker matching failed (non-fatal)', {
+      transcriptId,
+      error: matchError instanceof Error ? matchError.message : String(matchError),
+    })
+  }
+
+  return ok({ transcriptId })
 }

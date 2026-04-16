@@ -35,18 +35,16 @@ function ThumbnailOverlay({ src }: { src: string }) {
   )
 }
 
-function LoadingPlaceholder({ message, borderRadius }: { message: string; borderRadius: string }) {
+function LoadingPlaceholder({ borderRadius }: { borderRadius: string }) {
   return (
     <div
-      className='flex w-full items-center justify-center text-[13px] aspect-video'
+      className='aspect-video w-full'
       style={{
         background: 'var(--surface-secondary, #f3f4f6)',
         borderRadius: `${borderRadius}px`,
         border: '1px solid var(--stroke-primary, #e5e7eb)',
-        color: 'var(--text-quaternary, #9ca3af)',
-      }}>
-      {message}
-    </div>
+      }}
+    />
   )
 }
 
@@ -145,15 +143,13 @@ export function VideoRenderer({ borderRadius = '10', hasBorder = true }: VideoRe
           />
           {isInitialLoading && !lazyLoadVideo && (
             <div className='absolute inset-0'>
-              <LoadingPlaceholder message='Loading' borderRadius={borderRadius} />
+              <LoadingPlaceholder borderRadius={borderRadius} />
             </div>
           )}
         </>
       )}
 
-      {loadState === 'loading' && (
-        <LoadingPlaceholder message='Loading' borderRadius={borderRadius} />
-      )}
+      {loadState === 'loading' && <LoadingPlaceholder borderRadius={borderRadius} />}
 
       {showThumbnail && (
         <div className='absolute inset-0'>

@@ -1,5 +1,26 @@
 // packages/lib/src/recording/index.ts
 
+export type {
+  ActionItem,
+  GeneratedChapter,
+  GeneratedSummary,
+  InsightSectionResult,
+  InsightTemplateSection,
+  PostProcessScope,
+} from './ai'
+export {
+  createInsightTemplate,
+  generateChapters,
+  generateSummary,
+  getInsightDetail,
+  listChapters,
+  listInsights,
+  listInsightTemplates,
+  resolveRecordingLLM,
+  runAIPostProcess,
+  runDefaultInsights,
+  runInsightTemplate,
+} from './ai'
 export * from './bot'
 export * from './calendar'
 export {

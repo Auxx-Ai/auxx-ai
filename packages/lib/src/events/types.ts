@@ -69,6 +69,10 @@ export type Events =
   | 'integration:connected'
   | 'integration:connection_failed'
   | 'shopify:connected'
+  | 'recording:ai.summary_ready'
+  | 'recording:ai.chapters_ready'
+  | 'recording:ai.insights_ready'
+  | 'recording:ai.failed'
 export type AuxxEventGeneric<U extends Events, T extends Record<string, unknown>> = {
   type: U
   data: T
@@ -711,6 +715,44 @@ export type ShopifyConnectedEvent = AuxxEventGeneric<
   }
 >
 
+// Recording AI post-processing events
+export type RecordingAiSummaryReadyEvent = AuxxEventGeneric<
+  'recording:ai.summary_ready',
+  {
+    recordingId: string
+    organizationId: string
+  }
+>
+
+export type RecordingAiChaptersReadyEvent = AuxxEventGeneric<
+  'recording:ai.chapters_ready',
+  {
+    recordingId: string
+    organizationId: string
+    chapterCount: number
+  }
+>
+
+export type RecordingAiInsightsReadyEvent = AuxxEventGeneric<
+  'recording:ai.insights_ready',
+  {
+    recordingId: string
+    organizationId: string
+    insightId: string
+    templateId: string
+  }
+>
+
+export type RecordingAiFailedEvent = AuxxEventGeneric<
+  'recording:ai.failed',
+  {
+    recordingId: string
+    organizationId: string
+    scope: 'summary' | 'chapters' | 'insights' | 'all'
+    error: string
+  }
+>
+
 export type AuxxEvent =
   | ProjectCreatedEvent
   | UserCreatedEvent
@@ -775,6 +817,10 @@ export type AuxxEvent =
   | IntegrationConnectedEvent
   | IntegrationConnectionFailedEvent
   | ShopifyConnectedEvent
+  | RecordingAiSummaryReadyEvent
+  | RecordingAiChaptersReadyEvent
+  | RecordingAiInsightsReadyEvent
+  | RecordingAiFailedEvent
 export type EventHandler<E extends AuxxEvent> = ({ data }: { data: E }) => void
 export interface IEventsHandlers {
   'project:created': EventHandler<ProjectCreatedEvent>[]
@@ -840,4 +886,8 @@ export interface IEventsHandlers {
   'integration:connected': EventHandler<IntegrationConnectedEvent>[]
   'integration:connection_failed': EventHandler<IntegrationConnectionFailedEvent>[]
   'shopify:connected': EventHandler<ShopifyConnectedEvent>[]
+  'recording:ai.summary_ready': EventHandler<RecordingAiSummaryReadyEvent>[]
+  'recording:ai.chapters_ready': EventHandler<RecordingAiChaptersReadyEvent>[]
+  'recording:ai.insights_ready': EventHandler<RecordingAiInsightsReadyEvent>[]
+  'recording:ai.failed': EventHandler<RecordingAiFailedEvent>[]
 }

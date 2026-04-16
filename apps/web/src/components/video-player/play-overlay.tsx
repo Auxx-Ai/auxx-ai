@@ -13,7 +13,7 @@ export function PlayOverlay() {
       type='button'
       onClick={playing ? pause : play}
       aria-label={playing ? 'Pause video' : 'Play video'}
-      className='absolute top-0 right-0 bottom-[76px] left-0 flex cursor-pointer items-center justify-center border-none bg-transparent'>
+      className='absolute inset-0 flex cursor-pointer items-center justify-center border-none bg-transparent'>
       {!playing && (
         <div className='flex size-16 items-center justify-center rounded-full bg-white/20 shadow-[0px_16px_56px_-12px_rgba(28,40,64,0.12),0px_36px_176px_-8px_rgba(28,40,64,0.14)] backdrop-blur-sm'>
           <div className='flex size-[52px] items-center justify-center rounded-full bg-white'>

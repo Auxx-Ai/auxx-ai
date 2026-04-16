@@ -3,8 +3,6 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import {
-  ChevronsLeft,
-  ChevronsRight,
   Maximize,
   Maximize2,
   Minimize,
@@ -19,6 +17,64 @@ import { usePlayerMode } from './player-mode-context'
 import { ProgressBar } from './progress-bar'
 import { useVideoPlayerActions, useVideoPlayerStore } from './video-player-context'
 import { VolumeControl } from './volume-control'
+
+// ── Custom skip icons (lucide Undo2/Redo2 with "10" inside) ──────
+
+function SkipBack10Icon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox='0 0 24 24'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth={2}
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      aria-hidden='true'>
+      <path d='M9 14 4 9l5-5' />
+      <path d='M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11' />
+      <text
+        x='14.5'
+        y='17.5'
+        fontSize='7'
+        fontWeight='700'
+        fill='currentColor'
+        stroke='none'
+        textAnchor='middle'>
+        10
+      </text>
+    </svg>
+  )
+}
+
+function SkipForward10Icon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox='0 0 24 24'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth={2}
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      aria-hidden='true'>
+      <path d='m15 14 5-5-5-5' />
+      <path d='M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13' />
+      <text
+        x='9.5'
+        y='17.5'
+        fontSize='7'
+        fontWeight='700'
+        fill='currentColor'
+        stroke='none'
+        textAnchor='middle'>
+        10
+      </text>
+    </svg>
+  )
+}
 
 // ── Icon button helper ───────────────────────────────────────────
 
@@ -41,7 +97,7 @@ function IconButton({ onClick, ariaLabel, disabled = false, title, children }: I
       aria-label={ariaLabel}
       disabled={disabled}
       className={cn(
-        'flex size-7 items-center justify-center rounded-md border-none bg-transparent p-0.5',
+        'flex size-6 items-center justify-center rounded-md border-none bg-transparent p-0.5 hover:bg-white/20 backdrop-blur-sm',
         disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer',
         isRegular ? 'text-white' : 'text-foreground'
       )}>
@@ -89,10 +145,10 @@ function SkipButtons() {
         ariaLabel='Go back 10 seconds'
         disabled={played === 0}
         title='Skip back 10s'>
-        <ChevronsLeft size={14} />
+        <SkipBack10Icon size={16} />
       </IconButton>
       <IconButton onClick={seekForward} ariaLabel='Go forward 10 seconds' title='Skip 10s'>
-        <ChevronsRight size={14} />
+        <SkipForward10Icon size={16} />
       </IconButton>
     </div>
   )

@@ -1,6 +1,10 @@
 // packages/lib/src/jobs/recording/index.ts
 
 export {
+  type AIPostProcessJobData,
+  aiPostProcessJob,
+} from './ai-post-process-job'
+export {
   type HandleBotTimeoutJobData,
   handleBotTimeoutJob,
 } from './handle-bot-timeout-job'

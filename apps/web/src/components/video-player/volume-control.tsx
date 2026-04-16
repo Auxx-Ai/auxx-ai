@@ -1,6 +1,7 @@
 // apps/web/src/components/video-player/volume-control.tsx
 'use client'
 
+import { Slider } from '@auxx/ui/components/slider'
 import { cn } from '@auxx/ui/lib/utils'
 import { Volume, Volume1, Volume2, VolumeX } from 'lucide-react'
 import { useState } from 'react'
@@ -17,8 +18,8 @@ export function VolumeControl() {
 
   const isRegular = mode === 'regular'
 
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    store.getState().setVolume(Number.parseFloat(e.target.value))
+  const handleVolumeChange = (value: number[]) => {
+    store.getState().setVolume(value[0] ?? 0)
   }
 
   return (
@@ -41,20 +42,20 @@ export function VolumeControl() {
 
       <div
         className={cn(
-          'flex items-center overflow-hidden transition-[width] duration-200 ease-out',
-          hovered ? 'w-14' : 'w-0'
+          'h-7 overflow-hidden transition-[width] duration-200 ease-out',
+          hovered ? 'w-16' : 'w-0'
         )}>
-        <input
-          type='range'
-          min={0}
-          max={1}
-          step={0.05}
-          value={volume}
-          onChange={handleVolumeChange}
-          aria-label='Volume'
-          className='w-full cursor-pointer'
-          style={{ accentColor: isRegular ? '#fff' : undefined }}
-        />
+        <div className='flex h-full w-16 shrink-0 items-center px-1'>
+          <Slider
+            min={0}
+            max={1}
+            step={0.05}
+            value={[volume]}
+            onValueChange={handleVolumeChange}
+            aria-label='Volume'
+            className='w-full cursor-pointer [&_[role=slider]]:shadow-md'
+          />
+        </div>
       </div>
     </div>
   )

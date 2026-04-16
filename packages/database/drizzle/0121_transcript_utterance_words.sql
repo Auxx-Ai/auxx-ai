@@ -1,0 +1,1 @@
+ALTER TABLE "TranscriptUtterance" ADD COLUMN "words" jsonb;

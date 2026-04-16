@@ -1,13 +1,13 @@
 // packages/lib/src/recording/transcription/transcript-queries.ts
 
 import { database as db, schema, type TranscriptSpeakerEntity } from '@auxx/database'
-import { and, asc, eq, gt } from 'drizzle-orm'
+import { and, asc, eq, gt, sql } from 'drizzle-orm'
 
 // ---------------------------------------------------------------------------
 // getTranscript
 // ---------------------------------------------------------------------------
 
-/** Get transcript with speakers for a recording. Returns null if no transcript exists. */
+/** Get transcript with speakers (including per-speaker stats + resolved participant) for a recording. Returns null if no transcript exists. */
 export async function getTranscript(recordingId: string, organizationId: string) {
   const [transcript] = await db
     .select()
@@ -22,12 +22,49 @@ export async function getTranscript(recordingId: string, organizationId: string)
 
   if (!transcript) return null
 
-  const speakers = await db
-    .select()
+  // Join speakers with their resolved MeetingParticipant (manual override wins).
+  const speakerRows = await db
+    .select({
+      speaker: schema.TranscriptSpeaker,
+      participant: {
+        id: schema.MeetingParticipant.id,
+        name: schema.MeetingParticipant.name,
+        email: schema.MeetingParticipant.email,
+        contactEntityInstanceId: schema.MeetingParticipant.contactEntityInstanceId,
+      },
+    })
     .from(schema.TranscriptSpeaker)
+    .leftJoin(
+      schema.MeetingParticipant,
+      eq(
+        schema.MeetingParticipant.id,
+        sql`COALESCE(${schema.TranscriptSpeaker.manualParticipantId}, ${schema.TranscriptSpeaker.participantId})`
+      )
+    )
     .where(eq(schema.TranscriptSpeaker.transcriptId, transcript.id))
 
-  return { ...transcript, speakers }
+  // One aggregate query over all utterances for this transcript.
+  // Both columns are cast to int so they come back as JS numbers — without the
+  // cast, COUNT(*) is bigint which node-postgres serializes as a string.
+  const stats = await db
+    .select({
+      speakerId: schema.TranscriptUtterance.speakerId,
+      utteranceCount: sql<number>`COUNT(*)::int`,
+      totalSpeakingMs: sql<number>`COALESCE(SUM(${schema.TranscriptUtterance.endMs} - ${schema.TranscriptUtterance.startMs}), 0)::int`,
+    })
+    .from(schema.TranscriptUtterance)
+    .where(eq(schema.TranscriptUtterance.transcriptId, transcript.id))
+    .groupBy(schema.TranscriptUtterance.speakerId)
+
+  const statsById = new Map(stats.map((s) => [s.speakerId, s]))
+  const speakersWithStats = speakerRows.map(({ speaker, participant }) => ({
+    ...speaker,
+    utteranceCount: Number(statsById.get(speaker.id)?.utteranceCount ?? 0),
+    totalSpeakingMs: Number(statsById.get(speaker.id)?.totalSpeakingMs ?? 0),
+    participant: participant?.id ? participant : null,
+  }))
+
+  return { ...transcript, speakers: speakersWithStats }
 }
 
 // ---------------------------------------------------------------------------

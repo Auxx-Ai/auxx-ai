@@ -614,6 +614,14 @@ export const insightTemplateStatus = pgEnum('InsightTemplateStatus', [
 ])
 export const insightStatus = pgEnum('InsightStatus', ['processing', 'completed', 'failed'])
 
+// AI post-processing
+export const aiProcessingStatus = pgEnum('AiProcessingStatus', [
+  'pending',
+  'processing',
+  'completed',
+  'failed',
+])
+
 export { sql } from 'drizzle-orm'
 // Re-export builders and sql for consumers
 export {

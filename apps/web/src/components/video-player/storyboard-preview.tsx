@@ -70,13 +70,11 @@ export function StoryboardPreview() {
 
   return (
     <div
-      className='pointer-events-none absolute z-10 rounded-lg p-1'
+      className='pointer-events-none absolute z-10 rounded-lg p-1 bg-background border-primary-500'
       style={{
         bottom: 48,
         left: leftPx,
         width: PREVIEW_WIDTH,
-        background: 'var(--surface-floating, #fff)',
-        border: '1px solid var(--stroke-floating, #e5e7eb)',
       }}>
       {thumbnailStoryboardUrl && (
         <StoryboardFrame
@@ -88,11 +86,7 @@ export function StoryboardPreview() {
       )}
       <div className='overflow-hidden px-1'>
         {chapter?.title && (
-          <div
-            className='truncate text-xs font-medium'
-            style={{ color: 'var(--text-on-accent, #fff)' }}>
-            {chapter.title}
-          </div>
+          <div className='truncate text-xs font-medium text-foreground'>{chapter.title}</div>
         )}
         <span className='text-[10px]' style={{ color: 'var(--text-floating-tertiary, #8c95a6)' }}>
           {formatTime(hoveredTime)}

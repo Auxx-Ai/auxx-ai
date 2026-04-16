@@ -3,6 +3,8 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { processTranscript } from '../../recording/transcription'
+import { getQueue, Queues } from '../queues'
+import type { AIPostProcessJobData } from './ai-post-process-job'
 
 const logger = createScopedLogger('job:transcribe-recording')
 
@@ -40,6 +42,19 @@ export const transcribeRecordingJob = async (jobOrCtx: Job<TranscribeRecordingJo
     jobId: job.id,
     recordingId,
     transcriptId: result.value.transcriptId,
+  })
+
+  // Chain: kick off AI post-processing once the transcript is stored.
+  const queue = getQueue(Queues.recordingProcessingQueue)
+  const postProcessData: AIPostProcessJobData = {
+    recordingId,
+    organizationId,
+    trigger: 'transcript.completed',
+  }
+  await queue.add('aiPostProcessJob', postProcessData, {
+    jobId: `ai-post-process-${recordingId}`,
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 30_000 },
   })
 
   return result.value

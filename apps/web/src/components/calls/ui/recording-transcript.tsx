@@ -1,32 +1,38 @@
 // apps/web/src/components/calls/ui/recording-transcript.tsx
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
+import { toRecordId } from '@auxx/types/resource'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { FileText, Loader2 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { api } from '~/trpc/react'
+import { SpeakerBadge } from './speaker-badge'
 import { useRecordingPlayer } from './use-recording-player'
 
 // ---------------------------------------------------------------------------
-// Mock transcript data
+// Transcript data shape (shared between mock + real data)
 // ---------------------------------------------------------------------------
 
-interface MockUtterance {
+interface TranscriptUtteranceView {
   id: string
   speakerId: string
-  speakerName: string
+  /** Effective display name: contact → participant name/email → raw speaker label. */
+  displayName: string
+  /** Matched Contact entity instance id, if any. Drives RecordBadge rendering. */
+  contactEntityInstanceId: string | null
   text: string
   startMs: number
   endMs: number
   sortOrder: number
+  words: { text: string; startMs: number; endMs: number }[] | null
 }
 
-interface MockTranscriptData {
+interface TranscriptView {
   id: string
   status: 'processing' | 'completed' | 'failed'
-  utterances: MockUtterance[]
+  utterances: TranscriptUtteranceView[]
   speakers: { id: string; name: string; color: string }[]
 }
 
@@ -39,7 +45,7 @@ const SPEAKER_COLORS = [
   'bg-cyan-500',
 ]
 
-const MOCK_TRANSCRIPT: MockTranscriptData = {
+const MOCK_TRANSCRIPT = {
   id: 'transcript_001',
   status: 'completed',
   utterances: [
@@ -193,7 +199,7 @@ const MOCK_TRANSCRIPT: MockTranscriptData = {
     { id: 's2', name: 'Sarah Chen', color: SPEAKER_COLORS[1]! },
     { id: 's3', name: 'John', color: SPEAKER_COLORS[2]! },
   ],
-}
+} as unknown as TranscriptView
 
 import { USE_MOCK_DATA } from '../constants'
 
@@ -208,15 +214,6 @@ function formatTimestamp(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
-function getSpeakerInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-}
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -226,13 +223,97 @@ interface RecordingTranscriptProps {
 }
 
 export function RecordingTranscript({ recordingId }: RecordingTranscriptProps) {
-  // TODO: Replace mock data with real tRPC queries
-  // const { data: transcript } = api.recording.getTranscript.useQuery(
-  //   { recordingId: recordingId! },
-  //   { enabled: !USE_MOCK_DATA && !!recordingId }
-  // )
+  const { data: transcriptData, isLoading: transcriptLoading } =
+    api.recording.getTranscript.useQuery(
+      { recordingId: recordingId! },
+      {
+        enabled: !USE_MOCK_DATA && !!recordingId,
+        refetchInterval: (query) =>
+          (query.state.data as { status?: string } | null)?.status === 'processing' ? 3000 : false,
+      }
+    )
 
-  const transcript = USE_MOCK_DATA ? MOCK_TRANSCRIPT : null
+  const { data: utterancesData, isLoading: utterancesLoading } =
+    api.recording.getUtterances.useQuery(
+      { transcriptId: transcriptData?.id ?? '', limit: 200 },
+      { enabled: !USE_MOCK_DATA && !!transcriptData?.id }
+    )
+
+  const transcript = useMemo<TranscriptView | null>(() => {
+    if (USE_MOCK_DATA) {
+      return {
+        ...MOCK_TRANSCRIPT,
+        utterances: MOCK_TRANSCRIPT.utterances.map((u) => ({
+          id: u.id,
+          speakerId: u.speakerId,
+          displayName: (u as unknown as { speakerName: string }).speakerName,
+          contactEntityInstanceId: null,
+          text: u.text,
+          startMs: u.startMs,
+          endMs: u.endMs,
+          sortOrder: u.sortOrder,
+          words: u.words ?? null,
+        })),
+      }
+    }
+    if (!transcriptData) return null
+
+    // Resolve effective display info per speaker:
+    //   1. transcript-provider label (speaker.name) as the floor
+    //   2. matched MeetingParticipant name/email wins over raw label
+    // Contact linkage (→ RecordBadge) is kept as a separate field.
+    const speakerInfo = new Map<
+      string,
+      { displayName: string; contactEntityInstanceId: string | null }
+    >()
+    for (const s of transcriptData.speakers) {
+      const p = s.participant
+      const participantLabel = p ? p.name || p.email || null : null
+      speakerInfo.set(s.id, {
+        displayName: participantLabel ?? s.name ?? 'Unknown',
+        contactEntityInstanceId: p?.contactEntityInstanceId ?? null,
+      })
+    }
+
+    const speakers = transcriptData.speakers.map((s, idx) => {
+      const info = speakerInfo.get(s.id)
+      return {
+        id: s.id,
+        name: info?.displayName ?? s.name,
+        color: SPEAKER_COLORS[idx % SPEAKER_COLORS.length]!,
+      }
+    })
+
+    const utterances: TranscriptUtteranceView[] = (utterancesData?.items ?? []).map((u) => {
+      const info = speakerInfo.get(u.speakerId)
+      return {
+        id: u.id,
+        speakerId: u.speakerId,
+        displayName: info?.displayName ?? u.speaker?.name ?? 'Unknown',
+        contactEntityInstanceId: info?.contactEntityInstanceId ?? null,
+        text: u.text,
+        startMs: u.startMs,
+        endMs: u.endMs,
+        sortOrder: u.sortOrder,
+        words: (u.words as { text: string; startMs: number; endMs: number }[] | null) ?? null,
+      }
+    })
+
+    return {
+      id: transcriptData.id,
+      status: transcriptData.status,
+      utterances,
+      speakers,
+    }
+  }, [transcriptData, utterancesData])
+
+  if (!USE_MOCK_DATA && (transcriptLoading || (transcriptData && utterancesLoading))) {
+    return (
+      <div className='flex flex-1 items-center justify-center p-6'>
+        <Loader2 className='size-6 animate-spin text-muted-foreground' />
+      </div>
+    )
+  }
 
   if (!transcript) {
     return (
@@ -288,11 +369,11 @@ export function RecordingTranscript({ recordingId }: RecordingTranscriptProps) {
 // TranscriptViewer — scrollable utterance list with video sync
 // ---------------------------------------------------------------------------
 
-function TranscriptViewer({ transcript }: { transcript: MockTranscriptData }) {
+function TranscriptViewer({ transcript }: { transcript: TranscriptView }) {
   const currentTimeMs = useRecordingPlayer((s) => s.currentTimeMs)
   const seekTo = useRecordingPlayer((s) => s.seekTo)
   const [userScrolled, setUserScrolled] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const utteranceRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   const speakerColorMap = new Map(transcript.speakers.map((s) => [s.id, s.color]))
@@ -320,8 +401,14 @@ function TranscriptViewer({ transcript }: { transcript: MockTranscriptData }) {
     return () => clearTimeout(timer)
   }, [userScrolled])
 
-  const handleScroll = useCallback(() => {
-    setUserScrolled(true)
+  // Attach a native scroll listener on the ScrollArea viewport so we can
+  // pause auto-scroll when the user takes over.
+  useEffect(() => {
+    const vp = viewportRef.current
+    if (!vp) return
+    const onScroll = () => setUserScrolled(true)
+    vp.addEventListener('scroll', onScroll, { passive: true })
+    return () => vp.removeEventListener('scroll', onScroll)
   }, [])
 
   const handleSeek = useCallback(
@@ -340,62 +427,73 @@ function TranscriptViewer({ transcript }: { transcript: MockTranscriptData }) {
     }
   }, [])
 
-  // Group consecutive utterances by the same speaker
-  const groups = groupBySpeaker(transcript.utterances)
-
   return (
     <div className='flex flex-1 flex-col min-h-0'>
-      <ScrollArea className='flex-1' onScrollCapture={handleScroll}>
-        <div ref={scrollRef} className='space-y-4 p-3 sm:p-6'>
-          {groups.map((group) => {
-            const speakerColor = speakerColorMap.get(group.speakerId) ?? SPEAKER_COLORS[0]!
+      <ScrollArea className='flex-1' viewportRef={viewportRef}>
+        <div className='space-y-4 p-3 sm:p-6'>
+          {transcript.utterances.map((utterance) => {
+            const speakerColor = speakerColorMap.get(utterance.speakerId) ?? SPEAKER_COLORS[0]!
 
             return (
-              <div key={group.utterances[0]!.id} className='flex gap-3'>
-                {/* Speaker avatar */}
-                <div className='flex flex-col items-center pt-0.5'>
-                  <div
-                    className={cn(
-                      'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-medium text-white',
-                      speakerColor
-                    )}>
-                    {getSpeakerInitials(group.speakerName)}
-                  </div>
+              <div key={utterance.id} className='min-w-0'>
+                <div className='flex items-center justify-between gap-2 mb-1'>
+                  <SpeakerBadge
+                    contactRecordId={
+                      utterance.contactEntityInstanceId
+                        ? toRecordId('contact', utterance.contactEntityInstanceId)
+                        : null
+                    }
+                    name={utterance.displayName}
+                    avatarColor={speakerColor}
+                    variant={utterance.contactEntityInstanceId ? 'link' : 'default'}
+                    link={!!utterance.contactEntityInstanceId}
+                  />
+                  <button
+                    type='button'
+                    className='text-xs text-muted-foreground hover:text-foreground transition-colors'
+                    onClick={() => handleSeek(utterance.startMs)}>
+                    {formatTimestamp(utterance.startMs)}
+                  </button>
                 </div>
 
-                {/* Utterances */}
-                <div className='flex-1 min-w-0'>
-                  <div className='flex items-center gap-2 mb-1'>
-                    <span className='text-sm font-medium truncate'>{group.speakerName}</span>
-                    <button
-                      type='button'
-                      className='text-xs text-muted-foreground hover:text-foreground transition-colors'
-                      onClick={() => handleSeek(group.utterances[0]!.startMs)}>
-                      {formatTimestamp(group.utterances[0]!.startMs)}
-                    </button>
-                  </div>
-
-                  <div className='space-y-1'>
-                    {group.utterances.map((utterance) => (
-                      <div
-                        key={utterance.id}
-                        ref={(el) => setUtteranceRef(utterance.id, el)}
-                        className={cn(
-                          'group relative rounded-md px-2 py-1 -mx-2 transition-colors cursor-pointer',
-                          currentUtteranceId === utterance.id
-                            ? 'bg-primary/10'
-                            : 'hover:bg-muted/50'
-                        )}
-                        onClick={() => handleSeek(utterance.startMs)}>
-                        <p className='text-sm leading-relaxed'>{utterance.text}</p>
-                        <Badge
-                          variant='outline'
-                          className='absolute right-1 top-1 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] px-1.5 py-0'>
-                          {formatTimestamp(utterance.startMs)}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
+                <div
+                  ref={(el) => setUtteranceRef(utterance.id, el)}
+                  className={cn(
+                    'group relative rounded-md px-2 py-1 -mx-2 transition-colors',
+                    !utterance.words?.length && 'cursor-pointer',
+                    currentUtteranceId === utterance.id && !utterance.words?.length
+                      ? 'bg-primary/10'
+                      : !utterance.words?.length && 'hover:bg-muted/50'
+                  )}
+                  onClick={
+                    utterance.words?.length ? undefined : () => handleSeek(utterance.startMs)
+                  }>
+                  {utterance.words && utterance.words.length > 0 ? (
+                    <p className='text-sm leading-relaxed'>
+                      {utterance.words.map((w, i) => {
+                        const isActive = currentTimeMs >= w.startMs && currentTimeMs <= w.endMs
+                        return (
+                          // biome-ignore lint/suspicious/noArrayIndexKey: word order is stable per utterance
+                          <Fragment key={i}>
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleSeek(w.startMs)
+                              }}
+                              className={cn(
+                                'cursor-pointer rounded transition-colors hover:bg-primary/10',
+                                isActive && 'bg-primary/20 text-foreground'
+                              )}>
+                              {w.text}
+                            </span>
+                            {i < utterance.words!.length - 1 ? ' ' : null}
+                          </Fragment>
+                        )
+                      })}
+                    </p>
+                  ) : (
+                    <p className='text-sm leading-relaxed'>{utterance.text}</p>
+                  )}
                 </div>
               </div>
             )
@@ -404,34 +502,4 @@ function TranscriptViewer({ transcript }: { transcript: MockTranscriptData }) {
       </ScrollArea>
     </div>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Grouping helper
-// ---------------------------------------------------------------------------
-
-interface SpeakerGroup {
-  speakerId: string
-  speakerName: string
-  utterances: MockUtterance[]
-}
-
-function groupBySpeaker(utterances: MockUtterance[]): SpeakerGroup[] {
-  const groups: SpeakerGroup[] = []
-
-  for (const utterance of utterances) {
-    const lastGroup = groups[groups.length - 1]
-
-    if (lastGroup && lastGroup.speakerId === utterance.speakerId) {
-      lastGroup.utterances.push(utterance)
-    } else {
-      groups.push({
-        speakerId: utterance.speakerId,
-        speakerName: utterance.speakerName,
-        utterances: [utterance],
-      })
-    }
-  }
-
-  return groups
 }
