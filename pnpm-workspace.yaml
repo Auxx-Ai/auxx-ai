@@ -56,8 +56,8 @@ catalog:
   openai: ^5.12.2
   pg: ^8.11.3
   postcss: ^8.5.3
-  posthog-js: ^1.236.0
-  posthog-node: ^4.2.0
+  posthog-js: ^1.369.0
+  posthog-node: ^5.29.2
   pusher: ^5.2.0
   pusher-js: ^8.4.0
   react: 19.2.3

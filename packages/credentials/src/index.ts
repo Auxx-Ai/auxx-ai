@@ -12,7 +12,6 @@ export {
   CONFIG_VARIABLES,
   ConfigCache,
   ConfigService,
-  ConfigStorage,
   configService,
   convertEnvValue,
   getAllConfigDefinitions,
@@ -20,6 +19,7 @@ export {
   getConfigDefinitionsByGroup,
   valueToString,
 } from './config'
+export { ConfigStorage } from './config/config-storage'
 export type { LoginTokenError, LoginTokenPayload, VerifiedLoginToken } from './login-token'
 // Login token
 export { issueLoginToken, verifyLoginToken } from './login-token'

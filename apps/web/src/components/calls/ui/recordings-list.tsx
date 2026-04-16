@@ -202,7 +202,7 @@ const MOCK_RECORDINGS: RecordingItem[] = [
   },
 ]
 
-const USE_MOCK_DATA = true
+import { USE_MOCK_DATA } from '../constants'
 
 export function RecordingsList() {
   const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =

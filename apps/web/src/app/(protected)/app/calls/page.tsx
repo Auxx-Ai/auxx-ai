@@ -2,6 +2,7 @@
 'use client'
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { Button } from '@auxx/ui/components/button'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -10,21 +11,34 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Lock } from 'lucide-react'
-import { RecordingsList } from '~/components/calls'
+import { Lock, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { CreateMeetingDialog, RecordingsList } from '~/components/calls'
 import { EmptyState } from '~/components/global/empty-state'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { UpcomingMeetingsWidget } from '../_components/upcoming-meetings-widget'
 
 function CallsPageContent() {
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+
   return (
     <MainPage>
-      <MainPageHeader>
+      <MainPageHeader
+        action={
+          <Button variant='outline' size='sm' onClick={() => setCreateDialogOpen(true)}>
+            <Plus />
+            Create Meeting
+          </Button>
+        }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Calls' href='/app/calls' />
           <MainPageBreadcrumbItem title='Recordings' last />
         </MainPageBreadcrumb>
       </MainPageHeader>
+
+      {createDialogOpen && (
+        <CreateMeetingDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+      )}
 
       <MainPageContent>
         <ScrollArea className='flex-1 min-h-0 flex flex-col'>

@@ -215,19 +215,6 @@ export async function handleBotStatusChange(params: {
     subCode,
   })
 
-  // Enqueue media processing when recording completes
-  if (newStatus === 'completed') {
-    const processingQueue = getQueue(Queues.recordingProcessingQueue)
-    await processingQueue.add(
-      'processRecordingJob',
-      { recordingId: recording.id, organizationId: recording.organizationId },
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 60000 },
-      }
-    )
-  }
-
   return ok(updated!)
 }
 

@@ -24,7 +24,12 @@ export async function scheduleBotsForUpcomingMeetings(): Promise<
   Result<{ scheduled: number; skipped: number }, Error>
 > {
   const now = new Date()
-  const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000)
+  // Recall.ai requires ~10min lead time to guarantee the bot joins on time,
+  // but still accepts shorter windows. We look 13min ahead for the ideal case,
+  // and also pick up events that already started (up to 5min ago) to handle
+  // last-minute manual scheduling or late calendar syncs.
+  const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000)
+  const thirteenMinutesFromNow = new Date(now.getTime() + 13 * 60 * 1000)
 
   let scheduled = 0
   let skipped = 0
@@ -49,8 +54,8 @@ export async function scheduleBotsForUpcomingMeetings(): Promise<
     // Find upcoming calendar events with meeting URLs
     const upcomingEvents = await findUpcomingCalendarEvents({
       organizationId,
-      from: now,
-      to: fiveMinutesFromNow,
+      from: fiveMinutesAgo,
+      to: thirteenMinutesFromNow,
     })
 
     for (const event of upcomingEvents) {
@@ -70,21 +75,22 @@ export async function scheduleBotsForUpcomingMeetings(): Promise<
       }
 
       // Check user's autoRecord setting
-      const autoRecord = (await settingsService.getUserSetting({
-        organizationId,
-        userId: event.userId,
-        key: 'recording.autoRecord',
-      })) as string
-
-      if (autoRecord === 'none') {
-        skipped++
-        continue
-      }
-
-      if (autoRecord === 'external' && !event.isExternal) {
-        skipped++
-        continue
-      }
+      // TODO: Re-enable autoRecord filtering once the settings UI is built
+      // const autoRecord = (await settingsService.getUserSetting({
+      //   organizationId,
+      //   userId: event.userId,
+      //   key: 'recording.autoRecord',
+      // })) as string
+      //
+      // if (autoRecord === 'none') {
+      //   skipped++
+      //   continue
+      // }
+      //
+      // if (autoRecord === 'external' && !event.isExternal) {
+      //   skipped++
+      //   continue
+      // }
 
       // Create CallRecording row
       const recordingId = generateId()

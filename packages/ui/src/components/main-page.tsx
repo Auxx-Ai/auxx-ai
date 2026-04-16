@@ -255,6 +255,8 @@ interface DockedPanelConfig {
   minWidth?: number
   /** Maximum width when resizable */
   maxWidth?: number
+  /** Optional className for the panel wrapper (e.g. 'hidden lg:flex' for responsive hiding) */
+  className?: string
 }
 
 /**
@@ -321,7 +323,7 @@ function MainPageContent({
         {panels.map((panel) => (
           <motion.div
             key={panel.key}
-            className='flex flex-row shrink-0 overflow-hidden'
+            className={cn('flex flex-row shrink-0 overflow-hidden', panel.className)}
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: panel.width + 8, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}

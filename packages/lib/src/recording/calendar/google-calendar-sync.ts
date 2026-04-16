@@ -429,7 +429,7 @@ function shouldCreateMeeting(event: typeof schema.CalendarEvent.$inferSelect): b
 /**
  * Fetch the set of domains that should be treated as internal for an organization.
  */
-async function getOrganizationDomains(organizationId: string): Promise<string[]> {
+export async function getOrganizationDomains(organizationId: string): Promise<string[]> {
   const domains = new Set<string>()
   const [organization] = await db
     .select({

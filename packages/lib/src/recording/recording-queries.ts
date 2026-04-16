@@ -1,12 +1,14 @@
 // packages/lib/src/recording/recording-queries.ts
 
 import {
+  type CalendarEventEntity,
   type CallRecordingEntity,
   type CallRecordingInsert,
   database as db,
+  type MeetingParticipantEntity,
   schema,
 } from '@auxx/database'
-import { and, eq, gte, inArray, isNotNull, lte, type SQL } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, lte, type SQL } from 'drizzle-orm'
 import type { BotStatus } from './bot/types'
 
 // ---------------------------------------------------------------------------
@@ -156,7 +158,7 @@ export async function findOrgsWithRecordingEnabled() {
     .where(
       and(
         eq(schema.OrganizationSetting.key, 'recording.enabled'),
-        eq(schema.OrganizationSetting.value, 'true')
+        eq(schema.OrganizationSetting.value, true)
       )
     )
 }
@@ -183,4 +185,119 @@ export async function findUpcomingCalendarEvents(params: {
         lte(schema.CalendarEvent.startTime, params.to)
       )
     )
+}
+
+// ---------------------------------------------------------------------------
+// listRecordings
+// ---------------------------------------------------------------------------
+
+interface ListRecordingsParams {
+  organizationId: string
+  status?: BotStatus
+  fromDate?: Date
+  toDate?: Date
+  calendarEventId?: string
+  cursor?: string
+  limit: number
+}
+
+interface ListRecordingsResult {
+  items: (CallRecordingEntity & { calendarEvent: CalendarEventEntity | null })[]
+  nextCursor: string | undefined
+}
+
+/** List recordings with optional filters, cursor pagination, and calendar event data. */
+export async function listRecordings(params: ListRecordingsParams): Promise<ListRecordingsResult> {
+  const { organizationId, status, fromDate, toDate, calendarEventId, cursor, limit } = params
+
+  const conditions: SQL[] = [eq(schema.CallRecording.organizationId, organizationId)]
+
+  if (status) {
+    conditions.push(eq(schema.CallRecording.status, status))
+  }
+  if (fromDate) {
+    conditions.push(gte(schema.CallRecording.createdAt, fromDate))
+  }
+  if (toDate) {
+    conditions.push(lte(schema.CallRecording.createdAt, toDate))
+  }
+  if (calendarEventId) {
+    conditions.push(eq(schema.CallRecording.calendarEventId, calendarEventId))
+  }
+  if (cursor) {
+    conditions.push(lte(schema.CallRecording.createdAt, new Date(cursor)))
+  }
+
+  const recordings = await db
+    .select()
+    .from(schema.CallRecording)
+    .where(and(...conditions))
+    .orderBy(desc(schema.CallRecording.createdAt))
+    .limit(limit + 1)
+
+  const hasMore = recordings.length > limit
+  const items = hasMore ? recordings.slice(0, limit) : recordings
+  const nextCursor = hasMore ? items[items.length - 1]?.createdAt?.toISOString() : undefined
+
+  // Join calendar event data for meeting titles
+  const calendarEventIds = items.map((r) => r.calendarEventId).filter((id): id is string => !!id)
+
+  let calendarEvents: Record<string, CalendarEventEntity> = {}
+  if (calendarEventIds.length > 0) {
+    const events = await db
+      .select()
+      .from(schema.CalendarEvent)
+      .where(inArray(schema.CalendarEvent.id, calendarEventIds))
+
+    calendarEvents = Object.fromEntries(events.map((e) => [e.id, e]))
+  }
+
+  return {
+    items: items.map((recording) => ({
+      ...recording,
+      calendarEvent: recording.calendarEventId
+        ? (calendarEvents[recording.calendarEventId] ?? null)
+        : null,
+    })),
+    nextCursor,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// getRecordingDetail
+// ---------------------------------------------------------------------------
+
+interface RecordingDetail {
+  recording: CallRecordingEntity
+  calendarEvent: CalendarEventEntity | null
+  participants: MeetingParticipantEntity[]
+}
+
+/** Get a single recording with its calendar event and meeting participants. */
+export async function getRecordingDetail(
+  id: string,
+  organizationId: string
+): Promise<RecordingDetail | undefined> {
+  const recording = await findRecording({ id, organizationId })
+  if (!recording) return undefined
+
+  let calendarEvent: CalendarEventEntity | null = null
+  if (recording.calendarEventId) {
+    const [event] = await db
+      .select()
+      .from(schema.CalendarEvent)
+      .where(eq(schema.CalendarEvent.id, recording.calendarEventId))
+      .limit(1)
+    calendarEvent = event ?? null
+  }
+
+  let participants: MeetingParticipantEntity[] = []
+  if (recording.calendarEventId) {
+    participants = await db
+      .select()
+      .from(schema.MeetingParticipant)
+      .where(eq(schema.MeetingParticipant.calendarEventId, recording.calendarEventId))
+  }
+
+  return { recording, calendarEvent, participants }
 }

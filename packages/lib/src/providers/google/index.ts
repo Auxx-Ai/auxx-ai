@@ -1,5 +1,8 @@
 // packages/lib/src/providers/google/index.ts
 
+export type { CreateGoogleMeetParams, CreateGoogleMeetResult } from './calendar/create-event'
+// Calendar operations
+export { createGoogleMeetEvent } from './calendar/create-event'
 // Draft operations
 export { createGmailDraft } from './drafts/create-draft'
 export { sendGmailDraft } from './drafts/send-draft'

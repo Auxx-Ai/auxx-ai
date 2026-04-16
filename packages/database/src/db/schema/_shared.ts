@@ -603,13 +603,6 @@ export const recordingStatus = pgEnum('RecordingStatus', [
 ])
 
 // Transcription
-export const transcriptionProvider = pgEnum('TranscriptionProvider', [
-  'deepgram',
-  'whisper',
-  'assemblyai',
-  'gladia',
-  'meeting_captions',
-])
 export const transcriptType = pgEnum('TranscriptType', ['realtime', 'async'])
 export const transcriptStatus = pgEnum('TranscriptStatus', ['processing', 'completed', 'failed'])
 

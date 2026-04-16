@@ -4,7 +4,7 @@
 import { type BotStatus, TERMINAL_STATUSES } from '@auxx/lib/recording/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import Loader from '@auxx/ui/components/loader'
+import { DrawerHeader } from '@auxx/ui/components/drawer'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -12,12 +12,34 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { toastError } from '@auxx/ui/components/toast'
-import { Clock, Trash2, UserCircle, Video, XCircle } from 'lucide-react'
+import {
+  BookOpen,
+  CalendarDays,
+  FileText,
+  Trash2,
+  Users,
+  Video,
+  VideoOff,
+  XCircle,
+} from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
+import { useQueryState } from 'nuqs'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useMedia } from '~/hooks/use-media'
+import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
+import { RecordingMeeting } from './recording-meeting'
+import { RecordingSpeakers } from './recording-speakers'
+import { RecordingSummary } from './recording-summary'
+import { RecordingTranscript } from './recording-transcript'
+import { useRecordingPlayer } from './use-recording-player'
 
 const STATUS_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   created: 'outline',
@@ -34,39 +56,8 @@ const STATUS_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'destructiv
   cancelled: 'outline',
 }
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '—'
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs.toString().padStart(2, '0')}`
-}
-
-function formatDateTime(date: Date | string | null): string {
-  if (!date) return '—'
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(date))
-}
-
-function getPlatformLabel(platform: string) {
-  switch (platform) {
-    case 'google_meet':
-      return 'Google Meet'
-    case 'teams':
-      return 'Microsoft Teams'
-    case 'zoom':
-      return 'Zoom'
-    default:
-      return 'Unknown'
-  }
-}
-
 // TODO: Remove mock data once real recordings exist
-type MockRecording = {
+export type MockRecording = {
   id: string
   status: string
   meetingPlatform: string
@@ -172,12 +163,51 @@ const MOCK_RECORDINGS: Record<string, MockRecording> = {
   },
 }
 
-const USE_MOCK_DATA = true
+import { USE_MOCK_DATA } from '../constants'
 
+/**
+ * RecordingDetail — main recording detail page component
+ */
 export function RecordingDetail({ recordingId }: { recordingId: string }) {
   const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
+  const [tab, setTab] = useQueryState('tab', { defaultValue: 'transcript' })
+  const [showVideo, setShowVideo] = useState(true)
   const utils = api.useUtils()
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const setCurrentTimeMs = useRecordingPlayer((s) => s.setCurrentTimeMs)
+  const registerSeekTo = useRecordingPlayer((s) => s.registerSeekTo)
+  const unregisterSeekTo = useRecordingPlayer((s) => s.unregisterSeekTo)
+
+  // Register seekTo so transcript can seek the video
+  useEffect(() => {
+    registerSeekTo((ms: number) => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = ms / 1000
+      }
+    })
+    return () => unregisterSeekTo()
+  }, [registerSeekTo, unregisterSeekTo])
+
+  const handleTimeUpdate = useCallback(() => {
+    if (videoRef.current) {
+      setCurrentTimeMs(Math.floor(videoRef.current.currentTime * 1000))
+    }
+  }, [setCurrentTimeMs])
+
+  // Sidebar visible on desktop — Summary tab takes over on mobile
+  const isDesktop = useMedia('(min-width: 1024px)')
+
+  // When expanding to desktop, switch off the summary tab (sidebar handles it)
+  useEffect(() => {
+    if (isDesktop && tab === 'summary') {
+      setTab('transcript')
+    }
+  }, [isDesktop, tab, setTab])
+  const dockedWidth = useDockStore((state) => state.dockedWidth)
+  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
+  const minWidth = useDockStore((state) => state.minWidth)
+  const maxWidth = useDockStore((state) => state.maxWidth)
 
   const { data: realRecording, isLoading } = api.recording.getById.useQuery(
     { id: recordingId },
@@ -210,25 +240,9 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
 
   const breadcrumbTitle = recording?.calendarEvent?.title ?? recording?.botName ?? 'Recording'
   const isActive = recording ? !TERMINAL_STATUSES.includes(recording.status as BotStatus) : false
-  const title = breadcrumbTitle
 
   if (isLoading && !USE_MOCK_DATA) {
-    return (
-      <MainPage>
-        <MainPageHeader>
-          <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title='Calls' href='/app/calls' />
-            <MainPageBreadcrumbItem title='Recordings' href='/app/calls' />
-            <MainPageBreadcrumbItem title='Loading...' last />
-          </MainPageBreadcrumb>
-        </MainPageHeader>
-        <MainPageContent>
-          <div className='flex h-full items-center justify-center'>
-            <Loader size='sm' title='Loading recording...' subtitle='Please wait' />
-          </div>
-        </MainPageContent>
-      </MainPage>
-    )
+    return <RecordingDetailSkeleton />
   }
 
   if (!recording) {
@@ -250,161 +264,224 @@ export function RecordingDetail({ recordingId }: { recordingId: string }) {
 
   return (
     <MainPage>
-      <MainPageHeader>
+      <MainPageHeader
+        action={
+          <div className='flex items-center gap-2'>
+            <Badge variant={STATUS_BADGE_VARIANT[recording.status] ?? 'outline'}>
+              {isActive && (
+                <span className='mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-current' />
+              )}
+              {recording.status}
+            </Badge>
+
+            {isActive && (
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => cancelRecording.mutate({ id: recordingId })}
+                loading={cancelRecording.isPending}
+                loadingText='Cancelling...'>
+                <XCircle />
+                Cancel
+              </Button>
+            )}
+
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={async () => {
+                const confirmed = await confirm({
+                  title: 'Delete recording?',
+                  description:
+                    'This will permanently delete the recording and all associated media.',
+                  confirmText: 'Delete',
+                  cancelText: 'Cancel',
+                  destructive: true,
+                })
+                if (confirmed) {
+                  deleteRecording.mutate({ id: recordingId })
+                }
+              }}
+              loading={deleteRecording.isPending}>
+              <Trash2 />
+            </Button>
+          </div>
+        }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title='Calls' href='/app/calls' />
           <MainPageBreadcrumbItem title='Recordings' href='/app/calls' />
           <MainPageBreadcrumbItem title={breadcrumbTitle} last />
         </MainPageBreadcrumb>
       </MainPageHeader>
-      <MainPageContent>
-        <div className='space-y-6 p-3 sm:p-6'>
-          <ConfirmDialog />
 
-          {/* Header */}
-          <div className='flex items-start justify-between'>
-            <div className='space-y-1'>
-              <h1 className='text-2xl font-semibold'>{title}</h1>
-              <div className='text-muted-foreground flex items-center gap-3 text-sm'>
-                <span>{getPlatformLabel(recording.meetingPlatform)}</span>
-                <span>·</span>
-                <span>{formatDateTime(recording.createdAt)}</span>
-                {recording.durationSeconds && (
-                  <>
-                    <span>·</span>
-                    <div className='flex items-center gap-1'>
-                      <Clock className='size-3.5' />
-                      <span>{formatDuration(recording.durationSeconds)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+      <MainPageContent
+        dockedPanels={
+          isDesktop
+            ? [
+                {
+                  key: 'summary-sidebar',
+                  content: (
+                    <>
+                      <DrawerHeader icon={<BookOpen className='size-4' />} title='Summary' />
+                      <div className='h-full overflow-y-auto'>
+                        <RecordingSummary />
+                      </div>
+                    </>
+                  ),
+                  width: dockedWidth,
+                  onWidthChange: setDockedWidth,
+                  minWidth,
+                  maxWidth,
+                },
+              ]
+            : []
+        }>
+        <ConfirmDialog />
 
-            <div className='flex items-center gap-2'>
-              <Badge variant={STATUS_BADGE_VARIANT[recording.status] ?? 'outline'}>
-                {isActive && (
-                  <span className='mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-current' />
-                )}
-                {recording.status}
-              </Badge>
-
-              {isActive && (
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => cancelRecording.mutate({ id: recordingId })}
-                  loading={cancelRecording.isPending}
-                  loadingText='Cancelling...'>
-                  <XCircle />
-                  Cancel
-                </Button>
-              )}
-
-              <Button
-                variant='outline'
-                size='sm'
-                onClick={async () => {
-                  const confirmed = await confirm({
-                    title: 'Delete recording?',
-                    description:
-                      'This will permanently delete the recording and all associated media.',
-                    confirmText: 'Delete',
-                    cancelText: 'Cancel',
-                    destructive: true,
-                  })
-                  if (confirmed) {
-                    deleteRecording.mutate({ id: recordingId })
-                  }
+        <div className='flex-1 h-full flex flex-col min-h-0'>
+          {/* Video Player — 16:9 placeholder with collapse animation */}
+          <AnimatePresence initial={false}>
+            {showVideo && (
+              <motion.div
+                initial={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+                animate={{
+                  height: 'auto',
+                  opacity: 1,
+                  filter: 'blur(0px)',
+                  overflow: 'hidden',
+                  transitionEnd: { overflow: 'visible' },
                 }}
-                loading={deleteRecording.isPending}>
-                <Trash2 />
-              </Button>
-            </div>
-          </div>
-
-          {/* Video Player */}
-          {recording.status === 'completed' && videoSession?.url && (
-            <div className='overflow-hidden rounded-lg border bg-black'>
-              <video
-                controls
-                className='aspect-video w-full'
-                src={videoSession.url}
-                preload='metadata'>
-                Your browser does not support the video tag.
-              </video>
-            </div>
-          )}
-
-          {recording.status === 'completed' && !recording.videoAssetId && (
-            <div className='flex items-center justify-center rounded-lg border py-16'>
-              <div className='text-muted-foreground text-sm'>
-                Video not yet available — media is still being processed.
-              </div>
-            </div>
-          )}
-
-          {recording.status === 'processing' && (
-            <div className='flex items-center justify-center rounded-lg border py-16'>
-              <div className='text-muted-foreground text-sm'>Recording is being processed...</div>
-            </div>
-          )}
-
-          {/* Recording Info */}
-          <div className='grid gap-6 sm:grid-cols-2'>
-            <div className='space-y-4 rounded-lg border p-4'>
-              <h3 className='text-sm font-medium'>Recording Details</h3>
-              <dl className='space-y-2 text-sm'>
-                <div className='flex justify-between'>
-                  <dt className='text-muted-foreground'>Bot Name</dt>
-                  <dd>{recording.botName}</dd>
+                exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+                <div className='p-3'>
+                  {recording.status === 'completed' && videoSession?.url ? (
+                    <div className='overflow-hidden rounded-lg border bg-black'>
+                      <video
+                        ref={videoRef}
+                        controls
+                        className='aspect-video w-full'
+                        src={videoSession.url}
+                        preload='metadata'
+                        onTimeUpdate={handleTimeUpdate}>
+                        Your browser does not support the video tag.
+                      </video>
+                    </div>
+                  ) : (
+                    <div className='flex items-center justify-center rounded-lg border bg-muted aspect-video'>
+                      <div className='flex flex-col items-center gap-2 text-muted-foreground'>
+                        <Video className='size-10' />
+                        <span className='text-sm'>
+                          {recording.status === 'processing'
+                            ? 'Recording is being processed...'
+                            : recording.status === 'completed' && !recording.videoAssetId
+                              ? 'Video not yet available'
+                              : 'Video player'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className='flex justify-between'>
-                  <dt className='text-muted-foreground'>Provider</dt>
-                  <dd className='capitalize'>{recording.provider}</dd>
-                </div>
-                <div className='flex justify-between'>
-                  <dt className='text-muted-foreground'>Platform</dt>
-                  <dd>{getPlatformLabel(recording.meetingPlatform)}</dd>
-                </div>
-                {recording.startedAt && (
-                  <div className='flex justify-between'>
-                    <dt className='text-muted-foreground'>Started</dt>
-                    <dd>{formatDateTime(recording.startedAt)}</dd>
-                  </div>
-                )}
-                {recording.endedAt && (
-                  <div className='flex justify-between'>
-                    <dt className='text-muted-foreground'>Ended</dt>
-                    <dd>{formatDateTime(recording.endedAt)}</dd>
-                  </div>
-                )}
-                {recording.failureReason && (
-                  <div className='flex justify-between'>
-                    <dt className='text-muted-foreground'>Failure Reason</dt>
-                    <dd className='text-destructive'>{recording.failureReason}</dd>
-                  </div>
-                )}
-              </dl>
-            </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-            {/* Participants */}
-            <div className='space-y-4 rounded-lg border p-4'>
-              <h3 className='text-sm font-medium'>Participants</h3>
-              {recording.participants.length > 0 ? (
-                <ul className='space-y-2'>
-                  {recording.participants.map((participant) => (
-                    <li key={participant.id} className='flex items-center gap-2 text-sm'>
-                      <UserCircle className='text-muted-foreground size-4' />
-                      <span>{participant.name ?? participant.email ?? 'Unknown'}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className='text-muted-foreground text-sm'>No participant data available.</p>
-              )}
-            </div>
-          </div>
+          {/* Tabs */}
+          <Tabs
+            value={tab ?? 'transcript'}
+            onValueChange={setTab}
+            className='flex-1 flex flex-col min-h-0'>
+            <motion.div
+              animate={{
+                borderTopLeftRadius: showVideo ? 0 : 8,
+                borderTopRightRadius: showVideo ? 0 : 8,
+              }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+              <TabsList className='border-b w-full justify-start rounded-none bg-primary-150 px-3 sm:px-6'>
+                <TabsTrigger value='summary' variant='outline' className='lg:hidden'>
+                  <BookOpen /> Summary
+                </TabsTrigger>
+                <TabsTrigger value='transcript' variant='outline'>
+                  <FileText /> Transcript
+                </TabsTrigger>
+                <TabsTrigger value='speakers' variant='outline'>
+                  <Users /> Speakers
+                </TabsTrigger>
+                <TabsTrigger value='meeting' variant='outline'>
+                  <CalendarDays /> Meeting
+                </TabsTrigger>
+
+                {/* Video toggle */}
+                <div className='ml-auto flex items-center'>
+                  <Tooltip content={showVideo ? 'Hide video' : 'Show video'}>
+                    <Button variant='ghost' size='icon-sm' onClick={() => setShowVideo((v) => !v)}>
+                      {showVideo ? <VideoOff /> : <Video />}
+                    </Button>
+                  </Tooltip>
+                </div>
+              </TabsList>
+            </motion.div>
+
+            <TabsContent value='summary' className='flex flex-col flex-1 min-h-0 overflow-y-auto'>
+              <RecordingSummary />
+            </TabsContent>
+
+            <TabsContent value='transcript' className='flex flex-col flex-1 min-h-0'>
+              <RecordingTranscript recordingId={recordingId} />
+            </TabsContent>
+
+            <TabsContent value='speakers' className='flex flex-col flex-1 min-h-0'>
+              <RecordingSpeakers recordingId={recordingId} />
+            </TabsContent>
+
+            <TabsContent value='meeting' className='flex flex-col flex-1 min-h-0 overflow-y-auto'>
+              <RecordingMeeting recording={recording} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </MainPageContent>
+    </MainPage>
+  )
+}
+
+/**
+ * RecordingDetailSkeleton — loading skeleton
+ */
+function RecordingDetailSkeleton() {
+  const isDesktop = useMedia('(min-width: 1024px)')
+  const dockedWidth = useDockStore((state) => state.dockedWidth)
+
+  return (
+    <MainPage>
+      <MainPageHeader>
+        <MainPageBreadcrumb>
+          <MainPageBreadcrumbItem title='Calls' href='/app/calls' />
+          <MainPageBreadcrumbItem title='Recordings' href='/app/calls' />
+          <MainPageBreadcrumbItem title='Loading...' last />
+        </MainPageBreadcrumb>
+      </MainPageHeader>
+      <MainPageContent
+        dockedPanels={
+          isDesktop
+            ? [
+                {
+                  key: 'summary-sidebar',
+                  content: (
+                    <div className='p-4 space-y-4'>
+                      <Skeleton className='h-6 w-24' />
+                      <Skeleton className='h-20 w-full' />
+                      <Skeleton className='h-6 w-24' />
+                      <Skeleton className='h-20 w-full' />
+                    </div>
+                  ),
+                  width: dockedWidth,
+                },
+              ]
+            : []
+        }>
+        <div className='p-6 space-y-4'>
+          <Skeleton className='aspect-video w-full rounded-lg' />
+          <Skeleton className='h-10 w-full' />
+          <Skeleton className='h-64 w-full' />
         </div>
       </MainPageContent>
     </MainPage>

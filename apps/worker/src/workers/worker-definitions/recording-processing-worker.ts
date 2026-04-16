@@ -1,6 +1,6 @@
 // apps/worker/src/workers/worker-definitions/recording-processing-worker.ts
 
-import { processRecordingJob } from '@auxx/lib/jobs'
+import { processRecordingJob, transcribeRecordingJob } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { createWorker } from '../utils/createWorker'
@@ -9,6 +9,7 @@ const logger = createScopedLogger('worker:recording-processing')
 
 const recordingProcessingJobMappings = {
   processRecordingJob,
+  transcribeRecordingJob,
 }
 
 /**
