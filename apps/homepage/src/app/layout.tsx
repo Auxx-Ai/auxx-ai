@@ -1,10 +1,12 @@
 // apps/homepage/src/app/layout.tsx
+import { configService } from '@auxx/credentials/config'
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { config } from '~/lib/config'
 import { ConfigProvider } from '~/lib/config-context'
 import { ThemeProvider, ThemeScript } from '~/lib/theme'
+import { PostHogProvider } from '~/providers/posthog-provider'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -126,6 +128,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const posthogKey = configService.get<string>('POSTHOG_KEY') || ''
+  const posthogHost = configService.get<string>('POSTHOG_HOST') || 'https://us.i.posthog.com'
+
   return (
     <html lang='en' data-theme='dark' suppressHydrationWarning>
       <head>
@@ -135,7 +140,11 @@ export default function RootLayout({
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
-          <ConfigProvider config={config}>{children}</ConfigProvider>
+          <ConfigProvider config={config}>
+            <PostHogProvider posthogKey={posthogKey} posthogHost={posthogHost}>
+              {children}
+            </PostHogProvider>
+          </ConfigProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -10,7 +10,6 @@ import {
   sql,
   text,
   timestamp,
-  transcriptionProvider,
   transcriptStatus,
   transcriptType,
 } from './_shared'
@@ -39,7 +38,7 @@ export const Transcript = pgTable(
         onDelete: 'cascade',
       }),
 
-    transcriptionProvider: transcriptionProvider().notNull(),
+    transcriptionProvider: text().notNull(),
     type: transcriptType().notNull(),
 
     /** Detected language */

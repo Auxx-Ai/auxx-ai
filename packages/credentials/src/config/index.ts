@@ -11,7 +11,6 @@ export {
   getConfigDefinitionsByGroup,
 } from './config-registry'
 export { ConfigService } from './config-service'
-export { ConfigStorage } from './config-storage'
 export { convertEnvValue, valueToString } from './config-value-converter'
 export type {
   ConfigVariableDefinition,

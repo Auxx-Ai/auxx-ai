@@ -148,11 +148,11 @@ catalogs:
       specifier: ^8.5.3
       version: 8.5.6
     posthog-js:
-      specifier: ^1.236.0
-      version: 1.356.0
+      specifier: ^1.369.0
+      version: 1.369.0
     posthog-node:
-      specifier: ^4.2.0
-      version: 4.18.0
+      specifier: ^5.29.2
+      version: 5.29.2
     pusher:
       specifier: ^5.2.0
       version: 5.3.2
@@ -533,6 +533,9 @@ importers:
       '@auxx/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@auxx/credentials':
+        specifier: workspace:*
+        version: link:../../packages/credentials
       '@number-flow/react':
         specifier: ^0.5.10
         version: 0.5.14(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -581,6 +584,9 @@ importers:
       next-themes:
         specifier: ^0.4.4
         version: 0.4.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      posthog-js:
+        specifier: 'catalog:'
+        version: 1.369.0
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -800,7 +806,7 @@ importers:
         version: 0.5.14(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@posthog/react':
         specifier: 'catalog:'
-        version: 1.8.1(@types/react@19.2.3)(posthog-js@1.356.0)(react@19.2.3)
+        version: 1.8.1(@types/react@19.2.3)(posthog-js@1.369.0)(react@19.2.3)
       '@radix-ui/react-accordion':
         specifier: ^1.2.12
         version: 1.2.12(@types/react-dom@19.2.3(@types/react@19.2.3))(@types/react@19.2.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1019,7 +1025,7 @@ importers:
         version: 10.3.1
       posthog-js:
         specifier: 'catalog:'
-        version: 1.356.0
+        version: 1.369.0
       prosemirror-state:
         specifier: ^1.4.3
         version: 1.4.4
@@ -1755,7 +1761,7 @@ importers:
         version: 2.7.3
       posthog-node:
         specifier: 'catalog:'
-        version: 4.18.0
+        version: 5.29.2
       pusher:
         specifier: 'catalog:'
         version: 5.3.2
@@ -5288,8 +5294,8 @@ packages:
   '@popperjs/core@2.11.8':
     resolution: {integrity: sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A==}
 
-  '@posthog/core@1.23.1':
-    resolution: {integrity: sha512-GViD5mOv/mcbZcyzz3z9CS0R79JzxVaqEz4sP5Dsea178M/j3ZWe6gaHDZB9yuyGfcmIMQ/8K14yv+7QrK4sQQ==}
+  '@posthog/core@1.25.2':
+    resolution: {integrity: sha512-h2FO7ut/BbfwpAXWpwdDHTzQgUo9ibDFEs6ZO+3cI3KPWQt5XwczK1OLAuPprcjm8T/jl0SH8jSFo5XdU4RbTg==}
 
   '@posthog/react@1.8.1':
     resolution: {integrity: sha512-/tRMKPm8PKvCgmKjgKM4ojSbOpdzzKyDNK8upbK6cKedZ1wdtOcSAMiLEyNCatFB2dqwB85LcjrhkaO8lFnHNQ==}
@@ -5301,8 +5307,8 @@ packages:
       '@types/react':
         optional: true
 
-  '@posthog/types@1.356.0':
-    resolution: {integrity: sha512-ploousJoT1/8hILP++jk32bO21O+C9ur5F10mga55kziFWRp67SkyssGCxyl/MRNd48cSsM1XpFEkCpjkk5f5Q==}
+  '@posthog/types@1.369.0':
+    resolution: {integrity: sha512-iFkLrg/+QRQHc8KSjO9parN6H3rftM2ld2sCJ/GeBRRO9MJYCdc6jXSFRgF7aGJPzb79syqksz+CrnBzdZnBKg==}
 
   '@postman/node-keytar@7.9.3':
     resolution: {integrity: sha512-gWdxGGnqwg+bB4arSl+F+vbpE10eyfnGyTb/MrddqtQaWejWb4Dt+1MbdNGJ+pGJ16uFpiW1SFtI50Q3zAvhQA==}
@@ -9261,6 +9267,9 @@ packages:
   dompurify@3.3.1:
     resolution: {integrity: sha512-qkdCKzLNtrgPFP1Vo+98FRzJnBRGe4ffyCea9IwHB1fyxPOeNTHpLKYGd4Uk9xvNoH0ZoOjwZxNptyMwqrId1Q==}
 
+  dompurify@3.4.0:
+    resolution: {integrity: sha512-nolgK9JcaUXMSmW+j1yaSvaEaoXYHwWyGJlkoCTghc97KgGDDSnpoU/PlEnw63Ah+TGKFOyY+X5LnxaWbCSfXg==}
+
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
 
@@ -12047,12 +12056,17 @@ packages:
     resolution: {integrity: sha512-d+JFcLM17njZaOLkv6SCev7uoLaBtfK86vMUXhW1Z4glPWh4jozno9APvW/XKFJ3CCxVoC7OL38BqRydtu5nGg==}
     engines: {node: '>=12'}
 
-  posthog-js@1.356.0:
-    resolution: {integrity: sha512-60jOQ5yGd22m3DZ9I4swummVepHEx7EPs6jhs/HjXH0ML/3UFYHRrLHd3tHslr/uh0PXQW7m9NQkucwQ22Tdgw==}
+  posthog-js@1.369.0:
+    resolution: {integrity: sha512-fOJzwpCb/TWxJBsUNKJ5PhHNl0+X7zRrVTuUrIH+EfsIfxJGSkOa0lWPJJGr3xzg810JHCUpuhn5sFBBxfHqIQ==}
 
-  posthog-node@4.18.0:
-    resolution: {integrity: sha512-XROs1h+DNatgKh/AlIlCtDxWzwrKdYDb2mOs58n4yN8BkGN9ewqeQwG5ApS4/IzwCb7HPttUkOVulkYatd2PIw==}
-    engines: {node: '>=15.0.0'}
+  posthog-node@5.29.2:
+    resolution: {integrity: sha512-rI7kkF0XqDc0G1qjx+Hb4iuY9NAlL+XQNoGOpnEpRNTUcXvjY6WlsRGZ9m2whgc39emrrYdszi/YT8wZkr2xsg==}
+    engines: {node: ^20.20.0 || >=22.22.0}
+    peerDependencies:
+      rxjs: ^7.0.0
+    peerDependenciesMeta:
+      rxjs:
+        optional: true
 
   preact@10.28.4:
     resolution: {integrity: sha512-uKFfOHWuSNpRFVTnljsCluEFq57OKT+0QdOiQo8XWnQ/pSvg7OpX5eNOejELXJMWy+BwM2nobz0FkvzmnpCNsQ==}
@@ -17696,18 +17710,16 @@ snapshots:
 
   '@popperjs/core@2.11.8': {}
 
-  '@posthog/core@1.23.1':
-    dependencies:
-      cross-spawn: 7.0.6
+  '@posthog/core@1.25.2': {}
 
-  '@posthog/react@1.8.1(@types/react@19.2.3)(posthog-js@1.356.0)(react@19.2.3)':
+  '@posthog/react@1.8.1(@types/react@19.2.3)(posthog-js@1.369.0)(react@19.2.3)':
     dependencies:
-      posthog-js: 1.356.0
+      posthog-js: 1.369.0
       react: 19.2.3
     optionalDependencies:
       '@types/react': 19.2.3
 
-  '@posthog/types@1.356.0': {}
+  '@posthog/types@1.369.0': {}
 
   '@postman/node-keytar@7.9.3':
     dependencies:
@@ -20841,6 +20853,14 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.0.3
 
+  '@vitest/mocker@4.0.18(vite@7.3.1(@types/node@20.19.35)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))':
+    dependencies:
+      '@vitest/spy': 4.0.18
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 7.3.1(@types/node@20.19.35)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+
   '@vitest/mocker@4.0.18(vite@7.3.1(@types/node@22.19.13)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
       '@vitest/spy': 4.0.18
@@ -22047,6 +22067,10 @@ snapshots:
       '@types/trusted-types': 2.0.7
 
   dompurify@3.3.1:
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
+
+  dompurify@3.4.0:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -25204,27 +25228,25 @@ snapshots:
 
   postgres@3.4.8: {}
 
-  posthog-js@1.356.0:
+  posthog-js@1.369.0:
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/api-logs': 0.208.0
       '@opentelemetry/exporter-logs-otlp-http': 0.208.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/resources': 2.5.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-logs': 0.208.0(@opentelemetry/api@1.9.0)
-      '@posthog/core': 1.23.1
-      '@posthog/types': 1.356.0
+      '@posthog/core': 1.25.2
+      '@posthog/types': 1.369.0
       core-js: 3.48.0
-      dompurify: 3.3.1
+      dompurify: 3.4.0
       fflate: 0.4.8
       preact: 10.28.4
       query-selector-shadow-dom: 1.0.1
       web-vitals: 5.1.0
 
-  posthog-node@4.18.0:
+  posthog-node@5.29.2:
     dependencies:
-      axios: 1.13.5
-    transitivePeerDependencies:
-      - debug
+      '@posthog/core': 1.25.2
 
   preact@10.28.4: {}
 
@@ -27418,7 +27440,7 @@ snapshots:
   vitest@4.0.18(@opentelemetry/api@1.9.0)(@types/node@20.19.35)(@vitest/ui@4.0.18)(jiti@2.6.1)(jsdom@28.1.0(@noble/hashes@2.0.1))(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2):
     dependencies:
       '@vitest/expect': 4.0.18
-      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@22.19.13)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))
+      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@20.19.35)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))
       '@vitest/pretty-format': 4.0.18
       '@vitest/runner': 4.0.18
       '@vitest/snapshot': 4.0.18

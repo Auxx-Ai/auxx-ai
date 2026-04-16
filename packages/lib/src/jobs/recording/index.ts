@@ -20,3 +20,7 @@ export {
   type ScheduleBotsJobData,
   scheduleBotsForUpcomingMeetingsJob,
 } from './schedule-bots-job'
+export {
+  type TranscribeRecordingJobData,
+  transcribeRecordingJob,
+} from './transcribe-recording-job'

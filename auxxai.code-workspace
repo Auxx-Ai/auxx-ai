@@ -18,6 +18,9 @@
     },
     "[javascript]": {
       "editor.defaultFormatter": "vscode.typescript-language-features"
+    },
+    "[html]": {
+      "editor.defaultFormatter": "biomejs.biome"
     }
   }
 }

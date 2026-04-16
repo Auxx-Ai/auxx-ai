@@ -12,6 +12,7 @@ import {
   listCalendarEventParticipants,
   listCalendarEvents,
 } from '@auxx/lib/recording/calendar'
+import { SettingsService } from '@auxx/lib/settings'
 import { TRPCError } from '@trpc/server'
 import crypto from 'crypto'
 import { and, count, eq } from 'drizzle-orm'
@@ -130,6 +131,33 @@ export const calendarRouter = createTRPCRouter({
           updatedAt: new Date(),
         })
         .where(eq(schema.Integration.id, integration.id))
+
+      // If no other Google integrations still have calendar sync enabled,
+      // disable recording so the scheduler stops scheduling bots.
+      const googleIntegrations = await ctx.db
+        .select({ metadata: schema.Integration.metadata })
+        .from(schema.Integration)
+        .where(
+          and(
+            eq(schema.Integration.organizationId, ctx.session.organizationId),
+            eq(schema.Integration.provider, 'google')
+          )
+        )
+
+      const anyStillEnabled = googleIntegrations.some((i) => {
+        const meta = i.metadata as Record<string, unknown> | null
+        return meta?.calendarSyncEnabled === true
+      })
+
+      if (!anyStillEnabled) {
+        const settingsService = new SettingsService()
+        await settingsService.updateOrganizationSetting({
+          organizationId: ctx.session.organizationId,
+          key: 'recording.enabled',
+          value: false,
+          allowUserOverride: false,
+        })
+      }
 
       return { success: true }
     }),

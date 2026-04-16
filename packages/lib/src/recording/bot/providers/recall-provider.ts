@@ -35,6 +35,7 @@ export class RecallApiError extends Error {
 // --- Status Mapping ---
 
 const RECALL_STATUS_MAP: Record<string, BotStatus> = {
+  // Webhook format (with 'bot.' prefix)
   'bot.joining_call': 'joining',
   'bot.in_waiting_room': 'waiting',
   'bot.in_call_not_recording': 'admitted',
@@ -44,6 +45,16 @@ const RECALL_STATUS_MAP: Record<string, BotStatus> = {
   'bot.call_ended': 'processing',
   'bot.done': 'completed',
   'bot.fatal': 'failed',
+  // API response format (without 'bot.' prefix)
+  joining_call: 'joining',
+  in_waiting_room: 'waiting',
+  in_call_not_recording: 'admitted',
+  recording_permission_allowed: 'admitted',
+  recording_permission_denied: 'denied',
+  in_call_recording: 'recording',
+  call_ended: 'processing',
+  done: 'completed',
+  fatal: 'failed',
 }
 
 function mapRecallStatus(recallStatus: string): BotStatus | undefined {
@@ -53,9 +64,19 @@ function mapRecallStatus(recallStatus: string): BotStatus | undefined {
 // --- Recall.ai Webhook Event Mapping ---
 
 const RECALL_EVENT_MAP: Record<string, BotWebhookEventType> = {
-  'bot.status_change': 'bot.status_change',
-  'bot.recording.done': 'bot.recording_ready',
-  'bot.transcription.done': 'bot.transcript_ready',
+  // Each Recall.ai status is its own webhook event
+  'bot.joining_call': 'bot.status_change',
+  'bot.in_waiting_room': 'bot.status_change',
+  'bot.in_call_not_recording': 'bot.status_change',
+  'bot.recording_permission_allowed': 'bot.status_change',
+  'bot.recording_permission_denied': 'bot.status_change',
+  'bot.in_call_recording': 'bot.status_change',
+  'bot.call_ended': 'bot.status_change',
+  'bot.done': 'bot.status_change',
+  'bot.fatal': 'bot.status_change',
+  // Media/transcript events
+  'recording.done': 'bot.recording_ready',
+  'transcript.done': 'bot.transcript_ready',
 }
 
 // --- HTTP Client ---
@@ -150,6 +171,13 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
           recording_config: {
             audio_mixed_mp3: {},
             ...(params.captureVideo ? { video_mixed_mp4: {} } : {}),
+            transcript: {
+              provider: {
+                recallai_streaming: {
+                  mode: 'prioritize_accuracy',
+                },
+              },
+            },
           },
           automatic_leave: {
             waiting_room_timeout: 300,
@@ -249,8 +277,12 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
       try {
         const response = await client.request<RecallBotResponse>('GET', `/bot/${externalBotId}/`)
 
-        const videoUrl = response.media_shortcuts?.video_mixed?.data?.download_url
-        const audioUrl = response.media_shortcuts?.audio_mixed?.data?.download_url
+        // Media shortcuts live on recordings[0], not on the bot root
+        const recording = (response as any).recordings?.[0]
+        const mediaShortcuts = recording?.media_shortcuts ?? response.media_shortcuts
+
+        const videoUrl = mediaShortcuts?.video_mixed?.data?.download_url
+        const audioUrl = mediaShortcuts?.audio_mixed?.data?.download_url
 
         return ok({
           videoUrl: videoUrl ?? undefined,
@@ -314,7 +346,10 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
       try {
         const payload = body as {
           event?: string
-          data?: { data?: Record<string, unknown>; bot?: string }
+          data?: {
+            data?: Record<string, unknown>
+            bot?: string | { id?: string; metadata?: Record<string, unknown> }
+          }
         }
 
         if (!payload.event || !payload.data?.bot) {
@@ -326,12 +361,18 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
           return err(new BadRequestError(`Unknown webhook event: ${payload.event}`))
         }
 
-        const externalBotId = payload.data.bot
+        // data.bot can be a string (bot ID) or an object { id, metadata }
+        const botField = payload.data.bot
+        const externalBotId = typeof botField === 'string' ? botField : botField?.id
+        if (!externalBotId) {
+          return err(new BadRequestError('Invalid webhook payload: missing bot ID'))
+        }
+
         const statusData = payload.data.data ?? {}
 
         let status: BotStatus | undefined
-        if (eventType === 'bot.status_change' && typeof statusData.code === 'string') {
-          status = mapRecallStatus(statusData.code)
+        if (eventType === 'bot.status_change') {
+          status = mapRecallStatus(payload.event!)
         }
 
         const event: BotWebhookEvent = {
@@ -353,9 +394,9 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
     },
 
     verifyWebhookSignature(headers: Record<string, string>, rawBody: string): boolean {
-      const msgId = headers['svix-id']
-      const timestamp = headers['svix-timestamp']
-      const signatures = headers['svix-signature']
+      const msgId = headers['webhook-id']
+      const timestamp = headers['webhook-timestamp']
+      const signatures = headers['webhook-signature']
 
       if (!msgId || !timestamp || !signatures) {
         return false

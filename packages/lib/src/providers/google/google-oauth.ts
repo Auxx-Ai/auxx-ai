@@ -7,6 +7,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
 import { type Common, google } from 'googleapis'
 import { InboxService } from '../../inboxes/inbox-service'
+import { SettingsService } from '../../settings/settings-service'
 import { ChannelTokenAccessor, type ChannelTokens } from '../channel-token-accessor'
 import { PROVIDER_CREDENTIAL_CONFIG } from '../provider-credentials-config'
 
@@ -24,7 +25,7 @@ const OAUTH_SCOPES = {
     'https://www.googleapis.com/auth/userinfo.email',
   ],
   calendar: [
-    'https://www.googleapis.com/auth/calendar.readonly',
+    'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/userinfo.email',
   ],
 } as const
@@ -336,6 +337,16 @@ export class GoogleOAuthService {
       .from(schema.Integration)
       .where(eq(schema.Integration.id, integrationId))
       .limit(1)
+
+    // Ensure recording.enabled is set in OrganizationSetting so the
+    // recording-bot scheduler can discover this org.
+    const settingsService = new SettingsService()
+    await settingsService.updateOrganizationSetting({
+      organizationId: integration.organizationId,
+      key: 'recording.enabled',
+      value: true,
+      allowUserOverride: false,
+    })
 
     return { success: true as const, integration, isCalendarGrant: true }
   }

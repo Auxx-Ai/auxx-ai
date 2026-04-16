@@ -130,6 +130,8 @@ export {
   processRecordingJob,
   type ScheduleBotsJobData,
   scheduleBotsForUpcomingMeetingsJob,
+  type TranscribeRecordingJobData,
+  transcribeRecordingJob,
 } from './recording'
 // Shopify
 export { customerWebhookJob } from './shopify/customer-webhook-job'

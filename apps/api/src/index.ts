@@ -73,8 +73,8 @@ async function main() {
   app.route('/api/v1/sdk/webhooks', webhookHandlers) // SDK callback: Lambda → API
   app.route('/api/v1/sdk/settings', settings) // SDK callback: Lambda → API
   app.route('/api/v1/workflows', workflows) // Workflow execution routes
+  app.route('/webhooks/recording', recordingWebhooks) // Recording bot provider webhooks (before generic /webhooks to avoid param collision)
   app.route('/webhooks', webhooks) // Public webhook receiver (no /api/v1 prefix)
-  app.route('/webhooks/recording', recordingWebhooks) // Recording bot provider webhooks
 
   // 404 handler
   app.notFound((c) => {

@@ -13,7 +13,7 @@ export interface ProcessRecordingJobData {
 
 /**
  * Download recording media from the provider and store in S3.
- * Enqueued when a bot status transitions to 'completed'.
+ * Enqueued when the provider sends a `recording.done` webhook.
  */
 export const processRecordingJob = async (jobOrCtx: Job<ProcessRecordingJobData>) => {
   const job: Job<ProcessRecordingJobData> = (jobOrCtx as any).job ?? jobOrCtx
@@ -45,10 +45,6 @@ export const processRecordingJob = async (jobOrCtx: Job<ProcessRecordingJobData>
     videoAssetId: result.value.videoAssetId,
     audioAssetId: result.value.audioAssetId,
   })
-
-  // Phase 3 stub: enqueue transcription job here
-  // const transcriptionQueue = getQueue(Queues.transcriptionQueue)
-  // await transcriptionQueue.add('transcribeRecordingJob', { recordingId, audioAssetId })
 
   return result.value
 }

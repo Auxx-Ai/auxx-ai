@@ -1,8 +1,12 @@
 // packages/lib/src/recording/calendar/participant-resolver.ts
 
 import { database as db, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import type { RecordId } from '@auxx/types/resource'
+import { getDefinitionId, getInstanceId } from '@auxx/types/resource'
 import { and, asc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { getCachedCustomFields } from '../../cache'
 import type { CalendarAttendeeInput, RecordingResult, ResolvedParticipant } from './types'
 
 /**
@@ -190,6 +194,46 @@ export async function upsertMeetingParticipants(
   } catch (error) {
     return err(toError(error))
   }
+}
+
+/**
+ * Resolve contact RecordIds to attendee objects via FieldValueService.
+ */
+export async function resolveContactEmails(
+  contactRecordIds: RecordId[],
+  organizationId: string,
+  userId: string
+): Promise<Array<{ email: string; name: string | null; responseStatus: null; organizer: false }>> {
+  if (contactRecordIds.length === 0) return []
+
+  const entityDefId = getDefinitionId(contactRecordIds[0]!)
+  const fields = await getCachedCustomFields(organizationId, entityDefId)
+  const emailField = fields.find((f) => f.systemAttribute === 'primary_email')
+  if (!emailField) return []
+
+  const entityInstanceIds = contactRecordIds.map((rid) => getInstanceId(rid))
+  const rows = await db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      email: schema.FieldValue.valueText,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, emailField.id),
+        inArray(schema.FieldValue.entityId, entityInstanceIds)
+      )
+    )
+
+  return rows
+    .filter((r) => r.email)
+    .map((r) => ({
+      email: r.email!,
+      name: null,
+      responseStatus: null,
+      organizer: false as const,
+    }))
 }
 
 /**

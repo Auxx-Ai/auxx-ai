@@ -8,7 +8,6 @@ import {
   getAllConfigDefinitions,
   getConfigDefinition,
 } from './config-registry'
-import { ConfigStorage } from './config-storage'
 import { convertEnvValue } from './config-value-converter'
 import type {
   ConfigVariableDefinition,
@@ -35,10 +34,19 @@ const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
  */
 export class ConfigService {
   private cache = new ConfigCache()
-  private storage = new ConfigStorage()
+  private _storage: import('./config-storage').ConfigStorage | null = null
   private refreshTimer: ReturnType<typeof setInterval> | null = null
   private initPromise: Promise<void> | null = null
   private initialized = false
+
+  /** Lazily create ConfigStorage only when DB overrides are actually needed. */
+  private async getStorage(): Promise<import('./config-storage').ConfigStorage> {
+    if (!this._storage) {
+      const { ConfigStorage } = await import('./config-storage')
+      this._storage = new ConfigStorage()
+    }
+    return this._storage
+  }
 
   /** Cached SST Resource object. null = unchecked, false = unavailable. */
   private sstResource: Record<string, any> | null | false = null
@@ -166,7 +174,8 @@ export class ConfigService {
 
     // 1. Try org-level DB override
     if (this.isDbEnabled && definition && !definition.isEnvOnly) {
-      const orgOverrides = await this.storage.getAllForOrg(organizationId)
+      const storage = await this.getStorage()
+      const orgOverrides = await storage.getAllForOrg(organizationId)
       const match = orgOverrides.find((o) => o.key === key)
       if (match?.value !== undefined) {
         return match.value as T
@@ -198,7 +207,8 @@ export class ConfigService {
     }
 
     this.validate(definition, value)
-    await this.storage.setSystem(key, value, userId)
+    const storage = await this.getStorage()
+    await storage.setSystem(key, value, userId)
 
     // Update cache immediately — no wait for next refresh cycle
     this.cache.set(key, value)
@@ -216,7 +226,8 @@ export class ConfigService {
       throw new Error('DB config overrides are not enabled')
     }
 
-    await this.storage.deleteSystem(key)
+    const storage = await this.getStorage()
+    await storage.deleteSystem(key)
     this.cache.markMissing(key)
   }
 
@@ -377,7 +388,8 @@ export class ConfigService {
   /** Refresh the cache from DB. */
   private async refreshCache(): Promise<void> {
     try {
-      const allOverrides = await this.storage.getAllSystem()
+      const storage = await this.getStorage()
+      const allOverrides = await storage.getAllSystem()
       this.cache.warmUp(allOverrides.map((o) => ({ key: o.key, value: o.value })))
     } catch (error) {
       console.error('[ConfigService] Failed to refresh cache from DB:', error)

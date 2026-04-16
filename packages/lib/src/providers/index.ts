@@ -10,6 +10,8 @@ export { ChannelTokenAccessor } from './channel-token-accessor'
 export { EmailForwardingProvider } from './email'
 export type { FacebookIntegrationMetadata } from './facebook/facebook-oauth'
 export { FacebookOAuthService } from './facebook/facebook-oauth'
+export type { CreateGoogleMeetParams, CreateGoogleMeetResult } from './google/calendar/create-event'
+export { createGoogleMeetEvent } from './google/calendar/create-event'
 export { GoogleOAuthService } from './google/google-oauth'
 export type { ImapCredentialData, LdapUserInfo } from './imap'
 // IMAP/SMTP/LDAP provider
