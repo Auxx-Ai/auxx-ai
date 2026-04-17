@@ -273,7 +273,7 @@ The 5-column approach trades schema aesthetics for operational correctness:
 |----------|-----------|----------------|
 | PostgreSQL over dedicated vector DB | No purpose-built optimizations | Operational simplicity, one fewer service, sub-100ms is fast enough |
 | 5 embedding columns | Ugly schema | No runtime DDL, free nulls, per-dimension indexes |
-| Dimension grouping for multi-dataset search | More complex orchestration | O(D) API calls instead of O(N), where D << N |
+| Dimension grouping for multi-dataset search | More complex orchestration | O(D) API calls instead of O(N), where `D << N` |
 | Pre-flight quota checks | Extra Redis lookup per generation | Prevents wasted API spend on over-quota orgs |
 | Smart chunking with weighted averaging | Slight quality loss vs single-pass | Handles all text sizes without token limit errors |
 | HNSW over IVFFlat | Slower index build | Better recall, no re-clustering needed |

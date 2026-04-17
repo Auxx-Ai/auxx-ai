@@ -67,8 +67,6 @@ export type IntegrationSyncStatus = (typeof Enums.IntegrationSyncStatusValues)[n
 
 export type IntegrationProviderType = (typeof Enums.IntegrationProviderTypeValues)[number]
 
-export type IntegrationType = (typeof Enums.IntegrationTypeValues)[number]
-
 export type InvitationStatus = (typeof Enums.InvitationStatusValues)[number]
 
 export type InvoiceStatus = (typeof Enums.InvoiceStatusValues)[number]
