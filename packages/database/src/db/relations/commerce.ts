@@ -28,7 +28,6 @@ import {
   Subscription,
   shopify_customers,
   User,
-  VendorPart,
   WebhookEvent,
 } from '../schema'
 
