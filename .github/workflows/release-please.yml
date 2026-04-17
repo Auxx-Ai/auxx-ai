@@ -98,6 +98,8 @@ jobs:
             GIT_SHA=${{ github.sha }}
             APP_VERSION=${{ needs.release-please.outputs.version }}
             BUILD_TIME=${{ steps.build_time.outputs.build_time }}
+            POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
+            POSTHOG_HOST=${{ vars.POSTHOG_HOST }}
           cache-from: type=registry,ref=${{ matrix.image }}:buildcache
           cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max
 

@@ -146,9 +146,13 @@ export function RecordsView({
   // Get resource with fields
   const { resource, isLoading } = useResource(slug)
 
-  // Derive custom fields from resource.fields (filter to fields with id = custom fields only)
+  // Derive custom fields from resource.fields (filter to fields with id = custom fields only).
+  // Hidden fields are excluded from every table surface — no column, no chooser entry.
   const customFields = useMemo(
-    () => resource?.fields.filter((f): f is ResourceField & { id: string } => !!f.id) ?? [],
+    () =>
+      resource?.fields.filter(
+        (f): f is ResourceField & { id: string } => !!f.id && !f.capabilities.hidden
+      ) ?? [],
     [resource?.fields]
   )
 

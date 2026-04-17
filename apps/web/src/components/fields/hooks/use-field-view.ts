@@ -67,7 +67,9 @@ export function useFieldView({
   // Whether we're using a stored org view or the generated default
   const hasOrgView = !!view
 
-  // Get visible fields in configured order
+  // Get visible fields in configured order.
+  // Fields with `capabilities.hidden` are excluded unconditionally — they are
+  // system-internal and users must not see them in any view or configuration.
   const getVisibleFields = useCallback((): ResourceField[] => {
     const { fieldVisibility, fieldOrder } = config
 
@@ -81,6 +83,7 @@ export function useFieldView({
     for (const fieldId of fieldOrder) {
       const field = fieldMap.get(fieldId)
       if (!field) continue
+      if (field.capabilities.hidden) continue
       // When no org view exists, also respect showInPanel from field definitions
       if (fieldVisibility[fieldId] === false) continue
       if (!hasOrgView && field.showInPanel === false) continue
@@ -90,6 +93,7 @@ export function useFieldView({
 
     // Then add any remaining fields not in order (new fields added after view was configured)
     for (const [fieldId, field] of fieldMap) {
+      if (field.capabilities.hidden) continue
       if (fieldVisibility[fieldId] === false) continue
       if (!hasOrgView && field.showInPanel === false) continue
       orderedFields.push(field)
@@ -98,12 +102,17 @@ export function useFieldView({
     return orderedFields
   }, [config, fields, hasOrgView])
 
-  // Get all fields in configured order (for edit mode - includes hidden fields)
+  // Get all fields in configured order (for edit mode — includes fields the
+  // user has toggled off but NOT registry-hidden fields).
   const getAllFields = useCallback((): ResourceField[] => {
     const { fieldOrder } = config
 
-    // Create a map of fields by their ID
-    const fieldMap = new Map(fields.map((f) => [f.resourceFieldId ?? f.id ?? f.key, f]))
+    // Create a map of fields by their ID — exclude registry-hidden up front
+    const fieldMap = new Map(
+      fields
+        .filter((f) => !f.capabilities.hidden)
+        .map((f) => [f.resourceFieldId ?? f.id ?? f.key, f])
+    )
 
     const orderedFields: ResourceField[] = []
 

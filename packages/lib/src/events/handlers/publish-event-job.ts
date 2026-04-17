@@ -99,6 +99,10 @@ export const EventHandlers: IEventsHandlers = {
   'subpart:created': [handleEntityTriggers],
   'subpart:deleted': [handleEntityTriggers],
 
+  // Company events → TIMELINE + ENTITY TRIGGERS (website enrichment on create)
+  'company:created': [createTimelineEvent, handleEntityTriggers],
+  'company:deleted': [createTimelineEvent, handleEntityTriggers],
+
   // Field trigger events → FIELD TRIGGER HANDLERS
   'field:trigger': [handleFieldTriggerJob],
 

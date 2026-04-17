@@ -6,6 +6,7 @@ export {
   canFilterField,
   canSortField,
   canUpdateField,
+  isFieldHidden,
 } from './capabilities/field-capabilities'
 export type {
   BulkResult,

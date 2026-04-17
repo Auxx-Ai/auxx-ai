@@ -54,9 +54,12 @@ export function CustomFieldsList({ resource }: CustomFieldsListProps) {
   // Subscribe to store for live updates (optimistic updates propagate here)
   const { fields } = useResourceFields(resource.entityDefinitionId)
 
-  // Sort fields by sortOrder
+  // Sort fields by sortOrder; hidden fields never appear in the custom-fields settings list.
   const sortedFields = useMemo(
-    () => [...fields].sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? '')),
+    () =>
+      [...fields]
+        .filter((f) => !f.capabilities.hidden)
+        .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? '')),
     [fields]
   )
 

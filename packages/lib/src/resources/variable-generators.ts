@@ -803,6 +803,9 @@ export function generateFindNodeVariablesFromFields(
   findMode: 'findOne' | 'findMany',
   options?: VariableGeneratorOptions
 ): UnifiedVariable[] {
+  // Hidden fields are system-internal — never surface as workflow variables.
+  fields = fields.filter((f) => !f.capabilities.hidden)
+
   const variables: UnifiedVariable[] = []
 
   if (fields.length === 0) {
@@ -989,6 +992,9 @@ export function generateCrudNodeVariablesFromFields(
   crudMode: 'create' | 'update' | 'delete',
   options?: VariableGeneratorOptions
 ): UnifiedVariable[] {
+  // Hidden fields are system-internal — never surface as workflow variables.
+  fields = fields.filter((f) => !f.capabilities.hidden)
+
   const variables: UnifiedVariable[] = []
 
   // Main resource variable (for create/update)
@@ -1156,6 +1162,9 @@ export function generateResourceTriggerVariablesFromFields(
   operation: 'created' | 'updated' | 'deleted' | 'manual',
   options?: VariableGeneratorOptions
 ): UnifiedVariable[] {
+  // Hidden fields are system-internal — never surface as workflow variables.
+  fields = fields.filter((f) => !f.capabilities.hidden)
+
   const variables: UnifiedVariable[] = []
 
   if (fields.length === 0) {

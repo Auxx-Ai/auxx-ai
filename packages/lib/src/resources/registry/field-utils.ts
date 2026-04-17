@@ -207,7 +207,7 @@ export function isComputedField(field: ResourceField): boolean {
 
 /**
  * Sort fields: system fields first (by systemSortOrder), then custom fields by sortOrder.
- * Excludes 'id' field and inactive custom fields.
+ * Excludes 'id' field, inactive custom fields, and fields with `capabilities.hidden`.
  * Deduplicates by key to prevent React key conflicts.
  */
 export function sortFieldsForDisplay(fields: ResourceField[]): ResourceField[] {
@@ -220,11 +220,15 @@ export function sortFieldsForDisplay(fields: ResourceField[]): ResourceField[] {
   })
 
   const systemFields = deduped
-    .filter((f) => f.isSystem && f.key !== 'id' && f.showInPanel !== false)
+    .filter(
+      (f) => f.isSystem && f.key !== 'id' && f.showInPanel !== false && !f.capabilities.hidden
+    )
     .sort((a, b) => (a.systemSortOrder ?? '').localeCompare(b.systemSortOrder ?? ''))
 
   const customFields = deduped
-    .filter((f) => !f.isSystem && f.active !== false && f.showInPanel !== false)
+    .filter(
+      (f) => !f.isSystem && f.active !== false && f.showInPanel !== false && !f.capabilities.hidden
+    )
     .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
 
   return [...systemFields, ...customFields]
@@ -235,5 +239,7 @@ export function sortFieldsForDisplay(fields: ResourceField[]): ResourceField[] {
  * Filters out hidden fields and sorts appropriately.
  */
 export function getDisplayFields(fields: ResourceField[]): ResourceField[] {
-  return sortFieldsForDisplay(fields.filter((f) => f.showInPanel !== false))
+  return sortFieldsForDisplay(
+    fields.filter((f) => f.showInPanel !== false && !f.capabilities.hidden)
+  )
 }

@@ -139,6 +139,8 @@ export const SYSTEM_ATTRIBUTES = [
   'company_primary_contact',
   'company_employees',
   'company_meetings',
+  'company_enriched_at',
+  'company_enrichment_status',
 
   // ─── Meeting fields ────────────────────────────────────────────
   'meeting_title',

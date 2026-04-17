@@ -2,6 +2,8 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type {
+  CompanyCreatedEvent,
+  CompanyDeletedEvent,
   EntityInstanceCreatedEvent,
   EntityInstanceDeletedEvent,
   StockMovementCreatedEvent,
@@ -25,6 +27,8 @@ type EntityTriggerEvent =
   | VendorPartDeletedEvent
   | SubpartCreatedEvent
   | SubpartDeletedEvent
+  | CompanyCreatedEvent
+  | CompanyDeletedEvent
 
 /**
  * Event handler for entity lifecycle events (created/deleted).

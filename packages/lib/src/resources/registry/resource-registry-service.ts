@@ -856,6 +856,12 @@ export class ResourceRegistryService {
           placeholder: staticField.placeholder,
           nullable: staticField.nullable,
           defaultValue: staticField.defaultValue,
+          // Hidden is a static-only capability — not persisted in CustomField,
+          // but the static registry owns the UI visibility decision for system fields.
+          capabilities: {
+            ...dbField.capabilities,
+            hidden: staticField.capabilities.hidden,
+          },
           // Merge relationship config — DB object exists but inverseResourceFieldId may be null
           // when the seeder linker couldn't resolve it. Fall back to static definition.
           relationship:

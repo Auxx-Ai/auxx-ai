@@ -47,6 +47,13 @@ export interface FieldCapabilities {
   unique?: boolean
   /** Field is computed/derived and cannot be directly set */
   computed?: boolean
+  /**
+   * Field exists in the registry and database but is invisible in every
+   * user-facing UI (panel, column chooser, filter/sort pickers, import/export,
+   * workflow variable pickers, custom-field list). System code can still
+   * read/write it via Drizzle or UnifiedCrudHandler.
+   */
+  hidden?: boolean
 }
 
 /**

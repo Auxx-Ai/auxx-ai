@@ -102,7 +102,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     context: EntityQueryContext
   ): SQL<unknown>[] | undefined {
     const fieldDef = this.resolveFieldRef(field, context)
-    if (!fieldDef?.capabilities.sortable) {
+    if (!fieldDef?.capabilities.sortable || fieldDef.capabilities.hidden) {
       return undefined
     }
 

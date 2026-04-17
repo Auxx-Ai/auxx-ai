@@ -26,7 +26,7 @@ interface RecordsSearchBarProps {
 /** Convert ResourceField[] to SearchFieldDefinition[] for suggestions */
 function toSearchFields(fields: ResourceField[]): SearchFieldDefinition[] {
   return fields
-    .filter((f) => f.capabilities.filterable && f.id !== 'displayName')
+    .filter((f) => f.capabilities.filterable && !f.capabilities.hidden && f.id !== 'displayName')
     .map((f) => ({
       id: f.id,
       label: f.label,
@@ -46,7 +46,7 @@ const DISPLAY_NAME_FIELD: FieldDefinition = {
 /** Convert ResourceField[] to FieldDefinition[] for ConditionProvider */
 function toConditionFields(fields: ResourceField[]): FieldDefinition[] {
   const mapped = fields
-    .filter((f) => f.capabilities.filterable)
+    .filter((f) => f.capabilities.filterable && !f.capabilities.hidden)
     .map((f) => ({
       id: f.id,
       label: f.label,
