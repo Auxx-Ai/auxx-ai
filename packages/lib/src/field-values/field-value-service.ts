@@ -12,12 +12,16 @@ import {
 import * as mutations from './field-value-mutations'
 import * as queries from './field-value-queries'
 import type {
+  AddRelationValuesBulkInput,
+  AddRelationValuesInput,
   AddValueInput,
   BatchFieldValueResult,
   BatchGetValuesInput,
   DeleteValueInput,
   GetValueInput,
   GetValuesInput,
+  RemoveRelationValuesBulkInput,
+  RemoveRelationValuesInput,
   SetBulkValuesInput,
   SetValueInput,
   SetValueResult,
@@ -112,12 +116,7 @@ export class FieldValueService {
    * Add relation values to an existing multi-value relationship field (no duplicates).
    * Appends new values after existing ones. Syncs inverse relationships.
    */
-  addRelationValues(params: {
-    recordId: RecordId
-    fieldId: string
-    relatedEntityIds: string[]
-    relatedEntityDefinitionId: string
-  }): Promise<void> {
+  addRelationValues(params: AddRelationValuesInput): Promise<void> {
     return mutations.addRelationValues(this.ctx, params)
   }
 
@@ -125,12 +124,25 @@ export class FieldValueService {
    * Remove specific relation values from an existing multi-value relationship field.
    * Syncs inverse relationships for removals.
    */
-  removeRelationValues(params: {
-    recordId: RecordId
-    fieldId: string
-    relatedEntityIds: string[]
-  }): Promise<void> {
+  removeRelationValues(params: RemoveRelationValuesInput): Promise<void> {
     return mutations.removeRelationValues(this.ctx, params)
+  }
+
+  /**
+   * Add the same related records to many source entities in one vectorized call.
+   * Flat query budget with respect to number of source/target records.
+   */
+  addRelationValuesBulk(
+    params: AddRelationValuesBulkInput
+  ): Promise<{ inserted: number; skipped: number }> {
+    return mutations.addRelationValuesBulk(this.ctx, params)
+  }
+
+  /**
+   * Remove the same related records from many source entities in one vectorized call.
+   */
+  removeRelationValuesBulk(params: RemoveRelationValuesBulkInput): Promise<{ removed: number }> {
+    return mutations.removeRelationValuesBulk(this.ctx, params)
   }
 
   /**

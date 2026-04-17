@@ -92,6 +92,8 @@ export interface FeatureMetadata {
   pairedKey?: FeatureKey
   /** Unit label for display (e.g., 'emails', 'GB', 'runs') */
   unit?: string
+  /** True for caps enforced per-operation (e.g. max rows per import), not standing resource counts. Excluded from overage detection. */
+  perOperation?: boolean
 }
 
 /** Single source of truth for all feature keys, their types, labels, and grouping. */
@@ -185,6 +187,7 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'Import Rows',
     group: 'Data',
     unit: 'rows',
+    perOperation: true,
   },
 
   // ── Usage limits (paired) ──

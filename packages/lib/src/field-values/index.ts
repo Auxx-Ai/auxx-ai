@@ -61,10 +61,16 @@ export {
 } from './field-value-helpers'
 // Mutations (for direct usage)
 export {
+  addOptionValues,
+  addRelationValues,
+  addRelationValuesBulk,
   addValue,
   buildFieldValueRow,
   deleteValue,
   extractRelatedIdsFromRaw,
+  removeOptionValues,
+  removeRelationValues,
+  removeRelationValuesBulk,
   removeValue,
   setBulkValues,
   setValue,
@@ -159,6 +165,8 @@ export {
 
 // Service types
 export type {
+  AddRelationValuesBulkInput,
+  AddRelationValuesInput,
   AddValueInput,
   BatchFieldValueResult,
   BatchGetValuesInput,
@@ -168,6 +176,8 @@ export type {
   GetValuesInput,
   // Model types
   ModelType,
+  RemoveRelationValuesBulkInput,
+  RemoveRelationValuesInput,
   SetBulkValuesInput,
   // Existing input types
   SetValueInput,

@@ -68,6 +68,48 @@ export interface SetBulkValuesInput {
   values: Array<{ fieldId: string; value: unknown }>
 }
 
+/** Input for adding relation values to a single source entity. */
+export interface AddRelationValuesInput {
+  recordId: RecordId
+  fieldId: string
+  /** Target records to link to. All must share the same entityDefinitionId. */
+  relatedRecordIds: RecordId[]
+}
+
+/** Input for removing relation values from a single source entity. */
+export interface RemoveRelationValuesInput {
+  recordId: RecordId
+  fieldId: string
+  /** Target records to unlink. */
+  relatedRecordIds: RecordId[]
+}
+
+/** Input for adding the same relation values to many source entities in one call. */
+export interface AddRelationValuesBulkInput {
+  /** Source entities receiving the related values. Must share one entityDefinitionId. */
+  recordIds: RecordId[]
+  /** Resolved CustomField.id (UUID) — not a systemAttribute */
+  fieldId: string
+  /** Target entities to link to. Must share one entityDefinitionId. */
+  relatedRecordIds: RecordId[]
+  /** If true, skip inverse relationship sync. Default false. */
+  skipInverseSync?: boolean
+  /** If true, skip realtime publish AND field-trigger events. Default false. */
+  skipPublishEvents?: boolean
+}
+
+/** Input for removing the same relation values from many source entities in one call. */
+export interface RemoveRelationValuesBulkInput {
+  recordIds: RecordId[]
+  fieldId: string
+  /** Target records to unlink. Only the instance portion is used in the DELETE scope. */
+  relatedRecordIds: RecordId[]
+  /** If true, skip inverse relationship sync. Default false. */
+  skipInverseSync?: boolean
+  /** If true, skip realtime publish AND field-trigger events. Default false. */
+  skipPublishEvents?: boolean
+}
+
 /**
  * Result state for field value mutations
  */

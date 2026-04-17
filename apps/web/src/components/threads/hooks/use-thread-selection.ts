@@ -32,6 +32,7 @@ export function useThreadSelection({ threadIds }: UseThreadSelectionOptions = {}
     return {
       setActiveThread: store.setActiveThread,
       setSelectedThreads: store.setSelectedThreads,
+      setSelectionAnchor: store.setSelectionAnchor,
       toggleSelection: store.toggleSelection,
       clearSelection: store.clearSelection,
       selectAll: store.selectAll,
@@ -42,22 +43,33 @@ export function useThreadSelection({ threadIds }: UseThreadSelectionOptions = {}
 
   /**
    * Handles click on a thread item with modifier key support.
-   * - Normal click: Select only this thread
-   * - Cmd/Ctrl + click: Toggle this thread in selection
-   * - Shift + click: Range select from active to clicked
+   * - Normal click: Open this thread (leaves checkbox selection untouched).
+   * - Cmd/Ctrl + click: Toggle this thread in the selection. Does not open.
+   *   When starting a fresh multi-selection, the currently-open thread is
+   *   automatically included so the user doesn't have to re-select it.
+   * - Shift + click: Range-select from anchor to clicked. Does not open.
    */
   const handleThreadClick = useCallback(
     (threadId: string, event: React.MouseEvent) => {
       event.preventDefault()
 
       if (event.metaKey || event.ctrlKey) {
-        actions.toggleSelection(threadId)
-        actions.setActiveThread(threadId)
+        const store = useThreadSelectionStore.getState()
+        if (
+          store.selectedThreadIds.length === 0 &&
+          store.activeThreadId &&
+          store.activeThreadId !== threadId
+        ) {
+          actions.setSelectedThreads([store.activeThreadId, threadId])
+        } else {
+          actions.toggleSelection(threadId)
+        }
+        actions.setSelectionAnchor(threadId)
       } else if (event.shiftKey && selectionAnchorId && threadIds) {
         actions.selectRange(selectionAnchorId, threadId, threadIds)
-        actions.setActiveThread(threadId)
+        actions.setSelectionAnchor(threadId)
       } else {
-        actions.setSelectedThreads([threadId])
+        // setActiveThread also updates the selection anchor internally.
         actions.setActiveThread(threadId)
       }
     },

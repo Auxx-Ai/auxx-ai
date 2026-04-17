@@ -1,5 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/update-thread.ts
 
+import { toRecordId } from '@auxx/types/resource'
+import { requireCachedEntityDefId } from '../../../../../cache'
 import { ThreadMutationService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -75,15 +77,25 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
         if (assigneeId) changes.assigneeId = assigneeId
       }
 
-      // Handle tag operations
-      if (addTagIds && addTagIds.length > 0) {
-        await service.tagThreadsBulk([threadId], addTagIds, 'add')
-        changes.addedTags = addTagIds
-      }
+      // Handle tag operations — resolve entity def ids for RecordId shape
+      if (hasTags) {
+        const [threadEntityDefId, tagEntityDefId] = await Promise.all([
+          requireCachedEntityDefId(agentDeps.organizationId, 'thread'),
+          requireCachedEntityDefId(agentDeps.organizationId, 'tag'),
+        ])
+        const threadRecordIds = [toRecordId(threadEntityDefId, threadId)]
 
-      if (removeTagIds && removeTagIds.length > 0) {
-        await service.tagThreadsBulk([threadId], removeTagIds, 'remove')
-        changes.removedTags = removeTagIds
+        if (addTagIds && addTagIds.length > 0) {
+          const tagRecordIds = addTagIds.map((id) => toRecordId(tagEntityDefId, id))
+          await service.tagThreadsBulk(threadRecordIds, tagRecordIds, 'add')
+          changes.addedTags = addTagIds
+        }
+
+        if (removeTagIds && removeTagIds.length > 0) {
+          const tagRecordIds = removeTagIds.map((id) => toRecordId(tagEntityDefId, id))
+          await service.tagThreadsBulk(threadRecordIds, tagRecordIds, 'remove')
+          changes.removedTags = removeTagIds
+        }
       }
 
       return {

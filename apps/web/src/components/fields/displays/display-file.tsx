@@ -33,7 +33,6 @@ export function DisplayFile() {
     { refs },
     { enabled: refs.length > 0 }
   )
-  console.log('DisplayFile - fileDetails:', fileDetails, 'isLoading:', isLoading, value)
   // Build file items for ItemsListView
   const fileItems = useMemo<DisplayFileItem[]>(() => {
     if (!fileDetails) return []

@@ -112,12 +112,36 @@ export const useThreadSelectionStore = create<ThreadSelectionState>((set, get) =
     set({ selectedThreadIds: allIds.slice(start, end + 1) })
   },
 
-  setViewMode: (mode) => set({ viewMode: mode }),
+  setViewMode: (mode) =>
+    set((state) => {
+      const next: Partial<ThreadSelectionState> = { viewMode: mode }
+      // Entering edit mode from view mode: seed the checkbox selection with
+      // the currently-open thread so the user can act on it immediately
+      // without a round-trip through the checkbox.
+      if (
+        mode === 'edit' &&
+        state.viewMode !== 'edit' &&
+        state.activeThreadId &&
+        !state.selectedThreadIds.includes(state.activeThreadId)
+      ) {
+        next.selectedThreadIds = [...state.selectedThreadIds, state.activeThreadId]
+      }
+      return next
+    }),
 
   toggleViewMode: () =>
-    set((state) => ({
-      viewMode: state.viewMode === 'view' ? 'edit' : 'view',
-    })),
+    set((state) => {
+      const nextMode: ViewMode = state.viewMode === 'view' ? 'edit' : 'view'
+      const next: Partial<ThreadSelectionState> = { viewMode: nextMode }
+      if (
+        nextMode === 'edit' &&
+        state.activeThreadId &&
+        !state.selectedThreadIds.includes(state.activeThreadId)
+      ) {
+        next.selectedThreadIds = [...state.selectedThreadIds, state.activeThreadId]
+      }
+      return next
+    }),
 
   reset: () => set(initialState),
 }))

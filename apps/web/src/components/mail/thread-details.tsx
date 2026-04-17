@@ -17,6 +17,7 @@ import { ThreadFooter } from './thread-footer'
 import { ThreadHeader } from './thread-header'
 import { ThreadMessages } from './thread-messages'
 import { useThreadContext } from './thread-provider'
+import { toEditorMessage } from './utils/to-editor-message'
 
 /**
  * Main component for displaying thread details.
@@ -93,24 +94,17 @@ export default function ThreadDetails({ centered }: { centered?: boolean }) {
   // Open inline compose instance when reply box opens
   // biome-ignore lint/correctness/useExhaustiveDependencies: only react to isShowReplyBox and thread changes
   useEffect(() => {
-    console.log('[ThreadDetails] replyBox effect', {
-      isShowReplyBox,
-      threadId: thread?.id,
-      instanceId: instanceIdRef.current,
-    })
     if (isShowReplyBox && thread) {
       // Skip if we already have a valid inline instance (e.g. adopted from dock-back)
       const existing = instanceIdRef.current
         ? instances.find((i) => i.id === instanceIdRef.current && i.displayMode === 'inline')
         : null
       if (existing) {
-        console.log('[ThreadDetails] already have inline instance, skipping open', existing.id)
         return
       }
 
       // Close any previous instance for this thread
       if (instanceIdRef.current) {
-        console.log('[ThreadDetails] closing previous instance', instanceIdRef.current)
         closeCompose(instanceIdRef.current)
       }
       const id = openInline({ mode: editorMode, thread, sourceMessage, draft }, portalTargetId)
@@ -172,63 +166,10 @@ export default function ThreadDetails({ centered }: { centered?: boolean }) {
   const lastMessage = messages.at(-1)
   const { from, to, cc } = useMessageParticipants(lastMessage?.participants ?? [])
 
-  const lastEditorMessage: MessageType | null = useMemo(() => {
-    if (!lastMessage) return null
-    return {
-      id: lastMessage.id,
-      threadId: lastMessage.threadId,
-      subject: lastMessage.subject,
-      snippet: lastMessage.snippet,
-      textHtml: lastMessage.textHtml,
-      textPlain: lastMessage.textPlain,
-      isInbound: lastMessage.isInbound,
-      sentAt: lastMessage.sentAt ? new Date(lastMessage.sentAt) : null,
-      createdAt: new Date(lastMessage.createdAt),
-      messageType: lastMessage.messageType as MessageType['messageType'],
-      from: from
-        ? {
-            id: from.id,
-            identifier: from.identifier,
-            identifierType: from.identifierType,
-            name: from.name,
-            displayName: from.displayName,
-          }
-        : null,
-      participants: [
-        ...(from
-          ? [
-              {
-                role: 'FROM',
-                participant: {
-                  id: from.id,
-                  identifier: from.identifier,
-                  identifierType: from.identifierType,
-                  name: from.name,
-                },
-              },
-            ]
-          : []),
-        ...to.map((p) => ({
-          role: 'TO',
-          participant: {
-            id: p.id,
-            identifier: p.identifier,
-            identifierType: p.identifierType,
-            name: p.name,
-          },
-        })),
-        ...cc.map((p) => ({
-          role: 'CC',
-          participant: {
-            id: p.id,
-            identifier: p.identifier,
-            identifierType: p.identifierType,
-            name: p.name,
-          },
-        })),
-      ],
-    }
-  }, [lastMessage, from, to, cc])
+  const lastEditorMessage: MessageType | null = useMemo(
+    () => (lastMessage ? toEditorMessage(lastMessage, { from, to, cc }) : null),
+    [lastMessage, from, to, cc]
+  )
 
   // Keyboard shortcuts: R to reply, F to forward the last message
   useHotkey(

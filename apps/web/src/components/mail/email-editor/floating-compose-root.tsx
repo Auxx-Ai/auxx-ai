@@ -21,12 +21,6 @@ export function FloatingComposeRoot() {
     { conflictBehavior: 'allow' }
   )
 
-  console.log(
-    '[FloatingComposeRoot] render, instances:',
-    instances.length,
-    instances.map((i) => `${i.id}:${i.displayMode}`)
-  )
-
   if (instances.length === 0) return null
 
   return (

@@ -57,13 +57,18 @@ export function useThreadKeyboardNav({
         // Focus mode: only move the cursor, don't navigate or select
         store.setFocusedThread(nextId)
       } else {
-        // Navigate mode: open the thread
-        store.setActiveThread(nextId)
+        // Navigate mode: move the active thread. Plain arrow keys no longer mutate
+        // the checkbox selection — that stays a user-driven gesture.
         if (extendSelection) {
-          store.addToSelection(nextId)
-        } else if (store.viewMode !== 'edit') {
-          store.setSelectedThreads([nextId])
+          // Shift+arrow: if nothing is checked yet, treat the previously-active row
+          // as the start of the range so the user gets what they expect.
+          if (store.selectedThreadIds.length === 0 && currentId) {
+            store.setSelectedThreads([currentId, nextId])
+          } else {
+            store.addToSelection(nextId)
+          }
         }
+        store.setActiveThread(nextId)
       }
 
       document.getElementById(`thread-${nextId}`)?.scrollIntoView({ block: 'nearest' })
@@ -94,7 +99,6 @@ export function useThreadKeyboardNav({
     const targetId = store.focusedThreadId ?? store.selectedThreadIds[0]
     if (targetId) {
       store.setActiveThread(targetId)
-      store.setSelectedThreads([targetId])
       onOpen?.(targetId)
     }
   }, [onOpen])
@@ -115,9 +119,6 @@ export function useThreadKeyboardNav({
           store.setFocusedThread(threadIds[0])
         } else {
           store.setActiveThread(threadIds[0])
-          if (store.viewMode !== 'edit') {
-            store.setSelectedThreads([threadIds[0]])
-          }
         }
         document.getElementById(`thread-${threadIds[0]}`)?.scrollIntoView({ block: 'nearest' })
       }
@@ -136,9 +137,6 @@ export function useThreadKeyboardNav({
           store.setFocusedThread(lastId)
         } else {
           store.setActiveThread(lastId)
-          if (store.viewMode !== 'edit') {
-            store.setSelectedThreads([lastId])
-          }
         }
         document.getElementById(`thread-${lastId}`)?.scrollIntoView({ block: 'nearest' })
       }
