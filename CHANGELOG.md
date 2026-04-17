@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.125](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.124...auxx-v0.1.125) (2026-04-17)
+
+
+### Features
+
+* add support for .body files in URL replacement process ([a2fb23a](https://github.com/Auxx-Ai/auxx-ai/commit/a2fb23adc2cdea32f4cd6bb82d2f4b1f57796ada))
+
 ## [0.1.124](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.123...auxx-v0.1.124) (2026-04-17)
 
 
