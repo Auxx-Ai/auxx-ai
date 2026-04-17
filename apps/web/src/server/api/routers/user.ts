@@ -97,7 +97,7 @@ export const userRouter = createTRPCRouter({
           id: schema.Organization.id,
           name: schema.Organization.name,
           website: schema.Organization.website,
-          email_domain: schema.Organization.emailDomain,
+          domains: schema.Organization.domains,
         },
       })
       .from(schema.OrganizationMember)

@@ -22,7 +22,7 @@ export const orgProfileProvider: CacheProvider<DehydratedOrgProfile> = {
       id: org.id,
       name: org.name,
       website: org.website,
-      emailDomain: org.emailDomain,
+      domains: org.domains ?? [],
       handle: org.handle,
       about: org.about,
       createdAt: org.createdAt.toISOString(),

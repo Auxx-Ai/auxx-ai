@@ -81,7 +81,7 @@ export interface DehydratedOrgProfile {
   id: string
   name: string | null
   website: string | null
-  emailDomain: string | null
+  domains: string[]
   handle: string | null
   about: string | null
   createdAt: string

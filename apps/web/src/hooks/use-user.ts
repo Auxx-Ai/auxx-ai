@@ -26,7 +26,7 @@ export interface OrganizationMember {
     id: string
     name: string | null
     website: string | null
-    email_domain: string | null
+    domains: string[]
   }
 }
 export interface UserData {
@@ -133,7 +133,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
         id: org.id,
         name: org.name,
         website: org.website,
-        email_domain: org.emailDomain,
+        domains: org.domains,
       }
     : null
 
@@ -217,7 +217,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
             id: m.organizationId,
             name: orgData?.name ?? null,
             website: orgData?.website ?? null,
-            email_domain: orgData?.emailDomain ?? null,
+            domains: orgData?.domains ?? [],
           },
         }
       }),

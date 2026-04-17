@@ -161,7 +161,7 @@ export class DehydrationService {
       id: orgProfile.id,
       name: orgProfile.name,
       website: orgProfile.website,
-      emailDomain: orgProfile.emailDomain,
+      domains: orgProfile.domains,
       handle: orgProfile.handle,
       about: orgProfile.about,
       createdAt: orgProfile.createdAt,

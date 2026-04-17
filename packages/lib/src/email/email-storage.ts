@@ -19,6 +19,8 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { SelectiveModeCache } from '../cache/selective-mode-cache'
+import { linkContactToCompanyByDomain } from '../ingest/companies/link-contact'
+import { getOwnDomains } from '../ingest/domain/classifier'
 import { MessageReconcilerService } from '../messages/message-reconciler.service'
 import { ThreadManagerService } from '../messages/thread-manager.service'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
@@ -149,6 +151,10 @@ export class MessageStorageService {
   private crudHandlerCache = new Map<string, UnifiedCrudHandler>()
   /** Cached system user IDs per organization */
   private systemUserIdCache = new Map<string, string>()
+  /** Per-batch cache of domain → companyId for auto-company linking (dedupes within a batch) */
+  private companyIdByDomain = new Map<string, string | null>()
+  /** Per-batch cache of org → own-domains set (avoids redundant org-cache reads) */
+  private ownDomainsByOrg = new Map<string, Set<string>>()
 
   constructor(organizationId?: string) {
     this.selectiveCache = new SelectiveModeCache()
@@ -278,6 +284,16 @@ export class MessageStorageService {
       this.crudHandlerCache.set(organizationId, handler)
     }
     return handler
+  }
+
+  /** Returns the cached own-domains set for an org, fetching once per batch. */
+  private async resolveOwnDomains(organizationId: string): Promise<Set<string>> {
+    let ownDomains = this.ownDomainsByOrg.get(organizationId)
+    if (!ownDomains) {
+      ownDomains = await getOwnDomains(organizationId)
+      this.ownDomainsByOrg.set(organizationId, ownDomains)
+    }
+    return ownDomains
   }
 
   // ========================================================================
@@ -753,7 +769,24 @@ export class MessageStorageService {
       }
 
       const { instance } = await handler.findOrCreate('contact', findBy, createValues)
-      return instance.id
+      const contactId = instance.id
+
+      // Auto-link contact to a company based on its email domain.
+      // Swallows errors — contact creation must succeed even if linking fails.
+      if (contactId) {
+        const ownDomains = await this.resolveOwnDomains(organizationId)
+        await linkContactToCompanyByDomain({
+          organizationId,
+          crudHandler: handler,
+          contactId,
+          identifier: participant.identifier,
+          identifierType: participant.identifierType,
+          companyIdByDomain: this.companyIdByDomain,
+          ownDomains,
+        })
+      }
+
+      return contactId
     } catch (error) {
       logger.error('Error finding/creating contact for participant:', {
         error,
@@ -1396,6 +1429,10 @@ export class MessageStorageService {
       this.isInitialSync = true
       await this.selectiveCache.markBatchProcessing(organizationId, actualBatchId)
     }
+
+    // Reset per-batch caches so they're scoped to this batch.
+    this.companyIdByDomain.clear()
+    this.ownDomainsByOrg.clear()
 
     // Sort messages chronologically for accurate selective mode processing
     const sortedMessages = [...messages].sort(

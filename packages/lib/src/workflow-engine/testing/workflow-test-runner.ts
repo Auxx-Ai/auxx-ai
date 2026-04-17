@@ -390,7 +390,7 @@ export class WorkflowTestRunner {
         type: 'TEAM',
         about: null,
         website: null,
-        email_domain: null,
+        domains: [],
       },
     }
 

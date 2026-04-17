@@ -69,7 +69,9 @@ export class RelationalDomainBuilder {
             name: helpers.valuesFromArray({ values: this.generateOrganizationNames() }),
             website: helpers.valuesFromArray({ values: this.generateWebsites() }),
             about: helpers.valuesFromArray({ values: this.generateAboutDescriptions() }),
-            emailDomain: helpers.valuesFromArray({ values: this.generateEmailDomains() }),
+            domains: helpers.valuesFromArray({
+              values: this.generateEmailDomains().map((d) => [d]),
+            }),
             type: helpers.valuesFromArray({ values: this.generateOrganizationTypes() }),
             handle: helpers.valuesFromArray({ values: this.generateHandles() }),
             createdById: helpers.valuesFromArray({
