@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.124](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.123...auxx-v0.1.124) (2026-04-17)
+
+
+### Features
+
+* add company entity and related functionality ([#417](https://github.com/Auxx-Ai/auxx-ai/issues/417)) ([5834b63](https://github.com/Auxx-Ai/auxx-ai/commit/5834b63e76f372035bea5825da530e1db7cc5b26))
+* add video asset generation for recordings ([#424](https://github.com/Auxx-Ai/auxx-ai/issues/424)) ([154983f](https://github.com/Auxx-Ai/auxx-ai/commit/154983ffc07b4a17cade0f3fee178a14c4f5b664))
+* **database:** add recording domain schema and related tables ([#418](https://github.com/Auxx-Ai/auxx-ai/issues/418)) ([da312dc](https://github.com/Auxx-Ai/auxx-ai/commit/da312dcef8774ab87c103a5936ef88cb27071b05))
+* db type fix ([#426](https://github.com/Auxx-Ai/auxx-ai/issues/426)) ([5c97f49](https://github.com/Auxx-Ai/auxx-ai/commit/5c97f4901ed4805b691faacb3fa3d89bc702dbbf))
+* enhance actor system integration and rename existing system users to "Auxx.ai" ([#425](https://github.com/Auxx-Ai/auxx-ai/issues/425)) ([68a942b](https://github.com/Auxx-Ai/auxx-ai/commit/68a942ba4172a2ebd6f41e0c5e9681546ac301ea))
+* enhance StatCards component with horizontal scrolling and no-scrollbar styling ([#415](https://github.com/Auxx-Ai/auxx-ai/issues/415)) ([f36b337](https://github.com/Auxx-Ai/auxx-ai/commit/f36b337436a27567d661723df4e8ebe994315257))
+* implement AI post-processing for call recordings ([#423](https://github.com/Auxx-Ai/auxx-ai/issues/423)) ([37ada59](https://github.com/Auxx-Ai/auxx-ai/commit/37ada599437c1754f3f2adb68d8e583215f87954))
+* **meeting:** introduce meeting entity with fields and relationships ([#419](https://github.com/Auxx-Ai/auxx-ai/issues/419)) ([e424999](https://github.com/Auxx-Ai/auxx-ai/commit/e424999f015e94fcc2748ec36b5f6a68f8798fff))
+* new video player for recordings was created ([#422](https://github.com/Auxx-Ai/auxx-ai/issues/422)) ([8586f80](https://github.com/Auxx-Ai/auxx-ai/commit/8586f80cd0aa2f53ea24ddb63f35a797c8a0bd4c))
+* **recording:** implement media downloading and scheduling for recordings ([#420](https://github.com/Auxx-Ai/auxx-ai/issues/420)) ([e798150](https://github.com/Auxx-Ai/auxx-ai/commit/e798150d6b6575e8f5394e956b683df1f2636a46))
+* **recording:** implement recording service with scheduling, retrieval ([#421](https://github.com/Auxx-Ai/auxx-ai/issues/421)) ([908fc45](https://github.com/Auxx-Ai/auxx-ai/commit/908fc4579fcbb3bf82643fe1382b7cf8f7014c04))
+* remove obsolete image assets from the repository ([1b9f061](https://github.com/Auxx-Ai/auxx-ai/commit/1b9f061a4caaf520534cf47b00f20c9524f64058))
+
 ## [0.1.123](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.122...auxx-v0.1.123) (2026-04-14)
 
 
