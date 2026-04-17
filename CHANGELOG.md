@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.126](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.125...auxx-v0.1.126) (2026-04-17)
+
+
+### Features
+
+* add company domain handling and avatar fields ([#428](https://github.com/Auxx-Ai/auxx-ai/issues/428)) ([d33dcfb](https://github.com/Auxx-Ai/auxx-ai/commit/d33dcfb856dbcf8252407d8241ce3175a5f3795f))
+* add comprehensive guides on CRM for small businesses and CRM tools for 2026 ([#431](https://github.com/Auxx-Ai/auxx-ai/issues/431)) ([a5fa0f6](https://github.com/Auxx-Ai/auxx-ai/commit/a5fa0f6e57074bd0cc30ab16413f1a55942c8355))
+* **ingest:** implement message storage and reconciliation pipeline ([#430](https://github.com/Auxx-Ai/auxx-ai/issues/430)) ([acbd89e](https://github.com/Auxx-Ai/auxx-ai/commit/acbd89e48a992cba52159aea945abd9f4b375770))
+* remove outdated image and update CRM tools article content ([#432](https://github.com/Auxx-Ai/auxx-ai/issues/432)) ([9fc73ad](https://github.com/Auxx-Ai/auxx-ai/commit/9fc73ad9eb02f5ee345fa4031a5b0459b21c9fd8))
+
 ## [0.1.125](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.124...auxx-v0.1.125) (2026-04-17)
 
 
