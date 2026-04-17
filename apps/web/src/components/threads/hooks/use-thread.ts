@@ -52,18 +52,11 @@ export function useThread({ threadId, enabled = true }: UseThreadOptions): UseTh
 
   // Request fetch in useLayoutEffect - runs synchronously before paint
   useLayoutEffect(() => {
-    console.log('[thread-load] useThread layoutEffect', {
-      threadId,
-      enabled,
-      hasThread: !!thread,
-      alreadyRequested: threadId ? requestedRef.current.has(threadId) : false,
-    })
     if (!enabled || !threadId) return
     if (thread) return
     if (requestedRef.current.has(threadId)) return
 
     requestedRef.current.add(threadId)
-    console.log('[thread-load] → requestThread', threadId)
     requestThread(threadId)
   }, [enabled, threadId, thread, requestThread])
 

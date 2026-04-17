@@ -6,6 +6,7 @@ import Link from 'next/link'
 import MessagingFeatures from '@/app/platform/messaging/_components/messaging-features'
 import { Button } from '~/components/ui/button'
 import { useConfig } from '~/lib/config-context'
+import { AnnouncementBadge } from './announcement-badge'
 
 function SocialProofBanner() {
   return (
@@ -35,6 +36,9 @@ export default function HeroSection() {
     <main role='main' className='bg-muted/50'>
       <section id='home' className='relative mx-auto max-w-6xl px-6 pt-32 text-center pb-20'>
         <div className='relative mx-auto max-w-4xl text-center'>
+          <div className='mb-8 flex justify-center'>
+            <AnnouncementBadge href='/blog/auxx-ai-privately-backed' text='Auxx.ai raised $2M' />
+          </div>
           <h1 className='text-foreground text-balance text-3xl font-semibold sm:mt-12 sm:text-5xl lg:text-5xl'>
             The{' '}
             <span className='italic bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent'>
@@ -87,7 +91,7 @@ export default function HeroSection() {
           </p>
         </div>
 
-        <SocialProofBanner />
+        {/* <SocialProofBanner /> */}
       </section>
       <MessagingFeatures />
     </main>

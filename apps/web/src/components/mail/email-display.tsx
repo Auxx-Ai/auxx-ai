@@ -249,7 +249,9 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
                     transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                     style={{ overflow: 'hidden' }}>
                     <div className='flex text-sm'>
-                      <span className='mr-[4px] shrink-0 text-muted-foreground'>Subject:</span>
+                      <span className='mr-[4px] shrink-0 text-muted-foreground hidden sm:block'>
+                        Subject:
+                      </span>
                       <span className='flex-shrink-1 min-w-0 truncate whitespace-nowrap'>
                         {message.subject}
                       </span>

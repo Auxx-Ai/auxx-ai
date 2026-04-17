@@ -86,9 +86,11 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
 
       {showDetails &&
         (identifierType === 'EMAIL' ? (
-          <span className='text-muted-foreground'>{identifier}</span>
+          <span className='text-muted-foreground hidden sm:block'>{identifier}</span>
         ) : (
-          <span className='text-muted-foreground'>{formatPhoneNumber(identifier)}</span>
+          <span className='text-muted-foreground hidden sm:block'>
+            {formatPhoneNumber(identifier)}
+          </span>
         ))}
     </div>
   )

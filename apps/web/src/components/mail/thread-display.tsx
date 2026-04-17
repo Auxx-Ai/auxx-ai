@@ -2,6 +2,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { AtSignIcon } from '@auxx/ui/components/icons/at-sign-icon'
+import Loader from '@auxx/ui/components/loader'
 import { cn } from '@auxx/ui/lib/utils'
 import { Mail, Plus, Waypoints } from 'lucide-react'
 import Link from 'next/link'
@@ -29,13 +30,19 @@ function isChatThread(provider: ChannelProvider | null): boolean {
 interface ThreadDisplayProps {
   /** When true, centers the content with a max-width for full-page list view */
   centered?: boolean
+  /**
+   * URL-derived thread ID. Used as a fallback on the first render before the
+   * Zustand store has been hydrated from the URL, so a deep-link refresh shows
+   * the spinner immediately instead of flashing "No message selected".
+   */
+  expectedThreadId?: string | null
 }
 
 /**
  * ThreadDisplay - displays the selected thread details or bulk action toolbar.
  * Gets thread data from Zustand store.
  */
-export function ThreadDisplay({ centered }: ThreadDisplayProps = {}) {
+export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps = {}) {
   const { openCompose } = useCompose()
   const { hasOnlyForwardingChannel } = useUser()
   const { viewMode } = useMailFilter()
@@ -44,10 +51,13 @@ export function ThreadDisplay({ centered }: ThreadDisplayProps = {}) {
   // The detail pane follows the *active* thread (the one the user opened),
   // which is independent from the checkbox-driven selectedThreadIds.
   const hasMultipleSelected = useHasMultipleSelected()
-  const threadId = useActiveThreadId()
+  const storeThreadId = useActiveThreadId()
+  // Prefer the store (authoritative once hydrated); fall back to the URL hint
+  // so the very first render has something to show before store-sync completes.
+  const threadId = storeThreadId ?? expectedThreadId ?? null
 
   // Get thread from store
-  const { thread, isLoading } = useThread({ threadId })
+  const { thread, isLoading, isNotFound } = useThread({ threadId })
   const { isUnread, markAsRead } = useThreadReadStatus(threadId)
 
   // Mark thread as read when displayed
@@ -62,20 +72,10 @@ export function ThreadDisplay({ centered }: ThreadDisplayProps = {}) {
   // show it even if checkbox-multi-select is active or we're in edit mode.
   const bulkToolbarActive = hasMultipleSelected || viewMode === 'edit'
 
-  const branch = thread
-    ? 'thread'
-    : isLoading
-      ? 'spinner'
-      : bulkToolbarActive
-        ? 'null(bulkToolbar)'
-        : 'empty-state(No message selected)'
-  console.log('[thread-load] ThreadDisplay render', {
-    threadId,
-    hasThread: !!thread,
-    isLoading,
-    bulkToolbarActive,
-    branch,
-  })
+  // We have a selected thread but haven't received its data yet — show the
+  // spinner instead of "No message selected" (covers the frames between
+  // URL/store sync and the batched fetch completing).
+  const isResolvingThread = !!threadId && !thread && !isNotFound
 
   return (
     <div className='flex h-full flex-col flex-1'>
@@ -93,9 +93,9 @@ export function ThreadDisplay({ centered }: ThreadDisplayProps = {}) {
             <ThreadDetails centered={centered} />
           </ThreadProvider>
         )
-      ) : isLoading ? (
+      ) : isLoading || isResolvingThread ? (
         <div className='flex h-full items-center justify-center'>
-          <div className='h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent'></div>
+          <Loader size='sm' title='Loading messages...' subtitle='Please wait' />
         </div>
       ) : bulkToolbarActive ? null : (
         <EmptyState

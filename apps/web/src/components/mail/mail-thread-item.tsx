@@ -450,7 +450,7 @@ export const MailThreadItem = memo(function MailThreadItem({
 })
 
 /** Skeleton for loading thread item */
-function ThreadItemSkeleton() {
+export function ThreadItemSkeleton() {
   return (
     <div className='flex flex-row items-stretch relative'>
       <div className='z-2 group relative flex w-full flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3'>

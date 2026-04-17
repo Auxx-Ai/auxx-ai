@@ -18,7 +18,6 @@ import {
   EmptyTitle,
 } from '@auxx/ui/components/empty'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, Mail, User } from 'lucide-react'
 import { useQueryState } from 'nuqs'
@@ -46,9 +45,9 @@ import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-t
 import { api } from '~/trpc/react'
 import BulkActionToolbar from './bulk-action-toolbar'
 import { CompactDraftItem } from './compact-draft-item'
-import { CompactThreadItem } from './compact-thread-item'
+import { CompactThreadItem, CompactThreadItemSkeleton } from './compact-thread-item'
 import { type SortOption, useMailFilter } from './mail-filter-context'
-import { MailThreadItem } from './mail-thread-item'
+import { MailThreadItem, ThreadItemSkeleton } from './mail-thread-item'
 import { StandaloneDraftItem } from './standalone-draft-item'
 import type { ThreadsFilterInput } from './types'
 
@@ -258,18 +257,10 @@ export const ThreadList = memo(function ThreadList({
     observer.observe(sentinel)
   }, [isFetchingNextPage, hasNextPage, recordIds.length])
 
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className='space-y-4 p-4'>
-        {[...Array(10)].map((_, i) => (
-          <ThreadItemSkeleton key={`skel-${i}`} />
-        ))}
-      </div>
-    )
-  }
-
-  const isEmpty = recordIds.length === 0 && !isFetchingNextPage
+  const Skel = variant === 'compact' ? CompactThreadItemSkeleton : ThreadItemSkeleton
+  // `isEmpty` must exclude the loading state — otherwise the "Nothing here"
+  // empty state would flash before the skeletons render.
+  const isEmpty = !isLoading && recordIds.length === 0 && !isFetchingNextPage
 
   return (
     <div className={cn('relative flex h-full w-full flex-col', isEmpty && 'flex-1')}>
@@ -319,6 +310,8 @@ export const ThreadList = memo(function ThreadList({
             isEmpty && 'flex-1'
           )}
           ref={parent}>
+          {isLoading && [...Array(10)].map((_, i) => <Skel key={`skel-${i}`} />)}
+
           {isEmpty && (
             <div className='p-4 text-center flex-1 flex items-center justify-center border rounded-2xl ring-inset ring-1 ring-muted/10'>
               <Empty className=' md:p-3'>
@@ -334,42 +327,43 @@ export const ThreadList = memo(function ThreadList({
           )}
 
           {/* Render list items - route based on entity type */}
-          {recordIds.map((recordId) => {
-            const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+          {!isLoading &&
+            recordIds.map((recordId) => {
+              const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
-            if (entityDefinitionId === 'draft') {
-              if (variant === 'compact') {
-                return <CompactDraftItem key={recordId} draftId={entityInstanceId} />
+              if (entityDefinitionId === 'draft') {
+                if (variant === 'compact') {
+                  return <CompactDraftItem key={recordId} draftId={entityInstanceId} />
+                }
+                return <StandaloneDraftItem key={recordId} draftId={entityInstanceId} />
               }
-              return <StandaloneDraftItem key={recordId} draftId={entityInstanceId} />
-            }
 
-            if (variant === 'compact') {
+              if (variant === 'compact') {
+                return (
+                  <CompactThreadItem
+                    key={recordId}
+                    threadId={entityInstanceId}
+                    basePath={basePath}
+                    isSelected={entityInstanceId === selectedThreadId}
+                    handleThreadClick={handleThreadClick}
+                    threadIds={threadIds}
+                    onTagClick={openTagPicker}
+                    onAssignClick={openAssignPicker}
+                  />
+                )
+              }
+
               return (
-                <CompactThreadItem
+                <MailThreadItem
                   key={recordId}
                   threadId={entityInstanceId}
                   basePath={basePath}
                   isSelected={entityInstanceId === selectedThreadId}
                   handleThreadClick={handleThreadClick}
                   threadIds={threadIds}
-                  onTagClick={openTagPicker}
-                  onAssignClick={openAssignPicker}
                 />
               )
-            }
-
-            return (
-              <MailThreadItem
-                key={recordId}
-                threadId={entityInstanceId}
-                basePath={basePath}
-                isSelected={entityInstanceId === selectedThreadId}
-                handleThreadClick={handleThreadClick}
-                threadIds={threadIds}
-              />
-            )
-          })}
+            })}
 
           {isFetchingNextPage && (
             <div className='flex h-8 w-full items-center justify-center'>
@@ -386,23 +380,6 @@ export const ThreadList = memo(function ThreadList({
     </div>
   )
 })
-
-/** Skeleton for loading thread items */
-function ThreadItemSkeleton() {
-  return (
-    <div className='flex items-start space-x-3 rounded-lg border p-3'>
-      <div className='grow space-y-2'>
-        <div className='flex justify-between'>
-          <Skeleton className='h-4 w-3/5' />
-          <Skeleton className='h-3 w-16' />
-        </div>
-        <Skeleton className='h-3 w-2/5' />
-        <Skeleton className='h-3 w-full' />
-        <Skeleton className='h-3 w-4/5' />
-      </div>
-    </div>
-  )
-}
 
 interface ThreadListMenuProps {
   /** Thread IDs needed for select all functionality */
@@ -464,7 +441,7 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
   }
 
   return (
-    <div className='sticky top-0 py-3 z-10 h-10 sm:mr-3 flex flex-row items-center justify-between pl-4 bg-secondary dark:bg-muted-50 mask-b-from-80% mask-b-to-100%'>
+    <div className='sticky top-0 py-3 z-10 h-10 sm:mr-3 flex flex-row items-center justify-between pl-4 bg-secondary dark:bg-background sm:dark:bg-muted-50 mask-b-from-80% mask-b-to-100%'>
       <div className='flex items-center justify-start flex-row gap-2'>
         <div className='flex items-center justify-center rounded-full font-medium transition-colors text-xs py-0 w-[97px]'>
           {viewMode === 'edit' && (

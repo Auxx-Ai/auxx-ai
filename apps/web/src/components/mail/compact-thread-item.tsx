@@ -5,6 +5,7 @@ import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditi
 import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
@@ -116,7 +117,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   }, [thread?.lastMessageAt])
 
   const senderName = useMemo(
-    () => senderParticipant?.name || senderParticipant?.identifier || 'Unknown',
+    () => senderParticipant?.name || senderParticipant?.identifier || null,
     [senderParticipant]
   )
 
@@ -207,7 +208,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                 'w-[140px] shrink-0 truncate text-xs ms-2',
                 isUnread ? 'text-foreground' : 'text-foreground/80'
               )}>
-              {senderName}
+              {senderName ?? <Skeleton className='h-3 w-24' />}
             </div>
 
             {/* Tags */}
@@ -320,7 +321,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   )
 })
 
-function CompactThreadItemSkeleton() {
+export function CompactThreadItemSkeleton() {
   return (
     <div className='flex h-9 w-full items-center gap-2 border-b border-primary-200 px-3'>
       <div className='h-3 w-7 animate-pulse rounded bg-muted' />
