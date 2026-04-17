@@ -1,0 +1,86 @@
+// packages/lib/src/ingest/context.ts
+
+import { type Database, database as defaultDb } from '@auxx/database'
+import { createScopedLogger, type Logger } from '@auxx/logger'
+import { SelectiveModeCache } from '../cache/selective-mode-cache'
+import { MessageReconcilerService } from '../messages/message-reconciler.service'
+import { ThreadManagerService } from '../messages/thread-manager.service'
+import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
+import { SystemUserService } from '../users/system-user-service'
+import type { IntegrationSettings } from './types'
+
+/**
+ * Per-ingest shared state. One context is created per batch (or per one-shot
+ * `storeMessage` call) and discarded afterwards. Every ingest function takes
+ * `ctx` as its first argument and mutates the per-batch caches in place.
+ *
+ * Caches are intentionally per-batch:
+ * - `companyIdByDomain` dedupes auto-link calls across all participants of
+ *   all messages in a batch (cross-batch races tolerated per plan v1)
+ * - `ownDomainsByOrg` avoids repeating the Redis-backed orgProfile read
+ * - `providerByIntegrationId` caches integration → provider lookups
+ *
+ * Per-message participant caching lives inside `storeMessage` itself because
+ * the thread's `participantCount` is derived by iterating the cache — sharing
+ * it across messages would over-count.
+ */
+export interface IngestContext {
+  readonly organizationId: string
+  readonly db: Database
+  readonly logger: Logger
+  readonly systemUserId: string
+  readonly crudHandler: UnifiedCrudHandler
+  readonly reconciler: MessageReconcilerService
+  readonly threadManager: ThreadManagerService
+  readonly selectiveCache: SelectiveModeCache
+
+  integrationSettings?: IntegrationSettings
+  isInitialSync: boolean
+
+  readonly companyIdByDomain: Map<string, string | null>
+  readonly ownDomainsByOrg: Map<string, Set<string>>
+  readonly providerByIntegrationId: Map<string, string>
+}
+
+export interface CreateIngestContextOptions {
+  db?: Database
+  isInitialSync?: boolean
+  integrationSettings?: IntegrationSettings
+  selectiveCache?: SelectiveModeCache
+}
+
+/**
+ * Build an IngestContext for an organization. Loads the system user once,
+ * instantiates per-org services (crudHandler, reconciler, threadManager),
+ * and initializes empty per-batch caches.
+ */
+export async function createIngestContext(
+  organizationId: string,
+  opts: CreateIngestContextOptions = {}
+): Promise<IngestContext> {
+  const db = opts.db ?? defaultDb
+  const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
+  const threadManager = new ThreadManagerService(organizationId, db)
+  return {
+    organizationId,
+    db,
+    logger: createScopedLogger(`ingest:${organizationId.slice(0, 8)}`),
+    systemUserId,
+    crudHandler: new UnifiedCrudHandler(organizationId, systemUserId),
+    reconciler: new MessageReconcilerService(organizationId, threadManager, db),
+    threadManager,
+    selectiveCache: opts.selectiveCache ?? new SelectiveModeCache(),
+    integrationSettings: opts.integrationSettings,
+    isInitialSync: opts.isInitialSync ?? false,
+    companyIdByDomain: new Map(),
+    ownDomainsByOrg: new Map(),
+    providerByIntegrationId: new Map(),
+  }
+}
+
+/** Clear per-batch caches. Call between batches when reusing a context. */
+export function resetBatchCaches(ctx: IngestContext): void {
+  ctx.companyIdByDomain.clear()
+  ctx.ownDomainsByOrg.clear()
+  ctx.providerByIntegrationId.clear()
+}
