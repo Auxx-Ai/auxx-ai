@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.127](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.126...auxx-v0.1.127) (2026-04-17)
+
+
+### Features
+
+* **database:** add FreeToolLead schema and journal entry ([#433](https://github.com/Auxx-Ai/auxx-ai/issues/433)) ([8a8c5c9](https://github.com/Auxx-Ai/auxx-ai/commit/8a8c5c951c9901e2b3270e7e5eecd5af718a088e))
+
 ## [0.1.126](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.125...auxx-v0.1.126) (2026-04-17)
 
 
