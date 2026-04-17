@@ -34,7 +34,7 @@ replace_in_next() {
   pattern_lower=$(echo "${pattern}" | tr '[:upper:]' '[:lower:]')
 
   echo "[entrypoint] Replacing '${label}' → ${replacement}"
-  find "${NEXT_DIR}" \( -name '*.js' -o -name '*.rsc' -o -name '*.html' \) -type f -exec sed -i \
+  find "${NEXT_DIR}" \( -name '*.js' -o -name '*.rsc' -o -name '*.html' -o -name '*.body' \) -type f -exec sed -i \
     -e "s|${pattern}|${replacement}|g" \
     -e "s|${pattern_lower}|${replacement}|g" \
     {} + 2>/dev/null || true
