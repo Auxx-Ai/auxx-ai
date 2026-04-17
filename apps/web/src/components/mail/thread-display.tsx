@@ -62,6 +62,21 @@ export function ThreadDisplay({ centered }: ThreadDisplayProps = {}) {
   // show it even if checkbox-multi-select is active or we're in edit mode.
   const bulkToolbarActive = hasMultipleSelected || viewMode === 'edit'
 
+  const branch = thread
+    ? 'thread'
+    : isLoading
+      ? 'spinner'
+      : bulkToolbarActive
+        ? 'null(bulkToolbar)'
+        : 'empty-state(No message selected)'
+  console.log('[thread-load] ThreadDisplay render', {
+    threadId,
+    hasThread: !!thread,
+    isLoading,
+    bulkToolbarActive,
+    branch,
+  })
+
   return (
     <div className='flex h-full flex-col flex-1'>
       <BulkActionToolbar />
