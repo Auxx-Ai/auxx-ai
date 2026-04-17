@@ -269,6 +269,15 @@ export default function WhatIsAuxxAiPage() {
                         top of shared inbox functionality.
                       </li>
                     </ul>
+                    <p>
+                      For a side-by-side look at the broader market, see our{' '}
+                      <Link
+                        href='/blog/best-ai-customer-support-software-small-business'
+                        className='underline'>
+                        roundup of the best AI customer support software for small businesses
+                      </Link>
+                      .
+                    </p>
                   </section>
                 </div>
               </div>
