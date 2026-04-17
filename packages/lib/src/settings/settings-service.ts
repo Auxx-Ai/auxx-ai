@@ -149,6 +149,14 @@ export const SETTINGS_CATALOG: Record<string, SettingConfig> = {
     description: 'List of domains considered as partner domains',
     organizationOnly: true,
   },
+  'company.autoCreate': {
+    key: 'company.autoCreate',
+    scope: 'COMMUNICATION',
+    defaultValue: true,
+    type: 'boolean',
+    description: 'Automatically create and link companies from inbound/outbound message domains',
+    organizationOnly: true,
+  },
   ...sidebarSettings,
 
   // ── RECORDING ──────────────────────────────────────────────

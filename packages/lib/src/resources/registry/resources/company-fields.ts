@@ -99,6 +99,28 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter website URL',
   },
 
+  companyDomain: {
+    id: toFieldId('companyDomain'),
+    key: 'companyDomain',
+    label: 'Domain',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'company_domain',
+    systemSortOrder: 'a3a',
+    nullable: true,
+    showInPanel: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'acme.com',
+    description: 'Registrable domain used to auto-link contacts by email. Unique per organization.',
+  },
+
   industry: {
     id: toFieldId('industry'),
     key: 'industry',

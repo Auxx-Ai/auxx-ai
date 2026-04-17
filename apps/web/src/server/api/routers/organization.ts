@@ -75,7 +75,7 @@ export const organizationRouter = createTRPCRouter({
           .optional(),
         type: z.enum(OrganizationType).optional(),
         website: z.string().optional(),
-        emailDomain: z.string().optional(),
+        domains: z.array(z.string()).optional(),
         completedOnboarding: z.boolean().optional(),
       })
     )
@@ -83,7 +83,7 @@ export const organizationRouter = createTRPCRouter({
       const userId = ctx.session.user.id
       const userEmail = ctx.session.user.email
       const { organizationId } = ctx.session
-      const { name, handle, type, website, emailDomain, completedOnboarding } = input
+      const { name, handle, type, website, domains, completedOnboarding } = input
 
       // Validate handle is not reserved
       if (handle !== undefined && RESERVED_ORGANIZATION_HANDLES.includes(handle as any)) {
@@ -114,7 +114,7 @@ export const organizationRouter = createTRPCRouter({
       if (handle !== undefined) updateData.handle = handle
       if (type !== undefined) updateData.type = type
       if (website !== undefined) updateData.website = website
-      if (emailDomain !== undefined) updateData.email_domain = emailDomain
+      if (domains !== undefined) updateData.domains = domains
       if (completedOnboarding !== undefined) updateData.completedOnboarding = completedOnboarding
 
       const [organization] = await ctx.db
@@ -182,7 +182,7 @@ export const organizationRouter = createTRPCRouter({
         name: schema.Organization.name,
         type: schema.Organization.type,
         website: schema.Organization.website,
-        email_domain: schema.Organization.emailDomain,
+        domains: schema.Organization.domains,
         createdAt: schema.Organization.createdAt,
         updatedAt: schema.Organization.updatedAt,
         createdById: schema.Organization.createdById,

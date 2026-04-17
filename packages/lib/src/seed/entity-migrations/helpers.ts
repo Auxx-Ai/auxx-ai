@@ -297,10 +297,14 @@ export async function linkDisplayFields(
     const secondaryField = config.secondaryDisplayField
       ? allFieldMaps.get(`${entityType}:${config.secondaryDisplayField}`)
       : undefined
+    const avatarField = config.avatarField
+      ? allFieldMaps.get(`${entityType}:${config.avatarField}`)
+      : undefined
 
     const updates: Record<string, unknown> = {}
     if (primaryField) updates.primaryDisplayFieldId = primaryField.id
     if (secondaryField) updates.secondaryDisplayFieldId = secondaryField.id
+    if (avatarField) updates.avatarFieldId = avatarField.id
 
     if (Object.keys(updates).length > 0) {
       await db

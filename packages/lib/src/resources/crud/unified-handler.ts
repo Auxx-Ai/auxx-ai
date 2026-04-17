@@ -249,8 +249,8 @@ export class UnifiedCrudHandler {
       return { instance: existing, created: false }
     }
 
-    const instance = await this.create(entityDefinitionId, { ...findBy, ...createValues })
-    return { instance, created: true }
+    const result = await this.create(entityDefinitionId, { ...findBy, ...createValues })
+    return { instance: result.instance, created: true }
   }
 
   /**

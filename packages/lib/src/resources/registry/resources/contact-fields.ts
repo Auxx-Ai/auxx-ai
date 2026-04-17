@@ -103,6 +103,30 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
       'Full name (computed from firstName and lastName). Use firstName or lastName for filtering/sorting.',
   },
 
+  avatarUrl: {
+    id: toFieldId('avatarUrl'),
+    key: 'avatarUrl',
+    label: 'Avatar',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
+    isSystem: true,
+    systemAttribute: 'contact_avatar',
+    systemSortOrder: 'a1a',
+    showInPanel: false,
+    nullable: true,
+    options: {
+      file: { allowMultiple: false, allowedFileTypes: ['image'] },
+    },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Contact avatar image',
+  },
+
   primaryEmail: {
     id: toFieldId('primaryEmail'),
     key: 'primaryEmail',
@@ -376,10 +400,10 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     },
     relationship: {
       inverseResourceFieldId: 'company:employees' as ResourceFieldId,
-      relationshipType: 'has_many',
+      relationshipType: 'has_one',
       isInverse: true,
     },
-    description: 'Companies where this contact is an employee',
+    description: 'The company this contact works for',
   },
 
   // Reverse relationship: meetings (from meeting.contact)

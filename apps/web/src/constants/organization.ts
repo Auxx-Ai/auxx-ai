@@ -7,5 +7,5 @@ export const organiationSchema = z.object({
   website: z.url().min(2, {
     error: 'Website is required',
   }),
-  email_domain: z.string().min(4, { error: 'Min 4 characters.' }),
+  domains: z.array(z.string()).default([]),
 })

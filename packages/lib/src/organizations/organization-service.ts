@@ -536,7 +536,7 @@ export class OrganizationService {
     updatingUserId: string
     name?: string
     website?: string
-    emailDomain?: string
+    domains?: string[]
   }): Promise<{
     success: true
   }> {
@@ -549,7 +549,7 @@ export class OrganizationService {
     const setData: Partial<typeof schema.Organization.$inferInsert> = {}
     if (typeof updateData.name !== 'undefined') setData.name = updateData.name
     if (typeof updateData.website !== 'undefined') setData.website = updateData.website
-    if (typeof updateData.emailDomain !== 'undefined') setData.emailDomain = updateData.emailDomain
+    if (typeof updateData.domains !== 'undefined') setData.domains = updateData.domains
     // Always update the timestamp
     setData.updatedAt = new Date()
 

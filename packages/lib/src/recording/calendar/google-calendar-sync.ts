@@ -6,6 +6,8 @@ import { and, eq } from 'drizzle-orm'
 import { type Common, type calendar_v3, google } from 'googleapis'
 import { err, ok } from 'neverthrow'
 import { getCachedEntityDefId } from '../../cache'
+import { getOrgCache } from '../../cache/singletons'
+import { getOwnDomains } from '../../ingest/domain/classifier'
 import { ChannelTokenAccessor } from '../../providers/channel-token-accessor'
 import { GoogleOAuthService } from '../../providers/google/google-oauth'
 import { upsertCalendarEvents } from './calendar-event-service'
@@ -428,38 +430,17 @@ function shouldCreateMeeting(event: typeof schema.CalendarEvent.$inferSelect): b
 
 /**
  * Fetch the set of domains that should be treated as internal for an organization.
+ * Reads from the `orgProfile` cache (via the shared `getOwnDomains` helper) —
+ * no DB round trip in the common case. `getOwnDomains` returns pre-normalized
+ * entries, so no local re-normalization is needed for those.
  */
 export async function getOrganizationDomains(organizationId: string): Promise<string[]> {
-  const domains = new Set<string>()
-  const [organization] = await db
-    .select({
-      emailDomain: schema.Organization.emailDomain,
-      website: schema.Organization.website,
-    })
-    .from(schema.Organization)
-    .where(eq(schema.Organization.id, organizationId))
-    .limit(1)
+  const domains = new Set(await getOwnDomains(organizationId))
 
-  if (organization?.emailDomain) {
-    domains.add(normalizeDomain(organization.emailDomain))
-  }
-
-  if (organization?.website) {
-    const websiteDomain = extractDomainFromUrl(organization.website)
-    if (websiteDomain) {
-      domains.add(websiteDomain)
-    }
-  }
-
-  const mailDomains = await db
-    .select({ domain: schema.MailDomain.domain })
-    .from(schema.MailDomain)
-    .where(eq(schema.MailDomain.organizationId, organizationId))
-
-  for (const row of mailDomains) {
-    if (row.domain) {
-      domains.add(normalizeDomain(row.domain))
-    }
+  const profile = await getOrgCache().get(organizationId, 'orgProfile')
+  if (profile.website) {
+    const websiteDomain = extractDomainFromUrl(profile.website)
+    if (websiteDomain) domains.add(websiteDomain)
   }
 
   return Array.from(domains)
