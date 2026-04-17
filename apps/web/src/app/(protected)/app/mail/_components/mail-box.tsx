@@ -14,7 +14,18 @@ import {
 } from '@auxx/ui/components/main-page'
 import { PanelResizeHandle } from '@auxx/ui/components/panel-resize-handle'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { ChevronLeft, Columns2, Mail, Plus, Rows3, Search, Waypoints } from 'lucide-react'
+import { cn } from '@auxx/ui/lib/utils'
+import {
+  ChevronLeft,
+  Columns2,
+  Mail,
+  Plus,
+  Rows2,
+  Rows3,
+  Rows4,
+  Search,
+  Waypoints,
+} from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryState } from 'nuqs'
@@ -51,7 +62,6 @@ import {
 } from '~/components/threads'
 import { useCompose } from '~/hooks/use-compose'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useIsSmallScreen } from '~/hooks/use-small-screen'
 import { useUser } from '~/hooks/use-user'
 import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -220,17 +230,29 @@ function MailboxInner({
   // State to track if the thread list is currently fetching/loading data
   const [isListLoading, setIsListLoading] = useState(false)
 
+  console.log('[thread-load] MailboxInner render', {
+    tid,
+    storeActiveThreadId: useThreadSelectionStore.getState().activeThreadId,
+    selectedThreadId,
+  })
+
   // Sync URL ↔ Zustand on mount (restore active thread after reload or navigation).
   // We deliberately do NOT seed selectedThreadIds here — the checkbox selection is
   // a separate, user-driven concept from "which thread is open".
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect
   useEffect(() => {
     const store = useThreadSelectionStore.getState()
+    console.log('[thread-load] MailboxInner mount effect', {
+      tid,
+      storeActiveThreadId: store.activeThreadId,
+    })
     if (tid) {
       if (!store.activeThreadId) {
+        console.log('[thread-load] → setActiveThread(tid)', tid)
         store.setActiveThread(tid)
       }
     } else if (store.activeThreadId) {
+      console.log('[thread-load] → setTid(store.activeThreadId)', store.activeThreadId)
       void setTid(store.activeThreadId)
     }
   }, [])
@@ -380,8 +402,6 @@ function MailboxInner({
     [] // No dependencies needed if only setting state
   )
 
-  const isSmallScreen = useIsSmallScreen()
-
   // Thread list width in pixels, persisted to localStorage
   const [threadListWidth, setThreadListWidth] = useState(() => {
     const stored = safeLocalStorage.get('mail-thread-list-width')
@@ -524,108 +544,90 @@ function MailboxInner({
                   />
                 </div>
               </div>
-              <div className='hidden items-center shrink-0 gap-2 sm:flex'>
+              <div className='flex items-center shrink-0 gap-2 max-sm:group-data-search-expanded/toolbar:hidden'>
                 <RadioTab
                   value={layoutMode}
                   onValueChange={handleLayoutModeChange}
                   size='sm'
                   className='border border-primary-200 bg-background/30'>
                   <RadioTabItem value='split' size='sm'>
-                    <Columns2 />
-                    Split
+                    {/* Mobile: density metaphor (relaxed rows). Desktop: two-column layout */}
+                    <Rows2 className='sm:hidden' />
+                    <Columns2 className='hidden sm:block' />
+                    <span className='hidden sm:inline'>Split</span>
                   </RadioTabItem>
                   <RadioTabItem value='list' size='sm'>
-                    <Rows3 />
-                    List
+                    {/* Mobile: compact rows. Desktop: list layout */}
+                    <Rows4 className='sm:hidden' />
+                    <Rows3 className='hidden sm:block' />
+                    <span className='hidden sm:inline'>List</span>
                   </RadioTabItem>
                 </RadioTab>
               </div>
             </div>
           </div>
-          {isSmallScreen ? (
-            // Mobile: Single panel view based on URL state
-            <div className='h-full flex-1 bg-secondary dark:bg-primary-100'>
-              {selectedThreadId ? (
-                // Detail view: Show ThreadDisplay with back button
-                <div className='h-full flex flex-col'>
-                  <ThreadNavToolbar
-                    activeThreadId={selectedThreadId}
-                    onBack={handleBackToList}
-                    onNavigate={(id) => void setTid(id)}
-                  />
-                  <div className='flex-1 overflow-hidden'>
-                    <ThreadDisplay />
-                  </div>
-                </div>
-              ) : (
-                // List view: Show ThreadList
-                <div className='h-full overflow-hidden'>
-                  <ThreadList
-                    filter={threadFilterForHook}
-                    basePath={basePathForList}
-                    selectedThreadId={selectedThreadId}
-                    onLoadingChange={setIsListLoading}
-                  />
-                </div>
-              )}
-            </div>
-          ) : layoutMode === 'list' ? (
-            // Desktop List mode: compact thread list or full-page thread display
-            <div className='h-full flex-1 overflow-hidden bg-secondary dark:bg-muted-50'>
-              {selectedThreadId ? (
-                <div className='h-full flex flex-col'>
-                  <ThreadNavToolbar
-                    activeThreadId={selectedThreadId}
-                    onBack={handleBackToList}
-                    onNavigate={(id) => void setTid(id)}
-                  />
-                  <div className='flex-1 overflow-hidden'>
-                    <ThreadDisplay centered />
-                  </div>
-                </div>
-              ) : (
-                <div className='h-full overflow-hidden'>
-                  <ThreadList
-                    filter={threadFilterForHook}
-                    basePath={basePathForList}
-                    selectedThreadId={selectedThreadId}
-                    onLoadingChange={setIsListLoading}
-                    variant='compact'
-                  />
-                </div>
-              )}
-            </div>
-          ) : (
-            // Desktop Split mode: Flex layout with fixed-width thread list
-            <div className='flex flex-row h-full flex-1 overflow-hidden bg-secondary dark:bg-muted-50'>
-              {/* Left Panel: Thread list with fixed pixel width */}
-              <div
-                style={{ width: threadListWidth }}
-                className='shrink-0 flex flex-col overflow-y-hidden border-none'>
-                <div className='flex flex-1 flex-col items-stretch h-full'>
-                  <div className='overflow-hidden flex-1 min-h-0'>
-                    <ThreadList
-                      filter={threadFilterForHook}
-                      basePath={basePathForList}
-                      selectedThreadId={selectedThreadId}
-                      onLoadingChange={setIsListLoading}
-                    />
-                  </div>
-                </div>
+          {/* Unified responsive tree: viewport differences driven by Tailwind
+              media queries (sm = 640px). Only layoutMode drives JS branching. */}
+          <div
+            className={cn(
+              'flex flex-row h-full flex-1 overflow-hidden bg-secondary',
+              'max-sm:dark:bg-primary-100 sm:dark:bg-muted-50'
+            )}>
+            {/* ThreadList panel */}
+            <div
+              style={layoutMode === 'split' ? { width: threadListWidth } : undefined}
+              className={cn(
+                'flex flex-col overflow-y-hidden min-h-0',
+                layoutMode === 'split' ? 'sm:shrink-0 max-sm:w-full! max-sm:flex-1' : 'flex-1',
+                // Hide when a thread is selected, per layoutMode/viewport rules
+                selectedThreadId && layoutMode === 'list' && 'hidden',
+                selectedThreadId && layoutMode === 'split' && 'max-sm:hidden'
+              )}>
+              <div className='overflow-hidden flex-1 min-h-0'>
+                <ThreadList
+                  filter={threadFilterForHook}
+                  basePath={basePathForList}
+                  selectedThreadId={selectedThreadId}
+                  onLoadingChange={setIsListLoading}
+                  variant={layoutMode === 'list' ? 'compact' : 'default'}
+                />
               </div>
+            </div>
+
+            {/* Resize handle — split only, hidden on mobile */}
+            {layoutMode === 'split' && (
               <PanelResizeHandle
                 side='left'
                 currentWidth={threadListWidth}
                 onWidthChange={handleThreadListResize}
                 minWidth={250}
                 maxWidth={500}
+                className='max-sm:hidden'
               />
-              {/* Right Panel: Thread display fills remaining space */}
-              <div className='flex-1 min-w-0'>
-                <ThreadDisplay />
+            )}
+
+            {/* ThreadDisplay panel */}
+            <div
+              className={cn(
+                'flex-1 min-w-0 flex flex-col',
+                !selectedThreadId && layoutMode === 'list' && 'hidden',
+                !selectedThreadId && layoutMode === 'split' && 'max-sm:hidden'
+              )}>
+              {selectedThreadId && (
+                <div className={cn(layoutMode === 'split' && 'sm:hidden')}>
+                  <ThreadNavToolbar
+                    activeThreadId={selectedThreadId}
+                    onBack={handleBackToList}
+                    onNavigate={(id) => void setTid(id)}
+                    hotkeysEnabled={layoutMode !== 'split'}
+                  />
+                </div>
+              )}
+              <div className='flex-1 overflow-hidden'>
+                <ThreadDisplay centered={layoutMode === 'list'} />
               </div>
             </div>
-          )}
+          </div>
         </MainPageContent>
       </MainPage>
 

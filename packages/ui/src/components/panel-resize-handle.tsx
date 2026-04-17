@@ -23,6 +23,8 @@ interface PanelResizeHandleProps {
   onResizeStart?: () => void
   /** Called when resize drag ends */
   onResizeEnd?: () => void
+  /** Extra classes merged onto the root handle element */
+  className?: string
 }
 
 function PanelResizeHandle({
@@ -33,6 +35,7 @@ function PanelResizeHandle({
   side = 'right',
   onResizeStart,
   onResizeEnd,
+  className,
 }: PanelResizeHandleProps) {
   const [isDragging, setIsDragging] = useState(false)
 
@@ -69,7 +72,8 @@ function PanelResizeHandle({
     <div
       className={cn(
         'w-2 shrink-0 cursor-ew-resize flex items-center justify-center group',
-        !onWidthChange && 'cursor-default'
+        !onWidthChange && 'cursor-default',
+        className
       )}
       onMouseDown={onWidthChange ? handleMouseDown : undefined}>
       <div

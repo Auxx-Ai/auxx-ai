@@ -16,9 +16,16 @@ interface ThreadNavToolbarProps {
   onBack: () => void
   /** Callback to navigate to a specific thread */
   onNavigate: (threadId: string) => void
+  /** Whether keyboard shortcuts should be active. Defaults to true. */
+  hotkeysEnabled?: boolean
 }
 
-export function ThreadNavToolbar({ activeThreadId, onBack, onNavigate }: ThreadNavToolbarProps) {
+export function ThreadNavToolbar({
+  activeThreadId,
+  onBack,
+  onNavigate,
+  hotkeysEnabled = true,
+}: ThreadNavToolbarProps) {
   const listThreadIds = useListThreadIds()
 
   const currentIndex = useMemo(
@@ -45,10 +52,10 @@ export function ThreadNavToolbar({ activeThreadId, onBack, onNavigate }: ThreadN
     }
   }, [hasNext, listThreadIds, currentIndex, onNavigate])
 
-  useHotkey('Q', onBack, { enabled: true, conflictBehavior: 'allow' })
-  useHotkey('ArrowLeft', onBack, { enabled: true, conflictBehavior: 'allow' })
-  useHotkey('K', goToPrevious, { enabled: true, conflictBehavior: 'allow' })
-  useHotkey('J', goToNext, { enabled: true, conflictBehavior: 'allow' })
+  useHotkey('Q', onBack, { enabled: hotkeysEnabled, conflictBehavior: 'allow' })
+  useHotkey('ArrowLeft', onBack, { enabled: hotkeysEnabled, conflictBehavior: 'allow' })
+  useHotkey('K', goToPrevious, { enabled: hotkeysEnabled, conflictBehavior: 'allow' })
+  useHotkey('J', goToNext, { enabled: hotkeysEnabled, conflictBehavior: 'allow' })
 
   return (
     <div className='flex items-center gap-2 border-b px-3 py-1.5'>
