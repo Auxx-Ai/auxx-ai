@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { User, Users, X } from 'lucide-react'
+import { Cog, User, Users, X } from 'lucide-react'
 
 import { useActor } from '~/components/resources/hooks/use-actor'
 
@@ -95,8 +95,8 @@ export function ActorBadge({
 }: ActorBadgeProps) {
   const { actor, isLoading, isNotFound } = useActor({ actorId, enabled: !!actorId })
 
-  // Parse type for fallback icon
-  const type = actorId ? parseActorId(actorId).type : 'user'
+  // Prefer the resolved actor type (which may be 'system'); fall back to ID prefix during load.
+  const type = actor?.type ?? (actorId ? parseActorId(actorId).type : 'user')
 
   // Determine display name: name → email (for users) → 'Unknown'
   const displayName = isNotFound
@@ -125,10 +125,12 @@ export function ActorBadge({
             <Avatar className={avatarSize} data-slot='actor-icon'>
               <AvatarImage src={actor?.avatarUrl ?? undefined} />
               <AvatarFallback className='bg-neutral-200 dark:bg-neutral-700'>
-                {type === 'user' ? (
-                  <User data-slot='actor-fallback-icon' />
-                ) : (
+                {type === 'system' ? (
+                  <Cog data-slot='actor-fallback-icon' />
+                ) : type === 'group' ? (
                   <Users data-slot='actor-fallback-icon' />
+                ) : (
+                  <User data-slot='actor-fallback-icon' />
                 )}
               </AvatarFallback>
             </Avatar>

@@ -1,6 +1,13 @@
 // packages/lib/src/actors/actor-service.ts
 
-import type { Actor, ActorContext, ActorId, GroupActor, UserActor } from '@auxx/types/actor'
+import type {
+  Actor,
+  ActorContext,
+  ActorId,
+  GroupActor,
+  SystemActor,
+  UserActor,
+} from '@auxx/types/actor'
 import { parseActorId, toActorId } from '@auxx/types/actor'
 import {
   type CachedGroup,
@@ -9,6 +16,7 @@ import {
   getCachedMembersByUserIds,
   type OrgMemberInfo,
 } from '../cache'
+import { SystemUserService } from '../users/system-user-service'
 
 // ============================================================================
 // Service Options Types
@@ -108,6 +116,20 @@ export class ActorService {
       result.set(group.actorId, group)
     }
 
+    // Fallback: any unresolved user id may be the org's system user (not an org member)
+    const unresolvedUserIds = userIds.filter((id) => !result.has(toActorId('user', id)))
+    if (unresolvedUserIds.length > 0) {
+      const systemActor = await this.fetchSystemUser()
+
+      if (systemActor) {
+        for (const id of unresolvedUserIds) {
+          if (toActorId('user', id) === systemActor.actorId) {
+            result.set(systemActor.actorId, systemActor)
+          }
+        }
+      }
+    }
+
     return result
   }
 
@@ -119,7 +141,11 @@ export class ActorService {
 
     if (type === 'user') {
       const users = await this.fetchUsers([id])
-      return users[0] ?? null
+      if (users[0]) return users[0]
+      // Fall back to system user lookup (system users are not org members)
+      const systemActor = await this.fetchSystemUser()
+      if (systemActor && systemActor.actorId === actorId) return systemActor
+      return null
     } else {
       const groups = await this.fetchGroups([id])
       return groups[0] ?? null
@@ -203,6 +229,21 @@ export class ActorService {
       email: member.user?.email ?? '',
       avatarUrl: member.user?.image ?? null,
       role: member.role as 'OWNER' | 'ADMIN' | 'USER',
+    }
+  }
+
+  /**
+   * Fetch the organization's system user as a SystemActor.
+   * System users are linked via Organization.systemUserId, not as org members.
+   */
+  private async fetchSystemUser(): Promise<SystemActor | null> {
+    const user = await SystemUserService.getOrganizationSystemUser(this.organizationId)
+    if (!user) return null
+    return {
+      actorId: toActorId('user', user.id),
+      type: 'system',
+      name: 'Auxx.ai',
+      avatarUrl: user.image ?? null,
     }
   }
 
