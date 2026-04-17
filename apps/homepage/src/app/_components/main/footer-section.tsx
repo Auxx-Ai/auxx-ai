@@ -72,6 +72,35 @@ const links = [
     ],
   },
   {
+    group: 'Free Tools',
+    items: [
+      {
+        title: 'Invoice Generator',
+        href: '/free-tools/invoice-generator',
+      },
+      {
+        title: 'Support Email Templates',
+        href: '/free-tools/customer-support-email-templates',
+      },
+      {
+        title: 'Email Signature Generator',
+        href: '/free-tools/email-signature-generator',
+      },
+      {
+        title: 'SLA Calculator',
+        href: '/free-tools/sla-calculator',
+      },
+      {
+        title: 'FRT Calculator',
+        href: '/free-tools/first-response-time-calculator',
+      },
+      {
+        title: 'See all free tools',
+        href: '/free-tools',
+      },
+    ],
+  },
+  {
     group: 'Company',
     items: [
       {
@@ -98,7 +127,7 @@ export default function FooterSection() {
   return (
     <footer role='contentinfo' className='bg-muted py-8 sm:py-20'>
       <div className='mx-auto max-w-5xl space-y-16 px-6'>
-        <div className='grid gap-12 md:grid-cols-5'>
+        <div className='grid gap-12 md:grid-cols-6'>
           <div className='space-y-6 md:col-span-2 md:space-y-12'>
             <Link
               href='/'
@@ -117,7 +146,7 @@ export default function FooterSection() {
             </div>
           </div>
 
-          <div className='col-span-3 grid gap-6 sm:grid-cols-4'>
+          <div className='md:col-span-4 grid gap-6 sm:grid-cols-2 md:grid-cols-5'>
             {links.map((link, index) => (
               <div key={index} className='space-y-4 text-sm'>
                 <span className='block font-medium'>{link.group}</span>
