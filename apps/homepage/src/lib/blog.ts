@@ -30,6 +30,7 @@ function parseMdxFile(filePath: string): BlogPost | null {
     tags: data.tags ?? [],
     readingTime: stats.text,
     published: data.published,
+    faq: data.faq,
   }
 }
 
@@ -73,6 +74,7 @@ export function getPostBySlug(slug: string): { post: BlogPost; content: string }
           tags: data.tags ?? [],
           readingTime: stats.text,
           published: data.published,
+          faq: data.faq,
         },
         content,
       }

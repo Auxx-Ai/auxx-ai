@@ -10,6 +10,11 @@ export interface Category {
   title: string
 }
 
+export interface FaqItem {
+  question: string
+  answer: string
+}
+
 export interface BlogPost {
   title: string
   description: string
@@ -21,4 +26,5 @@ export interface BlogPost {
   tags: string[]
   readingTime: string
   published: boolean
+  faq?: FaqItem[]
 }
