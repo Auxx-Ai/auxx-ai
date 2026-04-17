@@ -9,9 +9,9 @@ import {
   type RelationUpdateMode as RelationUpdateModeType,
 } from '@auxx/types/custom-field'
 import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { getInstanceId, normalizeToRecordIds, toRecordId } from '@auxx/types/resource'
+import { normalizeToRecordIds, type RecordId, toRecordId } from '@auxx/types/resource'
 import { isMultiRelationship } from '@auxx/utils/relationships'
-import { findCachedResource } from '../../../cache'
+import { findCachedResource, requireCachedEntityDefId } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { CRUD_RESOURCE_CONFIGS, getCrudField } from '../../../resources/crud-definitions'
@@ -700,9 +700,8 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         const regularData: Record<string, any> = {}
         const modeAwareRelations: Array<{
           fieldId: string
-          values: string[]
+          values: RecordId[]
           updateMode: RelationUpdateModeType
-          relatedEntityDefinitionId: string
         }> = []
         const modeAwareOptions: Array<{
           fieldId: string
@@ -749,21 +748,19 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
               updateMode === RelationUpdateMode.REMOVE
             ) {
               // Relation field with add/remove mode
-              // Normalize values to plain entity instance IDs — addRelationValues/removeRelationValues
-              // compare against relatedEntityId column values (plain IDs), so RecordIds, entity
-              // objects, or ResourceReferences must be converted first.
+              // Normalize inputs (RecordIds, entity objects, ResourceReferences, plain IDs)
+              // to compound RecordId[] — the field value service bulk primitives accept
+              // relatedRecordIds directly and parse the instance portion internally.
               const field = resource.fields.find((f) => f.id === fieldId || f.key === fieldId)
               const relatedEntityDefId = field?.relationship
                 ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
                 : null
               const fallbackDefId = relatedEntityDefId ?? resource.entityDefinitionId
               const normalizedRecordIds = normalizeToRecordIds(values, fallbackDefId)
-              const normalizedIds = normalizedRecordIds.map((rid) => getInstanceId(rid))
               modeAwareRelations.push({
                 fieldId,
-                values: normalizedIds,
+                values: normalizedRecordIds,
                 updateMode,
-                relatedEntityDefinitionId: fallbackDefId,
               })
             } else {
               // Replace mode: normalize values to RecordId format for field value service
@@ -807,24 +804,20 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           const fieldValueService = new FieldValueService(organizationId, userId, database)
           const recordId = toRecordId(resource.entityDefinitionId, resourceId)
 
-          const relationPromises = modeAwareRelations.map(
-            ({ fieldId, values, updateMode, relatedEntityDefinitionId }) => {
-              if (updateMode === RelationUpdateMode.ADD) {
-                return fieldValueService.addRelationValues({
-                  recordId,
-                  fieldId,
-                  relatedEntityIds: values,
-                  relatedEntityDefinitionId,
-                })
-              } else {
-                return fieldValueService.removeRelationValues({
-                  recordId,
-                  fieldId,
-                  relatedEntityIds: values,
-                })
-              }
+          const relationPromises = modeAwareRelations.map(({ fieldId, values, updateMode }) => {
+            if (updateMode === RelationUpdateMode.ADD) {
+              return fieldValueService.addRelationValues({
+                recordId,
+                fieldId,
+                relatedRecordIds: values,
+              })
             }
-          )
+            return fieldValueService.removeRelationValues({
+              recordId,
+              fieldId,
+              relatedRecordIds: values,
+            })
+          })
 
           const optionPromises = modeAwareOptions.map(({ fieldId, values, updateMode }) => {
             if (updateMode === RelationUpdateMode.ADD) {
@@ -1027,16 +1020,24 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       const { tagIds } = this.parseTagsInputForThread(data.tags)
       if (tagIds.length > 0) {
         actionPromises.push(
-          mutationService
-            .tagThreadsBulk([resourceId], tagIds, tagOperation)
-            .then((result) => {
-              results.tagsUpdated = true
-              results.tagsResult = result
-              results.actionsPerformed.push(`Tags ${tagOperation}: ${tagIds.length} tag(s)`)
-            })
-            .catch((err) => {
-              errors.push(`Tags update failed: ${err.message}`)
-            })
+          (async () => {
+            const [threadEntityDefId, tagEntityDefId] = await Promise.all([
+              requireCachedEntityDefId(organizationId, 'thread'),
+              requireCachedEntityDefId(organizationId, 'tag'),
+            ])
+            const threadRecordIds = [toRecordId(threadEntityDefId, resourceId)]
+            const tagRecordIds = tagIds.map((id) => toRecordId(tagEntityDefId, id))
+            return mutationService
+              .tagThreadsBulk(threadRecordIds, tagRecordIds, tagOperation)
+              .then((result) => {
+                results.tagsUpdated = true
+                results.tagsResult = result
+                results.actionsPerformed.push(`Tags ${tagOperation}: ${tagIds.length} tag(s)`)
+              })
+              .catch((err) => {
+                errors.push(`Tags update failed: ${err.message}`)
+              })
+          })()
         )
       }
     }

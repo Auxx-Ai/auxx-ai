@@ -554,8 +554,8 @@ export const threadRouter = createTRPCRouter({
   tagBulk: protectedProcedure
     .input(
       z.object({
-        threadIds: z.array(z.string()),
-        tagIds: z.array(z.string()),
+        recordIds: z.array(recordIdSchema),
+        relatedRecordIds: z.array(recordIdSchema),
         operation: z.enum(['add', 'remove', 'set']).default('add'),
       })
     )
@@ -563,16 +563,15 @@ export const threadRouter = createTRPCRouter({
       const { threadMutation, organizationId, userId } = getServiceDependencies(ctx)
       try {
         logger.info('API: Bulk tagging threads', {
-          threadCount: input.threadIds.length,
-          tagCount: input.tagIds.length,
+          threadCount: input.recordIds.length,
+          tagCount: input.relatedRecordIds.length,
           operation: input.operation,
           userId,
           organizationId,
         })
-        // Call the service method to bulk tag threads
         const result = await threadMutation.tagThreadsBulk(
-          input.threadIds,
-          input.tagIds,
+          input.recordIds,
+          input.relatedRecordIds,
           input.operation
         )
         return result
@@ -581,8 +580,8 @@ export const threadRouter = createTRPCRouter({
         handleServiceError(error, 'threadMutation.tagThreadsBulk', {
           organizationId,
           userId,
-          threadIds: input.threadIds,
-          tagIds: input.tagIds,
+          recordIds: input.recordIds,
+          relatedRecordIds: input.relatedRecordIds,
           operation: input.operation,
         })
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed tagging threads.' })

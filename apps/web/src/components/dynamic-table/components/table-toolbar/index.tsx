@@ -112,7 +112,6 @@ export function TableToolbar<TData = any>({
 
   // Mobile search toggle
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
-  console.log('[toolbar] mobileSearchOpen:', mobileSearchOpen)
 
   // Local search state for immediate UI feedback
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery)

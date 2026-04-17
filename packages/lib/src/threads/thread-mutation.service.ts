@@ -4,8 +4,9 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type ActorId, parseActorId } from '@auxx/types/actor'
 import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import { generateId } from '@auxx/utils'
-import { and, eq, exists, ilike, inArray, isNotNull, notExists, or, sql } from 'drizzle-orm'
+import { and, eq, exists, ilike, inArray, notExists, or, sql } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
+import { FieldValueService } from '../field-values'
 
 const logger = createScopedLogger('thread-mutation-service')
 
@@ -369,131 +370,79 @@ export class ThreadMutationService {
   // ═══════════════════════════════════════════════════════════════
 
   /**
-   * Bulk tag operation - uses FieldValue storage for tags.
+   * Bulk tag operation — RecordId[] end-to-end, no conversion.
    * Tags are stored as RELATIONSHIP field values with systemAttribute='thread_tags'.
+   *
+   * Delegates to FieldValueService bulk primitives so tag writes share the same
+   * inverse-sync, field-trigger, and realtime-publish path as every other
+   * relationship write (no direct FieldValue writes here).
    */
   async tagThreadsBulk(
-    threadIds: string[],
-    tagIds: string[],
+    recordIds: RecordId[],
+    relatedRecordIds: RecordId[],
     operation: 'add' | 'remove' | 'set' = 'add'
   ): Promise<{ created: number; skipped: number; errors: string[] }> {
-    if (!threadIds.length || !tagIds.length) return { created: 0, skipped: 0, errors: [] }
+    if (!recordIds.length || !relatedRecordIds.length) {
+      return { created: 0, skipped: 0, errors: [] }
+    }
 
     logger.info(`Bulk tagging threads`, {
       operation,
-      threadCount: threadIds.length,
-      tagCount: tagIds.length,
+      threadCount: recordIds.length,
+      tagCount: relatedRecordIds.length,
       organizationId: this.organizationId,
     })
 
     const errors: string[] = []
 
     try {
-      // 1. Get the CustomField ID for thread_tags
-      const tagsField = await this.db
-        .select({ id: schema.CustomField.id })
-        .from(schema.CustomField)
-        .where(
-          and(
-            eq(schema.CustomField.systemAttribute, 'thread_tags'),
-            eq(schema.CustomField.organizationId, this.organizationId)
-          )
-        )
-        .limit(1)
+      const tagsField = await getOrgCache()
+        .from(this.organizationId, 'customFields')
+        .bySystemAttribute('thread_tags')
 
-      if (tagsField.length === 0) {
+      if (!tagsField) {
         errors.push('Thread tags field not found for organization')
         return { created: 0, skipped: 0, errors }
       }
 
-      const fieldId = tagsField[0]!.id
-
-      // 2. Fast tag validation (batch query)
-      const existingTags = await this.db.query.Tag.findMany({
-        where: (tags, { and, inArray, eq }) =>
-          and(inArray(tags.id, tagIds), eq(tags.organizationId, this.organizationId)),
-        columns: { id: true },
-      })
-
-      const validTagIds = existingTags.map((t) => t.id)
-      const invalidTagIds = tagIds.filter((id) => !validTagIds.includes(id))
-
-      if (invalidTagIds.length > 0) {
-        errors.push(`Invalid tag IDs: ${invalidTagIds.join(', ')}`)
-      }
-
-      if (validTagIds.length === 0) {
-        return { created: 0, skipped: 0, errors }
-      }
+      const fieldId = tagsField.id
+      const fieldValueService = new FieldValueService(this.organizationId, undefined, this.db)
 
       let created = 0
       let skipped = 0
 
-      await this.db.transaction(async (tx) => {
-        if (operation === 'set') {
-          // Remove all existing tags for these threads first (via FieldValue)
-          await tx
-            .delete(schema.FieldValue)
-            .where(
-              and(
-                eq(schema.FieldValue.fieldId, fieldId),
-                inArray(schema.FieldValue.entityId, threadIds),
-                isNotNull(schema.FieldValue.relatedEntityId)
-              )
-            )
-        }
-
-        if (operation === 'remove') {
-          // Delete specific tag assignments (via FieldValue)
-          const deleteResult = await tx
-            .delete(schema.FieldValue)
-            .where(
-              and(
-                eq(schema.FieldValue.fieldId, fieldId),
-                inArray(schema.FieldValue.entityId, threadIds),
-                inArray(schema.FieldValue.relatedEntityId, validTagIds)
-              )
-            )
-            .returning({ entityId: schema.FieldValue.entityId })
-          created = deleteResult.length
-        } else {
-          // 'add' or 'set' - Generate all combinations efficiently
-          const valuesToCreate = threadIds.flatMap((threadId) =>
-            validTagIds.map((tagId) => ({
-              id: generateId('fv'),
+      if (operation === 'add') {
+        const result = await fieldValueService.addRelationValuesBulk({
+          recordIds,
+          fieldId,
+          relatedRecordIds,
+        })
+        created = result.inserted
+        skipped = result.skipped
+      } else if (operation === 'remove') {
+        const result = await fieldValueService.removeRelationValuesBulk({
+          recordIds,
+          fieldId,
+          relatedRecordIds,
+        })
+        created = result.removed
+      } else {
+        // 'set' — replace existing values on each thread. No bulk set primitive yet;
+        // per-entity setValueWithBuiltIn reuses inverse sync + publish logic.
+        const relationshipValue = relatedRecordIds.map((recordId) => ({ recordId }))
+        await Promise.all(
+          recordIds.map((recordId) =>
+            fieldValueService.setValueWithBuiltIn({
+              recordId,
               fieldId,
-              entityId: threadId,
-              relatedEntityId: tagId,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            }))
+              value: relationshipValue,
+            })
           )
+        )
+        created = recordIds.length * relatedRecordIds.length
+      }
 
-          if (valuesToCreate.length > 0) {
-            // Bulk insert with conflict handling using unique constraint
-            const result = await tx
-              .insert(schema.FieldValue)
-              .values(valuesToCreate)
-              .onConflictDoNothing({
-                target: [
-                  schema.FieldValue.fieldId,
-                  schema.FieldValue.entityId,
-                  schema.FieldValue.relatedEntityId,
-                ],
-              })
-              .returning({ entityId: schema.FieldValue.entityId })
-
-            created = result.length
-            skipped = valuesToCreate.length - result.length
-          }
-        }
-      })
-
-      logger.info(`Bulk thread tagging completed`, {
-        operation,
-        created,
-        skipped,
-      })
+      logger.info(`Bulk thread tagging completed`, { operation, created, skipped })
       return { created, skipped, errors }
     } catch (error: unknown) {
       logger.error('Failed to update thread tags in bulk', {

@@ -44,6 +44,7 @@ import { ParticipantList, type ParticipantListEntry } from './participant-displa
 import { SendStatusIndicator } from './send-status-indicator'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
+import { toEditorMessage } from './utils/to-editor-message'
 
 interface EmailDisplayProps {
   /** Message ID to display */
@@ -129,67 +130,10 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
     }
   }, [message, retrySendMessage])
 
-  // Build a MessageType compatible with the editor from store data + resolved participants
-  const editorMessage: MessageType | null = useMemo(() => {
-    if (!message) return null
-    return {
-      id: message.id,
-      threadId: message.threadId,
-      subject: message.subject,
-      snippet: message.snippet,
-      textHtml: message.textHtml,
-      textPlain: message.textPlain,
-      isInbound: message.isInbound,
-      sentAt: message.sentAt ? new Date(message.sentAt) : null,
-      createdAt: new Date(message.createdAt),
-      messageType: message.messageType as MessageType['messageType'],
-      sendStatus: message.sendStatus,
-      providerError: message.providerError,
-      attempts: message.attempts,
-      from: from
-        ? {
-            id: from.id,
-            identifier: from.identifier,
-            identifierType: from.identifierType,
-            name: from.name,
-            displayName: from.displayName,
-          }
-        : null,
-      participants: [
-        ...(from
-          ? [
-              {
-                role: 'FROM',
-                participant: {
-                  id: from.id,
-                  identifier: from.identifier,
-                  identifierType: from.identifierType,
-                  name: from.name,
-                },
-              },
-            ]
-          : []),
-        ...to.map((p) => ({
-          role: 'TO',
-          participant: {
-            id: p.id,
-            identifier: p.identifier,
-            identifierType: p.identifierType,
-            name: p.name,
-          },
-        })),
-        ...cc.map((p) => ({
-          role: 'CC',
-          participant: {
-            id: p.id,
-            identifier: p.identifier,
-            identifierType: p.identifierType,
-            name: p.name,
-          },
-        })),
-      ],
-    }
-  }, [message, from, to, cc])
+  const editorMessage: MessageType | null = useMemo(
+    () => (message ? toEditorMessage(message, { from, to, cc }) : null),
+    [message, from, to, cc]
+  )
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: message triggers DOM manipulation when email content changes
   useEffect(() => {

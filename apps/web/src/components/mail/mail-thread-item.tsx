@@ -35,7 +35,11 @@ import {
   useThreadMutation,
   useThreadReadStatus,
 } from '~/components/threads/hooks'
-import { useSelectionAnchorId, useThreadSelectionStore } from '~/components/threads/store'
+import {
+  useIsThreadActive,
+  useSelectionAnchorId,
+  useThreadSelectionStore,
+} from '~/components/threads/store'
 import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
 import { api } from '~/trpc/react'
@@ -204,10 +208,15 @@ export const MailThreadItem = memo(function MailThreadItem({
   const hasScheduledMessage = (thread?.scheduledMessageCount ?? 0) > 0
 
   // --- Selection state ---
+  // isMultiSelected = user-driven checkbox selection (drives checkbox + drag payload).
+  // isActive = the thread currently open in the detail pane.
+  // isHighlighted = visual blue highlight: either currently open OR checkbox-selected.
   const isMultiSelected = useMemo(
     () => selectedThreadIds.includes(threadId),
     [selectedThreadIds, threadId]
   )
+  const isActive = useIsThreadActive(threadId)
+  const isHighlighted = isActive || isMultiSelected
 
   // --- Drag and Drop Setup ---
   const { attributes, listeners, setNodeRef } = useDraggable({
@@ -223,6 +232,7 @@ export const MailThreadItem = memo(function MailThreadItem({
   })
 
   // --- Click handler ---
+  const setSelectedThreads = useThreadSelectionStore((s) => s.setSelectedThreads)
   const handleClick = useCallback(
     (event: React.MouseEvent) => {
       if (event.detail > 1) event.preventDefault()
@@ -232,6 +242,15 @@ export const MailThreadItem = memo(function MailThreadItem({
         toggleSelection(threadId)
         setActiveThread(threadId)
       } else {
+        // Split-mode plain click abandons any checkbox multi-selection that was
+        // built up via cmd/shift-click. Modifier clicks keep their own selection
+        // semantics inside handleThreadClick.
+        if (!event.metaKey && !event.ctrlKey && !event.shiftKey) {
+          const store = useThreadSelectionStore.getState()
+          if (store.selectedThreadIds.length > 0) {
+            setSelectedThreads([])
+          }
+        }
         handleThreadClick(threadId, event)
 
         // Mark as read if thread is currently unread
@@ -240,7 +259,16 @@ export const MailThreadItem = memo(function MailThreadItem({
         }
       }
     },
-    [handleThreadClick, threadId, markAsRead, isUnread, viewMode, toggleSelection, setActiveThread]
+    [
+      handleThreadClick,
+      threadId,
+      markAsRead,
+      isUnread,
+      viewMode,
+      toggleSelection,
+      setActiveThread,
+      setSelectedThreads,
+    ]
   )
 
   // --- Derived values ---
@@ -287,10 +315,10 @@ export const MailThreadItem = memo(function MailThreadItem({
             id={`thread-${threadId}`}
             className={cn(
               'z-2 hover:bg-accent hover:text-accent-foreground dark:border-[#1e2227] group relative flex w-full cursor-grab flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3 text-left text-sm active:cursor-grabbing dark:bg-[#2c313c] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:focus-visible:ring-0 dark:focus-visible:ring-offset-0',
-              isMultiSelected &&
+              isHighlighted &&
                 'bg-info hover:bg-info-100! text-background shadow-md dark:bg-info dark:hover:bg-info-100 border-info/50'
             )}
-            aria-selected={isMultiSelected}
+            aria-selected={isHighlighted}
             onClick={handleClick}
             onDragStart={(e) => e.preventDefault()}>
             {/* Status indicator dot: red for draft, amber clock for scheduled, blue for unread */}
@@ -299,7 +327,7 @@ export const MailThreadItem = memo(function MailThreadItem({
                 <div
                   className={cn(
                     'absolute left-1.5 top-8 text-amber-500',
-                    isMultiSelected && 'text-white'
+                    isHighlighted && 'text-white'
                   )}
                   aria-label='Has scheduled message'>
                   <Clock className='size-3' />
@@ -309,7 +337,7 @@ export const MailThreadItem = memo(function MailThreadItem({
                   className={cn(
                     'absolute left-2 top-9 h-2 w-2 -translate-y-1/2 rounded-full',
                     hasDraft ? 'bg-red-500' : 'bg-blue-500',
-                    isMultiSelected && 'bg-white'
+                    isHighlighted && 'bg-white'
                   )}
                   aria-label={hasDraft ? 'Has draft' : 'Unread message'}
                 />
@@ -366,7 +394,7 @@ export const MailThreadItem = memo(function MailThreadItem({
                         recordId={tagId}
                         size='sm'
                         className={cn(
-                          isMultiSelected &&
+                          isHighlighted &&
                             'text-background/80 border-black/20 bg-background/50 border-black/3 dark:bg-background/50 dark:border-black/10 dark:text-foreground/80'
                         )}
                       />

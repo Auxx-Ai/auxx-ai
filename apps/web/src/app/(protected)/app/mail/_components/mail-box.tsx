@@ -220,13 +220,14 @@ function MailboxInner({
   // State to track if the thread list is currently fetching/loading data
   const [isListLoading, setIsListLoading] = useState(false)
 
-  // Sync URL ↔ Zustand on mount (restore selection after reload or navigation)
+  // Sync URL ↔ Zustand on mount (restore active thread after reload or navigation).
+  // We deliberately do NOT seed selectedThreadIds here — the checkbox selection is
+  // a separate, user-driven concept from "which thread is open".
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect
   useEffect(() => {
     const store = useThreadSelectionStore.getState()
     if (tid) {
-      if (store.selectedThreadIds.length === 0) {
-        store.setSelectedThreads([tid])
+      if (!store.activeThreadId) {
         store.setActiveThread(tid)
       }
     } else if (store.activeThreadId) {
@@ -441,7 +442,7 @@ function MailboxInner({
 
   return (
     <MailFilterProvider value={mailFilterContextValue}>
-      <MainPage loading={true}>
+      <MainPage>
         <MainPageHeader
           action={
             <div className='flex items-center gap-1'>
@@ -612,7 +613,6 @@ function MailboxInner({
                   </div>
                 </div>
               </div>
-
               <PanelResizeHandle
                 side='left'
                 currentWidth={threadListWidth}
@@ -620,7 +620,6 @@ function MailboxInner({
                 minWidth={250}
                 maxWidth={500}
               />
-
               {/* Right Panel: Thread display fills remaining space */}
               <div className='flex-1 min-w-0'>
                 <ThreadDisplay />

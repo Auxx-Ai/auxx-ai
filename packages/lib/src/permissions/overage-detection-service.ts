@@ -177,6 +177,7 @@ export class OverageDetectionService {
     for (const def of featureDefs) {
       const meta = FEATURE_REGISTRY_MAP.get(def.key as FeatureKey)
       if (meta?.type !== 'static') continue
+      if (meta.perOperation) continue // per-operation caps aren't standing resources
       if (typeof def.limit !== 'number' || def.limit === -1) continue // skip '+', boolean, and -1 (unlimited)
       limits.set(def.key, def.limit)
     }
@@ -191,6 +192,7 @@ export class OverageDetectionService {
       for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
         const meta = FEATURE_REGISTRY_MAP.get(key as FeatureKey)
         if (meta?.type !== 'static') continue
+        if (meta.perOperation) continue
         if (typeof value === 'number') {
           if (value === -1) {
             // -1 means unlimited — remove from limits map

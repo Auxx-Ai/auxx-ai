@@ -32,9 +32,7 @@ export function ThreadNavToolbar({ activeThreadId, onBack, onNavigate }: ThreadN
   const goToPrevious = useCallback(() => {
     if (hasPrevious) {
       const prevId = listThreadIds[currentIndex - 1]
-      const store = useThreadSelectionStore.getState()
-      store.setActiveThread(prevId)
-      store.setSelectedThreads([prevId])
+      useThreadSelectionStore.getState().setActiveThread(prevId)
       onNavigate(prevId)
     }
   }, [hasPrevious, listThreadIds, currentIndex, onNavigate])
@@ -42,9 +40,7 @@ export function ThreadNavToolbar({ activeThreadId, onBack, onNavigate }: ThreadN
   const goToNext = useCallback(() => {
     if (hasNext) {
       const nextId = listThreadIds[currentIndex + 1]
-      const store = useThreadSelectionStore.getState()
-      store.setActiveThread(nextId)
-      store.setSelectedThreads([nextId])
+      useThreadSelectionStore.getState().setActiveThread(nextId)
       onNavigate(nextId)
     }
   }, [hasNext, listThreadIds, currentIndex, onNavigate])

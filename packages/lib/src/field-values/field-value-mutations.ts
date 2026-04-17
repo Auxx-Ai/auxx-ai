@@ -19,7 +19,7 @@ import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/ty
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { getCachedFieldMap, getCachedResource } from '../cache'
 import {
   getBuiltInFieldHandler,
@@ -27,6 +27,7 @@ import {
   isBuiltInField,
 } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
+import { BadRequestError } from '../errors'
 import { publisher } from '../events'
 import type { ContactFieldUpdatedEvent } from '../events/types'
 import {
@@ -62,9 +63,13 @@ import {
 } from './relationship-sync'
 import { type ValidationContext, validateSelfReferentialChange } from './relationship-validators'
 import type {
+  AddRelationValuesBulkInput,
+  AddRelationValuesInput,
   AddValueInput,
   DeleteValueInput,
   FieldValueRow,
+  RemoveRelationValuesBulkInput,
+  RemoveRelationValuesInput,
   SetBulkValuesInput,
   SetValueInput,
   SetValueResult,
@@ -469,19 +474,18 @@ export async function deleteValue(ctx: FieldValueContext, params: DeleteValueInp
  * Syncs inverse relationships for additions only.
  *
  * @param ctx - Field value context
- * @param params - Entity ID, field ID, and related entity IDs to add
+ * @param params - Source record, field ID, and target RecordIds to link
  */
 export async function addRelationValues(
   ctx: FieldValueContext,
-  params: {
-    recordId: RecordId
-    fieldId: string
-    relatedEntityIds: string[]
-    relatedEntityDefinitionId: string
-  }
+  params: AddRelationValuesInput
 ): Promise<void> {
-  const { recordId, fieldId, relatedEntityIds, relatedEntityDefinitionId } = params
-  if (relatedEntityIds.length === 0) return
+  const { recordId, fieldId, relatedRecordIds } = params
+  if (relatedRecordIds.length === 0) return
+
+  const parsedTargets = relatedRecordIds.map((rid) => parseRecordId(rid))
+  const relatedEntityDefinitionId = parsedTargets[0]!.entityDefinitionId
+  const relatedEntityIds = parsedTargets.map((p) => p.entityInstanceId)
 
   const { entityInstanceId } = parseRecordId(recordId)
 
@@ -553,23 +557,20 @@ export async function addRelationValues(
 
 /**
  * Remove specific relation values from an existing multi-value relationship field.
- * Deletes FieldValue rows matching the given relatedEntityIds.
+ * Deletes FieldValue rows matching the given target records.
  * Syncs inverse relationships for removals only.
  *
  * @param ctx - Field value context
- * @param params - Entity ID, field ID, and related entity IDs to remove
+ * @param params - Source record, field ID, and target RecordIds to unlink
  */
 export async function removeRelationValues(
   ctx: FieldValueContext,
-  params: {
-    recordId: RecordId
-    fieldId: string
-    relatedEntityIds: string[]
-  }
+  params: RemoveRelationValuesInput
 ): Promise<void> {
-  const { recordId, fieldId, relatedEntityIds } = params
-  if (relatedEntityIds.length === 0) return
+  const { recordId, fieldId, relatedRecordIds } = params
+  if (relatedRecordIds.length === 0) return
 
+  const relatedEntityIds = relatedRecordIds.map((rid) => parseRecordId(rid).entityInstanceId)
   const { entityInstanceId } = parseRecordId(recordId)
 
   // Capture existing IDs before removal (for inverse sync)
@@ -601,6 +602,341 @@ export async function removeRelationValues(
       { entityId: entityInstanceId, oldRelatedIds: existingIds, newRelatedIds, inverseInfo }
     )
   }
+}
+
+// =============================================================================
+// BULK RELATION ADD / REMOVE (VECTORIZED ACROSS MANY SOURCE ENTITIES)
+// =============================================================================
+
+/**
+ * Add the same related records to many source entities in one vectorized call.
+ *
+ * Query budget (flat wrt N sources and M targets):
+ * - 1 read for existing related ids (batchGetExistingRelatedIds)
+ * - 1 read for per-entity MAX(sortKey)
+ * - 1 batch insert
+ * - 4-6 queries for bulk inverse sync (if configured)
+ *
+ * All `recordIds` must share one entityDefinitionId; same for `relatedRecordIds`.
+ */
+export async function addRelationValuesBulk(
+  ctx: FieldValueContext,
+  params: AddRelationValuesBulkInput
+): Promise<{ inserted: number; skipped: number }> {
+  const { recordIds, fieldId, relatedRecordIds } = params
+  if (recordIds.length === 0 || relatedRecordIds.length === 0) {
+    return { inserted: 0, skipped: 0 }
+  }
+
+  // Parse + validate source record ids
+  const parsed = recordIds.map((rid) => parseRecordId(rid))
+  const entityDefinitionId = parsed[0]!.entityDefinitionId
+  const entityIds = parsed.map((p) => p.entityInstanceId)
+  if (parsed.some((p) => p.entityDefinitionId !== entityDefinitionId)) {
+    throw new BadRequestError(
+      'addRelationValuesBulk: all recordIds must share one entityDefinitionId'
+    )
+  }
+
+  // Parse + validate target record ids
+  const parsedTargets = relatedRecordIds.map((rid) => parseRecordId(rid))
+  const relatedEntityDefinitionId = parsedTargets[0]!.entityDefinitionId
+  const uniqueRelatedIds = [...new Set(parsedTargets.map((p) => p.entityInstanceId))]
+  if (parsedTargets.some((p) => p.entityDefinitionId !== relatedEntityDefinitionId)) {
+    throw new BadRequestError(
+      'addRelationValuesBulk: all relatedRecordIds must share one entityDefinitionId'
+    )
+  }
+
+  // Resolve field from cache
+  const field = await getField(ctx, fieldId)
+  if (field.type !== 'RELATIONSHIP') {
+    throw new BadRequestError(
+      `addRelationValuesBulk: field ${fieldId} is not a RELATIONSHIP field (got ${field.type})`
+    )
+  }
+
+  // Fetch existing related ids for every source entity in one query
+  const existingByEntity = await batchGetExistingRelatedIds(
+    { db: ctx.db, organizationId: ctx.organizationId },
+    entityIds,
+    fieldId
+  )
+
+  // Compute per-entity inserts + skip list
+  type InsertPair = { entityId: string; relatedEntityId: string }
+  const toInsert: InsertPair[] = []
+  let skipped = 0
+
+  for (const entityId of entityIds) {
+    const existing = new Set(existingByEntity.get(entityId) ?? [])
+    for (const relatedId of uniqueRelatedIds) {
+      if (existing.has(relatedId)) {
+        skipped += 1
+        continue
+      }
+      toInsert.push({ entityId, relatedEntityId: relatedId })
+    }
+  }
+
+  if (toInsert.length === 0) {
+    return { inserted: 0, skipped }
+  }
+
+  const insertEntityIds = [...new Set(toInsert.map((p) => p.entityId))]
+
+  // Fetch per-entity max sortKey in one query
+  const sortKeyRows = await ctx.db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      maxKey: sql<string>`MAX(${schema.FieldValue.sortKey})`.as('maxKey'),
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        inArray(schema.FieldValue.entityId, insertEntityIds),
+        eq(schema.FieldValue.fieldId, fieldId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+    .groupBy(schema.FieldValue.entityId)
+
+  const maxKeyByEntity = new Map(sortKeyRows.map((r) => [r.entityId, r.maxKey]))
+
+  // Build insert rows with unique fractional sortKeys, per-entity monotonic
+  const nextKeyByEntity = new Map<string, string | null>()
+  for (const entityId of insertEntityIds) {
+    nextKeyByEntity.set(entityId, maxKeyByEntity.get(entityId) ?? null)
+  }
+
+  const insertRows = toInsert.map(({ entityId, relatedEntityId }) => {
+    const prevKey = nextKeyByEntity.get(entityId) ?? null
+    const sortKey = generateKeyBetween(prevKey, null)
+    nextKeyByEntity.set(entityId, sortKey)
+    return {
+      organizationId: ctx.organizationId,
+      entityId,
+      entityDefinitionId,
+      fieldId,
+      relatedEntityId,
+      relatedEntityDefinitionId,
+      sortKey,
+    }
+  })
+
+  await ctx.db.insert(schema.FieldValue).values(insertRows)
+
+  // Inverse sync, bulk (aggregated across all entities)
+  if (!params.skipInverseSync) {
+    const inverseInfo = await getInverseInfoFromField(ctx, field)
+    if (inverseInfo) {
+      const insertedByEntity = new Map<string, string[]>()
+      for (const { entityId, relatedEntityId } of toInsert) {
+        const arr = insertedByEntity.get(entityId) ?? []
+        arr.push(relatedEntityId)
+        insertedByEntity.set(entityId, arr)
+      }
+
+      const updates: BulkRelationshipUpdate[] = entityIds.map((entityId) => {
+        const oldIds = existingByEntity.get(entityId) ?? []
+        const insertedForEntity = insertedByEntity.get(entityId) ?? []
+        const newIds = [...oldIds, ...insertedForEntity]
+        return { entityId, oldRelatedIds: oldIds, newRelatedIds: newIds }
+      })
+
+      await syncInverseRelationshipsBulk(
+        { db: ctx.db, organizationId: ctx.organizationId },
+        { updates, inverseInfo }
+      )
+    }
+  }
+
+  // Field triggers, batched (org cache read, then fire-and-forget publish)
+  if (ctx.userId && params.skipPublishEvents !== true) {
+    const triggered = await collectTriggeredFields(ctx.organizationId, [fieldId])
+    if (triggered.length > 0) {
+      const unique = deduplicateBySystemAttribute(triggered)
+      const changedEntitySet = new Set(insertEntityIds)
+      const changedRecordIds = recordIds.filter((_, i) => changedEntitySet.has(entityIds[i]!))
+      if (changedRecordIds.length > 0) {
+        await publishBatchFieldTriggerEvents(
+          { organizationId: ctx.organizationId, userId: ctx.userId },
+          unique,
+          changedRecordIds
+        )
+      }
+    }
+  }
+
+  // Realtime publish, batched (only for entities that actually changed)
+  if (params.skipPublishEvents !== true) {
+    const changedEntitySet = new Set(insertEntityIds)
+    const insertedByEntity = new Map<string, string[]>()
+    for (const { entityId, relatedEntityId } of toInsert) {
+      const arr = insertedByEntity.get(entityId) ?? []
+      arr.push(relatedEntityId)
+      insertedByEntity.set(entityId, arr)
+    }
+
+    const entries = recordIds
+      .map((recordId, i) => ({ recordId, entityId: entityIds[i]! }))
+      .filter(({ entityId }) => changedEntitySet.has(entityId))
+      .map(({ recordId, entityId }) => {
+        const oldIds = existingByEntity.get(entityId) ?? []
+        const insertedForEntity = insertedByEntity.get(entityId) ?? []
+        const newRelatedIds = [...oldIds, ...insertedForEntity]
+        return {
+          key: buildFieldValueKey(recordId, fieldId as FieldId),
+          value: newRelatedIds.map((instanceId) => ({
+            recordId: toRecordId(relatedEntityDefinitionId, instanceId),
+          })),
+        }
+      })
+
+    if (entries.length > 0) {
+      publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, entries, {
+        excludeSocketId: ctx.socketId,
+      }).catch(() => {})
+    }
+  }
+
+  return { inserted: insertRows.length, skipped }
+}
+
+/**
+ * Remove the same related records from many source entities in one vectorized call.
+ *
+ * Query budget (flat wrt N sources and M targets):
+ * - 1 read for existing related ids (needed for inverse sync / realtime publish)
+ * - 1 batch delete (with RETURNING to get affected entityIds)
+ * - 4-6 queries for bulk inverse sync (if configured)
+ */
+export async function removeRelationValuesBulk(
+  ctx: FieldValueContext,
+  params: RemoveRelationValuesBulkInput
+): Promise<{ removed: number }> {
+  const { recordIds, fieldId, relatedRecordIds } = params
+  if (recordIds.length === 0 || relatedRecordIds.length === 0) {
+    return { removed: 0 }
+  }
+
+  const parsed = recordIds.map((rid) => parseRecordId(rid))
+  const entityDefinitionId = parsed[0]!.entityDefinitionId
+  const entityIds = parsed.map((p) => p.entityInstanceId)
+  if (parsed.some((p) => p.entityDefinitionId !== entityDefinitionId)) {
+    throw new BadRequestError(
+      'removeRelationValuesBulk: all recordIds must share one entityDefinitionId'
+    )
+  }
+
+  const parsedTargets = relatedRecordIds.map((rid) => parseRecordId(rid))
+  const relatedEntityDefinitionId = parsedTargets[0]!.entityDefinitionId
+  const uniqueRelatedIds = [...new Set(parsedTargets.map((p) => p.entityInstanceId))]
+  if (parsedTargets.some((p) => p.entityDefinitionId !== relatedEntityDefinitionId)) {
+    throw new BadRequestError(
+      'removeRelationValuesBulk: all relatedRecordIds must share one entityDefinitionId'
+    )
+  }
+
+  const field = await getField(ctx, fieldId)
+  if (field.type !== 'RELATIONSHIP') {
+    throw new BadRequestError(
+      `removeRelationValuesBulk: field ${fieldId} is not a RELATIONSHIP field (got ${field.type})`
+    )
+  }
+
+  // Capture existing related ids (needed for inverse sync + realtime publish shape)
+  const needsExisting = !params.skipInverseSync || params.skipPublishEvents !== true
+  const existingByEntity = needsExisting
+    ? await batchGetExistingRelatedIds(
+        { db: ctx.db, organizationId: ctx.organizationId },
+        entityIds,
+        fieldId
+      )
+    : new Map<string, string[]>()
+
+  // Batch delete with RETURNING to know which entities were affected
+  const deleted = await ctx.db
+    .delete(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, ctx.organizationId),
+        eq(schema.FieldValue.fieldId, fieldId),
+        inArray(schema.FieldValue.entityId, entityIds),
+        inArray(schema.FieldValue.relatedEntityId, uniqueRelatedIds)
+      )
+    )
+    .returning({ entityId: schema.FieldValue.entityId })
+
+  if (deleted.length === 0) {
+    return { removed: 0 }
+  }
+
+  const changedEntitySet = new Set(deleted.map((r) => r.entityId))
+
+  // Inverse sync, bulk
+  if (!params.skipInverseSync) {
+    const inverseInfo = await getInverseInfoFromField(ctx, field)
+    if (inverseInfo) {
+      const removedSet = new Set(uniqueRelatedIds)
+      const updates: BulkRelationshipUpdate[] = entityIds
+        .filter((entityId) => changedEntitySet.has(entityId))
+        .map((entityId) => {
+          const oldIds = existingByEntity.get(entityId) ?? []
+          const newIds = oldIds.filter((id) => !removedSet.has(id))
+          return { entityId, oldRelatedIds: oldIds, newRelatedIds: newIds }
+        })
+
+      if (updates.length > 0) {
+        await syncInverseRelationshipsBulk(
+          { db: ctx.db, organizationId: ctx.organizationId },
+          { updates, inverseInfo }
+        )
+      }
+    }
+  }
+
+  // Field triggers, batched
+  if (ctx.userId && params.skipPublishEvents !== true) {
+    const triggered = await collectTriggeredFields(ctx.organizationId, [fieldId])
+    if (triggered.length > 0) {
+      const unique = deduplicateBySystemAttribute(triggered)
+      const changedRecordIds = recordIds.filter((_, i) => changedEntitySet.has(entityIds[i]!))
+      if (changedRecordIds.length > 0) {
+        await publishBatchFieldTriggerEvents(
+          { organizationId: ctx.organizationId, userId: ctx.userId },
+          unique,
+          changedRecordIds
+        )
+      }
+    }
+  }
+
+  // Realtime publish, batched (only for entities that actually had deletions)
+  if (params.skipPublishEvents !== true) {
+    const removedSet = new Set(uniqueRelatedIds)
+    const entries = recordIds
+      .map((recordId, i) => ({ recordId, entityId: entityIds[i]! }))
+      .filter(({ entityId }) => changedEntitySet.has(entityId))
+      .map(({ recordId, entityId }) => {
+        const oldIds = existingByEntity.get(entityId) ?? []
+        const newIds = oldIds.filter((id) => !removedSet.has(id))
+        return {
+          key: buildFieldValueKey(recordId, fieldId as FieldId),
+          value: newIds.map((instanceId) => ({
+            recordId: toRecordId(relatedEntityDefinitionId, instanceId),
+          })),
+        }
+      })
+
+    if (entries.length > 0) {
+      publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, entries, {
+        excludeSocketId: ctx.socketId,
+      }).catch(() => {})
+    }
+  }
+
+  return { removed: deleted.length }
 }
 
 // =============================================================================

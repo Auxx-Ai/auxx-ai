@@ -61,6 +61,8 @@ export default function BulkActionToolbar() {
   const rollbackOptimistic = useThreadStore((s) => s.rollbackOptimistic)
   const { resource: tagResource } = useResource('tag')
   const tagEntityDefId = tagResource?.entityDefinitionId ?? undefined
+  const { resource: threadResource } = useResource('thread')
+  const threadEntityDefId = threadResource?.entityDefinitionId ?? undefined
 
   // Subscribe to tagIds of all selected threads — recomputes on any optimistic update.
   const selectedThreadsTagIds = useThreadStore(
@@ -181,7 +183,7 @@ export default function BulkActionToolbar() {
   // --- Handlers ---
   const handleTagChange = useCallback(
     (nextFullyCheckedRaw: string[]) => {
-      if (selectionCount === 0 || !tagEntityDefId) return
+      if (selectionCount === 0 || !tagEntityDefId || !threadEntityDefId) return
       // Picker returns RecordIds when tagEntityDefinitionId is resolved; strip to instance IDs.
       const nextFullyChecked = nextFullyCheckedRaw
         .filter(Boolean)
@@ -195,9 +197,11 @@ export default function BulkActionToolbar() {
 
       if (toAdd.length === 0 && toRemove.length === 0) return
 
-      const fire = (tagIds: string[], operation: 'add' | 'remove') => {
-        if (tagIds.length === 0) return
-        const tagRecordIds = tagIds.map((id) => toRecordId(tagEntityDefId, id))
+      const threadRecordIds = selectedThreadIds.map((id) => toRecordId(threadEntityDefId, id))
+
+      const fire = (tagInstanceIds: string[], operation: 'add' | 'remove') => {
+        if (tagInstanceIds.length === 0) return
+        const tagRecordIds = tagInstanceIds.map((id) => toRecordId(tagEntityDefId, id))
 
         const versions = selectedThreadIds.map((threadId) => {
           const current = getThread(threadId)?.tagIds ?? []
@@ -209,7 +213,7 @@ export default function BulkActionToolbar() {
         })
 
         tagBulk.mutate(
-          { threadIds: selectedThreadIds, tagIds, operation },
+          { recordIds: threadRecordIds, relatedRecordIds: tagRecordIds, operation },
           {
             onSuccess: () => {
               versions.forEach(({ threadId, version }) => confirmOptimistic(threadId, version))
@@ -230,6 +234,7 @@ export default function BulkActionToolbar() {
       selectedThreadIds,
       fullySelectedTagIds,
       tagEntityDefId,
+      threadEntityDefId,
       tagBulk,
       getThread,
       updateThreadOptimistic,
