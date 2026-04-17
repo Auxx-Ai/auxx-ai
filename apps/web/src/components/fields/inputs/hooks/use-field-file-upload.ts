@@ -3,12 +3,12 @@
 
 import type { FileTypeCategory } from '@auxx/lib/files/client'
 import { getMimePatternsForCategories } from '@auxx/lib/files/client'
-import type { RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { JsonFieldValue, TypedFieldValue } from '@auxx/types/field-value'
-import type { FileRef } from '@auxx/types/file-ref'
+import { type FileRef, getFileRefDownloadUrl } from '@auxx/types/file-ref'
 import { toastError } from '@auxx/ui/components/toast'
 import { keepPreviousData } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileOptions } from '~/components/custom-fields/ui/file-options-editor'
 import type { FileState } from '~/components/file-upload/stores'
@@ -18,6 +18,8 @@ import {
   buildFieldValueKey,
   useFieldValueStore,
 } from '~/components/resources/store/field-value-store'
+import { useRecordStore } from '~/components/resources/store/record-store'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 import { api } from '~/trpc/react'
 import { vanillaApi } from '~/trpc/vanilla'
 
@@ -103,51 +105,185 @@ function initGlobalSubscription() {
   })
 }
 
+// =============================================================================
+// OPTIMISTIC AVATAR UPDATES
+// =============================================================================
+
+/**
+ * Tracks in-flight avatar optimism so we can roll back on failure and revoke
+ * blob URLs after the real URL lands. Keyed by uploaderId for native uploads,
+ * and by a synthetic key for browse/delete flows.
+ */
+interface PendingAvatarState {
+  recordId: string
+  priorAvatarUrl: string | undefined
+  blobUrl?: string
+}
+const pendingAvatarByKey = new Map<string, PendingAvatarState>()
+
+/** Returns true if `fieldRef` is the avatar display field for this record's resource. */
+function isAvatarField(recordId: string, fieldRef: string): boolean {
+  try {
+    const { entityDefinitionId } = parseRecordId(recordId as RecordId)
+    const resource = useResourceStore.getState().getResourceById(entityDefinitionId)
+    return resource?.display?.avatarField?.id === fieldRef
+  } catch {
+    return false
+  }
+}
+
+/** Snapshot + optimistically write a new avatar URL. Returns a rollback closure. */
+function optimisticallyWriteAvatar(
+  recordId: string,
+  newAvatarUrl: string | undefined
+): { rollback: () => void; priorAvatarUrl: string | undefined } {
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId as RecordId)
+  const store = useRecordStore.getState()
+  const current = store.records[entityDefinitionId]?.get(entityInstanceId)
+  const priorAvatarUrl = current?.avatarUrl
+  store.updateRecord(entityDefinitionId, entityInstanceId, { avatarUrl: newAvatarUrl })
+  return {
+    priorAvatarUrl,
+    rollback: () => {
+      useRecordStore
+        .getState()
+        .updateRecord(entityDefinitionId, entityInstanceId, { avatarUrl: priorAvatarUrl })
+    },
+  }
+}
+
+/** Schedule blob URL revocation — long enough for the <img> to swap to the new src. */
+function scheduleBlobRevoke(blobUrl: string, delayMs = 10_000): void {
+  setTimeout(() => {
+    try {
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      // no-op
+    }
+  }, delayMs)
+}
+
+/**
+ * Shared write pipeline — used by both the native-upload completion handler
+ * and the browse-dialog selection handler. Chooses the right backend call:
+ *
+ * - `allowMultiple: false` → `fieldValue.set` with a single-element array.
+ *   Backend routes FILE through `setMultiValue`, which does DELETE+INSERT
+ *   in a single transaction. Atomic replace, no orphan FieldValue rows.
+ * - `allowMultiple: true`  → `fieldValue.add` per file (append semantics).
+ *
+ * Updates the local `useFieldValueStore` with the resulting TypedFieldValues
+ * so UI reflects the change immediately.
+ */
+interface ApplyContext {
+  recordId: string
+  fieldRef: string
+  storeKey: ReturnType<typeof buildFieldValueKey>
+  allowMultiple: boolean
+}
+
+async function applyPendingFileRefs(ctx: ApplyContext, refs: string[]): Promise<void> {
+  if (refs.length === 0) return
+
+  const fvStore = useFieldValueStore.getState()
+
+  if (!ctx.allowMultiple) {
+    const [first] = refs
+    if (!first) return
+    const result = await vanillaApi.fieldValue.set.mutate({
+      recordId: ctx.recordId,
+      fieldId: ctx.fieldRef,
+      value: [{ ref: first }],
+    })
+    // `fieldValue.set` → `setValueWithBuiltIn` → { state, performedAt, values }
+    fvStore.setValue(ctx.storeKey, (result?.values ?? []) as TypedFieldValue[])
+    return
+  }
+
+  const newTyped: TypedFieldValue[] = []
+  for (const ref of refs) {
+    const added = await vanillaApi.fieldValue.add.mutate({
+      recordId: ctx.recordId,
+      fieldId: ctx.fieldRef,
+      fieldType: 'FILE',
+      value: { type: 'json', value: { ref } },
+    })
+    newTyped.push(added as TypedFieldValue)
+  }
+  const current = fvStore.values[ctx.storeKey]
+  const currentArr = Array.isArray(current) ? [...current] : current ? [current] : []
+  fvStore.setValue(ctx.storeKey, [...currentArr, ...newTyped] as TypedFieldValue[])
+}
+
 async function handleUploadCompletion(
   uploaderId: string,
   handler: CompletionHandler,
   files: FileState[]
 ) {
   const successFiles = files.filter((f) => f.status === 'completed' && f.serverFileId)
+  const pendingAvatar = pendingAvatarByKey.get(uploaderId)
 
   if (successFiles.length === 0) {
+    // Upload failed entirely — rollback any optimistic avatar write and clean up.
+    if (pendingAvatar) {
+      useRecordStore
+        .getState()
+        .updateRecord(
+          parseRecordId(pendingAvatar.recordId as RecordId).entityDefinitionId,
+          parseRecordId(pendingAvatar.recordId as RecordId).entityInstanceId,
+          { avatarUrl: pendingAvatar.priorAvatarUrl }
+        )
+      if (pendingAvatar.blobUrl) scheduleBlobRevoke(pendingAvatar.blobUrl, 0)
+      pendingAvatarByKey.delete(uploaderId)
+    }
     completionHandlers.delete(uploaderId)
     return
   }
 
   try {
-    const filesToAdd = handler.allowMultiple ? successFiles : [successFiles[0]!]
-    const newTypedValues: TypedFieldValue[] = []
-
-    for (const file of filesToAdd) {
-      const result = await vanillaApi.fieldValue.add.mutate({
+    const filesToApply = handler.allowMultiple ? successFiles : [successFiles[0]!]
+    const refs = filesToApply.map((f) => `asset:${f.serverFileId!}`)
+    await applyPendingFileRefs(
+      {
         recordId: handler.recordId,
-        fieldId: handler.fieldRef,
-        fieldType: 'FILE',
-        value: { type: 'json', value: { ref: `asset:${file.serverFileId!}` } },
-      })
-      newTypedValues.push(result as TypedFieldValue)
-    }
+        fieldRef: handler.fieldRef,
+        storeKey: handler.storeKey as ReturnType<typeof buildFieldValueKey>,
+        allowMultiple: handler.allowMultiple,
+      },
+      refs
+    )
 
-    // Update store directly for immediate UI refresh
-    const store = useFieldValueStore.getState()
-    const current = store.values[handler.storeKey as ReturnType<typeof buildFieldValueKey>]
-    const currentArray = Array.isArray(current) ? [...current] : current ? [current] : []
-
-    if (handler.allowMultiple) {
-      store.setValue(
-        handler.storeKey as ReturnType<typeof buildFieldValueKey>,
-        [...currentArray, ...newTypedValues] as TypedFieldValue[]
+    // Field value saved — swap blob URL for a stable download URL so the image
+    // keeps rendering even after the blob is revoked. The backend thumbnail
+    // job will eventually overwrite this with the real 128px CDN URL via a
+    // realtime record update.
+    if (pendingAvatar && refs[0]) {
+      const stableUrl = getFileRefDownloadUrl(refs[0] as FileRef)
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(
+        pendingAvatar.recordId as RecordId
       )
-    } else {
-      store.setValue(handler.storeKey as ReturnType<typeof buildFieldValueKey>, newTypedValues)
+      useRecordStore
+        .getState()
+        .updateRecord(entityDefinitionId, entityInstanceId, { avatarUrl: stableUrl })
+      if (pendingAvatar.blobUrl) scheduleBlobRevoke(pendingAvatar.blobUrl)
     }
   } catch (error) {
+    // Field value save failed — rollback avatar.
+    if (pendingAvatar) {
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(
+        pendingAvatar.recordId as RecordId
+      )
+      useRecordStore.getState().updateRecord(entityDefinitionId, entityInstanceId, {
+        avatarUrl: pendingAvatar.priorAvatarUrl,
+      })
+      if (pendingAvatar.blobUrl) scheduleBlobRevoke(pendingAvatar.blobUrl, 0)
+    }
     toastError({
       title: 'Failed to attach uploaded files',
       description: error instanceof Error ? error.message : 'Unknown error',
     })
   } finally {
+    pendingAvatarByKey.delete(uploaderId)
     completionHandlers.delete(uploaderId)
   }
 }
@@ -180,7 +316,23 @@ interface UseFieldFileUploadReturn {
   }>
   uploadingFiles: UploadingFile[]
   isUploading: boolean
+  /**
+   * Whether the file picker can be opened. True for single-file fields even
+   * when a value exists (upload replaces). For multi-file fields, false when
+   * max files reached.
+   */
   canAddMore: boolean
+  /**
+   * Strict slot-availability flag for multi-file UI that needs to distinguish
+   * "at max, no more appends allowed" from "picker can open". Always false
+   * for single-file fields (they replace, they don't append).
+   */
+  canAppend: boolean
+  /**
+   * Number of files the user can currently select in one picker interaction.
+   * Multi-file: strict remaining slots. Single-file: always 1 (replaces
+   * existing value).
+   */
   remainingSlots: number
   openNativeFilePicker: () => void
   handleBrowseFilesSelected: (files: FileItem[]) => Promise<void>
@@ -361,27 +513,31 @@ export function useFieldFileUpload({
 
   const isUploading = uploadingFiles.length > 0
 
-  // Mutations for browse + remove flows
-  const addValue = api.fieldValue.add.useMutation()
+  // Mutation for explicit remove flow (removeFile export)
   const removeValue = api.fieldValue.remove.useMutation()
 
-  // Calculate slots
+  // Slot calculation.
+  // - Multi-file: strict slot math based on maxFiles.
+  // - Single-file: one conceptual slot, but it always "opens" because uploading
+  //   replaces the existing value (atomic DELETE+INSERT via fieldValue.set).
   const maxFiles = fileOptions.allowMultiple
     ? (fileOptions.maxFiles ?? Number.POSITIVE_INFINITY)
     : 1
   const currentCount = typedValues.length + uploadingFiles.length
   const remainingSlots = Math.max(0, maxFiles - currentCount)
-  const canAddMore = remainingSlots > 0
-
-  // Keep refs for module-level handler
-  const typedValuesRef = useRef(typedValues)
-  typedValuesRef.current = typedValues
+  const canAppend = fileOptions.allowMultiple && remainingSlots > 0
+  const canOpenPicker = fileOptions.allowMultiple ? canAppend : true
+  const canAddMore = canOpenPicker
+  // Slots to pass to native input / browse dialog. Single-file mode always
+  // allows 1 (replace); multi-file uses the strict remaining count.
+  const effectiveSlots = fileOptions.allowMultiple ? remainingSlots : 1
 
   /**
    * Open native file picker. Registers completion handler BEFORE opening dialog.
+   * For single-file fields, always opens — upload replaces any existing value.
    */
   const openNativeFilePicker = useCallback(async () => {
-    if (!canAddMore) return
+    if (!canOpenPicker) return
 
     try {
       // Create upload session in store
@@ -417,7 +573,7 @@ export function useFieldFileUpload({
       const input = document.createElement('input')
       input.type = 'file'
       if (acceptTypes) input.accept = acceptTypes
-      input.multiple = fileOptions.allowMultiple && remainingSlots > 1
+      input.multiple = fileOptions.allowMultiple && effectiveSlots > 1
       input.style.display = 'none'
       document.body.appendChild(input)
 
@@ -427,10 +583,23 @@ export function useFieldFileUpload({
 
         if (files.length === 0) return
 
+        // Optimistic avatar preview: show the locally-selected image instantly
+        // via a blob URL. `handleUploadCompletion` swaps to a stable download
+        // URL on server success, or rolls back on failure.
+        if (isAvatarField(recordId, fieldRef) && files[0]) {
+          const blobUrl = URL.createObjectURL(files[0])
+          const { priorAvatarUrl } = optimisticallyWriteAvatar(recordId, blobUrl)
+          pendingAvatarByKey.set(uploaderId, {
+            recordId,
+            priorAvatarUrl,
+            blobUrl,
+          })
+        }
+
         try {
           const storeNow = useUploadStore.getState()
           const addResult = await storeNow.addFilesWithValidation(files, uploaderId, {
-            maxFiles: remainingSlots,
+            maxFiles: effectiveSlots,
           })
           if (addResult.validationErrors.length > 0) {
             console.error('[useFieldFileUpload] validation errors:', addResult.validationErrors)
@@ -439,6 +608,16 @@ export function useFieldFileUpload({
           await storeNow.startUploadForSession(sessionId)
         } catch (err) {
           console.error('[useFieldFileUpload] upload error:', err)
+          // Upload failed to start — rollback optimistic avatar.
+          const pending = pendingAvatarByKey.get(uploaderId)
+          if (pending) {
+            const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId as RecordId)
+            useRecordStore.getState().updateRecord(entityDefinitionId, entityInstanceId, {
+              avatarUrl: pending.priorAvatarUrl,
+            })
+            if (pending.blobUrl) scheduleBlobRevoke(pending.blobUrl, 0)
+            pendingAvatarByKey.delete(uploaderId)
+          }
         }
       }
 
@@ -449,55 +628,46 @@ export function useFieldFileUpload({
         description: error instanceof Error ? error.message : 'Unknown error',
       })
     }
-  }, [canAddMore, uploaderId, fieldRef, recordId, storeKey, remainingSlots, fileOptions])
+  }, [canOpenPicker, uploaderId, fieldRef, recordId, storeKey, effectiveSlots, fileOptions])
 
   /**
-   * Handle files selected from FileSelectDialog.
+   * Handle files selected from FileSelectDialog. Routes through the shared
+   * pipeline — single-file fields atomically replace, multi-file fields append.
    */
   const handleBrowseFilesSelected = useCallback(
     async (items: FileItem[]) => {
       if (items.length === 0) return
 
+      const filesToApply = fileOptions.allowMultiple ? items : [items[0]!]
+      const refs = filesToApply.map((item) => `file:${item.id}`)
+
+      // Optimistic avatar preview — use the download URL immediately.
+      let avatarRollback: (() => void) | null = null
+      if (isAvatarField(recordId, fieldRef) && refs[0]) {
+        const stableUrl = getFileRefDownloadUrl(refs[0] as FileRef)
+        avatarRollback = optimisticallyWriteAvatar(recordId, stableUrl).rollback
+      }
+
       try {
-        const newTypedValues: TypedFieldValue[] = []
-
-        // For single file mode, remove existing files first
-        if (!fileOptions.allowMultiple && typedValuesRef.current.length > 0) {
-          for (const tv of typedValuesRef.current) {
-            await removeValue.mutateAsync({ valueId: tv.id })
-          }
-        }
-
-        const filesToAdd = fileOptions.allowMultiple ? items : [items[0]!]
-        for (const item of filesToAdd) {
-          const result = await addValue.mutateAsync({
+        await applyPendingFileRefs(
+          {
             recordId,
-            fieldId: fieldRef,
-            fieldType: 'FILE',
-            value: { type: 'json', value: { ref: `file:${item.id}` } },
-          })
-          newTypedValues.push(result as TypedFieldValue)
-        }
-
-        // Update store directly
-        const fvStore = useFieldValueStore.getState()
-        if (fileOptions.allowMultiple) {
-          const current = fvStore.values[storeKey]
-          const currentArr = Array.isArray(current) ? [...current] : current ? [current] : []
-          fvStore.setValue(storeKey, [...currentArr, ...newTypedValues] as TypedFieldValue[])
-        } else {
-          fvStore.setValue(storeKey, newTypedValues)
-        }
-
+            fieldRef,
+            storeKey,
+            allowMultiple: fileOptions.allowMultiple,
+          },
+          refs
+        )
         setBrowseOpen(false)
       } catch (error) {
+        avatarRollback?.()
         toastError({
           title: 'Failed to attach files',
           description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
     },
-    [recordId, fieldRef, storeKey, fileOptions.allowMultiple, addValue, removeValue]
+    [recordId, fieldRef, storeKey, fileOptions.allowMultiple]
   )
 
   /**
@@ -505,6 +675,14 @@ export function useFieldFileUpload({
    */
   const removeFile = useCallback(
     async (fieldValueId: string) => {
+      // Optimistic avatar clear — if this field is the avatar, clear the
+      // cached record's avatarUrl so the UI updates instantly. Rolls back
+      // on mutation failure.
+      let avatarRollback: (() => void) | null = null
+      if (isAvatarField(recordId, fieldRef)) {
+        avatarRollback = optimisticallyWriteAvatar(recordId, undefined).rollback
+      }
+
       try {
         await removeValue.mutateAsync({ valueId: fieldValueId })
 
@@ -515,13 +693,14 @@ export function useFieldFileUpload({
         const updated = (currentArr as TypedFieldValue[]).filter((tv) => tv.id !== fieldValueId)
         fvStore.setValue(storeKey, updated)
       } catch (error) {
+        avatarRollback?.()
         toastError({
           title: 'Remove failed',
           description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
     },
-    [removeValue, storeKey]
+    [removeValue, recordId, fieldRef, storeKey]
   )
 
   return {
@@ -529,7 +708,8 @@ export function useFieldFileUpload({
     uploadingFiles,
     isUploading,
     canAddMore,
-    remainingSlots,
+    canAppend,
+    remainingSlots: effectiveSlots,
     openNativeFilePicker,
     handleBrowseFilesSelected,
     removeFile,

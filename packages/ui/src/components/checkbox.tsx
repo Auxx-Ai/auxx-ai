@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { Check } from 'lucide-react'
+import { Check, Minus } from 'lucide-react'
 import { Checkbox as CheckboxPrimitive } from 'radix-ui'
 import type * as React from 'react'
 
@@ -10,12 +10,16 @@ function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxP
     <CheckboxPrimitive.Root
       data-slot='checkbox'
       className={cn(
-        'peer h-4 w-4 shrink-0 rounded-sm border border-primary-300 shadow-sm focus-visible:outline-hidden focus:ring-0 focus-visible:ring-1 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-info data-[state=checked]:text-primary-foreground data-[state=checked]:dark:text-white data-[state=checked]:border-blue-800',
+        'peer h-4 w-4 shrink-0 rounded-sm border border-primary-300 shadow-sm focus-visible:outline-hidden focus:ring-0 focus-visible:ring-1 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-info data-[state=checked]:text-primary-foreground data-[state=checked]:dark:text-white data-[state=checked]:border-blue-800 data-[state=indeterminate]:bg-info data-[state=indeterminate]:text-primary-foreground data-[state=indeterminate]:dark:text-white data-[state=indeterminate]:border-blue-800',
         className
       )}
       {...props}>
       <CheckboxPrimitive.Indicator className={cn('flex items-center justify-center text-current')}>
-        <Check className='size-2.5!' strokeWidth={4} />
+        {props.checked === 'indeterminate' ? (
+          <Minus className='size-2.5!' strokeWidth={4} />
+        ) : (
+          <Check className='size-2.5!' strokeWidth={4} />
+        )}
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   )

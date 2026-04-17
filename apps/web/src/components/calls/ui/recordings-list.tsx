@@ -51,7 +51,6 @@ function RecordingsListContent() {
       {
         label: 'Cancel Selected',
         icon: StopCircle,
-        variant: 'destructive' as const,
         action: (rows: Recording[]) => handleBulkCancel(rows.map((r) => r.id)),
       },
       {
