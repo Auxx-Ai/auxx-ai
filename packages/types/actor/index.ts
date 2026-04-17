@@ -10,14 +10,24 @@
  */
 export type ActorId = string & { readonly __brand: 'ActorId' }
 
-/** Actor type discriminator */
-export type ActorType = 'user' | 'group'
+/**
+ * Type discriminator for ActorId prefix.
+ * System users share the `user:` ID prefix since they are stored in the User table.
+ */
+export type ActorIdType = 'user' | 'group'
+
+/**
+ * Type discriminator for resolved Actor objects.
+ * Widened with `'system'` so callers can distinguish automated/system actors from real users.
+ * The ActorId format stays `user:<id>` — only the resolved `.type` field differs.
+ */
+export type ActorType = 'user' | 'group' | 'system'
 
 /**
  * Parse ActorId into its components.
  * @throws Error if ActorId is malformed
  */
-export function parseActorId(actorId: ActorId): { type: ActorType; id: string } {
+export function parseActorId(actorId: ActorId): { type: ActorIdType; id: string } {
   if (!actorId) {
     throw new Error(`Invalid ActorId: ${actorId}`)
   }
@@ -27,7 +37,7 @@ export function parseActorId(actorId: ActorId): { type: ActorType; id: string } 
     throw new Error(`Invalid ActorId (missing colon): ${actorId}`)
   }
 
-  const type = actorId.slice(0, colonIndex) as ActorType
+  const type = actorId.slice(0, colonIndex) as ActorIdType
   const id = actorId.slice(colonIndex + 1)
 
   if (!type || !id || !['user', 'group'].includes(type)) {
@@ -40,7 +50,7 @@ export function parseActorId(actorId: ActorId): { type: ActorType; id: string } 
 /**
  * Create ActorId from components.
  */
-export function toActorId(type: ActorType, id: string): ActorId {
+export function toActorId(type: ActorIdType, id: string): ActorId {
   return `${type}:${id}` as ActorId
 }
 
@@ -63,7 +73,7 @@ export function getActorRawId(actorId: ActorId): string {
 /**
  * Get the type from an ActorId.
  */
-export function getActorType(actorId: ActorId): ActorType {
+export function getActorType(actorId: ActorId): ActorIdType {
   return parseActorId(actorId).type
 }
 
@@ -103,8 +113,16 @@ export interface GroupActor extends BaseActor {
   visibility: 'public' | 'private'
 }
 
+/**
+ * System actor — represents an organization's automated/AI user.
+ * ActorId still uses the `user:<id>` prefix for storage compatibility.
+ */
+export interface SystemActor extends BaseActor {
+  type: 'system'
+}
+
 /** Union type for any actor */
-export type Actor = UserActor | GroupActor
+export type Actor = UserActor | GroupActor | SystemActor
 
 // ============================================================================
 // Actor Context (for services)
@@ -134,4 +152,11 @@ export function isUserActor(actor: Actor): actor is UserActor {
  */
 export function isGroupActor(actor: Actor): actor is GroupActor {
   return actor.type === 'group'
+}
+
+/**
+ * Check if an actor is a system actor.
+ */
+export function isSystemActor(actor: Actor): actor is SystemActor {
+  return actor.type === 'system'
 }

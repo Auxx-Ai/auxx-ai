@@ -1,7 +1,7 @@
 // packages/types/actor/schema.ts
 
 import { z } from 'zod'
-import type { ActorId, ActorType } from './index'
+import type { ActorId, ActorIdType } from './index'
 
 /**
  * Zod schema for ActorId validation.
@@ -18,6 +18,6 @@ export const actorIdSchema = z.string().refine(
 ) as unknown as z.ZodType<ActorId>
 
 /**
- * Zod schema for ActorType.
+ * Zod schema for ActorIdType (user/group — system users share the `user:` prefix).
  */
-export const actorTypeSchema = z.enum(['user', 'group']) as unknown as z.ZodType<ActorType>
+export const actorTypeSchema = z.enum(['user', 'group']) as unknown as z.ZodType<ActorIdType>

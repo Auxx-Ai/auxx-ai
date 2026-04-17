@@ -127,7 +127,7 @@ export class SystemUserService {
         const [newUser] = await tx
           .insert(schema.User)
           .values({
-            name: `${organizationName || 'Organization'} AI Assistant`,
+            name: 'Auxx.ai',
             email: null,
             emailVerified: false,
             completedOnboarding: true,
