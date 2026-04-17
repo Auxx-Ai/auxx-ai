@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.128](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.127...auxx-v0.1.128) (2026-04-17)
+
+
+### Features
+
+* add company enrichment fields and related event handling ([#435](https://github.com/Auxx-Ai/auxx-ai/issues/435)) ([ba4e9e7](https://github.com/Auxx-Ai/auxx-ai/commit/ba4e9e7fd17225681209e5ba3af86e3eaa99a003))
+
 ## [0.1.127](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.126...auxx-v0.1.127) (2026-04-17)
 
 
