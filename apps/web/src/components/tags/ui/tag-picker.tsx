@@ -48,6 +48,12 @@ export interface TagPickerProps {
   onOpenChange?: (open: boolean) => void
   /** Selected tag IDs or RecordIds */
   selectedTags: string[]
+  /**
+   * Tag IDs or RecordIds to render in an indeterminate (half-checked) state.
+   * Used in bulk contexts where a tag is applied to some but not all selected items.
+   * Clicking an indeterminate tag promotes it to fully selected via the normal toggle flow.
+   */
+  indeterminateTags?: string[]
   /** Callback when selection changes - returns tag IDs or RecordIds based on tagEntityDefinitionId prop */
   onChange: (selectedTags: string[]) => void
   allowMultiple?: boolean
@@ -90,6 +96,7 @@ function tagNodeToTag(node: TagNode): Tag {
 function TagList({
   tags,
   selectedTags,
+  indeterminateTags,
   onlyLeafSelection,
   toggleTag,
   selectedIndex,
@@ -97,6 +104,7 @@ function TagList({
 }: {
   tags: Tag[]
   selectedTags: string[]
+  indeterminateTags: string[]
   onlyLeafSelection: boolean
   toggleTag: (tag: Tag) => void
   selectedIndex: number
@@ -108,6 +116,7 @@ function TagList({
         {tags.map((tag, index) => {
           if (!tag) return null
           const isSelected = selectedTags.includes(tag.id)
+          const isIndeterminate = !isSelected && indeterminateTags.includes(tag.id)
           const hasChildren = (tag.children?.length || 0) > 0
           const isSelectable = !onlyLeafSelection || !hasChildren
           const isKeyboardSelected = enableKeyboardNavigation && selectedIndex === index
@@ -137,7 +146,7 @@ function TagList({
               </div>
               {isSelectable && (
                 <Checkbox
-                  checked={isSelected}
+                  checked={isSelected ? true : isIndeterminate ? 'indeterminate' : false}
                   aria-label={`Select ${tag.title}`}
                   className='ml-auto pointer-events-none'
                 />
@@ -155,6 +164,7 @@ function TagList({
  */
 function TagPickerContent({
   selectedTags,
+  indeterminateTags,
   onChange,
   onOpenChange,
   allowMultiple,
@@ -167,6 +177,7 @@ function TagPickerContent({
   tagEntityDefinitionId,
 }: {
   selectedTags: string[]
+  indeterminateTags: string[]
   onChange: (selectedTags: string[]) => void
   onOpenChange: (open: boolean) => void
   allowMultiple: boolean
@@ -219,6 +230,13 @@ function TagPickerContent({
   const selectedTagIds = useMemo(() => {
     return selectedTags.map(extractTagId)
   }, [selectedTags, extractTagId])
+
+  /**
+   * Get indeterminate tag IDs (extracted from RecordIds if needed).
+   */
+  const indeterminateTagIds = useMemo(() => {
+    return indeterminateTags.map(extractTagId)
+  }, [indeterminateTags, extractTagId])
 
   /**
    * Find children of a tag by traversing the hierarchy tree
@@ -382,6 +400,7 @@ function TagPickerContent({
           <TagList
             tags={tagsToDisplay}
             selectedTags={selectedTagIds}
+            indeterminateTags={indeterminateTagIds}
             onlyLeafSelection={onlyLeafSelection}
             toggleTag={toggleTag}
             selectedIndex={selectedIndex}
@@ -400,6 +419,7 @@ export function TagPicker({
   open,
   onOpenChange,
   selectedTags: selectedTagsProp = [],
+  indeterminateTags: indeterminateTagsProp,
   onChange,
   allowMultiple = true,
   onlyLeafSelection = true,
@@ -411,6 +431,7 @@ export function TagPicker({
   ...props
 }: TagPickerProps) {
   const selectedTags = selectedTagsProp ?? []
+  const indeterminateTags = indeterminateTagsProp ?? []
   const [isOpen, setIsOpen] = useState(open ?? false)
   const [search, setSearch] = useState('')
   const contentRef = useRef<HTMLDivElement>(null)
@@ -476,6 +497,7 @@ export function TagPicker({
         <CommandNavigation<TagNavigationItem> isGlobalSearch={!!search}>
           <TagPickerContent
             selectedTags={selectedTags}
+            indeterminateTags={indeterminateTags}
             onChange={onChange}
             onOpenChange={handleOpenChange}
             allowMultiple={allowMultiple}

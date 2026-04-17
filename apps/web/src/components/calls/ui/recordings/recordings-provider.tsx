@@ -67,25 +67,8 @@ export function RecordingsProvider({ children }: { children: ReactNode }) {
     ? MOCK_RECORDINGS
     : (data?.pages.flatMap((page) => page.items) ?? [])
 
-  const cancelRecording = api.recording.cancel.useMutation({
-    onSuccess: () => {
-      toastSuccess({ title: 'Recording cancelled' })
-      refetch()
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to cancel recording', description: error.message })
-    },
-  })
-
-  const deleteRecording = api.recording.delete.useMutation({
-    onSuccess: () => {
-      toastSuccess({ title: 'Recording deleted' })
-      refetch()
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to delete recording', description: error.message })
-    },
-  })
+  const cancelRecording = api.recording.cancel.useMutation()
+  const deleteRecording = api.recording.delete.useMutation()
 
   const handleCancelRun = useCallback(
     async (recording: Recording) => {
@@ -101,9 +84,18 @@ export function RecordingsProvider({ children }: { children: ReactNode }) {
         destructive: true,
       })
       if (!confirmed) return
-      await cancelRecording.mutateAsync({ id: recording.id }).catch(() => {})
+      try {
+        await cancelRecording.mutateAsync({ id: recording.id })
+        toastSuccess({ title: 'Recording cancelled' })
+        refetch()
+      } catch (error) {
+        toastError({
+          title: 'Failed to cancel recording',
+          description: error instanceof Error ? error.message : String(error),
+        })
+      }
     },
-    [confirm, cancelRecording]
+    [confirm, cancelRecording, refetch]
   )
 
   const handleDeleteRun = useCallback(
@@ -120,9 +112,18 @@ export function RecordingsProvider({ children }: { children: ReactNode }) {
         destructive: true,
       })
       if (!confirmed) return
-      await deleteRecording.mutateAsync({ id: recording.id }).catch(() => {})
+      try {
+        await deleteRecording.mutateAsync({ id: recording.id })
+        toastSuccess({ title: 'Recording deleted' })
+        refetch()
+      } catch (error) {
+        toastError({
+          title: 'Failed to delete recording',
+          description: error instanceof Error ? error.message : String(error),
+        })
+      }
     },
-    [confirm, deleteRecording]
+    [confirm, deleteRecording, refetch]
   )
 
   const handleBulkCancel = useCallback(
@@ -143,11 +144,20 @@ export function RecordingsProvider({ children }: { children: ReactNode }) {
         destructive: true,
       })
       if (!confirmed) return
-      for (const recording of targets) {
-        await cancelRecording.mutateAsync({ id: recording.id }).catch(() => {})
+      const results = await Promise.allSettled(
+        targets.map((recording) => cancelRecording.mutateAsync({ id: recording.id }))
+      )
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.length - succeeded
+      if (succeeded > 0) {
+        toastSuccess({ title: `Cancelled ${succeeded} recording${succeeded === 1 ? '' : 's'}` })
       }
+      if (failed > 0) {
+        toastError({ title: `Failed to cancel ${failed} recording${failed === 1 ? '' : 's'}` })
+      }
+      refetch()
     },
-    [confirm, items, cancelRecording]
+    [confirm, items, cancelRecording, refetch]
   )
 
   const handleBulkDelete = useCallback(
@@ -168,11 +178,20 @@ export function RecordingsProvider({ children }: { children: ReactNode }) {
         destructive: true,
       })
       if (!confirmed) return
-      for (const recording of targets) {
-        await deleteRecording.mutateAsync({ id: recording.id }).catch(() => {})
+      const results = await Promise.allSettled(
+        targets.map((recording) => deleteRecording.mutateAsync({ id: recording.id }))
+      )
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.length - succeeded
+      if (succeeded > 0) {
+        toastSuccess({ title: `Deleted ${succeeded} recording${succeeded === 1 ? '' : 's'}` })
       }
+      if (failed > 0) {
+        toastError({ title: `Failed to delete ${failed} recording${failed === 1 ? '' : 's'}` })
+      }
+      refetch()
     },
-    [confirm, items, deleteRecording]
+    [confirm, items, deleteRecording, refetch]
   )
 
   const handleExport = useCallback((rows: Recording[]) => {

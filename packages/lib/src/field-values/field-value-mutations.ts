@@ -9,7 +9,12 @@ import {
   insertFieldValue,
   updateFieldValue,
 } from '@auxx/services'
-import { isMultiValueFieldType, type TypedFieldValue, type TypedFieldValueInput } from '@auxx/types'
+import {
+  isArrayReturnFieldType,
+  isMultiValueFieldType,
+  type TypedFieldValue,
+  type TypedFieldValueInput,
+} from '@auxx/types'
 import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
@@ -842,10 +847,16 @@ export async function setValueWithBuiltIn(
   }
 
   // Publish realtime sync event (sync mutation — exclude originator)
-  // Gated on publishEvents so setBulkValues can batch-publish instead
+  // Gated on publishEvents so setBulkValues can batch-publish instead.
+  // Shape depends on field type: array-return fields (FILE, TAGS, MULTI_SELECT,
+  // RELATIONSHIP, multi-ACTOR) always publish arrays so subscribers can write
+  // directly to the store without guessing. Single-value fields publish the
+  // single value.
   if (publishEvents && result.length > 0) {
     const key = buildFieldValueKey(recordId, fieldId as FieldId)
-    const storeValue = result.length === 1 ? result[0] : result
+    const fieldType = field.type as FieldType
+    const fieldOptions = field.options as { actor?: { multiple?: boolean } } | undefined
+    const storeValue = isArrayReturnFieldType(fieldType, fieldOptions) ? result : result[0]
     publishFieldValueUpdates(
       getRealtimeService(),
       ctx.organizationId,
@@ -1139,7 +1150,8 @@ export async function setBulkValues(
 
   const count = results.filter((r) => r.status === 'fulfilled').length
 
-  // Batch publish realtime sync for all successful field value changes
+  // Batch publish realtime sync for all successful field value changes.
+  // Shape depends on field type: array-return fields always publish arrays.
   const entries: Array<{ key: ReturnType<typeof buildFieldValueKey>; value: unknown }> = []
   for (let i = 0; i < results.length; i++) {
     const result = results[i]
@@ -1148,9 +1160,13 @@ export async function setBulkValues(
     for (const fieldResult of result.value) {
       if (fieldResult.state !== 'complete' || fieldResult.values.length === 0) continue
       const key = buildFieldValueKey(recordId, fieldResult.fieldId as FieldId)
+      const cachedField = ctx.fieldCache.get(fieldResult.fieldId)
+      const fieldType = cachedField?.type as FieldType | undefined
+      const fieldOptions = cachedField?.options as { actor?: { multiple?: boolean } } | undefined
+      const isArrayReturn = fieldType ? isArrayReturnFieldType(fieldType, fieldOptions) : false
       entries.push({
         key,
-        value: fieldResult.values.length === 1 ? fieldResult.values[0] : fieldResult.values,
+        value: isArrayReturn ? fieldResult.values : fieldResult.values[0],
       })
     }
   }

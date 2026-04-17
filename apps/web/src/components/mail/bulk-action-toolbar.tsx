@@ -2,20 +2,23 @@
 'use client'
 
 import type { ActorId } from '@auxx/types/actor'
+import type { RecordId } from '@auxx/types/resource'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { Archive, Ban, Play, Tags, Trash, Trash2, UserPlus } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useShallow } from 'zustand/shallow'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { TagPicker } from '~/components/pickers/tag-picker'
-import { toRecordId } from '~/components/resources'
+import { parseRecordId, toRecordId, useResource } from '~/components/resources'
 import { useThreadMutation } from '~/components/threads/hooks'
 import {
   useHasMultipleSelected,
   useSelectedThreadIds,
   useSelectionCount,
   useThreadSelectionStore,
+  useThreadStore,
   useViewMode,
 } from '~/components/threads/store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
@@ -50,13 +53,44 @@ export default function BulkActionToolbar() {
   // --- New unified mutation hook with optimistic updates ---
   const { updateBulk, removeBulk, isBulkUpdating, isBulkRemoving } = useThreadMutation()
 
-  // --- Keep tag mutation separate (not covered by unified endpoint) ---
-  const tagBulk = api.thread.tagBulk.useMutation({
-    onSuccess: () => {
-      toastSuccess({ title: `Tags updated for ${selectionCount} threads` })
-    },
-    onError: (err) => toastError({ title: 'Failed to update tags', description: err.message }),
-  })
+  // --- Tag mutation: tri-state with optimistic updates against ThreadStore ---
+  const tagBulk = api.thread.tagBulk.useMutation()
+  const getThread = useThreadStore((s) => s.getThread)
+  const updateThreadOptimistic = useThreadStore((s) => s.updateThreadOptimistic)
+  const confirmOptimistic = useThreadStore((s) => s.confirmOptimistic)
+  const rollbackOptimistic = useThreadStore((s) => s.rollbackOptimistic)
+  const { resource: tagResource } = useResource('tag')
+  const tagEntityDefId = tagResource?.entityDefinitionId ?? undefined
+
+  // Subscribe to tagIds of all selected threads — recomputes on any optimistic update.
+  const selectedThreadsTagIds = useThreadStore(
+    useShallow((s) =>
+      selectedThreadIds.map((id) => s.threads.get(id)?.tagIds ?? null).filter((t) => t !== null)
+    )
+  )
+
+  // Derive tri-state tag sets from selected threads' tagIds
+  const { fullySelectedTagIds, partiallySelectedTagIds } = useMemo(() => {
+    if (selectedThreadsTagIds.length === 0) {
+      return { fullySelectedTagIds: [] as string[], partiallySelectedTagIds: [] as string[] }
+    }
+
+    const counts = new Map<string, number>()
+    for (const tagIds of selectedThreadsTagIds) {
+      for (const recordId of tagIds) {
+        const { entityInstanceId } = parseRecordId(recordId)
+        counts.set(entityInstanceId, (counts.get(entityInstanceId) ?? 0) + 1)
+      }
+    }
+
+    const full: string[] = []
+    const partial: string[] = []
+    for (const [tagId, count] of counts) {
+      if (count === selectedThreadsTagIds.length) full.push(tagId)
+      else if (count > 0) partial.push(tagId)
+    }
+    return { fullySelectedTagIds: full, partiallySelectedTagIds: partial }
+  }, [selectedThreadsTagIds])
 
   // --- Handlers using optimistic updates ---
   const handleArchive = useCallback(() => {
@@ -146,13 +180,62 @@ export default function BulkActionToolbar() {
 
   // --- Handlers ---
   const handleTagChange = useCallback(
-    (tagIds: string[]) => {
-      const cleanTagIds = tagIds.filter(Boolean)
-      if (cleanTagIds.length > 0 && selectionCount > 0) {
-        tagBulk.mutate({ threadIds: selectedThreadIds, tagIds: cleanTagIds, operation: 'set' })
+    (nextFullyCheckedRaw: string[]) => {
+      if (selectionCount === 0 || !tagEntityDefId) return
+      // Picker returns RecordIds when tagEntityDefinitionId is resolved; strip to instance IDs.
+      const nextFullyChecked = nextFullyCheckedRaw
+        .filter(Boolean)
+        .map((id) => (id.includes(':') ? parseRecordId(id as RecordId).entityInstanceId : id))
+
+      const prevFull = new Set(fullySelectedTagIds)
+      const nextFull = new Set(nextFullyChecked)
+
+      const toAdd = [...nextFull].filter((id) => !prevFull.has(id))
+      const toRemove = [...prevFull].filter((id) => !nextFull.has(id))
+
+      if (toAdd.length === 0 && toRemove.length === 0) return
+
+      const fire = (tagIds: string[], operation: 'add' | 'remove') => {
+        if (tagIds.length === 0) return
+        const tagRecordIds = tagIds.map((id) => toRecordId(tagEntityDefId, id))
+
+        const versions = selectedThreadIds.map((threadId) => {
+          const current = getThread(threadId)?.tagIds ?? []
+          const next =
+            operation === 'add'
+              ? Array.from(new Set([...current, ...tagRecordIds]))
+              : current.filter((rid) => !tagRecordIds.includes(rid))
+          return { threadId, version: updateThreadOptimistic(threadId, { tagIds: next }) }
+        })
+
+        tagBulk.mutate(
+          { threadIds: selectedThreadIds, tagIds, operation },
+          {
+            onSuccess: () => {
+              versions.forEach(({ threadId, version }) => confirmOptimistic(threadId, version))
+            },
+            onError: (err) => {
+              versions.forEach(({ threadId, version }) => rollbackOptimistic(threadId, version))
+              toastError({ title: 'Failed to update tags', description: err.message })
+            },
+          }
+        )
       }
+
+      fire(toAdd, 'add')
+      fire(toRemove, 'remove')
     },
-    [selectionCount, selectedThreadIds, tagBulk]
+    [
+      selectionCount,
+      selectedThreadIds,
+      fullySelectedTagIds,
+      tagEntityDefId,
+      tagBulk,
+      getThread,
+      updateThreadOptimistic,
+      confirmOptimistic,
+      rollbackOptimistic,
+    ]
   )
 
   const handlePermanentlyDelete = useCallback(async () => {
@@ -212,7 +295,8 @@ export default function BulkActionToolbar() {
           component: TagPicker,
           props: {
             onChange: handleTagChange,
-            selectedTags: [],
+            selectedTags: fullySelectedTagIds,
+            indeterminateTags: partiallySelectedTagIds,
             allowMultiple: true,
             align: 'end',
           },
@@ -267,6 +351,8 @@ export default function BulkActionToolbar() {
       isBulkRemoving,
       tagBulk.isPending,
       disabled,
+      fullySelectedTagIds,
+      partiallySelectedTagIds,
     ]
   )
 
