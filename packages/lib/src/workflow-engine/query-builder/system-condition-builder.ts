@@ -97,7 +97,7 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
     resourceType: TableId
   ): SQL<unknown>[] | undefined {
     const fieldDef = RESOURCE_FIELD_REGISTRY[resourceType]?.[this.stripFieldPrefix(field)]
-    if (!fieldDef?.capabilities.sortable || !fieldDef.dbColumn) {
+    if (!fieldDef?.capabilities.sortable || fieldDef.capabilities.hidden || !fieldDef.dbColumn) {
       return undefined
     }
 
@@ -309,7 +309,7 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
     fieldId: string
   ): { columns: AnyColumn[]; type: string } | undefined {
     const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[this.stripFieldPrefix(fieldId)]
-    if (!field || !field.capabilities.filterable || !field.dbColumn) {
+    if (!field || !field.capabilities.filterable || field.capabilities.hidden || !field.dbColumn) {
       return undefined
     }
 

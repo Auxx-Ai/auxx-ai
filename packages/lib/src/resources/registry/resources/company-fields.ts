@@ -344,6 +344,56 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     description: 'Meetings associated with this company',
   },
 
+  enrichedAt: {
+    id: toFieldId('enrichedAt'),
+    key: 'enrichedAt',
+    label: 'Enriched At',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'company_enriched_at',
+    systemSortOrder: 'z8',
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: true,
+      configurable: false,
+      hidden: true,
+    },
+    description: 'When this company was last enriched from its website.',
+  },
+
+  enrichmentStatus: {
+    id: toFieldId('enrichmentStatus'),
+    key: 'enrichmentStatus',
+    label: 'Enrichment Status',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'company_enrichment_status',
+    systemSortOrder: 'z9',
+    nullable: true,
+    options: {
+      options: [
+        { label: 'Pending', value: 'pending', color: 'gray' },
+        { label: 'Enriched', value: 'enriched', color: 'green' },
+        { label: 'Failed', value: 'failed', color: 'red' },
+        { label: 'Skipped', value: 'skipped', color: 'amber' },
+      ],
+    },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: true,
+      configurable: false,
+      hidden: true,
+    },
+    description: 'Enrichment lifecycle marker.',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

@@ -71,7 +71,7 @@ export function useFilterFieldResolver({ nodeId, inputListValue }: UseFilterFiel
       const resource = useResourceStore.getState().resourceMap.get(itemVar.resourceId)
       if (resource) {
         const filterableFields = resource.fields
-          .filter((field) => field.capabilities.filterable) // Only filterable fields
+          .filter((field) => field.capabilities.filterable && !field.capabilities.hidden)
           .map(
             (field): FieldDefinition => ({
               id: toResourceFieldId(itemVar.resourceId!, field.key),

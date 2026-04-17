@@ -89,7 +89,10 @@ export function useSortFieldResolver({ nodeId, inputListValue }: UseSortFieldRes
         if (resource) {
           resource.fields
             .filter(
-              (subField) => subField.capabilities.sortable && SORTABLE_TYPES.includes(subField.type)
+              (subField) =>
+                subField.capabilities.sortable &&
+                !subField.capabilities.hidden &&
+                SORTABLE_TYPES.includes(subField.type)
             )
             .forEach((subField) => {
               result.push({
@@ -124,7 +127,10 @@ export function useSortFieldResolver({ nodeId, inputListValue }: UseSortFieldRes
         if (resource) {
           resource.fields
             .filter(
-              (subField) => subField.capabilities.sortable && SORTABLE_TYPES.includes(subField.type)
+              (subField) =>
+                subField.capabilities.sortable &&
+                !subField.capabilities.hidden &&
+                SORTABLE_TYPES.includes(subField.type)
             )
             .forEach((subField) => {
               result.push({

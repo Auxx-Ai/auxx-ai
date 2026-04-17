@@ -6,6 +6,7 @@ import {
   recalculatePartCostOnEntityChange,
 } from './triggers/bom-cost-triggers'
 import { explodeBomMovement } from './triggers/bom-movement-triggers'
+import { enrichCompanyOnCreate } from './triggers/company-triggers'
 import { recalculatePartQoH, recalculateStockStatus } from './triggers/inventory-triggers'
 import { clearOtherPreferred } from './triggers/vendor-part-triggers'
 
@@ -33,4 +34,7 @@ export function registerAllTriggers(): void {
 
   // Stock status trigger — fire when reorder point changes
   registerFieldTriggers('part_reorder_point', [recalculateStockStatus])
+
+  // Company enrichment — fetch website on company create to fill in name, notes, logo
+  registerEntityTriggers('companies', [enrichCompanyOnCreate])
 }

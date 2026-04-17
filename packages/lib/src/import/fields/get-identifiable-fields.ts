@@ -20,6 +20,8 @@ const IDENTIFIER_FIELD_KEYS = new Set(['id', 'externalId'])
 export function getIdentifiableFields(resource: Resource): ImportableField[] {
   return resource.fields
     .filter((field) => {
+      // Hidden fields are invisible to users — never offer them as identifiers
+      if (field.capabilities.hidden) return false
       // Must be filterable for lookups
       if (!field.capabilities.filterable) return false
       // Skip relation fields (except has_one which could be unique)

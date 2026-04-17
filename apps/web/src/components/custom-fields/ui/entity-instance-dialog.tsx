@@ -91,7 +91,10 @@ export function EntityInstanceDialog({
   const allEditableFields = useMemo(() => {
     if (!resource) return []
     return resource.fields
-      .filter((f): f is typeof f & { id: string } => f.capabilities?.creatable !== false && !!f.id)
+      .filter(
+        (f): f is typeof f & { id: string } =>
+          f.capabilities?.creatable !== false && !f.capabilities?.hidden && !!f.id
+      )
       .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
   }, [resource])
 

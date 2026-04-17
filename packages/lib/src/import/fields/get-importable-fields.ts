@@ -63,9 +63,11 @@ export function getImportableFields(
     fields.push(...identifierFields)
   }
 
-  // 2. Add creatable scalar fields
+  // 2. Add creatable scalar fields (excluding hidden system fields)
   const scalarFields = resource.fields
-    .filter((field) => field.capabilities.creatable && !field.relationship)
+    .filter(
+      (field) => field.capabilities.creatable && !field.capabilities.hidden && !field.relationship
+    )
     .map((field) => {
       const isCustomField = !field.isSystem
       return {
@@ -82,10 +84,12 @@ export function getImportableFields(
     })
   fields.push(...scalarFields)
 
-  // 3. Add relationship fields if requested
+  // 3. Add relationship fields if requested (excluding hidden system fields)
   if (includeRelationships) {
     const relationFields = resource.fields
-      .filter((field) => field.capabilities.creatable && field.relationship)
+      .filter(
+        (field) => field.capabilities.creatable && !field.capabilities.hidden && field.relationship
+      )
       .map((field) => {
         const isCustomField = !field.isSystem
         return {
@@ -118,6 +122,9 @@ export function getImportableFields(
  */
 export function getRequiredFields(resource: Resource): string[] {
   return resource.fields
-    .filter((field) => field.capabilities.required && field.capabilities.creatable)
+    .filter(
+      (field) =>
+        field.capabilities.required && field.capabilities.creatable && !field.capabilities.hidden
+    )
     .map((field) => getFieldOutputKey(field))
 }

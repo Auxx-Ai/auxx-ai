@@ -65,6 +65,8 @@ export type Events =
   | 'vendor_part:deleted'
   | 'subpart:created'
   | 'subpart:deleted'
+  | 'company:created'
+  | 'company:deleted'
   | 'field:trigger'
   | 'integration:connected'
   | 'integration:connection_failed'
@@ -643,6 +645,30 @@ export type SubpartDeletedEvent = AuxxEventGeneric<
   }
 >
 
+// Company Events
+export type CompanyCreatedEvent = AuxxEventGeneric<
+  'company:created',
+  {
+    recordId: RecordId
+    entityDefinitionId: string
+    entitySlug: string
+    organizationId: string
+    userId: string
+    eventData: Record<string, unknown>
+  }
+>
+export type CompanyDeletedEvent = AuxxEventGeneric<
+  'company:deleted',
+  {
+    recordId: RecordId
+    entityDefinitionId: string
+    entitySlug: string
+    organizationId: string
+    userId: string
+    eventData: Record<string, unknown>
+  }
+>
+
 // Field Trigger Event — fired when a field with a registered trigger changes
 export type FieldTriggerJobEvent = AuxxEventGeneric<
   'field:trigger',
@@ -813,6 +839,8 @@ export type AuxxEvent =
   | VendorPartDeletedEvent
   | SubpartCreatedEvent
   | SubpartDeletedEvent
+  | CompanyCreatedEvent
+  | CompanyDeletedEvent
   | FieldTriggerJobEvent
   | IntegrationConnectedEvent
   | IntegrationConnectionFailedEvent
@@ -882,6 +910,8 @@ export interface IEventsHandlers {
   'vendor_part:deleted': EventHandler<VendorPartDeletedEvent>[]
   'subpart:created': EventHandler<SubpartCreatedEvent>[]
   'subpart:deleted': EventHandler<SubpartDeletedEvent>[]
+  'company:created': EventHandler<CompanyCreatedEvent>[]
+  'company:deleted': EventHandler<CompanyDeletedEvent>[]
   'field:trigger': EventHandler<FieldTriggerJobEvent>[]
   'integration:connected': EventHandler<IntegrationConnectedEvent>[]
   'integration:connection_failed': EventHandler<IntegrationConnectionFailedEvent>[]
