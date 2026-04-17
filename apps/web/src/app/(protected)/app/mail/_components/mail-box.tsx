@@ -34,6 +34,7 @@ import {
   useDeferredValue, // Import for optimizing search input
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
@@ -166,11 +167,13 @@ function MailboxInner({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  // Layout mode: 'split' (two-panel) or 'list' (compact single-panel), persisted in localStorage
-  const [layoutMode, setLayoutMode] = useState<'split' | 'list'>(() => {
+  // Layout mode: 'split' (two-panel) or 'list' (compact single-panel), persisted in localStorage.
+  // Initialized to default so SSR and first client render agree — localStorage is read post-mount.
+  const [layoutMode, setLayoutMode] = useState<'split' | 'list'>('split')
+  useEffect(() => {
     const stored = safeLocalStorage.get('mail-layout-mode')
-    return stored === 'list' ? 'list' : 'split'
-  })
+    if (stored === 'list') setLayoutMode('list')
+  }, [])
   const handleLayoutModeChange = useCallback((mode: string) => {
     const value = mode as 'split' | 'list'
     setLayoutMode(value)
@@ -230,29 +233,17 @@ function MailboxInner({
   // State to track if the thread list is currently fetching/loading data
   const [isListLoading, setIsListLoading] = useState(false)
 
-  console.log('[thread-load] MailboxInner render', {
-    tid,
-    storeActiveThreadId: useThreadSelectionStore.getState().activeThreadId,
-    selectedThreadId,
-  })
-
   // Sync URL ↔ Zustand on mount (restore active thread after reload or navigation).
   // We deliberately do NOT seed selectedThreadIds here — the checkbox selection is
   // a separate, user-driven concept from "which thread is open".
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect
   useEffect(() => {
     const store = useThreadSelectionStore.getState()
-    console.log('[thread-load] MailboxInner mount effect', {
-      tid,
-      storeActiveThreadId: store.activeThreadId,
-    })
     if (tid) {
       if (!store.activeThreadId) {
-        console.log('[thread-load] → setActiveThread(tid)', tid)
         store.setActiveThread(tid)
       }
     } else if (store.activeThreadId) {
-      console.log('[thread-load] → setTid(store.activeThreadId)', store.activeThreadId)
       void setTid(store.activeThreadId)
     }
   }, [])
@@ -271,10 +262,19 @@ function MailboxInner({
     return () => setKopilotContext(null)
   }, [kopilotEnabled, activeThreadId, setKopilotContext])
 
+  // Track the previous activeThreadId so we only clear the URL when we
+  // actually transitioned from truthy → null (an explicit deselect). On the
+  // initial mount activeThreadId is null from the store, but the URL may still
+  // hold a tid awaiting the URL→store sync above — wiping it here caused a
+  // brief empty-tid round-trip.
+  const prevActiveThreadIdRef = useRef(activeThreadId)
   useEffect(() => {
+    const prev = prevActiveThreadIdRef.current
+    prevActiveThreadIdRef.current = activeThreadId
+
     if (activeThreadId) {
       void setTid(activeThreadId)
-    } else {
+    } else if (prev) {
       const { selectedThreadIds } = useThreadSelectionStore.getState()
       if (selectedThreadIds.length === 0) {
         void setTid('')
@@ -402,11 +402,15 @@ function MailboxInner({
     [] // No dependencies needed if only setting state
   )
 
-  // Thread list width in pixels, persisted to localStorage
-  const [threadListWidth, setThreadListWidth] = useState(() => {
+  // Thread list width in pixels, persisted to localStorage.
+  // Initialized to default so SSR and first client render agree — localStorage is read post-mount,
+  // otherwise the server HTML ships with width:350 and the style attribute sticks after hydration
+  // even though state updates to the stored value.
+  const [threadListWidth, setThreadListWidth] = useState(350)
+  useEffect(() => {
     const stored = safeLocalStorage.get('mail-thread-list-width')
-    return stored ? Number(stored) : 350
-  })
+    if (stored) setThreadListWidth(Number(stored))
+  }, [])
   const handleThreadListResize = useCallback((width: number) => {
     setThreadListWidth(width)
     safeLocalStorage.set('mail-thread-list-width', String(width))
@@ -624,7 +628,10 @@ function MailboxInner({
                 </div>
               )}
               <div className='flex-1 overflow-hidden'>
-                <ThreadDisplay centered={layoutMode === 'list'} />
+                <ThreadDisplay
+                  centered={layoutMode === 'list'}
+                  expectedThreadId={selectedThreadId}
+                />
               </div>
             </div>
           </div>

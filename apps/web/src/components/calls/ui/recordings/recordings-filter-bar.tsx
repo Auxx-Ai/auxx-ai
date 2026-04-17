@@ -55,21 +55,22 @@ export function RecordingsFilterBar({ filter, setFilter }: RecordingsFilterBarPr
         triggerClassName='sm:w-[200px]'
         triggerVariant='ghost'
       />
-
-      <Select value={filter.status} onValueChange={handleStatusChange}>
-        <SelectTrigger
-          size='sm'
-          className='w-[150px] bg-transparent hover:bg-accent hover:text-accent-foreground border-0'>
-          <SelectValue placeholder='Status' />
-        </SelectTrigger>
-        <SelectContent>
-          {statusOptions.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className='hidden sm:block'>
+        <Select value={filter.status} onValueChange={handleStatusChange}>
+          <SelectTrigger
+            size='sm'
+            className='w-[150px] bg-transparent hover:bg-accent hover:text-accent-foreground border-0'>
+            <SelectValue placeholder='Status' />
+          </SelectTrigger>
+          <SelectContent>
+            {statusOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   )
 }
