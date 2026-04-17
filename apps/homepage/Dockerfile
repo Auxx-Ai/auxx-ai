@@ -31,6 +31,8 @@ ARG GIT_SHA
 ARG APP_VERSION
 ARG BUILD_TIME
 ARG DOMAIN=__RUNTIME_DOMAIN__
+ARG POSTHOG_KEY
+ARG POSTHOG_HOST
 
 WORKDIR /app
 
@@ -53,6 +55,8 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   APP_VERSION=${APP_VERSION} \
   GIT_SHA=${GIT_SHA} \
   BUILD_TIME=${BUILD_TIME} \
+  POSTHOG_KEY=${POSTHOG_KEY} \
+  POSTHOG_HOST=${POSTHOG_HOST} \
   pnpm turbo build --filter="${PROJECT}..."
 
 # Prune dev dependencies
