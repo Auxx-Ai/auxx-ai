@@ -15,8 +15,10 @@ export const userProfileProvider: CacheProvider<DehydratedUser> = {
     const [user] = await db.select().from(schema.User).where(eq(schema.User.id, userId)).limit(1)
 
     if (!user) {
-      logger.warn(`User not found in DB, returning null`, { userId })
-      return null as unknown as DehydratedUser
+      // Throw rather than return null: a null result would be cached and
+      // crash every subsequent dehydration call. Throwing lets callers (cache
+      // invalidation try/catch, dehydration error boundary) recover instead.
+      throw new Error(`User not found in DB for userId: ${userId}`)
     }
 
     // Fetch memberships

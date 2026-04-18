@@ -24,7 +24,7 @@
 
   <ellipse cx="600" cy="337" rx="520" ry="340" fill="url(#bgGlow)" filter="url(#softBlur)" />
 
-  <g transform="translate(524 180) scale(2.25)">
+  <g transform="translate(523.5 261) scale(2.25)">
     <circle fill="#69b3fe" cx="34" cy="33.5" r="34"></circle>
     <path
       fill="#fff"
@@ -34,15 +34,4 @@
     <rect fill="#fff" x="33.93" y="47.06" width="13.68" height="13.79" rx="2.5" ry="2.5" />
   </g>
 
-  <text
-    x="600"
-    y="470"
-    text-anchor="middle"
-    class="handwriting"
-    font-size="96"
-    font-weight="400"
-    fill="#ffffff"
-    transform="rotate(-3 600 470)">
-    $2m raised
-  </text>
 </svg>

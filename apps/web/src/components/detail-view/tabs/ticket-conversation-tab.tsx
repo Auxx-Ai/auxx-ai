@@ -13,9 +13,8 @@ import { MailFilterProvider } from '~/components/mail/mail-filter-context'
 import { MailThreadItem } from '~/components/mail/mail-thread-item'
 import ThreadDetails from '~/components/mail/thread-details'
 import { ThreadProvider } from '~/components/mail/thread-provider'
-import { useTicketThreads } from '~/components/threads/hooks'
+import { useThreadMutation, useTicketThreads } from '~/components/threads/hooks'
 import type { ThreadMeta } from '~/components/threads/store'
-import { api } from '~/trpc/react'
 import type { DetailViewTabProps } from '../types'
 import { LinkThreadDialog } from './ticket-link-thread-dialog'
 import { NewThreadForTicketButton } from './ticket-new-thread-button'
@@ -149,9 +148,7 @@ function TicketThreadScroller({
   ticketId: string
   onRefresh: () => void
 }) {
-  const unlinkThread = api.thread.unlinkFromTicket.useMutation({
-    onSuccess: () => onRefresh(),
-  })
+  const { update } = useThreadMutation()
 
   const filterConditions: ConditionGroup[] = useMemo(() => [], [])
 
@@ -186,7 +183,10 @@ function TicketThreadScroller({
                   className='absolute top-1 right-1 opacity-0 group-hover/card:opacity-100 transition-opacity bg-background/80 hover:bg-destructive hover:text-destructive-foreground'
                   onClick={(e) => {
                     e.stopPropagation()
-                    unlinkThread.mutate({ threadId: thread.id })
+                    // Optimistic: thread-store flips ticketId=null immediately.
+                    // onRefresh re-runs the ticket-side list query to drop the thread.
+                    update(thread.id, { ticketId: null })
+                    onRefresh()
                   }}>
                   <X className='size-3' />
                 </Button>

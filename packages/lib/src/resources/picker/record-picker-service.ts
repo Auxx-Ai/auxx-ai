@@ -29,6 +29,25 @@ import type {
 const logger = createScopedLogger('record-picker-service')
 
 /**
+ * Resolve display fields for EntityInstance-backed picker items.
+ * If the primary displayName is missing, promote secondaryDisplayValue into
+ * the primary slot (and leave secondary empty). Falls back to the id when
+ * both are absent. Trims whitespace so blank strings count as missing.
+ */
+function resolveEntityDisplay(
+  displayName: string | null,
+  secondary: string | null,
+  id: string
+): { displayName: string; secondaryInfo: string | undefined } {
+  const name = displayName?.trim()
+  const sec = secondary?.trim()
+  if (name) {
+    return { displayName: name, secondaryInfo: sec || undefined }
+  }
+  return { displayName: sec || id, secondaryInfo: undefined }
+}
+
+/**
  * Generic record picker service
  * Works with any table defined in RESOURCE_TABLE_REGISTRY
  * Handles both direct and join-based organization scoping
@@ -582,11 +601,16 @@ export class RecordPickerService {
       updatedAt: string
     }
   ): RecordPickerItem {
+    const { displayName, secondaryInfo } = resolveEntityDisplay(
+      instance.displayName,
+      instance.secondaryDisplayValue,
+      instance.id
+    )
     return {
       id: instance.id,
       recordId: toRecordId(resource.id, instance.id),
-      displayName: instance.displayName || instance.id,
-      secondaryInfo: instance.secondaryDisplayValue || undefined,
+      displayName,
+      secondaryInfo,
       avatarUrl: instance.avatarUrl || undefined,
       data: instance,
       createdAt: instance.createdAt,
@@ -849,21 +873,28 @@ export class RecordPickerService {
     }
 
     // Transform to RecordPickerItem format
-    const items: RecordPickerItem[] = searchResults.map((row) => ({
-      id: row.id,
-      recordId: toRecordId(row.entityDefinitionId, row.id),
-      displayName: row.displayName || row.id,
-      secondaryInfo: row.secondaryDisplayValue || undefined,
-      avatarUrl: row.avatarUrl || undefined,
-      data: {
-        ...row,
-        entityType: row.entityType,
-        entityIcon: row.entityIcon,
-        entityColor: row.entityColor,
-      },
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }))
+    const items: RecordPickerItem[] = searchResults.map((row) => {
+      const { displayName, secondaryInfo } = resolveEntityDisplay(
+        row.displayName,
+        row.secondaryDisplayValue,
+        row.id
+      )
+      return {
+        id: row.id,
+        recordId: toRecordId(row.entityDefinitionId, row.id),
+        displayName,
+        secondaryInfo,
+        avatarUrl: row.avatarUrl || undefined,
+        data: {
+          ...row,
+          entityType: row.entityType,
+          entityIcon: row.entityIcon,
+          entityColor: row.entityColor,
+        },
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      }
+    })
 
     const processingTimeMs = performance.now() - startTime
 
@@ -962,21 +993,28 @@ export class RecordPickerService {
     }
 
     // Transform to RecordPickerItem format
-    const items: RecordPickerItem[] = results.map((row) => ({
-      id: row.id,
-      recordId: toRecordId(row.entityDefinitionId, row.id),
-      displayName: row.displayName || row.id,
-      secondaryInfo: row.secondaryDisplayValue || undefined,
-      avatarUrl: row.avatarUrl || undefined,
-      data: {
-        ...row,
-        entityType: row.entityType,
-        entityIcon: row.entityIcon,
-        entityColor: row.entityColor,
-      },
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }))
+    const items: RecordPickerItem[] = results.map((row) => {
+      const { displayName, secondaryInfo } = resolveEntityDisplay(
+        row.displayName,
+        row.secondaryDisplayValue,
+        row.id
+      )
+      return {
+        id: row.id,
+        recordId: toRecordId(row.entityDefinitionId, row.id),
+        displayName,
+        secondaryInfo,
+        avatarUrl: row.avatarUrl || undefined,
+        data: {
+          ...row,
+          entityType: row.entityType,
+          entityIcon: row.entityIcon,
+          entityColor: row.entityColor,
+        },
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      }
+    })
 
     const processingTimeMs = performance.now() - startTime
 

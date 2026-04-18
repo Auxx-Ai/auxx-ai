@@ -53,11 +53,16 @@ export function TicketBadge({
     <div
       data-slot='record-badge'
       aria-busy={isLoading}
-      className={cn(recordBadgeVariants({ variant, size }), className)}>
+      className={cn(
+        recordBadgeVariants({ variant, size }),
+        isEmpty &&
+          'bg-transparent text-primary-500 ring-0 outline-1 outline-dotted outline-neutral-300 dark:bg-transparent dark:text-primary-500 dark:outline-primary-300',
+        className
+      )}>
       {showIcon && (
         <RecordIcon
-          iconId={resource?.icon || 'ticket'}
-          color={resource?.color || 'blue'}
+          iconId={isEmpty ? 'plus' : resource?.icon || 'ticket'}
+          color={isEmpty ? 'gray' : resource?.color || 'blue'}
           size={size === 'sm' ? 'xs' : 'xs'}
         />
       )}

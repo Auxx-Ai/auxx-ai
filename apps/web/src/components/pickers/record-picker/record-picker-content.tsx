@@ -75,6 +75,14 @@ export interface RecordPickerContentProps {
 
   /** External search value — hides internal CommandInput when provided */
   externalSearch?: string
+
+  /** RecordIds that should render in the Selected section even if not in the mount snapshot.
+   *  Use this for items added to `value` while the picker is open (e.g. inline create) that
+   *  would otherwise be invisible because they are not in the initial snapshot or search results. */
+  pinnedSelectedIds?: RecordId[]
+
+  /** Show secondary info line in each item (default: true) */
+  showSecondary?: boolean
 }
 
 /**
@@ -105,6 +113,8 @@ export function RecordPickerContent({
   excludeIds = [],
   onSelectItem,
   externalSearch,
+  pinnedSelectedIds,
+  showSecondary = true,
 }: RecordPickerContentProps) {
   const [internalSearch, setInternalSearch] = useState('')
   const search = externalSearch ?? internalSearch
@@ -118,17 +128,21 @@ export function RecordPickerContent({
     return () => onCaptureChange?.(false)
   }, [onCaptureChange])
 
-  // Track selected recordIds for layout stability — snapshot at mount,
-  // but appends new items added to value (e.g. inline create) so they render immediately
-  const [initialSelectedIds, setInitialSelectedIds] = useState<RecordId[]>(() => value)
+  // Track selected recordIds for layout stability — pure snapshot at mount.
+  // Toggles during the picker's lifetime do NOT mutate this list; that keeps items
+  // the user clicks in the Available section from jumping up into the Selected section.
+  // Items created inline (outside search results) are surfaced via `pinnedSelectedIds` instead.
+  const [initialSelectedIds] = useState<RecordId[]>(() => value)
 
-  // When value gains new items (e.g. after inline create), add them to initialSelectedIds
-  useEffect(() => {
-    setInitialSelectedIds((prev) => {
-      const newIds = value.filter((id) => !prev.includes(id))
-      return newIds.length > 0 ? [...prev, ...newIds] : prev
-    })
-  }, [value])
+  // Union of mount snapshot + pinned ids — drives the Selected section.
+  const selectedSectionIds = useMemo(() => {
+    if (!pinnedSelectedIds || pinnedSelectedIds.length === 0) return initialSelectedIds
+    const merged = [...initialSelectedIds]
+    for (const id of pinnedSelectedIds) {
+      if (!merged.includes(id)) merged.push(id)
+    }
+    return merged
+  }, [initialSelectedIds, pinnedSelectedIds])
 
   // Determine search mode
   const isGlobalSearch = !entityDefinitionId && !entityDefinitionIds
@@ -166,20 +180,20 @@ export function RecordPickerContent({
     placeholderData: keepPreviousData,
   })
 
-  // Hydrate selected items
-  const { items: hydratedItems, isLoading: isHydrating } = useRelationship(initialSelectedIds)
+  // Hydrate items that will appear in the Selected section (snapshot + pinned)
+  const { items: hydratedItems, isLoading: isHydrating } = useRelationship(selectedSectionIds)
 
   // Build map of hydrated items for quick lookup
   const hydratedMap = useMemo(() => {
     const map: Record<string, RecordPickerItem> = {}
-    initialSelectedIds.forEach((recordId, idx) => {
+    selectedSectionIds.forEach((recordId, idx) => {
       const item = hydratedItems[idx]
       if (item) {
         map[recordId] = item
       }
     })
     return map
-  }, [initialSelectedIds, hydratedItems])
+  }, [selectedSectionIds, hydratedItems])
 
   // Check if a recordId is currently selected
   const isSelected = useCallback(
@@ -189,20 +203,21 @@ export function RecordPickerContent({
     [value]
   )
 
-  // Check if a recordId was initially selected (for layout stability)
-  const wasInitiallySelected = useCallback(
+  // Check if a recordId belongs to the Selected section (snapshot + pinned).
+  // Used to dedupe Available results so the same record never shows up in both sections.
+  const isInSelectedSection = useCallback(
     (recordId: RecordId) => {
-      return initialSelectedIds.includes(recordId)
+      return selectedSectionIds.includes(recordId)
     },
-    [initialSelectedIds]
+    [selectedSectionIds]
   )
 
-  // Filter initially selected items by search term
+  // Filter Selected-section items by search term
   const filteredSelectedItems = useMemo(() => {
     const searchLower = search.toLowerCase()
     const items: RecordPickerItem[] = []
 
-    for (const recordId of initialSelectedIds) {
+    for (const recordId of selectedSectionIds) {
       const item = hydratedMap[recordId]
       if (item) {
         // Apply search filter
@@ -213,10 +228,10 @@ export function RecordPickerContent({
     }
 
     return items
-  }, [initialSelectedIds, hydratedMap, search])
+  }, [selectedSectionIds, hydratedMap, search])
 
   // IDs of items already rendered in the selected section. Used below to dedupe `availableItems` —
-  // `wasInitiallySelected` compares by RecordId, which misses cases where the selected value and
+  // `isInSelectedSection` compares by RecordId, which misses cases where the selected value and
   // the search result use different recordId prefixes (system type vs entityDefinitionId UUID).
   // Comparing by raw instance id catches those.
   const selectedItemIds = useMemo(() => {
@@ -227,17 +242,17 @@ export function RecordPickerContent({
     return ids
   }, [filteredSelectedItems])
 
-  // Available items (from search, excluding initially selected and excluded IDs)
+  // Available items (from search, excluding Selected-section items and excluded IDs)
   const availableItems = useMemo(() => {
     if (!searchResults?.items) return []
     return searchResults.items.filter((item) => {
       return (
-        !wasInitiallySelected(item.recordId) &&
+        !isInSelectedSection(item.recordId) &&
         !excludeIds.includes(item.recordId) &&
         !selectedItemIds.has(item.id)
       )
     })
-  }, [searchResults, wasInitiallySelected, excludeIds, selectedItemIds])
+  }, [searchResults, isInSelectedSection, excludeIds, selectedItemIds])
 
   /**
    * Toggle selection of a record
@@ -315,6 +330,7 @@ export function RecordPickerContent({
                   isSelected={isSelected(item.recordId)}
                   onToggle={handleToggle}
                   showEntityType={showEntityType}
+                  showSecondary={showSecondary}
                   multi={multi}
                 />
               )
@@ -336,6 +352,7 @@ export function RecordPickerContent({
                   isSelected={isSelected(item.recordId)}
                   onToggle={handleToggle}
                   showEntityType={showEntityType}
+                  showSecondary={showSecondary}
                   multi={multi}
                 />
               )

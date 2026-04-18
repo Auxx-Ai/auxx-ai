@@ -96,6 +96,8 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
   const utils = api.useUtils()
   const switchOrganizationMutation = api.organization.setDefault.useMutation()
 
+  if (!dehydratedUser) {
+  }
   // Effect to set the current organization ID based on user data
   // biome-ignore lint/correctness/useExhaustiveDependencies: setOrganizationId is stable from context
   useEffect(() => {

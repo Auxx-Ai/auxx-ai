@@ -2,6 +2,7 @@
 'use client'
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -19,9 +20,8 @@ import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { Loader2, MessageSquare } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
-import { useThreadList } from '~/components/threads/hooks'
+import { useThreadList, useThreadMutation } from '~/components/threads/hooks'
 import type { ThreadMeta } from '~/components/threads/store'
-import { api } from '~/trpc/react'
 
 interface LinkThreadDialogProps {
   ticketId: string
@@ -58,18 +58,18 @@ export function LinkThreadDialog({ ticketId, onLinked, children }: LinkThreadDia
     sort: { field: 'lastMessageAt', direction: 'desc' },
   })
 
-  const linkThread = api.thread.linkToTicket.useMutation({
-    onSuccess: () => {
-      onLinked()
-      setOpen(false)
-      setSelectedThreadId(null)
-      setSearch('')
-    },
-  })
+  const { update } = useThreadMutation()
 
   const handleLink = () => {
     if (!selectedThreadId) return
-    linkThread.mutate({ threadId: selectedThreadId, ticketId })
+    // Optimistic: thread-store flips ticketId immediately, so the thread's
+    // badge/state updates across the app. `onLinked()` still refreshes the
+    // ticket-side list (which is a server-filtered query).
+    update(selectedThreadId, { ticketId: toRecordId('ticket', ticketId) })
+    onLinked()
+    setOpen(false)
+    setSelectedThreadId(null)
+    setSearch('')
   }
 
   return (
@@ -119,13 +119,7 @@ export function LinkThreadDialog({ ticketId, onLinked, children }: LinkThreadDia
           <Button size='sm' variant='ghost' onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button
-            size='sm'
-            variant='outline'
-            onClick={handleLink}
-            disabled={!selectedThreadId || linkThread.isPending}
-            loading={linkThread.isPending}
-            loadingText='Linking...'>
+          <Button size='sm' variant='outline' onClick={handleLink} disabled={!selectedThreadId}>
             Link
           </Button>
         </DialogFooter>
