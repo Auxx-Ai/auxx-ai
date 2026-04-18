@@ -3,14 +3,16 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
-import { DEFAULT_VIEW_CONFIGS } from '../default-view-configs'
+import type { Condition, ConditionGroup } from '../../conditions/types'
+import { DEFAULT_VIEW_CONFIGS, type DefaultViewDefinition } from '../default-view-configs'
 import type { EntityDefMap, FieldMap } from './types'
 
 const logger = createScopedLogger('entity-seeder:create-default-views')
 
 /**
  * Pass 5: Create Default TableViews
- * Create default table views with resolved field IDs.
+ * Create the seeded table views (default + filtered shared views) per resource
+ * with all `field_*` symbolic references rewritten to real ResourceFieldIds.
  */
 export async function createDefaultViews(
   db: Database,
@@ -21,38 +23,66 @@ export async function createDefaultViews(
 ): Promise<void> {
   const now = new Date()
 
-  for (const [entityType, viewConfig] of Object.entries(DEFAULT_VIEW_CONFIGS)) {
+  // Cast through the definition type — the literal `as const satisfies` shape
+  // hides optional fields like `isDefault` on entries that omit them.
+  const entries = Object.entries(
+    DEFAULT_VIEW_CONFIGS as unknown as Record<string, readonly DefaultViewDefinition[]>
+  )
+
+  for (const [entityType, viewDefs] of entries) {
     const entityDef = entityDefMap.get(entityType)
     if (!entityDef) {
       logger.warn(`EntityDefinition not found for ${entityType}, skipping view creation`)
       continue
     }
 
+    assertSingleDefault(entityType, viewDefs)
+
     const tableId = `entity-${entityDef.id}`
-    const resolvedConfig = resolveViewConfig(viewConfig.config, entityType, entityDef.id, fieldMap)
 
-    const [createdView] = await db
-      .insert(schema.TableView)
-      .values({
-        organizationId,
-        userId,
+    for (const viewDef of viewDefs) {
+      const isDefault = viewDef.isDefault ?? false
+      const resolvedConfig = resolveViewConfig(viewDef.config, entityType, entityDef.id, fieldMap)
+
+      const [createdView] = await db
+        .insert(schema.TableView)
+        .values({
+          organizationId,
+          userId,
+          tableId,
+          name: viewDef.name,
+          isDefault,
+          isShared: true,
+          config: resolvedConfig,
+          updatedAt: now,
+        })
+        .returning()
+
+      if (!createdView) {
+        throw new Error(`Failed to create view "${viewDef.name}" for ${entityType}`)
+      }
+
+      logger.debug(`Created view "${viewDef.name}" for ${entityType}`, {
+        viewId: createdView.id,
         tableId,
-        name: viewConfig.name,
-        isDefault: true,
-        isShared: true,
-        config: resolvedConfig,
-        updatedAt: now,
+        isDefault,
       })
-      .returning()
-
-    if (!createdView) {
-      throw new Error(`Failed to create default view for ${entityType}`)
     }
+  }
+}
 
-    logger.debug(`Created default view for ${entityType}`, {
-      viewId: createdView.id,
-      tableId,
-    })
+/**
+ * Fail loudly when a seed author marks zero or multiple views as default for a
+ * single entity. Postgres enforces this via a partial unique index, but the DB
+ * error is opaque — this catches the bug at the source with a clear message.
+ */
+function assertSingleDefault(entityType: string, viewDefs: readonly DefaultViewDefinition[]): void {
+  const defaults = viewDefs.filter((v) => v.isDefault)
+  if (defaults.length !== 1) {
+    const names = defaults.map((v) => v.name).join(', ') || '<none>'
+    throw new Error(
+      `DEFAULT_VIEW_CONFIGS["${entityType}"] must have exactly one entry with isDefault: true (found ${defaults.length}: ${names})`
+    )
   }
 }
 
@@ -83,7 +113,7 @@ function buildFieldIdMap(
  * Resolve view config field references to actual ResourceFieldIds
  */
 function resolveViewConfig(
-  config: (typeof DEFAULT_VIEW_CONFIGS)[keyof typeof DEFAULT_VIEW_CONFIGS]['config'],
+  config: DefaultViewDefinition['config'],
   entityType: string,
   entityDefId: string,
   fieldMap: FieldMap
@@ -132,11 +162,59 @@ function resolveViewConfig(
     })
     .filter((s): s is { id: string; desc: boolean } => s !== null)
 
+  // Transform filters: rewrite each condition's symbolic fieldId; drop conditions
+  // whose field can't be resolved (and drop groups that end up empty), so we
+  // never persist a half-broken filter.
+  const filters = (config.filters ?? [])
+    .map((group) => resolveFilterGroup(group, resolve, entityType))
+    .filter((g): g is ConditionGroup => g !== null)
+
   return {
     ...config,
     columnVisibility,
     columnOrder,
     columnPinning,
     sorting,
+    filters,
   }
+}
+
+function resolveFilterGroup(
+  group: ConditionGroup,
+  resolve: (fieldKey: string) => string | null,
+  entityType: string
+): ConditionGroup | null {
+  const conditions: Condition[] = []
+  for (const condition of group.conditions) {
+    const resolved = resolveFilterCondition(condition, resolve, entityType)
+    if (resolved) conditions.push(resolved)
+  }
+
+  if (conditions.length === 0) return null
+  return { ...group, conditions }
+}
+
+function resolveFilterCondition(
+  condition: Condition,
+  resolve: (fieldKey: string) => string | null,
+  entityType: string
+): Condition | null {
+  // Filters in default-view-configs only use a single symbolic fieldId string.
+  // Bail (and warn) on anything more exotic so we don't silently corrupt it.
+  if (typeof condition.fieldId !== 'string') {
+    logger.warn(
+      `Default view filter condition ${condition.id} on ${entityType} has non-string fieldId; skipping`
+    )
+    return null
+  }
+
+  const resolved = resolve(condition.fieldId)
+  if (!resolved) {
+    logger.warn(
+      `Default view filter condition ${condition.id} on ${entityType} references unknown field "${condition.fieldId}"; skipping`
+    )
+    return null
+  }
+
+  return { ...condition, fieldId: resolved }
 }

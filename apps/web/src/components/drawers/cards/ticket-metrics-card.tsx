@@ -30,8 +30,6 @@ const TICKET_ATTRS = [
  */
 export function TicketMetricsCard({ recordId }: DrawerTabProps) {
   const { values, isLoading } = useSystemValues(recordId, [...TICKET_ATTRS], { autoFetch: true })
-
-  console.log('TicketMetricsCard values:', values)
   const statusStr = unwrap(values.ticket_status) as string | undefined
   const typeStr = unwrap(values.ticket_type) as string | undefined
   const priorityStr = unwrap(values.ticket_priority) as string | undefined

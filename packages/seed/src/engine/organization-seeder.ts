@@ -490,14 +490,10 @@ export class OrganizationSeeder {
         logger.info('seedOrganizationDirectly: Dataset domain complete')
       }
 
-      // Entity templates (demo and superadmin-test)
+      // Demo + superadmin-test polish (company is now a system entity, no
+      // longer installed via the templates registry — created by the standard
+      // org seeder)
       if (scenarioName === 'demo' || scenarioName === 'superadmin-test') {
-        logger.info('seedOrganizationDirectly: Installing entity templates')
-        console.log('💾 Installing entity templates...')
-        const { installTemplates } = await import('@auxx/lib/entity-templates')
-        await installTemplates(organizationId, ['company'])
-        logger.info('seedOrganizationDirectly: Entity templates installed')
-
         // Rename default inbox to match demo Gmail UX
         logger.info('seedOrganizationDirectly: Renaming inbox for demo')
         const { InboxService } = await import('@auxx/lib/inboxes')

@@ -113,6 +113,11 @@ export function RelationshipInputField() {
   // Track current selection in local state for save-on-close pattern
   const [localRecordIds, setLocalRecordIds] = useState<RecordId[]>(currentRecordIds)
 
+  // RecordIds created inline while the picker is open. Passed as `pinnedSelectedIds`
+  // so the new record appears in the Selected section even though it's not in the
+  // picker's mount snapshot or the current search results.
+  const [createdRecordIds, setCreatedRecordIds] = useState<RecordId[]>([])
+
   // Ref to track current selection for save-on-close
   const localRecordIdsRef = useRef<RecordId[]>(localRecordIds)
 
@@ -125,6 +130,7 @@ export function RelationshipInputField() {
   useEffect(() => {
     setLocalRecordIds(currentRecordIds)
     localRecordIdsRef.current = currentRecordIds
+    setCreatedRecordIds([])
   }, [currentRecordIds])
 
   // Register save handler for popover close - fire-and-forget
@@ -207,8 +213,10 @@ export function RelationshipInputField() {
       // Select the new item
       if (isSingleSelect) {
         setLocalRecordIds([newRecordId])
+        setCreatedRecordIds([newRecordId])
       } else {
         setLocalRecordIds((prev) => [...prev, newRecordId])
+        setCreatedRecordIds((prev) => (prev.includes(newRecordId) ? prev : [...prev, newRecordId]))
       }
 
       setIsCreateDialogOpen(false)
@@ -233,6 +241,7 @@ export function RelationshipInputField() {
         createLabel={`Create ${relatedResource?.label ?? 'Item'}`}
         placeholder='Search...'
         excludeIds={excludeRecordIds}
+        pinnedSelectedIds={createdRecordIds}
       />
 
       {/* Inline Create Dialog */}

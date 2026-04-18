@@ -112,7 +112,7 @@ export class DehydrationService {
     const organizations = orgResults.filter((org): org is DehydratedOrganization => org !== null)
 
     // 3. Resolve organizationId — fall back if default org was deleted
-    let organizationId = userProfile.defaultOrganizationId
+    let organizationId = userProfile?.defaultOrganizationId
     if (organizationId && !organizations.some((o) => o.id === organizationId)) {
       logger.warn(
         `User ${userId} defaultOrganizationId ${organizationId} not found in assembled orgs, falling back`

@@ -148,12 +148,13 @@ export class UserCacheService {
       throw new Error(`No provider registered for user cache key: ${keyName}`)
     }
 
-    // For user cache, compute receives userId as the "orgId" parameter
-    // Org-scoped keys pass orgId as well (via a combined ID)
-    const computeId = orgId ? `${userId}:${orgId}` : userId
-    const value = await provider.compute(computeId, this.db)
-
+    // Compute id matches the cache scope id: bare userId for user-scoped keys,
+    // `userId:orgId` for org-scoped keys. Forwarding orgId regardless of scope
+    // here would call providers like userProfile with `userId:orgId`, which has
+    // no matching User row and silently poisons the cache with null.
     const sid = this.scopeId(userId, keyName, orgId)
+    const value = await provider.compute(sid, this.db)
+
     await this.writeBack(sid, keyName, value)
 
     return value

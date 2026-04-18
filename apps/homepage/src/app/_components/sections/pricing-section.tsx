@@ -107,7 +107,7 @@ export default function PricingSection() {
                               '50 AI completions/month',
                               '100 outbound emails/month',
                               '1 GB storage',
-                              '5 saved views',
+                              '10 saved views',
                               '3 workflows',
                               '100 workflow runs/month',
                             ].map((item, index) => (

@@ -22,6 +22,8 @@ export interface RecordItemProps {
   isSelected: boolean
   onToggle: (recordId: RecordId) => void
   showEntityType?: boolean
+  /** Show secondary info line next to the display name (default: true) */
+  showSecondary?: boolean
   /** Multi-select mode shows checkbox, single-select shows circle check */
   multi?: boolean
 }
@@ -35,6 +37,7 @@ export function RecordItem({
   isSelected,
   onToggle,
   showEntityType,
+  showSecondary = true,
   multi = true,
 }: RecordItemProps) {
   const { resource } = useResource(getDefinitionId(item.recordId))
@@ -58,15 +61,18 @@ export function RecordItem({
         inverse
         className='-ms-0.5 inset-shadow-xs inset-shadow-black/20'
       />
-      <div className='flex flex-1 items-center gap-1 flex-row'>
-        <span className='truncate'>{item.displayName}</span>
-        {item.secondaryInfo && (
-          <span className='text-xs text-muted-foreground truncate'>{item.secondaryInfo}</span>
-        )}
-        {showEntityType && resource && (
-          <span className='text-xs shrink-0 text-muted-foreground ml-auto'>{resource.label}</span>
+      <div className='flex flex-1 min-w-0 items-center overflow-hidden'>
+        <span className='truncate min-w-0'>{item.displayName}</span>
+        {showSecondary && item.secondaryInfo && (
+          <span className='truncate min-w-0 text-xs text-muted-foreground [flex-shrink:9999]'>
+            {'\u00a0\u00a0'}
+            {item.secondaryInfo}
+          </span>
         )}
       </div>
+      {showEntityType && resource && (
+        <span className='shrink-0 text-xs text-muted-foreground'>{resource.label}</span>
+      )}
       {multi ? (
         <Checkbox checked={isSelected} className='pointer-events-none' />
       ) : (
