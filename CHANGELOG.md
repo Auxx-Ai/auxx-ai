@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.129](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.128...auxx-v0.1.129) (2026-04-18)
+
+
+### Features
+
+* add AnnouncementBadge component and integrate into HeroSection ([#441](https://github.com/Auxx-Ai/auxx-ai/issues/441)) ([075fa8b](https://github.com/Auxx-Ai/auxx-ai/commit/075fa8b77c8ae839b0bae23045feb074065d7ab7))
+* add NestedThreadProvider and normalize record ID ([#443](https://github.com/Auxx-Ai/auxx-ai/issues/443)) ([7f6d93d](https://github.com/Auxx-Ai/auxx-ai/commit/7f6d93d8efcad0e202f1f2b0b942bf24d00327a2))
+* enhance avatar upload functionality with optimistic updates and improved error handling ([#437](https://github.com/Auxx-Ai/auxx-ai/issues/437)) ([2f65242](https://github.com/Auxx-Ai/auxx-ai/commit/2f65242608a4b0d6d991d43e5569ebc5b9e403fe))
+* enhance mail component responsiveness and improve thread display logic ([#440](https://github.com/Auxx-Ai/auxx-ai/issues/440)) ([6ecd116](https://github.com/Auxx-Ai/auxx-ai/commit/6ecd116df428a459df6352fc0ba809284c33b969))
+* enhance record picker with secondary info display option ([#444](https://github.com/Auxx-Ai/auxx-ai/issues/444)) ([14d4083](https://github.com/Auxx-Ai/auxx-ai/commit/14d4083aea605f0e6fe4f505662c342622b0cba3))
+* enhance thread selection and tagging functionality ([#439](https://github.com/Auxx-Ai/auxx-ai/issues/439)) ([90842b6](https://github.com/Auxx-Ai/auxx-ai/commit/90842b6a12c6ab6fe1ac26960975ff444e61511f))
+* implement ticket linking and creation functionality in thread management ([#442](https://github.com/Auxx-Ai/auxx-ai/issues/442)) ([c109544](https://github.com/Auxx-Ai/auxx-ai/commit/c109544cf640bb6fc1fa9552b0d7450093850115))
+
 ## [0.1.128](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.127...auxx-v0.1.128) (2026-04-17)
 
 
