@@ -89,6 +89,25 @@ interface ThreadContextValue {
 // Create context
 const ThreadContext = createContext<ThreadContextValue | null>(null)
 
+/**
+ * Signals that a `ThreadProvider` subtree is rendered *inside* another view that
+ * may already own a thread context (e.g. the ticket drawer opened from the mail
+ * view). Consumers can call `useIsNestedThread()` to short-circuit behaviors
+ * that would otherwise collide with the outer context — reply box, global
+ * keyboard shortcuts, active-thread store writes, recursive ticket controls.
+ *
+ * Default is `false`. Wrap the nested mount point (not `ThreadProvider`
+ * itself) so only that subtree opts in.
+ *
+ * @example
+ * <NestedThreadProvider value={true}>
+ *   <RecordDrawer recordId={ticketRecordId} ... />
+ * </NestedThreadProvider>
+ */
+const NestedThreadContext = createContext(false)
+export const NestedThreadProvider = NestedThreadContext.Provider
+export const useIsNestedThread = () => useContext(NestedThreadContext)
+
 // Provider component
 export function ThreadProvider({
   children,
@@ -97,6 +116,12 @@ export function ThreadProvider({
   children: React.ReactNode
   threadId: string
 }) {
+  // When rendered inside a nested mount point (e.g. the ticket drawer opened
+  // from the mail view), suppress side-effecting features that already exist
+  // in the outer context: the reply box UI and (below) global keyboard
+  // shortcut handling. The hook always runs, the *effects* are gated.
+  const isNested = useContext(NestedThreadContext)
+
   // Get thread from store (for mutations that need thread data)
   const { thread } = useThreadFromStore({ threadId })
 

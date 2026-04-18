@@ -19,6 +19,7 @@ import {
   useFieldValueStore,
 } from '~/components/resources/store/field-value-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
+import { getNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
 import { api } from '~/trpc/react'
 import {
   extractRelatedRecordIds,
@@ -227,8 +228,9 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): void => {
+      const normalizedRecordId = getNormalizedRecordId(recordId)
       const prep = prepareOptimisticUpdate(
-        recordId,
+        normalizedRecordId,
         fieldId as FieldId,
         value,
         fieldType,
@@ -238,7 +240,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       // Sync relationship cache
       if (prep.inverseInfo) {
         syncInverseCache({
-          sourceRecordId: recordId,
+          sourceRecordId: normalizedRecordId,
           oldRelatedRecordIds: prep.oldRelatedRecordIds,
           newRelatedRecordIds: prep.newRelatedRecordIds,
           inverseInfo: prep.inverseInfo,
@@ -247,7 +249,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
       // Fire mutation
       mutation.mutate(
-        { recordId, fieldId, value },
+        { recordId: normalizedRecordId, fieldId, value },
         {
           onSuccess: (result) => {
             if (handleMutationSuccess(prep.key, prep.mutationVersion, result, fieldType)) {
@@ -259,7 +261,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
               prep.key,
               prep.mutationVersion,
               prep,
-              recordId,
+              normalizedRecordId,
               syncInverseCache,
               error
             )
@@ -285,8 +287,9 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): Promise<{ success: boolean; id?: string } | undefined> => {
+      const normalizedRecordId = getNormalizedRecordId(recordId)
       const prep = prepareOptimisticUpdate(
-        recordId,
+        normalizedRecordId,
         fieldId as FieldId,
         value,
         fieldType,
@@ -296,7 +299,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       // Sync relationship cache
       if (prep.inverseInfo) {
         syncInverseCache({
-          sourceRecordId: recordId,
+          sourceRecordId: normalizedRecordId,
           oldRelatedRecordIds: prep.oldRelatedRecordIds,
           newRelatedRecordIds: prep.newRelatedRecordIds,
           inverseInfo: prep.inverseInfo,
@@ -304,7 +307,11 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       }
 
       // try {
-      const result = await mutation.mutateAsync({ recordId, fieldId, value })
+      const result = await mutation.mutateAsync({
+        recordId: normalizedRecordId,
+        fieldId,
+        value,
+      })
 
       // Check if stale (a newer mutation was fired)
       const store = useFieldValueStore.getState()
@@ -342,12 +349,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       recordId: RecordId,
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): Promise<boolean> => {
+      const normalizedRecordId = getNormalizedRecordId(recordId)
       const store = useFieldValueStore.getState()
 
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
-        const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId))
+        const key = buildFieldValueKey(normalizedRecordId, resolveFieldRef(fieldId))
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
         const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -358,7 +366,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       try {
-        await bulkMutation.mutateAsync({ recordIds: [recordId], values: apiValues })
+        await bulkMutation.mutateAsync({ recordIds: [normalizedRecordId], values: apiValues })
 
         const currentStore = useFieldValueStore.getState()
         for (const { key, version } of keyVersions) {
@@ -397,6 +405,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       value: StoredFieldValue | unknown,
       fieldType: FieldType
     ): void => {
+      const normalizedRecordIds = recordIds.map(getNormalizedRecordId)
       const store = useFieldValueStore.getState()
 
       // Build keys, capture versions, and apply optimistic updates
@@ -404,7 +413,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
 
       const resolvedRef = resolveFieldRef(fieldId)
-      for (const recordId of recordIds) {
+      for (const recordId of normalizedRecordIds) {
         const key = buildFieldValueKey(recordId, resolvedRef)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
@@ -413,7 +422,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
       // Fire mutation (keep original fieldId — server resolves systemAttributes)
       bulkMutation.mutate(
-        { recordIds, values: [{ fieldId, value }] },
+        { recordIds: normalizedRecordIds, values: [{ fieldId, value }] },
         {
           onSuccess: () => {
             const currentStore = useFieldValueStore.getState()
@@ -452,12 +461,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       recordIds: RecordId[],
       fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
     ): void => {
+      const normalizedRecordIds = recordIds.map(getNormalizedRecordId)
       const store = useFieldValueStore.getState()
 
       // Build all keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
 
-      for (const recordId of recordIds) {
+      for (const recordId of normalizedRecordIds) {
         for (const { fieldId, value, fieldType } of fieldValues) {
           const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId))
           const version = store.incrementMutationVersion(key)
@@ -471,7 +481,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       bulkMutation.mutate(
-        { recordIds, values: apiValues },
+        { recordIds: normalizedRecordIds, values: apiValues },
         {
           onSuccess: () => {
             const currentStore = useFieldValueStore.getState()

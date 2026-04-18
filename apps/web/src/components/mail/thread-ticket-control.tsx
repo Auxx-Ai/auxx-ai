@@ -10,7 +10,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import { RecordPicker } from '~/components/pickers/record-picker'
 import { TicketBadge } from '~/components/resources/ui/ticket-badge'
 import { useThread } from '~/components/threads/hooks'
-import { useThreadContext } from './thread-provider'
+import { useIsNestedThread, useThreadContext } from './thread-provider'
 
 /**
  * Ticket link/create/open control for the thread header.
@@ -27,6 +27,7 @@ export function ThreadTicketControl() {
   const { threadId, handlers } = useThreadContext()
   const { thread } = useThread({ threadId })
   const [, setOpenTicketId] = useQueryState('ticketId', { defaultValue: '' })
+  const isNested = useIsNestedThread()
 
   const ticketInstanceId = thread?.ticketId ? getInstanceId(thread.ticketId) : null
 
@@ -43,6 +44,9 @@ export function ThreadTicketControl() {
   }, [handlers])
 
   if (!thread) return null
+  // Prevent recursion: when this thread is being viewed inside a ticket drawer,
+  // the ticket badge would reference the drawer's own ticket.
+  if (isNested) return null
 
   return (
     <div className='flex items-center gap-1'>

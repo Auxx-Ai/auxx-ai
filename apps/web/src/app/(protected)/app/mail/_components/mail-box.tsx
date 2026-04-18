@@ -54,6 +54,7 @@ import { MailSearchBar } from '~/components/mail/searchbar'
 import { useSearchConditions } from '~/components/mail/searchbar/hooks/use-search-filters'
 import { ThreadDisplay } from '~/components/mail/thread-display'
 import { ThreadNavToolbar } from '~/components/mail/thread-nav-toolbar'
+import { NestedThreadProvider } from '~/components/mail/thread-provider'
 import type { ThreadsFilterInput } from '~/components/mail/types'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import {
@@ -468,11 +469,13 @@ function MailboxInner({
       panels.push({
         key: 'ticket',
         content: (
-          <RecordDrawer
-            recordId={toRecordId('ticket', openTicketId)}
-            open={isTicketDrawerOpen}
-            onOpenChange={handleTicketDrawerClose}
-          />
+          <NestedThreadProvider value={true}>
+            <RecordDrawer
+              recordId={toRecordId('ticket', openTicketId)}
+              open={isTicketDrawerOpen}
+              onOpenChange={handleTicketDrawerClose}
+            />
+          </NestedThreadProvider>
         ),
         width: dockedWidth,
         onWidthChange: setDockedWidth,
@@ -681,11 +684,13 @@ function MailboxInner({
 
       {/* Overlay ticket drawer when NOT docked */}
       {!isDocked && isTicketDrawerOpen && (
-        <RecordDrawer
-          recordId={toRecordId('ticket', openTicketId)}
-          open={isTicketDrawerOpen}
-          onOpenChange={handleTicketDrawerClose}
-        />
+        <NestedThreadProvider value={true}>
+          <RecordDrawer
+            recordId={toRecordId('ticket', openTicketId)}
+            open={isTicketDrawerOpen}
+            onOpenChange={handleTicketDrawerClose}
+          />
+        </NestedThreadProvider>
       )}
     </MailFilterProvider>
   )
