@@ -605,6 +605,7 @@ export const threadRouter = createTRPCRouter({
           subject: z.string().optional(),
           assigneeId: z.string().nullable().optional(),
           inboxId: recordIdSchema.nullable().optional(),
+          ticketId: recordIdSchema.nullable().optional(),
           isUnread: z.boolean().optional(),
         }),
       })
@@ -643,6 +644,7 @@ export const threadRouter = createTRPCRouter({
           status: z.enum(['OPEN', 'ARCHIVED', 'SPAM', 'TRASH', 'IGNORED']).optional(),
           assigneeId: z.string().nullable().optional(),
           inboxId: recordIdSchema.nullable().optional(),
+          ticketId: recordIdSchema.nullable().optional(),
         }),
       })
     )

@@ -7,3 +7,9 @@ export {
   // Hook (auto-fetches resource from provider)
   useRecordLink,
 } from './get-record-link'
+export {
+  // Pure function (requires resource object)
+  normalizeRecordId,
+  // Hook (resolves resource from the store)
+  useNormalizedRecordId,
+} from './normalize-record-id'

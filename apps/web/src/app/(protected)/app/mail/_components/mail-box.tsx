@@ -3,6 +3,7 @@
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { buildConditionGroups } from '@auxx/lib/mail-query/client'
 import { InternalFilterContextType } from '@auxx/lib/types'
+import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import {
   type DockedPanelConfig,
@@ -54,6 +55,7 @@ import { useSearchConditions } from '~/components/mail/searchbar/hooks/use-searc
 import { ThreadDisplay } from '~/components/mail/thread-display'
 import { ThreadNavToolbar } from '~/components/mail/thread-nav-toolbar'
 import type { ThreadsFilterInput } from '~/components/mail/types'
+import { RecordDrawer } from '~/components/records/record-drawer'
 import {
   useActiveThreadId,
   useActiveThreadVersion,
@@ -193,6 +195,8 @@ function MailboxInner({
   // Contact drawer state from URL (shared with participant-display.tsx)
   const [contactId, setContactId] = useQueryState('contactId', { defaultValue: '' })
   const isContactDrawerOpen = !!contactId
+  const [openTicketId, setOpenTicketId] = useQueryState('ticketId', { defaultValue: '' })
+  const isTicketDrawerOpen = !!openTicketId
 
   // Kopilot — push page context so the global KopilotDock knows what's on-screen
   const { hasAccess } = useFeatureFlags()
@@ -431,7 +435,15 @@ function MailboxInner({
     [contactId, setContactId]
   )
 
-  // Build docked panels for contact drawer
+  // Handle closing ticket drawer
+  const handleTicketDrawerClose = useCallback(
+    (open: boolean) => {
+      void setOpenTicketId(open ? openTicketId : '')
+    },
+    [openTicketId, setOpenTicketId]
+  )
+
+  // Build docked panels for contact + ticket drawers
   const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
     const panels: DockedPanelConfig[] = []
 
@@ -452,12 +464,32 @@ function MailboxInner({
       })
     }
 
+    if (isDocked && isTicketDrawerOpen) {
+      panels.push({
+        key: 'ticket',
+        content: (
+          <RecordDrawer
+            recordId={toRecordId('ticket', openTicketId)}
+            open={isTicketDrawerOpen}
+            onOpenChange={handleTicketDrawerClose}
+          />
+        ),
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth,
+        maxWidth,
+      })
+    }
+
     return panels
   }, [
     isDocked,
     isContactDrawerOpen,
     contactId,
     handleContactDrawerClose,
+    isTicketDrawerOpen,
+    openTicketId,
+    handleTicketDrawerClose,
     dockedWidth,
     setDockedWidth,
     minWidth,
@@ -644,6 +676,15 @@ function MailboxInner({
           contactId={contactId}
           open={isContactDrawerOpen}
           onOpenChange={handleContactDrawerClose}
+        />
+      )}
+
+      {/* Overlay ticket drawer when NOT docked */}
+      {!isDocked && isTicketDrawerOpen && (
+        <RecordDrawer
+          recordId={toRecordId('ticket', openTicketId)}
+          open={isTicketDrawerOpen}
+          onOpenChange={handleTicketDrawerClose}
         />
       )}
     </MailFilterProvider>

@@ -31,7 +31,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
 
   ticket: {
     entityType: 'ticket',
-    additionalTabs: [{ value: 'conversations', label: 'Conversations', icon: 'mail' }],
+    additionalTabs: [{ value: 'conversation', label: 'Conversation', icon: 'mail' }],
     actions: {
       enableEmailCompose: true,
       enableEdit: true,

@@ -67,6 +67,7 @@ export function RecordPicker({
   onChange,
   multi = true,
   onSelectSingle,
+  onCreate,
   ...pickerProps
 }: RecordPickerProps) {
   // Internal open state (for uncontrolled mode)
@@ -92,6 +93,16 @@ export function RecordPicker({
     onSelectSingle?.(recordId)
     handleOpenChange(false)
   }
+
+  /**
+   * Handle "Create new" - close popover after delegating to caller.
+   */
+  const handleCreate = onCreate
+    ? () => {
+        onCreate()
+        handleOpenChange(false)
+      }
+    : undefined
 
   // Sync internal state with controlled state
   // biome-ignore lint/correctness/useExhaustiveDependencies: internalOpen is intentionally excluded to avoid infinite loop
@@ -141,6 +152,7 @@ export function RecordPicker({
           onChange={onChange}
           multi={multi}
           onSelectSingle={multi ? undefined : handleSelectSingle}
+          onCreate={handleCreate}
           {...pickerProps}
         />
       </PopoverContent>
