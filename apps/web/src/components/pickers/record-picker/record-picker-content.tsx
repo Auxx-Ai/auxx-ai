@@ -215,13 +215,29 @@ export function RecordPickerContent({
     return items
   }, [initialSelectedIds, hydratedMap, search])
 
+  // IDs of items already rendered in the selected section. Used below to dedupe `availableItems` —
+  // `wasInitiallySelected` compares by RecordId, which misses cases where the selected value and
+  // the search result use different recordId prefixes (system type vs entityDefinitionId UUID).
+  // Comparing by raw instance id catches those.
+  const selectedItemIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const item of filteredSelectedItems) {
+      ids.add(item.id)
+    }
+    return ids
+  }, [filteredSelectedItems])
+
   // Available items (from search, excluding initially selected and excluded IDs)
   const availableItems = useMemo(() => {
     if (!searchResults?.items) return []
     return searchResults.items.filter((item) => {
-      return !wasInitiallySelected(item.recordId) && !excludeIds.includes(item.recordId)
+      return (
+        !wasInitiallySelected(item.recordId) &&
+        !excludeIds.includes(item.recordId) &&
+        !selectedItemIds.has(item.id)
+      )
     })
-  }, [searchResults, wasInitiallySelected, excludeIds])
+  }, [searchResults, wasInitiallySelected, excludeIds, selectedItemIds])
 
   /**
    * Toggle selection of a record

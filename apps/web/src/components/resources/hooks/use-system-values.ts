@@ -5,6 +5,7 @@ import type { RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { useMemo } from 'react'
 import { useResourceStore } from '../store/resource-store'
+import { useNormalizedRecordId } from '../utils/normalize-record-id'
 import { useFieldValues } from './use-field-values'
 
 /**
@@ -73,10 +74,14 @@ export function useSystemValues<T extends string>(
   // Build fieldRefs array (just the ResourceFieldIds)
   const fieldRefs = useMemo(() => fieldInfos.map((f) => f.resourceFieldId), [fieldInfos])
 
+  // Normalize the definition prefix to the real entityDefinitionId so reads
+  // match the keys used when field values are written.
+  const normalizedRecordId = useNormalizedRecordId(recordId)
+
   // Fetch values using useFieldValues with autoFetch
   const { values: rawValues, isLoading } = useFieldValues(
-    recordId ?? ('' as RecordId),
-    enabled && recordId ? fieldRefs : [],
+    normalizedRecordId ?? ('' as RecordId),
+    enabled && normalizedRecordId ? fieldRefs : [],
     { autoFetch: enabled && autoFetch }
   )
 

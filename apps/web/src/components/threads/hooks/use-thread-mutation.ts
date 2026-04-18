@@ -13,7 +13,7 @@ import { type ThreadMeta, useThreadStore } from '../store'
  * Partial thread updates that can be applied optimistically.
  */
 export type ThreadUpdates = Partial<
-  Pick<ThreadMeta, 'status' | 'subject' | 'assigneeId' | 'inboxId' | 'isUnread'>
+  Pick<ThreadMeta, 'status' | 'subject' | 'assigneeId' | 'inboxId' | 'ticketId' | 'isUnread'>
 >
 
 /**

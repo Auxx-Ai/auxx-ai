@@ -1,12 +1,19 @@
 // ~/components/mail/thread-provider.tsx
 'use client'
 
-import type { ActorId } from '@auxx/types/actor'
+import { type ActorId, parseActorId } from '@auxx/types/actor'
+import { toRecordId } from '@auxx/types/resource'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import React, { createContext, type RefObject, useContext, useMemo } from 'react'
 import type { EditorMode } from '~/components/mail/email-editor/types'
 import { useThread as useThreadFromStore, useThreadMutation } from '~/components/threads/hooks'
+import {
+  getMessageListStoreState,
+  getMessageStoreState,
+  getParticipantStoreState,
+} from '~/components/threads/store'
 import { useReplyBox } from '~/hooks/use-reply-box'
+import { api } from '~/trpc/react'
 
 /** Reply box UI state */
 interface ReplyBoxState {
@@ -36,6 +43,8 @@ interface ThreadHandlers {
   updateAssignee: (actorId: ActorId | null | undefined) => Promise<void>
   updateSubject: (subject: string) => Promise<void>
   moveToInbox: (inboxId: string) => Promise<void>
+  linkTicket: (ticketInstanceId: string | null) => Promise<void>
+  createAndLinkTicket: () => Promise<string | null>
   openReplyBox: (mode: EditorMode | 'generic', message?: any) => void
   closeReplyBox: () => void
 }
@@ -101,6 +110,9 @@ export function ThreadProvider({
   // Initialize new unified mutation hook
   const { update, remove } = useThreadMutation()
 
+  // Ticket creation mutation (used by createAndLinkTicket handler)
+  const createTicketMutation = api.ticket.create.useMutation()
+
   const {
     isShowReplyBox,
     setIsShowReplyBox,
@@ -139,6 +151,70 @@ export function ThreadProvider({
         toastSuccess({ title: 'Thread moved to inbox' })
       },
 
+      linkTicket: async (ticketInstanceId: string | null) => {
+        update(threadId, {
+          ticketId: ticketInstanceId ? toRecordId('ticket', ticketInstanceId) : null,
+        })
+      },
+
+      createAndLinkTicket: async () => {
+        if (!thread) return null
+
+        // Resolve the contact from the first inbound message's "from" participant
+        const messageIds = getMessageListStoreState().lists.get(threadId)?.messageIds ?? []
+        const messageStore = getMessageStoreState()
+        const participantStore = getParticipantStoreState()
+
+        let contactInstanceId: string | null = null
+        for (const messageId of messageIds) {
+          const message = messageStore.messages.get(messageId)
+          if (!message || !message.isInbound) continue
+          const fromPid = message.participants.find((p) => p.startsWith('from:'))
+          if (!fromPid) continue
+          const rawId = fromPid.slice('from:'.length)
+          const participant = participantStore.participants.get(rawId)
+          if (participant?.entityInstanceId) {
+            contactInstanceId = participant.entityInstanceId
+            break
+          }
+        }
+
+        if (!contactInstanceId) {
+          toastError({
+            title: 'Cannot create ticket',
+            description:
+              'This thread has no linked contact yet. Open the contact from the thread first.',
+          })
+          return null
+        }
+
+        try {
+          const assignedToId = thread.assigneeId ? parseActorId(thread.assigneeId).id : undefined
+          const subject = thread.subject?.trim() || 'Untitled'
+          // Ticket title requires min 3 chars — pad short subjects so the backend doesn't reject.
+          const title = subject.length >= 3 ? subject : subject.padEnd(3, ' ')
+
+          const created = await createTicketMutation.mutateAsync({
+            title,
+            contactId: contactInstanceId,
+            type: 'GENERAL',
+            status: 'OPEN',
+            ...(assignedToId ? { assignedToId } : {}),
+          })
+
+          const ticketInstanceId = created.id as string
+          update(threadId, { ticketId: toRecordId('ticket', ticketInstanceId) })
+          toastSuccess({ title: 'Ticket created and linked' })
+          return ticketInstanceId
+        } catch (error) {
+          toastError({
+            title: 'Failed to create ticket',
+            description: error instanceof Error ? error.message : 'Unknown error',
+          })
+          return null
+        }
+      },
+
       openReplyBox: (mode: EditorMode | 'generic', message?: any) => {
         if (mode === 'generic') {
           handleShowGenericReply()
@@ -157,7 +233,15 @@ export function ThreadProvider({
         closeWithSuppress()
       },
     }),
-    [thread, threadId, update, openEditorForAction, handleShowGenericReply, closeWithSuppress]
+    [
+      thread,
+      threadId,
+      update,
+      openEditorForAction,
+      handleShowGenericReply,
+      closeWithSuppress,
+      createTicketMutation,
+    ]
   )
 
   // Create email actions

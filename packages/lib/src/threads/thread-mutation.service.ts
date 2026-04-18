@@ -23,6 +23,8 @@ export interface ThreadUpdates {
   assigneeId?: ActorId | null
   /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null to unassign */
   inboxId?: RecordId | null
+  /** Ticket RecordId (format: "ticket:instanceId") or null to unlink */
+  ticketId?: RecordId | null
   isUnread?: boolean
 }
 
@@ -84,6 +86,25 @@ export class ThreadMutationService {
       }
       if (updates.inboxId !== undefined) {
         dbUpdates.inboxId = updates.inboxId ? getInstanceId(updates.inboxId) : null
+      }
+      if (updates.ticketId !== undefined) {
+        const ticketInstanceId = updates.ticketId ? getInstanceId(updates.ticketId) : null
+        if (ticketInstanceId) {
+          const [ticket] = await this.db
+            .select({ id: schema.EntityInstance.id })
+            .from(schema.EntityInstance)
+            .where(
+              and(
+                eq(schema.EntityInstance.id, ticketInstanceId),
+                eq(schema.EntityInstance.organizationId, this.organizationId)
+              )
+            )
+            .limit(1)
+          if (!ticket) {
+            throw new Error(`Ticket ${ticketInstanceId} not found`)
+          }
+        }
+        dbUpdates.ticketId = ticketInstanceId
       }
 
       // isUnread is handled separately via UnreadService, but for now we skip it
@@ -155,6 +176,25 @@ export class ThreadMutationService {
       }
       if (updates.inboxId !== undefined) {
         dbUpdates.inboxId = updates.inboxId ? getInstanceId(updates.inboxId) : null
+      }
+      if (updates.ticketId !== undefined) {
+        const ticketInstanceId = updates.ticketId ? getInstanceId(updates.ticketId) : null
+        if (ticketInstanceId) {
+          const [ticket] = await this.db
+            .select({ id: schema.EntityInstance.id })
+            .from(schema.EntityInstance)
+            .where(
+              and(
+                eq(schema.EntityInstance.id, ticketInstanceId),
+                eq(schema.EntityInstance.organizationId, this.organizationId)
+              )
+            )
+            .limit(1)
+          if (!ticket) {
+            throw new Error(`Ticket ${ticketInstanceId} not found`)
+          }
+        }
+        dbUpdates.ticketId = ticketInstanceId
       }
 
       if (Object.keys(dbUpdates).length === 0) {
