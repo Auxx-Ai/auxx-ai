@@ -8,6 +8,8 @@ export {
   useRecordLink,
 } from './get-record-link'
 export {
+  // Imperative (reads store state — use from callbacks/non-hook contexts)
+  getNormalizedRecordId,
   // Pure function (requires resource object)
   normalizeRecordId,
   // Hook (resolves resource from the store)

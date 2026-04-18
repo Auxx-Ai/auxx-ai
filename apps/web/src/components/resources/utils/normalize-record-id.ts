@@ -41,3 +41,15 @@ export function useNormalizedRecordId(
     return normalizeRecordId(recordId, resource)
   }, [recordId, resourceMap])
 }
+
+/**
+ * Imperative variant — reads the current resource store state directly.
+ * Use from non-hook contexts (mutation callbacks, fetch queue, etc.).
+ */
+export function getNormalizedRecordId(recordId: RecordId): RecordId {
+  const { entityDefinitionId } = parseRecordId(recordId)
+  if (!entityDefinitionId) return recordId
+  const resource = useResourceStore.getState().resourceMap.get(entityDefinitionId)
+  if (!resource) return recordId
+  return normalizeRecordId(recordId, resource)
+}
