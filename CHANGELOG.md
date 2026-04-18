@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.130](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.129...auxx-v0.1.130) (2026-04-18)
+
+
+### Features
+
+* **participant:** add isInternal flag to classify participants from own domains ([#445](https://github.com/Auxx-Ai/auxx-ai/issues/445)) ([db10752](https://github.com/Auxx-Ai/auxx-ai/commit/db1075248deeac666360757e1449ed8d08b5fce1))
+
 ## [0.1.129](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.128...auxx-v0.1.129) (2026-04-18)
 
 
