@@ -1,7 +1,10 @@
 // packages/lib/src/ingest/participants/find-or-create.ts
 
 import { schema } from '@auxx/database'
-import { ParticipantRole as ParticipantRoleEnum } from '@auxx/database/enums'
+import {
+  IdentifierType as IdentifierTypeEnum,
+  ParticipantRole as ParticipantRoleEnum,
+} from '@auxx/database/enums'
 import type {
   IdentifierType,
   ParticipantEntity as Participant,
@@ -10,9 +13,31 @@ import type {
 import { eq } from 'drizzle-orm'
 import { findOrCreateContactForParticipant } from '../contacts/find-or-create'
 import type { IngestContext } from '../context'
+import { extractRegistrableDomain, getOwnDomains, normalizeDomain } from '../domain/classifier'
 import type { ParticipantInputData } from '../types'
 import { calculateDisplayName, calculateInitials } from './display'
 import { normalizeIdentifier } from './normalize'
+
+/**
+ * Compute whether an email identifier belongs to the org's own domains.
+ * Reuses the per-batch `ownDomainsByOrg` cache to avoid repeated Redis reads.
+ * Returns false for non-email identifiers.
+ */
+async function classifyIsInternal(
+  ctx: IngestContext,
+  identifier: string,
+  identifierType: IdentifierType
+): Promise<boolean> {
+  if (identifierType !== IdentifierTypeEnum.EMAIL) return false
+  const domain = extractRegistrableDomain(identifier)
+  if (!domain) return false
+  let ownDomains = ctx.ownDomainsByOrg.get(ctx.organizationId)
+  if (!ownDomains) {
+    ownDomains = await getOwnDomains(ctx.organizationId)
+    ctx.ownDomainsByOrg.set(ctx.organizationId, ownDomains)
+  }
+  return ownDomains.has(normalizeDomain(domain))
+}
 
 /**
  * Upsert a Participant row and ensure it is linked to a Contact EntityInstance
@@ -43,6 +68,8 @@ export async function findOrCreateParticipantRecord(
         messageContext.role
       )
 
+    const isInternal = await classifyIsInternal(ctx, normalizedIdentifier, identifierType)
+
     const participantData = await ctx.db
       .insert(schema.Participant)
       .values({
@@ -52,6 +79,7 @@ export async function findOrCreateParticipantRecord(
         displayName,
         initials,
         organizationId: ctx.organizationId,
+        isInternal,
         ...(messageContext && {
           firstInteractionType: messageContext.isInbound ? 'received' : 'sent',
           firstInteractionDate: new Date(),

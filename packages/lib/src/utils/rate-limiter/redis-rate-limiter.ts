@@ -129,7 +129,7 @@ export class RedisRateLimiter implements RateLimiter {
     }
 
     const now = Date.now()
-    const fullKey = `ratelimit:${key}`
+    const fullKey = `ratelimit:${this.config.name}:${key}`
     const capacity = this.config.maxRequests
     const refillRate = this.config.maxRequests / this.config.perInterval // tokens per ms
     const ttl = Math.ceil(this.config.perInterval / 1000) + 60 // TTL in seconds with buffer
@@ -180,7 +180,7 @@ export class RedisRateLimiter implements RateLimiter {
    * @returns true if tokens were acquired
    */
   private acquireLocal(key: string, tokens: number): boolean {
-    const fullKey = `local:${key}`
+    const fullKey = `local:${this.config.name}:${key}`
 
     if (!this.localFallback.has(fullKey)) {
       const refillRate = this.config.maxRequests / this.config.perInterval
@@ -202,7 +202,7 @@ export class RedisRateLimiter implements RateLimiter {
 
     if (this.redis) {
       try {
-        const fullKey = `ratelimit:${key}`
+        const fullKey = `ratelimit:${this.config.name}:${key}`
 
         const [storedTokens, lastRefill] = await this.withTimeout(
           Promise.all([
@@ -231,7 +231,7 @@ export class RedisRateLimiter implements RateLimiter {
     }
 
     // Local fallback
-    const fullKey = `local:${key}`
+    const fullKey = `local:${this.config.name}:${key}`
     if (this.localFallback.has(fullKey)) {
       return this.localFallback.get(fullKey)!.getAvailableTokens()
     }
@@ -249,7 +249,7 @@ export class RedisRateLimiter implements RateLimiter {
 
     if (this.redis) {
       try {
-        const fullKey = `ratelimit:${key}`
+        const fullKey = `ratelimit:${this.config.name}:${key}`
         await this.withTimeout(
           Promise.all([
             this.redis.del(`${fullKey}:tokens`),
@@ -265,7 +265,7 @@ export class RedisRateLimiter implements RateLimiter {
     }
 
     // Also reset local fallback
-    const fullKey = `local:${key}`
+    const fullKey = `local:${this.config.name}:${key}`
     if (this.localFallback.has(fullKey)) {
       this.localFallback.get(fullKey)!.reset()
     }

@@ -11,6 +11,7 @@ import { migration005Meeting } from './migrations/005-meeting'
 import { migration006CompanyDomainAndEmployerCardinality } from './migrations/006-company-domain-and-employer-cardinality'
 import { migration007EntityAvatarFields } from './migrations/007-entity-avatar-fields'
 import { migration008CompanyEnrichmentFields } from './migrations/008-company-enrichment-fields'
+import { migration009ParticipantIsInternal } from './migrations/009-participant-is-internal'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -27,6 +28,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration006CompanyDomainAndEmployerCardinality,
   migration007EntityAvatarFields,
   migration008CompanyEnrichmentFields,
+  migration009ParticipantIsInternal,
 ]
 
 // ─── Public API ──────────────────────────────────────────────────────
