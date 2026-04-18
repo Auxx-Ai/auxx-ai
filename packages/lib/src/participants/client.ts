@@ -24,4 +24,6 @@ export interface ParticipantMeta {
   /** Reference to EntityInstance (contact entity type) */
   entityInstanceId: string | null
   isSpammer: boolean
+  /** True when the participant's identifier is on the organization's own domain. */
+  isInternal: boolean
 }

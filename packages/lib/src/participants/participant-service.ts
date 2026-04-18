@@ -4,6 +4,11 @@ import { type Database, database, schema } from '@auxx/database'
 import type { IdentifierType, ParticipantEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
+import {
+  extractRegistrableDomain,
+  getOwnDomains,
+  normalizeDomain,
+} from '../ingest/domain/classifier'
 import type { ParticipantIdentifierType, ParticipantMeta } from './client'
 
 const logger = createScopedLogger('participant-service')
@@ -35,6 +40,21 @@ export class ParticipantService {
   constructor(organizationId: string, db: Database = database) {
     this.organizationId = organizationId
     this.db = db
+  }
+
+  /**
+   * Classify whether an email identifier belongs to the org's own domains.
+   * Returns false for non-email identifiers or when the domain can't be parsed.
+   */
+  private async _classifyIsInternal(
+    identifier: string,
+    identifierType: IdentifierType
+  ): Promise<boolean> {
+    if (identifierType !== 'EMAIL') return false
+    const domain = extractRegistrableDomain(identifier)
+    if (!domain) return false
+    const ownDomains = await getOwnDomains(this.organizationId)
+    return ownDomains.has(normalizeDomain(domain))
   }
 
   /** Calculates display name and initials for a participant. */
@@ -95,6 +115,7 @@ export class ParticipantService {
     })
     try {
       const { displayName, initials } = this._calculateDisplayInfo(name, identifier)
+      const isInternal = await this._classifyIsInternal(identifier, identifierType)
       const updateValues: Record<string, unknown> = {
         ...(name !== undefined && { name: name }),
         ...(displayName !== undefined && { displayName: displayName }),
@@ -110,6 +131,7 @@ export class ParticipantService {
           name: name,
           displayName: displayName,
           initials: initials,
+          isInternal,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -233,6 +255,7 @@ export class ParticipantService {
         initials: true,
         entityInstanceId: true,
         isSpammer: true,
+        isInternal: true,
       },
     })
 
@@ -250,6 +273,7 @@ export class ParticipantService {
           avatarUrl: null,
           entityInstanceId: p.entityInstanceId,
           isSpammer: p.isSpammer ?? false,
+          isInternal: p.isInternal ?? false,
         }
         return [p.id, meta]
       })

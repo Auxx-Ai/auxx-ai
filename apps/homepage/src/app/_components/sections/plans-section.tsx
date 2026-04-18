@@ -175,7 +175,7 @@ export default function PlansSection() {
           name: 'Saved views',
           description: 'Custom filtered views of your ticket queue.',
           plans: {
-            free: '5',
+            free: '10',
             starter: '20',
             growth: 'Unlimited',
           },

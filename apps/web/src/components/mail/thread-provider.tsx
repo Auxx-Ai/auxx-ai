@@ -138,6 +138,9 @@ export function ThreadProvider({
   // Ticket creation mutation (used by createAndLinkTicket handler)
   const createTicketMutation = api.ticket.create.useMutation()
 
+  // Force-create a contact for a participant when none is linked (used in createAndLinkTicket)
+  const ensureContactMutation = api.participant.ensureContact.useMutation()
+
   const {
     isShowReplyBox,
     setIsShowReplyBox,
@@ -185,11 +188,13 @@ export function ThreadProvider({
       createAndLinkTicket: async () => {
         if (!thread) return null
 
-        // Resolve the contact from the first inbound message's "from" participant
+        // Pick the first inbound external sender from the message store. Skip
+        // internal addresses (own-domain) and spammers.
         const messageIds = getMessageListStoreState().lists.get(threadId)?.messageIds ?? []
         const messageStore = getMessageStoreState()
         const participantStore = getParticipantStoreState()
 
+        let participantId: string | null = null
         let contactInstanceId: string | null = null
         for (const messageId of messageIds) {
           const message = messageStore.messages.get(messageId)
@@ -198,19 +203,38 @@ export function ThreadProvider({
           if (!fromPid) continue
           const rawId = fromPid.slice('from:'.length)
           const participant = participantStore.participants.get(rawId)
-          if (participant?.entityInstanceId) {
-            contactInstanceId = participant.entityInstanceId
-            break
-          }
+          if (!participant) continue
+          if (participant.isInternal || participant.isSpammer) continue
+
+          participantId = rawId
+          if (participant.entityInstanceId) contactInstanceId = participant.entityInstanceId
+          break
         }
 
-        if (!contactInstanceId) {
+        if (!participantId) {
           toastError({
             title: 'Cannot create ticket',
-            description:
-              'This thread has no linked contact yet. Open the contact from the thread first.',
+            description: 'No external sender found on this thread.',
           })
           return null
+        }
+
+        // Force-create the contact if the participant isn't linked yet.
+        if (!contactInstanceId) {
+          try {
+            const result = await ensureContactMutation.mutateAsync({ participantId })
+            contactInstanceId = result.entityInstanceId
+            participantStore.updateParticipant(participantId, {
+              entityInstanceId: contactInstanceId,
+            })
+          } catch (error) {
+            toastError({
+              title: 'Cannot create ticket',
+              description:
+                error instanceof Error ? error.message : 'Failed to create contact for sender.',
+            })
+            return null
+          }
         }
 
         try {
@@ -266,6 +290,7 @@ export function ThreadProvider({
       handleShowGenericReply,
       closeWithSuppress,
       createTicketMutation,
+      ensureContactMutation,
     ]
   )
 

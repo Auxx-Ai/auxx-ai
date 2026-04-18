@@ -1,0 +1,1 @@
+ALTER TABLE "Participant" ADD COLUMN "isInternal" boolean DEFAULT false NOT NULL;

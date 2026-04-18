@@ -75,8 +75,6 @@ export class TicketService {
       contactId,
       assignedToId,
       dueDate,
-      typeData = {},
-      typeStatus,
       organizationId,
       userId,
     } = input
@@ -84,18 +82,16 @@ export class TicketService {
     const handler = new UnifiedCrudHandler(organizationId, userId, this.db)
 
     const values: Record<string, unknown> = {
-      title,
-      description,
+      ticket_title: title,
+      ticket_description: description,
       ticket_type: type,
-      priority,
-      status,
-      contact_id: contactId,
-      type_data: typeData,
+      ticket_priority: priority,
+      ticket_status: status,
+      ticket_contact: toRecordId('contact', contactId),
     }
 
     if (assignedToId) values.assigned_to_id = assignedToId
     if (dueDate) values.due_date = dueDate
-    if (typeStatus) values.type_status = typeStatus
 
     const result = await handler.create('ticket', values)
 
@@ -118,30 +114,17 @@ export class TicketService {
    * Update an existing ticket via UnifiedCrudHandler
    */
   async updateTicket(input: UpdateTicketInput): Promise<any> {
-    const {
-      id,
-      title,
-      description,
-      priority,
-      status,
-      dueDate,
-      typeData,
-      typeStatus,
-      organizationId,
-      userId,
-    } = input
+    const { id, title, description, priority, status, dueDate, organizationId, userId } = input
 
     const handler = new UnifiedCrudHandler(organizationId, userId || 'system', this.db)
     const recordId = toRecordId('ticket', id)
 
     const values: Record<string, unknown> = {}
-    if (title !== undefined) values.title = title
-    if (description !== undefined) values.description = description
-    if (priority !== undefined) values.priority = priority
-    if (status !== undefined) values.status = status
+    if (title !== undefined) values.ticket_title = title
+    if (description !== undefined) values.ticket_description = description
+    if (priority !== undefined) values.ticket_priority = priority
+    if (status !== undefined) values.ticket_status = status
     if (dueDate !== undefined) values.due_date = dueDate
-    if (typeData !== undefined) values.type_data = typeData
-    if (typeStatus !== undefined) values.type_status = typeStatus
 
     await handler.update(recordId, values)
 

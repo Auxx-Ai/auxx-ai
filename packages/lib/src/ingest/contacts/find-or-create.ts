@@ -22,6 +22,10 @@ import { hasOrganizationSentToParticipant } from './has-sent-to'
  *   sent to this participant; otherwise skip
  * - `'all'`: always find-or-create
  *
+ * Pass `options.force = true` to bypass mode gating entirely (always
+ * find-or-create). Used by the user-initiated "create ticket from thread" flow
+ * where the click itself is the explicit intent.
+ *
  * When a contact is created (or matched), this also auto-links the contact
  * to a company keyed by email domain. Linking failures are swallowed and
  * logged — contact creation must succeed regardless.
@@ -29,21 +33,23 @@ import { hasOrganizationSentToParticipant } from './has-sent-to'
 export async function findOrCreateContactForParticipant(
   ctx: IngestContext,
   participant: Participant,
-  messageContext?: { isInbound: boolean; role: ParticipantRole }
+  messageContext?: { isInbound: boolean; role: ParticipantRole },
+  options?: { force?: boolean }
 ): Promise<string | null> {
   try {
     const mode = ctx.integrationSettings?.recordCreation?.mode || 'selective'
     const handler = ctx.crudHandler
+    const force = options?.force ?? false
 
     const systemAttr =
       participant.identifierType === IdentifierTypeEnum.PHONE ? 'phone' : 'primary_email'
 
-    if (mode === 'none') {
+    if (!force && mode === 'none') {
       const existing = await handler.findByField('contact', systemAttr, participant.identifier)
       return existing?.id ?? null
     }
 
-    if (mode === 'selective' && messageContext) {
+    if (!force && mode === 'selective' && messageContext) {
       const existing = await handler.findByField('contact', systemAttr, participant.identifier)
       if (existing) return existing.id
 

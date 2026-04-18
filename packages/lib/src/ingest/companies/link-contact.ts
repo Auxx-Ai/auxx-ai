@@ -97,7 +97,7 @@ export async function linkContactToCompanyByDomain(args: LinkContactArgs): Promi
       if (existing.length === 0) {
         updates.push(
           args.crudHandler.update(toRecordId('contact', args.contactId), {
-            contact_employer: companyId,
+            contact_employer: toRecordId('company', companyId),
           })
         )
       }
@@ -121,7 +121,7 @@ export async function linkContactToCompanyByDomain(args: LinkContactArgs): Promi
       if (existing.length === 0) {
         updates.push(
           args.crudHandler.update(toRecordId('company', companyId), {
-            company_primary_contact: args.contactId,
+            company_primary_contact: toRecordId('contact', args.contactId),
           })
         )
       }

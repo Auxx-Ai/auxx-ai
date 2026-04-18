@@ -29,6 +29,8 @@ export const Participant = pgTable(
     displayName: text(),
     initials: text(),
     isSpammer: boolean().default(false).notNull(),
+    /** True when the participant's identifier is on the organization's own domain. Set at create time; recompute on org domain change. */
+    isInternal: boolean().default(false).notNull(),
     /** Reference to EntityInstance (contact entity type) */
     entityInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
       onUpdate: 'cascade',
