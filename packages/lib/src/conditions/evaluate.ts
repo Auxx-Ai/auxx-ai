@@ -1,6 +1,7 @@
 // packages/lib/src/conditions/evaluate.ts
 
 import type { Operator } from './operator-definitions'
+import type { ConditionContext } from './resolve-context'
 import type { Condition, ConditionGroup } from './types'
 
 /**
@@ -42,37 +43,56 @@ export type FieldResolver<T> = (entity: T, fieldId: string) => unknown
 export function evaluateConditions<T>(
   entity: T,
   groups: ConditionGroup[],
-  resolver: FieldResolver<T>
+  resolver: FieldResolver<T>,
+  context?: ConditionContext
 ): boolean {
   // Empty groups = match all
   if (groups.length === 0) return true
 
   // Groups are AND'd at top level
-  return groups.every((group) => evaluateGroup(entity, group, resolver))
+  return groups.every((group) => evaluateGroup(entity, group, resolver, context))
 }
 
 /**
  * Evaluate a single condition group.
  */
-function evaluateGroup<T>(entity: T, group: ConditionGroup, resolver: FieldResolver<T>): boolean {
+function evaluateGroup<T>(
+  entity: T,
+  group: ConditionGroup,
+  resolver: FieldResolver<T>,
+  context?: ConditionContext
+): boolean {
   const { conditions, logicalOperator } = group
 
   if (conditions.length === 0) return true
 
-  const results = conditions.map((c) => evaluateCondition(entity, c, resolver))
+  const results = conditions
+    .map((c) => evaluateCondition(entity, c, resolver, context))
+    .filter((r): r is boolean => r !== undefined)
+
+  if (results.length === 0) return true
 
   return logicalOperator === 'OR' ? results.some(Boolean) : results.every(Boolean)
 }
 
 /**
  * Evaluate a single condition against an entity.
+ * Returns undefined when the condition is dropped (e.g. `currentUser` without a userId).
  */
 function evaluateCondition<T>(
   entity: T,
   condition: Condition,
-  resolver: FieldResolver<T>
-): boolean {
-  const { fieldId, operator, value } = condition
+  resolver: FieldResolver<T>,
+  context?: ConditionContext
+): boolean | undefined {
+  const { fieldId, operator, value, valueSource } = condition
+
+  // Resolve valueSource placeholders (currently just `currentUser`).
+  let effectiveValue: unknown = value
+  if (valueSource === 'currentUser') {
+    if (!context?.currentUserId) return undefined
+    effectiveValue = context.currentUserId
+  }
 
   // Extract simple field ID from ResourceFieldId format if needed
   const simpleFieldId = extractFieldId(fieldId)
@@ -81,7 +101,7 @@ function evaluateCondition<T>(
   // Field can't be evaluated client-side — trust the server's filtering
   if (fieldValue === FIELD_NOT_RESOLVABLE) return true
 
-  return evaluateOperator(fieldValue, operator as Operator, value)
+  return evaluateOperator(fieldValue, operator as Operator, effectiveValue)
 }
 
 /**

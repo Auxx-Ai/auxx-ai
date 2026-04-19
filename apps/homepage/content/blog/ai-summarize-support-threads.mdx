@@ -1,0 +1,120 @@
+---
+title: "Using AI to Summarize Long Support Threads"
+description: "Long back-and-forth threads are where support context goes to die. Here's how we use LLMs to keep reps oriented without reading 40 messages."
+date: "2024-04-30"
+slug: "ai-summarize-support-threads"
+category:
+  slug: "guides"
+  title: "Guides"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["ai", "summarization", "customer-support", "llms", "productivity"]
+published: true
+---
+
+## The 40-message thread problem
+
+Every support team has a version of this thread. Customer emails about a broken product. You reply with a troubleshooting step. They reply three days later. You're out that day, a colleague picks it up, tries a different fix. Customer is now frustrated and ccs their partner. Your colleague escalates to you. The conversation has become a 40-message monster with attachments, screenshots, and three different root-cause theories, and you are the fourth person to open it.
+
+You have two choices. Read the whole thread (10 minutes you don't have) or skim the last three messages and hope you caught up. Most reps pick option two. This is where context goes to die, customers repeat themselves, and "I already told the last agent" gets said for the fifth time.
+
+LLMs are genuinely good at this specific problem. Not because summarization is magic, but because the alternative — humans re-reading threads for the fourth time — is the wrong tool for the job.
+
+## What a good thread summary actually looks like
+
+A summary is only useful if it maps to the questions the rep actually has. Those questions, roughly in order:
+
+1. **What is this customer's problem?** One sentence.
+2. **What have we already tried?** Short list.
+3. **What are they currently waiting on from us?** The blocker, not the history.
+4. **What should the rep do next?** Or at minimum, what are the live options?
+5. **Is there anything weird I should know?** VIP status, escalation, a refund already promised, a past complaint.
+
+A summary that gives you those five things in 150 words is worth reading every time you open a thread. A summary that reads like an AP News recap of the conversation is worth reading never.
+
+## The prompt pattern that actually works
+
+The output format is what makes or breaks this. Here's the shape that consistently works:
+
+```
+Summary (1 sentence):
+
+What we've done so far:
+- [bullet]
+- [bullet]
+
+Current blocker:
+(what the customer is waiting on, or what we're waiting on from them)
+
+Suggested next action:
+(specific, not "follow up")
+
+Flags:
+(VIP, escalation, prior refund, any past patterns worth noting — or "none")
+```
+
+The structure forces the model to extract what matters instead of paraphrasing the whole conversation. The "suggested next action" field is load-bearing: it makes the rep's next click obvious.
+
+Two prompt rules that matter:
+
+**Tell the model what a bad summary looks like.** "Do not recap every message. Do not restate the customer's name in every sentence. If something is not mentioned in the thread, do not invent it." Negative examples beat positive ones.
+
+**Feed it the full thread, not the last N messages.** Modern models handle 50-100 message threads easily. Truncating to save tokens produces worse summaries than spending the 2 cents.
+
+## Where AI summarization falls over (and how to handle it)
+
+It's not perfect. The failure modes I see:
+
+**Confident hallucination of details.** A model will sometimes write "the customer received a partial refund of $40" when no refund was ever issued. Solve this by (a) including a "cite the message ID where each claim comes from" step and (b) never letting the summary replace the source thread — it sits next to it.
+
+**Losing the plot on escalations.** If the ticket was escalated and the escalation context is mostly in internal notes, the summary will often miss the "why" and give you a clean version that flattens the politics. Fix: include internal notes in the input, and ask the model to flag any tension or escalation explicitly.
+
+**Over-confident tone when the customer is upset.** LLMs tend to sanitize. If the customer has been yelling for three emails, the summary might say "customer is frustrated." That understates the situation. Ask for a sentiment flag separately: "none / mildly irritated / frustrated / furious." The coarse scale is more useful than a softened prose description.
+
+**Bad summaries of threads with many attachments.** If half the context is in screenshots or PDFs, text-only summarization misses it. The fix is either vision-capable models or explicit attachment handling — and being honest with yourself about which threads are summarizable and which aren't.
+
+## Where the summary actually lives
+
+The UX matters more than the prompt. A great summary nobody sees is worthless.
+
+The pattern that works in Auxx.ai: the summary is generated on ticket open and pinned to the top of the thread, collapsed by default. One line visible: the "what is this customer's problem" sentence. Expand to see the rest. It regenerates when enough new messages come in that the old summary is stale — not on every message, which burns tokens and flickers.
+
+Don't put the summary in a separate tab. Don't make the rep click to generate it. Don't show it as a pop-up. It should be there, right above the first message, every time. Anything more effort-ful and reps won't use it.
+
+## When to summarize and when not to
+
+A few heuristics:
+
+**Don't summarize short threads.** 1-5 messages, the rep can read it. You're adding latency and cost for no benefit. Threshold I use: 6+ messages or a thread older than a week.
+
+**Don't summarize in real-time on every message.** Generate on open, regenerate when a meaningful batch of new messages has arrived (say, 3+ since last summary). Not on every single reply.
+
+**Do summarize when a ticket changes owner.** This is the highest-value moment. The new rep has the least context and the most need for it.
+
+**Do summarize before a VIP or escalation handover.** "Here's the 30-second version" is exactly what the person who's about to get handed this thread needs.
+
+## Cost and latency
+
+Practical numbers for a mid-sized support team:
+
+- GPT-4o-mini or Claude Haiku can handle the vast majority of summaries well
+- Cost per summary: roughly 0.1–0.5 cents for typical support threads
+- Latency: 1–3 seconds for most threads
+- Quality difference vs. frontier models: noticeable on edge cases, negligible on the 95th-percentile ticket
+
+You only need to reach for a larger model on genuinely complex threads — multi-party escalations, technical issues with long history, threads with legal or refund sensitivity. A simple "if thread has these flags, use the bigger model" router gets you 99% of the quality at 20% of the cost.
+
+## What AI summarization doesn't replace
+
+Two things worth being explicit about:
+
+**It doesn't replace reading the thread before a difficult conversation.** If you're about to call a frustrated customer, read the actual messages. The summary is a map, not the territory.
+
+**It doesn't replace good ticket hygiene.** Summaries help reps catch up on messy threads, but the best long-term fix is internal notes, proper tagging, and keeping threads focused. AI summarization works *with* good process, not instead of it.
+
+## The bottom line
+
+Support is full of repeated human effort that exists only because the tools don't carry context well. Summarization is one of the cleanest cases where LLMs actually remove drudgery without adding risk — you get back the 5-10 minutes a rep spends reading long threads, and you stop losing context when tickets change hands.
+
+It's not a transformative feature on its own. But the compounding effect — over hundreds of threads a week, across a team of five — is larger than people expect. The difference between "fluent with every ticket in two seconds" and "skimmed the last three messages and hoped for the best" is most of what good support feels like.

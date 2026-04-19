@@ -13,6 +13,7 @@ import { Archive, Clock, ShieldAlert, Tag, Trash2, UserRound } from 'lucide-reac
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
+import { useSession } from '~/auth/auth-client'
 import { Tooltip } from '~/components/global/tooltip'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 import {
@@ -66,6 +67,8 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   const setFocusedThread = useThreadSelectionStore((s) => s.setFocusedThread)
   const selectionAnchorId = useSelectionAnchorId()
   const { update, isUpdating } = useThreadMutation()
+  const { data: session } = useSession()
+  const currentUserId = session?.user?.id
 
   const normalizedConditions = useMemo(
     () => normalizeStatusConditions(filterConditions),
@@ -74,8 +77,10 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
   const matchesFilter = useMemo(() => {
     if (!thread) return true
-    return evaluateConditions(thread, normalizedConditions, threadFieldResolver)
-  }, [thread, normalizedConditions])
+    return evaluateConditions(thread, normalizedConditions, threadFieldResolver, {
+      currentUserId,
+    })
+  }, [thread, normalizedConditions, currentUserId])
 
   const hasDraft = (thread?.draftIds?.length ?? 0) > 0
   const hasScheduledMessage = (thread?.scheduledMessageCount ?? 0) > 0

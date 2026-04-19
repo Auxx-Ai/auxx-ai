@@ -1,0 +1,141 @@
+---
+title: "Using AI to Triage Incoming Support Tickets"
+description: "Manual triage is the invisible cost of running a support team. Here's how to automate it without surrendering customer experience to a black box."
+date: "2024-06-11"
+slug: "ai-triage-support-tickets"
+category:
+  slug: "guides"
+  title: "Guides"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["ai", "triage", "automation", "customer-support", "ticket-routing"]
+published: true
+---
+
+## Triage is the hidden cost of support
+
+Most support teams don't realize how much of their day is triage. Open the inbox, skim the subject, guess the category, check if it's urgent, decide who should handle it, assign it, tag it, move on. Repeat 80 times. That work rarely gets measured because it's invisible — the reps doing it think of it as "reading emails."
+
+Back-of-the-envelope: 60 seconds of triage per ticket, 80 incoming per day per person, and you've lost 80 minutes. Over a five-person team, that's more than a full working day every week spent on the least valuable part of the job.
+
+AI triage is probably the single highest-ROI automation in a support stack. Not because it's fancy — it's genuinely just text classification — but because the human alternative is boring, repetitive, and inconsistent.
+
+## What AI triage should actually do
+
+Stripped down, triage is a set of classification decisions:
+
+1. **Category.** Order status, refund, product issue, account question, partnership, spam, etc.
+2. **Priority.** Urgent, normal, low.
+3. **Routing.** Which team or person owns this?
+4. **Language.** For multilingual support teams, what language should the reply be in?
+5. **Intent tags.** Is this a chargeback threat? A press inquiry? A legal complaint? A compliment?
+
+You don't need one fancy AI agent that does all five. You need a small set of focused classifications, each one narrow enough that it's reliable.
+
+## The categorization rule most people get wrong
+
+The temptation is to let the LLM come up with its own categories. "Read this ticket and tell me what it's about." Don't.
+
+Your team already has categories that exist in the tool — the ones your managers run reports on, the ones tied to macros, the ones that determine routing. The LLM's job is to classify into *those* categories, not invent new ones.
+
+The prompt pattern:
+
+```
+Classify this support message into exactly one of these categories:
+- order_status
+- refund_request
+- product_issue
+- account_access
+- partnership
+- other
+
+Reply with only the category name. No explanation.
+```
+
+Three reasons this matters:
+
+**Consistency with existing reports.** If the LLM invents "delivery problem" as a category, your "shipping" report breaks.
+
+**Reliability.** Closed-set classification is far more reliable than open-set generation. You can measure accuracy. You can fix mistakes.
+
+**Routing determinism.** Your routing rules are based on categories. If the categories are fuzzy, routing is fuzzy.
+
+The second subtle thing: include `other` as an explicit category. Without it, the model will force-fit ambiguous tickets into one of the defined categories, and you'll end up debugging weird routing decisions.
+
+## Priority classification is where it gets interesting
+
+Priority is harder than category because it depends on things that aren't always in the message:
+
+- Is this customer a VIP or high-LTV?
+- Have they been waiting already?
+- Is this a chargeback threat?
+- Are they asking something time-sensitive (order about to ship, reservation about to expire)?
+
+You have two options:
+
+**Option 1: Priority from message content alone.** Cheaper, simpler, less accurate. "Urgent" if the message uses words like urgent, ASAP, or threatens a chargeback or public complaint. "Low" if it's thanks or a feature suggestion. "Normal" otherwise.
+
+**Option 2: Priority from message + customer context.** You pass the model the message plus structured customer data — LTV, past tickets count, current open tickets, time waiting. More accurate, more expensive, more work to build.
+
+Most teams should start with option 1 and layer option 2 on top only for the tickets where option 1 can't decide. This saves tokens and gives you a sane fallback when the customer data is missing.
+
+## The "legal or press" flag matters more than the priority
+
+Here's a specific heuristic that pays for itself: a dedicated classifier that only answers one question. *"Is this message from a lawyer, a journalist, a regulator, or a large enterprise customer whose account ID I recognize?"*
+
+You don't want these tickets sitting in the normal queue for two hours. You want them flagged the moment they hit the inbox, escalated to a specific person, and acknowledged quickly.
+
+A small specialized model (or even a regex + keyword list backed up by an LLM for edge cases) catches these with high precision. Recall matters more than precision here — false positives are cheap (a founder looks at a non-urgent email), false negatives can be very expensive.
+
+## Language detection: don't use the AI for this
+
+Save your tokens. Use a cheap, local language detector (`fasttext`, `cld3`, anything). It's 100x cheaper, lower-latency, and more accurate than an LLM for this specific task.
+
+Once you know the language, route it to the team member who speaks it, and use that in the reply-generation prompt. Don't ask an LLM to detect the language when a model trained specifically for that problem exists and runs in milliseconds.
+
+## Intent tags: add them slowly
+
+It's tempting to extract 30 tags on every ticket. Don't. Each tag you add is a thing you have to validate, a report someone will run and complain about when it's wrong, a routing decision that might break.
+
+Start with three or four tags that map to concrete decisions:
+
+- `has_attachment`: trivial to detect, useful for routing (shipping photos often go to a specialist)
+- `refund_mentioned`: triggers a macro for payment team visibility
+- `angry` / `frustrated`: triggers a quality-review flag for manager
+- `returning_customer`: set from customer data, not the message
+
+The rule: every tag should change what happens to the ticket. Tags that only sit in a report get dropped.
+
+## How to ship this without blowing up support
+
+Three guardrails:
+
+**Run it in shadow mode first.** For a week or two, let the AI classify every incoming ticket, but don't act on the classifications. Log what it decided and what the rep actually did. You'll find the failure cases much faster than in production.
+
+**Never auto-close tickets.** Auto-categorize, auto-route, auto-assign — yes. Auto-close, auto-reply-and-resolve — no, not in the first six months. The cost of a wrongly-closed ticket (a furious customer who was ignored) is much higher than the cost of a human reading it.
+
+**Always let reps override.** If a rep changes the category or reassigns the ticket, log it. Those overrides are your training signal for the next version of the prompt.
+
+## Cost
+
+Ballpark for a team doing 500 tickets/day:
+
+- GPT-4o-mini category + priority classification: roughly $0.02 per ticket, $10/day
+- More sophisticated classification with context: roughly $0.05 per ticket, $25/day
+
+Both numbers are trivial next to the labor cost of a human spending 60 seconds per ticket on triage. The economics aren't close.
+
+## What AI triage doesn't fix
+
+It doesn't fix bad categories. If your existing taxonomy is a mess — overlapping buckets, vague definitions, categories nobody uses — the AI will reproduce the mess at scale. Clean up the taxonomy first.
+
+It doesn't fix unclear ownership. If "who owns refunds on international orders shipped via 3PL" isn't decided by a human, AI routing won't magically decide it either. AI routes to the rules you define; if the rules are ambiguous, the routing will be too.
+
+It doesn't fix understaffing. Moving 100 tickets/day to the correct queue faster doesn't change the fact that the queue is still 100 tickets. If the team is underwater, the tickets still sit there — just sorted.
+
+## The bottom line
+
+Triage is invisible, repetitive, and expensive. It's exactly the kind of work AI handles well — narrow classification, high volume, tolerant of occasional error as long as humans can override. Ship it carefully, in shadow mode first, and you'll claw back hours per person per day without giving up human judgment where it matters.
+
+Then use those reclaimed hours on the thing that actually grows retention: better, more personal replies to the tickets that do reach a human.

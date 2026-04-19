@@ -1,0 +1,113 @@
+---
+title: "Using Outlook for Customer Support: The Honest Assessment"
+description: "Outlook is still the default inbox for a huge chunk of businesses. Here's what actually works for support, and what you'll outgrow."
+date: "2024-02-27"
+slug: "outlook-customer-support-guide"
+category:
+  slug: "guides"
+  title: "Guides"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["outlook", "microsoft-365", "email-support", "shared-inbox"]
+published: true
+---
+
+## The Microsoft-shop version of the same problem
+
+People love to talk about Gmail as if it's the only mail client in the world. It isn't. A huge portion of the support teams I talk to — especially B2B, European, and any business over about 50 employees — live in Outlook. Microsoft 365 is the default, Teams is the collaboration layer, and nobody is switching to Google.
+
+The good news: Outlook can carry a support operation further than most people give it credit for. The bad news: the breaking points are the same as Gmail's, just with different workarounds.
+
+## Shared mailboxes: the feature most teams skip
+
+The single most underused thing in Microsoft 365 for support teams is the shared mailbox. It's free with most Business and Enterprise plans, and it does almost everything a team needs at the "we have three support people" stage:
+
+- Everyone on the team sees the same inbox
+- Replies go out from `support@yourcompany.com`, not anyone's personal address
+- Sent items show up for everyone
+- You don't pay a per-user license for the mailbox itself
+
+If you're paying for a helpdesk today and you have fewer than three support people, there's a decent chance a shared mailbox would handle your volume. The question is whether you can live without ticket metrics, SLA tracking, and proper status.
+
+## What Outlook does well for support
+
+Credit where it's due:
+
+**Rules and server-side filtering.** Outlook's rule engine is more powerful than Gmail's filters. You can route by header, by sender domain, by attachment presence, by importance flag. For triage, this matters.
+
+**Categories and flags.** Color categories let you build a visible status system without external tools — `@Urgent`, `@Waiting on customer`, `@Escalation`. Flags give you a "to-follow-up" view that works reasonably well for small teams.
+
+**Calendar integration.** If your support workflow involves booking calls (returns inspections, onboarding, escalation meetings), Outlook's calendar integration is genuinely nice. Fewer tabs, less switching.
+
+**Teams handoff.** Right-click a thread, turn it into a Teams discussion with the context attached. For escalations, this beats Slack.
+
+**Offline mode.** The desktop client still works offline. If your support team travels or you have inconsistent connectivity, this matters more than people admit.
+
+## Where Outlook starts to break
+
+The failure modes are a variation on the same theme:
+
+**No collision detection across a shared mailbox.** Two reps open the same email, both reply. The customer gets conflicting answers, your team looks disorganized. Microsoft has no native fix for this.
+
+**Categories aren't a real status system.** They're user-visible metadata. There's no enforcement, no "ticket is closed when the customer confirms," no automation on state changes.
+
+**Reporting is effectively nonexistent.** You cannot answer "what was our median first-response time last month?" from Outlook alone. You'd need Power BI, a custom export pipeline, and someone who understands both. Most support managers give up before they start.
+
+**Shared mailbox limits.** Outlook shared mailboxes cap at 50 GB and have throughput limits. If you're processing high volume (more than a few hundred tickets/day), you'll hit walls.
+
+**Mobile is weak for shared inboxes.** The Outlook mobile app handles personal mailboxes well and shared mailboxes poorly. If your support needs mobile access — and most do, for on-call — this is a daily papercut.
+
+**No customer context.** Same as Gmail. An email arrives from `jane@domain.com` and Outlook tells you nothing about whether she's emailed three times this week or spent $50,000 with you last quarter.
+
+## The workarounds people actually use
+
+Before moving to a dedicated tool, Outlook-based teams usually try:
+
+### 1. Tight shared-mailbox process
+
+A weekly rotation on "inbox owner," a category-based status system everyone is religious about, and a rule that the first person to open an email immediately flags it with their name. This works for 2-4 people. It falls apart at 5+.
+
+### 2. SharePoint or Planner as a side system
+
+The ticket lives in Outlook, the "task" for it lives in Planner. You maintain the link manually. It's fragile and everyone hates it, but it buys you basic tracking without leaving the Microsoft stack.
+
+### 3. Power Automate + custom flows
+
+For teams with an IT person, Power Automate can stitch together auto-assignment, SLA reminders, and simple routing. This gets you maybe 60% of what a purpose-built helpdesk does, with 100% of the maintenance burden. I've seen this implemented well twice and poorly a dozen times.
+
+### 4. Forward into a dedicated tool
+
+The end state for most teams. You keep the Microsoft 365 account, keep the `support@` address, and forward incoming mail into something built for support. Replies still go out from your real Outlook address, so customers see no change.
+
+## The signals it's time to move
+
+None of these are about ticket volume:
+
+- You hired your third support person and now tickets get answered twice or not at all
+- A customer escalated because they emailed three times and nobody noticed they were the same person
+- Your CEO asked "what's our average response time" and you had to guess
+- You can't tell which tickets are open vs. waiting on the customer without clicking through every single one
+
+If any of these hit, you've outgrown Outlook as a support system. Not as a mail client — nobody's telling you to leave Microsoft 365. Just as the thing holding your support operation together.
+
+## What to look for in an Outlook-compatible support tool
+
+The non-negotiable: it has to send and receive from your real Outlook addresses. Any tool that makes your customers email `support@somecompany.helpdesk.com` is wrong. Customers associate your support with your domain, not your vendor's.
+
+Beyond that, you want:
+
+- **Native Microsoft Graph integration** so threading, sent items, and signatures stay consistent with Outlook
+- **Shared mailbox support** — it should read and write the shared mailbox, not just a personal one
+- **Status, assignment, and SLA tracking** that Outlook never had
+- **Customer context** — past threads, orders, tags, LTV — next to the message
+- **Keyboard shortcuts that don't make your team feel slower than they did in Outlook**
+- **A mobile experience that actually works** for shared inboxes
+
+Auxx.ai connects to Microsoft 365 through Graph API. Your support team reads and replies from the same Outlook address they always have, but gets ticket ownership, status, customer context, and response-time metrics on top. No forwarding gymnastics, no "helpdesk" subdomain leaking into customer view.
+
+## The takeaway
+
+Outlook is better for support than it gets credit for, especially if you're already invested in Microsoft 365 and willing to be disciplined about shared mailboxes. But it has the same ceiling as Gmail, and you hit it for the same reasons: no collision detection, no real status, no metrics, no customer context.
+
+When you hit the ceiling, don't leave Outlook. Add the layer that makes it work like a support inbox. Your team keeps their keyboard shortcuts. Your customers keep emailing the address they already know. You just stop losing tickets.

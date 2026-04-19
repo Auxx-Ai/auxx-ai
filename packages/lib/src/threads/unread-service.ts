@@ -2,6 +2,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { resolveConditionContext } from '../conditions/resolve-context'
 import type { ConditionGroup } from '../conditions/types'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import type { FullCountsResponse, UserUnreadCounts } from './types'
@@ -550,7 +551,8 @@ export class UnreadService {
 
     // Calculate count for each view in parallel
     const countPromises = views.map(async (view) => {
-      const filters = (view.filters as ConditionGroup[]) || []
+      const rawFilters = (view.filters as ConditionGroup[]) || []
+      const filters = resolveConditionContext(rawFilters, { currentUserId: this.userId })
 
       // Build WHERE condition from view filters
       const whereCondition = buildConditionGroupsQuery(filters, this.organizationId)

@@ -20,10 +20,18 @@ export {
   OPERATOR_DEFINITIONS,
   operatorRequiresValue,
 } from './operator-definitions'
+// Context resolver for value-source placeholders (currentUser, …)
+export type { ConditionContext } from './resolve-context'
+export { resolveConditionContext } from './resolve-context'
 // Schemas
 export { conditionGroupSchema, conditionGroupsSchema, conditionSchema } from './schema'
 // Types
-export type { Condition, ConditionGroup, ConditionValidationResult } from './types'
+export type {
+  Condition,
+  ConditionGroup,
+  ConditionValidationResult,
+  ConditionValueSource,
+} from './types'
 export type {
   CheckboxColumnFormatting,
   ColumnFormatting,

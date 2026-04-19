@@ -60,6 +60,21 @@ export abstract class BaseConditionBuilder<TContext> {
     }
 
     const results = conditions.map((condition) => {
+      // Belt-and-suspenders: valueSource placeholders must be resolved upstream
+      // via resolveConditionContext before reaching query builders.
+      if (condition.valueSource) {
+        const fieldRef = condition.fieldId
+        logger.warn(
+          `Dropping condition with unresolved valueSource '${condition.valueSource}' — should have been substituted upstream`,
+          { fieldRef }
+        )
+        this.droppedConditions.push({
+          fieldRef: Array.isArray(fieldRef) ? fieldRef : fieldRef,
+          reason: `unresolved valueSource: ${condition.valueSource}`,
+        })
+        return undefined
+      }
+
       const sqlResult = this.conditionToSql(condition, context)
       if (!sqlResult) {
         const fieldRef = condition.fieldId

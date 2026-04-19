@@ -1,0 +1,116 @@
+---
+title: "Free Customer Support Software: What's Actually Usable"
+description: "Free support tools range from 'genuinely useful' to 'freemium trap with invisible walls.' Here's an honest look at what works and what doesn't."
+date: "2024-08-28"
+slug: "free-customer-support-software"
+category:
+  slug: "guides"
+  title: "Guides"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["free-tools", "helpdesk", "customer-support", "small-business"]
+published: true
+---
+
+## "Free" means different things depending on who's selling it
+
+Every support vendor has a free tier. They range from genuinely generous to barely disguised bait. Before looking at any specific tool, it helps to understand the four categories:
+
+**Forever-free, no meaningful limits.** Rare. Usually small open-source projects or companies using free as a genuine marketing funnel. You can run your support operation on these.
+
+**Forever-free, but hobbled.** The base product works but important features are paywalled. Often the free tier has a seat cap (1-3 agents) that makes it unusable once you grow past a founder doing support alone.
+
+**Free trial dressed as free.** 14 or 30 days full access, then a wall. These aren't free tools; they're demos.
+
+**"Free" with deliverability or branding cost.** You pay in visible vendor branding on every customer reply, or in deliverability rate-limits, or in data limits that cap how many tickets you can store.
+
+Knowing which category you're in before you commit to anything saves a migration later.
+
+## What a realistic free stack can actually do
+
+If you are genuinely starting from zero — one founder, a couple of support tickets a day — you don't need a paid helpdesk at all. A perfectly fine free stack:
+
+- **Gmail or Outlook** (included with your existing email/domain) for the inbox itself
+- **A few labels or folders** for status (`open`, `waiting`, `done`)
+- **A canned-replies extension** (Gmail has one, there are Chrome extensions for Outlook) for templated answers
+- **A spreadsheet** for the handful of metrics you'll check weekly
+
+This "stack" costs nothing, handles 20-50 tickets a day, and doesn't lock you into anything. The temptation is to upgrade too early. Resist. Every day you keep this working is a day you haven't paid for seats.
+
+## Where most free tiers quietly break
+
+Watch for these gotchas, because they're where "free" stops being free:
+
+**Agent seat caps.** HubSpot Free is two users. Freshdesk Free is one user. Zoho Desk Free is three. The moment you hire your second support rep, the entire free model collapses. Make sure your seat count doesn't outgrow the tier before your ticket count does.
+
+**Branded footers.** Some free helpdesks add "powered by X" to every customer reply. Your customers associate your support with the vendor's brand, not yours. This is a silent cost.
+
+**Data retention limits.** The most invisible trap. "Unlimited contacts, 100 tickets retained." You hit month three, your older tickets start disappearing, and you discover it only when a customer references something from six weeks ago that's gone.
+
+**Send-volume rate limits.** Free tiers often cap outbound replies or use shared IP pools with worse deliverability. If your replies start landing in spam, nobody tells you — you just notice customer complaints rising for reasons you can't diagnose.
+
+**Data residency in unsupported regions.** For European teams, many US-headquartered free tiers process data in the US by default. If you have any GDPR exposure, the free tier may not be procurement-legal even if it's technically adequate.
+
+**Feature walls on the things you actually need.** Automation, reporting, webhooks, API access, SLA tracking — these are universally paywalled. Whether that matters depends on whether you're actually going to use them.
+
+## The honest rankings
+
+I'll give you what I actually think, not the sponsored version.
+
+### Actually useful free tools
+
+**HubSpot CRM Free (with shared inbox features).** Two seats, but the shared inbox is real. If you're a two-person founder-led team, this works. Upgrade path is steep — $90/user/month for the next meaningful tier — so don't expect to stay free as you grow.
+
+**Freshdesk Free.** One seat, which is a harder limit than HubSpot's. But the product itself is solid at the free tier. Decent if you're a solo operator and not planning to hire soon.
+
+**Zoho Desk Free.** Three seats, which makes this the most generous of the established vendors. Feature-limited but the basics are there.
+
+**Your own email provider plus an open-source helpdesk.** If you're technical, self-hosting an open-source helpdesk (Chatwoot, FreeScout, UVdesk) is actually free in the software-license sense. You pay in server costs (~$10-30/month) and your own time.
+
+### Tools I wouldn't count on the free tier for
+
+**Intercom free messenger.** Looks free, but the moment you need to actually reply to someone, you're on a paid plan. The free offering is a marketing widget, not a support tool.
+
+**Gorgias free plan.** Mostly a trial funnel. You'll hit a wall fast.
+
+**Zendesk's free options.** These have shrunk over the years. Not a serious free tier anymore.
+
+## The "free because open-source" option
+
+Worth calling out separately. A few open-source support tools (Chatwoot, FreeScout, UVdesk, Helpy, and yes, Auxx.ai) can be self-hosted for the cost of infrastructure alone.
+
+This is genuinely free in the software sense. Whether it's actually cheaper than a paid SaaS depends on:
+
+- **Your time.** Self-hosting takes hours per month. If your hourly rate is meaningful, you're paying in time instead of money.
+- **Infrastructure cost.** A modest VPS runs $10-30/month. Database, backups, monitoring bring that up.
+- **Opportunity cost of maintenance.** Security updates, version upgrades, dealing with downtime when your SMTP breaks on a Sunday.
+
+For a solo founder who likes tinkering and has an hour on weekends, self-hosting an open-source helpdesk is great. For a support manager whose team has a ticket backlog, paying $100/month to not think about infrastructure is usually the right call.
+
+## When paid is cheaper than free
+
+Two situations where free tools actively cost you money:
+
+### 1. When "free" locks out the one feature you actually need
+
+You're evaluating because you need SLA tracking, or integration with your commerce platform, or AI-assisted drafting. If the free tier specifically excludes the thing you're solving for, it's not free — it's a trial that hides the trial.
+
+### 2. When the free tier caps your team before your ticket volume caps it
+
+If you'll need a second support person in the next three months, a free tier with a one-seat limit is going to force a migration right when your team is busiest. Migrations during growth are the worst time to do them. Better to pick a $20/seat paid plan now than to re-platform in three months.
+
+## What to actually do
+
+A decision tree I'd share with a friend:
+
+- **Solo founder, 0-20 tickets/day, no customers-complain-about-slow-support crisis:** Use Gmail/Outlook with labels. Don't overthink it. Free stack.
+- **Solo founder, 20-50 tickets/day:** Gmail + a canned-replies tool + a simple spreadsheet. Still free.
+- **Two or three people on support, 50-200 tickets/day:** You've hit the limits of free tiers from established vendors. Either pay $15-30/seat for a lightweight helpdesk or self-host something open-source if you have the technical capacity.
+- **Five+ people, SLA commitments, enterprise customers:** Paid is not optional. Free tier concerns are noise at this scale.
+
+## The thing I'd actually say to a friend
+
+Don't optimize for "free" at a stage where your time is the scarce resource. If you're spending four hours a week fighting your "free" tool, you're paying more per month than most paid helpdesks charge, you just can't see the bill.
+
+Free tools are best as stepping stones, not destinations. Use them when your ticket volume is genuinely small, switch when it isn't, and don't feel bad about the upgrade. Your customers don't care what tool you use; they care whether their email got answered.

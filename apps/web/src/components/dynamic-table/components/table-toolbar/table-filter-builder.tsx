@@ -118,6 +118,7 @@ export function TableFilterBuilder({
       defaultGroupName: 'Filter',
       allowVarEditor: false,
       allowConstantToggle: false,
+      allowCurrentUserPlaceholder: true,
     }),
     [fieldDefinitions, resourceType]
   )

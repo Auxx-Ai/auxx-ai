@@ -50,6 +50,7 @@ export function MailViewFilterBuilder() {
       // No variable mode for mail views
       allowVarEditor: false,
       allowConstantToggle: false,
+      allowCurrentUserPlaceholder: true,
       display: 'inline',
     }),
     [fieldDefinitions]

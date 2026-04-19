@@ -1,0 +1,105 @@
+---
+title: "Using Gmail for Customer Support: What Works, What Breaks"
+description: "Gmail is where most small e-commerce teams start their support. Here's how far you can push it — and when you need something built for the job."
+date: "2024-01-16"
+slug: "gmail-customer-support-guide"
+category:
+  slug: "guides"
+  title: "Guides"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["gmail", "email-support", "shared-inbox", "customer-support"]
+published: true
+---
+
+## Gmail is where most support starts
+
+Every support team I've seen started inside Gmail. A support@ address, a few filters, a couple of labels, and the whole operation runs out of someone's inbox. That's not a bug — it's the right call when you have 20 tickets a day and no budget for tooling.
+
+The question isn't whether to use Gmail. It's how far you can push it before the cracks start to hurt your customers.
+
+## Set up the inbox properly before anything else
+
+Most of the pain people blame on Gmail comes from skipping the boring setup. A few things that matter more than they should:
+
+**Use a real support alias on your own domain.** `support@yourstore.com`, not `yourstore.support@gmail.com`. Customers trust it more, your deliverability is better, and you can migrate later without breaking every email thread that ever existed.
+
+**Run it through Google Workspace, not free Gmail.** Workspace gives you 2,000 sends/day (vs. 500), shared-inbox features, proper audit logs, and the ability to add teammates without handing over your personal credentials.
+
+**Set up SPF, DKIM, and DMARC on day one.** Half the "Gmail is unreliable" complaints I hear trace back to DNS records that were never configured. Your replies land in spam, customers think you ghosted them, and nobody knows why.
+
+**Create filters before you need them.** Order confirmations from your store's transactional sender should skip the inbox. Shopify/Stripe notifications go to their own label. Newsletter replies from marketing campaigns shouldn't share space with actual support.
+
+## The three things Gmail is genuinely good at
+
+Before I tell you where Gmail falls down, it's worth being honest about what it does well:
+
+- **Search.** Gmail's search is still better than most purpose-built helpdesks. Customer emails you six months later about an issue — you'll find the thread.
+- **Familiarity.** Nobody on your team needs training. You send email, you receive email.
+- **Portability.** Your data is standard IMAP/Gmail API. Anything that integrates with email can integrate with your support.
+
+If you have one or two people answering 30-50 tickets a day, Gmail plus a handful of labels is genuinely enough. Don't let anyone guilt you into a 5-seat Zendesk plan for a team of two.
+
+## Where Gmail starts to hurt
+
+The breaking point is usually the same across teams. You notice it when:
+
+**Two people reply to the same ticket.** No collision detection, no way to see who's working on what. It's embarrassing when the customer gets two different answers within an hour.
+
+**You can't tell what's open vs. handled.** Gmail has "read/unread" and labels. Those are crude substitutes for "status." You end up inventing your own conventions ("star if you replied," "move to 'done' label when resolved") and the conventions break as soon as someone new joins.
+
+**Nobody knows who owns a ticket.** With two people it's obvious. With five, tickets start falling through the cracks because everyone assumes someone else has it.
+
+**SLAs are impossible to measure.** Gmail doesn't track first-response time. You can't answer "how fast did we reply to this ticket?" without digging through timestamps manually.
+
+**You can't see customer context.** When Jane emails you for the fourth time this month, Gmail won't tell you. You have to search her address and scroll. If she's ordered from you before, her order history is a separate tab. If she's a VIP, nothing flags that.
+
+**Macros and saved replies are clunky.** Gmail templates exist, but they're awkward for teams. No variables, no shared library that updates when you edit it.
+
+## The three ways teams work around the gaps
+
+Before buying a dedicated helpdesk, most teams try one of three things:
+
+### 1. Heavier Gmail + Workspace hygiene
+
+Shared labels for status (`/Open`, `/Waiting on customer`, `/Done`), a weekly triage meeting, and strict rules about who answers what. This buys you time — maybe 6-12 months — but it gets worse as the team grows.
+
+### 2. A Gmail add-on layer
+
+Tools that install a sidebar into Gmail and bolt on ticket tracking, collision detection, and shared templates. They work, but you're still limited by what Gmail's add-on API allows, and they typically charge per seat on top of whatever Workspace already costs.
+
+### 3. Forward Gmail into a purpose-built tool
+
+You keep your `support@` address, but forward incoming mail into a helpdesk that handles threading, status, assignment, and customer context. This is the path most teams end up on.
+
+## When it's time to move
+
+The trigger is almost never ticket volume alone. It's one of these:
+
+- You hired your second or third support person and ticket ownership is unclear
+- You missed a SLA commitment to a partner or enterprise customer and got called out for it
+- You realize you have no idea what your real response time actually is
+- A customer churned and you had no visibility that they'd been emailing you for weeks
+
+If any of those sound familiar, Gmail has stopped being an asset. You're now paying for it in missed revenue.
+
+## What a Gmail-integrated support tool should actually do
+
+If you do move to a dedicated tool, don't pick one that replaces Gmail. Pick one that plugs into it. Your team still sends and receives from real Gmail addresses — but the tool adds the things Gmail was never built for:
+
+- **Thread ownership and assignment** so nothing falls through
+- **Status tracking** (open, waiting, closed) separate from read/unread
+- **Collision detection** so two people don't answer the same ticket
+- **Customer context** (past tickets, orders, LTV) next to the thread
+- **Shared templates and macros** with variables
+- **SLA tracking** with real metrics — first response time, time to resolution
+- **Auto-triage and routing** so incoming tickets land with the right person
+
+Auxx.ai does all of this on top of your existing Gmail. Your customers never see the difference — replies come from your real `support@` address, in the threads they already know. Your team just stops losing tickets.
+
+## The bottom line
+
+Gmail is a great starting point and a terrible long-term home for a support operation once you have more than two people answering tickets. The good news: you don't have to migrate anywhere to fix it. You just have to add the tooling that makes Gmail work like a support inbox instead of a personal one.
+
+If you're still in the 20-tickets-a-day phase, don't overthink this. Set up SPF/DKIM, create a shared label system, and keep going. The day you notice tickets slipping through, come back and read the second half of this post.

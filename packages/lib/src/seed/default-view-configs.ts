@@ -283,6 +283,109 @@ export const DEFAULT_VIEW_CONFIGS = {
       } satisfies ViewConfig,
     },
     {
+      name: 'My Tickets',
+      description: 'Tickets assigned to you — resolved per-viewer via currentUser',
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_ticket_title: true,
+          field_ticket_number: true,
+          field_ticket_status: true,
+          field_ticket_priority: true,
+          field_assigned_to_id: true,
+          field_contact: true,
+          field_created_at: true,
+          field_updated_at: true,
+        },
+        columnOrder: [
+          'field_ticket_number',
+          'field_ticket_title',
+          'field_ticket_status',
+          'field_ticket_priority',
+          'field_assigned_to_id',
+          'field_contact',
+          'field_updated_at',
+        ],
+        columnPinning: {
+          left: ['_checkbox', 'field_ticket_number', 'field_ticket_title'],
+        },
+        sorting: [{ id: 'field_updated_at', desc: true }],
+        filters: [
+          {
+            id: 'my-tickets-group',
+            logicalOperator: 'AND',
+            conditions: [
+              {
+                id: 'my-tickets-assignee',
+                fieldId: 'field_assigned_to_id',
+                operator: 'is',
+                value: undefined as unknown as string,
+                valueSource: 'currentUser',
+              },
+            ],
+          },
+        ],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+    {
+      name: 'My Open Tickets',
+      description: 'Your active work queue — assigned to you and not closed',
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_ticket_title: true,
+          field_ticket_number: true,
+          field_ticket_status: true,
+          field_ticket_priority: true,
+          field_assigned_to_id: true,
+          field_contact: true,
+          field_created_at: true,
+          field_updated_at: true,
+        },
+        columnOrder: [
+          'field_ticket_number',
+          'field_ticket_title',
+          'field_ticket_status',
+          'field_ticket_priority',
+          'field_assigned_to_id',
+          'field_contact',
+          'field_updated_at',
+        ],
+        columnPinning: {
+          left: ['_checkbox', 'field_ticket_number', 'field_ticket_title'],
+        },
+        sorting: [{ id: 'field_updated_at', desc: true }],
+        filters: [
+          {
+            id: 'my-open-tickets-group',
+            logicalOperator: 'AND',
+            conditions: [
+              {
+                id: 'my-open-tickets-assignee',
+                fieldId: 'field_assigned_to_id',
+                operator: 'is',
+                value: undefined as unknown as string,
+                valueSource: 'currentUser',
+              },
+              {
+                id: 'my-open-tickets-status-not-closed',
+                fieldId: 'field_ticket_status',
+                operator: 'not in',
+                value: ['CLOSED', 'CANCELLED', 'MERGED', 'RESOLVED'],
+                isConstant: true,
+              },
+            ],
+          },
+        ],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+    {
       name: 'High Priority',
       description: 'High and urgent priority tickets — fast triage view',
       config: {

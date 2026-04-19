@@ -2,6 +2,7 @@
 
 'use client'
 
+import type { ConditionValueSource } from '@auxx/lib/conditions/client'
 import { memo, useMemo } from 'react'
 import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
@@ -12,6 +13,7 @@ type ConditionValueProps = {
   fieldId?: string
   operator: Operator
   value: string | string[] | TiptapJSON | number | boolean
+  valueSource?: ConditionValueSource
   nodeId?: string
   className?: string
 }
@@ -19,7 +21,14 @@ type ConditionValueProps = {
 /**
  * Generic condition value display component
  */
-const ConditionValue = ({ fieldId, operator, value, nodeId, className }: ConditionValueProps) => {
+const ConditionValue = ({
+  fieldId,
+  operator,
+  value,
+  valueSource,
+  nodeId,
+  className,
+}: ConditionValueProps) => {
   const { config, getFieldDefinition } = useConditionContext()
 
   const operatorDef = STANDARD_OPERATORS[operator]
@@ -32,6 +41,8 @@ const ConditionValue = ({ fieldId, operator, value, nodeId, className }: Conditi
 
   const formatValue = useMemo(() => {
     if (notHasValue) return ''
+
+    if (valueSource === 'currentUser') return 'Current user'
 
     if (Array.isArray(value)) {
       return value.join(', ')
@@ -50,7 +61,7 @@ const ConditionValue = ({ fieldId, operator, value, nodeId, className }: Conditi
     }
 
     return String(value)
-  }, [notHasValue, value])
+  }, [notHasValue, value, valueSource])
 
   return (
     <div className={`flex h-6 items-center gap-1 rounded-md bg-muted px-1 ${className || ''}`}>

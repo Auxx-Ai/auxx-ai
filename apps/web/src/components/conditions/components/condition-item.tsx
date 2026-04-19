@@ -6,7 +6,8 @@ import type { FieldReference } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { Trash2 } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { CURRENT_USER_ACTOR_ID } from '~/components/pickers/actor-picker/actor-picker-content'
 import { useConditionContext } from '../condition-context'
 import ValueInput from '../inputs/value-input'
 import type { ConditionItemProps, FieldDefinition, Operator } from '../types'
@@ -81,6 +82,7 @@ const ConditionItem = ({
         fieldId: fieldReference as string | string[],
         operator: firstOperator,
         value: '',
+        valueSource: undefined,
       })
     },
     [handleUpdate, registerFieldDefinition]
@@ -97,6 +99,7 @@ const ConditionItem = ({
         fieldId,
         operator: firstOperator,
         value: '',
+        valueSource: undefined,
         variableId: config.mode === 'variable' ? fieldId : condition.variableId,
       })
     },
@@ -152,18 +155,53 @@ const ConditionItem = ({
     [condition.operator, condition.value, handleUpdate]
   )
 
+  const isActorField = fieldDef?.fieldType === 'ACTOR'
+  const allowCurrentUser = Boolean(config.allowCurrentUserPlaceholder && isActorField)
+
+  /**
+   * For actor-field filters: hydrate the stored condition (value + valueSource)
+   * into a single array for the picker. The sentinel rides alongside any real
+   * actor IDs — see CURRENT_USER_ACTOR_ID in actor-picker-content.
+   */
+  const hydratedValue = useMemo(() => {
+    if (!allowCurrentUser) return condition.value
+    const base = Array.isArray(condition.value)
+      ? condition.value
+      : condition.value
+        ? [condition.value]
+        : []
+    if (condition.valueSource === 'currentUser' && !base.includes(CURRENT_USER_ACTOR_ID)) {
+      return [...base, CURRENT_USER_ACTOR_ID]
+    }
+    return base
+  }, [allowCurrentUser, condition.value, condition.valueSource])
+
   const handleValueChange = useCallback(
     (value: any, isConstantMode?: boolean, metadata?: Record<string, any>) => {
-      const updates: any = { value }
+      let nextValue = value
+      let nextValueSource: 'currentUser' | undefined = condition.valueSource
+
+      // Actor fields in filter context: extract the sentinel into valueSource
+      // so the persisted shape stays { value: ActorId[], valueSource? }.
+      if (allowCurrentUser && Array.isArray(value)) {
+        const hasSentinel = value.includes(CURRENT_USER_ACTOR_ID)
+        nextValue = value.filter((v: unknown) => v !== CURRENT_USER_ACTOR_ID)
+        nextValueSource = hasSentinel ? 'currentUser' : undefined
+      }
+
+      const updates: any = { value: nextValue }
       if (isConstantMode !== undefined) {
         updates.isConstant = isConstantMode
       }
       if (metadata) {
         updates.metadata = { ...condition.metadata, ...metadata }
       }
+      if (allowCurrentUser && nextValueSource !== condition.valueSource) {
+        updates.valueSource = nextValueSource
+      }
       handleUpdate(updates)
     },
-    [handleUpdate, condition.metadata]
+    [handleUpdate, condition.metadata, condition.valueSource, allowCurrentUser]
   )
 
   /** Value input block — placed inline or stacked depending on config.display */
@@ -179,11 +217,12 @@ const ConditionItem = ({
         <ValueInput
           condition={condition}
           field={fieldDef}
-          value={condition.value}
+          value={hydratedValue}
           onChange={handleValueChange}
           disabled={readOnly}
           nodeId={nodeId}
           className='text-xs w-full pe-1'
+          allowCurrentUser={allowCurrentUser}
         />
       </div>
     ) : null

@@ -37,6 +37,8 @@ interface ResourceInputProps {
   autoGrow?: AutoGrowOptions
   /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
   shouldPreventDismiss?: (target: HTMLElement) => boolean
+  /** Filter-builder context: allow selecting the viewer as the condition value */
+  allowCurrentUser?: boolean
 }
 
 /**
@@ -55,6 +57,7 @@ export function ResourceInput({
   onOpenChange,
   autoGrow,
   shouldPreventDismiss,
+  allowCurrentUser = false,
 }: ResourceInputProps) {
   // Resolve input configuration based on field type and operator
   const inputConfig = useMemo(() => {
@@ -80,6 +83,7 @@ export function ResourceInput({
       onOpenChange={onOpenChange}
       autoGrow={autoGrow}
       shouldPreventDismiss={shouldPreventDismiss}
+      allowCurrentUser={allowCurrentUser}
     />
   )
 }

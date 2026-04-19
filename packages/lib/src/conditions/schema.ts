@@ -19,6 +19,7 @@ export const conditionSchema: z.ZodType<any> = z.lazy(() =>
     metadata: z.record(z.string(), z.any()).optional(),
     numberVarType: z.enum(['string', 'number']).optional(),
     variableId: z.string().optional(),
+    valueSource: z.enum(['currentUser']).optional(),
   })
 )
 

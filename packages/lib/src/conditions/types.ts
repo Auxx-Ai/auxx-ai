@@ -4,6 +4,12 @@ import type { ResourceFieldId } from '@auxx/types/field'
 import type { Operator } from './operator-definitions'
 
 /**
+ * Supported value-source placeholders for table/mail-view filters.
+ * Resolved at query time from the request context (see conditions/resolve-context.ts).
+ */
+export type ConditionValueSource = 'currentUser'
+
+/**
  * Generic condition for filtering/querying resources
  * Used by workflow nodes, table filters, and query builders
  */
@@ -32,6 +38,12 @@ export interface Condition {
   metadata?: Record<string, any>
   numberVarType?: 'string' | 'number'
   variableId?: string
+
+  /**
+   * When set, `value` is substituted at query time from the request context.
+   * Table-filter analog of workflow's `isConstant: false` + `variableId`.
+   */
+  valueSource?: ConditionValueSource
 }
 
 /**
