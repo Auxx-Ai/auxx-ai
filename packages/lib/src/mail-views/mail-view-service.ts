@@ -4,6 +4,7 @@ import { type Database, database as db, schema } from '@auxx/database'
 import type { CreateMailViewInput, MailViewEntity, UpdateMailViewInput } from '@auxx/database/types'
 import { getRedisClient } from '@auxx/redis'
 import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
+import { resolveConditionContext } from '../conditions/resolve-context'
 import type { ConditionGroup } from '../conditions/types'
 import { batchGetThreadTagIds } from '../field-values/relationship-queries'
 import { createScopedLogger } from '../logger'
@@ -169,8 +170,14 @@ export class MailViewService {
    * @param pageSize Page size
    * @returns Cache key string
    */
-  private getMailViewThreadsCacheKey(mailViewId: string, page: number, pageSize: number): string {
-    return `mailview:threads:${mailViewId}:page:${page}:size:${pageSize}:org:${this.organizationId}`
+  private getMailViewThreadsCacheKey(
+    mailViewId: string,
+    page: number,
+    pageSize: number,
+    userId?: string
+  ): string {
+    const suffix = userId ? `:user:${userId}` : ''
+    return `mailview:threads:${mailViewId}:page:${page}:size:${pageSize}:org:${this.organizationId}${suffix}`
   }
 
   /**
@@ -730,14 +737,18 @@ export class MailViewService {
    * @param pagination Pagination options
    * @returns Object containing threads and total count
    */
-  async getThreadsByMailView(mailViewId: string, pagination: { page: number; pageSize: number }) {
+  async getThreadsByMailView(
+    mailViewId: string,
+    pagination: { page: number; pageSize: number },
+    userId?: string
+  ) {
     try {
       // Validate pagination
       const page = Math.max(1, pagination.page || 1)
       const pageSize = Math.max(1, Math.min(100, pagination.pageSize || 25))
 
-      // Try to get from cache
-      const cacheKey = this.getMailViewThreadsCacheKey(mailViewId, page, pageSize)
+      // Try to get from cache (include userId to isolate currentUser substitutions)
+      const cacheKey = this.getMailViewThreadsCacheKey(mailViewId, page, pageSize, userId)
       const cachedResult = await this.getFromCache<{
         threads: ThreadWithRelations[]
         total: number
@@ -765,7 +776,8 @@ export class MailViewService {
       }
 
       // Read filterGroups from the 'filters' column (backwards compatible)
-      const filterGroups = (mailView.filters as ConditionGroup[]) || []
+      const rawFilterGroups = (mailView.filters as ConditionGroup[]) || []
+      const filterGroups = resolveConditionContext(rawFilterGroups, { currentUserId: userId })
 
       // Build the WHERE condition using the condition query builder
       const whereCondition = buildConditionGroupsQuery(filterGroups, this.organizationId)

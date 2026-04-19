@@ -1,7 +1,8 @@
 // apps/web/src/components/mail/hooks/use-count-updates.ts
 
 import { type ConditionGroup, evaluateConditions } from '@auxx/lib/conditions/client'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useSession } from '~/auth/auth-client'
 import { type CountUpdates, useMailCountsStore } from '../store'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -49,6 +50,9 @@ export interface ViewDefinition {
  * rollback()
  */
 export function useCountUpdates(views: ViewDefinition[] = []) {
+  const { data: session } = useSession()
+  const currentUserId = session?.user?.id
+  const conditionContext = useMemo(() => ({ currentUserId }), [currentUserId])
   const batchUpdate = useMailCountsStore((s) => s.batchUpdate)
   const incrementDrafts = useMailCountsStore((s) => s.incrementDrafts)
   const decrementDrafts = useMailCountsStore((s) => s.decrementDrafts)
@@ -92,10 +96,12 @@ export function useCountUpdates(views: ViewDefinition[] = []) {
   const getMatchingViewIds = useCallback(
     (threadData: Record<string, unknown>): string[] => {
       return views
-        .filter((view) => evaluateConditions(threadData, view.filters, fieldResolver))
+        .filter((view) =>
+          evaluateConditions(threadData, view.filters, fieldResolver, conditionContext)
+        )
         .map((view) => view.id)
     },
-    [views, fieldResolver]
+    [views, fieldResolver, conditionContext]
   )
 
   /**

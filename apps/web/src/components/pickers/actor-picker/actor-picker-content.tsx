@@ -22,6 +22,23 @@ import { ActorItem } from './actor-item'
 const EMPTY_EXCLUDE_IDS: ActorId[] = []
 
 /**
+ * Sentinel ActorId that represents "the user viewing this page at query time".
+ * Flows through `value`/`onChange` like any other ActorId; callers in filter-builder
+ * contexts translate it to `valueSource: 'currentUser'` when persisting the condition.
+ */
+export const CURRENT_USER_ACTOR_ID = 'placeholder:currentUser' as ActorId
+
+/** Synthetic Actor used to render the sentinel with the shared ActorItem UI. */
+const CURRENT_USER_ACTOR: Actor = {
+  actorId: CURRENT_USER_ACTOR_ID,
+  type: 'user',
+  name: 'Current user',
+  email: '',
+  avatarUrl: null,
+  role: 'USER',
+}
+
+/**
  * Props for the ActorPickerContent component
  */
 export interface ActorPickerContentProps {
@@ -60,6 +77,13 @@ export interface ActorPickerContentProps {
 
   /** ActorIds to exclude from results */
   excludeIds?: ActorId[]
+
+  /**
+   * Show a "Current user" pseudo-row. Selecting it toggles `CURRENT_USER_ACTOR_ID`
+   * in `value` via the normal onChange — the picker does not know about filter
+   * semantics. Only intended for filter-builder contexts (tables, mail views).
+   */
+  allowCurrentUser?: boolean
 }
 
 /**
@@ -85,6 +109,7 @@ export function ActorPickerContent({
   isLoading: externalLoading = false,
   className,
   excludeIds = EMPTY_EXCLUDE_IDS,
+  allowCurrentUser = false,
 }: ActorPickerContentProps) {
   const [search, setSearch] = useState('')
 
@@ -94,8 +119,12 @@ export function ActorPickerContent({
     return () => onCaptureChange?.(false)
   }, [onCaptureChange])
 
-  // Track initial selected actorIds (snapshot at mount) - prevents layout shifts
-  const [initialSelectedIds] = useState<ActorId[]>(() => value)
+  // Track initial selected actorIds (snapshot at mount) - prevents layout shifts.
+  // Exclude the current-user sentinel — it is rendered by its own pinned row,
+  // not via actor hydration.
+  const [initialSelectedIds] = useState<ActorId[]>(() =>
+    value.filter((id) => id !== CURRENT_USER_ACTOR_ID)
+  )
 
   // Get actors from store (preloaded)
   const storeActors = useAvailableActors({ target, roles: roles as any })
@@ -213,6 +242,20 @@ export function ActorPickerContent({
       />
       <CommandList>
         <CommandEmpty>No results found</CommandEmpty>
+
+        {allowCurrentUser && (!search || 'current user'.includes(search.toLowerCase())) && (
+          <>
+            <CommandGroup aria-label='Placeholder'>
+              <ActorItem
+                actor={CURRENT_USER_ACTOR}
+                isSelected={isSelected(CURRENT_USER_ACTOR_ID)}
+                onToggle={handleToggle}
+                multi={multi}
+              />
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        )}
 
         {/* Selected Items Section */}
         {hasSelectedSection && (

@@ -77,6 +77,15 @@ function buildGroupQuery(group: ConditionGroup, organizationId: string): SQL<unk
  * Build query for a single Condition.
  */
 function buildConditionQuery(condition: Condition, organizationId: string): SQL<unknown> | null {
+  // Belt-and-suspenders: valueSource must be resolved upstream via
+  // resolveConditionContext before reaching this builder.
+  if (condition.valueSource) {
+    logger.warn(
+      `Dropping condition with unresolved valueSource '${condition.valueSource}' (${condition.fieldId}) — should be substituted upstream`
+    )
+    return null
+  }
+
   const { fieldId, operator, value, metadata } = condition
   const op = operator as Operator
 

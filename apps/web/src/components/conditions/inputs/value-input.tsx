@@ -20,6 +20,7 @@ const ValueInput = ({
   placeholder,
   className,
   nodeId,
+  allowCurrentUser,
 }: ValueInputProps) => {
   const { config } = useConditionContext()
 
@@ -34,6 +35,7 @@ const ValueInput = ({
         disabled={disabled}
         placeholder={placeholder}
         triggerProps={className ? { className } : undefined}
+        allowCurrentUser={allowCurrentUser}
       />
     )
   }

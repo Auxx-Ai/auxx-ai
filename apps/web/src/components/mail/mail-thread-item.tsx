@@ -26,6 +26,7 @@ import { Archive, Ban, Clock, MailWarning, MoreVertical, Trash2 } from 'lucide-r
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
+import { useSession } from '~/auth/auth-client'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 // NEW: Import from new hooks
 import {
@@ -190,6 +191,9 @@ export const MailThreadItem = memo(function MailThreadItem({
   // --- Thread mutations using new unified hook ---
   const { update, isUpdating } = useThreadMutation()
 
+  const { data: session } = useSession()
+  const currentUserId = session?.user?.id
+
   // --- Client-side filtering for optimistic updates ---
   // Normalize virtual status values (assigned/unassigned/done) into DB-level conditions
   const normalizedConditions = useMemo(
@@ -200,8 +204,10 @@ export const MailThreadItem = memo(function MailThreadItem({
   // Evaluate if this thread matches the current filter conditions
   const matchesFilter = useMemo(() => {
     if (!thread) return true // Show loading state
-    return evaluateConditions(thread, normalizedConditions, threadFieldResolver)
-  }, [thread, normalizedConditions])
+    return evaluateConditions(thread, normalizedConditions, threadFieldResolver, {
+      currentUserId,
+    })
+  }, [thread, normalizedConditions, currentUserId])
 
   // Draft status is now embedded in ThreadMeta
   const hasDraft = (thread?.draftIds?.length ?? 0) > 0

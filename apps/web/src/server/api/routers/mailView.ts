@@ -247,9 +247,13 @@ export const mailViewRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this view' })
       }
 
-      return await mailViewService.getThreadsByMailView(input.mailViewId, {
-        page: input.page,
-        pageSize: input.pageSize,
-      })
+      return await mailViewService.getThreadsByMailView(
+        input.mailViewId,
+        {
+          page: input.page,
+          pageSize: input.pageSize,
+        },
+        ctx.session.user.id
+      )
     }),
 })

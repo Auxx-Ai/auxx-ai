@@ -14,7 +14,11 @@ import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useStat
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { ItemsListView } from '~/components/ui/items-list-view'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
-import { ActorPickerContent, type ActorPickerContentProps } from './actor-picker-content'
+import {
+  ActorPickerContent,
+  type ActorPickerContentProps,
+  CURRENT_USER_ACTOR_ID,
+} from './actor-picker-content'
 
 /**
  * Props for ActorPicker component
@@ -151,9 +155,15 @@ export function ActorPicker({
       className={triggerProps?.className}>
       <ItemsListView
         items={normalizedValue}
-        renderItem={(item) => (
-          <ActorBadge actorId={item as ActorId} size={triggerProps?.badgeSize} />
-        )}
+        renderItem={(item) =>
+          item === CURRENT_USER_ACTOR_ID ? (
+            <span className='rounded-md bg-primary-200/60 px-1.5 py-0.5 text-xs font-medium text-primary-700'>
+              Current user
+            </span>
+          ) : (
+            <ActorBadge actorId={item as ActorId} size={triggerProps?.badgeSize} />
+          )
+        }
       />
     </PickerTrigger>
   )

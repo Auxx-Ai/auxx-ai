@@ -109,6 +109,12 @@ export interface ConditionSystemConfig {
   addGroupButtonText?: string
   allowVarEditor?: boolean
   allowConstantToggle?: boolean
+  /**
+   * Filter-builder context (table views, mail views): show a "Current user"
+   * option on actor-field pickers that persists `valueSource: 'currentUser'`
+   * instead of a real user ID. Defaults to false; entity-edit pickers must not enable it.
+   */
+  allowCurrentUserPlaceholder?: boolean
   className?: string
   itemClassName?: string
   groupClassName?: string
@@ -204,6 +210,8 @@ export interface ValueInputProps {
   placeholder?: string
   className?: string
   nodeId?: string
+  /** Filter-builder context: show a "Current user" option on actor pickers */
+  allowCurrentUser?: boolean
 }
 
 /**

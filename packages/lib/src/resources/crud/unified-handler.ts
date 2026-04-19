@@ -8,7 +8,7 @@ import { ModelTypes } from '@auxx/types/custom-field'
 import { isEntityDefinitionType } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { findCachedResource, getCachedCustomFields, requireCachedEntityDefId } from '../../cache'
-import type { ConditionGroup } from '../../conditions'
+import { type ConditionGroup, resolveConditionContext } from '../../conditions'
 import { publisher } from '../../events/publisher'
 import { FieldValueService } from '../../field-values'
 import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../../snapshot'
@@ -442,7 +442,13 @@ export class UnifiedCrudHandler {
     limit?: number
     cursor?: { snapshotId: string; offset: number }
   }): Promise<ListFilteredResult> {
-    const { entityDefinitionId, filters = [], sorting = [], limit = 100, cursor } = params
+    const { entityDefinitionId, sorting = [], limit = 100, cursor } = params
+
+    // Resolve valueSource placeholders (e.g. currentUser) before any cache key
+    // is computed so snapshots are isolated per viewer.
+    const filters = resolveConditionContext(params.filters ?? [], {
+      currentUserId: this.userId,
+    })
 
     // Extract pagination from cursor if provided
     const snapshotId = cursor?.snapshotId

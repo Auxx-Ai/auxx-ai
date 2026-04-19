@@ -98,6 +98,11 @@ export interface FieldInputAdapterProps {
   autoGrow?: AutoGrowOptions
   /** Callback to check if a dismiss event should be prevented. Return true to prevent closing. */
   shouldPreventDismiss?: (target: HTMLElement) => boolean
+  /**
+   * For ACTOR fields in filter-builder context: render a "Current user" row in
+   * the picker. The sentinel flows through `value`/`onChange` like a real ActorId.
+   */
+  allowCurrentUser?: boolean
 }
 
 /**
@@ -119,6 +124,7 @@ export function FieldInputAdapter({
   onOpenChange,
   autoGrow,
   shouldPreventDismiss,
+  allowCurrentUser = false,
 }: FieldInputAdapterProps) {
   // For NodeInputProps-compatible components
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -260,6 +266,7 @@ export function FieldInputAdapter({
           open={open}
           onOpenChange={onOpenChange}
           shouldPreventDismiss={shouldPreventDismiss}
+          allowCurrentUser={allowCurrentUser}
         />
       )
     }

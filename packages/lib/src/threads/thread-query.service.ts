@@ -22,6 +22,7 @@ import {
   sql,
 } from 'drizzle-orm'
 import { requireCachedEntityDefId } from '../cache'
+import { resolveConditionContext } from '../conditions/resolve-context'
 import { batchGetThreadTagIds } from '../field-values/relationship-queries'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
 import {
@@ -409,7 +410,8 @@ export class ThreadQueryService {
    * For DRAFTS context, returns both threads-with-drafts AND standalone drafts via UNION query.
    */
   async listThreadIds(input: ListThreadIdsInput): Promise<PaginatedIdsResult> {
-    const { filter, sort, cursor, limit = 50, userId } = input
+    const { sort, cursor, limit = 50, userId } = input
+    const filter = resolveConditionContext(input.filter, { currentUserId: userId })
     const effectiveLimit = Math.min(limit, 100)
 
     logger.info('Listing thread IDs', {
@@ -425,7 +427,7 @@ export class ThreadQueryService {
 
     if (isDraftsContext) {
       // Use UNION query for proper interleaving of threads-with-drafts and standalone drafts
-      return this.listDraftsContextIds(input, effectiveLimit)
+      return this.listDraftsContextIds({ ...input, filter }, effectiveLimit)
     }
 
     // All other contexts: thread-only query returning RecordIds

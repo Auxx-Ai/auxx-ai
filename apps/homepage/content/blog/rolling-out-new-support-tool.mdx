@@ -1,0 +1,156 @@
+---
+title: "How to Roll Out a New Support Tool Without Breaking Your Team"
+description: "Migrations fail for predictable reasons. Here's a phased playbook that keeps tickets flowing while you switch."
+date: "2024-10-30"
+slug: "rolling-out-new-support-tool"
+category:
+  slug: "guides"
+  title: "Guides"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["migration", "implementation", "customer-support", "change-management"]
+published: true
+---
+
+## Rollouts fail for the same reasons every time
+
+When a support team migrates from one tool to another, the failure modes are boringly predictable:
+
+- Historical tickets don't migrate cleanly, and now nobody can find last year's customer history
+- The new tool's email routing breaks on day one and customer replies go missing for six hours
+- Reps hate the new UI, quietly keep using the old one, and you end up paying for two tools
+- Macros and templates didn't port over, so reps are rewriting responses from scratch during a busy week
+- Nobody told the integrations (Shopify, Stripe, Slack, etc.) that they needed new API keys
+
+Every single one of these is avoidable. But only if you plan for them before anyone signs a contract.
+
+## The phased rollout that actually works
+
+The mistake most teams make is treating this as a flip-the-switch migration. Pick a date, export data Saturday night, import Sunday, go live Monday. This rarely works — support is a live system, and any hiccup is immediately customer-visible.
+
+Do it in four phases instead:
+
+### Phase 1: Parallel run (week 1-2)
+
+Both tools are live. Your `support@` address still routes to the old tool as the primary. The new tool gets a mirror — either a BCC forward from the email provider, or a specific test alias that one or two reps use to live-test.
+
+Goal: find the friction points in the new tool before customers are exposed to them. Macros work? Threading works? Assignments work? Does the mobile app actually function? The reps in this phase are your early beta users.
+
+What you're learning: what will break when you go full-volume.
+
+### Phase 2: Dark launch (week 3)
+
+Incoming mail starts routing to the new tool. Replies go out from the new tool. But the old tool stays open, and you monitor both. If something breaks, you switch routing back within minutes.
+
+Key discipline: cap this phase at one week. If you leave the old tool open too long, half the team will keep using it out of muscle memory and you'll never fully cut over.
+
+### Phase 3: Full cutover (week 4)
+
+Old tool becomes read-only. Nobody can reply from it. It's still online for historical lookup. All live work happens in the new tool. You treat this as the official "live date."
+
+This is also when external stakeholders learn about the change. If you have SLA contracts or enterprise customers, notify them that the underlying tool changed. They mostly don't care, but they want to know.
+
+### Phase 4: Historical migration + decommission (week 5-8)
+
+Now — and only now — you migrate historical ticket data. The live tickets were handled by phases 1-3. The historical archive is a separate project with no customer impact.
+
+After historical data is in, you shut down the old tool. Keep export backups for at least a year.
+
+This phased approach takes longer than "flip the switch" but produces far fewer incidents and much higher team adoption.
+
+## What to do before signing anything
+
+Three things to lock in during procurement, before you're past the point of no return:
+
+**1. Real-ticket trial, not demo-data trial.** Sales demos are optimized. Your actual tickets are not. Import (or forward) a week of real support email into the trial environment. Handle a real day. Anything that felt slow, broken, or annoying will be 10x worse at full volume.
+
+**2. Written migration plan from the vendor.** Any vendor that has done this before has a migration runbook. Ask for it. If they don't have one, that's information.
+
+**3. A rollback plan in writing.** What happens if we decide in week 3 that this isn't working? Can we cancel? What data do we take with us? Vendors hate this question, which is why you should ask it.
+
+## Data migration: what matters, what doesn't
+
+You don't need to migrate everything. Separate the wheat from the chaff:
+
+**Must migrate:**
+- Open and recently-closed tickets (the last 60-90 days minimum)
+- Customer records with tags, custom fields, and notes
+- Macros and templates
+- Routing rules and assignment logic
+
+**Nice to migrate:**
+- Historical tickets from the past year or two (for context, not active use)
+- CSAT survey results
+- Custom reports
+
+**Often not worth migrating:**
+- Tickets older than two years (archive them to cold storage, not into the new tool)
+- Obsolete macros nobody used
+- Automation rules from years ago that nobody remembers why they exist
+- Test tickets and internal spam
+
+The temptation is to migrate everything "just in case." Don't. The more data you import into the new tool, the slower it is, the harder it is to find things, and the more of your team's time goes to cleaning up.
+
+## Team readiness: the thing nobody plans for
+
+Tools don't fail because the software is bad. They fail because the people using them revert to what they know.
+
+Three things that consistently help:
+
+**Identify one power user per team before launch.** Give them trial access in phase 1 (two weeks ahead of everyone else). They become the person others ask for help. Without a power user, every team defaults to "ask the manager," and the manager becomes a bottleneck.
+
+**Do one live session of actual ticket-handling, not a walkthrough.** Record your screen while you take five real tickets in the new tool, narrating what you're doing. Share the video. This beats a 45-minute feature tour because it shows the real rhythm of the tool.
+
+**Give explicit permission to use the old macros until the new ones are imported.** Don't expect reps to rewrite their reply templates during launch week. That's when they most need the old ones.
+
+## Integrations: the hidden source of outage
+
+Every support tool has integrations: your commerce platform (Shopify, WooCommerce), your payment processor (Stripe), your notification system (Slack, Teams), your auth provider, your single sign-on. Every one of these needs to be reconnected to the new tool.
+
+Checklist:
+
+- [ ] List every integration on the current tool before starting migration
+- [ ] Identify which ones exist on the new tool, which need replacements, which don't exist
+- [ ] Set up integrations in the new tool during phase 1 (parallel run), not on cutover day
+- [ ] Test each integration with a real workflow, not just "it shows connected"
+- [ ] Plan for the ones that don't exist — sometimes a Zapier/n8n bridge, sometimes a custom webhook
+
+The integration that breaks silently is the one you notice three weeks later when reports are wrong. Confirm each one works end-to-end.
+
+## Communication during the cutover
+
+Your team, your stakeholders, and (in some cases) your customers need a short, clear message about what's happening.
+
+**To your team:** One announcement before phase 1, one short update per phase. Keep it brief. A wall of migration details in Slack is read by nobody.
+
+**To internal stakeholders (CEO, CS, engineering):** Phase dates, what changes for them, who to contact if something breaks. They don't need the runbook, they need the calendar.
+
+**To customers:** Only if something changes for them. Most of the time, cutover is invisible (your `support@` address still works, the same people reply). If you're changing email addresses, changing response SLAs, or moving the help center URL — yes, email customers. Otherwise, don't; the email itself creates confusion.
+
+## The first week after go-live
+
+Three rules:
+
+1. **Daily standup for the support team for the first week.** 10 minutes, just: what broke yesterday, what's different, what's missing.
+2. **Maintain a running list of issues and severity.** "Macro not firing" and "I can't find the reply button" are both real issues but belong in different queues.
+3. **Accept that response times will get worse for a week.** The new tool adds friction while muscle memory adjusts. Tell your team this in advance so they don't panic.
+
+If response times haven't recovered to baseline by week three, something is wrong. Not with the tool — with how the team is using it. That's when you revisit training, not when you start considering another migration.
+
+## The rollback criteria you should agree on upfront
+
+Write these down before phase 3:
+
+- Customer-facing outage of more than 2 hours → rollback immediately
+- Response times more than 2x baseline after 10 days → pause and investigate
+- Loss or corruption of ticket data that affects customer-facing reality → rollback immediately
+- "The team doesn't like it" → not a rollback trigger, a training and patience issue
+
+Having these written before you're in the middle of a problem prevents panicked decisions.
+
+## The bottom line
+
+Migrations that fail almost always fail for people reasons, not technical reasons. Phase the rollout, give your team time to adapt, migrate only what matters, and communicate sparingly but clearly. The new tool being a little worse for two weeks is fine. The new tool being abandoned by the team six weeks in because rollout was chaotic is not.
+
+Do the boring things — parallel run, dark launch, rollback plan, checklists — and the rollout will feel anticlimactic. That's what good rollouts feel like.

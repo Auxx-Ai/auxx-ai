@@ -1,0 +1,100 @@
+---
+title: "Why Open-Source Matters in Customer Support Software"
+description: "Open-source isn't a marketing label. It's a specific set of guarantees about your data, your lock-in risk, and what happens if the vendor gets acquired."
+date: "2024-03-21"
+slug: "open-source-customer-support-software"
+category:
+  slug: "thoughts"
+  title: "Thoughts"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["open-source", "self-hosted", "data-ownership", "customer-support"]
+published: true
+---
+
+## "Open-source" has been flattened into a marketing bullet
+
+Pick any SaaS landing page, press Ctrl+F, and look for the word "open." Half the time you'll find it. But the claim ranges from "the entire product is AGPL-licensed on GitHub" to "we have a public API and one repo with some client SDKs." These are not the same thing.
+
+When I say Auxx.ai is open-source, I mean the product — the whole thing — is in a public repo, licensed so you can read it, fork it, self-host it, and run it independently of us. That's a specific set of guarantees, and it's worth explaining why they matter for customer support software specifically.
+
+## Your support inbox is the most sensitive system you own
+
+People underestimate this until they think about it. Your support inbox contains:
+
+- Every complaint you've ever had
+- Every refund request, fraud claim, and chargeback
+- Product issues your PR team would hate to see leaked
+- Customer PII — addresses, phone numbers, sometimes health or financial details
+- Internal notes where your team said things they wouldn't say publicly
+- Screenshots, attachments, voice memos — the messy reality of actual support
+
+This data, aggregated over years, is a much bigger liability than your CRM contacts or your marketing email list. It's also much more valuable to an attacker, because it's where trust has already been established.
+
+If you're going to put this data somewhere, you should care — genuinely care — about who can read the code that handles it, whether you can move it elsewhere, and what happens if the vendor changes the rules.
+
+## What "open-source" actually buys you
+
+Four things, concretely:
+
+### 1. You can read the code that handles your data
+
+With a closed-source helpdesk, you're trusting marketing copy. Your vendor says "all data is encrypted at rest and in transit" and you either believe them or you don't. You can't verify. You can't check whether that claim is still true after last week's refactor.
+
+With open-source software, the answer is in the repo. How does auth work? What actually happens when a customer requests deletion? Which fields are indexed, and where? Is PII logged anywhere it shouldn't be? You can look. So can your security auditor, your customer's legal team, and the internet at large.
+
+### 2. You can leave
+
+This is the one people forget about until they need it. Every closed-source helpdesk quietly assumes you'll never move. Your workflows, your macros, your integrations, your trigger chains — all of it is designed to be expensive to leave behind.
+
+When the vendor raises prices 40% at renewal (it happens), or gets acquired by an entity you don't want holding your data (it happens), or deprecates a feature your business depends on (it happens constantly), you have a choice you wouldn't otherwise have: self-host the same codebase and carry on.
+
+You probably won't exercise the option. But knowing you can exercise it is what keeps pricing honest.
+
+### 3. You can self-host for compliance
+
+GDPR, HIPAA-like regimes in healthcare, financial-services rules in different jurisdictions, enterprise contracts that require data to stay in a specific country — these are not edge cases. If you sell to enterprises or regulated industries, self-hosting isn't an engineering preference. It's a procurement requirement.
+
+An open-source helpdesk with a real self-hosting story lets you say yes to contracts you'd otherwise lose. A closed-source one forces you to either buy a multi-six-figure "enterprise tier" or walk away from the deal.
+
+### 4. You can customize without begging
+
+Every support team has a workflow that doesn't fit the vendor's model. With closed-source tooling, your options are a feature request that'll maybe ship in Q3 of next year, a paid custom integration, or a workaround that annoys your team daily.
+
+With open-source tooling, you can fork, patch, and run. It's not always the right choice — upstream changes are yours to merge forever. But for the 5% of cases where the shape of the tool doesn't fit, having the escape hatch matters.
+
+## What "open-source" does not buy you
+
+Let's be honest about this too:
+
+**It's not automatically cheaper.** Self-hosting has real costs: servers, backups, monitoring, upgrades, someone's time. For a 3-person support team, the all-in cost of self-hosting is usually higher than the SaaS plan. The value of open-source at that size is the optionality, not the price.
+
+**It's not automatically more secure.** Public code is only more secure if people are actually reading it. Plenty of open-source projects have had serious vulnerabilities sit for years. Open-source raises the ceiling on security; it doesn't guarantee it.
+
+**It's not automatically better software.** There are excellent closed-source products and mediocre open-source ones. Licensing is a property of the code, not the quality.
+
+**It's not a substitute for a real vendor relationship.** If your whole business runs on a tool, you still want someone on the other end of the line when something breaks. Open-source + managed hosting is the setup most teams actually want — you get the guarantees of the license plus the reliability of a paid vendor.
+
+## Open-source vs. "source-available"
+
+A growing category you'll run into: tools that publish their source on GitHub under licenses like BSL (Business Source License), SSPL, or Elastic License. These are not open-source in the sense the term has historically meant.
+
+You can read the code. You can often use it for internal purposes. But you can't run it as a commercial service, can't fork it freely, and usually can't self-host for production without a separate commercial license.
+
+Source-available tools are a perfectly reasonable business model. Just don't let them be marketed to you as "open-source" — the legal reality is different. If you're evaluating a tool that claims to be open-source, check the LICENSE file in the repo before believing the homepage.
+
+## What to look for if open-source matters to you
+
+If you're evaluating customer support software and this stuff matters, four questions:
+
+1. **Is the whole product on GitHub, or just the SDKs/widgets?** Some vendors publish a JS widget and claim "open-source." Check.
+2. **What's the license?** AGPL, Apache, MIT, BSL, SSPL, Elastic — they mean very different things. Read the LICENSE file.
+3. **Is there a real self-hosting story?** Docker images, docs, a Discord where people help each other debug. If self-hosting is "theoretically possible but nobody has ever done it," the escape hatch isn't real.
+4. **Are upgrades sustainable?** Look at commit frequency, release cadence, and whether the core team responds to issues. An abandoned open-source project is worse than a closed-source one with a pulse.
+
+## Why we built Auxx.ai open-source
+
+Support inboxes hold data we'd never want in a closed box. Our customers are small-to-mid-sized businesses, many in the EU, many in regulated industries. Telling them "trust us, we're encrypted" wasn't good enough. Letting them read the code, fork it, or run it themselves is.
+
+That's the whole argument. Not ideology — just the recognition that your most sensitive system deserves the strongest guarantees you can give it.
