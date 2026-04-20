@@ -7,6 +7,7 @@ import type { GetToolDeps } from '../../types'
 export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_groups',
+    idempotent: true,
     description: 'List organization groups. Use to find group IDs for assignments.',
     parameters: {
       type: 'object',

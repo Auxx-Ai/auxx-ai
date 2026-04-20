@@ -7,6 +7,7 @@ import type { GetToolDeps } from '../../types'
 export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_members',
+    idempotent: true,
     description:
       'List organization members (users). Use to find user IDs for assigning tasks, threads, etc.',
     parameters: {

@@ -23,6 +23,7 @@ const MAX_RESULTS = 10
 export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_docs',
+    idempotent: true,
     description:
       'Search Auxx.ai help center and developer documentation. Only for questions about how Auxx platform features work, setup guides, API docs, and troubleshooting. Do NOT use this to look up contacts, customers, products, orders, vendors, or any other entity/record — use search_entities for that.',
     parameters: {

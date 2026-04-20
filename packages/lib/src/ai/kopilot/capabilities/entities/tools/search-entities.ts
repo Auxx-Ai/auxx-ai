@@ -14,6 +14,7 @@ const MAX_RESULTS = 25
 export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_entities',
+    idempotent: true,
     description:
       'Search for records by name or text across all entity types, or within a specific entity type. Returns matching records with display names. If you know the entity type, pass entityDefinitionId for faster results.',
     parameters: {

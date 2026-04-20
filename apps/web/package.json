@@ -23,7 +23,8 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest --watch",
     "update-settings": "tsx scripts/update-organization-settings.ts",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "og:generate": "tsx scripts/generate-og-image.ts"
   },
   "dependencies": {
     "@auxx/billing": "workspace:*",

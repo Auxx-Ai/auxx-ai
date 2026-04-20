@@ -10,6 +10,7 @@ const MAX_CONTENT_LENGTH = 1500
 export function createSearchRagTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_rag',
+    idempotent: true,
     description:
       "Search the organization's uploaded documents and datasets using semantic search. Only for uploaded files/documents (e.g. PDFs, manuals, policy docs). Do NOT use this to look up contacts, customers, products, orders, vendors, or any other entity/record — use search_entities for that.",
     parameters: {

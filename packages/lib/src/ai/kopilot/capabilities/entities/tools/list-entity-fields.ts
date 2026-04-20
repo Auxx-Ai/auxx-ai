@@ -7,6 +7,7 @@ import type { GetToolDeps } from '../../types'
 export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_entity_fields',
+    idempotent: true,
     description:
       'List fields/attributes for an entity type. Use to discover field names before searching, filtering, sorting, or updating.',
     parameters: {

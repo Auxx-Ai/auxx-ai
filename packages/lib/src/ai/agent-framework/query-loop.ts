@@ -42,6 +42,14 @@ export async function* agentQueryLoop(
   let iteration = 0
   let totalToolCallCount = 0
 
+  /**
+   * Per-turn cache of idempotent tool results. Keyed by "toolName::sortedArgsJson".
+   * Prevents the LLM from paying twice to re-run the same read-only lookup
+   * within a single agent loop (e.g. calling search_entities with the same
+   * query on two consecutive iterations).
+   */
+  const idempotentCache = new Map<string, ToolExecResult>()
+
   yield { type: 'agent-started', agent: agent.name }
   logger.info('Agent started', { agent: agent.name, maxIterations, toolCount: agent.tools.length })
 
@@ -180,7 +188,14 @@ export async function* agentQueryLoop(
       agent: agent.name,
       tools: toolCalls.map((tc) => tc.function.name),
     })
-    const toolResults = await executeToolCalls(toolCalls, agent.tools, agent.name, deps, config)
+    const toolResults = await executeToolCalls(
+      toolCalls,
+      agent.tools,
+      agent.name,
+      deps,
+      config,
+      idempotentCache
+    )
     for (const event of toolResults.events) {
       yield event
     }
@@ -345,7 +360,8 @@ async function executeToolCalls(
   agentTools: AgentToolDefinition[],
   agentName: string,
   deps: AgentDeps,
-  config: AgentEngineConfig
+  config: AgentEngineConfig,
+  idempotentCache: Map<string, ToolExecResult>
 ): Promise<{ events: AgentEvent[]; results: ToolExecResult[] }> {
   const toolMap = new Map(agentTools.map((t) => [t.name, t]))
   const events: AgentEvent[] = []
@@ -382,18 +398,46 @@ async function executeToolCalls(
       continue
     }
 
+    // Per-turn cache for read-only tools: if the LLM re-requests the same
+    // (tool, args) pair within the loop, return the earlier result instead of
+    // re-executing. The toolCallId is fresh so the LLM gets a valid tool_call_id
+    // pairing, but no DB/API work is repeated.
+    const cacheKey = tool.idempotent ? `${toolName}::${stableStringify(args)}` : null
+    if (cacheKey) {
+      const cached = idempotentCache.get(cacheKey)
+      if (cached) {
+        events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
+        events.push({
+          type: 'tool-completed',
+          agent: agentName,
+          tool: toolName,
+          result: { success: cached.success, output: cached.output, error: cached.error },
+        })
+        results.push({
+          toolCallId: toolCall.id,
+          toolName,
+          output: cached.output,
+          success: cached.success,
+          error: cached.error,
+        })
+        continue
+      }
+    }
+
     events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
 
     try {
       const result = await tool.execute(args, deps)
       events.push({ type: 'tool-completed', agent: agentName, tool: toolName, result })
-      results.push({
+      const execResult: ToolExecResult = {
         toolCallId: toolCall.id,
         toolName,
         output: result.output,
         success: result.success,
         error: result.error,
-      })
+      }
+      results.push(execResult)
+      if (cacheKey && result.success) idempotentCache.set(cacheKey, execResult)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
       events.push({ type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg })
@@ -409,4 +453,17 @@ async function executeToolCalls(
   }
 
   return { events, results }
+}
+
+/**
+ * Deterministic JSON.stringify — sorts object keys so `{a:1,b:2}` and
+ * `{b:2,a:1}` produce the same cache key.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`)
+  return `{${entries.join(',')}}`
 }

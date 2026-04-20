@@ -70,6 +70,13 @@ export interface AgentToolDefinition {
   execute: (args: Record<string, unknown>, deps: AgentDeps) => Promise<AgentToolResult>
   /** Whether this tool requires human approval before execution */
   requiresApproval?: boolean
+  /**
+   * Marks this tool as a read-only / side-effect-free operation. When true, the
+   * agent query loop caches the first call's result for the duration of the turn
+   * and reuses it on any subsequent call with identical args — avoiding redundant
+   * DB/API roundtrips when the LLM retries the same lookup.
+   */
+  idempotent?: boolean
 }
 
 /** Result from executing a tool */

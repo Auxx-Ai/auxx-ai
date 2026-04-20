@@ -5,16 +5,15 @@ import type { SessionMessage } from './types'
 /**
  * Flatten conversation history for a model switch.
  *
- * Keeps only user messages and non-executor assistant messages with content.
+ * Keeps user messages and any assistant message with content (including
+ * executor messages — their reasoning is ground truth for downstream synthesis).
  * Strips provider-specific artifacts (tool calls, reasoning, tool call IDs)
  * and re-links the parentId chain so messages form a contiguous sequence.
  */
 export function flattenMessagesForModelSwitch(messages: SessionMessage[]): SessionMessage[] {
   const surviving = messages.filter((m) => {
     if (m.role === 'user') return true
-    if (m.role === 'assistant' && m.metadata?.agent !== 'executor' && m.content?.trim()) {
-      return true
-    }
+    if (m.role === 'assistant' && m.content?.trim()) return true
     return false
   })
 
