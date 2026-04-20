@@ -218,7 +218,7 @@ export default function IntegrationSection() {
                         animated
                       />
                       <div className='relative z-10'>
-                        <Icon className={`w-8 h-8 ${feature.fillColor} mb-4`} />
+                        <Icon className='w-8 h-8 text-white mb-4' />
                         <h3 className='text-lg font-semibold text-foreground mb-2'>
                           {feature.title}
                         </h3>
