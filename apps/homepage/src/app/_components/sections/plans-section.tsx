@@ -1,10 +1,12 @@
 // apps/homepage/src/app/_components/sections/plans-section.tsx
 'use client'
+import { GRADIENT_PALETTES, RandomGradient } from '@auxx/ui/components/random-gradient'
 import Link from 'next/link'
 import { type ReactNode, useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { useMedia } from '~/hooks/use-media'
+import { PLAN_PRICES, useBillingPeriod } from '~/lib/billing-period-context'
 import { useConfig } from '~/lib/config-context'
 import { cn } from '~/lib/utils'
 
@@ -30,6 +32,7 @@ export default function PlansSection() {
   const config = useConfig()
   const [activePlan, setActivePlan] = useState<Plan>('starter')
   const isMedium = useMedia('(min-width: 768px)')
+  const { billingPeriod } = useBillingPeriod()
 
   const categories: Category[] = [
     {
@@ -230,9 +233,9 @@ export default function PlansSection() {
   }
 
   const prices: Record<Plan, string> = {
-    free: '$0 / month',
-    starter: '$20 / month',
-    growth: '$50 / month',
+    free: `$${PLAN_PRICES.free[billingPeriod]} / month`,
+    starter: `$${PLAN_PRICES.starter[billingPeriod]} / month`,
+    growth: `$${PLAN_PRICES.growth[billingPeriod]} / month`,
   }
 
   const renderPlanColumn = (plan: Plan) => {
@@ -244,7 +247,7 @@ export default function PlansSection() {
 
     const header =
       plan === 'starter' ? (
-        <div className='bg-muted sticky top-0 flex h-36 flex-col justify-center rounded-t-xl border-b px-4 max-md:hidden lg:px-6'>
+        <div className='bg-background/10 backdrop-blur-sm sticky top-0 flex h-36 flex-col justify-center rounded-t-xl border-b px-4 max-md:hidden lg:px-6'>
           <div className='text-lg font-medium'>Starter</div>
           <div className='text-muted-foreground mb-4 mt-0.5'>{prices[plan]}</div>
           {plansActions[plan]}
@@ -263,8 +266,16 @@ export default function PlansSection() {
       <div
         data-plan={plan}
         className={cn(
-          plan === 'starter' && 'z-1 md:bg-muted md:ring-muted relative md:rounded-xl md:ring-1'
+          plan === 'starter' &&
+            'z-1 md:ring-muted/50 md:inset-shadow-xs relative isolate md:rounded-xl md:ring-1'
         )}>
+        {plan === 'starter' && (
+          <div
+            aria-hidden
+            className='pointer-events-none absolute inset-0 -z-10 overflow-hidden md:rounded-xl'>
+            <RandomGradient colors={[...GRADIENT_PALETTES.aurora]} mode='mesh' animated />
+          </div>
+        )}
         {header}
         {categories.map((category, index) => (
           <div key={index}>

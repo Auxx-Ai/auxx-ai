@@ -1,6 +1,7 @@
 // apps/homepage/src/app/pricing/page.tsx
 
 import type { Metadata } from 'next'
+import { BillingPeriodProvider } from '~/lib/billing-period-context'
 import { config } from '~/lib/config'
 import FooterSection from '../_components/main/footer-section'
 import Header from '../_components/main/header'
@@ -16,9 +17,11 @@ const PricingPage = async () => {
   return (
     <div id='root' className='relative overflow-y-auto h-screen'>
       <Header />
-      <PricingSection />
-      {/* <StatsSection /> */}
-      <PlansSection />
+      <BillingPeriodProvider>
+        <PricingSection />
+        {/* <StatsSection /> */}
+        <PlansSection />
+      </BillingPeriodProvider>
       <FooterSection />
     </div>
   )

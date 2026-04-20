@@ -1,5 +1,6 @@
 // apps/homepage/src/app/solutions/small-business/_components/integration-section.tsx
 'use client'
+import { GRADIENT_PALETTES, RandomGradient } from '@auxx/ui/components/random-gradient'
 import {
   ArrowRight,
   BarChart3,
@@ -22,42 +23,42 @@ const integrationFeatures = [
     title: 'Live Chat Support',
     description: 'Instant responses to customer inquiries with intelligent routing and escalation',
     metrics: '99.9% uptime',
-    fillColor: 'fill-blue-100',
+    // fillColor: 'fill-blue-100',
   },
   {
     icon: Calendar,
     title: 'Appointment Booking',
     description: 'Automated scheduling, confirmations, and calendar management for your business',
     metrics: '500+ bookings',
-    fillColor: 'fill-green-100',
+    // fillColor: 'fill-green-100',
   },
   {
     icon: Users,
     title: 'Customer Management',
     description: 'Complete client profiles, interaction history, and personalized service tracking',
     metrics: '360° view',
-    fillColor: 'fill-purple-100',
+    // fillColor: 'fill-purple-100',
   },
   {
     icon: FileText,
     title: 'Document Handling',
     description: 'Automated processing of forms, quotes, invoices, and service agreements',
     metrics: 'Fully automated',
-    fillColor: 'fill-yellow-100',
+    // fillColor: 'fill-yellow-100',
   },
   {
     icon: Clock,
     title: '24/7 Availability',
     description: 'Round-the-clock customer service without additional staffing costs',
     metrics: 'Always on',
-    fillColor: 'fill-orange-100',
+    // fillColor: 'fill-orange-100',
   },
   {
     icon: BarChart3,
     title: 'Business Analytics',
     description: 'Customer satisfaction metrics, response times, and business insights',
     metrics: 'Real-time',
-    fillColor: 'fill-pink-100',
+    // fillColor: 'fill-pink-100',
   },
 ]
 
@@ -97,14 +98,15 @@ export default function IntegrationSection() {
               </p>
             </motion.div>
 
-            <div className='bg-muted @container py-12 rounded-2xl mb-16'>
-              <div className='mx-auto max-w-5xl px-6'>
+            <div className='@container py-12 rounded-2xl mb-16 relative overflow-hidden'>
+              <RandomGradient colors={[...GRADIENT_PALETTES.sunset]} mode='mesh' animated />
+              <div className='mx-auto max-w-5xl px-6 relative z-10'>
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.2 }}
                   viewport={{ once: true }}
-                  className='ring-foreground/10 @4xl:grid-cols-2 @max-4xl:divide-y @4xl:divide-x relative grid overflow-hidden rounded-2xl border border-transparent bg-background shadow-md shadow-black/5 ring-1'>
+                  className='ring-foreground/5 @4xl:grid-cols-2 @max-4xl:divide-y @4xl:divide-x relative grid overflow-hidden rounded-2xl border border-transparent bg-background/50 shadow-md shadow-black/5 ring-1'>
                   <div className='row-span-2 grid grid-rows-subgrid gap-8'>
                     <div className='px-8 pt-8'>
                       <div className='flex items-center gap-3 mb-4'>
@@ -198,7 +200,7 @@ export default function IntegrationSection() {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.6 }}
               viewport={{ once: true }}>
-              <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto px-6'>
+              <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
                 {integrationFeatures.map((feature, index) => {
                   const Icon = feature.icon
                   return (
@@ -208,15 +210,23 @@ export default function IntegrationSection() {
                       whileInView={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.6, delay: index * 0.1 }}
                       viewport={{ once: true }}
-                      className='bg-background/70 backdrop-blur-sm rounded-2xl shadow-black/10 p-6 shadow-md ring-1 ring-foreground/10 hover:shadow-lg transition-shadow'>
-                      <Icon className={`w-8 h-8 ${feature.fillColor} mb-4`} />
-                      <h3 className='text-lg font-semibold text-foreground mb-2'>
-                        {feature.title}
-                      </h3>
-                      <p className='text-sm text-muted-foreground mb-4'>{feature.description}</p>
-                      <Badge variant='secondary' className='text-xs'>
-                        {feature.metrics}
-                      </Badge>
+                      className='relative overflow-hidden rounded-2xl shadow-black/10 p-6 shadow-md ring-1 ring-foreground/10 hover:shadow-lg transition-shadow'>
+                      <RandomGradient
+                        colors={[...GRADIENT_PALETTES.sunset]}
+                        mode='hero'
+                        seed={index * 1000 + 1}
+                        animated
+                      />
+                      <div className='relative z-10'>
+                        <Icon className={`w-8 h-8 ${feature.fillColor} mb-4`} />
+                        <h3 className='text-lg font-semibold text-foreground mb-2'>
+                          {feature.title}
+                        </h3>
+                        <p className='text-sm text-muted-foreground mb-4'>{feature.description}</p>
+                        <Badge variant='secondary' className='text-xs bg-illustration/50'>
+                          {feature.metrics}
+                        </Badge>
+                      </div>
                     </motion.div>
                   )
                 })}

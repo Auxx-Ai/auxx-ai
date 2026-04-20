@@ -1,3 +1,5 @@
+import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import Image from 'next/image'
 
 /**
@@ -6,10 +8,11 @@ import Image from 'next/image'
  */
 export default function Ticket3Columns() {
   return (
-    <section className='relative bg-background border-foreground/10 border-b'>
-      <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
-        <div className='border-x'>
-          <div className='bg-muted/50 @container py-16 md:py-24'>
+    <section className='relative overflow-hidden bg-background border-foreground/10 border-b'>
+      <RandomGradient colors={[...GRADIENT_PALETTES.candy]} mode='mesh' animated />
+      <div className='relative z-10 mx-auto max-w-6xl border-x px-3 bg-background/20'>
+        <div className='border-x bg-background/20'>
+          <div className='bg-muted/20 @container py-16 md:py-24'>
             <div className='mx-auto max-w-5xl px-6'>
               <h2 className='text-muted-foreground text-balance text-4xl font-semibold md:w-2/3'>
                 Everything you need to{' '}
@@ -19,7 +22,7 @@ export default function Ticket3Columns() {
               </h2>
               <div className='@3xl:grid-cols-3 @xl:grid-cols-2 mt-12 grid gap-6'>
                 <div className='row-span-4 grid grid-rows-subgrid gap-4'>
-                  <div className='bg-background ring-foreground/5 aspect-square rounded-xl border border-transparent shadow ring-1'>
+                  <div className='bg-background ring-foreground/5 aspect-square overflow-hidden rounded-xl  shadow ring-1'>
                     <Image
                       src='/images/platform/ticketing/ticket-col1-dashboard.png'
                       alt='Ticket dashboard showing overview of support tickets'
@@ -39,7 +42,7 @@ export default function Ticket3Columns() {
                   </p>
                 </div>
                 <div className='row-span-4 grid grid-rows-subgrid gap-4'>
-                  <div className='bg-background ring-foreground/5 aspect-square rounded-xl border border-transparent shadow ring-1'>
+                  <div className='bg-background ring-foreground/5 aspect-square overflow-hidden rounded-xl  shadow ring-1'>
                     <Image
                       src='/images/platform/ticketing/ticket-col2-view.png'
                       alt='Detailed ticket view with customer context'
@@ -58,7 +61,7 @@ export default function Ticket3Columns() {
                   </p>
                 </div>
                 <div className='row-span-4 grid grid-rows-subgrid gap-4'>
-                  <div className='bg-background ring-foreground/5 aspect-square overflow-hidden rounded-xl border border-transparent shadow ring-1'>
+                  <div className='bg-background ring-foreground/5 aspect-square overflow-hidden rounded-xl  shadow ring-1'>
                     <Image
                       src='/images/platform/ticketing/ticket-col3-merge.png'
                       alt='Ticket merging interface combining duplicate conversations'

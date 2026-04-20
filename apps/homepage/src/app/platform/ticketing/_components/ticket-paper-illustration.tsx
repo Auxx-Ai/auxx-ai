@@ -9,7 +9,7 @@ export const TicketPaperIllustration = ({ className }: { className?: string }) =
           'mask-b-from-65% dark:mask-b-from-80% before:bg-background before:border-border after:border-border after:bg-background/50 before:z-1 after:borde group relative -mx-4 px-4 pt-6 before:absolute before:inset-x-6 before:bottom-0 before:top-4 before:rounded-2xl before:border after:absolute after:inset-x-9 after:bottom-0 after:top-2 after:rounded-2xl after:border',
           className
         )}>
-        <div className='bg-illustration ring-border-illustration relative z-10 overflow-hidden rounded-2xl border border-transparent p-6 text-sm shadow-xl shadow-black/10 ring-1'>
+        <div className='bg-illustration dark:bg-[#0c0c10] ring-border-illustration relative z-10 overflow-hidden rounded-2xl border border-transparent p-6 text-sm shadow-xl shadow-black/10 ring-1'>
           {/* Ticket Header */}
           <div className='mb-6 flex items-start justify-between'>
             <div className='space-y-1'>
@@ -22,7 +22,7 @@ export const TicketPaperIllustration = ({ className }: { className?: string }) =
               <div className='font-mono text-lg font-semibold'>#TSK-12345</div>
               <div className='text-xs text-muted-foreground'>Opened 2 hours ago</div>
             </div>
-            <div className='flex items-center gap-1 bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs'>
+            <div className='flex items-center gap-1 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded-full text-xs'>
               <Clock className='size-3' />
               <span>In Progress</span>
             </div>
@@ -53,7 +53,7 @@ export const TicketPaperIllustration = ({ className }: { className?: string }) =
 
             <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
               <span className='text-muted-foreground text-xs'>Category:</span>
-              <div className='bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs w-fit'>
+              <div className='bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded text-xs w-fit'>
                 Technical
               </div>
             </div>

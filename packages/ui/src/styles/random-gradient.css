@@ -1,0 +1,62 @@
+/* packages/ui/src/styles/random-gradient.css
+ * Styles for <RandomGradient />. Ships with the component.
+ */
+
+@property --rg-drift-x {
+  syntax: '<length-percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+@property --rg-drift-y {
+  syntax: '<length-percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+@property --rg-rotate {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes random-gradient-drift {
+  0% {
+    transform: rotate(var(--rg-rotate, 0deg))
+      translate(calc(-1 * var(--rg-drift-x, 0%)), calc(-1 * var(--rg-drift-y, 0%)));
+  }
+  50% {
+    transform: rotate(var(--rg-rotate, 0deg))
+      translate(var(--rg-drift-x, 0%), var(--rg-drift-y, 0%));
+  }
+  100% {
+    transform: rotate(var(--rg-rotate, 0deg))
+      translate(calc(-1 * var(--rg-drift-x, 0%)), calc(-1 * var(--rg-drift-y, 0%)));
+  }
+}
+
+.random-gradient {
+  isolation: isolate;
+}
+
+.random-gradient__svg,
+.random-gradient__css-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: blur(var(--rg-blur, 40px));
+}
+
+.random-gradient__css-layer {
+  transform: rotate(var(--rg-rotate, 0deg));
+  will-change: transform;
+}
+
+.random-gradient--animated .random-gradient__css-layer {
+  animation: random-gradient-drift var(--rg-duration, 14s) ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .random-gradient--animated .random-gradient__css-layer {
+    animation: none;
+  }
+}

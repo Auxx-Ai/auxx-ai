@@ -6,8 +6,10 @@ import {
   Code,
   GitBranch,
   Headset,
+  HelpCircle,
   Menu,
   MessagesSquare,
+  Newspaper,
   Plug,
   Rocket,
   Shield,
@@ -103,6 +105,16 @@ const getResourceLinks = (docsUrl: string): FeatureLink[] => [
     name: 'Developer Docs',
     href: `${docsUrl}/developer`,
     icon: <Code className='stroke-foreground fill-blue-500/15' />,
+  },
+  {
+    name: 'FAQ',
+    href: '/faq',
+    icon: <HelpCircle className='stroke-foreground fill-amber-500/15' />,
+  },
+  {
+    name: 'Blog',
+    href: '/blog',
+    icon: <Newspaper className='stroke-foreground fill-rose-500/15' />,
   },
 ]
 

@@ -1,5 +1,7 @@
 // apps/web/src/app/(website)/_components/sections/testimonials-section.tsx
 
+import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import Image from 'next/image'
 import { avatars } from '~/app/_components/avatars'
 
@@ -55,11 +57,6 @@ export default function TestimonialsSection() {
     <section id='reviews' className='bg-muted/50  border-foreground/10 relative border-b'>
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
         <div className='border-x md:py-24 py-12'>
-          <div
-            aria-hidden
-            className='h-3 w-full bg-[repeating-linear-gradient(-45deg,var(--color-foreground),var(--color-foreground)_1px,transparent_1px,transparent_4px)] opacity-5'
-          />
-
           <div className='mx-auto max-w-5xl px-6'>
             <div className='mx-auto max-w-2xl text-balance text-center'>
               <h2 className='text-foreground mb-4 text-3xl font-semibold tracking-tight md:text-4xl'>
@@ -82,8 +79,15 @@ export default function TestimonialsSection() {
                   />
                 ))}
 
-                <div className='max-lg:rounded-(--radius) lg:rounded-tl-(--radius) lg:rounded-br-(--radius) bg-card ring-foreground/5 row-start-1 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 lg:col-start-1'>
-                  <div className='space-y-6'>
+                <div className='max-lg:rounded-(--radius) lg:rounded-tl-(--radius) lg:rounded-br-(--radius) relative overflow-hidden ring-foreground/5 row-start-1 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 lg:col-start-1'>
+                  <RandomGradient
+                    colors={[...GRADIENT_PALETTES.openai]}
+                    mode='openai'
+                    animated
+                    driftAmplitude={30}
+                  />
+                  <div className='pointer-events-none absolute inset-0 bg-black/30' />
+                  <div className='relative z-10 space-y-6'>
                     <Image
                       alt='Intercept Logo'
                       className='w-1/4'
@@ -92,12 +96,12 @@ export default function TestimonialsSection() {
                       height={201}
                     />
 
-                    <p>
+                    <p className='text-muted-foreground'>
                       "Auxx.Ai turned our design backlog into a single source of truth. Launching a
                       new flow now means reusing validated patterns instead of reinventing them."
                     </p>
                   </div>
-                  <div className='flex items-center gap-3'>
+                  <div className='relative z-10 flex items-center gap-3'>
                     <div className='ring-foreground/10 aspect-square size-9 overflow-hidden rounded-lg border border-transparent shadow-md shadow-black/15 ring-1'>
                       <img
                         src={avatars.calvin}
@@ -116,15 +120,23 @@ export default function TestimonialsSection() {
                     </div>
                   </div>
                 </div>
-                <div className='rounded-(--radius) bg-card ring-foreground/5 row-start-3 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 sm:col-start-2 lg:row-start-2'>
-                  <div className='space-y-6'>
+                <div className='rounded-(--radius) relative overflow-hidden ring-foreground/5 row-start-3 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 sm:col-start-2 lg:row-start-2'>
+                  <RandomGradient
+                    colors={[...GRADIENT_PALETTES.openai]}
+                    mode='openai'
+                    animated
+                    driftAmplitude={30}
+                    seed={2}
+                  />
+                  <div className='pointer-events-none absolute inset-0 bg-black/30' />
+                  <div className='relative z-10 space-y-6'>
                     <div className='h-[20px]'></div>
-                    <p>
+                    <p className='text-muted-foreground'>
                       "Auxx.Ai reshaped how we pilot features. We can spin up multi-variant tests in
                       minutes and retire the losers automatically before customers notice."
                     </p>
                   </div>
-                  <div className='flex items-center gap-3'>
+                  <div className='relative z-10 flex items-center gap-3'>
                     <div className='ring-foreground/10 aspect-square size-9 overflow-hidden rounded-lg border border-transparent shadow-md shadow-black/15 ring-1'>
                       <img
                         src={avatars.carolin}
@@ -141,17 +153,25 @@ export default function TestimonialsSection() {
                     </div>
                   </div>
                 </div>
-                <div className='rounded-(--radius) bg-card ring-foreground/5 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 sm:row-start-2 lg:col-start-3 lg:row-start-3 lg:rounded-bl-none lg:rounded-tr-none'>
-                  <div className='space-y-6'>
+                <div className='rounded-(--radius) relative overflow-hidden ring-foreground/5 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 sm:row-start-2 lg:col-start-3 lg:row-start-3 lg:rounded-bl-none lg:rounded-tr-none'>
+                  <RandomGradient
+                    colors={[...GRADIENT_PALETTES.openai]}
+                    mode='openai'
+                    animated
+                    seed={3}
+                    driftAmplitude={30}
+                  />
+                  <div className='pointer-events-none absolute inset-0 bg-black/30' />
+                  <div className='relative z-10 space-y-6'>
                     <div className='h-[24px]'></div>
 
-                    <p>
+                    <p className='text-muted-foreground'>
                       "Auxx.Ai's analytics finally closed the loop between experiments and revenue.
                       The notifications alone have paid for the rollout with faster responses to
                       anomalies."
                     </p>
                   </div>
-                  <div className='flex items-center gap-3'>
+                  <div className='relative z-10 flex items-center gap-3'>
                     <div className='ring-foreground/10 aspect-square size-9 overflow-hidden rounded-lg border border-transparent shadow-md shadow-black/15 ring-1'>
                       <img
                         src={avatars.jack}

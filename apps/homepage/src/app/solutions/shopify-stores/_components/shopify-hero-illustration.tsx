@@ -9,7 +9,7 @@ export const ShopifyHeroIllustration = () => {
       <div className='z-1 absolute inset-y-0 my-auto h-fit w-full max-w-72 origin-left scale-75 max-lg:left-6'>
         <div className='bg-linear-to-r absolute -inset-6 from-green-400 via-blue-400 to-purple-400 opacity-40 blur-3xl'></div>
 
-        <div className='bg-card ring-border-illustration relative rounded-2xl p-6 shadow-xl ring-1'>
+        <div className='bg-card/85 ring-border-illustration relative rounded-2xl p-6 shadow-xl ring-1'>
           <div className='mb-6 flex items-start justify-between'>
             <div className='space-y-0.5'>
               <div className='flex items-center gap-2'>

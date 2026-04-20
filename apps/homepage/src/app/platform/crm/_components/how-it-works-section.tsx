@@ -1,8 +1,25 @@
 // apps/homepage/src/app/platform/crm/_components/how-it-works-section.tsx
 
-import { ArrowRight, Brain, CheckCircle, Link2, Zap } from 'lucide-react'
+import {
+  ArrowRight,
+  Brain,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  CircleDashed,
+  Flag,
+  Link2,
+  MessageSquare,
+  MoreHorizontal,
+  Paperclip,
+  Play,
+  Zap,
+} from 'lucide-react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
+import Gmail from '~/components/logos/gmail'
+import Outlook from '~/components/logos/outlook'
+import Shopify from '~/components/logos/shopify'
 import { Button } from '~/components/ui/button'
 
 const { urls } = config
@@ -23,36 +40,60 @@ export default function HowItWorksSection() {
         'One-click Gmail/Outlook connection',
         'Instant Shopify store sync',
         'Secure OAuth 2.0 authentication',
-        'GDPR & SOC 2 compliant',
       ],
       visual: (
-        <div className='relative'>
-          <div className='absolute inset-0 bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-3xl' />
-          <div className='relative bg-card rounded-lg border p-6 space-y-4'>
-            <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center'>
-                <svg className='w-6 h-6 text-blue-500' viewBox='0 0 24 24' fill='currentColor'>
-                  <path d='M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z' />
-                </svg>
+        <div aria-hidden className='mask-b-from-65% w-full  pt-1'>
+          <div className='bg-card/75 ring-border-illustration shadow-black/6.5 rounded-t-2xl p-2 shadow-lg ring-1'>
+            <div className='px-3 py-2 text-sm font-medium'>Connect Integration</div>
+
+            <div className='bg-background ring-border-illustration space-y-3 rounded-2xl p-3 ring-1'>
+              <div className='bg-illustration ring-primary/40 shadow-primary/10 group cursor-pointer rounded-lg p-3 shadow-md ring-1 transition-all'>
+                <div className='flex items-start justify-between gap-3'>
+                  <Gmail className='size-5 shrink-0' />
+                  <div className='flex-1'>
+                    <div className='flex items-center gap-2'>
+                      <div className='text-sm font-semibold'>Gmail</div>
+                      <div className='bg-primary/10 text-primary rounded-full px-1.5 py-0.5 text-[10px] font-medium'>
+                        Recommended
+                      </div>
+                    </div>
+                    <div className='text-muted-foreground mt-1 text-xs'>support@yourstore.com</div>
+                  </div>
+                  <Check className='text-primary size-4 shrink-0' />
+                </div>
               </div>
-              <div>
-                <div className='font-medium'>Gmail Connected</div>
-                <div className='text-xs text-muted-foreground'>support@yourstore.com</div>
+
+              <div className='hover:ring-border-illustration/80 bg-illustration ring-border-illustration hover:bg-foreground/5 group cursor-pointer rounded-lg p-3 ring-1 transition-all'>
+                <div className='flex items-start justify-between gap-3'>
+                  <Outlook className='size-5 shrink-0' />
+                  <div className='flex-1'>
+                    <div className='text-sm font-semibold'>Outlook</div>
+                    <div className='text-muted-foreground mt-1 text-xs'>
+                      Microsoft 365 & Outlook.com
+                    </div>
+                  </div>
+                </div>
               </div>
-              <CheckCircle className='h-5 w-5 text-green-500 ml-auto' />
+
+              <div className='hover:ring-border-illustration/80 bg-illustration ring-border-illustration hover:bg-foreground/5 group cursor-pointer rounded-lg p-3 ring-1 transition-all'>
+                <div className='flex items-start justify-between gap-3'>
+                  <Shopify className='size-5 shrink-0 text-[#95BF46]' />
+                  <div className='flex-1'>
+                    <div className='text-sm font-semibold'>Shopify</div>
+                    <div className='text-muted-foreground mt-1 text-xs'>
+                      yourstore.myshopify.com
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 rounded-lg bg-green-500/10 flex items-center justify-center'>
-                <svg className='w-6 h-6 text-green-500' viewBox='0 0 24 24' fill='currentColor'>
-                  <path d='M7 4V2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v2h3a1 1 0 0 1 0 2h-1v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6H4a1 1 0 0 1 0-2h3zm2 0h6V3H9v1z' />
-                </svg>
-              </div>
-              <div>
-                <div className='font-medium'>Shopify Connected</div>
-                <div className='text-xs text-muted-foreground'>yourstore.myshopify.com</div>
-              </div>
-              <CheckCircle className='h-5 w-5 text-green-500 ml-auto' />
-            </div>
+
+            <button
+              type='button'
+              className='hover:bg-muted border-border mt-3 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-xs transition-colors'>
+              <span>View all integrations</span>
+              <ChevronDown className='size-3' />
+            </button>
           </div>
         </div>
       ),
@@ -68,40 +109,70 @@ export default function HowItWorksSection() {
         'Import existing knowledge base',
         'Learn from historical tickets',
         'Custom business rules',
-        'Brand voice training',
       ],
       visual: (
-        <div className='relative'>
-          <div className='absolute inset-0 bg-gradient-to-br from-purple-500/20 to-pink-500/20 blur-3xl' />
-          <div className='relative bg-card rounded-lg border p-6'>
-            <div className='space-y-3'>
-              <div className='flex items-center justify-between'>
-                <span className='text-sm font-medium'>Training Progress</span>
-                <span className='text-xs text-muted-foreground'>2 min remaining</span>
+        <div aria-hidden className='mask-b-from-65% w-full pt-1'>
+          <div className='bg-card/75 ring-border-illustration shadow-black/6.5 rounded-2xl p-6 shadow-lg ring-1'>
+            <div className='flex items-center gap-2'>
+              <div className='text-sm font-medium'>Training Plan</div>
+              <div className='bg-primary/10 text-primary ml-auto rounded px-2 py-0.5 text-[10px]'>
+                Auto-generated
               </div>
-              <div className='space-y-2'>
-                <div className='flex items-center gap-3'>
-                  <div className='flex-1 bg-muted rounded-full h-2 overflow-hidden'>
-                    <div className='bg-green-500 h-full w-full' />
-                  </div>
-                  <CheckCircle className='h-4 w-4 text-green-500' />
-                  <span className='text-xs'>FAQs imported</span>
-                </div>
-                <div className='flex items-center gap-3'>
-                  <div className='flex-1 bg-muted rounded-full h-2 overflow-hidden'>
-                    <div className='bg-green-500 h-full w-full' />
-                  </div>
-                  <CheckCircle className='h-4 w-4 text-green-500' />
-                  <span className='text-xs'>Policies learned</span>
-                </div>
-                <div className='flex items-center gap-3'>
-                  <div className='flex-1 bg-muted rounded-full h-2 overflow-hidden'>
-                    <div className='bg-blue-500 h-full w-[75%] animate-pulse' />
-                  </div>
-                  <div className='h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin' />
-                  <span className='text-xs'>Analyzing tickets...</span>
+            </div>
+
+            <div className='mt-4 space-y-2'>
+              <div className='flex items-start gap-2'>
+                <CheckCircle2 className='mt-0.5 size-4 shrink-0 text-green-500' />
+                <div className='flex-1'>
+                  <div className='text-xs font-medium line-through opacity-50'>1. Import FAQs</div>
+                  <div className='text-muted-foreground text-[10px]'>Completed in 3.2s</div>
                 </div>
               </div>
+
+              <div className='flex items-start gap-2'>
+                <CheckCircle2 className='mt-0.5 size-4 shrink-0 text-green-500' />
+                <div className='flex-1'>
+                  <div className='text-xs font-medium line-through opacity-50'>
+                    2. Learn return policies
+                  </div>
+                  <div className='text-muted-foreground text-[10px]'>Completed in 6.4s</div>
+                </div>
+              </div>
+
+              <div className='bg-primary/5 ring-primary/20 -mx-2 flex items-start gap-2 rounded-lg p-2 ring-1'>
+                <div className='relative mt-0.5'>
+                  <CircleDashed
+                    className='text-primary size-4 animate-spin'
+                    style={{ animationDuration: '3s' }}
+                  />
+                  <Play className='text-primary absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-current' />
+                </div>
+                <div className='flex-1'>
+                  <div className='text-primary text-xs font-semibold'>3. Analyze past tickets</div>
+                  <div className='text-primary/70 text-[10px]'>In progress... 18s</div>
+                </div>
+              </div>
+
+              <div className='flex items-start gap-2 opacity-40'>
+                <CircleDashed className='text-muted-foreground mt-0.5 size-4 shrink-0' />
+                <div className='flex-1'>
+                  <div className='text-xs font-medium'>4. Train brand voice</div>
+                  <div className='text-muted-foreground text-[10px]'>Pending</div>
+                </div>
+              </div>
+
+              <div className='flex items-start gap-2 opacity-40'>
+                <CircleDashed className='text-muted-foreground mt-0.5 size-4 shrink-0' />
+                <div className='flex-1'>
+                  <div className='text-xs font-medium'>5. Validate responses</div>
+                  <div className='text-muted-foreground text-[10px]'>Pending</div>
+                </div>
+              </div>
+            </div>
+
+            <div className='mt-3 flex items-center justify-between text-[10px]'>
+              <div className='text-muted-foreground'>2/5 steps complete</div>
+              <div className='text-muted-foreground'>Est. 2 min remaining</div>
             </div>
           </div>
         </div>
@@ -118,40 +189,88 @@ export default function HowItWorksSection() {
         'Real-time response generation',
         'Human review option',
         'Auto-pilot for simple queries',
-        'Performance analytics',
       ],
       visual: (
-        <div className='relative'>
-          <div className='absolute inset-0 bg-gradient-to-br from-green-500/20 to-blue-500/20 blur-3xl' />
-          <div className='relative bg-card rounded-lg border p-6 shadow'>
-            <div className='space-y-4'>
-              <div className='flex items-center justify-between mb-4'>
-                <span className='text-sm font-medium'>Live Activity</span>
-                <div className='flex items-center gap-2'>
-                  <div className='w-2 h-2 bg-green-500 rounded-full animate-pulse' />
-                  <span className='text-xs text-green-500'>Active</span>
+        <div
+          aria-hidden
+          className='mask-radial-[100%_100%] mask-radial-from-75% mask-radial-at-top-left pr-3 pt-1'>
+          <div className='bg-card/50 ring-border-illustration shadow-black/6.5 w-full rounded-2xl p-2 shadow-xl ring-1'>
+            <div className='mb-2 flex items-center justify-between px-2 pt-1'>
+              <div className='flex items-center gap-2'>
+                <div className='size-2 rounded-full bg-amber-500' />
+                <span className='text-sm font-semibold'>Live Tickets</span>
+              </div>
+              <MoreHorizontal className='text-muted-foreground size-4' />
+            </div>
+
+            <div className='space-y-2 *:rounded-lg'>
+              <div className='bg-illustration shadow-black/6.5 ring-border-illustration p-3 shadow ring-1'>
+                <div className='mb-2 flex items-start justify-between'>
+                  <div className='text-sm font-medium'>Order #1042 refund</div>
+                  <Flag className='size-3.5 fill-red-500 text-red-500' />
+                </div>
+                <p className='text-muted-foreground mb-3 text-xs'>
+                  AI drafting reply with refund policy
+                </p>
+                <div className='flex items-center justify-between'>
+                  <div className='flex -space-x-1.5'>
+                    <div className='bg-primary/15 text-primary ring-card flex size-5 items-center justify-center rounded-full text-[9px] font-medium ring-2'>
+                      AI
+                    </div>
+                    <div className='bg-blue-500/15 text-blue-500 ring-card flex size-5 items-center justify-center rounded-full text-[9px] font-medium ring-2'>
+                      JD
+                    </div>
+                  </div>
+                  <div className='text-muted-foreground flex items-center gap-2 text-[10px]'>
+                    <span className='flex items-center gap-0.5'>
+                      <MessageSquare className='size-3' />4
+                    </span>
+                    <span className='flex items-center gap-0.5'>
+                      <Paperclip className='size-3' />2
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className='space-y-3'>
-                <div className='flex items-center gap-3 text-sm'>
-                  <div className='w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center'>
-                    <span className='text-xs'>JD</span>
-                  </div>
-                  <div className='flex-1'>
-                    <div className='font-medium'>New ticket from John Doe</div>
-                    <div className='text-xs text-muted-foreground'>AI responding in 0.3s...</div>
-                  </div>
-                  <CheckCircle className='h-4 w-4 text-green-500' />
+
+              <div className='bg-illustration shadow-black/6.5 ring-border-illustration p-3 shadow ring-1'>
+                <div className='mb-2 flex items-start justify-between'>
+                  <div className='text-sm font-medium'>Shipping delay inquiry</div>
+                  <Flag className='size-3.5 fill-amber-500 text-amber-500' />
                 </div>
-                <div className='flex items-center gap-3 text-sm'>
-                  <div className='w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center'>
-                    <span className='text-xs'>SM</span>
+                <p className='text-muted-foreground mb-3 text-xs'>
+                  Awaiting your review before sending
+                </p>
+                <div className='flex items-center justify-between'>
+                  <div className='flex -space-x-1.5'>
+                    <div className='bg-primary/15 text-primary ring-card flex size-5 items-center justify-center rounded-full text-[9px] font-medium ring-2'>
+                      AI
+                    </div>
                   </div>
-                  <div className='flex-1'>
-                    <div className='font-medium'>Reply sent to Sarah Miller</div>
-                    <div className='text-xs text-muted-foreground'>Order status provided</div>
+                  <div className='text-muted-foreground flex items-center gap-2 text-[10px]'>
+                    <span className='flex items-center gap-0.5'>
+                      <MessageSquare className='size-3' />2
+                    </span>
                   </div>
-                  <CheckCircle className='h-4 w-4 text-green-500' />
+                </div>
+              </div>
+
+              <div className='bg-illustration shadow-black/6.5 ring-border-illustration p-3 shadow ring-1'>
+                <div className='mb-2 flex items-start justify-between'>
+                  <div className='text-sm font-medium'>Product sizing question</div>
+                  <Flag className='text-muted-foreground size-3.5' />
+                </div>
+                <p className='text-muted-foreground mb-3 text-xs'>Auto-replied with sizing guide</p>
+                <div className='flex items-center justify-between'>
+                  <div className='flex -space-x-1.5'>
+                    <div className='bg-primary/15 text-primary ring-card flex size-5 items-center justify-center rounded-full text-[9px] font-medium ring-2'>
+                      AI
+                    </div>
+                  </div>
+                  <div className='text-muted-foreground flex items-center gap-2 text-[10px]'>
+                    <span className='flex items-center gap-0.5'>
+                      <Paperclip className='size-3' />1
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -183,12 +302,6 @@ export default function HowItWorksSection() {
               {steps.map((step, index) => (
                 <div key={index} className='relative'>
                   {/* Connection line */}
-                  {index < steps.length - 1 && (
-                    <div className='hidden md:block absolute top-12 left-[calc(100%-2rem)] w-16 lg:w-24'>
-                      <div className='h-px bg-gradient-to-r from-border to-transparent' />
-                      <ArrowRight className='absolute right-0 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
-                    </div>
-                  )}
 
                   <div className='space-y-6'>
                     {/* Step number and icon */}
@@ -198,16 +311,16 @@ export default function HowItWorksSection() {
                           {step.number}
                         </div>
                       </div>
-                      <div className='p-3 rounded-lg bg-primary/10 text-primary'>{step.icon}</div>
+                      {/* <div className='p-3 rounded-lg bg-primary/10 text-primary'>{step.icon}</div> */}
                     </div>
 
                     {/* Content */}
                     <div className='space-y-4'>
                       <div>
                         <h3 className='text-xl font-semibold text-foreground mb-1'>{step.title}</h3>
-                        <p className='text-sm font-medium text-primary'>{step.subtitle}</p>
+                        <p className='text-sm font-medium text-primary/50'>{step.subtitle}</p>
                       </div>
-                      <p className='text-muted-foreground text-sm leading-relaxed'>
+                      <p className='text-muted-foreground text-sm leading-relaxed hidden'>
                         {step.description}
                       </p>
 
@@ -215,14 +328,14 @@ export default function HowItWorksSection() {
                       <ul className='space-y-2'>
                         {step.features.map((feature, i) => (
                           <li key={i} className='flex items-center gap-2 text-sm'>
-                            <CheckCircle className='h-4 w-4 text-green-500 shrink-0' />
+                            <CheckCircle2 className='h-4 w-4 text-green-500 shrink-0' />
                             <span className='text-muted-foreground'>{feature}</span>
                           </li>
                         ))}
                       </ul>
 
                       {/* Visual representation */}
-                      <div className='mt-6'>{step.visual}</div>
+                      <div className='sm:mt-8 pt-6'>{step.visual}</div>
                     </div>
                   </div>
                 </div>
@@ -232,15 +345,15 @@ export default function HowItWorksSection() {
             {/* CTA */}
             <div className='mt-16 text-center'>
               <div className='inline-flex flex-col sm:flex-row items-center gap-4'>
-                <Button asChild size='lg'>
+                <Button asChild size='lg' className='bg-accent' variant='outline'>
                   <Link href={urls.signup}>
                     Get started
                     <ArrowRight />
                   </Link>
                 </Button>
+                <span className=''>or</span>
                 <span className='text-sm text-muted-foreground'>
-                  or{' '}
-                  <Link href={urls.demo} className='text-info hover:underline'>
+                  <Link href={urls.demo} className='text-info hover:underline italic'>
                     request a demo
                   </Link>
                 </span>

@@ -3,7 +3,7 @@ import { LayoutIllustration } from './layout-illustration'
 
 export default function CustomerProfilesSection() {
   return (
-    <section className='relative border-foreground/10 border-b'>
+    <section className='relative border-foreground/10 border-b overflow-hidden'>
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
         <div className='border-x'>
           <div
@@ -25,7 +25,7 @@ export default function CustomerProfilesSection() {
                   </p>
                 </div>
 
-                <div className='-translate-x-44 md:translate-x-0'>
+                <div className=' md:translate-x-0'>
                   <LayoutIllustration />
                 </div>
               </div>

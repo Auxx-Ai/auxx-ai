@@ -14,7 +14,8 @@ export default function HeroSection() {
             <div className='max-md:text-center'>
               <span className='text-primary text-sm font-medium'>Shopify Integration</span>
               <h1 className='mt-4 text-balance text-4xl font-semibold md:text-5xl lg:text-6xl'>
-                AI-Powered Customer Support for Shopify Stores
+                <span className='text-foreground/50'>AI-Powered Customer Support for</span> Shopify
+                Stores
               </h1>
               <p className='text-muted-foreground mb-6 mt-4 max-w-md text-balance text-lg max-md:mx-auto'>
                 Automate customer support with intelligent AI that understands your products,

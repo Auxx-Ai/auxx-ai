@@ -65,11 +65,9 @@ export const Table2 = ({ className }: { className?: string }) => {
             <div className='sticky top-0 z-10 min-w-full from-white to-white/50 bg-gradient-to-b dark:from-zinc-900 dark:to-zinc-900/50 backdrop-blur border-b border-primary-200/50 dark:border-white/10'>
               <div className='flex min-w-full items-stretch'>
                 {/* Header Cells */}
-                <div
-                  className='group min-w-min py-2 h-full font-inter font-medium'
-                  style={{ width: '80px' }}>
-                  <div className='pr-3 h-full relative py-1' style={{ width: '80px' }}>
-                    <div className='font-medium text-xs pl-3 flex text-muted-foreground select-none z-10'>
+                <div className='group min-w-min py-2 h-full font-inter font-medium w-[20px] sm:w-[80px]'>
+                  <div className='pr-0 sm:pr-3 h-full relative py-1 w-[20px] sm:w-[80px]'>
+                    <div className='font-medium text-xs pl-0 sm:pl-3 flex text-muted-foreground select-none z-10'>
                       <div className='header-title w-full truncate flex items-center'>
                         <span className='font-medium text-xs'>#</span>
                       </div>
@@ -120,7 +118,7 @@ export const Table2 = ({ className }: { className?: string }) => {
                 </div>
 
                 <div
-                  className='group min-w-min py-2 h-full font-inter font-medium'
+                  className='hidden sm:block group min-w-min py-2 h-full font-inter font-medium'
                   style={{ width: '120px' }}>
                   <div
                     className='border-l border-foreground-200/80 pr-3 h-full relative py-1'
@@ -149,7 +147,7 @@ export const Table2 = ({ className }: { className?: string }) => {
                     right: 0,
                   }}>
                   <div
-                    className='flex group/tablerow w-full will-change-transform border-y border-background rounded-md bg-primary-50 dark:bg-zinc-900 hover:bg-primary-150/80 dark:hover:bg-white/5'
+                    className='flex group/tablerow w-full will-change-transform border-y border-transparent rounded-md hover:bg-foreground/5'
                     style={{
                       width: '100%',
                       contain: 'paint',
@@ -157,13 +155,11 @@ export const Table2 = ({ className }: { className?: string }) => {
                       height: '48px',
                     }}>
                     {/* ID Cell */}
-                    <div className='flex' style={{ width: '80px' }}>
-                      <div className='flex shrink-0 truncate' style={{ width: '80px' }}>
-                        <div
-                          className='relative flex-none z-10 h-full min-h-full shrink-0 grow-0'
-                          style={{ width: '80px' }}>
-                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full bg-primary-50 dark:bg-zinc-900 group-hover/tablerow:bg-primary-100/80 dark:group-hover/tablerow:bg-white/5'>
-                            <div className='w-full pl-3 truncate'>
+                    <div className='flex w-[20px] sm:w-[80px]'>
+                      <div className='flex shrink-0 truncate w-[20px] sm:w-[80px]'>
+                        <div className='relative flex-none z-10 h-full min-h-full shrink-0 grow-0 w-[20px] sm:w-[80px]'>
+                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full'>
+                            <div className='w-full pl-0 sm:pl-3 truncate text-center sm:text-left'>
                               <div className='pt-0.5 leading-6'>{customer.id}</div>
                             </div>
                           </div>
@@ -177,7 +173,7 @@ export const Table2 = ({ className }: { className?: string }) => {
                         <div
                           className='relative flex-none z-10 h-full min-h-full shrink-0 grow-0'
                           style={{ width: '120px' }}>
-                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full bg-primary-50 dark:bg-zinc-900 group-hover/tablerow:bg-primary-100/80 dark:group-hover/tablerow:bg-white/5'>
+                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full'>
                             <div className='w-full pl-3 truncate'>
                               <div className='pt-0.5 leading-6'>{customer.date}</div>
                             </div>
@@ -192,7 +188,7 @@ export const Table2 = ({ className }: { className?: string }) => {
                         <div
                           className='relative flex-none z-10 h-full min-h-full shrink-0 grow-0'
                           style={{ width: '100px' }}>
-                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full bg-primary-50 dark:bg-zinc-900 group-hover/tablerow:bg-primary-100/80 dark:group-hover/tablerow:bg-white/5'>
+                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full'>
                             <div className='w-full pl-3 truncate'>
                               <div className='pt-0.5 leading-6'>
                                 <span
@@ -220,7 +216,7 @@ export const Table2 = ({ className }: { className?: string }) => {
                         <div
                           className='relative flex-none z-10 h-full min-h-full shrink-0 grow-0'
                           style={{ width: '200px' }}>
-                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full bg-primary-50 dark:bg-zinc-900 group-hover/tablerow:bg-primary-100/80 dark:group-hover/tablerow:bg-white/5'>
+                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full'>
                             <div className='w-full pl-3 truncate'>
                               <div className='pt-0.5 leading-6'>
                                 <div className='text-title flex items-center gap-2'>
@@ -243,12 +239,12 @@ export const Table2 = ({ className }: { className?: string }) => {
                     </div>
 
                     {/* Revenue Cell */}
-                    <div className='flex' style={{ width: '120px' }}>
+                    <div className='hidden sm:flex' style={{ width: '120px' }}>
                       <div className='flex shrink-0 truncate' style={{ width: '120px' }}>
                         <div
                           className='relative flex-none z-10 h-full min-h-full shrink-0 grow-0'
                           style={{ width: '120px' }}>
-                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full bg-primary-50 dark:bg-zinc-900 group-hover/tablerow:bg-primary-100/80 dark:group-hover/tablerow:bg-white/5'>
+                          <div className='min-h-full overflow-hidden py-1.5 align-middle font-inter text-sm relative group/cell z-10 truncate w-full'>
                             <div className='w-full pl-3 truncate'>
                               <div className='pt-0.5 leading-6'>{customer.revenue}</div>
                             </div>

@@ -22,7 +22,7 @@ export const PartIllustration = ({ className }: { className?: string }) => {
               <div className='font-mono text-lg font-semibold'>BRG-2024-001</div>
               <div className='text-xs text-muted-foreground'>Industrial Ball Bearing</div>
             </div>
-            <div className='flex items-center gap-1 bg-orange-100 text-orange-800 px-2 py-1 rounded-full text-xs'>
+            <div className='flex items-center gap-1 bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 px-2 py-1 rounded-full text-xs'>
               <AlertTriangle className='size-3' />
               <span>Low Stock</span>
             </div>
@@ -41,8 +41,10 @@ export const PartIllustration = ({ className }: { className?: string }) => {
             <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
               <span className='text-muted-foreground text-xs'>Stock Level:</span>
               <div className='flex items-center gap-2'>
-                <span className='text-orange-600 font-medium text-xs'>24 units</span>
-                <div className='bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded text-xs'>
+                <span className='text-orange-600 dark:text-orange-400 font-medium text-xs'>
+                  24 units
+                </span>
+                <div className='bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 px-1.5 py-0.5 rounded text-xs'>
                   Below Min
                 </div>
               </div>
@@ -66,7 +68,7 @@ export const PartIllustration = ({ className }: { className?: string }) => {
 
             <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
               <span className='text-muted-foreground text-xs'>Supplier:</span>
-              <div className='bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs w-fit'>
+              <div className='bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded text-xs w-fit'>
                 Precision Parts Inc.
               </div>
             </div>

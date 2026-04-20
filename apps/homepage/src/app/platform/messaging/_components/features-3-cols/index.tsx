@@ -1,4 +1,6 @@
 // apps/web/src/app/(website)/_components/features-3-cols/index.tsx
+import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import { InteractivePollingCard } from './interactive-polling-card'
 import { PerformanceAnalyticsCard } from './performance-analytics-card'
 import { RealTimeMessagingCard } from './real-time-messaging-card'
@@ -15,10 +17,13 @@ export default function Features3Cols() {
           />
           <div className='bg-muted/50 @container py-24'>
             <div className='mx-auto w-full max-w-5xl px-6'>
-              <div className='@max-4xl:max-w-sm @max-4xl:mx-auto @4xl:grid-cols-3 grid gap-6 *:p-6'>
-                <RealTimeMessagingCard />
-                <PerformanceAnalyticsCard />
-                <InteractivePollingCard />
+              <div className='relative overflow-hidden rounded-2xl p-6'>
+                <RandomGradient colors={[...GRADIENT_PALETTES.aurora]} mode='mesh' animated />
+                <div className='@max-4xl:max-w-sm @max-4xl:mx-auto @4xl:grid-cols-3 grid gap-6 *:p-6 relative z-10'>
+                  <RealTimeMessagingCard />
+                  <PerformanceAnalyticsCard />
+                  <InteractivePollingCard />
+                </div>
               </div>
             </div>
           </div>

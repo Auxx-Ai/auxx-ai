@@ -4,7 +4,7 @@ import { HumanNodeIllustration } from './human-node-illustration'
 
 // HumanNodeCard renders the polling feature column.
 export const HumanNodeCard = () => (
-  <div className='bg-card ring-foreground/10 grid grid-rows-[auto_1fr] space-y-12 overflow-hidden rounded-2xl border border-transparent shadow-md shadow-black/5 ring-1'>
+  <div className='bg-card/80 ring-foreground/5 grid grid-rows-[auto_1fr] space-y-12 overflow-hidden rounded-2xl border border-transparent shadow-md shadow-black/5 ring-1'>
     <div>
       <Sparkles className='fill-amber-200 mb-5 size-4' />
       <h3 className='text-foreground text-lg font-semibold'>Human in the loop</h3>

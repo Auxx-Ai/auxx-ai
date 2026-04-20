@@ -24,7 +24,7 @@ export const BusinessHeroIllustration = () => {
             </div>
           </div>
 
-          <div className='bg-blue-50 border-blue-200 mt-6 flex h-20 items-center justify-center rounded-md border'>
+          <div className='bg-blue-50 dark:bg-blue-900/20 dark:border-blue-900/50 border-blue-200 mt-6 flex h-20 items-center justify-center rounded-md border'>
             <div className='text-blue-600 text-center'>
               <div className='font-semibold'>AI Assistant Ready</div>
               <div className='text-xs'>Serving customers instantly</div>

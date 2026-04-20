@@ -1,5 +1,7 @@
 // apps/homepage/src/app/platform/workflow/_components/workflow-content.tsx
 
+import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import { AutoplayVideo } from '~/components/autoplay-video'
 import { videoUrl } from '~/lib/cdn'
 
@@ -9,10 +11,11 @@ import { videoUrl } from '~/lib/cdn'
  */
 export default function WorkflowContent() {
   return (
-    <section className='relative bg-background border-foreground/10 border-b'>
-      <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
+    <section className='relative overflow-hidden border-foreground/10 border-b'>
+      <RandomGradient colors={[...GRADIENT_PALETTES.aurora]} mode='mesh' animated />
+      <div className='relative z-10 mx-auto max-w-6xl border-x px-3 bg-background/40'>
         <div className='border-x'>
-          <div className='bg-muted/25 py-16 md:py-24'>
+          <div className='bg-background/40 py-16 md:py-24'>
             <div className='mx-auto max-w-4xl space-y-12 px-6'>
               <h2 className='text-muted-foreground text-balance text-4xl font-semibold md:w-2/3'>
                 Intelligent routing for{' '}

@@ -1,5 +1,7 @@
 // apps/homepage/src/app/platform/crm/_components/crm-hero.tsx
 
+import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import Link from 'next/link'
 import { AutoplayVideo } from '~/components/autoplay-video'
 import { Button } from '~/components/ui/button'
@@ -8,8 +10,9 @@ import { config } from '~/lib/config'
 
 export default function CrmHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
   return (
-    <section className='overflow-x-hidden relative border-b'>
-      <section>
+    <section className='overflow-hidden relative border-b'>
+      <RandomGradient colors={[...GRADIENT_PALETTES.dawn]} mode='mesh' animated blur={10} />
+      <section className='bg-background/40 relative z-10'>
         <div
           aria-hidden
           className='pointer-events-none absolute inset-0 z-10 mx-1 grid max-w-6xl grid-cols-3 border-x [--color-border:var(--color-border-illustration)] sm:grid-cols-4 md:mx-auto'>
@@ -21,7 +24,7 @@ export default function CrmHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
         <div className='mb:pb-24 relative pb-16 pt-24 md:pt-36 lg:pt-40'>
           <div className='mx-auto w-full px-6 lg:max-w-5xl'>
             <div className='grid items-center max-lg:gap-12 lg:grid-cols-2 '>
-              <div className='h-[550px]'>
+              <div className='sm:h-[550px]'>
                 <div className='lg:max-w-sm'>
                   <Heading className='text-balance text-4xl font-semibold md:text-5xl'>
                     Know Your Customers, Grow Your Business

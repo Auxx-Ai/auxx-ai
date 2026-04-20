@@ -65,11 +65,12 @@ export default function MainPage() {
       <LogoCloudTwo />
       <WorkflowAnimationSection />
       <WorkflowContent />
-      <CrmHero as='h2' />
+
       <TicketingFeature />
+      <CrmHero as='h2' />
       {/* <ProblemSolutionSection /> */}
-      <IntegrationSection />
       <StatsSection />
+      <IntegrationSection />
       <TestimonialsSection />
       <FooterSection />
     </div>
