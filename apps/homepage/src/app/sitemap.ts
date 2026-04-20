@@ -181,6 +181,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.7,
     },
     {
+      url: `${baseUrl}/free-tools/mesh-gradient-generator`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
       url: `${baseUrl}/what-is-auxx-ai`,
       lastModified: new Date(),
       changeFrequency: 'monthly',

@@ -24,6 +24,8 @@ type ToolLayoutProps = {
     href: string
     label: string
   }
+  /** 'narrow' (default) renders the body at max-w-3xl. 'fullbleed' widens it to max-w-7xl for interactive studio widgets. */
+  variant?: 'narrow' | 'fullbleed'
 }
 
 function FaqJsonLd({ items }: { items: FaqItem[] }) {
@@ -56,14 +58,20 @@ export function ToolLayout({
   faqs,
   relatedTools,
   productCta,
+  variant = 'narrow',
 }: ToolLayoutProps) {
+  const isFullbleed = variant === 'fullbleed'
+  const heroSectionClass = isFullbleed
+    ? 'mx-auto max-w-7xl px-6 pb-8 pt-24 md:pt-32 lg:pt-36'
+    : 'mx-auto max-w-5xl px-6 pb-12 pt-24 md:pt-32 lg:pt-36'
+  const bodySectionClass = isFullbleed ? 'mx-auto max-w-7xl px-6' : 'mx-auto max-w-3xl px-6'
   return (
     <div id='root' className='relative h-screen overflow-y-auto bg-background'>
       <BreadcrumbJsonLd items={breadcrumb} />
       {faqs && faqs.length > 0 ? <FaqJsonLd items={faqs} /> : null}
       <Header />
       <main className='pb-16'>
-        <section className='mx-auto max-w-5xl px-6 pb-12 pt-24 md:pt-32 lg:pt-36'>
+        <section className={heroSectionClass}>
           <nav aria-label='Breadcrumb' className='mb-6 text-xs text-muted-foreground'>
             <ol className='flex flex-wrap items-center gap-1.5'>
               {breadcrumb.map((item, idx) => (
@@ -85,7 +93,9 @@ export function ToolLayout({
 
           <div
             className={
-              sidebar ? 'grid gap-10 md:grid-cols-[1fr_360px]' : 'mx-auto max-w-3xl space-y-5'
+              sidebar && !isFullbleed
+                ? 'grid gap-10 md:grid-cols-[1fr_360px]'
+                : 'mx-auto max-w-3xl space-y-5'
             }>
             <div className='space-y-5'>
               <h1 className='text-balance text-4xl font-semibold tracking-tight md:text-5xl'>
@@ -93,7 +103,7 @@ export function ToolLayout({
               </h1>
               <p className='text-pretty text-lg text-muted-foreground'>{subhead}</p>
             </div>
-            {sidebar ? (
+            {sidebar && !isFullbleed ? (
               <aside className='md:sticky md:top-24 md:self-start'>
                 <div className='rounded-xl border border-border bg-card p-6 shadow-sm'>
                   {sidebar}
@@ -103,8 +113,8 @@ export function ToolLayout({
           </div>
         </section>
 
-        <section className='mx-auto max-w-3xl px-6'>
-          <div className='tool-prose'>{children}</div>
+        <section className={bodySectionClass}>
+          {isFullbleed ? children : <div className='tool-prose'>{children}</div>}
         </section>
 
         {faqs && faqs.length > 0 ? (
