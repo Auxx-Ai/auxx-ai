@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.135](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.134...auxx-v0.1.135) (2026-04-20)
+
+
+### Features
+
+* add GitHub star button component and integrate it into the mesh gradient generator page ([#456](https://github.com/Auxx-Ai/auxx-ai/issues/456)) ([c359e45](https://github.com/Auxx-Ai/auxx-ai/commit/c359e4542c8f8af1bd69bfdb4ca7cb5f6b458411))
+
 ## [0.1.134](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.133...auxx-v0.1.134) (2026-04-20)
 
 
