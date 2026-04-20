@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.131](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.130...auxx-v0.1.131) (2026-04-20)
+
+
+### Features
+
+* add support for "Current user" placeholder in actor-field filters ([#447](https://github.com/Auxx-Ai/auxx-ai/issues/447)) ([a9b55ab](https://github.com/Auxx-Ai/auxx-ai/commit/a9b55ab4e8eb03c1315d0a617e22e6899af1f5a5))
+* implement RandomGradient component and integrate gradient palettes ([#449](https://github.com/Auxx-Ai/auxx-ai/issues/449)) ([f3ae69b](https://github.com/Auxx-Ai/auxx-ai/commit/f3ae69b56060d97393fa5c2a23b2e3a61197051a))
+
 ## [0.1.130](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.129...auxx-v0.1.130) (2026-04-18)
 
 
