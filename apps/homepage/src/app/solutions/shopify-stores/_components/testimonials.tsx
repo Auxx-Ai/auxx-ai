@@ -1,5 +1,7 @@
 // apps/web/src/app/(website)/solutions/shopify-stores/_components/testimonials.tsx
 
+import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import { avatars } from '~/app/_components/avatars'
 import { Card } from '~/components/ui/card'
 
@@ -11,8 +13,9 @@ export default function TestimonialsSection() {
           <div className=' @container py-16 lg:py-24'>
             <div className='mx-auto max-w-5xl px-6'>
               <div className='*:ring-foreground/10 @4xl:grid-cols-2 grid gap-6 *:shadow-lg'>
-                <Card className='bg-linear-to-b row-span-5 grid grid-rows-subgrid gap-8 from-purple-50 dark:from-purple-500/10 p-8'>
-                  <p className='text-muted-foreground text-balance text-xl font-medium'>
+                <Card className='relative row-span-5 grid grid-rows-subgrid gap-8 overflow-hidden p-8 rounded-2xl'>
+                  <RandomGradient colors={[...GRADIENT_PALETTES.aurora]} mode='hero' animated />
+                  <p className='text-muted-foreground relative z-10 text-balance text-xl font-medium'>
                     Legacy CivilWorks leveraged Auxx.ai to transform their customer support
                     operations,{' '}
                     <strong className='text-foreground'>
@@ -20,7 +23,7 @@ export default function TestimonialsSection() {
                       scores.
                     </strong>
                   </p>
-                  <div className='row-span-2 grid grid-rows-subgrid gap-8 border-t pt-8'>
+                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t pt-8'>
                     <p className='text-foreground self-end text-balance before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
                       Auxx.ai transformed our support operation. We went from drowning in tickets to
                       proactively delighting customers. Our CSAT scores increased 40% in the first
@@ -43,8 +46,9 @@ export default function TestimonialsSection() {
                     </div>
                   </div>
                 </Card>
-                <Card className='bg-linear-to-b row-span-5 grid grid-rows-subgrid gap-8 from-blue-50 dark:from-blue-500/10 p-8'>
-                  <p className='text-muted-foreground self-end text-balance text-xl font-medium'>
+                <Card className='relative row-span-5 grid grid-rows-subgrid gap-8 overflow-hidden p-8 rounded-2xl'>
+                  <RandomGradient colors={[...GRADIENT_PALETTES.ocean]} mode='hero' animated />
+                  <p className='text-muted-foreground relative z-10 self-end text-balance text-xl font-medium'>
                     RMD Kwikform utilized Auxx.ai's Shopify integration to{' '}
                     <strong className='text-foreground'>
                       reduce support tickets by 67% while handling 8K+ monthly orders
@@ -52,7 +56,7 @@ export default function TestimonialsSection() {
                     with seamless automated responses and upselling capabilities.
                   </p>
 
-                  <div className='row-span-2 grid grid-rows-subgrid gap-8 border-t pt-8'>
+                  <div className='relative z-10 row-span-2 grid grid-rows-subgrid gap-8 border-t pt-8'>
                     <p className='text-foreground text-balance before:mr-1 before:content-["\201C"] after:ml-1 after:content-["\201D"]'>
                       The Shopify integration was seamless. Within hours, our AI was handling order
                       status inquiries, processing returns, and even upselling complementary

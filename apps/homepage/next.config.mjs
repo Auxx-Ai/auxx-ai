@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename)
 const nextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '../../'),
-  transpilePackages: ['@auxx/config'],
+  transpilePackages: ['@auxx/config', '@auxx/ui'],
   images: {
     // Avoid requiring sharp in the server Lambda; rely on client-side <img> or our optimizer function
     unoptimized: true,

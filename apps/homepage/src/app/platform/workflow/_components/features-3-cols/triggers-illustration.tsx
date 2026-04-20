@@ -15,7 +15,7 @@ export const TriggersIllustration = () => {
             Scheduled
           </div>
         </div>
-        <div className='bg-illustration ring-border-illustration relative -mx-5 flex rounded-xl p-2 text-xs shadow shadow-black/10 ring-1'>
+        <div className='bg-illustration/80 ring-border-illustration/20 relative -mx-5 flex rounded-xl p-2 text-xs shadow shadow-black/10 ring-1'>
           <div className='before:border-primary before:bg-background before:ring-background relative ml-7 mt-0.5 inline-flex items-center gap-2 text-sm font-medium before:absolute before:inset-y-0 before:-left-[19px] before:my-auto before:size-[5px] before:rounded-full before:border before:ring'>
             <div className='flex items-center -space-x-2'>
               <Mail className='size-4' />

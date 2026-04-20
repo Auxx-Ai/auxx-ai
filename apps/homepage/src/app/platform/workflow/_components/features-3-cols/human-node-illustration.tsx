@@ -8,7 +8,7 @@ import { Bell, Clock, Mail, Users } from 'lucide-react'
  */
 export function HumanNodeIllustration() {
   return (
-    <div className='workflow-node relative group/node border-[1px] rounded-2xl transition-all duration-200 after:opacity-0 after:absolute after:inset-[-9px] after:rounded-[24px] after:border-[8px] hover:after:opacity-100 bg-background border-primary-300 after:border-primary-300/20 shadow-lg hover:shadow-lg'>
+    <div className='workflow-node relative group/node border-[1px] rounded-2xl transition-all duration-200 after:opacity-0 after:absolute after:inset-[-9px] after:rounded-[24px] after:border-[8px] hover:after:opacity-100 bg-background/50 border-illustration/40 after:border-primary-300/20 shadow-lg hover:shadow-lg'>
       <div className='group relative shadow-xs flex h-full w-full flex-col rounded-2xl'>
         {/* Header */}
         <div className='flex items-center justify-between'>
@@ -25,7 +25,7 @@ export function HumanNodeIllustration() {
         {/* Content */}
         <div className='relative px-3 pb-2 space-y-1'>
           {/* Assignees section */}
-          <div className='relative flex items-center justify-between h-6 rounded-md bg-muted px-2'>
+          <div className='relative flex items-center justify-between h-6 rounded-md bg-muted/50 px-2'>
             <div className='flex items-center gap-1'>
               <Users className='size-3' />
               <div className='whitespace-pre-line'>

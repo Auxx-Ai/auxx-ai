@@ -21,7 +21,7 @@ export default function IntegrationCards() {
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
           viewport={{ once: true }}
-          className='ring-foreground/10 @4xl:grid-cols-2 @max-4xl:divide-y @4xl:divide-x relative grid overflow-hidden rounded-2xl  bg-background shadow-md shadow-black/10 ring-1'>
+          className='ring-foreground/5 @4xl:grid-cols-2 @max-4xl:divide-y @4xl:divide-x relative grid overflow-hidden rounded-2xl  bg-background/50 shadow-md shadow-black/10 ring-1'>
           <div className='row-span-2 grid grid-rows-subgrid gap-8'>
             <div className='px-8 pt-8'>
               <div className='flex items-center gap-3 mb-4'>

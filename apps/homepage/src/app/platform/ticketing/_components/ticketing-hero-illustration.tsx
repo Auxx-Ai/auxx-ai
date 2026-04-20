@@ -28,7 +28,7 @@ export const TicketingHeroIllustration = () => {
 
               <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
                 <span className='text-muted-foreground text-xs'>Category:</span>
-                <div className='bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs w-fit opacity-50'>
+                <div className='bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded text-xs w-fit opacity-50'>
                   Technical
                 </div>
               </div>
@@ -37,7 +37,7 @@ export const TicketingHeroIllustration = () => {
           <div className='relative'>
             <div className='bg-linear-to-r absolute inset-4 from-purple-500 via-emerald-500 to-blue-500 opacity-40 blur-2xl'></div>
 
-            <div className='bg-card ring-border-illustration relative rounded-2xl p-6 shadow-xl ring-1'>
+            <div className='bg-card/80 ring-border-illustration relative rounded-2xl p-6 shadow-xl ring-1'>
               <div className='mb-6 flex items-start justify-between'>
                 <div className='space-y-1'>
                   <div className='flex items-center gap-2'>
@@ -51,7 +51,7 @@ export const TicketingHeroIllustration = () => {
                   <div className='font-mono text-lg font-semibold'>#TSK-12345</div>
                   <div className='text-xs text-muted-foreground'>Opened 2 hours ago</div>
                 </div>
-                <div className='flex items-center gap-1 bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs'>
+                <div className='flex items-center gap-1 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded-full text-xs'>
                   <Clock className='size-3' />
                   <span>In Progress</span>
                 </div>
@@ -81,7 +81,7 @@ export const TicketingHeroIllustration = () => {
 
                 <div className='grid grid-cols-[auto_1fr] items-center gap-3'>
                   <span className='text-muted-foreground text-xs'>Category:</span>
-                  <div className='bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs w-fit'>
+                  <div className='bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded text-xs w-fit'>
                     Technical
                   </div>
                 </div>

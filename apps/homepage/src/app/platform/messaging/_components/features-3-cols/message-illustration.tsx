@@ -18,7 +18,7 @@ export const MessageIllustration = () => (
       <span className='text-sm'>Karo T.</span>
     </div>
 
-    <div className='ring-border-illustration bg-illustration mt-2 w-fit rounded-2xl rounded-tl p-3 text-sm shadow ring-1'>
+    <div className='ring-border-illustration/10 bg-illustration/50 mt-2 w-fit rounded-2xl rounded-tl p-3 text-sm shadow ring-1'>
       Hey <span className='text-info'>James</span>, I've credited your account. You should see it in
       your account within the next 1-2 days.
     </div>

@@ -163,6 +163,12 @@ export {
   FormMessage,
   useFormField,
 } from './components/form'
+export {
+  GRADIENT_PALETTE_MODES,
+  GRADIENT_PALETTES,
+  type GradientPaletteMode,
+  type GradientPaletteName,
+} from './components/gradient-palettes'
 export { HoverCard, HoverCardContent, HoverCardTrigger } from './components/hover-card'
 export { default as InfiniteScroll } from './components/infinite-scroll'
 export { Input } from './components/input'
@@ -240,6 +246,11 @@ export { Progress } from './components/progress'
 export { RadioGroup, RadioGroupItem } from './components/radio-group'
 export { RadioGroupItemCard } from './components/radio-group-item'
 export { RadioTab } from './components/radio-tab'
+export {
+  type GradientMode,
+  RandomGradient,
+  type RandomGradientProps,
+} from './components/random-gradient'
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/resizable'
 export { ScrollArea, ScrollBar } from './components/scroll-area'
 export { Field, type FieldProps, Section, type SectionProps } from './components/section'

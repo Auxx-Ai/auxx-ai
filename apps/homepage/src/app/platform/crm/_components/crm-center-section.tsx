@@ -1,4 +1,6 @@
 // apps/homepage/src/app/platform/crm/_components/crm-center-section.tsx
+import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import Image from 'next/image'
 
 /**
@@ -7,9 +9,10 @@ import Image from 'next/image'
  */
 export default function CrmCenterSection() {
   return (
-    <section className='relative bg-background border-foreground/10 border-b'>
-      <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
-        <div className='border-x'>
+    <section className='relative overflow-hidden bg-background border-foreground/10 border-b'>
+      <RandomGradient colors={[...GRADIENT_PALETTES.ocean]} mode='mesh' animated />
+      <div className='relative z-10 mx-auto max-w-6xl border-x px-3 bg-background/20'>
+        <div className='border-x bg-background/20'>
           <div className='bg-muted/25 py-16 md:py-24'>
             <div className='mx-auto max-w-4xl space-y-12 px-6'>
               <h2 className='text-muted-foreground text-balance text-4xl font-semibold md:w-2/3'>

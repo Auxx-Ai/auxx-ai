@@ -24,7 +24,7 @@ export const SupportHeroIllustration = () => {
             </div>
           </div>
 
-          <div className='bg-indigo-50 border-indigo-200 mt-6 flex h-20 items-center justify-center rounded-md border'>
+          <div className='bg-indigo-50 border-indigo-200 dark:bg-indigo-700/20 dark:border-indigo-900 mt-6 flex h-20 items-center justify-center rounded-md border'>
             <div className='text-indigo-600 text-center'>
               <div className='font-semibold'>AI Co-Pilot Active</div>
               <div className='text-xs'>Assisting with customer queries</div>

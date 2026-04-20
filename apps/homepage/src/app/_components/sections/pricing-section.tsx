@@ -1,30 +1,20 @@
 // apps/homepage/src/app/_components/sections/pricing-section.tsx
 'use client'
+import { GRADIENT_PALETTES, RandomGradient } from '@auxx/ui/components/random-gradient'
 import NumberFlow from '@number-flow/react'
 import { Check } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { CardDescription, CardTitle } from '~/components/ui/card'
+import { PLAN_PRICES, useBillingPeriod } from '~/lib/billing-period-context'
 import { useConfig } from '~/lib/config-context'
 import { cn } from '~/lib/utils'
 
 // PricingSection renders the pricing plans selector and cards.
 export default function PricingSection() {
   const { urls, emails } = useConfig()
-  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annually'>('annually')
-  const annualDiscount = 0.3
-
-  const prices = {
-    starter: {
-      monthly: 20,
-      annually: 20 * (1 - annualDiscount),
-    },
-    growth: {
-      monthly: 50,
-      annually: 50 * (1 - annualDiscount),
-    },
-  }
+  const { billingPeriod, setBillingPeriod } = useBillingPeriod()
+  const prices = PLAN_PRICES
 
   return (
     <>
@@ -118,7 +108,12 @@ export default function PricingSection() {
                             ))}
                           </ul>
                         </div>
-                        <div className='rounded-(--radius) ring-foreground/10 bg-card @4xl:my-2 @max-4xl:mx-1 row-span-4 grid grid-rows-subgrid gap-8 border-transparent shadow shadow-xl ring-1 backdrop-blur'>
+                        <div className='rounded-(--radius) ring-foreground/10 relative overflow-hidden @4xl:my-2 @max-4xl:mx-1 row-span-4 grid grid-rows-subgrid gap-8 border-transparent shadow shadow-xl ring-1 backdrop-blur [&>*+*]:relative [&>*+*]:z-10'>
+                          <RandomGradient
+                            colors={[...GRADIENT_PALETTES.aurora]}
+                            mode='mesh'
+                            animated
+                          />
                           <div className='self-end'>
                             <CardTitle className='text-lg font-medium'>Starter</CardTitle>
                             <CardDescription className='text-muted-foreground mt-1 text-balance text-sm'>

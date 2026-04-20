@@ -13,7 +13,8 @@ export default function HeroSection() {
             <div className='max-md:text-center'>
               <span className='text-primary text-sm font-medium'>Support Team Enhancement</span>
               <h1 className='mt-4 text-balance text-4xl font-semibold md:text-5xl lg:text-6xl'>
-                Empower Your Customer Support Team with AI
+                Empower Your <span className='text-foreground/50'>Customer Support Team</span> with
+                AI
               </h1>
               <p className='text-muted-foreground mb-6 mt-4 max-w-md text-balance text-lg max-md:mx-auto'>
                 Supercharge your support team's efficiency with AI that handles routine tasks,

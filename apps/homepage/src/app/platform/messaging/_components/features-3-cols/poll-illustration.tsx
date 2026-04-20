@@ -16,7 +16,7 @@ export const PollIllustration = () => {
             Shipping delay message
           </div>
         </div>
-        <div className='bg-illustration ring-border-illustration relative -mx-5 flex rounded-xl p-2 text-xs shadow shadow-black/10 ring-1'>
+        <div className='bg-illustration/50 ring-border-illustration/20 relative -mx-5 flex rounded-xl p-2 text-xs shadow shadow-black/10 ring-1'>
           <div className='before:border-primary before:bg-background before:ring-background relative ml-7 mt-0.5 inline-flex items-center gap-2 text-sm font-medium before:absolute before:inset-y-0 before:-left-[19px] before:my-auto before:size-[5px] before:rounded-full before:border before:ring'>
             <div className='flex items-center -space-x-2'>
               {[
@@ -27,7 +27,7 @@ export const PollIllustration = () => {
               ].map((avatar, index) => (
                 <div
                   key={index}
-                  className='bg-background size-6 rounded-full border p-0.5 shadow shadow-zinc-950/5 *:rounded-full'>
+                  className='bg-background/50 size-6 rounded-full border p-0.5 shadow shadow-zinc-950/5 *:rounded-full'>
                   <Image
                     src={avatar.src}
                     className='aspect-square rounded-[calc(var(--avatar-radius)-2px)] object-cover'
@@ -40,7 +40,7 @@ export const PollIllustration = () => {
                 </div>
               ))}
             </div>
-            Approve refund for <b>red t-shirt</b>
+            Approve refund <b className='text-xs'>red t-shirt</b>
           </div>
         </div>
         <div className='pl-5'>

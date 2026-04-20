@@ -1,4 +1,5 @@
 'use client'
+import { GRADIENT_PALETTES, RandomGradient } from '@auxx/ui/components/random-gradient'
 import { ArrowRight, Bot, TrendingUp } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Badge } from '~/components/ui/badge'
@@ -21,10 +22,8 @@ export function AutomationImpact() {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.6 }}
               viewport={{ once: true }}>
-              <div className='bg-background/70 backdrop-blur-sm rounded-2xl relative p-8 shadow-md shadow-black/10 ring-1 ring-border-illustration'>
-                <div className='absolute bottom-0 h-1/2 left-0 right-0 -5'>
-                  <div className='bg-linear-to-b from-transparent via-indigo-50 to-rose-50 dark:via-indigo-500/10 dark:to-rose-500/10 inset-0 absolute z'></div>
-                </div>
+              <div className='rounded-2xl relative overflow-hidden p-8 shadow-md shadow-black/10 ring-1 ring-border-illustration'>
+                <RandomGradient colors={[...GRADIENT_PALETTES.dusk]} mode='mesh' animated />
                 <div className='grid grid-cols-1 md:grid-cols-2 gap-8 items-center z-10 relative'>
                   <div>
                     <div className='flex flex-col gap-2 mb-4'>
@@ -46,7 +45,7 @@ export function AutomationImpact() {
                         transition={{ duration: 0.6, delay: index * 0.1 }}
                         viewport={{ once: true }}
                         className={cn(
-                          'bg-illustration ring-border-illustration relative -mx-5 flex rounded-xl p-2 text-xs shadow shadow-black/10 ring-1',
+                          'bg-illustration/50 ring-border-illustration/50 relative -mx-5 flex rounded-xl p-2 text-xs shadow shadow-black/10 ring-1',
                           index % 2 && 'ml-2'
                         )}>
                         {/* <div className="absolute inset-y-0 left-0 w-px bg-[length:1px_4px] bg-repeat-y opacity-25 [background-image:linear-gradient(180deg,var(--color-foreground)_1px,transparent_1px)]"></div> */}
@@ -57,7 +56,7 @@ export function AutomationImpact() {
                             <p className='text-2xl font-bold text-foreground'>{stat.value}</p>
                           </div>
                           <div className='text-right'>
-                            <Badge variant='secondary' className='text-xs mb-1'>
+                            <Badge variant='secondary' className='text-xs mb-1 bg-illustration/50'>
                               {stat.improvement}
                             </Badge>
                             <div className='flex items-center gap-1'>

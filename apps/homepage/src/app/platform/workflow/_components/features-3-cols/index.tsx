@@ -1,5 +1,7 @@
 // apps/web/src/app/(website)/_components/features-3-cols/index.tsx
 
+import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import { ActionsCard } from './actions-card'
 import { HumanNodeCard } from './human-node-card'
 import { TriggersCard } from './triggers-card'
@@ -16,10 +18,13 @@ export default function Features3Cols() {
           />
           <div className='bg-muted/50 @container py-24'>
             <div className='mx-auto w-full max-w-5xl px-6'>
-              <div className='@max-4xl:max-w-sm @max-4xl:mx-auto @4xl:grid-cols-3 grid gap-6 *:p-6'>
-                <TriggersCard />
-                <ActionsCard />
-                <HumanNodeCard />
+              <div className='relative overflow-hidden rounded-2xl p-6'>
+                <RandomGradient colors={[...GRADIENT_PALETTES.ocean]} mode='mesh' animated />
+                <div className='@max-4xl:max-w-sm @max-4xl:mx-auto @4xl:grid-cols-3 grid gap-6 *:p-6 relative z-10'>
+                  <TriggersCard />
+                  <ActionsCard />
+                  <HumanNodeCard />
+                </div>
               </div>
             </div>
           </div>

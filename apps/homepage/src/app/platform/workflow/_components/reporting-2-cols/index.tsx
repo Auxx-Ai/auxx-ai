@@ -3,16 +3,19 @@
 // import { ActionsCard } from './actions-card'
 // import { TriggersCard } from './triggers-card'
 
+import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import { ChartIllustration } from './chart-illustration'
 import { ResultIllustration } from './result-illustration'
 
 // Features3Cols renders the three feature highlight cards with shared framing.
 export default function Reporting2Cols() {
   return (
-    <section id='ai-responses' className='relative border-foreground/10 border-b'>
+    <section id='ai-responses' className='relative overflow-hidden border-foreground/10 border-b'>
+      <RandomGradient colors={[...GRADIENT_PALETTES.aurora]} mode='mesh' animated />
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
         <div className='border-x'>
-          <div className=' @container py-24'>
+          <div className='bg-background/40 @container py-24'>
             <div className='relative z-30 mx-auto max-w-5xl px-6 text-center'>
               <h1 className='mx-auto max-w-3xl text-balance text-3xl font-semibold sm:text-4xl'>
                 <span className='text-muted-foreground'>Real-time data.</span> Dynamic reporting.
@@ -25,7 +28,7 @@ export default function Reporting2Cols() {
             </div>
 
             <div className='mx-auto max-w-5xl px-6'>
-              <div className='ring-foreground/10 @4xl:grid-cols-2 @max-4xl:divide-y @4xl:divide-x relative grid overflow-hidden rounded-2xl border border-transparent bg-zinc-50 dark:bg-zinc-900 shadow-md shadow-black/5 ring-1'>
+              <div className='ring-foreground/2 @4xl:grid-cols-2 @max-4xl:divide-y @4xl:divide-x relative grid overflow-hidden rounded-2xl border border-transparent bg-zinc-50/80 dark:bg-zinc-900/80 shadow-md shadow-black/5 ring-1'>
                 <div className='row-span-2 grid grid-rows-subgrid gap-8'>
                   <div className='px-8 pt-8'>
                     <h3 className='text-balance font-semibold'>Analytics for Workflows</h3>

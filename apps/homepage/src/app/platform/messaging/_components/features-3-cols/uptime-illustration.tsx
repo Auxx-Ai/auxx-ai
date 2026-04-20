@@ -4,7 +4,7 @@
 export const UptimeIllustration = () => (
   <div
     aria-hidden
-    className='bg-illustration ring-border-illustration space-y-2.5 rounded-2xl p-4 shadow shadow-black/10 ring-1'>
+    className='bg-illustration/50 ring-border-illustration/10 space-y-2.5 rounded-2xl p-4 shadow shadow-black/10 ring-1'>
     <div className='flex justify-between text-sm'>
       <span className='text-muted-foreground'>Reply Rate</span>
       <span className='text-foreground'>95.0%</span>

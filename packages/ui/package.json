@@ -8,6 +8,7 @@
   },
   "exports": {
     "./global.css": "./src/styles/global.css",
+    "./styles/random-gradient.css": "./src/styles/random-gradient.css",
     "./postcss.config": "./postcss.config.mjs",
     "./lib/*": "./src/lib/*.ts",
     "./components/*": "./src/components/*.tsx",

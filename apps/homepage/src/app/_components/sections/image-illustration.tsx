@@ -2,7 +2,6 @@
 
 import { CheckCircle2 } from 'lucide-react'
 // import { CodeBlockIllustration } from '@/components/code-block-illustration'
-import Image from 'next/image'
 import { LogoIcon } from '~/components/logo'
 
 export const ImageIllustration = () => {
@@ -23,15 +22,8 @@ export const ImageIllustration = () => {
           }
         `}</style>
         <div className='relative [--color-border-illustration:--alpha(var(--color-zinc-950)/12.5%)] [--color-border:--alpha(var(--color-zinc-950)/10%)] dark:[--color-border-illustration:--alpha(var(--color-white)/12.5%)] dark:[--color-border:--alpha(var(--color-white)/10%)]'>
-          <div className='mask-t-from-65% mask-t-to-85% absolute inset-0'>
-            <img
-              src='https://res.cloudinary.com/dohqjvu9k/image/upload/v1757918054/16-bg_kkevzx.webp'
-              alt='tailark hero section background'
-              className='opacity-7.5 size-full -scale-100 object-bottom'
-              loading='lazy'
-            />
-          </div>
-          <div className='border-b'>
+          <div className='mask-t-from-65% mask-t-to-85% mask-b-from-40% mask-b-to-90% absolute inset-0'></div>
+          <div className='border-b py-20'>
             <div className='relative mx-auto grid aspect-video max-w-6xl grid-cols-3 overflow-hidden rounded-2xl lg:px-12'>
               <div className='grid grid-cols-2 pr-6'>
                 <div className='grid h-full grid-rows-3 border-r'>
@@ -63,7 +55,7 @@ export const ImageIllustration = () => {
                       </div>
 
                       <span className='w-full pt-6 font-mono text-[10px] uppercase'>
-                        Experience seamless payments.
+                        Replies drafted in seconds.
                       </span>
                     </div>
                   </div>
@@ -443,7 +435,7 @@ export const ImageIllustration = () => {
                       </div>
 
                       <span className='w-full pt-6 font-mono text-[10px] uppercase'>
-                        Experience seamless payments.
+                        Replies drafted in seconds.
                       </span>
                     </div>
 
@@ -487,8 +479,34 @@ export const ImageIllustration = () => {
                   </div>
                 </div>
                 <div className='relative pb-2 pr-2'>
-                  <div className='bg-card/75 ring-border relative h-40 overflow-hidden rounded-xl shadow-lg ring-1 backdrop-blur'>
-                    {/* <CodeBlockIllustration /> */}
+                  <div className='bg-card/75 ring-border relative flex h-40 flex-col overflow-hidden rounded-xl shadow-lg ring-1 backdrop-blur'>
+                    <div className='flex items-center gap-2 border-b px-4 py-2'>
+                      <div className='bg-linear-to-b ring-foreground/10 flex size-5 items-center justify-center rounded from-emerald-50 to-indigo-200 shadow-sm ring-1 dark:from-emerald-500/15 dark:to-indigo-500/25'>
+                        <LogoIcon className='size-3' uniColor />
+                      </div>
+                      <span className='font-mono text-[10px] uppercase tracking-wide'>
+                        Reply drafted
+                      </span>
+                      <span className='ml-auto flex items-center gap-1 font-mono text-[10px] text-muted-foreground'>
+                        <span className='size-1 rounded-full bg-emerald-500' />
+                        Ready to send
+                      </span>
+                    </div>
+                    <div className='flex flex-1 flex-col justify-between p-4'>
+                      <div className='space-y-1.5'>
+                        <div className='h-1.5 w-40 bg-[repeating-linear-gradient(90deg,var(--color-border-illustration),var(--color-border-illustration)_1.5px,transparent_1.5px,transparent_4px)]' />
+                        <div className='h-1.5 w-48 bg-[repeating-linear-gradient(90deg,var(--color-border-illustration),var(--color-border-illustration)_1.5px,transparent_1.5px,transparent_4px)]' />
+                        <div className='h-1.5 w-32 bg-[repeating-linear-gradient(90deg,var(--color-border-illustration),var(--color-border-illustration)_1.5px,transparent_1.5px,transparent_4px)]' />
+                      </div>
+                      <div className='flex items-center gap-1.5'>
+                        <span className='rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400'>
+                          Shipping
+                        </span>
+                        <span className='text-muted-foreground rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide'>
+                          KB · Order tracking
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -496,14 +514,10 @@ export const ImageIllustration = () => {
           </div>
         </div>
       </div>
-      <div className='aspect-72/41 lg:hidden'>
-        <Image
-          src='https://res.cloudinary.com/dohqjvu9k/image/upload/v1757917121/hero-illustration_nl1gdn.png'
-          alt='tailark hero section'
-          width={2304}
-          height={1298}
-          className='size-full object-cover'
-        />
+      <div className='px-6 pb-8 pt-24 lg:hidden'>
+        <div className='mx-auto max-w-md'>
+          <Card />
+        </div>
       </div>
     </>
   )
@@ -511,42 +525,47 @@ export const ImageIllustration = () => {
 
 const Card = () => {
   return (
-    <div className='ring-foreground/15 bg-background relative z-10 flex aspect-video w-full flex-col justify-between overflow-hidden rounded-2xl border border-transparent px-6 py-5 shadow-2xl shadow-sky-950/15 ring-1'>
-      <div className='flex justify-between'>
-        <CardChip />
-        <Visa />
+    <div className='ring-foreground/15 bg-background relative z-10 flex aspect-video w-full flex-col gap-4 overflow-hidden rounded-2xl border border-transparent px-6 py-5 shadow-2xl shadow-sky-950/15 ring-1'>
+      <div className='flex items-start justify-between'>
+        <AuxxBadge />
+        <Gmail />
       </div>
 
-      <div className='flex justify-between'>
+      <div className='flex items-start justify-between gap-4'>
         <div className='space-y-0.5 *:block'>
-          <span className='text-muted-foreground text-xs'>Markus Klooth</span>
-          <span className='font-mono text-sm font-medium'>5367 4567 8901 2345</span>
+          <span className='text-muted-foreground text-xs'>Sarah Chen · 2m ago</span>
+          <span className='text-sm font-medium'>{"Where's my order #1042?"}</span>
         </div>
-        <div className='space-y-0.5 *:block'>
-          <span className='text-muted-foreground text-xs'>Exp.</span>
-          <span className='font-mono text-sm font-medium'>12/25</span>
+        <div className='flex shrink-0 items-center gap-1.5'>
+          <span className='relative flex size-1.5'>
+            <span className='absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-75'></span>
+            <span className='relative size-1.5 rounded-full bg-emerald-500'></span>
+          </span>
+          <span className='font-mono text-xs font-medium'>Resolved · 4s</span>
         </div>
       </div>
+
+      <p className='mask-b-from-30% mask-b-to-100% text-muted-foreground flex-1 overflow-hidden text-xs leading-relaxed font-mono'>
+        {
+          'Hi team — I placed order #1042 last Tuesday but tracking still shows "label created". Could you take a look? I need it by Saturday for a trade show and I\'m starting to worry it won\'t arrive in time. Happy to provide any extra details you need on my end.'
+        }
+      </p>
     </div>
   )
 }
 
-const CardChip = () => {
-  return (
-    <svg width='26' height='22' viewBox='0 0 26 22' fill='none' xmlns='http://www.w3.org/2000/svg'>
-      <path
-        d='M5.813 0C2.647 0 0 2.648 0 5.813V16.188C0 19.352 2.648 22 5.813 22H20.188C23.352 22 26 19.352 26 16.187V5.813C26 2.649 23.352 0 20.187 0H5.813ZM5.813 2H20.188C22.223 2 24 3.777 24 5.813V7H18C17.445 7 17 6.555 17 6C17 5.445 17.445 5 18 5C18.2652 5 18.5196 4.89464 18.7071 4.70711C18.8946 4.51957 19 4.26522 19 4C19 3.73478 18.8946 3.48043 18.7071 3.29289C18.5196 3.10536 18.2652 3 18 3C16.355 3 15 4.355 15 6C15 7.292 15.844 8.394 17 8.813V13.781C15.802 14.595 15 15.961 15 17.5C15 18.423 15.293 19.281 15.781 20H10.22C10.7254 19.264 10.9973 18.3928 11 17.5C11 15.962 10.198 14.595 9 13.781V8.812C10.156 8.394 11 7.292 11 6C11 4.355 9.645 3 8 3H6C5.96868 2.99853 5.93732 2.99853 5.906 3C5.87502 2.99856 5.84398 2.99856 5.813 3C5.54778 3.0248 5.30328 3.15394 5.13328 3.35901C4.96328 3.56408 4.8817 3.82828 4.9065 4.0935C4.9313 4.35872 5.06044 4.60322 5.26551 4.77322C5.47058 4.94322 5.73478 5.0248 6 5H8C8.555 5 9 5.445 9 6C9 6.555 8.555 7 8 7H2V5.812C2 3.777 3.777 2 5.813 2ZM2 9H7V13H2V9ZM19 9H24V13H19V9ZM2 15H6.5C7.839 15 9 16.161 9 17.5C9 18.839 7.839 20 6.5 20H5.812C3.777 20 2 18.223 2 16.187V15ZM19.5 15H24V16.188C24 18.223 22.223 20 20.187 20H19.5C18.161 20 17 18.839 17 17.5C17 16.161 18.161 15 19.5 15Z'
-        fill='currentColor'
-      />
-    </svg>
-  )
-}
+const AuxxBadge = () => (
+  <div className='bg-linear-to-b ring-foreground/10 flex size-7 items-center justify-center rounded-md from-emerald-50 to-indigo-200 shadow-md shadow-indigo-600/35 ring-1 dark:from-emerald-500/15 dark:to-indigo-500/25'>
+    <LogoIcon className='size-4 drop-shadow-md' uniColor />
+  </div>
+)
 
-const Visa = () => (
-  <svg width='50' height='16' viewBox='0 0 72 23' fill='none' xmlns='http://www.w3.org/2000/svg'>
-    <path
-      d='M35.6495 0.413261L30.841 22.6604H25.0219L29.8376 0.413261H35.6495ZM60.1288 14.7776L63.1897 6.42214L64.9541 14.7776H60.1288ZM66.6178 22.6604H72L67.3044 0.413261H62.3374C62.3302 0.413261 62.3206 0.413261 62.3134 0.413261C61.2115 0.413261 60.2657 1.08065 59.8672 2.02829L59.86 2.04492L51.1336 22.6604H57.2409L58.4556 19.3353H65.9192L66.6178 22.6604ZM51.4337 15.3975C51.4577 9.52396 43.2259 9.20095 43.2835 6.57652C43.3028 5.7785 44.0686 4.92823 45.749 4.7121C46.0611 4.68123 46.4212 4.66223 46.7861 4.66223C48.4929 4.66223 50.111 5.04698 51.5514 5.73575L51.4865 5.70725L52.5068 0.988022C50.8912 0.368134 49.0211 0.00712515 47.067 0H47.0646C41.3126 0 37.2675 3.02819 37.2315 7.35791C37.1955 10.5595 40.1195 12.3431 42.3257 13.4119C44.5943 14.5021 45.3553 15.2027 45.3433 16.1741C45.3289 17.6704 43.538 18.3259 41.8624 18.352C41.7855 18.3544 41.6919 18.3544 41.6007 18.3544C39.5097 18.3544 37.5412 17.8343 35.8224 16.9151L35.8872 16.946L34.8333 21.8196C36.7202 22.5677 38.9072 23 41.1974 23C41.2334 23 41.2694 23 41.3054 23H41.3006C47.4126 23 51.4097 20.0146 51.4313 15.3903L51.4337 15.3975ZM27.3361 0.413261L17.9112 22.6604H11.7607L7.1227 4.90211C7.03388 4.03759 6.49853 3.31557 5.75433 2.95456L5.73993 2.94744C4.08829 2.14467 2.16778 1.49153 0.158443 1.08065L0 1.05452L0.139237 0.410885H10.0395C11.3886 0.410885 12.5097 1.38703 12.7186 2.66243L12.721 2.67668L15.172 15.5518L21.2265 0.408509L27.3361 0.413261Z'
-      fill='currentColor'
-    />
+const Gmail = () => (
+  <svg width='36' height='28' viewBox='0 0 48 36' fill='none' xmlns='http://www.w3.org/2000/svg'>
+    <path fill='#4285F4' d='M4 36h8V18L0 9v23c0 2.2 1.8 4 4 4z' />
+    <path fill='#34A853' d='M36 36h8c2.2 0 4-1.8 4-4V9l-12 9z' />
+    <path fill='#FBBC04' d='M36 4v14l12-9V6c0-3.7-4.2-5.8-7.2-3.6L36 4z' />
+    <path fill='#EA4335' d='M12 18V4l12 9 12-9v14L24 27z' />
+    <path fill='#C5221F' d='M0 6v3l12 9V4L7.2.4C4.2-1.8 0 .3 0 6z' />
   </svg>
 )

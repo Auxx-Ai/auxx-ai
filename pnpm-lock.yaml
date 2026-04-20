@@ -536,6 +536,9 @@ importers:
       '@auxx/credentials':
         specifier: workspace:*
         version: link:../../packages/credentials
+      '@auxx/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@number-flow/react':
         specifier: ^0.5.10
         version: 0.5.14(react-dom@19.2.3(react@19.2.3))(react@19.2.3)

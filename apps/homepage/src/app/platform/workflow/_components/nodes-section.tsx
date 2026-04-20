@@ -1,4 +1,10 @@
 import {
+  GRADIENT_PALETTE_MODES,
+  GRADIENT_PALETTES,
+  type GradientPaletteName,
+} from '@auxx/ui/components/gradient-palettes'
+import { RandomGradient } from '@auxx/ui/components/random-gradient'
+import {
   Brain,
   Calendar,
   Clock,
@@ -23,13 +29,21 @@ import {
 import type * as React from 'react'
 import { cn } from '~/lib/utils'
 
-const nodes = [
+const nodes: Array<{
+  title: string
+  description: string
+  icon: React.ComponentType<{ size?: number; className?: string }>
+  nodeType: string
+  iconColor: string
+  gradient?: GradientPaletteName
+}> = [
   {
     title: 'Webhook',
     description: 'Trigger workflow via HTTP webhook',
     icon: Webhook,
     nodeType: 'webhook',
     iconColor: 'fill-blue-200',
+    gradient: 'aurora',
   },
   {
     title: 'Note',
@@ -44,6 +58,7 @@ const nodes = [
     icon: Calendar,
     nodeType: 'date-time',
     iconColor: 'fill-green-200',
+    gradient: 'ocean',
   },
   {
     title: 'Wait',
@@ -54,10 +69,11 @@ const nodes = [
   },
   {
     title: 'Send Message',
-    description: 'Send message',
+    description: 'Deliver a reply to the customer through any connected channel',
     icon: Send,
     nodeType: 'answer',
     iconColor: 'fill-emerald-200',
+    gradient: 'candy',
   },
   {
     title: 'Assign Variable',
@@ -72,6 +88,7 @@ const nodes = [
     icon: Mail,
     nodeType: 'message-received',
     iconColor: 'fill-cyan-200',
+    gradient: 'ocean',
   },
   {
     title: 'Information Extractor',
@@ -86,6 +103,7 @@ const nodes = [
     icon: Code,
     nodeType: 'code',
     iconColor: 'text-slate-500',
+    gradient: 'aurora',
   },
   {
     title: 'Text Classifier',
@@ -100,6 +118,7 @@ const nodes = [
     icon: Octagon,
     nodeType: 'end',
     iconColor: 'fill-red-200',
+    gradient: 'sunset',
   },
   {
     title: 'Manual Trigger',
@@ -114,6 +133,7 @@ const nodes = [
     icon: Globe,
     nodeType: 'http',
     iconColor: 'fill-sky-200',
+    gradient: 'aurora',
   },
   {
     title: 'AI',
@@ -128,6 +148,7 @@ const nodes = [
     icon: List,
     nodeType: 'list',
     iconColor: 'fill-amber-200',
+    gradient: 'dusk',
   },
   {
     title: 'CRUD',
@@ -142,6 +163,7 @@ const nodes = [
     icon: Search,
     nodeType: 'find',
     iconColor: 'fill-rose-200',
+    gradient: 'ocean',
   },
   {
     title: 'IF/ELSE',
@@ -156,6 +178,7 @@ const nodes = [
     icon: Clock,
     nodeType: 'scheduled',
     iconColor: 'fill-orange-200',
+    gradient: 'dusk',
   },
   {
     title: 'Human Review',
@@ -170,6 +193,7 @@ const nodes = [
     icon: Repeat,
     nodeType: 'loop',
     iconColor: 'text-blue-500',
+    gradient: 'pastel',
   },
 ]
 
@@ -202,6 +226,7 @@ export default function NodesSection() {
                       title={node.title}
                       description={node.description}
                       icon={<node.icon size={16} className={node.iconColor} />}
+                      gradient={node.gradient}
                     />
                   ))}
                 </div>
@@ -223,20 +248,36 @@ const NodeCard = ({
   title,
   description,
   icon,
+  gradient,
 }: {
   title: string
   description: string
   icon: React.ReactNode
+  gradient?: GradientPaletteName
 }) => {
+  const isLight = gradient && GRADIENT_PALETTE_MODES[gradient] === 'light'
   return (
-    <div className=' hover:z-10 relative p-6 border-r border-b -mr-px -mb-px transition-all'>
-      <div className='bg-card ring-border-illustration flex size-8 items-center justify-center rounded-md shadow ring-1'>
+    <div className='hover:z-10 relative p-6 border-r border-b -mr-px -mb-px transition-all overflow-hidden'>
+      {gradient && (
+        <RandomGradient
+          colors={[...GRADIENT_PALETTES[gradient]]}
+          mode='hero'
+          className='rounded-2xl m-3'
+        />
+      )}
+      <div
+        className={cn(
+          'relative z-10 ring-border-illustration/20 flex size-8 items-center justify-center rounded-md shadow ring-1',
+          isLight ? 'bg-white/70' : 'bg-card/70'
+        )}>
         {icon}
       </div>
 
-      <div className='space-y-2 pt-6'>
-        <h3 className='text-base font-medium'>{title}</h3>
-        <p className='text-muted-foreground line-clamp-2'>{description}</p>
+      <div className='relative z-10 space-y-2 pt-6'>
+        <h3 className={cn('text-base font-medium', isLight && 'text-zinc-900')}>{title}</h3>
+        <p className={cn('line-clamp-2', isLight ? 'text-zinc-700' : 'text-muted-foreground')}>
+          {description}
+        </p>
       </div>
     </div>
   )
