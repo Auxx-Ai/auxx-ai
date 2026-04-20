@@ -63,7 +63,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const { post, content } = result
 
   return (
-    <>
+    <div className='pt-22 pb-16 md:pb-24 md:pt-32'>
       <PostHeader post={post} />
 
       <div className='mx-auto max-w-2xl px-6'>
@@ -130,6 +130,6 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           }}
         />
       )}
-    </>
+    </div>
   )
 }

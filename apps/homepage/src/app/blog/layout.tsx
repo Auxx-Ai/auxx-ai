@@ -12,7 +12,7 @@ export default function BlogLayout({
     <div id='root' className='relative h-screen overflow-y-auto'>
       <Header />
       <section>
-        <div className='pt-22 pb-16 md:pb-24 md:pt-32'>{children}</div>
+        <div className=''>{children}</div>
       </section>
       <FooterSection />
     </div>

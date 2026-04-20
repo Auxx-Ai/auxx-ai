@@ -35,20 +35,25 @@ export function BlogLayout({
       <div className='bg-foreground/9 @container'>
         {/* Header row */}
         <div className='relative overflow-hidden grid-cols-[1fr_auto_1fr] lg:grid'>
-          <RandomGradient colors={[...GRADIENT_PALETTES[BLOG_HERO_PALETTE]]} mode='mesh' />
-          <Decorator className='relative z-10 max-lg:hidden' bgClassName='bg-card/80' />
-          <div className='lg:min-w-5xl relative z-10 mx-auto w-full p-[0.5px]'>
-            <div className='bg-card/80 relative flex h-full min-h-80 flex-col justify-end overflow-hidden rounded-md md:min-h-96'>
+          <RandomGradient
+            colors={[...GRADIENT_PALETTES[BLOG_HERO_PALETTE]]}
+            mode='mesh'
+            animated
+            driftAmplitude={20}
+          />
+          <Decorator className='relative z-10 max-lg:hidden' bgClassName='bg-card/40' />
+          <div className='bg-card/20 rounded-md lg:min-w-5xl relative z-10 mx-auto w-full p-[0.5px]'>
+            <div className=' relative flex h-full min-h-80 flex-col justify-end overflow-hidden rounded-md md:min-h-96'>
               <div className='relative z-10 max-w-lg px-6 pb-12 pt-6 md:pb-16'>
                 <span className='text-muted-foreground'>Blog</span>
                 <h2 className='text-muted-foreground mt-4 text-balance text-4xl font-semibold'>
-                  Insights on AI-powered support and growing your Shopify business from{' '}
+                  Insights on AI-powered support and growing your business from{' '}
                   <strong className='text-foreground font-semibold'>{config.shortName}</strong>
                 </h2>
               </div>
             </div>
           </div>
-          <Decorator className='relative z-10 max-lg:hidden' bgClassName='bg-card/80' />
+          <Decorator className='relative z-10 max-lg:hidden' bgClassName='bg-card/40' />
         </div>
 
         {/* Content row: sidebar + articles */}
