@@ -79,20 +79,20 @@ const links = [
         href: '/free-tools/invoice-generator',
       },
       {
-        title: 'Support Email Templates',
-        href: '/free-tools/customer-support-email-templates',
+        title: 'Mesh Gradient Generator',
+        href: '/free-tools/mesh-gradient-generator',
       },
       {
         title: 'Email Signature Generator',
         href: '/free-tools/email-signature-generator',
       },
       {
-        title: 'SLA Calculator',
-        href: '/free-tools/sla-calculator',
+        title: 'Support Email Templates',
+        href: '/free-tools/customer-support-email-templates',
       },
       {
-        title: 'FRT Calculator',
-        href: '/free-tools/first-response-time-calculator',
+        title: 'SLA Calculator',
+        href: '/free-tools/sla-calculator',
       },
       {
         title: 'See all free tools',

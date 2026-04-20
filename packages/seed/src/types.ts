@@ -89,6 +89,8 @@ export interface ScenarioScales {
   users: number
   /** customers indicates how many customer records to create. */
   customers: number
+  /** companies indicates how many company records to create (linked to contacts by domain). */
+  companies?: number
   /** products determines the size of the product catalog. */
   products: number
   /** orders represents the volume of orders to generate. */

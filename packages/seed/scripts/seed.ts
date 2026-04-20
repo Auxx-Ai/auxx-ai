@@ -33,6 +33,7 @@ async function runCli(): Promise<void> {
     .option('--organizations <count>', 'Override organization count')
     .option('--users <count>', 'Override user count')
     .option('--customers <count>', 'Override customer count')
+    .option('--companies <count>', 'Override company count')
     .option('--products <count>', 'Override product count')
     .option('--orders <count>', 'Override order count')
     .option('--threads <count>', 'Override thread count')
@@ -55,6 +56,9 @@ async function runCli(): Promise<void> {
 
     const customerOverride = parseIntegerOption(options.customers)
     if (customerOverride !== undefined) overrides.customers = customerOverride
+
+    const companyOverride = parseIntegerOption(options.companies)
+    if (companyOverride !== undefined) overrides.companies = companyOverride
 
     const productOverride = parseIntegerOption(options.products)
     if (productOverride !== undefined) overrides.products = productOverride

@@ -12,6 +12,7 @@ export const demoScenario: SeedingScenarioDefinition = {
     organizations: 1,
     users: 2,
     customers: 15,
+    companies: 6,
     products: 0,
     orders: 0,
     threads: 50,

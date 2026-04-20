@@ -81,6 +81,12 @@ const tools: Tool[] = [
     href: '/free-tools/customer-support-kpis',
     status: 'live',
   },
+  {
+    title: 'Mesh Gradient Generator',
+    description: 'OpenAI-style mesh gradients with real-time preview. Export to CSS, SVG, or PNG.',
+    href: '/free-tools/mesh-gradient-generator',
+    status: 'live',
+  },
 ]
 
 function ToolCard({ tool }: { tool: Tool }) {
