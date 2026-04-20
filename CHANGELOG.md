@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.133](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.132...auxx-v0.1.133) (2026-04-20)
+
+
+### Bug Fixes
+
+* adjust layout and styling for blog post and blog layout components ([#452](https://github.com/Auxx-Ai/auxx-ai/issues/452)) ([d422f8b](https://github.com/Auxx-Ai/auxx-ai/commit/d422f8bfa91a01428753d8030da883bb51d79dd0))
+
 ## [0.1.132](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.131...auxx-v0.1.132) (2026-04-20)
 
 
