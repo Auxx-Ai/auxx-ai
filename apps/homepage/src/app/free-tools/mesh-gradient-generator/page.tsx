@@ -5,6 +5,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { ToolLayout } from '../_components/tool-layout'
+import { GithubStarButton } from './_components/github-star-button'
 import { GradientStudio } from './_components/gradient-studio'
 
 const CANONICAL = getHomepageUrl('/free-tools/mesh-gradient-generator')
@@ -116,6 +117,9 @@ export default function MeshGradientGeneratorPage() {
           label: 'See what Auxx.ai is',
         }}>
         <div className='space-y-16'>
+          <div className='flex justify-end'>
+            <GithubStarButton />
+          </div>
           <Suspense
             fallback={
               <div className='grid gap-6 lg:grid-cols-[380px_1fr]'>

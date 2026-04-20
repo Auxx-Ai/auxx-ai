@@ -95,7 +95,9 @@ export function ToolLayout({
             className={
               sidebar && !isFullbleed
                 ? 'grid gap-10 md:grid-cols-[1fr_360px]'
-                : 'mx-auto max-w-3xl space-y-5'
+                : isFullbleed
+                  ? 'max-w-3xl space-y-5'
+                  : 'mx-auto max-w-3xl space-y-5'
             }>
             <div className='space-y-5'>
               <h1 className='text-balance text-4xl font-semibold tracking-tight md:text-5xl'>
