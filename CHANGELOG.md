@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.134](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.133...auxx-v0.1.134) (2026-04-20)
+
+
+### Features
+
+* add mesh gradient generator to sitemap ([#454](https://github.com/Auxx-Ai/auxx-ai/issues/454)) ([86499fe](https://github.com/Auxx-Ai/auxx-ai/commit/86499fe3417da170ea0ebd947cbaa23fa0cac383))
+
 ## [0.1.133](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.132...auxx-v0.1.133) (2026-04-20)
 
 
