@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.132](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.131...auxx-v0.1.132) (2026-04-20)
+
+
+### Bug Fixes
+
+* update Icon component color to white in integration sections ([#450](https://github.com/Auxx-Ai/auxx-ai/issues/450)) ([50c79cb](https://github.com/Auxx-Ai/auxx-ai/commit/50c79cb89392aadc46c4c8a9b42f32b34aca3aaf))
+
 ## [0.1.131](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.130...auxx-v0.1.131) (2026-04-20)
 
 
