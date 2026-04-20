@@ -16,16 +16,13 @@ export function createResponderAgent(): AgentDefinition<KopilotDomainState> {
     buildMessages(state: AgentState<KopilotDomainState>, _deps: AgentDeps): Message[] {
       const systemPrompt = buildResponderSystemPrompt(state.domainState)
 
-      // Include only user messages and prior responder messages — exclude executor assistant
-      // messages so the responder synthesizes from structured tool results (in the system prompt)
-      // rather than copying the executor's plain-text formatting.
+      // Include executor messages so the responder has the executor's reasoning
+      // and intermediate findings — not just the flat tool results. The responder
+      // prompt enforces auxx: block formatting regardless of what the executor wrote.
       const conversationMessages: Message[] = state.messages
         .filter(
           (m) =>
-            (m.role === 'user' || m.role === 'assistant') &&
-            m.content &&
-            !m.metadata?.synthetic &&
-            m.metadata?.agent !== 'executor'
+            (m.role === 'user' || m.role === 'assistant') && m.content && !m.metadata?.synthetic
         )
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 

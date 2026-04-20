@@ -82,6 +82,7 @@ function buildThreadConditions(args: Record<string, unknown>): ConditionGroup[] 
 export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'find_threads',
+    idempotent: true,
     description:
       'Search and filter email threads by status, assignee, tags, sender, or free-text query. Returns a list of matching thread summaries.',
     parameters: {

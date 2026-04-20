@@ -7,6 +7,7 @@ import type { GetToolDeps } from '../../types'
 export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_entities',
+    idempotent: true,
     description:
       'Discover what entity TYPES exist in this workspace (e.g. Contact, Ticket, Company, custom entities). Returns type metadata, NOT individual records. Use search_entities to find specific records.',
     parameters: {

@@ -8,7 +8,9 @@ import type { GetToolDeps } from '../../types'
 export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_entity',
-    description: `Update field values on an entity instance. Requires user approval before execution.
+    description: `Update field values on an entity instance.
+
+APPROVAL: The platform automatically pauses and shows an approval card to the user when you call this tool. You do NOT ask the user in text — just call the tool with correct args. The user approves or rejects via the card.
 
 IMPORTANT: You MUST call list_entity_fields first to discover valid field IDs.
 Pass field values inside the "values" object using the field IDs returned by list_entity_fields.

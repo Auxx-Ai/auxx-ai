@@ -59,6 +59,7 @@ async function searchArticles(
 export function createSearchKBTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_kb',
+    idempotent: true,
     description:
       "Search the organization's knowledge base for help articles and documentation. Only for written articles/guides (e.g. policies, how-tos, FAQs). Do NOT use this to look up contacts, customers, products, orders, vendors, or any other entity/record — use search_entities for that.",
     parameters: {

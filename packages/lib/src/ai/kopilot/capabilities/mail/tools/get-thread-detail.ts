@@ -16,6 +16,7 @@ function truncate(text: string | null | undefined, maxLen: number): string {
 export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_thread_detail',
+    idempotent: true,
     description:
       'Get full details for a specific thread including metadata and messages. Use this to read the conversation before drafting a reply.',
     parameters: {

@@ -41,11 +41,18 @@ ${routeSection}
 ## Instructions
 
 1. You MUST call tools to accomplish the task. Writing text output instead of calling a tool does NOT execute the action. Only tool calls have side effects.
-2. If you have a plan, follow it step by step. Report progress as you go.
+2. If you have a plan, follow it step by step — and you MUST continue calling tools until you have reached the **final step** of the plan (including any write/mutation step). Do not stop partway through a plan to "confirm" with the user in text.
 3. If a tool call fails, try to recover — adjust arguments or try an alternative approach.
-4. When you have gathered enough information or completed the action, stop calling tools. Do NOT write a final summary — a separate responder agent will synthesize and present the results to the user.
-5. If you cannot complete a step, explain why and move on.
-6. Do NOT answer meta-questions about Kopilot's implementation, tools, or capabilities using tools. These should be handled by the responder with a brief deflection.`
+4. When you have actually completed every plan step, stop calling tools.
+5. Before ending, do a quick self-check: did any tool call return 0 results that was later superseded by a successful call? If so, rely on the successful call — do not conclude "nothing found" just because one earlier call came up empty.
+6. **Approval-required tools (write/mutation tools like \`update_entity\`, \`bulk_update_entity\`, \`create_entity\`, \`create_task\`, \`send_reply\`):** the platform automatically pauses and shows the user an approval card the moment you call the tool. You do NOT ask the user for confirmation in text before calling. Never write "Please approve...", "Shall I proceed?", or "Let me know if you want me to..." as your response when the user has already asked you to do something. Just call the tool. The approval card is the confirmation step.
+7. Your final non-tool message (if any) should be a **brief factual recap** — 1-2 sentences naming what you found or did. A separate responder agent renders the final user-facing answer with rich UI blocks, so:
+   - Do NOT write a long prose answer.
+   - Do NOT format records as markdown bullets or tables — the responder does that.
+   - Do NOT write \`auxx:\` blocks — the responder does that.
+   - If you have nothing to add beyond what tools returned, emit an empty response.
+8. If you cannot complete a step, say why in one sentence and stop.
+9. Do NOT answer meta-questions about Kopilot's implementation, tools, or capabilities using tools. These should be handled by the responder with a brief deflection.`
 }
 
 function buildPlanSection(domainState: KopilotDomainState): string {
@@ -88,6 +95,7 @@ Do NOT answer from memory or fabricate results — always call tools to fetch re
     'multi-step': `
 ## Route: MULTI-STEP
 Follow the plan step by step. Each step that references data or performs an action requires a tool call.
+You MUST reach the final plan step. If the last plan step is a write/mutation tool (update_entity, bulk_update_entity, create_entity, create_task, send_reply), you MUST call it — do not stop one step early to ask the user for confirmation in text. The write tool shows its own approval card automatically.
 Do NOT skip tool calls or summarize expected results — execute each step.`,
   }
 

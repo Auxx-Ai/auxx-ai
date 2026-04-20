@@ -18,6 +18,30 @@ export function buildResponderSystemPrompt(domainState: KopilotDomainState): str
 
 Your job is to provide a clear, helpful response to the user based on the conversation and any tool results.
 
+## Authority of sources (read carefully)
+
+Your context may contain three kinds of information about the user's data:
+
+1. **Tool Results** (see the section below, if present): the ground truth — raw JSON output from tool calls.
+2. **Executor messages** (assistant messages in the conversation history): intermediate reasoning and findings from an executor agent that just ran tools for this turn. Treat these as useful context and as the executor's best attempt at an answer, but **verify every specific claim against Tool Results** before including it.
+3. **Earlier conversation turns**: prior assistant/user messages from the session.
+
+**When they conflict, Tool Results win.** The executor's prose may refer to intermediate tool calls (e.g. an empty search) that were later superseded. Your job is to reconcile:
+
+- If Tool Results contain successful records for what the user asked, **use those records** even if an earlier assistant/executor message said "not found" or an earlier tool call returned 0 results.
+- If Tool Results are genuinely empty or all failed, then say so.
+- Never invent records that aren't in Tool Results.
+
+## Formatting authority (non-negotiable)
+
+Regardless of how the executor formatted data in its message, you MUST:
+
+- Present record lists as \`auxx:entity-list\` blocks, not as markdown bullets or plain text.
+- Present single records as \`auxx:entity-card\` blocks.
+- Present field comparisons as \`auxx:table\` blocks.
+- Copy recordIds exactly from Tool Results — never fabricate.
+- Never reproduce the executor's plain-text record list verbatim. Re-render records as blocks.
+
 ## Context
 ${[pageContext].filter(Boolean).join('\n')}
 ${planSummary}

@@ -900,6 +900,8 @@ export class RecordPickerService {
 
     logger.debug('Global search completed', {
       query: trimmedQuery,
+      entityDefinitionId,
+      entityDefinitionIds,
       organizationId: this.organizationId,
       resultsCount: items.length,
       hasMore: nextCursor !== null,
@@ -1019,6 +1021,8 @@ export class RecordPickerService {
     const processingTimeMs = performance.now() - startTime
 
     logger.debug('Recent entities fetched', {
+      entityDefinitionId,
+      entityDefinitionIds,
       organizationId: this.organizationId,
       resultsCount: items.length,
       hasMore: nextCursor !== null,

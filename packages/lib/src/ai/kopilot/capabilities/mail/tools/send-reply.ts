@@ -11,7 +11,7 @@ export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'send_reply',
     description:
-      "Send a reply message on a thread. This action requires human approval before execution. The user's email signature is appended automatically — never include one in the body.",
+      "Send a reply message on a thread. APPROVAL: The platform automatically pauses and shows an approval card when you call this tool. Do NOT ask the user in text first — just call the tool. The user's email signature is appended automatically — never include one in the body.",
     parameters: {
       type: 'object',
       properties: {

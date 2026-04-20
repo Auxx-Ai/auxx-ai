@@ -8,7 +8,9 @@ import type { GetToolDeps } from '../../types'
 export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'bulk_update_entity',
-    description: `Update the same field values on multiple entity instances at once. All records must be the same entity type. Requires user approval before execution.
+    description: `Update the same field values on multiple entity instances at once. All records must be the same entity type.
+
+APPROVAL: The platform automatically pauses and shows an approval card to the user when you call this tool. You do NOT ask the user in text — just call the tool with correct args. The user approves or rejects via the card.
 
 IMPORTANT: You MUST call list_entity_fields first to discover valid field IDs.
 Use this tool instead of update_entity when updating 2+ records with the same field values.

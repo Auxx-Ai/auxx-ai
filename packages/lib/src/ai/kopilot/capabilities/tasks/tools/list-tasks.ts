@@ -7,6 +7,7 @@ import type { GetToolDeps } from '../../types'
 export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_tasks',
+    idempotent: true,
     description:
       'Search and filter tasks. Returns all organization tasks by default. Use assigneeId to filter by a specific user.',
     parameters: {

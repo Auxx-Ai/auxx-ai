@@ -19,6 +19,7 @@ interface SimplifiedFilter {
 export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'query_records',
+    idempotent: true,
     description: `Query entity records with field-level filters, sorting, and pagination.
 Use list_entity_fields first to discover available fields and their valid values.
 
