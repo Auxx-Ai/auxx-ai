@@ -37,9 +37,34 @@ export interface EntityQueryContext {
 }
 
 /**
- * Condition builder for custom entity instances
+ * Condition builder for custom entity instances.
  * Queries against FieldValue table using EXISTS subqueries with typed columns
- * (EntityInstance has no fieldValues column - values are in separate FieldValue table)
+ * (EntityInstance has no fieldValues column — values are in separate FieldValue table).
+ *
+ * ─────────────────────────────────────────────────────────────────
+ * Operator × field-type semantics
+ * ─────────────────────────────────────────────────────────────────
+ *
+ * Write-path invariant
+ *   FieldValue rows always carry a real value on their primary column. Every
+ *   writer deletes the row when a field is cleared (field-value converters
+ *   normalize '' / null → null, field-value-mutations.setValue then deletes
+ *   instead of writing a null-valued row). So for custom fields,
+ *   "no usable value" ≡ "no row exists for (entity, field)".
+ *
+ * "is not X" (NULL-correct)
+ *   Matches records where the value is ≠ X, including records that have
+ *   never had a value set. Implemented in buildTypedConditionSql as:
+ *     (NOT EXISTS (row)  OR  EXISTS (row AND <col != X>))
+ *   To require a set value that isn't X, combine `not empty` AND `is not X`.
+ *
+ * "empty" / "not empty"
+ *   Custom fields (FieldValue storage):
+ *     empty     = NOT EXISTS (row for this entity+field)
+ *     not empty = EXISTS (row for this entity+field)
+ *   System fields (direct nullable columns on EntityInstance):
+ *     text column:  col IS NULL OR col = ''   /   col IS NOT NULL AND col != ''
+ *     other columns: col IS NULL   /   col IS NOT NULL
  */
 export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryContext> {
   // ─────────────────────────────────────────────────────────────────
@@ -281,7 +306,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         case 'is':
           return sql`${column}::date = ${String(rawValue)}::date`
         case 'is not':
-          return sql`${column}::date != ${String(rawValue)}::date`
+          // NULL-correct: "not X" includes rows where the value is unset.
+          return sql`(${column} IS NULL OR ${column}::date != ${String(rawValue)}::date)`
         case 'exists':
           return sql`${column} IS NOT NULL`
         case 'not exists':
@@ -304,9 +330,10 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
             ? sql`${column} IS NULL`
             : sql`${column} = ${String(rawValue)}`
         case 'is not':
+          // NULL-correct: "not X" includes rows where the value is unset.
           return rawValue === null || rawValue === undefined
             ? sql`${column} IS NOT NULL`
-            : sql`${column} != ${String(rawValue)}`
+            : sql`(${column} IS NULL OR ${column} != ${String(rawValue)})`
         case 'contains':
           return sql`${column}::text ILIKE ${'%' + String(rawValue ?? '') + '%'}`
         case 'not contains':
@@ -809,15 +836,46 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       )`
     }
 
-    // Handle 'empty' for option/relationship fields — no FieldValue row means empty.
-    // These field types store values as separate rows (optionId, relatedEntityId),
-    // so "empty" = no row exists, not "row exists with null value".
-    const columnName = this.getTypedColumnName(dbFieldType)
-    if (operator === 'empty' && (columnName === 'optionId' || columnName === 'relatedEntityId')) {
+    // Handle 'empty' / 'not empty' for custom fields.
+    // FieldValue write-path invariant: rows are deleted when their value is
+    // cleared (text converters normalize '' → null → delete; select / number /
+    // date / relationship paths likewise insert only when a real value is
+    // present). So "empty" == "no FieldValue row exists for (entity, field)",
+    // and "not empty" is its complement. No in-row NULL check needed.
+    if (operator === 'empty') {
       return sql`NOT EXISTS (
         SELECT 1 FROM "FieldValue"
         WHERE "FieldValue"."entityId" = ${outerTableId}
           AND "FieldValue"."fieldId" = ${fieldId}
+      )`
+    }
+    if (operator === 'not empty') {
+      return sql`EXISTS (
+        SELECT 1 FROM "FieldValue"
+        WHERE "FieldValue"."entityId" = ${outerTableId}
+          AND "FieldValue"."fieldId" = ${fieldId}
+      )`
+    }
+
+    // Handle 'is not' at the outer level — the no-row case matters here.
+    // "is not X" must also match records that have NO FieldValue row for this
+    // field (= unset). A bare EXISTS(... AND value != X) would exclude unset
+    // rows. Wrap with NOT EXISTS (...) OR EXISTS (... AND <value condition>).
+    if (operator === 'is not') {
+      const valueCondition = this.buildTypedValueCondition(operator, rawValue, dbFieldType)
+      if (!valueCondition) return undefined
+      return sql`(
+        NOT EXISTS (
+          SELECT 1 FROM "FieldValue"
+          WHERE "FieldValue"."entityId" = ${outerTableId}
+            AND "FieldValue"."fieldId" = ${fieldId}
+        )
+        OR EXISTS (
+          SELECT 1 FROM "FieldValue"
+          WHERE "FieldValue"."entityId" = ${outerTableId}
+            AND "FieldValue"."fieldId" = ${fieldId}
+            AND ${valueCondition}
+        )
       )`
     }
 
@@ -881,7 +939,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         }
 
         case 'is not': {
-          // Check if NO row has this optionId
+          // Produces the value predicate for the outer `is not` Layer B wrap
+          // in buildTypedConditionSql. Rows always have a real optionId under
+          // the write-path invariant, so a simple inequality is sufficient.
           if (rawValue === null || rawValue === undefined) {
             return sql`${valueCol} IS NOT NULL`
           }
@@ -917,12 +977,14 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
         }
 
         case 'empty': {
-          // Empty handled at outer EXISTS level (no rows for this field)
+          // Unreachable — outer buildTypedConditionSql short-circuits 'empty'
+          // to a bare `NOT EXISTS (row)` under the FieldValue write-path
+          // invariant (cleared values delete their row).
           return sql`false`
         }
 
         case 'not empty': {
-          // At least one tag selected (handled by EXISTS)
+          // Unreachable — outer buildTypedConditionSql short-circuits.
           return sql`true`
         }
 
@@ -951,6 +1013,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
             : sql`${dateCol}::date = ${String(rawValue)}::date`
         case 'is not':
         case 'not_on_date':
+          // Produces the value predicate for the outer `is not` Layer B wrap.
+          // Rows always have a real valueDate under the write-path invariant.
           return rawValue === null || rawValue === undefined
             ? sql`${dateCol} IS NOT NULL`
             : sql`${dateCol}::date != ${String(rawValue)}::date`
@@ -972,6 +1036,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       }
 
       case 'is not': {
+        // Produces the value predicate for the outer `is not` Layer B wrap.
+        // Rows always have a real value under the write-path invariant.
         if (rawValue === null || rawValue === undefined) {
           return sql`${valueCol} IS NOT NULL`
         }
@@ -1058,11 +1124,14 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
       }
 
       case 'empty': {
-        return sql`(${valueCol} IS NULL OR ${valueCol}::text = '')`
+        // Unreachable — outer buildTypedConditionSql short-circuits 'empty' to
+        // a bare `NOT EXISTS (row)` under the FieldValue write-path invariant.
+        return sql`false`
       }
 
       case 'not empty': {
-        return sql`(${valueCol} IS NOT NULL AND ${valueCol}::text != '')`
+        // Unreachable — outer buildTypedConditionSql short-circuits.
+        return sql`true`
       }
 
       default: {

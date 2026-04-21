@@ -42,6 +42,8 @@ import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import {
   type CachedField,
+  canonicalizeRelationshipRecordId,
+  canonicalizeRelationshipValue,
   type FieldValueContext,
   getField,
   getInverseInfoFromField,
@@ -159,10 +161,16 @@ export async function setValue(
 
   // 2. Convert raw value to typed input using formatter
   const fieldOptions = field.options as { actor?: { multiple?: boolean } } | undefined
-  const typedInput = formatToTypedInput(value, fieldType, {
+  const rawTypedInput = formatToTypedInput(value, fieldType, {
     selectOptions: field.options as { id?: string; value: string; label: string }[] | undefined,
     fieldOptions,
   })
+  // Canonicalize relationship recordIds so type-name prefixes (e.g. "contact:...")
+  // resolve to the EntityDefinition UUID before the row is written.
+  const typedInput =
+    fieldType === 'RELATIONSHIP'
+      ? await canonicalizeRelationshipValue(ctx, rawTypedInput)
+      : rawTypedInput
 
   // Handle null/delete case
   if (typedInput === null) {
@@ -202,7 +210,8 @@ export async function setValueWithType(
   ctx: FieldValueContext,
   params: SetValueWithTypeInput
 ): Promise<TypedFieldValue[]> {
-  const { recordId, fieldId, fieldType, value, skipInverseSync = false } = params
+  const { recordId, fieldId, fieldType, skipInverseSync = false } = params
+  let value = params.value
 
   // Parse RecordId to get both parts for DB queries
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
@@ -215,6 +224,10 @@ export async function setValueWithType(
   let inverseInfo: InverseFieldInfo | null = null
 
   if (fieldType === 'RELATIONSHIP') {
+    // Canonicalize relationship recordIds so type-name prefixes (e.g. "contact:...")
+    // resolve to the EntityDefinition UUID before the row is written.
+    value = await canonicalizeRelationshipValue(ctx, value)
+
     // Validate self-referential constraints (circular reference, max depth)
     await validateRelationshipValue(ctx, {
       entityId: entityInstanceId,
@@ -483,7 +496,13 @@ export async function addRelationValues(
   const { recordId, fieldId, relatedRecordIds } = params
   if (relatedRecordIds.length === 0) return
 
-  const parsedTargets = relatedRecordIds.map((rid) => parseRecordId(rid))
+  // Canonicalize relationship recordIds so type-name prefixes (e.g. "contact:...")
+  // resolve to the EntityDefinition UUID before the row is written.
+  const canonicalRelatedIds = await Promise.all(
+    relatedRecordIds.map((rid) => canonicalizeRelationshipRecordId(ctx, rid))
+  )
+
+  const parsedTargets = canonicalRelatedIds.map((rid) => parseRecordId(rid))
   const relatedEntityDefinitionId = parsedTargets[0]!.entityDefinitionId
   const relatedEntityIds = parsedTargets.map((p) => p.entityInstanceId)
 
@@ -628,8 +647,15 @@ export async function addRelationValuesBulk(
     return { inserted: 0, skipped: 0 }
   }
 
+  // Canonicalize source and target recordIds so type-name prefixes (e.g. "contact:...")
+  // resolve to the EntityDefinition UUID before any row is written.
+  const [canonicalSourceIds, canonicalRelatedIds] = await Promise.all([
+    Promise.all(recordIds.map((rid) => canonicalizeRelationshipRecordId(ctx, rid))),
+    Promise.all(relatedRecordIds.map((rid) => canonicalizeRelationshipRecordId(ctx, rid))),
+  ])
+
   // Parse + validate source record ids
-  const parsed = recordIds.map((rid) => parseRecordId(rid))
+  const parsed = canonicalSourceIds.map((rid) => parseRecordId(rid))
   const entityDefinitionId = parsed[0]!.entityDefinitionId
   const entityIds = parsed.map((p) => p.entityInstanceId)
   if (parsed.some((p) => p.entityDefinitionId !== entityDefinitionId)) {
@@ -639,7 +665,7 @@ export async function addRelationValuesBulk(
   }
 
   // Parse + validate target record ids
-  const parsedTargets = relatedRecordIds.map((rid) => parseRecordId(rid))
+  const parsedTargets = canonicalRelatedIds.map((rid) => parseRecordId(rid))
   const relatedEntityDefinitionId = parsedTargets[0]!.entityDefinitionId
   const uniqueRelatedIds = [...new Set(parsedTargets.map((p) => p.entityInstanceId))]
   if (parsedTargets.some((p) => p.entityDefinitionId !== relatedEntityDefinitionId)) {

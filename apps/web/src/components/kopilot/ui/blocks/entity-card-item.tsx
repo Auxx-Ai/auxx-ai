@@ -29,7 +29,11 @@ export function EntityCardItem({ recordId, snapshot, selectable }: EntityCardIte
   const { resource } = useResource(entityDefId)
   const href = useRecordLink(recordId)
 
-  const displayName = record?.displayName ?? snapshot?.displayName
+  // Ignore snapshot.displayName when it equals the recordId — a legacy
+  // fallback from older turns poisoned snapshots with the raw id.
+  const snapshotName =
+    snapshot?.displayName && snapshot.displayName !== recordId ? snapshot.displayName : undefined
+  const displayName = record?.displayName ?? snapshotName
   const secondaryInfo = record?.secondaryInfo ?? snapshot?.summary
   const avatarUrl = record?.avatarUrl
 

@@ -7,6 +7,7 @@ export {
   // Entity field values
   useEntityValues,
   useField,
+  useFieldByKey,
   useFields,
   useIsRecordLoading,
   useIsRecordPending,

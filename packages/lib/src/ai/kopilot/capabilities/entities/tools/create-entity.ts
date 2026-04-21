@@ -1,9 +1,12 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/create-entity.ts
 
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
+import { UnprocessableEntityError } from '../../../../../errors'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { formatUnknownFieldsError, validateFieldKeys } from './field-label-helpers'
+import { formatActorResolutionError, resolveActorValues } from './resolve-actor-values'
 
 export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -12,12 +15,21 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
     usageNotes: 'Emits an `action-result` block automatically.',
     description: `Create a new entity instance.
 
-IMPORTANT: You MUST call list_entity_fields first to discover valid field IDs.
-Pass field values inside the "values" object using the field IDs returned by list_entity_fields.
+REQUIRED BEFORE CALLING: If you have NOT already called \`list_entity_fields\` for this
+entityDefinitionId in the current turn, call it first. Do NOT guess field ids from prior
+turns, system prompt, or intuition — always use the exact \`id\` returned by the most
+recent list_entity_fields call.
 
-Example:
+Each key in \`values\` must be an id from list_entity_fields (usually the field's
+systemAttribute like \`company_website\`, \`ticket_status\`). Unknown keys are rejected.
+
+Every field where \`capabilities.required === true\` AND \`capabilities.creatable === true\`
+must be included in \`values\` — missing any of them will fail. If the user hasn't provided a
+required value, ask them for it before calling this tool.
+
+Example (ids match list_entity_fields output):
   entityDefinitionId: "abc123"
-  values: { "companyName": "Acme", "website": "https://acme.com" }`,
+  values: { "company_name": "Acme", "company_website": "https://acme.com" }`,
     requiresApproval: true,
     parameters: {
       type: 'object',
@@ -29,7 +41,7 @@ Example:
         values: {
           type: 'object',
           description:
-            'Object mapping field IDs to their values. Field IDs come from list_entity_fields (e.g. { "companyName": "Acme", "website": "https://acme.com" }). Only include fields you want to set.',
+            'Object mapping field IDs to their values. Keys MUST be exact ids from the most recent list_entity_fields call (usually systemAttribute, e.g. company_website, ticket_status). Only include fields you want to set.',
           additionalProperties: true,
         },
       },
@@ -66,35 +78,63 @@ Example:
       }
 
       const entityDefId = resource.entityDefinitionId ?? resource.id
+
+      // Reject unknown field keys before calling the handler — the backend's key
+      // resolution is strict and silently drops unrecognised ids.
+      const { unknownKeys, validIds } = validateFieldKeys(Object.keys(values), resource)
+      if (unknownKeys.length > 0) {
+        return {
+          success: false,
+          output: null,
+          error: formatUnknownFieldsError(unknownKeys, validIds, resource.label),
+        }
+      }
+
+      const actorResolution = await resolveActorValues(values, resource, {
+        organizationId: agentDeps.organizationId,
+        userId: agentDeps.userId,
+      })
+      if (actorResolution.errors.length > 0) {
+        return {
+          success: false,
+          output: null,
+          error: formatActorResolutionError(actorResolution.errors, agentDeps.userId),
+        }
+      }
+
       const handler = new UnifiedCrudHandler(agentDeps.organizationId, agentDeps.userId, db)
 
       try {
-        const result = await handler.create(entityDefId, values)
-        const displayName =
-          (result.values?.displayName as string | null | undefined) ??
-          result.instance.displayName ??
-          null
-        const secondaryInfo = result.instance.secondaryDisplayValue ?? null
+        const result = await handler.create(entityDefId, actorResolution.values)
+        // Return only the recordId. The frontend hydrates displayName via
+        // useRecord → record.getByIds, which reads the denormalized column
+        // already populated by setFieldValues inside handler.create.
         return {
           success: true,
-          output: {
-            recordId: result.recordId,
-            displayName,
-            secondaryInfo,
-          },
+          output: { recordId: result.recordId },
           blocks: [
             {
               type: 'action-result',
               data: {
                 action: 'create_entity',
                 success: true,
-                summary: `Created ${resource.label}${displayName ? `: ${displayName}` : ''}`,
+                summary: `Created ${resource.label}`,
                 recordId: String(result.recordId),
               },
             },
           ],
         }
       } catch (err) {
+        if (err instanceof UnprocessableEntityError && 'missingFields' in err.details) {
+          return {
+            success: false,
+            output: {
+              missingFields: err.details.missingFields,
+              missingFieldLabels: err.details.missingFieldLabels,
+            },
+            error: `${err.message}. Ask the user for the missing fields, or call list_entity_fields to inspect them.`,
+          }
+        }
         return {
           success: false,
           output: null,

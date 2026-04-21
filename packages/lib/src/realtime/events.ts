@@ -10,6 +10,7 @@ export type StoredFieldValue = unknown
 export type ResourceSyncEvent =
   | FieldValuesUpdatedEvent
   | RecordCreatedEvent
+  | RecordUpdatedEvent
   | RecordDeletedEvent
   | RecordArchivedEvent
 
@@ -38,6 +39,20 @@ export interface RecordCreatedEvent {
     entityDefinitionId: string
     record: RecordMeta
     fieldValues?: Array<{ key: FieldValueKey; value: StoredFieldValue }>
+  }
+}
+
+/**
+ * A record's denormalized columns changed (displayName, secondaryDisplayValue,
+ * avatarUrl, updatedAt). Fires after any `updateEntity` that ran field-value
+ * mutations, so other tabs can refresh the row's cached metadata. Field-value
+ * updates themselves go through fieldValues:updated.
+ */
+export interface RecordUpdatedEvent {
+  event: 'record:updated'
+  data: {
+    entityDefinitionId: string
+    record: RecordMeta
   }
 }
 

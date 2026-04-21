@@ -1,10 +1,7 @@
 // packages/lib/src/resources/hooks/types.ts
 
-import type {
-  CustomFieldEntity,
-  EntityDefinitionEntity,
-  EntityInstanceEntity,
-} from '@auxx/database/types'
+import type { CustomFieldEntity, EntityInstanceEntity } from '@auxx/database/types'
+import type { ResolvedEntityDefinition } from '../crud/types'
 
 /**
  * Context provided to system hooks during entity operations
@@ -13,8 +10,8 @@ export interface SystemHookContext {
   /** Operation being performed */
   operation: 'create' | 'update'
 
-  /** Entity definition being operated on */
-  entityDef: EntityDefinitionEntity
+  /** Entity definition being operated on (narrow shape; only id/entityType/apiSlug are available) */
+  entityDef: ResolvedEntityDefinition
 
   /** Field being set (the field this hook is registered for) */
   field: CustomFieldEntity

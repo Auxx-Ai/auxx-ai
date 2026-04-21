@@ -7,8 +7,17 @@ import { api } from '~/trpc/react'
 import type { KopilotMessage } from '../stores/kopilot-store'
 import { isExecutorAssistant, useKopilotStore } from '../stores/kopilot-store'
 
+/**
+ * Shared input for the listSessions query — used by the hook AND any code
+ * that patches the cache directly (e.g. the SSE handler). Keep these in lockstep
+ * or cache patches will silently miss.
+ */
+export const KOPILOT_SESSIONS_QUERY_INPUT = { limit: 50 } as const
+
 export function useKopilotSessions() {
-  const sessions = api.kopilot.listSessions.useQuery({ limit: 50 }, { staleTime: 30_000 })
+  const sessions = api.kopilot.listSessions.useQuery(KOPILOT_SESSIONS_QUERY_INPUT, {
+    staleTime: 30_000,
+  })
   const utils = api.useUtils()
 
   const deleteSession = api.kopilot.deleteSession.useMutation({

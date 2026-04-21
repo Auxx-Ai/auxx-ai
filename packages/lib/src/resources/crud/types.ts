@@ -2,6 +2,18 @@
 
 import type { Database, Transaction } from '@auxx/database'
 
+/**
+ * Narrow entity-definition shape used by mutations and hooks.
+ * Contains only the fields downstream callers read from the cached Resource
+ * or EntityDefinition row — used to avoid a full DB fetch when the org cache
+ * already has the definition.
+ */
+export interface ResolvedEntityDefinition {
+  id: string
+  entityType: string | null
+  apiSlug: string | null
+}
+
 /** Context passed to all CRUD operations */
 export interface CrudContext {
   db: Database

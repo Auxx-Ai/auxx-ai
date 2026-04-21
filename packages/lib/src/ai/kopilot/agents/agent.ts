@@ -1,7 +1,8 @@
 // packages/lib/src/ai/kopilot/agents/agent.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { getCachedResources } from '../../../cache/org-cache-helpers'
+import { toActorId } from '@auxx/types/actor'
+import { getCachedMembersByUserIds, getCachedResources } from '../../../cache/org-cache-helpers'
 import type {
   AgentDefinition,
   AgentDeps,
@@ -10,7 +11,7 @@ import type {
 } from '../../agent-framework/types'
 import type { Message, ToolCall } from '../../clients/base/types'
 import { createSubmitFinalAnswerTool } from '../meta-tools/submit-final-answer'
-import { buildAgentSystemPrompt } from '../prompts/agent-prompt'
+import { buildAgentSystemPrompt, type CurrentUserInfo } from '../prompts/agent-prompt'
 import type { KopilotDomainState } from '../types'
 
 const logger = createScopedLogger('kopilot-agent')
@@ -49,7 +50,11 @@ export function createKopilotAgent(
       state: AgentState<KopilotDomainState>,
       deps: AgentDeps
     ): Promise<Message[]> {
-      const resources = await getCachedResources(deps.organizationId)
+      const [resources, currentUser] = await Promise.all([
+        getCachedResources(deps.organizationId),
+        hydrateCurrentUser(deps.organizationId, deps.userId),
+      ])
+
       const entityCatalog = resources
         .filter((r) => r.isVisible !== false)
         .map((r) => ({
@@ -63,7 +68,8 @@ export function createKopilotAgent(
         state.domainState,
         entityCatalog,
         capabilities,
-        agentTools
+        agentTools,
+        currentUser
       )
 
       // Full conversation for tool-loop continuity.
@@ -121,5 +127,32 @@ export function createKopilotAgent(
     },
 
     maxIterations,
+  }
+}
+
+async function hydrateCurrentUser(
+  organizationId: string,
+  userId: string
+): Promise<CurrentUserInfo | null> {
+  try {
+    const [member] = await getCachedMembersByUserIds(organizationId, [userId])
+    if (!member) {
+      logger.debug('Current user not found in org members cache', { organizationId, userId })
+      return null
+    }
+    return {
+      userId,
+      actorId: toActorId('user', userId),
+      name: member.user?.name ?? null,
+      email: member.user?.email ?? null,
+      role: member.role,
+    }
+  } catch (err) {
+    logger.warn('Failed to hydrate current user for Kopilot prompt', {
+      organizationId,
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
   }
 }

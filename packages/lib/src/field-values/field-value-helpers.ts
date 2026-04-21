@@ -11,9 +11,9 @@ import {
   type RelationshipType,
 } from '@auxx/types/custom-field'
 import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
-import type { RecordId } from '@auxx/types/resource'
+import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { findCachedResource, getCachedResource, getOrgCache } from '../cache'
+import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
@@ -57,6 +57,8 @@ export interface FieldValueContext {
   fieldCache: Map<string, CachedField>
   /** Cache for batch relationship validations (keyed by relatedEntityId) */
   batchRelationshipValidationCache: Map<string, { success: boolean; message?: string }>
+  /** Cache for entityType → EntityDefinition UUID (keyed by system entityType string) */
+  entityDefIdCache?: Map<string, string>
   /** Shared validator instance (stateless, reusable) */
   validator: FieldValueValidator
 }
@@ -190,6 +192,64 @@ export async function getInverseInfoFromField(
     targetEntityDefinitionId,
     sourceFieldId: field.id,
   }
+}
+
+// =============================================================================
+// RELATIONSHIP RECORDID CANONICALIZATION
+// =============================================================================
+
+/**
+ * Canonicalize the entityDefinitionId prefix of a relationship RecordId.
+ *
+ * If the prefix is a system entity type string (e.g. `"contact"`), resolve it
+ * to the org's EntityDefinition UUID via the org cache. If the prefix is
+ * already a UUID, return unchanged. If the cache lookup fails, return the
+ * input unchanged (fail soft — downstream validator treats missing related
+ * entities as soft errors).
+ *
+ * Memoized per-`ctx` so a batch of N relationship values targeting the same
+ * system type costs one cache lookup.
+ */
+export async function canonicalizeRelationshipRecordId(
+  ctx: FieldValueContext,
+  recordId: RecordId
+): Promise<RecordId> {
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  if (!isEntityDefinitionType(entityDefinitionId)) return recordId
+
+  const cache = (ctx.entityDefIdCache ??= new Map())
+  let resolved = cache.get(entityDefinitionId)
+  if (!resolved) {
+    const looked = await getCachedEntityDefId(ctx.organizationId, entityDefinitionId)
+    if (!looked) return recordId
+    cache.set(entityDefinitionId, looked)
+    resolved = looked
+  }
+  return toRecordId(resolved, entityInstanceId)
+}
+
+/**
+ * Canonicalize relationship RecordIds inside a TypedFieldValueInput (or array).
+ * Non-relationship values and arrays of them pass through unchanged.
+ */
+export async function canonicalizeRelationshipValue(
+  ctx: FieldValueContext,
+  value: TypedFieldValueInput | TypedFieldValueInput[] | null
+): Promise<TypedFieldValueInput | TypedFieldValueInput[] | null> {
+  if (value === null) return null
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((v) => canonicalizeOneTypedInput(ctx, v)))
+  }
+  return canonicalizeOneTypedInput(ctx, value)
+}
+
+async function canonicalizeOneTypedInput(
+  ctx: FieldValueContext,
+  value: TypedFieldValueInput
+): Promise<TypedFieldValueInput> {
+  if (value.type !== 'relationship') return value
+  const canonical = await canonicalizeRelationshipRecordId(ctx, value.recordId)
+  return canonical === value.recordId ? value : { ...value, recordId: canonical }
 }
 
 // =============================================================================

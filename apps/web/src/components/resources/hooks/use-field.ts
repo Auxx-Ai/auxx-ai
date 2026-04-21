@@ -3,7 +3,7 @@
 import type { FieldType } from '@auxx/database/types'
 import type { Resource, ResourceField } from '@auxx/lib/resources/client'
 import type { SelectOption } from '@auxx/types/custom-field'
-import type { ResourceFieldId } from '@auxx/types/field'
+import { type ResourceFieldId, toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useResourceStore } from '../store/resource-store'
@@ -255,5 +255,35 @@ export function useSystemField(
   })
 
   // Delegate to useField for actual field retrieval
+  return useField(resourceFieldId)
+}
+
+/**
+ * Resolve a ResourceField by the "id" shape that external callers (AI tools,
+ * imports, webhooks) use — systemAttribute for system fields, CustomField UUID
+ * for custom fields. Matches the `id` shape returned by `list_entity_fields`.
+ *
+ * O(1) via systemAttributeMap → fieldMap. Reactive, granular.
+ *
+ * @param entityDefinitionId - Entity the key belongs to (needed for custom-field UUIDs)
+ * @param key - Either systemAttribute ('ticket_status') or CustomField UUID
+ * @returns ResourceFieldWithEffective or undefined if the key doesn't resolve
+ *
+ * @example
+ * const field = useFieldByKey(entityDefinitionId, 'ticket_status') // system
+ * const field = useFieldByKey(entityDefinitionId, 'abc123-uuid')   // custom
+ */
+export function useFieldByKey(
+  entityDefinitionId: string | null | undefined,
+  key: string | null | undefined
+): ResourceFieldWithEffective | undefined {
+  const resourceFieldId = useResourceStore((state) => {
+    if (!key) return undefined
+    const sysRfId = state.systemAttributeMap[key]
+    if (sysRfId) return sysRfId
+    if (!entityDefinitionId) return undefined
+    return toResourceFieldId(entityDefinitionId, toFieldId(key))
+  })
+
   return useField(resourceFieldId)
 }
