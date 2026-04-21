@@ -9,9 +9,11 @@ import { DraftApprovalCard } from './draft-approval-card'
 import { DraftPreviewBlock } from './draft-preview-block'
 import { EntityCardBlock } from './entity-card-block'
 import { EntityCreateApprovalCard } from './entity-create-approval-card'
+import { EntityDefinitionBlock } from './entity-definition-block'
 import { EntityListBlock } from './entity-list-block'
 import { EntityUpdateApprovalCard } from './entity-update-approval-card'
 import { KBArticleBlock } from './kb-article-block'
+import { KBArticleListBlock } from './kb-article-list-block'
 import { PlanStepsBlock } from './plan-steps-block'
 import { TableBlock } from './table-block'
 import { TaskCreateApprovalCard } from './task-create-approval-card'
@@ -21,8 +23,10 @@ import { ThreadListBlock } from './thread-list-block'
 registerBlockRenderer('thread-list', ThreadListBlock)
 registerBlockRenderer('entity-card', EntityCardBlock)
 registerBlockRenderer('entity-list', EntityListBlock)
+registerBlockRenderer('entity-definition', EntityDefinitionBlock)
 registerBlockRenderer('draft-preview', DraftPreviewBlock)
 registerBlockRenderer('kb-article', KBArticleBlock)
+registerBlockRenderer('kb-article-list', KBArticleListBlock)
 registerBlockRenderer('plan-steps', PlanStepsBlock)
 registerBlockRenderer('action-result', ActionResultBlock)
 registerBlockRenderer('docs-results', DocsResultsBlock)

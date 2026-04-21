@@ -20,6 +20,7 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
   return {
     name: 'query_records',
     idempotent: true,
+    outputBlock: 'entity-list',
     description: `Query entity records with field-level filters, sorting, and pagination.
 Use list_entity_fields first to discover available fields and their valid values.
 

@@ -10,8 +10,9 @@ import { stripSignOff } from './strip-sign-off'
 export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'send_reply',
+    usageNotes: 'Emits an `action-result` block automatically.',
     description:
-      "Send a reply message on a thread. APPROVAL: The platform automatically pauses and shows an approval card when you call this tool. Do NOT ask the user in text first — just call the tool. The user's email signature is appended automatically — never include one in the body.",
+      "Send a reply message on a thread. Use this when the user asks to reply, respond, or send a message on a thread. The user's email signature is appended automatically — never include one in the body.",
     parameters: {
       type: 'object',
       properties: {
@@ -81,6 +82,18 @@ export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
         return {
           success: true,
           output: { draftId: draft.id, threadId, status: 'saved_as_draft' },
+          blocks: [
+            {
+              type: 'draft-preview',
+              data: {
+                draftId: draft.id,
+                threadId,
+                to: toRecipients,
+                body,
+                subject: threadMeta.subject ? `Re: ${threadMeta.subject}` : undefined,
+              },
+            },
+          ],
         }
       }
 
@@ -100,6 +113,7 @@ export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
         })),
       })
 
+      const recipientSummary = toRecipients.join(', ')
       return {
         success: true,
         output: {
@@ -107,6 +121,18 @@ export function createSendReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
           threadId: result.threadId,
           status: result.sendStatus,
         },
+        blocks: [
+          {
+            type: 'action-result',
+            data: {
+              action: 'send_reply',
+              success: true,
+              summary: `Reply sent to ${recipientSummary}`,
+              messageId: result.id,
+              threadId: result.threadId,
+            },
+          },
+        ],
       }
     },
   }

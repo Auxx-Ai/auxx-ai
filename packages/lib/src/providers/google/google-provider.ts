@@ -46,6 +46,22 @@ import { removeWebhook, setupWebhook } from './webhooks'
 
 const logger = createScopedLogger('google-provider')
 
+/** De-duped, lowercased union of an integration's own email addresses. */
+function mergeOwnEmails(primary: string | null | undefined, aliases: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  const add = (raw: string | null | undefined) => {
+    if (!raw) return
+    const normalized = raw.trim().toLowerCase()
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    out.push(normalized)
+  }
+  add(primary)
+  for (const alias of aliases) add(alias)
+  return out
+}
+
 export class GoogleProvider
   extends BaseMessageProvider
   implements ChannelProvider, MessageProvider
@@ -142,8 +158,15 @@ export class GoogleProvider
     logger.info('Rate limiter initialized for Google provider', {
       integrationId: this.integrationId,
     })
-    // Fetch and cache all user email addresses
-    this.userEmails = await this.fetchAllUserEmails()
+    // Fetch and cache all user email addresses (primary + verified send-as).
+    // Defensively include `Integration.email` as well — `userEmails` is derived
+    // from `metadata.email` and the Gmail send-as list, so the two should
+    // already overlap, but covering both columns guarantees the integration
+    // owner's mailbox is always treated as internal.
+    this.userEmails = mergeOwnEmails(integration.email, await this.fetchAllUserEmails())
+    // Surface the canonical "us" address set to the ingest pipeline so
+    // self-addressed mail never produces a contact for the integration owner.
+    this.storageService.setOwnEmails(this.userEmails)
     logger.info(`GoogleProvider initialized successfully for integration: ${integrationId}`, {
       userEmailsCount: this.userEmails.length,
     })
@@ -843,8 +866,12 @@ export class GoogleProvider
 
       newHistoryId = highestHistoryId.toString()
     } else {
-      // Full sync via Message List API
-      const query = since ? `after:${Math.floor(since.getTime() / 1000)}` : 'in:inbox'
+      // Full sync via Message List API. Empty `q` (combined with the existing
+      // `includeSpamTrash: false` below) pulls INBOX + SENT + every other
+      // non-trash/non-spam label — `in:inbox` would silently drop the user's
+      // own SENT messages, which the polling pipeline relies on to thread
+      // outbound replies and create recipient contacts.
+      const query = since ? `after:${Math.floor(since.getTime() / 1000)}` : ''
       let nextPageToken: string | undefined | null
       let highestHistoryId = BigInt(0)
 

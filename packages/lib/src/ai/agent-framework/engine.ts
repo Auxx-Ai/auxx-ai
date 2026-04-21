@@ -1,6 +1,7 @@
 // packages/lib/src/ai/agent-framework/engine.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { generateId } from '@auxx/utils/generateId'
 import { manageContext } from './context-manager'
 import { agentQueryLoop } from './query-loop'
 import type {
@@ -12,25 +13,36 @@ import type {
   ResumeOptions,
   Route,
   SessionMessage,
+  TurnBudget,
+  TurnUsageSummary,
 } from './types'
 
 const logger = createScopedLogger('agent-engine')
 const DEFAULT_MAX_TOTAL_ITERATIONS = 50
+const DEFAULT_MAX_TOKENS_PER_TURN = 50_000
+const DEFAULT_MAX_APPROVALS_PER_TURN = 5
 
 /**
- * AgentEngine — session owner and pipeline orchestrator.
+ * AgentEngine — session owner and turn orchestrator.
  *
  * Owns the runtime state for a single session. On each submitMessage:
- * 1. Appends user message to state
- * 2. Runs the supervisor agent to classify intent → pick route
- * 3. Executes agents in the chosen route sequentially
- * 4. Yields AgentEvents throughout for real-time streaming
- * 5. Detects HITL (approval-required) and pauses
+ * 1. Generates a `turnId` tagged on every event and log line for the turn
+ * 2. Applies fresh UI context to domain state
+ * 3. Runs the supervisor (if configured) to pick a route, otherwise enters route[0]
+ * 4. Executes agents in the chosen route sequentially
+ * 5. Enforces a per-turn token budget and iteration cap
+ * 6. Yields AgentEvents throughout for real-time streaming
+ * 7. Detects HITL (approval-required) and pauses
  */
 export class AgentEngine {
   private config: AgentEngineConfig
   private state: AgentState
   private abortController: AbortController | null = null
+  private turnId: string | null = null
+  private turnTokensUsed = 0
+  private turnPromptTokens = 0
+  private turnCompletionTokens = 0
+  private turnLlmCalls = 0
 
   constructor(config: AgentEngineConfig, initialState?: AgentState) {
     this.config = config
@@ -46,13 +58,16 @@ export class AgentEngine {
   }
 
   /**
-   * Submit a user message and run the pipeline.
+   * Submit a user message and run the turn.
    * Yields AgentEvents for every phase of execution.
    */
   async *submitMessage(
     userMessage: string,
     context?: Record<string, unknown>
   ): AsyncGenerator<AgentEvent> {
+    this.turnId = generateId('turn')
+    this.resetTurnUsage()
+
     // Refresh domain state with latest UI context
     if (context && this.config.domainConfig.applyContext) {
       this.state = {
@@ -70,9 +85,12 @@ export class AgentEngine {
       ...this.state,
       messages: [...this.state.messages, userMsg],
       waitingForApproval: false,
+      approvalsThisTurn: 0,
+      turnSnapshots: { records: {}, threads: {}, tasks: {} },
     }
 
-    logger.info('Submitting message', {
+    logger.info('Turn submitted', {
+      turnId: this.turnId,
       sessionId: this.config.sessionId,
       messageLength: userMessage.length,
       totalMessages: this.state.messages.length,
@@ -85,7 +103,7 @@ export class AgentEngine {
     }
 
     try {
-      yield* this.runPipeline(configWithAbort)
+      yield* this.tagTurnId(this.runPipeline(configWithAbort))
     } finally {
       this.abortController = null
     }
@@ -94,14 +112,24 @@ export class AgentEngine {
   /**
    * Resume a paused session after the user approves or rejects a tool call.
    *
-   * - **approve**: executes the stored `pendingToolCall` directly (no LLM re-call).
-   *   If `inputAmendment` is provided, it's merged into the tool args before execution.
-   * - **reject**: yields a `tool-rejected` event and completes the pipeline.
+   * On **approve**: executes the stored `pendingToolCall` directly (no LLM re-call),
+   * appends the real tool result to state.messages, then re-enters the same agent's
+   * query loop so it can decide whether to request more approvals or call
+   * `submit_final_answer`.
+   *
+   * On **reject**: appends `{ rejected: true, reason }` as the tool result and
+   * re-enters the same agent's loop so it can respond to the rejection.
    */
   async *resume(opts: ResumeOptions): AsyncGenerator<AgentEvent> {
     if (opts.resumeState) {
       this.state = opts.resumeState
     }
+
+    // Keep the prior turnId if the paused state has one on it; otherwise mint one
+    // so resume events are still tied together. In practice we just mint a fresh
+    // turnId for each resume — the SSE stream opens a new turn section anyway.
+    this.turnId = generateId('turn')
+    this.resetTurnUsage()
 
     // Refresh domain state with latest UI context
     if (opts.context && this.config.domainConfig.applyContext) {
@@ -113,167 +141,35 @@ export class AgentEngine {
 
     const pending = this.state.pendingToolCall
     if (!pending) {
-      yield { type: 'pipeline-error', error: 'No pending tool call to resume' }
+      yield this.tagEvent({ type: 'turn-error', error: 'No pending tool call to resume' })
       return
     }
 
-    const route = this.state.currentRoute ?? 'unknown'
+    const route = this.state.currentRoute ?? 'default'
 
-    // Rejection: record the rejection and run remaining agents (responder)
-    // so the user gets an acknowledgement message.
-    if (opts.action === 'reject') {
-      yield {
-        type: 'tool-rejected',
-        agent: pending.agentName,
-        tool: pending.toolName,
-        toolCallId: pending.toolCallId,
-      }
-      // Replace the fake "awaiting_approval" tool result with a rejection so
-      // the responder knows the action was denied (avoids duplicate tool results).
-      const rejectionContent = JSON.stringify({ rejected: true, tool: pending.toolName })
-      const domainState = { ...(this.state.domainState as Record<string, unknown>) }
-      if (Array.isArray(domainState.toolResults)) {
-        domainState.toolResults = (
-          domainState.toolResults as { tool: string; result: unknown }[]
-        ).map((r) =>
-          r.tool === pending.toolName
-            ? { ...r, result: { rejected: true, reason: 'User declined the action' } }
-            : r
-        )
-      }
-      this.state = {
-        ...this.state,
-        waitingForApproval: false,
-        pendingToolCall: undefined,
-        domainState,
-        messages: this.state.messages.map((m) =>
-          m.role === 'tool' && m.toolCallId === pending.toolCallId
-            ? { ...m, content: rejectionContent }
-            : m
-        ),
-      }
-      yield* this.runRemainingAgents(route, pending.agentName)
-      yield { type: 'pipeline-completed', route }
-      return
-    }
-
-    // Approval: execute the stored tool call directly
-    const agent = this.config.domainConfig.agents[pending.agentName]
-    const tool = agent?.tools.find((t) => t.name === pending.toolName)
-
-    if (!tool) {
-      yield {
-        type: 'pipeline-error',
-        error: `Tool "${pending.toolName}" not found on agent "${pending.agentName}"`,
-      }
-      return
-    }
-
-    const finalArgs = opts.inputAmendment
-      ? { ...pending.args, ...opts.inputAmendment }
-      : pending.args
-
-    const deps: AgentDeps = {
-      organizationId: this.config.organizationId,
-      userId: this.config.userId,
-      sessionId: this.config.sessionId,
-      signal: this.config.signal,
-    }
-
-    yield {
-      type: 'tool-started',
-      agent: pending.agentName,
-      tool: pending.toolName,
-      args: finalArgs,
+    this.abortController = new AbortController()
+    const configWithAbort: AgentEngineConfig = {
+      ...this.config,
+      signal: this.abortController.signal,
     }
 
     try {
-      const result = await tool.execute(finalArgs, deps)
-      yield {
-        type: 'tool-completed',
-        agent: pending.agentName,
-        tool: pending.toolName,
-        result,
-      }
-      // Replace the fake "awaiting_approval" tool result with the real one
-      // in both messages and domainState.toolResults so the responder sees the actual outcome.
-      const resultContent = JSON.stringify(result)
-      const domainState = { ...(this.state.domainState as Record<string, unknown>) }
-      if (Array.isArray(domainState.toolResults)) {
-        domainState.toolResults = (
-          domainState.toolResults as { tool: string; result: unknown }[]
-        ).map((r) => (r.tool === pending.toolName ? { ...r, result: result.output ?? result } : r))
-      }
-      this.state = {
-        ...this.state,
-        domainState,
-        messages: this.state.messages.map((m) =>
-          m.role === 'tool' && m.toolCallId === pending.toolCallId
-            ? { ...m, content: resultContent }
-            : m
-        ),
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error('Approved tool execution failed', {
-        tool: pending.toolName,
-        error: errorMessage,
-      })
-      yield {
-        type: 'tool-error',
-        agent: pending.agentName,
-        tool: pending.toolName,
-        error: errorMessage,
-      }
+      yield* this.tagTurnId(this.runResume(opts, route, configWithAbort))
+    } finally {
+      this.abortController = null
     }
-
-    this.state = { ...this.state, waitingForApproval: false, pendingToolCall: undefined }
-
-    // Continue the pipeline — run remaining agents (e.g. responder) so the user gets a summary.
-    yield* this.runRemainingAgents(route, pending.agentName)
-    yield { type: 'pipeline-completed', route }
   }
 
-  /** Abort the current pipeline execution. */
+  /** Abort the current turn execution. */
   interrupt(): void {
     this.abortController?.abort()
   }
 
-  /**
-   * Run agents that come after `pausedAgentName` in the route's agent list.
-   * Used after approval/rejection to continue the pipeline (e.g. run responder).
-   */
-  private async *runRemainingAgents(
-    routeName: string,
-    pausedAgentName: string
-  ): AsyncGenerator<AgentEvent> {
-    const routeDef = this.config.domainConfig.routes.find((r) => r.name === routeName)
-    if (!routeDef) return
-
-    const pausedIdx = routeDef.agents.indexOf(pausedAgentName)
-    const remainingAgents = routeDef.agents.slice(pausedIdx + 1)
-
-    for (const agentName of remainingAgents) {
-      if (this.config.signal?.aborted) break
-      if (agentName === this.config.domainConfig.supervisorAgent) continue
-
-      const nextAgent = this.config.domainConfig.agents[agentName]
-      if (!nextAgent) continue
-
-      yield* this.runAgentAndUpdateState(nextAgent, this.config)
-    }
-
-    // Extract final assistant message (same as executeRoute)
-    const lastMessage = this.state.messages[this.state.messages.length - 1]
-    if (lastMessage?.role === 'assistant' && lastMessage.content) {
-      yield { type: 'message', role: 'assistant', content: lastMessage.content }
-    }
-  }
-
-  // ===== PIPELINE =====
+  // ===== TURN PIPELINE =====
 
   private async *runPipeline(config: AgentEngineConfig): AsyncGenerator<AgentEvent> {
     const { domainConfig } = config
+    const budget = this.buildTurnBudget(config)
 
     // Context management — compress if over budget
     this.state = {
@@ -282,92 +178,365 @@ export class AgentEngine {
     }
 
     logger.debug('Context managed', {
+      turnId: this.turnId,
       messageCount: this.state.messages.length,
     })
 
-    // Run supervisor to classify intent and pick route
-    const supervisor = domainConfig.agents[domainConfig.supervisorAgent]
-    if (!supervisor) {
-      yield {
-        type: 'pipeline-error',
-        error: `Supervisor agent "${domainConfig.supervisorAgent}" not found`,
+    // Route selection: supervisor (if configured) picks a route; otherwise use route[0]
+    let route: Route | undefined
+    if (domainConfig.supervisorAgent) {
+      const supervisor = domainConfig.agents[domainConfig.supervisorAgent]
+      if (!supervisor) {
+        yield this.tagEvent({
+          type: 'turn-error',
+          error: `Supervisor agent "${domainConfig.supervisorAgent}" not found`,
+        })
+        return
       }
-      return
+      yield* this.runAgentAndUpdateState(supervisor, config)
+      if (config.signal?.aborted) return
+      const routeName = this.state.currentRoute
+      logger.info('Route selected', { turnId: this.turnId, route: routeName })
+      route = domainConfig.routes.find((r) => r.name === routeName) ?? domainConfig.routes[0]
+    } else {
+      // Solo-agent domain: no classification needed
+      route = domainConfig.routes[0]
+      this.state = { ...this.state, currentRoute: route?.name }
     }
-
-    yield* this.runAgentAndUpdateState(supervisor, config)
-
-    // Check for errors or abort
-    if (config.signal?.aborted) return
-
-    // Resolve route from supervisor's classification
-    const routeName = this.state.currentRoute
-    logger.info('Route selected', { route: routeName })
-    const route = domainConfig.routes.find((r) => r.name === routeName) ?? domainConfig.routes[0]
 
     if (!route) {
-      yield {
-        type: 'pipeline-error',
+      yield this.tagEvent({
+        type: 'turn-error',
         error: `No routes configured in domain "${domainConfig.type}"`,
-      }
+      })
       return
     }
 
-    yield* this.executeRoute(route, config)
+    yield* this.executeRoute(route, config, budget)
   }
 
-  private async *executeRoute(route: Route, config: AgentEngineConfig): AsyncGenerator<AgentEvent> {
-    yield { type: 'pipeline-started', route: route.name, agents: route.agents }
-    logger.info('Pipeline started', { route: route.name, agents: route.agents })
+  private async *executeRoute(
+    route: Route,
+    config: AgentEngineConfig,
+    budget: TurnBudget
+  ): AsyncGenerator<AgentEvent> {
+    yield this.tagEvent({ type: 'turn-started', route: route.name, agents: route.agents, budget })
+    logger.info('Turn started', {
+      turnId: this.turnId,
+      route: route.name,
+      agents: route.agents,
+      budget,
+    })
 
     let totalIterations = 0
-    const maxTotal = config.maxTotalIterations ?? DEFAULT_MAX_TOTAL_ITERATIONS
 
     for (const agentName of route.agents) {
       if (config.signal?.aborted) break
-      if (totalIterations >= maxTotal) {
-        yield { type: 'pipeline-error', error: 'Max total iterations exceeded' }
-        break
+      if (totalIterations >= budget.maxIterations) {
+        yield this.tagEvent({ type: 'turn-error', error: 'Max total iterations exceeded' })
+        return
+      }
+      if (this.turnTokensUsed >= budget.maxTokensPerTurn) {
+        yield this.tagEvent({
+          type: 'turn-error',
+          error: `Turn exceeded token budget (${this.turnTokensUsed}/${budget.maxTokensPerTurn})`,
+        })
+        return
       }
 
-      // Skip the supervisor — it already ran
       if (agentName === config.domainConfig.supervisorAgent) continue
 
       const agent = config.domainConfig.agents[agentName]
       if (!agent) {
-        yield {
-          type: 'pipeline-error',
+        yield this.tagEvent({
+          type: 'turn-error',
           error: `Agent "${agentName}" not found in domain config`,
-        }
-        break
+        })
+        return
       }
 
       let iterCount = 0
       for await (const event of this.runAgentAndUpdateState(agent, config)) {
         yield event
-        if (event.type === 'pipeline-error') return
-        // Only count LLM calls (not streaming deltas) to avoid false runaway detection
-        if (event.type === 'llm-complete') iterCount++
+        if (event.type === 'turn-error') return
+        if (event.type === 'llm-complete') {
+          iterCount++
+          this.accumulateUsage(event.usage)
+          if (this.turnTokensUsed >= budget.maxTokensPerTurn) {
+            yield this.tagEvent({
+              type: 'turn-error',
+              error: `Turn exceeded token budget (${this.turnTokensUsed}/${budget.maxTokensPerTurn})`,
+            })
+            return
+          }
+        }
       }
       totalIterations += iterCount
 
-      // If waiting for approval, pause the pipeline
       if (this.state.waitingForApproval) {
-        logger.info('Pipeline paused for approval')
-        break
+        logger.info('Turn paused for approval', { turnId: this.turnId })
+        return
       }
     }
 
-    if (!this.state.waitingForApproval) {
-      // Extract final assistant message
-      const lastMessage = this.state.messages[this.state.messages.length - 1]
-      if (lastMessage?.role === 'assistant' && lastMessage.content) {
-        yield { type: 'message', role: 'assistant', content: lastMessage.content }
+    const legacyMessage = this.emitFinalMessageFromState()
+    if (legacyMessage) yield legacyMessage
+    yield this.tagEvent({
+      type: 'turn-completed',
+      route: route.name,
+      usage: this.snapshotTurnUsage(),
+    })
+    logger.info('Turn completed', {
+      turnId: this.turnId,
+      route: route.name,
+      totalIterations,
+      ...this.snapshotTurnUsage(),
+    })
+  }
+
+  // ===== RESUME =====
+
+  private async *runResume(
+    opts: ResumeOptions,
+    route: string,
+    config: AgentEngineConfig
+  ): AsyncGenerator<AgentEvent> {
+    const pending = this.state.pendingToolCall!
+    const budget = this.buildTurnBudget(config)
+
+    yield this.tagEvent({ type: 'turn-started', route, agents: [pending.agentName], budget })
+
+    // Apply the tool result (approve → execute tool; reject → synthetic rejection)
+    if (opts.action === 'reject') {
+      yield this.tagEvent({
+        type: 'tool-rejected',
+        agent: pending.agentName,
+        tool: pending.toolName,
+        toolCallId: pending.toolCallId,
+      })
+      const rejectionResult = { rejected: true, reason: 'User declined the action' }
+      this.state = {
+        ...this.state,
+        waitingForApproval: false,
+        pendingToolCall: undefined,
+        messages: [
+          ...this.state.messages,
+          {
+            role: 'tool' as const,
+            content: JSON.stringify(rejectionResult),
+            toolCallId: pending.toolCallId,
+            timestamp: Date.now(),
+            metadata: { agent: pending.agentName, rejected: true },
+          },
+        ],
+      }
+    } else {
+      // Approve: execute the pending tool
+      const agent = config.domainConfig.agents[pending.agentName]
+      const tool = agent?.tools.find((t) => t.name === pending.toolName)
+      if (!tool) {
+        yield this.tagEvent({
+          type: 'turn-error',
+          error: `Tool "${pending.toolName}" not found on agent "${pending.agentName}"`,
+        })
+        return
       }
 
-      yield { type: 'pipeline-completed', route: route.name }
-      logger.info('Pipeline completed', { route: route.name, totalIterations })
+      const finalArgs = opts.inputAmendment
+        ? { ...pending.args, ...opts.inputAmendment }
+        : pending.args
+      const deps: AgentDeps = {
+        organizationId: config.organizationId,
+        userId: config.userId,
+        sessionId: config.sessionId,
+        signal: config.signal,
+        turnId: this.turnId ?? undefined,
+      }
+
+      yield this.tagEvent({
+        type: 'tool-started',
+        agent: pending.agentName,
+        tool: pending.toolName,
+        args: finalArgs,
+      })
+
+      try {
+        const result = await tool.execute(finalArgs, deps)
+        yield this.tagEvent({
+          type: 'tool-completed',
+          agent: pending.agentName,
+          tool: pending.toolName,
+          result,
+        })
+        const toolResultContent = JSON.stringify(
+          result.success
+            ? result.output
+            : { error: result.error ?? 'Unknown error', output: result.output }
+        )
+        // Give the domain a chance to mine the post-approval result for snapshots.
+        let postHookState = this.state
+        if (result.success && config.domainConfig.onToolResult) {
+          postHookState = config.domainConfig.onToolResult(pending.toolName, result, this.state)
+        }
+        this.state = {
+          ...postHookState,
+          waitingForApproval: false,
+          pendingToolCall: undefined,
+          approvalsThisTurn: (this.state.approvalsThisTurn ?? 0) + 1,
+          messages: [
+            ...postHookState.messages,
+            {
+              role: 'tool' as const,
+              content: toolResultContent,
+              toolCallId: pending.toolCallId,
+              timestamp: Date.now(),
+              metadata: { agent: pending.agentName, approved: true },
+              ...(result.blocks && result.blocks.length > 0 ? { blocks: result.blocks } : {}),
+            },
+          ],
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        logger.error('Approved tool execution failed', {
+          turnId: this.turnId,
+          tool: pending.toolName,
+          error: errorMessage,
+        })
+        yield this.tagEvent({
+          type: 'tool-error',
+          agent: pending.agentName,
+          tool: pending.toolName,
+          error: errorMessage,
+        })
+        this.state = {
+          ...this.state,
+          waitingForApproval: false,
+          pendingToolCall: undefined,
+          messages: [
+            ...this.state.messages,
+            {
+              role: 'tool' as const,
+              content: JSON.stringify({ error: errorMessage, output: null }),
+              toolCallId: pending.toolCallId,
+              timestamp: Date.now(),
+              metadata: { agent: pending.agentName, failed: true },
+            },
+          ],
+        }
+      }
     }
+
+    // Enforce max-approvals cap before looping back into the same agent
+    if ((this.state.approvalsThisTurn ?? 0) > budget.maxApprovalsPerTurn) {
+      yield this.tagEvent({
+        type: 'turn-error',
+        error: `Exceeded max approvals per turn (${budget.maxApprovalsPerTurn})`,
+      })
+      return
+    }
+
+    // Re-enter the SAME agent's query loop so it can request more approvals or
+    // call submit_final_answer. This is the resume-loop-re-entry behaviour from
+    // Phase A.4 of the v2 plan.
+    const agent = config.domainConfig.agents[pending.agentName]
+    if (!agent) {
+      yield this.tagEvent({
+        type: 'turn-error',
+        error: `Agent "${pending.agentName}" not found for re-entry`,
+      })
+      return
+    }
+
+    for await (const event of this.runAgentAndUpdateState(agent, config)) {
+      yield event
+      if (event.type === 'turn-error') return
+      if (event.type === 'llm-complete') {
+        this.accumulateUsage(event.usage)
+        if (this.turnTokensUsed >= budget.maxTokensPerTurn) {
+          yield this.tagEvent({
+            type: 'turn-error',
+            error: `Turn exceeded token budget (${this.turnTokensUsed}/${budget.maxTokensPerTurn})`,
+          })
+          return
+        }
+      }
+    }
+
+    if (this.state.waitingForApproval) {
+      logger.info('Turn paused for approval after resume', { turnId: this.turnId })
+      return
+    }
+
+    const legacyMessage = this.emitFinalMessageFromState()
+    if (legacyMessage) yield legacyMessage
+    yield this.tagEvent({
+      type: 'turn-completed',
+      route,
+      usage: this.snapshotTurnUsage(),
+    })
+  }
+
+  // ===== HELPERS =====
+
+  private buildTurnBudget(config: AgentEngineConfig): TurnBudget {
+    return {
+      maxTokensPerTurn: config.maxTokensPerTurn ?? DEFAULT_MAX_TOKENS_PER_TURN,
+      maxIterations: config.maxTotalIterations ?? DEFAULT_MAX_TOTAL_ITERATIONS,
+      maxApprovalsPerTurn: config.maxApprovalsPerTurn ?? DEFAULT_MAX_APPROVALS_PER_TURN,
+    }
+  }
+
+  private resetTurnUsage(): void {
+    this.turnTokensUsed = 0
+    this.turnPromptTokens = 0
+    this.turnCompletionTokens = 0
+    this.turnLlmCalls = 0
+  }
+
+  private accumulateUsage(usage: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+  }): void {
+    this.turnPromptTokens += usage.prompt_tokens ?? 0
+    this.turnCompletionTokens += usage.completion_tokens ?? 0
+    this.turnTokensUsed +=
+      usage.total_tokens ?? (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0)
+    this.turnLlmCalls += 1
+  }
+
+  private snapshotTurnUsage(): TurnUsageSummary {
+    return {
+      totalTokens: this.turnTokensUsed,
+      promptTokens: this.turnPromptTokens,
+      completionTokens: this.turnCompletionTokens,
+      llmCalls: this.turnLlmCalls,
+    }
+  }
+
+  private tagEvent<E extends AgentEvent>(event: E): E {
+    if (this.turnId) {
+      return { ...event, turnId: this.turnId }
+    }
+    return event
+  }
+
+  private async *tagTurnId(gen: AsyncGenerator<AgentEvent>): AsyncGenerator<AgentEvent> {
+    for await (const event of gen) {
+      yield this.tagEvent(event)
+    }
+  }
+
+  /**
+   * Emit the legacy `message` event for consumers that listen on it. Returns null
+   * if the final message was already delivered via `final-message` (submit_final_answer
+   * path) so we don't double-fire.
+   */
+  private emitFinalMessageFromState(): AgentEvent | null {
+    const lastMessage = this.state.messages[this.state.messages.length - 1]
+    if (!lastMessage || lastMessage.role !== 'assistant' || !lastMessage.content) return null
+    if ((lastMessage.metadata as Record<string, unknown> | undefined)?.final === true) return null
+    return this.tagEvent({ type: 'message', role: 'assistant', content: lastMessage.content })
   }
 
   /**
@@ -378,18 +547,18 @@ export class AgentEngine {
     agent: AgentDefinition,
     config: AgentEngineConfig
   ): AsyncGenerator<AgentEvent> {
-    const gen = agentQueryLoop(agent, this.state, config)
+    const depsTurnId = this.turnId ?? undefined
+    const gen = agentQueryLoop(agent, this.state, config, depsTurnId)
 
     while (true) {
       const { value, done } = await gen.next()
       if (done) {
-        // When done=true, value is the returned AgentState
         if (value) {
           this.state = value as AgentState
         }
         break
       }
-      yield value as AgentEvent
+      yield this.tagEvent(value as AgentEvent)
     }
   }
 }

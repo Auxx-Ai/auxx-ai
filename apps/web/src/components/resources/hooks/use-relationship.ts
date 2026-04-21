@@ -4,6 +4,7 @@ import type { RecordPickerItem } from '@auxx/lib/resources/client'
 import { getInstanceId, type RecordId } from '@auxx/lib/resources/client'
 import { useEffect, useMemo } from 'react'
 import { getRelationshipStoreState, useHydratedItems, useIsLoadingRelationships } from '../store'
+import { useNormalizedRecordIds } from '../utils/normalize-record-id'
 
 interface UseRelationshipResult {
   /** Hydrated items indexed by position (matches input recordIds order) */
@@ -27,28 +28,30 @@ interface UseRelationshipResult {
  * const { items, isLoading } = useRelationship(recordIds)
  */
 export function useRelationship(recordIds: RecordId[]): UseRelationshipResult {
-  // Create stable key for effect dependency
-  const recordIdsKey = useMemo(() => recordIds.join('|'), [recordIds])
+  // Canonicalize prefixes so `contact:<id>` and `<UUID>:<id>` map to the same
+  // hydration slot and request key. Returns the input unchanged when every id
+  // is already canonical, so memoization downstream is not disturbed.
+  const normalizedRecordIds = useNormalizedRecordIds(recordIds)
 
   // Request hydration on mount/change
   useEffect(() => {
-    if (recordIds.length === 0) return
-    getRelationshipStoreState().requestHydration(recordIds)
-  }, [recordIds])
+    if (normalizedRecordIds.length === 0) return
+    getRelationshipStoreState().requestHydration(normalizedRecordIds)
+  }, [normalizedRecordIds])
 
   // Subscribe to hydrated items
-  const items = useHydratedItems(recordIds)
-  const isLoading = useIsLoadingRelationships(recordIds)
-  const isComplete = recordIds.length > 0 && items.every((item) => item !== undefined)
+  const items = useHydratedItems(normalizedRecordIds)
+  const isLoading = useIsLoadingRelationships(normalizedRecordIds)
+  const isComplete = normalizedRecordIds.length > 0 && items.every((item) => item !== undefined)
 
   // Build itemsMap for random access (keyed by entityInstanceId)
   const itemsMap = useMemo(() => {
     const map = new Map<string, RecordPickerItem | null | undefined>()
-    recordIds.forEach((recordId, idx) => {
+    normalizedRecordIds.forEach((recordId, idx) => {
       map.set(getInstanceId(recordId), items[idx])
     })
     return map
-  }, [recordIds, items])
+  }, [normalizedRecordIds, items])
 
   return { items, itemsMap, isLoading, isComplete }
 }

@@ -8,9 +8,9 @@ import type { GetToolDeps } from '../../types'
 export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_entity',
+    outputBlock: 'entity-card',
+    usageNotes: 'Emits an `action-result` block automatically.',
     description: `Create a new entity instance.
-
-APPROVAL: The platform automatically pauses and shows an approval card to the user when you call this tool. You do NOT ask the user in text — just call the tool with correct args. The user approves or rejects via the card.
 
 IMPORTANT: You MUST call list_entity_fields first to discover valid field IDs.
 Pass field values inside the "values" object using the field IDs returned by list_entity_fields.
@@ -70,12 +70,29 @@ Example:
 
       try {
         const result = await handler.create(entityDefId, values)
+        const displayName =
+          (result.values?.displayName as string | null | undefined) ??
+          result.instance.displayName ??
+          null
+        const secondaryInfo = result.instance.secondaryDisplayValue ?? null
         return {
           success: true,
           output: {
             recordId: result.recordId,
-            displayName: result.values?.displayName ?? null,
+            displayName,
+            secondaryInfo,
           },
+          blocks: [
+            {
+              type: 'action-result',
+              data: {
+                action: 'create_entity',
+                success: true,
+                summary: `Created ${resource.label}${displayName ? `: ${displayName}` : ''}`,
+                recordId: String(result.recordId),
+              },
+            },
+          ],
         }
       } catch (err) {
         return {

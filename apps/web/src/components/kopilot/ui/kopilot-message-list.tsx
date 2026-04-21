@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { getApprovalCard } from './blocks/approval-card-registry'
+import { AuxxBlock } from './blocks/auxx-block'
 import { GenericApprovalCard } from './blocks/generic-approval-card'
 import { KopilotEmptyState } from './kopilot-empty-state'
 import { AssistantMessage } from './messages/assistant-message'
@@ -165,6 +166,12 @@ export function KopilotMessageList({
               case 'tool':
                 // Tool messages are now shown in ThinkingSteps, not as individual messages
                 return null
+              case 'block':
+                if (!message.block) return null
+                messageEl = (
+                  <AuxxBlock key={message.id} type={message.block.type} data={message.block.data} />
+                )
+                break
               default:
                 break
             }

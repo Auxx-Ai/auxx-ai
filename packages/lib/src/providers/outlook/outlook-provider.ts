@@ -179,6 +179,16 @@ export class OutlookProvider
       email: metadata?.email || '',
     }
     this.client = await OutlookOAuthService.getAuthenticatedClient(clientCtx)
+    // Surface the canonical "us" address set to the ingest pipeline so
+    // self-addressed mail never produces a contact for the integration owner.
+    // Cover both `Integration.email` and the cached aliases on metadata.
+    const ownEmails: string[] = []
+    if (dbIntegration.email) ownEmails.push(dbIntegration.email)
+    if (metadata?.email) ownEmails.push(metadata.email)
+    for (const alias of (metadata as any)?.emailAliases ?? []) {
+      if (typeof alias === 'string') ownEmails.push(alias)
+    }
+    this.storageService.setOwnEmails(ownEmails)
     logger.info(`OutlookProvider initialized successfully for integration: ${integrationId}`)
   }
   /** Resets internal state */

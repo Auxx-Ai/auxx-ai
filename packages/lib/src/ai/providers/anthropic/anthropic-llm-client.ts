@@ -519,9 +519,19 @@ export class AnthropicLLMClient extends LLMClient {
       messages: anthropicMessages,
     }
 
-    // Add system message if present
+    // Add system message if present. Emit as an array block with an ephemeral
+    // prompt-cache breakpoint so Anthropic caches the tools + system prompt
+    // for the TTL window (reused across iterations within a turn and across
+    // nearby turns). Everything after the system (messages/tool results) is
+    // not cached — only the static preamble.
     if (systemMessage) {
-      anthropicParams.system = systemMessage
+      anthropicParams.system = [
+        {
+          type: 'text',
+          text: systemMessage,
+          cache_control: { type: 'ephemeral' },
+        },
+      ]
     }
 
     // Add optional parameters

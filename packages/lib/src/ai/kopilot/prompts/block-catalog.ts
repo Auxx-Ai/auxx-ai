@@ -3,60 +3,61 @@
 export const BLOCK_CATALOG = `
 ## Rich Blocks
 
-You MUST embed rich UI components using fenced code blocks with the \`auxx:<type>\` language tag.
-The language tag on the opening fence is REQUIRED — without it the frontend renders raw JSON.
+Inside \`submit_final_answer.content\`, embed rich UI cards by writing fenced
+code blocks with the \`auxx:<type>\` language tag. The fence JSON should
+contain only IDs that came from tool results — the server fills in display
+data automatically. Never re-type record subjects, field values, or other
+record content.
 
 **Syntax:**
 \\\`\\\`\\\`auxx:<type>
-<valid JSON>
+<valid JSON with IDs from tool results>
 \\\`\\\`\\\`
 
-### Available block types
+### ID format (STRICT)
 
-#### \`auxx:entity-list\` — List of entity records
-Use when showing multiple records from search_entities or query_records results that contain recordIds. Do NOT use for count-only results (no recordIds) — present counts as plain text instead.
+A \`recordId\` is the literal value of the \`recordId\` field from a tool
+result — nothing more, nothing less. Format: \`<entityDefinitionId>:<entityInstanceId>\`
+— exactly **one** colon, **two** segments.
+
+- ✅ CORRECT: \`"i5aezsg4bc6n8gof2uan3wcf:lk6jz2jsyiqwusswhrf187du"\`
+- ❌ WRONG: \`"tickets:i5aezsg4bc6n8gof2uan3wcf:lk6jz2jsyiqwusswhrf187du"\` (apiSlug prefix)
+- ❌ WRONG: \`"ticket:lk6jz2jsyiqwusswhrf187du"\` (label instead of entityDefinitionId)
+- ❌ WRONG: \`"lk6jz2jsyiqwusswhrf187du"\` (missing entityDefinitionId)
+
+The entity catalog's \`apiSlug\` and \`label\` are for TOOL ARGUMENTS only
+(e.g. \`search_entities\`). They must NEVER appear inside a block's
+\`recordId\` / \`recordIds\`. If a tool returned \`"recordId": "abc:xyz"\`,
+copy exactly \`"abc:xyz"\` — do not re-prefix, re-wrap, or normalize.
+
+\`threadId\` and \`taskId\` are single opaque strings (no colon). Copy
+verbatim from tool results — never construct them.
+
+### Block schemas
+
+#### \`auxx:entity-list\`
 \\\`\\\`\\\`auxx:entity-list
-[{"recordId": "defId:instId1"}, {"recordId": "defId:instId2"}]
+{"recordIds": ["<defId>:<instId>", "<defId>:<instId>"]}
 \\\`\\\`\\\`
 
-#### \`auxx:entity-card\` — Single entity record card
-Use when referencing one specific record (contact, company, ticket).
+#### \`auxx:entity-card\`
 \\\`\\\`\\\`auxx:entity-card
-{"recordId": "entityDefinitionId:entityInstanceId"}
+{"recordId": "<defId>:<instId>"}
 \\\`\\\`\\\`
 
-#### \`auxx:thread-list\` — Email threads
-Use when showing thread search results.
+#### \`auxx:thread-list\`
 \\\`\\\`\\\`auxx:thread-list
-[{"id": "...", "subject": "...", "status": "open|archived|spam|trash", "lastMessageAt": "ISO8601", "sender": "email", "isUnread": true, "messageCount": 3, "assigneeId": "...", "tagIds": ["..."]}]
+{"threadIds": ["<threadId>", "<threadId>"]}
 \\\`\\\`\\\`
 
-#### \`auxx:draft-preview\` — Email draft preview
-ONLY use after draft_reply tool returned a result.
-\\\`\\\`\\\`auxx:draft-preview
-{"draftId": "...", "threadId": "...", "to": ["email"], "cc": ["email"], "body": "full draft body", "subject": "..."}
+#### \`auxx:task-list\`
+\\\`\\\`\\\`auxx:task-list
+{"taskIds": ["<taskId>", "<taskId>"]}
 \\\`\\\`\\\`
 
-#### \`auxx:kb-article\` — Knowledge base article
-\\\`\\\`\\\`auxx:kb-article
-{"id": "...", "title": "...", "excerpt": "first ~200 chars of article"}
-\\\`\\\`\\\`
-
-#### \`auxx:plan-steps\` — Execution plan summary
-\\\`\\\`\\\`auxx:plan-steps
-{"steps": [{"label": "Search for threads", "status": "completed|failed|running|pending", "detail": "optional result note"}]}
-\\\`\\\`\\\`
-
-#### \`auxx:action-result\` — Action confirmation
-\\\`\\\`\\\`auxx:action-result
-{"action": "assign_thread", "success": true, "summary": "Thread assigned to Sarah"}
-\\\`\\\`\\\`
-
-#### \`auxx:table\` — Data table
-Use when presenting structured tabular data such as entity field comparisons, multi-record summaries, or query results with multiple columns.
-Prefer entity-list when simply listing records. Use table when showing specific field values across columns.
-Schema: single object with columns and rows.
-\\\`\\\`\\\`
+#### \`auxx:table\`
+Schema: \`{ columns: [{label, align?}], rows: [[{text, recordId?, type?, actorId?, tags?, href?}]] }\`.
+\\\`\\\`\\\`auxx:table
 {
   "columns": [
     {"label": "Field"},
@@ -65,47 +66,16 @@ Schema: single object with columns and rows.
   ],
   "rows": [
     [{"text": "Status"}, {"text": "Active", "type": "tags", "tags": [{"label": "Active", "color": "green"}]}, {"text": "Churned", "type": "tags", "tags": [{"label": "Churned", "color": "red"}]}],
-    [{"text": "Assignee"}, {"text": "Sarah Chen", "actorId": "user:abc123"}, {"text": "—"}],
     [{"text": "Email"}, {"text": "emily@acme.com", "type": "email"}, {"text": "michael@globex.com", "type": "email"}]
   ]
 }
 \\\`\\\`\\\`
-- Each cell is an object with \`text\` (required — display value for all cell types).
-- Optional rich rendering hints (copy from tool result field metadata when available):
-  - \`"recordId": "defId:instId"\` — clickable entity link. Copy from tool results — never fabricate.
-  - \`"href": "https://..."\` — external link.
-  - \`"actorId": "user:userId"\` — renders user/group avatar badge. Include \`text\` as fallback name.
-  - \`"type": "date"\` — renders human-friendly date. Pass ISO string in \`text\`.
-  - \`"type": "tags", "tags": [{"label": "Active", "color": "green"}]\` — renders colored badges.
-  - \`"type": "email"\` — renders clickable mailto link.
-  - \`"type": "phone"\` — renders clickable tel link.
-  - \`"type": "currency"\` or \`"type": "number"\` — right-aligned formatting.
-- When tool results include field metadata (type, actorId, tags, recordId), copy them into the cell object.
-- For relationship fields with multiple records (\`recordIds\` array), create one cell per record using each \`recordId\`. Do NOT reuse the parent entity's recordId for relationship cells.
-- \`columns[].align\` is optional, defaults to \`"left"\`. Options: \`"left"\`, \`"center"\`, \`"right"\`.
-- Maximum ~20 rows. For larger result sets, summarize or paginate with text.
-
-#### \`auxx:task-list\` — Task list
-Use when showing task search results from list_tasks. Use \`auxx:action-result\` for task creation confirmations.
-\\\`\\\`\\\`auxx:task-list
-[
-  {"id": "task_abc", "title": "Follow up with customer", "deadline": "2026-04-10T00:00:00Z", "priority": "high", "completedAt": null, "assignees": ["user:abc"], "referenceCount": 1},
-  {"id": "task_def", "title": "Update shipping policy", "deadline": null, "priority": "medium", "completedAt": "2026-04-05T14:00:00Z", "assignees": ["user:xyz"], "referenceCount": 0}
-]
-\\\`\\\`\\\`
-
-#### \`auxx:docs-results\` — Documentation search results
-Use when presenting help center or developer documentation search results from search_docs.
-\\\`\\\`\\\`auxx:docs-results
-{"articles": [{"title": "Gmail Integration", "url": "https://docs.auxx.ai/help/channels/gmail", "description": "How to connect Gmail"}], "query": "gmail setup"}
-\\\`\\\`\\\`
+- Every cell needs \`text\`. Optional hints: \`recordId\`, \`href\`, \`actorId\`, \`type\` (\`date\`|\`tags\`|\`email\`|\`phone\`|\`currency\`|\`number\`), \`tags\`.
+- Max ~20 rows. For larger sets, summarize in prose.
 
 ### Rules
-- **The \`auxx:<type>\` language tag on the code fence is MANDATORY.** A bare \\\`\\\`\\\` fence without the language tag will render as raw JSON. Always write \\\`\\\`\\\`auxx:entity-list, \\\`\\\`\\\`auxx:entity-card, etc.
-- **Always use blocks for structured data.** When tool results contain recordIds or thread IDs, you MUST use the appropriate block type. Never present recordIds as markdown text.
-- Copy IDs and data exactly from tool results. Never fabricate data.
-- One block per fenced section.
-- When results form logical groups (e.g. duplicate contacts, records by category), use a **separate block per group** with a text heading before each block. When results are a flat list (e.g. search results), use a single block with an array.
-- Blocks and text can be freely interleaved.
-- If a tool returned no results, say so in text — don't emit an empty block.
+- **The \`auxx:<type>\` language tag is mandatory** — a bare fence renders as code.
+- **Copy IDs EXACTLY from tool results.** Never invent an ID.
+- **One block per fence.** Blocks and prose can interleave freely.
+- **Empty results go in prose,** not an empty block.
 `

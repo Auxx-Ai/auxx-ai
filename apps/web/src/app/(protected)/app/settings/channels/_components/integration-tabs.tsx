@@ -106,6 +106,7 @@ export default function IntegrationTabs() {
             <IntegrationStatusIndicator
               status={integrationStatus}
               syncStage={integration.syncStage}
+              pendingImportCount={integration.pendingImportCount}
               lastSyncAt={integration.lastSyncedAt}
               lastError={integration.lastAuthError}
               size='sm'

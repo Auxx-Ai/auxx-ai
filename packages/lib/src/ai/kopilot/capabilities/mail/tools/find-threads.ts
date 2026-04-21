@@ -83,6 +83,7 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
   return {
     name: 'find_threads',
     idempotent: true,
+    outputBlock: 'thread-list',
     description:
       'Search and filter email threads by status, assignee, tags, sender, or free-text query. Returns a list of matching thread summaries.',
     parameters: {
@@ -161,13 +162,17 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
         subject: t.subject,
         status: t.status,
         assigneeId: t.assigneeId,
-        lastMessageAt: t.lastMessageAt,
+        lastMessageAt:
+          t.lastMessageAt instanceof Date ? t.lastMessageAt.toISOString() : t.lastMessageAt,
         messageCount: t.messageCount,
         isUnread: t.isUnread,
         tagIds: t.tagIds,
       }))
 
-      return { success: true, output: { threads, count: threads.length } }
+      return {
+        success: true,
+        output: { threads, count: threads.length },
+      }
     },
   }
 }

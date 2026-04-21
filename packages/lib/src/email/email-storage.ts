@@ -25,6 +25,7 @@ import {
   getThreadMessages,
   type IngestContext,
   type IntegrationSettings,
+  normalizeOwnEmails,
   storeMessage,
 } from '../ingest'
 
@@ -61,6 +62,7 @@ export class MessageStorageService {
   private readonly ctxByOrg = new Map<string, Promise<IngestContext>>()
   private integrationSettings?: IntegrationSettings
   private isInitialSync = false
+  private ownEmails: Set<string> = new Set()
   private readonly defaultOrganizationId?: string
 
   constructor(organizationId?: string) {
@@ -81,6 +83,22 @@ export class MessageStorageService {
     for (const ctxPromise of this.ctxByOrg.values()) {
       ctxPromise.then((ctx) => {
         ctx.isInitialSync = enabled
+      })
+    }
+  }
+
+  /**
+   * Replace the set of "own" email addresses (`Integration.email` plus any
+   * verified send-as / alias addresses) used to classify message participants
+   * as internal. Providers should call this after `initialize()` so that
+   * self-addressed mail never produces a contact for the integration owner.
+   */
+  setOwnEmails(emails: Iterable<string> | undefined): void {
+    const normalized = normalizeOwnEmails(emails)
+    this.ownEmails = normalized
+    for (const ctxPromise of this.ctxByOrg.values()) {
+      ctxPromise.then((ctx) => {
+        ctx.ownEmails = new Set(normalized)
       })
     }
   }
@@ -147,6 +165,7 @@ export class MessageStorageService {
     const promise = createIngestContext(orgId, {
       integrationSettings: this.integrationSettings,
       isInitialSync: this.isInitialSync,
+      ownEmails: this.ownEmails,
     })
     this.ctxByOrg.set(orgId, promise)
     return promise

@@ -79,7 +79,7 @@ export function useLoadSession() {
         }
       }
 
-      const messages = raw.map((m, i): KopilotMessage => {
+      const messages = raw.flatMap((m, i): KopilotMessage[] => {
         const id = m.toolCallId || `loaded-${i}`
         const msg: KopilotMessage = {
           id,
@@ -112,7 +112,31 @@ export function useLoadSession() {
           }
         }
 
-        return msg
+        // Re-emit any tool-attached literal blocks (draft-preview, action-result,
+        // kb-article-list, docs-results) as role:'block' transcript items so
+        // they render after session restore.
+        const blockMessages: KopilotMessage[] = []
+        if (Array.isArray(m.blocks) && m.role === 'tool') {
+          const sourceTool = msg.tool?.name ?? toolCallLookup.get(m.toolCallId ?? '')?.name
+          for (const b of m.blocks) {
+            if (!b || typeof b !== 'object' || typeof b.type !== 'string') continue
+            blockMessages.push({
+              id: generateId(),
+              role: 'block',
+              content: '',
+              timestamp: msg.timestamp + 1,
+              parentId: msg.id,
+              block: {
+                type: b.type,
+                data: b.data,
+                sourceTool,
+                sourceToolCallId: m.toolCallId,
+              },
+            })
+          }
+        }
+
+        return [msg, ...blockMessages]
       })
       // Split: visible messages go to the store, all messages go to reconstruction.
       // After filtering out executor assistant messages, reparent so the chain

@@ -19,9 +19,15 @@ import { calculateDisplayName, calculateInitials } from './display'
 import { normalizeIdentifier } from './normalize'
 
 /**
- * Compute whether an email identifier belongs to the org's own domains.
- * Reuses the per-batch `ownDomainsByOrg` cache to avoid repeated Redis reads.
+ * Compute whether an email identifier belongs to the org. Returns true when
+ * the address matches one of the active integration's own addresses
+ * (`ctx.ownEmails`) OR sits on one of the organization's configured domains.
  * Returns false for non-email identifiers.
+ *
+ * `ctx.ownEmails` is checked first so single-mailbox orgs without
+ * `Organization.domains` configured still recognize their own mailbox as
+ * internal. The domain check is the broader, policy-level fallback and reuses
+ * the per-batch `ownDomainsByOrg` cache to avoid repeated Redis reads.
  */
 async function classifyIsInternal(
   ctx: IngestContext,
@@ -29,6 +35,7 @@ async function classifyIsInternal(
   identifierType: IdentifierType
 ): Promise<boolean> {
   if (identifierType !== IdentifierTypeEnum.EMAIL) return false
+  if (ctx.ownEmails.has(identifier.toLowerCase())) return true
   const domain = extractRegistrableDomain(identifier)
   if (!domain) return false
   let ownDomains = ctx.ownDomainsByOrg.get(ctx.organizationId)

@@ -36,6 +36,14 @@ export interface IngestContext {
 
   integrationSettings?: IntegrationSettings
   isInitialSync: boolean
+  /**
+   * Normalized email addresses that count as "us" for the active integration —
+   * the union of `Integration.email` and `Integration.metadata.userEmails`.
+   * Providers populate this on their `MessageStorageService` before dispatching
+   * ingest so participants matching any entry are treated as internal even when
+   * `Organization.domains` is unset.
+   */
+  ownEmails: Set<string>
 
   readonly companyIdByDomain: Map<string, string | null>
   readonly ownDomainsByOrg: Map<string, Set<string>>
@@ -46,6 +54,7 @@ export interface CreateIngestContextOptions {
   db?: Database
   isInitialSync?: boolean
   integrationSettings?: IntegrationSettings
+  ownEmails?: Iterable<string>
   selectiveCache?: SelectiveModeCache
 }
 
@@ -72,6 +81,7 @@ export async function createIngestContext(
     selectiveCache: opts.selectiveCache ?? new SelectiveModeCache(),
     integrationSettings: opts.integrationSettings,
     isInitialSync: opts.isInitialSync ?? false,
+    ownEmails: normalizeOwnEmails(opts.ownEmails),
     companyIdByDomain: new Map(),
     ownDomainsByOrg: new Map(),
     providerByIntegrationId: new Map(),
@@ -83,4 +93,19 @@ export function resetBatchCaches(ctx: IngestContext): void {
   ctx.companyIdByDomain.clear()
   ctx.ownDomainsByOrg.clear()
   ctx.providerByIntegrationId.clear()
+}
+
+/**
+ * Normalize a collection of "own" email addresses into a deduped, lowercased
+ * set safe for O(1) membership checks. Empty / non-string entries are dropped.
+ */
+export function normalizeOwnEmails(emails: Iterable<string> | undefined): Set<string> {
+  const out = new Set<string>()
+  if (!emails) return out
+  for (const raw of emails) {
+    if (typeof raw !== 'string') continue
+    const trimmed = raw.trim().toLowerCase()
+    if (trimmed) out.add(trimmed)
+  }
+  return out
 }

@@ -58,6 +58,12 @@
       "import": "./dist/ai/kopilot/index.mjs",
       "default": "./src/ai/kopilot/index.ts"
     },
+    "./ai/kopilot/blocks/block-types": {
+      "types": "./src/ai/kopilot/blocks/block-types.ts",
+      "source": "./src/ai/kopilot/blocks/block-types.ts",
+      "import": "./dist/ai/kopilot/blocks/block-types.mjs",
+      "default": "./src/ai/kopilot/blocks/block-types.ts"
+    },
     "./ai/kopilot/capabilities": {
       "types": "./src/ai/kopilot/capabilities/index.ts",
       "source": "./src/ai/kopilot/capabilities/index.ts",

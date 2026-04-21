@@ -2,7 +2,7 @@
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -64,6 +64,9 @@ interface RecordStoreState {
   /** RecordIds that were requested but not found (deleted/invalid) */
   notFoundIds: Set<RecordId>
 
+  /** RecordIds we've attempted to load at least once (found or not-found). Distinguishes "never fetched" from "fetched, empty". */
+  attemptedIds: Set<RecordId>
+
   /** Single batch timer for all resource types */
   batchTimer: ReturnType<typeof setTimeout> | null
 
@@ -118,6 +121,9 @@ interface RecordStoreState {
 
   /** Check if a RecordId was not found */
   isNotFound: (recordId: RecordId) => boolean
+
+  /** Check if a RecordId has been fetched at least once (found or not-found) */
+  hasLoadedOnce: (recordId: RecordId) => boolean
 
   // ─────────────────────────────────────────────────────────────────
   // INVALIDATION
@@ -187,6 +193,7 @@ export const useRecordStore = create<RecordStoreState>()(
       pendingFetchIds: new Set<RecordId>(),
       loadingIds: new Set<RecordId>(),
       notFoundIds: new Set<RecordId>(),
+      attemptedIds: new Set<RecordId>(),
       batchTimer: null,
 
       // ─── RECORD ACTIONS ────────────────────────────────────────────
@@ -200,6 +207,7 @@ export const useRecordStore = create<RecordStoreState>()(
           const map = state.records[entityDefinitionId]
           for (const record of records) {
             map.set(record.id, record)
+            state.attemptedIds.add(toRecordId(entityDefinitionId, record.id))
           }
         })
       },
@@ -215,9 +223,14 @@ export const useRecordStore = create<RecordStoreState>()(
       },
 
       removeRecord: (entityDefinitionId, id) => {
+        const recordId = toRecordId(entityDefinitionId, id)
         set((state) => {
           // Remove from records
           state.records[entityDefinitionId]?.delete(id)
+
+          // Mark as resolved-and-gone so future useRecord() calls don't re-fetch
+          state.attemptedIds.add(recordId)
+          state.notFoundIds.add(recordId)
 
           // Remove from all lists for this entity definition
           for (const [key, cache] of Object.entries(state.lists)) {
@@ -302,6 +315,7 @@ export const useRecordStore = create<RecordStoreState>()(
         set((state) => {
           for (const recordId of recordIds) {
             state.loadingIds.delete(recordId)
+            state.attemptedIds.add(recordId)
           }
         })
       },
@@ -311,6 +325,7 @@ export const useRecordStore = create<RecordStoreState>()(
           for (const recordId of recordIds) {
             state.notFoundIds.add(recordId)
             state.loadingIds.delete(recordId)
+            state.attemptedIds.add(recordId)
           }
         })
       },
@@ -330,11 +345,18 @@ export const useRecordStore = create<RecordStoreState>()(
         return get().notFoundIds.has(recordId)
       },
 
+      hasLoadedOnce: (recordId) => {
+        return get().attemptedIds.has(recordId)
+      },
+
       // ─── INVALIDATION ──────────────────────────────────────────────
 
       invalidateRecord: (entityDefinitionId, id) => {
+        const recordId = toRecordId(entityDefinitionId, id)
         set((state) => {
           state.records[entityDefinitionId]?.delete(id)
+          state.attemptedIds.delete(recordId)
+          state.notFoundIds.delete(recordId)
         })
       },
 
@@ -358,12 +380,16 @@ export const useRecordStore = create<RecordStoreState>()(
       invalidateResourceType: (entityDefinitionId) => {
         set((state) => {
           delete state.records[entityDefinitionId]
-          const prefix = `${entityDefinitionId}:`
+          const prefix = `${entityDefinitionId}:` as const
           for (const key of Object.keys(state.lists)) {
             if (key.startsWith(prefix)) {
               delete state.lists[key]
             }
           }
+          const toDropAttempted = [...state.attemptedIds].filter((rid) => rid.startsWith(prefix))
+          for (const rid of toDropAttempted) state.attemptedIds.delete(rid)
+          const toDropNotFound = [...state.notFoundIds].filter((rid) => rid.startsWith(prefix))
+          for (const rid of toDropNotFound) state.notFoundIds.delete(rid)
         })
       },
 
@@ -379,6 +405,7 @@ export const useRecordStore = create<RecordStoreState>()(
           state.pendingFetchIds.clear()
           state.loadingIds.clear()
           state.notFoundIds.clear()
+          state.attemptedIds.clear()
           state.batchTimer = null
         })
       },

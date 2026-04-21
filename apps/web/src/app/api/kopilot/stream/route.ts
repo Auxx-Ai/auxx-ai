@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
           error: error instanceof Error ? error.message : String(error),
         })
         send({
-          type: 'pipeline-error',
+          type: 'turn-error',
           error: error instanceof Error ? error.message : 'Internal server error',
         })
       } finally {
@@ -526,11 +526,7 @@ async function runWorkerPath(params: {
 
   const { handlerId, router } = await subscribeToAgentEvents(sessionId, (event) => {
     send(event)
-    if (
-      event.type === 'done' ||
-      event.type === 'pipeline-error' ||
-      event.type === 'pipeline-completed'
-    ) {
+    if (event.type === 'done' || event.type === 'turn-error' || event.type === 'turn-completed') {
       resolveCompletion()
     }
   })

@@ -8,3 +8,4 @@ export {
 } from './use-task-effective-state'
 export { useTaskMutations } from './use-task-mutations'
 export { useTasks } from './use-tasks'
+export { useTasksByIds } from './use-tasks-by-ids'

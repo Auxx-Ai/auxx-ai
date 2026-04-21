@@ -8,9 +8,8 @@ import type { GetToolDeps } from '../../types'
 export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_entity',
+    usageNotes: 'Emits an `action-result` block automatically.',
     description: `Update field values on an entity instance.
-
-APPROVAL: The platform automatically pauses and shows an approval card to the user when you call this tool. You do NOT ask the user in text — just call the tool with correct args. The user approves or rejects via the card.
 
 IMPORTANT: You MUST call list_entity_fields first to discover valid field IDs.
 Pass field values inside the "values" object using the field IDs returned by list_entity_fields.
@@ -66,9 +65,26 @@ Example:
 
       try {
         await handler.update(recordId, values)
+        const fieldNames = Object.keys(values)
+        const summary =
+          fieldNames.length === 1
+            ? `Updated ${fieldNames[0]}`
+            : `Updated ${fieldNames.length} fields`
         return {
           success: true,
-          output: { recordId, updatedFields: Object.keys(values) },
+          output: { recordId, updatedFields: fieldNames },
+          blocks: [
+            {
+              type: 'action-result',
+              data: {
+                action: 'update_entity',
+                success: true,
+                summary,
+                recordId,
+                count: fieldNames.length,
+              },
+            },
+          ],
         }
       } catch (err) {
         return {

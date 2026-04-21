@@ -8,6 +8,7 @@ export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_tasks',
     idempotent: true,
+    outputBlock: 'task-list',
     description:
       'Search and filter tasks. Returns all organization tasks by default. Use assigneeId to filter by a specific user.',
     parameters: {
@@ -72,7 +73,6 @@ export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
       return {
         success: true,
         output: { tasks, count: tasks.length, hasMore: result.hasMore },
-        blocks: tasks.length > 0 ? [{ type: 'task-list', data: tasks }] : undefined,
       }
     },
   }

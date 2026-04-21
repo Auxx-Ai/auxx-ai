@@ -61,6 +61,7 @@ interface DisplayIntegration {
   syncStage?: IntegrationSyncStage | null
   syncStageStartedAt?: Date | null
   throttleRetryAfter?: Date | null
+  pendingImportCount?: number
 }
 interface IntegrationTableProps {
   integrations: DisplayIntegration[]
@@ -286,6 +287,7 @@ export default function IntegrationTable({ integrations, inboxes }: IntegrationT
                         syncStatus: integration.syncStatus,
                       })}
                       syncStage={integration.syncStage}
+                      pendingImportCount={integration.pendingImportCount}
                       lastSyncAt={
                         integration.lastSyncedAt ? new Date(integration.lastSyncedAt) : undefined
                       }

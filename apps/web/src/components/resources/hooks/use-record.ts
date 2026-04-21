@@ -3,6 +3,7 @@
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { type RecordMeta, useRecordStore } from '../store/record-store'
+import { useNormalizedRecordId } from '../utils/normalize-record-id'
 
 /**
  * Options for useRecord hook.
@@ -26,6 +27,8 @@ interface UseRecordResult<T> {
   isCached: boolean
   /** Record was requested but not found (deleted/invalid) */
   isNotFound: boolean
+  /** A fetch attempt has completed (found or not-found). False on first render before the batch fetcher resolves. */
+  hasLoadedOnce: boolean
 }
 
 /**
@@ -42,8 +45,12 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
   recordId,
   enabled = true,
 }: UseRecordOptions): UseRecordResult<T> {
+  // Normalize the recordId prefix so both `contact:<id>` and `<UUID>:<id>`
+  // forms resolve to the same cache slot and batch request key.
+  const normalizedRecordId = useNormalizedRecordId(recordId)
+
   // Parse recordId to get entityDefinitionId and entityInstanceId
-  const parsed = recordId ? parseRecordId(recordId) : null
+  const parsed = normalizedRecordId ? parseRecordId(normalizedRecordId) : null
   const defId = parsed?.entityDefinitionId ?? ''
   const instId = parsed?.entityInstanceId ?? ''
 
@@ -59,14 +66,28 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
   const isLoading = useRecordStore(
     useCallback(
       (state) =>
-        recordId ? state.loadingIds.has(recordId) || state.pendingFetchIds.has(recordId) : false,
-      [recordId]
+        normalizedRecordId
+          ? state.loadingIds.has(normalizedRecordId) ||
+            state.pendingFetchIds.has(normalizedRecordId)
+          : false,
+      [normalizedRecordId]
     )
   )
 
   // Subscribe to not found state
   const isNotFound = useRecordStore(
-    useCallback((state) => (recordId ? state.notFoundIds.has(recordId) : false), [recordId])
+    useCallback(
+      (state) => (normalizedRecordId ? state.notFoundIds.has(normalizedRecordId) : false),
+      [normalizedRecordId]
+    )
+  )
+
+  // Subscribe to "we've completed at least one fetch attempt" state
+  const hasLoadedOnce = useRecordStore(
+    useCallback(
+      (state) => (normalizedRecordId ? state.attemptedIds.has(normalizedRecordId) : false),
+      [normalizedRecordId]
+    )
   )
 
   // Track IDs we've already requested to prevent duplicate requests
@@ -78,25 +99,26 @@ export function useRecord<T extends RecordMeta = RecordMeta>({
   // Request fetch in useLayoutEffect - runs synchronously before paint
   // This prevents the flicker where the component renders with isLoading=false
   useLayoutEffect(() => {
-    if (!enabled || !recordId) return
+    if (!enabled || !normalizedRecordId) return
     if (record) return
-    if (requestedRef.current.has(recordId)) return
+    if (requestedRef.current.has(normalizedRecordId)) return
 
-    requestedRef.current.add(recordId)
-    requestRecord(recordId)
-  }, [enabled, recordId, record, requestRecord])
+    requestedRef.current.add(normalizedRecordId)
+    requestRecord(normalizedRecordId)
+  }, [enabled, normalizedRecordId, record, requestRecord])
 
   // Clear requested set when recordId changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: recordId triggers clearing the requested set
+  // biome-ignore lint/correctness/useExhaustiveDependencies: normalizedRecordId triggers clearing the requested set
   useEffect(() => {
     requestedRef.current.clear()
-  }, [recordId])
+  }, [normalizedRecordId])
 
   return {
     record,
     isLoading: !record && isLoading,
     isCached: !!record,
     isNotFound,
+    hasLoadedOnce,
   }
 }
 

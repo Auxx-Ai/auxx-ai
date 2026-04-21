@@ -152,4 +152,22 @@ describe('formatSyncStage', () => {
   it('returns label for IDLE', () => {
     expect(formatSyncStage('IDLE')).toBe('In progress')
   })
+
+  it('appends remaining count for MESSAGES_IMPORT_PENDING', () => {
+    expect(formatSyncStage('MESSAGES_IMPORT_PENDING', 58)).toBe(
+      'Preparing to import messages (58 remaining)'
+    )
+  })
+
+  it('appends remaining count for MESSAGES_IMPORT', () => {
+    expect(formatSyncStage('MESSAGES_IMPORT', 1234)).toBe('Importing messages (1,234 remaining)')
+  })
+
+  it('omits remaining count when zero', () => {
+    expect(formatSyncStage('MESSAGES_IMPORT', 0)).toBe('Importing messages')
+  })
+
+  it('ignores remaining count for non-import stages', () => {
+    expect(formatSyncStage('MESSAGE_LIST_FETCH', 58)).toBe('Fetching message list')
+  })
 })

@@ -17,6 +17,9 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
   return {
     name: 'get_thread_detail',
     idempotent: true,
+    outputBlock: 'thread-list',
+    usageNotes:
+      "Returns a single thread's messages. Use after `find_threads` to read a conversation before drafting a reply.",
     description:
       'Get full details for a specific thread including metadata and messages. Use this to read the conversation before drafting a reply.',
     parameters: {
@@ -68,7 +71,10 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
             subject: thread.subject,
             status: thread.status,
             assigneeId: thread.assigneeId,
-            lastMessageAt: thread.lastMessageAt,
+            lastMessageAt:
+              thread.lastMessageAt instanceof Date
+                ? thread.lastMessageAt.toISOString()
+                : thread.lastMessageAt,
             messageCount: thread.messageCount,
             isUnread: thread.isUnread,
             tagIds: thread.tagIds,

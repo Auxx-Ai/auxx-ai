@@ -209,6 +209,60 @@ export class TaskService {
   }
 
   /**
+   * Batch fetch multiple tasks by ID with relations. Returns tasks in an
+   * arbitrary order — found tasks only (missing ids are silently dropped).
+   * Used by the by-id hydration path for kopilot reference blocks.
+   */
+  async getTasksByIds(taskIds: string[], organizationId: string): Promise<TaskWithRelations[]> {
+    if (taskIds.length === 0) return []
+
+    const tasks = await this.db.query.Task.findMany({
+      where: (t, { eq, and, inArray: inArrayOp }) =>
+        and(inArrayOp(t.id, taskIds), eq(t.organizationId, organizationId)),
+    })
+
+    if (tasks.length === 0) return []
+
+    const foundIds = tasks.map((t) => t.id)
+
+    const assignmentRows = await this.db.query.TaskAssignment.findMany({
+      where: (a, { inArray: inArrayOp, and, isNull: isNullOp }) =>
+        and(inArrayOp(a.taskId, foundIds), isNullOp(a.unassignedAt)),
+      columns: { taskId: true, assignedToUserId: true },
+    })
+
+    const referenceRows = await this.db.query.TaskReference.findMany({
+      where: (r, { inArray: inArrayOp, and, isNull: isNullOp }) =>
+        and(inArrayOp(r.taskId, foundIds), isNullOp(r.deletedAt)),
+      columns: {
+        taskId: true,
+        referencedEntityDefinitionId: true,
+        referencedEntityInstanceId: true,
+      },
+    })
+
+    const assignmentsByTask = new Map<string, ActorId[]>()
+    for (const row of assignmentRows) {
+      const list = assignmentsByTask.get(row.taskId) ?? []
+      list.push(toActorId('user', row.assignedToUserId))
+      assignmentsByTask.set(row.taskId, list)
+    }
+
+    const referencesByTask = new Map<string, RecordId[]>()
+    for (const row of referenceRows) {
+      const list = referencesByTask.get(row.taskId) ?? []
+      list.push(toRecordId(row.referencedEntityDefinitionId, row.referencedEntityInstanceId))
+      referencesByTask.set(row.taskId, list)
+    }
+
+    return tasks.map((task) => ({
+      ...task,
+      assignments: assignmentsByTask.get(task.id) ?? [],
+      references: referencesByTask.get(task.id) ?? [],
+    }))
+  }
+
+  /**
    * Update an existing task with partial data.
    * Only fields that are defined (not undefined) will be updated.
    * Pass null to explicitly clear a field.

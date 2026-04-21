@@ -26,20 +26,44 @@ export function normalizeRecordId(recordId: RecordId, resource: Resource): Recor
 /**
  * Hook variant of {@link normalizeRecordId} that resolves the resource from the
  * resource store. Falls back to the input when the resource is unknown.
+ *
+ * Subscribes only to `hasLoadedOnce` (a single-flip boolean) rather than the
+ * whole `resourceMap`, then reads the map imperatively. This keeps
+ * subscription fan-out minimal on pages with hundreds of badges — zustand
+ * skips notifications when `hasLoadedOnce` stays `true`, so mid-session
+ * `setResources` calls (optimistic resource updates, new fields arriving, …)
+ * do not re-render every consumer.
  */
 export function useNormalizedRecordId(
   recordId: RecordId | null | undefined
 ): RecordId | null | undefined {
-  const resourceMap = useResourceStore((s) => s.resourceMap)
+  const hasLoaded = useResourceStore((s) => s.hasLoadedOnce)
 
   return useMemo(() => {
     if (!recordId) return recordId
-    const { entityDefinitionId } = parseRecordId(recordId)
-    if (!entityDefinitionId) return recordId
-    const resource = resourceMap.get(entityDefinitionId)
-    if (!resource) return recordId
-    return normalizeRecordId(recordId, resource)
-  }, [recordId, resourceMap])
+    if (!hasLoaded) return recordId
+    return getNormalizedRecordId(recordId)
+  }, [recordId, hasLoaded])
+}
+
+/**
+ * Plural variant of {@link useNormalizedRecordId}. Maps each id through the
+ * same imperative lookup. Returns the input array unchanged when resources
+ * haven't loaded yet.
+ */
+export function useNormalizedRecordIds(recordIds: RecordId[]): RecordId[] {
+  const hasLoaded = useResourceStore((s) => s.hasLoadedOnce)
+
+  return useMemo(() => {
+    if (!hasLoaded) return recordIds
+    let changed = false
+    const normalized = recordIds.map((rid) => {
+      const next = getNormalizedRecordId(rid)
+      if (next !== rid) changed = true
+      return next
+    })
+    return changed ? normalized : recordIds
+  }, [recordIds, hasLoaded])
 }
 
 /**

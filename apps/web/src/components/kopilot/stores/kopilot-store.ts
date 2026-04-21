@@ -35,7 +35,7 @@ export interface ThinkingGroup {
 
 export interface KopilotMessage {
   id: string
-  role: 'user' | 'assistant' | 'tool' | 'system'
+  role: 'user' | 'assistant' | 'tool' | 'system' | 'block'
   content: string
   timestamp: number
   /** Parent message ID — null for root messages */
@@ -50,6 +50,15 @@ export interface KopilotMessage {
     args: Record<string, unknown>
     result?: unknown
     status: 'running' | 'completed' | 'error'
+  }
+  /** Block payload for role='block' — rich UI card produced by the tool above */
+  block?: {
+    type: string
+    data: unknown
+    /** Source tool that emitted this block — used for "see result below" links on approval cards */
+    sourceTool?: string
+    /** Tool call id of the producing tool (when known) */
+    sourceToolCallId?: string
   }
   /** Approval state — present when this message represents a tool approval request */
   approval?: {
@@ -220,15 +229,18 @@ const initialStreamState: KopilotStreamState = {
 }
 
 /**
- * Detect executor assistant messages — these should be hidden from the visible
- * message list and only used for thinking step reconstruction.
+ * Detect intermediate assistant messages that carried tool calls — these should
+ * be hidden from the visible message list and used only for thinking-step
+ * reconstruction. The final prose message is the one without toolCalls (or with
+ * `metadata.final === true`).
  */
 export function isExecutorAssistant(m: KopilotMessage): boolean {
-  // Tagged messages (new sessions after this fix)
-  if (m.role === 'assistant' && m.metadata?.agent === 'executor') return true
-  // Untagged messages (old sessions) — assistant with toolCalls = executor
-  if (m.role === 'assistant' && !m.metadata?.agent && m.toolCalls && m.toolCalls.length > 0)
-    return true
+  if (m.role !== 'assistant') return false
+  if (m.metadata?.final === true) return false
+  // Solo agent intermediate message — carries toolCalls
+  if (m.toolCalls && m.toolCalls.length > 0) return true
+  // Legacy tagging from the old executor pipeline
+  if (m.metadata?.agent === 'executor') return true
   return false
 }
 

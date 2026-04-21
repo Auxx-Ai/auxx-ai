@@ -7,6 +7,7 @@ import { hydrateMultipleRecords } from '~/components/resources/store/hydrate-fie
 import { api } from '~/trpc/react'
 import { getRecordStoreState, type RecordMeta, useRecordStore } from '../store/record-store'
 import { useResourceStore } from '../store/resource-store'
+import { getNormalizedRecordId } from '../utils/normalize-record-id'
 
 const BATCH_DELAY = 50
 const EMPTY_ITEMS: RecordId[] = []
@@ -65,24 +66,36 @@ export function useRecordBatchFetcher() {
     const foundIds = new Set<RecordId>()
 
     for (const item of Object.values(data)) {
+      // Canonicalize the recordId so items stored under type-name prefixes
+      // (e.g. "contact:<id>") land in the same cache slot as items stored
+      // under the EntityDefinition UUID. Prevents duplicate slots for the
+      // same underlying entity and unblocks reads that were requested under
+      // either prefix form.
+      const canonicalRecordId = getNormalizedRecordId(item.recordId as RecordId)
+
       const record: RecordMeta = {
         id: item.id,
         createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
         updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
         ...item.data,
+        recordId: canonicalRecordId,
         displayName: item.displayName,
         secondaryInfo: item.secondaryInfo,
         avatarUrl: item.avatarUrl,
       }
 
-      const entityDefinitionId = getDefinitionId(item.recordId)
+      const entityDefinitionId = getDefinitionId(canonicalRecordId)
 
       const list = byEntityDefinitionId.get(entityDefinitionId) ?? []
       list.push(record)
       byEntityDefinitionId.set(entityDefinitionId, list)
 
-      // Track found RecordIds
+      // Track both the original and canonical forms as found so `missingIds`
+      // below isn't confused by requests that used the type-name prefix.
       foundIds.add(item.recordId)
+      if (canonicalRecordId !== item.recordId) {
+        foundIds.add(canonicalRecordId)
+      }
     }
 
     // Identify missing items (requested but not returned = deleted/invalid)

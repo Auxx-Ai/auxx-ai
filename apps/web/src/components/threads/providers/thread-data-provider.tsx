@@ -4,6 +4,7 @@
 import type React from 'react'
 import { useEffect } from 'react'
 import { useMailCountsStore } from '~/components/mail/store'
+import { useTaskStore } from '~/components/tasks/stores/task-store'
 import { api } from '~/trpc/react'
 import { useThreadRealtime } from '../realtime'
 import { useMessageStore, useParticipantStore, useThreadStore } from '../store'
@@ -117,6 +118,36 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
 
     return () => clearTimeout(timer)
   }, [pendingParticipantCount, startParticipantBatch, completeParticipantBatch, fetchParticipants])
+
+  // ============================================================
+  // Task by-id batch fetching (kopilot reference blocks)
+  // ============================================================
+  const pendingTaskCount = useTaskStore((s) => s.pendingFetchIds.size)
+  const startTaskBatch = useTaskStore((s) => s.startBatch)
+  const completeTaskBatch = useTaskStore((s) => s.completeBatch)
+
+  const { mutateAsync: fetchTasks } = api.task.getByIds.useMutation()
+
+  useEffect(() => {
+    if (pendingTaskCount === 0) return
+
+    const timer = setTimeout(async () => {
+      const batch = startTaskBatch()
+      if (batch.length === 0) return
+
+      try {
+        const tasks = await fetchTasks({ ids: batch })
+        const foundIds = new Set(tasks.map((t) => t.id))
+        const notFoundIds = batch.filter((id) => !foundIds.has(id))
+        completeTaskBatch(tasks, notFoundIds)
+      } catch (error) {
+        console.error('Task batch fetch failed:', error)
+        completeTaskBatch([], batch)
+      }
+    }, 50)
+
+    return () => clearTimeout(timer)
+  }, [pendingTaskCount, startTaskBatch, completeTaskBatch, fetchTasks])
 
   // ============================================================
   // Standalone draft batch fetching

@@ -14,4 +14,6 @@ export {
   normalizeRecordId,
   // Hook (resolves resource from the store)
   useNormalizedRecordId,
+  // Plural hook
+  useNormalizedRecordIds,
 } from './normalize-record-id'

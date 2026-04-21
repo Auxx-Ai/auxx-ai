@@ -9,6 +9,7 @@ import type { GetToolDeps } from '../../types'
 export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_thread',
+    usageNotes: 'Emits an `action-result` block automatically.',
     description:
       "Update a thread's status, assignee, or tags. At least one update field must be provided besides threadId.",
     parameters: {
@@ -98,10 +99,35 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
         }
       }
 
+      const changeSummary = buildUpdateThreadSummary(changes)
       return {
         success: true,
         output: { threadId, updated: true, changes },
+        blocks: [
+          {
+            type: 'action-result',
+            data: {
+              action: 'update_thread',
+              success: true,
+              summary: `Thread updated: ${changeSummary}`,
+              threadId,
+            },
+          },
+        ],
       }
     },
   }
+}
+
+function buildUpdateThreadSummary(changes: Record<string, unknown>): string {
+  const parts: string[] = []
+  if (typeof changes.status === 'string') parts.push(`status → ${changes.status}`)
+  if (typeof changes.assigneeId === 'string') parts.push(`assignee → ${changes.assigneeId}`)
+  if (Array.isArray(changes.addedTags) && changes.addedTags.length > 0) {
+    parts.push(`+${changes.addedTags.length} tag${changes.addedTags.length === 1 ? '' : 's'}`)
+  }
+  if (Array.isArray(changes.removedTags) && changes.removedTags.length > 0) {
+    parts.push(`-${changes.removedTags.length} tag${changes.removedTags.length === 1 ? '' : 's'}`)
+  }
+  return parts.length > 0 ? parts.join(', ') : 'no changes'
 }

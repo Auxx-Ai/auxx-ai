@@ -12,12 +12,6 @@ export {
 } from './capabilities'
 export type { KopilotDomainConfigOptions } from './domain-config'
 export { createKopilotDomainConfig } from './domain-config'
+export { createSubmitFinalAnswerTool } from './meta-tools/submit-final-answer'
 export { generateSessionTitle } from './session-title'
-export type {
-  KopilotDomainState,
-  KopilotExecutionMode,
-  KopilotRoute,
-  PlanStep,
-  SessionContext,
-  SupervisorClassification,
-} from './types'
+export type { KopilotDomainState, SessionContext } from './types'

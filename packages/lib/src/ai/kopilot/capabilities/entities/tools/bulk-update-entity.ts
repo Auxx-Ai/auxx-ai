@@ -8,9 +8,8 @@ import type { GetToolDeps } from '../../types'
 export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'bulk_update_entity',
+    usageNotes: 'Emits an `action-result` block automatically.',
     description: `Update the same field values on multiple entity instances at once. All records must be the same entity type.
-
-APPROVAL: The platform automatically pauses and shows an approval card to the user when you call this tool. You do NOT ask the user in text — just call the tool with correct args. The user approves or rejects via the card.
 
 IMPORTANT: You MUST call list_entity_fields first to discover valid field IDs.
 Use this tool instead of update_entity when updating 2+ records with the same field values.
@@ -94,14 +93,27 @@ Example:
           values: values.map((v) => ({ fieldId: v.fieldId, value: v.value ?? null })),
         })
 
+        const fieldNames = values.map((v) => v.fieldId)
         return {
           success: true,
           output: {
             total: allRecordIds.length,
             approved: recordIds.length,
             updated: result.count,
-            updatedFields: values.map((v) => v.fieldId),
+            updatedFields: fieldNames,
           },
+          blocks: [
+            {
+              type: 'action-result',
+              data: {
+                action: 'bulk_update_entity',
+                success: true,
+                summary: `Updated ${result.count} record${result.count === 1 ? '' : 's'} (${fieldNames.join(', ')})`,
+                recordIds,
+                count: result.count,
+              },
+            },
+          ],
         }
       } catch (err) {
         return {
