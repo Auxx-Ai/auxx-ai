@@ -11,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { FolderIcon, Save, ShareIcon, UserIcon, UsersIcon } from 'lucide-react'
@@ -19,8 +18,7 @@ import React from 'react'
 import { useForm } from 'react-hook-form'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
-// Import the SnippetPlaceholder component
-import { SnippetPlaceholder } from './snippet-placeholder'
+import { SnippetEditor } from './snippet-editor'
 import { SnippetSharing } from './snippet-sharing'
 
 interface FormValues {
@@ -56,8 +54,11 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
   })
   const utils = api.useUtils()
   const posthog = useAnalytics()
-  const [isContentFocused, setIsContentFocused] = React.useState(false)
   const [isSharingDialogOpen, setIsSharingDialogOpen] = React.useState(false)
+  // Register content/contentHtml with react-hook-form so validation + isDirty
+  // work without the tiptap editor being a direct <input>.
+  register('content', { required: 'Content is required' })
+  register('contentHtml')
   // Get form values for sharing dialog
   const sharingType = watch('sharingType')
   // Get folders
@@ -107,27 +108,13 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
       createMutation.mutate(data)
     }
   }
-  // Handle placeholder insertion
-  const handleInsertPlaceholder = (placeholder: string) => {
-    const contentField = document.getElementById('content') as HTMLTextAreaElement
-    if (!contentField) return
-    const start = contentField.selectionStart
-    const end = contentField.selectionEnd
-    const currentContent = contentField.value
-    const newContent =
-      currentContent.substring(0, start) + placeholder + currentContent.substring(end)
-    setValue('content', newContent, { shouldDirty: true })
-    // Set cursor position after the inserted placeholder
-    setTimeout(() => {
-      contentField.focus()
-      contentField.setSelectionRange(start + placeholder.length, start + placeholder.length)
-    }, 0)
-  }
-  // Handle content changes (e.g., from rich text editor if implemented)
-  const handleContentChange = (content: string, html?: string) => {
-    setValue('content', content, { shouldDirty: true })
-    if (html) setValue('contentHtml', html, { shouldDirty: true })
-  }
+  const handleEditorChange = React.useCallback(
+    (html: string, text: string) => {
+      setValue('contentHtml', html, { shouldDirty: true })
+      setValue('content', text, { shouldDirty: true, shouldValidate: true })
+    },
+    [setValue]
+  )
   const share = api.snippet.share.useMutation()
   // Handle sharing dialog
   const handleShareSettings = (
@@ -207,20 +194,12 @@ export function SnippetForm({ snippetId, initialValues, onSuccess, onCancel }: S
         </div>
 
         <div className='relative flex flex-col space-y-2'>
-          <div className='flex items-center justify-between'>
-            <Label htmlFor='content'>Content</Label>
-            {/* {isContentFocused && ( */}
-            <div className='absolute right-2 bottom-2'>
-              <SnippetPlaceholder onInsert={handleInsertPlaceholder} />
-            </div>
-            {/* )} */}
-          </div>
-          <Textarea
-            id='content'
-            {...register('content', { required: 'Content is required' })}
-            className={cn('h-60 font-mono text-sm', errors.content && 'border-red-500')}
-            onFocus={() => setIsContentFocused(true)}
-            onBlur={() => setIsContentFocused(false)}
+          <Label htmlFor='content'>Content</Label>
+          <SnippetEditor
+            contentHtml={initialValues?.contentHtml || initialValues?.content || ''}
+            onChange={handleEditorChange}
+            placeholder='Type / to insert a placeholder...'
+            wrapperClassName={cn(errors.content && 'border-red-500')}
           />
           {errors.content && <p className='mt-1 text-sm text-red-500'>{errors.content.message}</p>}
         </div>

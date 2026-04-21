@@ -436,6 +436,18 @@
       "import": "./dist/permissions/client.mjs",
       "default": "./src/permissions/client.ts"
     },
+    "./placeholders": {
+      "types": "./src/placeholders/index.ts",
+      "source": "./src/placeholders/index.ts",
+      "import": "./dist/placeholders/index.mjs",
+      "default": "./src/placeholders/index.ts"
+    },
+    "./placeholders/client": {
+      "types": "./src/placeholders/client.ts",
+      "source": "./src/placeholders/client.ts",
+      "import": "./dist/placeholders/client.mjs",
+      "default": "./src/placeholders/client.ts"
+    },
     "./posthog/posthog-client": {
       "types": "./src/posthog/posthog-client.ts",
       "source": "./src/posthog/posthog-client.ts",

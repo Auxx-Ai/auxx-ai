@@ -303,6 +303,18 @@ export function RecordPickerContent({
   const hasResultsSection = availableItems.length > 0
   const showEntityType = isGlobalSearch || isMultiEntitySearch
 
+  // In external-search mode, show a "Searching..." placeholder while the query is in
+  // flight or the debounce is still catching up — otherwise the popover collapses
+  // to an empty box on the first keystrokes before results arrive.
+  const isExternalMode = externalSearch !== undefined
+  const isDebouncePending = search !== debouncedSearch
+  const showSearchingPlaceholder =
+    isExternalMode &&
+    search.trim().length > 0 &&
+    (isSearching || isDebouncePending) &&
+    !hasSelectedSection &&
+    !hasResultsSection
+
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
       {externalSearch === undefined && (
@@ -315,9 +327,12 @@ export function RecordPickerContent({
         />
       )}
       <CommandList>
-        {!isSearching && debouncedSearch.trim() && !hasSelectedSection && !hasResultsSection && (
-          <CommandPlaceholder>No results found</CommandPlaceholder>
-        )}
+        {showSearchingPlaceholder && <CommandPlaceholder>Searching...</CommandPlaceholder>}
+        {!showSearchingPlaceholder &&
+          !isSearching &&
+          debouncedSearch.trim() &&
+          !hasSelectedSection &&
+          !hasResultsSection && <CommandPlaceholder>No results found</CommandPlaceholder>}
 
         {/* Selected Items Section */}
         {hasSelectedSection && (

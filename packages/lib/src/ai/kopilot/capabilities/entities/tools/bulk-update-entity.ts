@@ -23,8 +23,9 @@ entity's type in the current turn, call it first. Do NOT guess field ids from pr
 turns, system prompt, or intuition — always use the exact \`id\` returned by the most
 recent list_entity_fields call.
 
-Each \`fieldId\` must be an id from list_entity_fields (usually the field's
-systemAttribute like \`ticket_status\`, \`company_website\`). Unknown ids are rejected.
+Each \`fieldId\` must be an id from list_entity_fields. Unknown ids are rejected.
+Do NOT include ids flagged \`readOnly: true\` or \`createOnly: true\` — the backend ignores
+them on update. Ids listed in \`autoFilled\` are also system-managed; don't pass them.
 
 Use this tool instead of update_entity when updating 2+ records with the same field values.
 
