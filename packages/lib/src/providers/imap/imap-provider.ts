@@ -130,6 +130,12 @@ export class ImapProvider extends BaseMessageProvider implements ChannelProvider
     // Initialize SMTP for sending
     await this.smtpService.initialize(this.credentials)
 
+    // Surface the canonical "us" address set to the ingest pipeline so
+    // self-addressed mail never produces a contact for the integration owner.
+    if (integration.email) {
+      this.storageService.setOwnEmails([integration.email])
+    }
+
     logger.info(`ImapProvider initialized for ${integration.email}`)
   }
 

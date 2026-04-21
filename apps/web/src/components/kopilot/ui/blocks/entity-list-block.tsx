@@ -11,7 +11,9 @@ import type { EntityListData } from './block-schemas'
 import { EntityCardItem } from './entity-card-item'
 
 export function EntityListBlock({ data, skipEntrance }: BlockRendererProps<EntityListData>) {
-  const entityDefId = data.length > 0 ? getDefinitionId(data[0].recordId) : null
+  const { recordIds, snapshot } = data
+  const firstId = recordIds[0]
+  const entityDefId = firstId ? getDefinitionId(firstId) : null
   const { resource } = useResource(entityDefId)
 
   return (
@@ -25,12 +27,12 @@ export function EntityListBlock({ data, skipEntrance }: BlockRendererProps<Entit
           />
         }
         primaryText={resource?.plural ?? 'Records'}
-        secondaryText={<span className='text-xs text-muted-foreground'>{data.length}</span>}
+        secondaryText={<span className='text-xs text-muted-foreground'>{recordIds.length}</span>}
         hasFooter={false}>
         <div className='space-y-2'>
-          {data.map((item, index) => (
+          {recordIds.map((recordId, index) => (
             <motion.div
-              key={item.recordId}
+              key={recordId}
               initial={skipEntrance ? false : { opacity: 0, scale: 0.92, y: 6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{
@@ -39,7 +41,7 @@ export function EntityListBlock({ data, skipEntrance }: BlockRendererProps<Entit
                 damping: 22,
                 delay: skipEntrance ? 0 : Math.min(index * 0.06, 0.4),
               }}>
-              <EntityCardItem recordId={item.recordId} />
+              <EntityCardItem recordId={recordId} snapshot={snapshot?.[recordId]} />
             </motion.div>
           ))}
         </div>

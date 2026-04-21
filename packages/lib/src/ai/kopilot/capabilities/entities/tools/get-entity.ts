@@ -16,6 +16,7 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_entity',
     idempotent: true,
+    outputBlock: 'entity-card',
     description:
       'Get detailed information about a specific entity instance including all field values. Use when you need to read specific field data, not just display the record.',
     parameters: {

@@ -11,6 +11,7 @@ export function createSearchRagTool(_getDeps: GetToolDeps): AgentToolDefinition 
   return {
     name: 'search_rag',
     idempotent: true,
+    usageNotes: 'Emits a `kb-article-list` block automatically.',
     description:
       "Search the organization's uploaded documents and datasets using semantic search. Only for uploaded files/documents (e.g. PDFs, manuals, policy docs). Do NOT use this to look up contacts, customers, products, orders, vendors, or any other entity/record — use search_entities for that.",
     parameters: {
@@ -82,6 +83,21 @@ export function createSearchRagTool(_getDeps: GetToolDeps): AgentToolDefinition 
             total: response.total,
             searchType: response.searchType,
           },
+          blocks: [
+            {
+              type: 'kb-article-list',
+              data: {
+                query,
+                articles: results.map((r, i) => ({
+                  id: `${r.datasetId}:${i}`,
+                  title: r.documentTitle,
+                  excerpt: r.content,
+                  datasetName: r.datasetName,
+                  score: r.score,
+                })),
+              },
+            },
+          ],
         }
       } catch (error) {
         return {

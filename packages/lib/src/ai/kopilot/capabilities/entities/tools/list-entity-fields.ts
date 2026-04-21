@@ -93,9 +93,11 @@ export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefi
         return base
       })
 
+      const entityDefinitionId = resource.entityDefinitionId ?? resource.id
+
       return {
         success: true,
-        output: { entityDefinitionId: resource.entityDefinitionId ?? resource.id, fields: output },
+        output: { entityDefinitionId, fields: output },
       }
     },
   }

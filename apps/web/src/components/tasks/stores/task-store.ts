@@ -11,6 +11,11 @@ import { immer } from 'zustand/middleware/immer'
 /** Delay before list reorders after completion toggle (ms) */
 export const LIST_UPDATE_DELAY_MS = 2000
 
+/** Batch coalesce window for by-id task fetches (ms) */
+const BATCH_DELAY = 50
+/** Max ids per batch request — matches record-store constant */
+const MAX_BATCH_SIZE = 100
+
 /**
  * Pending completion state for optimistic updates
  */
@@ -38,6 +43,18 @@ interface TaskStoreState {
   /** Single global timer for debounced batch updates */
   globalUpdateTimer: NodeJS.Timeout | null
 
+  /** Task ids queued for the next by-id batch fetch */
+  pendingFetchIds: Set<string>
+
+  /** Task ids currently in-flight */
+  loadingIds: Set<string>
+
+  /** Task ids the server returned as missing */
+  notFoundIds: Set<string>
+
+  /** Debounce timer for the next batch — reset on each `requestTask` */
+  batchTimer: ReturnType<typeof setTimeout> | null
+
   /** Set multiple tasks (from list fetch) */
   setTasks: (tasks: TaskWithRelations[]) => void
 
@@ -52,6 +69,15 @@ interface TaskStoreState {
 
   /** Clear all cached tasks */
   clearAll: () => void
+
+  /** Queue a task id for batch hydration (no-op if cached/pending/loading/not-found) */
+  requestTask: (taskId: string) => void
+
+  /** Move pending ids into loading and return the batch to fetch */
+  startBatch: () => string[]
+
+  /** Commit a finished batch: cache the found tasks, mark misses in notFoundIds */
+  completeBatch: (tasks: TaskWithRelations[], notFoundIds: string[]) => void
 
   /**
    * Set optimistic completion state for a task.
@@ -116,11 +142,16 @@ export const useTaskStore = create<TaskStoreState>()(
       tasks: new Map(),
       pendingCompletions: new Map(),
       globalUpdateTimer: null,
+      pendingFetchIds: new Set<string>(),
+      loadingIds: new Set<string>(),
+      notFoundIds: new Set<string>(),
+      batchTimer: null,
 
       setTasks: (tasks) => {
         set((state) => {
           for (const task of tasks) {
             state.tasks.set(task.id, task)
+            state.notFoundIds.delete(task.id)
           }
         })
       },
@@ -138,6 +169,60 @@ export const useTaskStore = create<TaskStoreState>()(
         set((state) => {
           state.tasks.delete(taskId)
           state.pendingCompletions.delete(taskId)
+          state.pendingFetchIds.delete(taskId)
+          state.loadingIds.delete(taskId)
+          state.notFoundIds.delete(taskId)
+        })
+      },
+
+      requestTask: (taskId) => {
+        const state = get()
+        if (state.tasks.has(taskId)) return
+        if (state.pendingFetchIds.has(taskId)) return
+        if (state.loadingIds.has(taskId)) return
+        if (state.notFoundIds.has(taskId)) return
+
+        set((s) => {
+          s.pendingFetchIds.add(taskId)
+        })
+
+        if (!get().batchTimer) {
+          const timer = setTimeout(() => {
+            set((s) => {
+              s.batchTimer = null
+            })
+            // ThreadDataProvider picks up via subscription to pendingFetchIds.size
+          }, BATCH_DELAY)
+          set((s) => {
+            s.batchTimer = timer
+          })
+        }
+      },
+
+      startBatch: () => {
+        const pending = get().pendingFetchIds
+        if (pending.size === 0) return []
+        const batch = Array.from(pending).slice(0, MAX_BATCH_SIZE)
+        set((s) => {
+          for (const id of batch) {
+            s.pendingFetchIds.delete(id)
+            s.loadingIds.add(id)
+          }
+        })
+        return batch
+      },
+
+      completeBatch: (tasks, notFoundIds) => {
+        set((state) => {
+          for (const task of tasks) {
+            state.tasks.set(task.id, task)
+            state.loadingIds.delete(task.id)
+            state.notFoundIds.delete(task.id)
+          }
+          for (const id of notFoundIds) {
+            state.loadingIds.delete(id)
+            state.notFoundIds.add(id)
+          }
         })
       },
 
@@ -149,13 +234,16 @@ export const useTaskStore = create<TaskStoreState>()(
 
       clearAll: () => {
         const state = get()
-        if (state.globalUpdateTimer) {
-          clearTimeout(state.globalUpdateTimer)
-        }
+        if (state.globalUpdateTimer) clearTimeout(state.globalUpdateTimer)
+        if (state.batchTimer) clearTimeout(state.batchTimer)
         set((s) => {
           s.tasks.clear()
           s.pendingCompletions.clear()
           s.globalUpdateTimer = null
+          s.pendingFetchIds.clear()
+          s.loadingIds.clear()
+          s.notFoundIds.clear()
+          s.batchTimer = null
         })
       },
 

@@ -76,64 +76,64 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           setActiveSessionId(data.sessionId)
           break
         }
-        case 'pipeline-started': {
+        case 'turn-started': {
           setCurrentRoute(data.route)
           setIsStreaming(true)
           responderCommittedRef.current = false
           break
         }
+        case 'turn-completed': {
+          // Finalize streaming state; `done` still handles cleanup.
+          break
+        }
+        case 'final-message-delta': {
+          appendStreamDelta(data.delta)
+          break
+        }
+        case 'final-message': {
+          // Close out the thinking group, then commit the assistant prose.
+          finalizeThinkingGroup()
+          const store = useKopilotStore.getState()
+          const content = data.content || store.stream.streamingContent
+          const leafId = getCurrentLeafId()
+          if (content) {
+            const msgId = streamingMessageIdRef.current || generateId()
+            addMessage({
+              id: msgId,
+              role: 'assistant',
+              content,
+              timestamp: Date.now(),
+              parentId: leafId,
+            })
+            attachThinkingGroupToMessage(msgId)
+            responderCommittedRef.current = true
+          }
+          streamingMessageIdRef.current = null
+          clearStream()
+          break
+        }
         case 'agent-started': {
           setCurrentAgent(data.agent)
-          if (data.agent === 'executor') {
-            beginThinkingGroup()
-          }
-          if (data.agent === 'responder') {
-            finalizeThinkingGroup()
-          }
+          // Solo agent: open a thinking group on the first agent-started.
+          // (The group is finalized when the final message arrives.)
+          beginThinkingGroup()
           break
         }
         case 'llm-stream': {
-          if (data.agent === 'responder') {
-            appendStreamDelta(data.delta)
-          } else if (data.agent === 'executor') {
-            appendThinkingText(data.delta)
-          }
+          // Interstitial prose (between tool calls) goes into the thinking group —
+          // the user-visible final message is carried by submit_final_answer and
+          // surfaces via final-message-delta / final-message instead.
+          appendThinkingText(data.delta)
           break
         }
         case 'llm-reasoning-stream': {
           // Reasoning content from thinking-enabled models (Kimi, DeepSeek, Qwen)
-          // flows into the same thinking buffer during executor phase.
-          // Responder reasoning is internal — not shown in the response stream.
-          if (data.agent === 'executor') {
-            appendThinkingText(data.delta)
-          }
+          // flows into the thinking buffer.
+          appendThinkingText(data.delta)
           break
         }
         case 'llm-complete': {
-          if (data.agent === 'executor') {
-            commitThinkingText()
-          } else if (data.agent === 'responder') {
-            // Commit the assistant message using the authoritative content from the
-            // server event, falling back to the accumulated streaming deltas.
-            const store = useKopilotStore.getState()
-            const content = data.content || store.stream.streamingContent
-            const leafId = getCurrentLeafId()
-
-            if (content) {
-              const msgId = streamingMessageIdRef.current || generateId()
-              addMessage({
-                id: msgId,
-                role: 'assistant',
-                content,
-                timestamp: Date.now(),
-                parentId: leafId,
-              })
-              attachThinkingGroupToMessage(msgId)
-              responderCommittedRef.current = true
-            }
-            streamingMessageIdRef.current = null
-            clearStream()
-          }
+          commitThinkingText()
           break
         }
         case 'tool-started': {
@@ -165,6 +165,24 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
                 ...toolMsg.tool!,
                 status: 'completed',
                 result: data.result?.output,
+              },
+            })
+          }
+
+          // Surface each tool-produced block as its own transcript item.
+          const blocks = Array.isArray(data.result?.blocks) ? data.result.blocks : []
+          for (const block of blocks) {
+            if (!block || typeof block !== 'object' || typeof block.type !== 'string') continue
+            addMessage({
+              id: generateId(),
+              role: 'block',
+              content: '',
+              timestamp: Date.now(),
+              parentId: getCurrentLeafId(),
+              block: {
+                type: block.type,
+                data: block.data,
+                sourceTool: data.tool,
               },
             })
           }
@@ -228,7 +246,7 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           }
           break
         }
-        case 'pipeline-error': {
+        case 'turn-error': {
           const leafId = getCurrentLeafId()
           const errorMsgId = generateId()
           addMessage({
@@ -299,7 +317,7 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
       return
     }
 
-    // Show status bar immediately — don't wait for server's pipeline-started event
+    // Show status bar immediately — don't wait for server's turn-started event
     setIsStreaming(true)
 
     setSSEConfig({

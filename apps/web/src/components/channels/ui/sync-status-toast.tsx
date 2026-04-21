@@ -141,13 +141,7 @@ function SyncChannelItem({ channel }: { channel: Channel }) {
   const stage = channel.syncStage
   const pending = channel.pendingImportCount
 
-  let statusText = 'Syncing...'
-  if (stage) {
-    statusText = formatSyncStage(stage)
-    if (stage === 'MESSAGES_IMPORT' && pending > 0) {
-      statusText += ` (${pending.toLocaleString()} remaining)`
-    }
-  }
+  const statusText = stage ? formatSyncStage(stage, pending) : 'Syncing...'
 
   return (
     <div className='flex items-center gap-2 px-3 py-2 border-b last:border-b-0'>

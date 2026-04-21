@@ -22,6 +22,8 @@ export { getIntegrationStatus } from './integration-status-utils'
 interface IntegrationStatusIndicatorProps {
   status: IntegrationStatus
   syncStage?: IntegrationSyncStage | null
+  /** Remaining message IDs in the import cache; appended to the import-stage label when > 0. */
+  pendingImportCount?: number
   lastSyncAt?: Date
   lastError?: string
   className?: string
@@ -36,6 +38,7 @@ interface IntegrationStatusIndicatorProps {
 export function IntegrationStatusIndicator({
   status,
   syncStage,
+  pendingImportCount,
   lastSyncAt,
   lastError,
   className,
@@ -59,7 +62,7 @@ export function IntegrationStatusIndicator({
     ...baseConfig,
     description:
       status === 'syncing' && syncStage
-        ? `Syncing: ${formatSyncStage(syncStage)}`
+        ? `Syncing: ${formatSyncStage(syncStage, pendingImportCount)}`
         : status === 'authenticated' && lastSyncAt
           ? `Last synced ${formatRelativeTime(lastSyncAt)}`
           : status === 'auth_error' && lastError

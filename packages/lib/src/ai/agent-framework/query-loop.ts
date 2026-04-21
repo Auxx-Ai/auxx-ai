@@ -3,17 +3,22 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { ToolCall } from '../clients/base/types'
 import type {
+  AgentBlock,
   AgentDefinition,
   AgentDeps,
   AgentEngineConfig,
   AgentEvent,
   AgentState,
   AgentToolDefinition,
+  AgentToolResult,
   LLMCallParams,
 } from './types'
 
 const logger = createScopedLogger('agent-query-loop')
 const DEFAULT_MAX_ITERATIONS = 10
+
+/** Terminator marker returned by meta-tools like `submit_final_answer` */
+const TERMINATOR_KEY = '__terminate'
 
 /**
  * Core agent query loop — standalone async generator.
@@ -22,11 +27,15 @@ const DEFAULT_MAX_ITERATIONS = 10
  * Yields AgentEvent for every phase: llm-stream, tool-started, tool-completed, tool-error.
  *
  * One-shot agents (tools=[], maxIterations=1) and looping agents use the same code path.
+ *
+ * If a tool's output contains `{ __terminate: true, content }`, the loop yields a
+ * `final-message` event and exits cleanly. This is how `submit_final_answer` ends a turn.
  */
 export async function* agentQueryLoop(
   agent: AgentDefinition,
   state: AgentState,
-  config: AgentEngineConfig
+  config: AgentEngineConfig,
+  turnId?: string
 ): AsyncGenerator<AgentEvent, AgentState> {
   const maxIterations = agent.maxIterations ?? DEFAULT_MAX_ITERATIONS
   const deps: AgentDeps = {
@@ -34,6 +43,7 @@ export async function* agentQueryLoop(
     userId: config.userId,
     sessionId: config.sessionId,
     signal: config.signal,
+    turnId,
   }
 
   const minToolCalls = agent.minToolCalls ?? 0
@@ -51,12 +61,16 @@ export async function* agentQueryLoop(
   const idempotentCache = new Map<string, ToolExecResult>()
 
   yield { type: 'agent-started', agent: agent.name }
-  logger.info('Agent started', { agent: agent.name, maxIterations, toolCount: agent.tools.length })
+  logger.info('Agent started', {
+    turnId,
+    agent: agent.name,
+    maxIterations,
+    toolCount: agent.tools.length,
+  })
 
   while (iteration < maxIterations) {
-    // Check abort
     if (config.signal?.aborted) {
-      logger.info('Agent aborted', { agent: agent.name, iteration })
+      logger.info('Agent aborted', { turnId, agent: agent.name, iteration })
       break
     }
 
@@ -65,12 +79,12 @@ export async function* agentQueryLoop(
     // Build messages from current state
     const messages = await agent.buildMessages(currentState, deps)
     logger.debug('LLM call', {
+      turnId,
       agent: agent.name,
       iteration,
       messageCount: messages.length,
     })
 
-    // Build LLM call params
     const callParams: LLMCallParams = {
       model: agent.model ?? config.domainConfig.defaultModel,
       provider: agent.provider ?? config.domainConfig.defaultProvider,
@@ -81,10 +95,13 @@ export async function* agentQueryLoop(
       signal: config.signal,
     }
 
-    // Call the model and stream events
     let content = ''
     let toolCalls: ToolCall[] = []
     let reasoningContent: string | undefined
+
+    // Per-tool-call arg buffers for streaming — only surfaced for meta-tools
+    // like submit_final_answer where the arg text IS the user-facing content.
+    const toolArgBuffers = new Map<string, { toolName?: string; lastContent: string }>()
 
     try {
       for await (const event of config.callModel(callParams)) {
@@ -96,10 +113,26 @@ export async function* agentQueryLoop(
             yield { type: 'llm-reasoning-stream', agent: agent.name, delta: event.delta }
             break
           case 'tool-call':
-            // Collected in the done event
             break
+          case 'tool-args-delta': {
+            if (event.toolName !== 'submit_final_answer') break
+            const prior = toolArgBuffers.get(event.toolCallId) ?? {
+              toolName: event.toolName,
+              lastContent: '',
+            }
+            const nextRaw = (prior as { raw?: string }).raw ?? ''
+            const raw = nextRaw + event.argsDelta
+            const extracted = extractContentFromPartialJson(raw)
+            if (extracted.length > prior.lastContent.length) {
+              const delta = extracted.slice(prior.lastContent.length)
+              yield { type: 'final-message-delta', agent: agent.name, delta }
+              prior.lastContent = extracted
+            }
+            ;(prior as { raw?: string }).raw = raw
+            toolArgBuffers.set(event.toolCallId, prior)
+            break
+          }
           case 'usage':
-            // Will be included in done
             break
           case 'done':
             content = event.content
@@ -120,21 +153,20 @@ export async function* agentQueryLoop(
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      logger.error('LLM error', { agent: agent.name, iteration, error: errorMessage })
-      yield { type: 'pipeline-error', error: `LLM error in ${agent.name}: ${errorMessage}` }
+      logger.error('LLM error', { turnId, agent: agent.name, iteration, error: errorMessage })
+      yield { type: 'turn-error', error: `LLM error in ${agent.name}: ${errorMessage}` }
       break
     }
 
     // No tool calls — one-shot or final response
     if (toolCalls.length === 0) {
-      // If minimum tool calls not met, inject a nudge and retry
       if (totalToolCallCount < minToolCalls && iteration < maxIterations) {
         logger.warn('Agent returned text without meeting minimum tool calls, nudging', {
+          turnId,
           agent: agent.name,
           minToolCalls,
           actualToolCalls: totalToolCallCount,
           iteration,
-          contentPreview: content.slice(0, 200),
         })
         currentState = {
           ...currentState,
@@ -162,46 +194,178 @@ export async function* agentQueryLoop(
         continue
       }
 
-      if (totalToolCallCount < minToolCalls) {
-        logger.warn('Agent exited without meeting minimum tool calls', {
-          agent: agent.name,
-          minToolCalls,
-          actualToolCalls: totalToolCallCount,
-          iteration,
-          contentPreview: content.slice(0, 200),
-        })
-      }
-
       logger.debug('Agent one-shot result', {
+        turnId,
         agent: agent.name,
         contentLength: content.length,
-        hasContent: content.length > 0,
-        contentPreview: content.slice(0, 300),
       })
-      currentState = await agent.processResult(content, toolCalls, currentState, deps)
+
+      // The LLM ended the turn by typing text without calling the terminator
+      // tool (`submit_final_answer`). Treat this as an implicit final answer:
+      // run the same post-process pipeline a terminator would get (snapshot
+      // injection, fallback fence auto-emit) and persist + emit a final-message
+      // event so the frontend renders instead of showing nothing.
+      if (content.length > 0) {
+        const finalContent = config.domainConfig.postProcessFinalContent
+          ? config.domainConfig.postProcessFinalContent(content, currentState)
+          : content
+
+        yield { type: 'final-message', agent: agent.name, content: finalContent }
+
+        currentState = {
+          ...currentState,
+          messages: [
+            ...currentState.messages,
+            {
+              role: 'assistant' as const,
+              content: finalContent,
+              reasoning_content: reasoningContent || undefined,
+              timestamp: Date.now(),
+              metadata: {
+                agent: agent.name,
+                modelId: `${callParams.provider}:${callParams.model}`,
+                final: true,
+              },
+            },
+          ],
+        }
+        currentState = await agent.processResult(finalContent, toolCalls, currentState, deps)
+      } else {
+        currentState = await agent.processResult(content, toolCalls, currentState, deps)
+      }
       break
     }
 
-    // Execute tool calls
     totalToolCallCount += toolCalls.length
     logger.info('Executing tools', {
+      turnId,
       agent: agent.name,
       tools: toolCalls.map((tc) => tc.function.name),
     })
+
+    // Before executing, check if any tool requires approval. If so, we emit the
+    // assistant message with tool_calls, then the approval-required event, and
+    // stop the loop — waiting for engine.resume() to continue. We do NOT write
+    // a fake "awaiting_approval" tool result message (fixes F7, F23).
+    const approvalTool = findApprovalTool(toolCalls, agent.tools)
+    if (approvalTool) {
+      const approvalArgs = parseToolArgs(approvalTool)
+      const toolDef = agent.tools.find((t) => t.name === approvalTool.function.name)
+      const missingParams = validateRequiredParams(toolDef, approvalArgs)
+
+      if (missingParams.length > 0) {
+        logger.warn('Approval tool missing required params, returning error to LLM', {
+          turnId,
+          agent: agent.name,
+          tool: approvalTool.function.name,
+          missingParams,
+        })
+        // Persist the assistant message + synthetic error tool result so the LLM
+        // can retry with complete args on the next iteration.
+        const errorContent = JSON.stringify({
+          error: `Missing required parameters: ${missingParams.join(', ')}. Please provide all required parameters.`,
+          output: null,
+        })
+        currentState = {
+          ...currentState,
+          messages: [
+            ...currentState.messages,
+            {
+              role: 'assistant' as const,
+              content,
+              toolCalls,
+              reasoning_content: reasoningContent || undefined,
+              timestamp: Date.now(),
+              metadata: {
+                agent: agent.name,
+                modelId: `${callParams.provider}:${callParams.model}`,
+              },
+            },
+            {
+              role: 'tool' as const,
+              content: errorContent,
+              toolCallId: approvalTool.id,
+              timestamp: Date.now(),
+              metadata: { agent: agent.name, validationError: true },
+            },
+          ],
+        }
+        continue
+      }
+
+      logger.info('Approval required', {
+        turnId,
+        agent: agent.name,
+        tool: approvalTool.function.name,
+      })
+
+      // Persist the assistant message carrying the tool_call so session restore
+      // has the correct conversation shape. No fake tool result — state.pendingToolCall
+      // is the single source of truth for pending approvals.
+      const assistantMessage = {
+        role: 'assistant' as const,
+        content,
+        toolCalls,
+        reasoning_content: reasoningContent || undefined,
+        timestamp: Date.now(),
+        metadata: {
+          agent: agent.name,
+          modelId: `${callParams.provider}:${callParams.model}`,
+        },
+      }
+      currentState = {
+        ...currentState,
+        messages: [...currentState.messages, assistantMessage],
+      }
+
+      yield {
+        type: 'approval-required',
+        agent: agent.name,
+        tool: approvalTool.function.name,
+        toolCallId: approvalTool.id,
+        args: approvalArgs,
+      }
+
+      currentState = await agent.processResult(content, toolCalls, currentState, deps)
+      currentState = {
+        ...currentState,
+        waitingForApproval: true,
+        pendingToolCall: {
+          toolCallId: approvalTool.id,
+          toolName: approvalTool.function.name,
+          agentName: agent.name,
+          args: approvalArgs,
+        },
+      }
+      break
+    }
+
+    // Execute non-approval tool calls
     const toolResults = await executeToolCalls(
       toolCalls,
       agent.tools,
       agent.name,
       deps,
-      config,
       idempotentCache
     )
     for (const event of toolResults.events) {
       yield event
     }
 
-    // Build tool result messages and add to state — must happen before the
-    // approval check so the assistant tool-call message is always persisted.
+    // Let the domain mine each tool result for state updates (e.g. snapshot extraction)
+    if (config.domainConfig.onToolResult) {
+      for (const r of toolResults.results) {
+        if (!r.success) continue
+        const toolResult: AgentToolResult = {
+          success: r.success,
+          output: r.output,
+          error: r.error,
+          blocks: r.blocks,
+        }
+        currentState = config.domainConfig.onToolResult(r.toolName, toolResult, currentState)
+      }
+    }
+
     const toolResultMessages = toolResults.results.map((r) => ({
       role: 'tool' as const,
       content: JSON.stringify(
@@ -210,6 +374,7 @@ export async function* agentQueryLoop(
       toolCallId: r.toolCallId,
       timestamp: Date.now(),
       metadata: { agent: agent.name },
+      ...(r.blocks && r.blocks.length > 0 ? { blocks: r.blocks } : {}),
     }))
 
     const assistantMessage = {
@@ -229,64 +394,38 @@ export async function* agentQueryLoop(
       messages: [...currentState.messages, assistantMessage, ...toolResultMessages],
     }
 
-    // Check if any tool requires approval (HITL)
-    const approvalTool = findApprovalTool(toolCalls, agent.tools)
-    if (approvalTool) {
-      const approvalArgs = parseToolArgs(approvalTool)
-      const toolDef = agent.tools.find((t) => t.name === approvalTool.function.name)
-
-      // Validate required params before showing approval — if missing, return
-      // an error so the LLM can retry with correct args instead of showing an
-      // empty approval card.
-      const missingParams = validateRequiredParams(toolDef, approvalArgs)
-      if (missingParams.length > 0) {
-        logger.warn('Approval tool missing required params, returning error to LLM', {
-          agent: agent.name,
-          tool: approvalTool.function.name,
-          missingParams,
-          args: approvalArgs,
-        })
-        const errorContent = JSON.stringify({
-          error: `Missing required parameters: ${missingParams.join(', ')}. Please provide all required parameters.`,
-          output: null,
-        })
-        // Replace the fake "awaiting_approval" tool result already in state
-        // with an error so the LLM can retry with correct args.
-        currentState = {
-          ...currentState,
-          messages: currentState.messages.map((m) =>
-            m.role === 'tool' && m.toolCallId === approvalTool.id
-              ? { ...m, content: errorContent }
-              : m
-          ),
-        }
-        continue
-      }
-
-      logger.info('Approval required', {
-        agent: agent.name,
-        tool: approvalTool.function.name,
-        args: approvalArgs,
-      })
+    // Check for termination marker from meta-tools (e.g. submit_final_answer)
+    const terminator = toolResults.results.find((r) => isTerminatorResult(r.output))
+    if (terminator) {
+      const output = terminator.output as Record<string, unknown>
+      const rawContent = typeof output.content === 'string' ? output.content : ''
+      // Let the domain post-process (inject snapshots, auto-emit fallback fences).
+      const finalContent = config.domainConfig.postProcessFinalContent
+        ? config.domainConfig.postProcessFinalContent(rawContent, currentState)
+        : rawContent
       yield {
-        type: 'approval-required',
+        type: 'final-message',
         agent: agent.name,
-        tool: approvalTool.function.name,
-        toolCallId: approvalTool.id,
-        args: approvalArgs,
+        content: finalContent,
       }
-      // Let processResult update state (e.g. mark as waiting)
-      currentState = await agent.processResult(content, toolCalls, currentState, deps)
+      // Persist the final prose as an assistant message so session restore is clean.
       currentState = {
         ...currentState,
-        waitingForApproval: true,
-        pendingToolCall: {
-          toolCallId: approvalTool.id,
-          toolName: approvalTool.function.name,
-          agentName: agent.name,
-          args: approvalArgs,
-        },
+        messages: [
+          ...currentState.messages,
+          {
+            role: 'assistant' as const,
+            content: finalContent,
+            timestamp: Date.now(),
+            metadata: {
+              agent: agent.name,
+              modelId: `${callParams.provider}:${callParams.model}`,
+              final: true,
+            },
+          },
+        ],
       }
+      currentState = await agent.processResult(finalContent, [], currentState, deps)
       break
     }
 
@@ -295,7 +434,7 @@ export async function* agentQueryLoop(
   }
 
   yield { type: 'agent-completed', agent: agent.name }
-  logger.info('Agent completed', { agent: agent.name, iterations: iteration })
+  logger.info('Agent completed', { turnId, agent: agent.name, iterations: iteration })
 
   return currentState
 }
@@ -308,11 +447,19 @@ interface ToolExecResult {
   output: unknown
   success: boolean
   error?: string
+  blocks?: AgentBlock[]
+}
+
+function isTerminatorResult(output: unknown): boolean {
+  return (
+    typeof output === 'object' &&
+    output !== null &&
+    (output as Record<string, unknown>)[TERMINATOR_KEY] === true
+  )
 }
 
 /**
  * Check that all `required` params from the tool's JSON Schema are present in the parsed args.
- * Returns the list of missing parameter names (empty if valid).
  */
 function validateRequiredParams(
   toolDef: AgentToolDefinition | undefined,
@@ -360,7 +507,6 @@ async function executeToolCalls(
   agentTools: AgentToolDefinition[],
   agentName: string,
   deps: AgentDeps,
-  config: AgentEngineConfig,
   idempotentCache: Map<string, ToolExecResult>
 ): Promise<{ events: AgentEvent[]; results: ToolExecResult[] }> {
   const toolMap = new Map(agentTools.map((t) => [t.name, t]))
@@ -386,22 +532,12 @@ async function executeToolCalls(
       continue
     }
 
-    // Skip execution and events for approval-required tools — the approval
-    // flow handles its own tool-started/completed events on resume.
+    // Approval-required tools should never reach this executor — the loop handles
+    // them before calling executeToolCalls. Guard just in case.
     if (tool.requiresApproval) {
-      results.push({
-        toolCallId: toolCall.id,
-        toolName,
-        output: { status: 'awaiting_approval' },
-        success: true,
-      })
       continue
     }
 
-    // Per-turn cache for read-only tools: if the LLM re-requests the same
-    // (tool, args) pair within the loop, return the earlier result instead of
-    // re-executing. The toolCallId is fresh so the LLM gets a valid tool_call_id
-    // pairing, but no DB/API work is repeated.
     const cacheKey = tool.idempotent ? `${toolName}::${stableStringify(args)}` : null
     if (cacheKey) {
       const cached = idempotentCache.get(cacheKey)
@@ -411,7 +547,12 @@ async function executeToolCalls(
           type: 'tool-completed',
           agent: agentName,
           tool: toolName,
-          result: { success: cached.success, output: cached.output, error: cached.error },
+          result: {
+            success: cached.success,
+            output: cached.output,
+            error: cached.error,
+            blocks: cached.blocks,
+          },
         })
         results.push({
           toolCallId: toolCall.id,
@@ -419,6 +560,7 @@ async function executeToolCalls(
           output: cached.output,
           success: cached.success,
           error: cached.error,
+          blocks: cached.blocks,
         })
         continue
       }
@@ -435,13 +577,13 @@ async function executeToolCalls(
         output: result.output,
         success: result.success,
         error: result.error,
+        blocks: result.blocks,
       }
       results.push(execResult)
       if (cacheKey && result.success) idempotentCache.set(cacheKey, execResult)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
       events.push({ type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg })
-      // Feed error back as tool result so the LLM can recover
       results.push({
         toolCallId: toolCall.id,
         toolName,
@@ -453,6 +595,46 @@ async function executeToolCalls(
   }
 
   return { events, results }
+}
+
+/**
+ * Best-effort extraction of the `content` field from a streaming, potentially
+ * incomplete JSON tool-args payload. Designed for `submit_final_answer` where
+ * the model streams `{"content":"..."}` — we don't wait for a complete parse,
+ * we just read characters of the content string as they arrive. Returns the
+ * content captured so far (possibly empty).
+ */
+function extractContentFromPartialJson(raw: string): string {
+  const marker = '"content"'
+  const keyIdx = raw.indexOf(marker)
+  if (keyIdx < 0) return ''
+  let i = keyIdx + marker.length
+  // Skip whitespace and colon
+  while (i < raw.length && (raw[i] === ' ' || raw[i] === ':' || raw[i] === '\t' || raw[i] === '\n'))
+    i++
+  if (raw[i] !== '"') return ''
+  i++
+  let out = ''
+  while (i < raw.length) {
+    const ch = raw[i]
+    if (ch === '\\') {
+      const next = raw[i + 1]
+      if (next === undefined) break
+      if (next === 'n') out += '\n'
+      else if (next === 't') out += '\t'
+      else if (next === 'r') out += '\r'
+      else if (next === '"') out += '"'
+      else if (next === '\\') out += '\\'
+      else if (next === '/') out += '/'
+      else out += next
+      i += 2
+      continue
+    }
+    if (ch === '"') break
+    out += ch
+    i++
+  }
+  return out
 }
 
 /**

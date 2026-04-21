@@ -2,16 +2,70 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { AlertTriangle } from 'lucide-react'
-import { useMemo } from 'react'
-import Markdown from 'react-markdown'
+import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { KopilotMessage, ThinkingGroup } from '../../stores/kopilot-store'
 import { useKopilotStore } from '../../stores/kopilot-store'
 import '../../styles/kopilot-prose.css'
 import { AuxxBlock } from '../blocks/auxx-block'
+import { REFERENCE_BLOCK_TYPES } from '../blocks/block-schemas'
 import { SparkleIcon } from '../sparkle-icon'
 import { MessageActions } from './message-actions'
 import { ThinkingSteps } from './thinking-steps'
+
+const REFERENCE_BLOCK_SET = new Set<string>(REFERENCE_BLOCK_TYPES)
+
+/**
+ * Extract a fenced `auxx:<type>` block from a react-markdown `code` node's
+ * className. Returns the block type if this is a recognised auxx fence, else null.
+ */
+function parseAuxxType(className: string | undefined): string | null {
+  if (!className) return null
+  // react-markdown v10 encodes the fence language as "language-<info>"
+  const match = className.match(/language-auxx:([a-z-]+)/)
+  if (!match) return null
+  const type = match[1]!
+  return REFERENCE_BLOCK_SET.has(type) ? type : null
+}
+
+const markdownComponents: Components = {
+  code(props) {
+    const { className, children } = props
+    const auxxType = parseAuxxType(className)
+    if (!auxxType) return <code className={className}>{children}</code>
+
+    const raw = String(children ?? '').trim()
+    if (!raw) {
+      return (
+        <pre className='not-prose'>
+          <code>{String(children ?? '')}</code>
+        </pre>
+      )
+    }
+    let data: unknown
+    try {
+      data = JSON.parse(raw)
+    } catch {
+      // Keep the fence visible as code while streaming / if JSON is malformed
+      return (
+        <pre className='not-prose'>
+          <code>{String(children ?? '')}</code>
+        </pre>
+      )
+    }
+    return <AuxxBlock type={auxxType} data={data} />
+  },
+  // Unwrap the <pre> that react-markdown wraps around our custom block so the
+  // motion.div / cards aren't nested inside a monospace <pre>.
+  pre(props) {
+    const child = Array.isArray(props.children) ? props.children[0] : props.children
+    const childEl = child as { props?: { className?: string } } | undefined
+    if (childEl && parseAuxxType(childEl.props?.className)) {
+      return <>{props.children}</>
+    }
+    return <pre {...props} />
+  },
+}
 
 interface AssistantMessageProps {
   message?: KopilotMessage
@@ -45,33 +99,6 @@ export function AssistantMessage({
       ? thinkingGroups[activeThinkingGroupId]
       : undefined
   const group: ThinkingGroup | undefined = thinkingGroup ?? activeGroup
-
-  // Memoize components so react-markdown can reconcile without remounting blocks
-  const markdownComponents = useMemo(
-    () => ({
-      pre({ children, ...props }: { children?: React.ReactNode }) {
-        // Check if the child is an AuxxBlock code fence — pass through so the
-        // code component can handle it. Otherwise render a normal <pre>.
-        const child = Array.isArray(children) ? children[0] : children
-        // biome-ignore lint/suspicious/noExplicitAny: react-markdown child type
-        const childProps = (child as any)?.props
-        if (childProps?.className?.startsWith('language-auxx:')) {
-          return <>{children}</>
-        }
-        return <pre {...props}>{children}</pre>
-      },
-      code({ className, children }: { className?: string; children?: React.ReactNode }) {
-        // AuxxBlock: fenced code with language-auxx:* (pre passes through)
-        const match = className?.match(/^language-auxx:(.+)$/)
-        if (match) {
-          return <AuxxBlock type={match[1]} rawContent={String(children).trim()} />
-        }
-        // Inline code — block code is handled by the default <pre><code> flow
-        return <code className={className}>{children}</code>
-      },
-    }),
-    []
-  )
 
   return (
     <div className='group/message flex gap-2'>

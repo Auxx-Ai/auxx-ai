@@ -10,23 +10,31 @@ export type IntegrationStatus =
   | 'syncing'
 
 /**
- * Format sync stage for tooltip display
+ * Format sync stage for tooltip display. When the stage is in the import phase
+ * (`MESSAGES_IMPORT_PENDING` or `MESSAGES_IMPORT`) and a positive
+ * `pendingImportCount` is provided, the remaining count is appended so the
+ * user sees concrete progress instead of a generic "preparing/importing" line.
  */
-export function formatSyncStage(stage: IntegrationSyncStage): string {
+export function formatSyncStage(stage: IntegrationSyncStage, pendingImportCount?: number): string {
   switch (stage) {
     case 'MESSAGE_LIST_FETCH_PENDING':
       return 'Preparing to fetch messages'
     case 'MESSAGE_LIST_FETCH':
       return 'Fetching message list'
     case 'MESSAGES_IMPORT_PENDING':
-      return 'Preparing to import messages'
+      return appendRemaining('Preparing to import messages', pendingImportCount)
     case 'MESSAGES_IMPORT':
-      return 'Importing messages'
+      return appendRemaining('Importing messages', pendingImportCount)
     case 'FAILED':
       return 'Sync failed'
     case 'IDLE':
       return 'In progress'
   }
+}
+
+function appendRemaining(label: string, pendingImportCount: number | undefined): string {
+  if (!pendingImportCount || pendingImportCount <= 0) return label
+  return `${label} (${pendingImportCount.toLocaleString()} remaining)`
 }
 
 /**

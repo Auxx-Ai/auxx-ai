@@ -9,7 +9,7 @@ import { EntityCardItem } from './entity-card-item'
 export function EntityCardBlock({ data }: BlockRendererProps<EntityCardData>) {
   return (
     <div className='not-prose my-2'>
-      <EntityCardItem recordId={data.recordId} />
+      <EntityCardItem recordId={data.recordId} snapshot={data.snapshot} />
     </div>
   )
 }

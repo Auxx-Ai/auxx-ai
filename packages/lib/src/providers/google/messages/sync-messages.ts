@@ -417,7 +417,7 @@ async function syncViaMessageList(
   userEmails: string[],
   accessToken: string
 ): Promise<{ messagesProcessed: number; newHistoryId: string }> {
-  const query = since ? `after:${Math.floor(since.getTime() / 1000)}` : 'in:inbox'
+  const query = since ? `after:${Math.floor(since.getTime() / 1000)}` : ''
   let nextPageToken: string | undefined | null
   let highestHistoryId = BigInt(0)
   let safeHistoryId = BigInt(0)

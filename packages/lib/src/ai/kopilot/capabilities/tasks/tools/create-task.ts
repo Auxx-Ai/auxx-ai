@@ -13,8 +13,9 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
   return {
     name: 'create_task',
     description:
-      'Create a new task. APPROVAL: The platform automatically pauses and shows an approval card when you call this tool. Do NOT ask the user in text first — just call the tool. Before calling: use list_members to find user IDs for assignment, and use search_entities to find linkedRecordIds for any referenced entities (products, orders, contacts, etc.). Supports natural language deadlines like "next Friday", "in 3 days", "end of week".',
+      'Create a new task. Before calling: use list_members to find user IDs for assignment, and use search_entities to find linkedRecordIds for any referenced entities (products, orders, contacts, etc.). Supports natural language deadlines like "next Friday", "in 3 days", "end of week".',
     requiresApproval: true,
+    usageNotes: "Emits an `action-result` block automatically. Don't re-embed anything for it.",
     parameters: {
       type: 'object',
       properties: {
@@ -109,6 +110,17 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
           priority: task.priority,
           assignees: assigneeIds,
         },
+        blocks: [
+          {
+            type: 'action-result',
+            data: {
+              action: 'create_task',
+              success: true,
+              summary: `Task created: ${task.title}`,
+              taskId: task.id,
+            },
+          },
+        ],
       }
     },
   }

@@ -1,40 +1,46 @@
 // packages/lib/src/ai/kopilot/domain-config.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { AgentDomainConfig, AgentToolDefinition } from '../agent-framework/types'
-
-const logger = createScopedLogger('kopilot-domain-config')
-
-import { createExecutorAgent } from './agents/executor'
-import { createPlannerAgent } from './agents/planner'
-import { createResponderAgent } from './agents/responder'
-import { createSupervisorAgent } from './agents/supervisor'
+import type {
+  AgentDomainConfig,
+  AgentState,
+  AgentToolDefinition,
+  AgentToolResult,
+  TurnSnapshots,
+} from '../agent-framework/types'
+import { createKopilotAgent } from './agents/agent'
+import {
+  buildFallbackFence,
+  countReferenceBlockFences,
+  injectSnapshotsIntoFinal,
+} from './blocks/inject-snapshots'
+import { createEmptyTurnSnapshots, runSnapshotWalker } from './blocks/snapshot-walker'
 import type { CapabilityRegistry } from './capabilities/types'
 import type { KopilotDomainState } from './types'
 
+const logger = createScopedLogger('kopilot-domain-config')
+
 export interface KopilotDomainConfigOptions {
-  /** Tools available to the executor and planner (manual injection) */
+  /** Tools available to the agent (manual injection; merged with registry tools) */
   tools?: AgentToolDefinition[]
-  /** Page capability registry for page-based tool resolution */
+  /** Page capability registry for page-scoped tool resolution */
   capabilityRegistry?: CapabilityRegistry
   /** Current page (used with capabilityRegistry to resolve tools) */
   page?: string
-  /** Default LLM model (default: 'gpt-4o') */
+  /** Default LLM model */
   defaultModel?: string
-  /** Default LLM provider (default: 'openai') */
+  /** Default LLM provider */
   defaultProvider?: string
+  /** Max tool-use iterations before forcing a stop (default: 15) */
+  maxIterations?: number
 }
 
 /**
  * Create a Kopilot domain config for the agent framework.
  *
- * This wires up the four Kopilot agents (supervisor, planner, executor, responder)
- * and defines the five routes with their agent sequences.
- *
- * Tools are resolved from:
- * 1. capabilityRegistry + page (if both provided)
- * 2. Manually passed tools
- * Both are merged — duplicates by name are deduplicated (registry wins).
+ * The v2 Kopilot is a solo-agent domain: one agent owns the entire turn. There is
+ * no supervisor, planner, executor, or responder. Tools emit rich UI blocks
+ * directly; the agent ends the turn by calling `submit_final_answer`.
  */
 export function createKopilotDomainConfig(
   options: KopilotDomainConfigOptions = {}
@@ -45,9 +51,10 @@ export function createKopilotDomainConfig(
     page,
     defaultModel = 'gpt-5.4-nano',
     defaultProvider = 'openai',
+    maxIterations = 15,
   } = options
 
-  // Resolve tools: registry + manual, deduplicated
+  // Resolve tools: registry (page-scoped) + manual, deduplicated by name
   const registryTools = capabilityRegistry && page ? capabilityRegistry.getTools(page) : []
   const toolMap = new Map<string, AgentToolDefinition>()
   for (const tool of registryTools) toolMap.set(tool.name, tool)
@@ -64,54 +71,67 @@ export function createKopilotDomainConfig(
     toolNames: resolvedTools.map((t) => t.name),
   })
 
-  const supervisor = createSupervisorAgent()
-  const planner = createPlannerAgent(resolvedTools)
-  const executor = createExecutorAgent(resolvedTools)
-  const responder = createResponderAgent()
+  const capabilities = capabilityRegistry?.getCapabilitiesSummary() ?? []
+  const agent = createKopilotAgent({ tools: resolvedTools, capabilities, maxIterations })
 
   return {
     type: 'kopilot',
-    supervisorAgent: 'supervisor',
     defaultModel,
     defaultProvider,
-
+    // supervisorAgent intentionally omitted — solo-agent domain
     agents: {
-      supervisor,
-      planner,
-      executor,
-      responder,
+      agent,
     },
-
     routes: [
       {
-        name: 'simple',
-        agents: ['supervisor', 'responder'],
-      },
-      {
-        name: 'search',
-        agents: ['supervisor', 'executor', 'responder'],
-      },
-      {
-        name: 'multi-step',
-        agents: ['supervisor', 'planner', 'executor', 'responder'],
-      },
-      {
-        name: 'action',
-        agents: ['supervisor', 'executor', 'responder'],
-      },
-      {
-        name: 'conversational',
-        agents: ['supervisor', 'responder'],
+        name: 'default',
+        agents: ['agent'],
       },
     ],
-
     createInitialState(context: Record<string, unknown>): KopilotDomainState {
-      const capabilities = capabilityRegistry?.getCapabilitiesSummary() ?? []
       return { context, capabilities }
     },
-
     applyContext(state: KopilotDomainState, context: Record<string, unknown>): KopilotDomainState {
       return { ...state, context }
+    },
+    onToolResult(toolName: string, result: AgentToolResult, state: AgentState): AgentState {
+      const tool = resolvedTools.find((t) => t.name === toolName)
+      if (!tool?.outputBlock) return state
+      const snapshots: TurnSnapshots = state.turnSnapshots ?? createEmptyTurnSnapshots()
+      runSnapshotWalker(tool.outputBlock, result.output, snapshots)
+      return { ...state, turnSnapshots: snapshots }
+    },
+    postProcessFinalContent(content: string, state: AgentState): string {
+      const snapshots = state.turnSnapshots ?? createEmptyTurnSnapshots()
+      // Find the last read-tool in the turn — drives the fallback block kind
+      let lastTool: AgentToolDefinition | undefined
+      for (let i = state.messages.length - 1; i >= 0; i--) {
+        const msg = state.messages[i]
+        if (msg?.role !== 'tool' || !msg.metadata || !('agent' in msg.metadata)) continue
+        const toolCallId = msg.toolCallId
+        let lastToolName: string | undefined
+        for (let j = i - 1; j >= 0; j--) {
+          const maybeAssistant = state.messages[j]
+          if (maybeAssistant?.role !== 'assistant' || !maybeAssistant.toolCalls) continue
+          const tc = maybeAssistant.toolCalls.find((c) => c.id === toolCallId)
+          if (tc) {
+            lastToolName = tc.function.name
+            break
+          }
+        }
+        if (lastToolName && lastToolName !== 'submit_final_answer') {
+          lastTool = resolvedTools.find((t) => t.name === lastToolName)
+          break
+        }
+      }
+
+      let next = injectSnapshotsIntoFinal(content, snapshots)
+      // If the LLM forgot to embed any reference block but we captured ids, auto-emit one
+      if (countReferenceBlockFences(next) === 0) {
+        const fence = buildFallbackFence(snapshots, lastTool)
+        if (fence) next = `${next.trimEnd()}\n\n${fence}`
+      }
+      return next
     },
   }
 }

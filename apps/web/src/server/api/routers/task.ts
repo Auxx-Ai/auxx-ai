@@ -77,6 +77,18 @@ export const taskRouter = createTRPCRouter({
   }),
 
   /**
+   * Batch fetch tasks by ID. Mirrors the api.thread.getByIds / api.message.getByIds
+   * pattern used by the kopilot reference-block hydration path.
+   */
+  getByIds: protectedProcedure
+    .input(z.object({ ids: z.array(z.string()).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const taskService = createTaskService(ctx.db)
+      return await taskService.getTasksByIds(input.ids, organizationId)
+    }),
+
+  /**
    * Update a task (handles ALL field updates including completion/archiving)
    *
    * @example Complete: { id: 'x', completedAt: new Date().toISOString(), completedById: userId }

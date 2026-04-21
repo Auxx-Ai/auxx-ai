@@ -8,6 +8,8 @@ export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefiniti
   return {
     name: 'list_entities',
     idempotent: true,
+    usageNotes:
+      'Returns entity TYPES, not records. Use to discover what exists; then `query_records` or `search_entities` for actual records.',
     description:
       'Discover what entity TYPES exist in this workspace (e.g. Contact, Ticket, Company, custom entities). Returns type metadata, NOT individual records. Use search_entities to find specific records.',
     parameters: {

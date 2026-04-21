@@ -12,7 +12,7 @@ import { createSearchRagTool } from './tools/search-rag'
  */
 export function createKnowledgeCapabilities(getDeps: GetToolDeps): PageCapability {
   return {
-    page: '__global_knowledge__',
+    page: '__global__',
     tools: [
       createSearchDocsTool(getDeps),
       createSearchKBTool(getDeps),

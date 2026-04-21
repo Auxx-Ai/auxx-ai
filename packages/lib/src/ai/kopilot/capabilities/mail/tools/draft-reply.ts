@@ -11,6 +11,7 @@ import { stripSignOff } from './strip-sign-off'
 export function createDraftReplyTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'draft_reply',
+    usageNotes: 'Emits a `draft-preview` block automatically.',
     description:
       "Create or update a draft reply on a thread. If no recipients are specified, defaults to the last inbound sender. The user's email signature is appended automatically — never include one in the body. Returns the draft ID.",
     parameters: {
@@ -110,6 +111,19 @@ export function createDraftReplyTool(getDeps: GetToolDeps): AgentToolDefinition 
           cc: ccRecipients ?? [],
           status: 'draft_saved',
         },
+        blocks: [
+          {
+            type: 'draft-preview',
+            data: {
+              draftId: draft.id,
+              threadId,
+              to: resolvedTo,
+              cc: ccRecipients ?? [],
+              body,
+              subject: threadMeta.subject ? `Re: ${threadMeta.subject}` : undefined,
+            },
+          },
+        ],
       }
     },
   }

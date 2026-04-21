@@ -44,6 +44,17 @@ export async function findOrCreateContactForParticipant(
     const systemAttr =
       participant.identifierType === IdentifierTypeEnum.PHONE ? 'phone' : 'primary_email'
 
+    // Never auto-create a contact for the integration owner's own addresses.
+    // `force` is the documented escape hatch for the user-initiated
+    // "create ticket from thread" flow where the click itself is the explicit
+    // intent.
+    if (!force && participant.isInternal) {
+      ctx.logger.info(
+        `Skipping contact creation for internal participant ${participant.id} (${participant.identifier})`
+      )
+      return null
+    }
+
     if (!force && mode === 'none') {
       const existing = await handler.findByField('contact', systemAttr, participant.identifier)
       return existing?.id ?? null
