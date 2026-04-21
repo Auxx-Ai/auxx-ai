@@ -2,6 +2,7 @@
 'use client'
 import type { IdentifierType } from '@auxx/database/types'
 import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
@@ -67,6 +68,7 @@ import { useDraftAutosave } from './use-draft-autosave'
 const INTERACTIVE_ELEMENT_SELECTORS = `
   button, a, input, select, textarea,
   [role="button"], [role="option"], [role="combobox"], [role="menuitem"], [role="tab"],
+  [data-recipient-row],
   .ProseMirror, [data-radix-popper-content-wrapper], [data-radix-select-trigger],
   .tippy-box, .editor-toolbar-wrapper, .signature-picker-popover
 `.trim()
@@ -538,6 +540,7 @@ function ReplyComposeEditorComponent({
       role: 'TO' | 'CC' | 'BCC',
       contactData: {
         id: string
+        recordId?: RecordId
         identifier: string
         identifierType: IdentifierType
         name?: string | null
@@ -545,6 +548,7 @@ function ReplyComposeEditorComponent({
     ) => {
       upsertRecipient(role, {
         id: contactData.id,
+        recordId: contactData.recordId,
         identifier: contactData.identifier,
         identifierType: contactData.identifierType,
         name: contactData.name,
@@ -1301,6 +1305,7 @@ function ReplyComposeEditorComponent({
               onChange={handleContentChange}
               placeholder='Type / to insert a snippet.'
               editable={!aiToolsState.isProcessing}
+              popoverClassName={popoverZIndex}
             />
             <SignatureEditor
               integrationId={state.integrationId}

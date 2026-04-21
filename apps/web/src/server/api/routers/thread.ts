@@ -15,6 +15,7 @@ import {
   updateScheduledMessageStatus,
 } from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
+import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
 import { ProviderRegistryService, whereThreadMessageType } from '@auxx/lib/providers'
 import {
   type ListThreadIdsInput,
@@ -290,6 +291,34 @@ export const threadRouter = createTRPCRouter({
           draftMessageId,
           attachments,
         } = input
+
+        // Resolve `{{...}}` placeholders in the HTML body before handoff.
+        // Hard-fails with BAD_REQUEST on unresolvable tokens so the composer
+        // can surface a toast rather than silently sending an empty value.
+        let resolvedHtml = textHtml || undefined
+        if (resolvedHtml && resolvedHtml.includes('data-type="placeholder"')) {
+          try {
+            const placeholderCtx = await buildPlaceholderContextForThread({
+              db: ctx.db,
+              organizationId,
+              senderUserId: userId,
+              threadId,
+              primaryRecipient: to[0]
+                ? { identifier: to[0].identifier, identifierType: to[0].identifierType }
+                : undefined,
+            })
+            resolvedHtml = await resolvePlaceholdersInHtml(resolvedHtml, placeholderCtx)
+          } catch (err) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message:
+                err instanceof Error
+                  ? `Could not resolve placeholders: ${err.message}`
+                  : 'Could not resolve placeholders in message body.',
+            })
+          }
+        }
+
         // Transform input to MessageSenderService format
         const senderInput = {
           userId,
@@ -297,7 +326,7 @@ export const threadRouter = createTRPCRouter({
           integrationId,
           threadId,
           subject,
-          textHtml: textHtml || undefined,
+          textHtml: resolvedHtml,
           textPlain: textPlain || undefined,
           signatureId: signatureId || undefined,
           to: to.map((p) => ({

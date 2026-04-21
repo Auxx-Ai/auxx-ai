@@ -3,13 +3,25 @@
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { buildListEntityFieldsOutput } from './list-entity-fields-output'
 
 export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_entity_fields',
     idempotent: true,
-    description:
-      'List fields/attributes for an entity type. Use to discover field names before searching, filtering, sorting, or updating.',
+    description: `List fields/attributes for an entity type. Use to discover field ids before searching, filtering, sorting, or mutating.
+
+Response shape:
+- requiredOnCreate: string[] — ids that MUST appear in \`values\` when calling create_entity
+- autoFilled: string[] — ids the system populates automatically (don't pass these)
+- fields[]: each entry has \`id\`, \`label\`, \`fieldType\`, plus optional flags:
+    required: true       — must be set on create
+    unique: true         — duplicates will be rejected
+    readOnly: true       — can't be set on create or update
+    createOnly: true     — set at create, never updated after
+    options              — valid values for select / multi-select / status
+    relationship         — target entity for RELATIONSHIP fields
+  Computed fields are omitted — the LLM can't set them.`,
     parameters: {
       type: 'object',
       properties: {
@@ -39,8 +51,6 @@ export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefi
       }
 
       let fields = resource.fields
-
-      // Filter by query if provided
       if (query) {
         fields = fields.filter(
           (f) =>
@@ -50,54 +60,12 @@ export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefi
         )
       }
 
-      const MAX_OPTIONS = 15
-      const selectTypes = ['SINGLE_SELECT', 'MULTI_SELECT', 'STATUS']
-
-      const output = fields.map((f) => {
-        const base = {
-          id: f.systemAttribute ?? f.key,
-          label: f.label,
-          fieldType: f.fieldType ?? f.type,
-          capabilities: f.capabilities,
-          systemAttribute: f.systemAttribute ?? null,
-        }
-
-        // Include options for select-type fields so the LLM can construct valid filters
-        const fieldType = (f.fieldType ?? f.type)?.toUpperCase()
-        if (selectTypes.includes(fieldType ?? '') && f.options?.options?.length) {
-          const allOptions = f.options.options
-          const truncated = allOptions.length > MAX_OPTIONS
-          return {
-            ...base,
-            options: allOptions
-              .slice(0, MAX_OPTIONS)
-              .map((o) => ({ value: o.value, label: o.label })),
-            ...(truncated && { moreOptions: true, totalOptions: allOptions.length }),
-          }
-        }
-
-        // Include relationship target for RELATIONSHIP fields
-        if (fieldType === 'RELATIONSHIP' && f.options?.relationship) {
-          // Target entity def ID is encoded in inverseResourceFieldId (format: "targetEntityDefId:inverseFieldId")
-          const inverseRfId = f.options.relationship.inverseResourceFieldId
-          const targetEntityDefId = inverseRfId?.split(':')[0] ?? null
-          return {
-            ...base,
-            relationship: {
-              targetEntityDefinitionId: targetEntityDefId,
-              relationshipType: f.options.relationship.relationshipType,
-            },
-          }
-        }
-
-        return base
-      })
-
       const entityDefinitionId = resource.entityDefinitionId ?? resource.id
+      const output = buildListEntityFieldsOutput(entityDefinitionId, fields)
 
       return {
         success: true,
-        output: { entityDefinitionId, fields: output },
+        output,
       }
     },
   }

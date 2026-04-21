@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-editor/types.ts
 
 import type { IdentifierType } from '@auxx/database/types'
+import type { RecordId } from '@auxx/lib/resources/client'
 import type { RouterOutputs } from '~/trpc/react'
 
 /** Message type with all fields needed for display */
@@ -180,6 +181,9 @@ export type LocalAttachment = FileAttachment & {
 export type EditorMode = 'reply' | 'replyAll' | 'forward' | 'new' | 'draft'
 export interface RecipientState {
   id: string
+  /** Set when this recipient was selected from the contact picker — used to exclude
+   *  the contact from future picker results so it doesn't appear as a duplicate. */
+  recordId?: RecordId
   identifier: string
   identifierType: IdentifierType
   name?: string | null

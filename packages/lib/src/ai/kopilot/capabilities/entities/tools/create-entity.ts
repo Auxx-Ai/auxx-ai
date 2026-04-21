@@ -20,12 +20,12 @@ entityDefinitionId in the current turn, call it first. Do NOT guess field ids fr
 turns, system prompt, or intuition — always use the exact \`id\` returned by the most
 recent list_entity_fields call.
 
-Each key in \`values\` must be an id from list_entity_fields (usually the field's
-systemAttribute like \`company_website\`, \`ticket_status\`). Unknown keys are rejected.
+Each key in \`values\` must be an id from list_entity_fields. Unknown keys are rejected.
 
-Every field where \`capabilities.required === true\` AND \`capabilities.creatable === true\`
-must be included in \`values\` — missing any of them will fail. If the user hasn't provided a
-required value, ask them for it before calling this tool.
+Every id in the \`requiredOnCreate\` summary from list_entity_fields MUST appear in \`values\`.
+If the user hasn't provided one of them, ask before calling.
+Do NOT include ids listed in \`autoFilled\` or fields flagged \`readOnly: true\` — those are
+populated by the system. Fields flagged \`createOnly: true\` can be set here but not changed later.
 
 Example (ids match list_entity_fields output):
   entityDefinitionId: "abc123"

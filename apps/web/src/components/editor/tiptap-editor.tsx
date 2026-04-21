@@ -17,7 +17,7 @@ import '~/styles/prosemirror.css'
 import { useEditorContext } from './editor-context'
 import { FontSize } from './extensions'
 import { Indent } from './extensions/indent'
-import { InlinePickerPopover } from './inline-picker'
+import { createPlaceholderNode, InlinePickerPopover, PlaceholderBadge } from './inline-picker'
 import { useSlashCommand } from './inline-picker/hooks/use-slash-command'
 import { SlashCommandPicker } from './slash-command-picker'
 
@@ -27,6 +27,8 @@ type TiptapEditorProps = {
   placeholder?: string
   className?: string
   editable?: boolean
+  /** Extra class (e.g. z-index override) for the slash-command popover content. */
+  popoverClassName?: string
 }
 
 const TiptapEditor = ({
@@ -35,9 +37,15 @@ const TiptapEditor = ({
   placeholder = 'Type your reply here...',
   className = '',
   editable = true,
+  popoverClassName,
 }: TiptapEditorProps) => {
   const { setEditor } = useEditorContext()
   const slashCommand = useSlashCommand()
+
+  const placeholderNodeExtension = useMemo(
+    () => createPlaceholderNode((badgeProps) => <PlaceholderBadge {...badgeProps} />),
+    []
+  )
 
   const extensions = useMemo(
     () => [
@@ -54,8 +62,9 @@ const TiptapEditor = ({
       Link.configure({ openOnClick: false, autolink: true }),
       Placeholder.configure({ placeholder }),
       slashCommand.slashCommandExtension,
+      placeholderNodeExtension,
     ],
-    [placeholder, slashCommand.slashCommandExtension]
+    [placeholder, slashCommand.slashCommandExtension, placeholderNodeExtension]
   )
 
   const editorInstance = useEditor(
@@ -139,7 +148,8 @@ const TiptapEditor = ({
       <InlinePickerPopover
         state={slashCommand.suggestionState}
         onClose={slashCommand.closePicker}
-        width={288}>
+        width={288}
+        className={popoverClassName}>
         <SlashCommandPicker
           query={slashCommand.suggestionState.query}
           onExecute={slashCommand.executeCommand}

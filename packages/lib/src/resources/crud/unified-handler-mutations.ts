@@ -1,6 +1,7 @@
 // packages/lib/src/resources/crud/unified-handler-mutations.ts
 
 import type { Database, schema } from '@auxx/database'
+import { FieldType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import {
   createEntityInstance,
@@ -8,7 +9,7 @@ import {
   getEntityInstance,
   updateEntityInstance,
 } from '@auxx/services/entity-instances'
-import { getOrgCache } from '../../cache'
+import { findCachedResource, getOrgCache } from '../../cache'
 import { CommentService } from '../../comments'
 import { UnprocessableEntityError } from '../../errors'
 import { publisher } from '../../events/publisher'
@@ -22,6 +23,7 @@ import {
 } from '../events/extract-event-data'
 import type { MergeEntitiesResult } from '../merge'
 import { EntityMergeService } from '../merge'
+import type { ResourceField } from '../registry/field-types'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
 import type { ResolvedEntityDefinition } from './types'
 
@@ -180,6 +182,64 @@ function isValuePresent(value: unknown): boolean {
 }
 
 /**
+ * Coerce a stored `defaultValue` (typically `text` in the DB, or typed primitive
+ * from the static registry) into the shape the downstream field-value pipeline
+ * expects. String inputs are parsed for NUMBER/CURRENCY/CHECKBOX/MULTI_SELECT;
+ * everything else passes through. Returns `undefined` when a numeric string
+ * can't be parsed so the default is silently skipped instead of throwing.
+ */
+function coerceDefault(raw: unknown, fieldType: FieldType | undefined): unknown {
+  if (typeof raw !== 'string') return raw
+  switch (fieldType) {
+    case FieldType.NUMBER:
+    case FieldType.CURRENCY: {
+      const n = Number.parseFloat(raw)
+      return Number.isFinite(n) ? n : undefined
+    }
+    case FieldType.CHECKBOX:
+      return raw === 'true' || raw === '1'
+    case FieldType.MULTI_SELECT:
+    case FieldType.TAGS:
+      return [raw]
+    default:
+      return raw
+  }
+}
+
+/**
+ * Fill missing keys in `values` with each field's configured `defaultValue`.
+ * Only applies to `capabilities.creatable` fields (hook-owned fields like
+ * `ticket_number` / `created_by_id` are skipped). Respects explicit `null` as
+ * "caller is clearing" — does not overwrite. Runs before `runPreHooks` so the
+ * required-field check and hooks see the defaulted values uniformly.
+ *
+ * Source of fields is the cached `Resource` — it merges static-registry
+ * defaults (e.g. `ticket_type: 'GENERAL'`) with DB `CustomField.defaultValue`
+ * for custom entity fields.
+ */
+function applyDefaults(
+  values: Record<string, unknown>,
+  fields: ResourceField[]
+): Record<string, unknown> {
+  const out = { ...values }
+  for (const f of fields) {
+    if (!f.capabilities?.creatable) continue
+    if (f.defaultValue === undefined || f.defaultValue === null) continue
+    if (typeof f.defaultValue === 'string' && f.defaultValue === '') continue
+    const keys = [f.systemAttribute, f.key, f.id].filter(Boolean) as string[]
+    const alreadySet = keys.some((k) => k in values)
+    if (alreadySet) continue
+    const coerced = coerceDefault(f.defaultValue, f.fieldType)
+    if (coerced === undefined) continue
+    // Canonical key — matches the id list_entity_fields returns and the lookup
+    // setFieldValues uses (`systemAttribute ?? name`).
+    const canonical = f.systemAttribute ?? f.key
+    out[canonical] = coerced
+  }
+  return out
+}
+
+/**
  * Validate that all creatable+required fields are present in the input map.
  * Runs BEFORE any pre-hook with DB side effects (e.g. ticket number allocation)
  * so a missing field never leaves orphaned state behind.
@@ -230,13 +290,27 @@ export async function createEntity(
 ): Promise<CreateEntityResult> {
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 
+  // Apply configured defaults for any creatable field the caller omitted.
+  // Source is the cached Resource — merges static-registry defaults
+  // (e.g. ticket_type = 'GENERAL') with CustomField.defaultValue for custom
+  // entity fields. Runs before the required check so defaults satisfy it.
+  const resource = await findCachedResource(ctx.organizationId, entityDef.id)
+  const resourceFields = resource?.fields ?? []
+  const defaultedValues = applyDefaults(values, resourceFields)
+  if (Object.keys(defaultedValues).length > Object.keys(values).length) {
+    logger.debug('Applied field defaults', {
+      entityDefinitionId: entityDef.id,
+      appliedKeys: Object.keys(defaultedValues).filter((k) => !(k in values)),
+    })
+  }
+
   // Required-field check BEFORE any side-effect hook (e.g. ticket number allocation).
   // Validates user-scope required fields only (capabilities.required && isCreatable).
   const entityFields = await ctx.getFields(entityDef.id)
-  assertRequiredFieldsPresent(entityFields, values)
+  assertRequiredFieldsPresent(entityFields, defaultedValues)
 
   // Run pre-create hooks (validation, normalization, auto-generation)
-  const processedValues = await ctx.runPreHooks('create', entityDef, values)
+  const processedValues = await ctx.runPreHooks('create', entityDef, defaultedValues)
 
   // Check uniqueness constraints
   await ctx.validateUniqueFields(entityDef.id, processedValues)

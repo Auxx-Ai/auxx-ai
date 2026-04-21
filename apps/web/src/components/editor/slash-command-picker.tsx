@@ -15,9 +15,10 @@ import {
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import type { Editor } from '@tiptap/react'
-import { ChevronRight } from 'lucide-react'
+import { Braces, ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
+import { PlaceholderPickerContent } from './placeholders/placeholder-picker-content'
 
 type Range = { from: number; to: number }
 
@@ -55,6 +56,15 @@ const BASE_COMMANDS: CommandItemDef[] = [
     iconId: 'folder',
     drillDown: true,
     command: () => {}, // Handled separately — enters snippet mode
+  },
+  {
+    id: 'placeholder',
+    title: 'Insert placeholder',
+    description: 'Insert a dynamic field value',
+    keywords: ['variable', 'token', 'dynamic', 'merge', 'field'],
+    iconId: 'braces',
+    drillDown: true,
+    command: () => {}, // Handled separately — enters placeholder mode
   },
   {
     id: 'h1',
@@ -120,6 +130,28 @@ const BASE_COMMANDS: CommandItemDef[] = [
 
 export function SlashCommandPicker(props: SlashCommandPickerProps) {
   const [searchQuery, setSearchQuery] = useState(props.query)
+  const [mode, setMode] = useState<'default' | 'placeholder'>('default')
+
+  if (mode === 'placeholder') {
+    return (
+      <div className='w-72 overflow-hidden'>
+        <PlaceholderPickerContent
+          onBack={() => setMode('default')}
+          onSelect={(id) => {
+            props.onExecute((editor, range) => {
+              editor
+                .chain()
+                .focus()
+                .deleteRange(range)
+                .insertContent({ type: 'placeholder', attrs: { id } })
+                .insertContent(' ')
+                .run()
+            })
+          }}
+        />
+      </div>
+    )
+  }
 
   return (
     <CommandNavigation<SlashCommandNavItem> onNavigationChange={() => setSearchQuery('')}>
@@ -127,6 +159,7 @@ export function SlashCommandPicker(props: SlashCommandPickerProps) {
         {...props}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
+        onEnterPlaceholderMode={() => setMode('placeholder')}
       />
     </CommandNavigation>
   )
@@ -138,9 +171,11 @@ function SlashCommandPickerContent({
   onClose,
   searchQuery,
   setSearchQuery,
+  onEnterPlaceholderMode,
 }: SlashCommandPickerProps & {
   searchQuery: string
   setSearchQuery: (q: string) => void
+  onEnterPlaceholderMode: () => void
 }) {
   const { push, pop, isAtRoot, current, stack } = useCommandNavigation<SlashCommandNavItem>()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -219,6 +254,12 @@ function SlashCommandPickerContent({
         return
       }
 
+      // Handle "insert placeholder" command — enter placeholder mode
+      if (itemId === 'placeholder') {
+        onEnterPlaceholderMode()
+        return
+      }
+
       // Handle base command
       const cmd = BASE_COMMANDS.find((c) => c.id === itemId)
       if (cmd) {
@@ -242,7 +283,7 @@ function SlashCommandPickerContent({
         incrementUsage.mutate({ id: snippet.id })
       }
     },
-    [allSnippets, onExecute, incrementUsage, push, setSearchQuery]
+    [allSnippets, onExecute, incrementUsage, push, setSearchQuery, onEnterPlaceholderMode]
   )
 
   const handleKeyDown = useCallback(
@@ -272,6 +313,12 @@ function SlashCommandPickerContent({
           return
         }
 
+        if (isAtRoot && value.toLowerCase() === 'insert placeholder') {
+          e.preventDefault()
+          onEnterPlaceholderMode()
+          return
+        }
+
         if (isInSnippets) {
           const folder = currentFolders.find((f) => f.name.toLowerCase() === value.toLowerCase())
           if (folder) {
@@ -282,7 +329,17 @@ function SlashCommandPickerContent({
         }
       }
     },
-    [isAtRoot, isInSnippets, searchQuery, onClose, pop, push, setSearchQuery, currentFolders]
+    [
+      isAtRoot,
+      isInSnippets,
+      searchQuery,
+      onClose,
+      pop,
+      push,
+      setSearchQuery,
+      currentFolders,
+      onEnterPlaceholderMode,
+    ]
   )
 
   const isLoading = snippetsLoading

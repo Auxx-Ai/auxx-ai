@@ -9,7 +9,9 @@ export { useInlinePicker } from './hooks/use-inline-picker'
 export { useMentionEditor } from './hooks/use-mention-editor'
 export { useRecordLinkEditor } from './hooks/use-record-link-editor'
 export { useSlashCommand } from './hooks/use-slash-command'
+export { PlaceholderBadge } from './nodes/placeholder-badge'
 // Nodes
+export { createPlaceholderNode } from './nodes/placeholder-node'
 export { createPromptNode } from './nodes/prompt-node'
 export { PromptTemplateBadge } from './nodes/prompt-node-view'
 // Types

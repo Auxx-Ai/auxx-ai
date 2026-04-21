@@ -23,8 +23,9 @@ entity's type in the current turn, call it first. Do NOT guess field ids from pr
 turns, system prompt, or intuition — always use the exact \`id\` returned by the most
 recent list_entity_fields call.
 
-Each key in \`values\` must be an id from list_entity_fields (usually the field's
-systemAttribute like \`company_website\`, \`ticket_status\`). Unknown keys are rejected.
+Each key in \`values\` must be an id from list_entity_fields. Unknown keys are rejected.
+Do NOT include ids flagged \`readOnly: true\` or \`createOnly: true\` — the backend ignores
+them on update. Ids listed in \`autoFilled\` are also system-managed; don't pass them.
 
 Example (ids match list_entity_fields output):
   recordId: "abc123:def456"

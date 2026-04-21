@@ -12,6 +12,7 @@ interface LazyTiptapEditorProps {
   placeholder?: string
   editable?: boolean
   className?: string
+  popoverClassName?: string
 }
 
 /**
