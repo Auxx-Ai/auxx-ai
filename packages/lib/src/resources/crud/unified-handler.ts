@@ -7,7 +7,7 @@ import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-in
 import { ModelTypes } from '@auxx/types/custom-field'
 import { isEntityDefinitionType } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
-import { findCachedResource, getCachedCustomFields, requireCachedEntityDefId } from '../../cache'
+import { findCachedResource, getCachedCustomFields } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
 import { publisher } from '../../events/publisher'
 import { FieldValueService } from '../../field-values'
@@ -17,6 +17,7 @@ import { RecordPickerService } from '../picker'
 import { isSystemResourceId } from '../registry'
 import type { TableId } from '../registry/field-registry'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+import type { ResolvedEntityDefinition } from './types'
 import {
   archiveEntity,
   bulkArchiveEntities,
@@ -48,7 +49,6 @@ import {
 
 /** Inferred type for CustomField select (not exported from schema) */
 type CustomFieldEntity = typeof schema.CustomField.$inferSelect
-type EntityDefinitionEntity = typeof schema.EntityDefinition.$inferSelect
 type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
 
 /**
@@ -696,37 +696,23 @@ export class UnifiedCrudHandler {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Resolve entity definition by ID or system type.
-   * Returns an EntityDefinition-shaped object from the org cache or DB.
+   * Resolve entity definition by ID, entityType, or apiSlug.
+   * Reads from the org `resources` cache — no DB fetch. Cache is invalidated
+   * by the `entity-def.*` events in the invalidation graph.
    *
-   * @param entityDefinitionId - 'contact', 'ticket', 'tag', 'thread', or UUID for custom entities
-   * @returns The resolved EntityDefinition
+   * @param entityDefinitionId - 'contact', 'ticket', 'tag', apiSlug, or UUID
+   * @returns Narrow `{ id, entityType, apiSlug }` — the only fields mutations and hooks consume
    */
-  async resolveEntityDefinition(entityDefinitionId: string) {
-    let resolvedId = entityDefinitionId
-
-    // System types map to entityType → resolve via org cache
-    if (isEntityDefinitionType(entityDefinitionId)) {
-      resolvedId = await requireCachedEntityDefId(this.organizationId, entityDefinitionId)
-    }
-
-    // Fetch from DB for full EntityDefinition row (needed for mutations)
-    const rows = await this.db
-      .select()
-      .from(schema.EntityDefinition)
-      .where(
-        and(
-          eq(schema.EntityDefinition.id, resolvedId),
-          eq(schema.EntityDefinition.organizationId, this.organizationId)
-        )
-      )
-      .limit(1)
-
-    if (rows.length === 0) {
+  async resolveEntityDefinition(entityDefinitionId: string): Promise<ResolvedEntityDefinition> {
+    const resource = await findCachedResource(this.organizationId, entityDefinitionId)
+    if (!resource) {
       throw new Error(`Entity definition not found: ${entityDefinitionId}`)
     }
-
-    return rows[0]!
+    return {
+      id: resource.entityDefinitionId ?? resource.id,
+      entityType: resource.entityType ?? null,
+      apiSlug: resource.apiSlug ?? null,
+    }
   }
 
   /**
@@ -781,7 +767,7 @@ export class UnifiedCrudHandler {
 
   private async publishEvent(
     action: 'created' | 'updated' | 'deleted',
-    entityDef: EntityDefinitionEntity,
+    entityDef: ResolvedEntityDefinition,
     instanceId: string,
     values: Record<string, unknown>,
     extra?: Record<string, unknown>
@@ -803,7 +789,7 @@ export class UnifiedCrudHandler {
 
   private async runPreHooks(
     operation: 'create' | 'update',
-    entityDef: EntityDefinitionEntity,
+    entityDef: ResolvedEntityDefinition,
     values: Record<string, unknown>,
     existingInstance?: EntityInstanceEntity
   ): Promise<Record<string, unknown>> {

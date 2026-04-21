@@ -36,7 +36,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
         {Icon && <Icon className={cn('mb-4 h-12 w-12 text-muted-foreground', iconClassName)} />}
 
         {/* title */}
-        <h3 className='text-medium mb-2'>{title}</h3>
+        <h3 className='text-lg text-medium mb-2'>{title}</h3>
 
         {/* description, if provided */}
         {description && (

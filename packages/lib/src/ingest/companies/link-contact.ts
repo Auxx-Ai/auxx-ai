@@ -3,6 +3,7 @@
 import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNotNull } from 'drizzle-orm'
+import { requireCachedEntityDefId } from '../../cache'
 import { getOrgCache } from '../../cache/singletons'
 import type { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
@@ -54,28 +55,35 @@ export async function linkContactToCompanyByDomain(args: LinkContactArgs): Promi
     )
     if (!companyId) return
 
-    const [contactEmployerField, companyPrimaryContactField] = await Promise.all([
-      db
-        .select({ id: schema.CustomField.id })
-        .from(schema.CustomField)
-        .where(
-          and(
-            eq(schema.CustomField.organizationId, args.organizationId),
-            eq(schema.CustomField.systemAttribute, 'contact_employer')
+    // Resolve system entity types to EntityDefinition UUIDs so relationship writes
+    // store the canonical `relatedEntityDefinitionId`. Server-side normalization in
+    // the field-value mutation path also canonicalizes these, but resolving here
+    // keeps callers consistent and avoids any type-name-prefixed RecordIds in transit.
+    const [contactDefId, companyDefId, contactEmployerField, companyPrimaryContactField] =
+      await Promise.all([
+        requireCachedEntityDefId(args.organizationId, 'contact'),
+        requireCachedEntityDefId(args.organizationId, 'company'),
+        db
+          .select({ id: schema.CustomField.id })
+          .from(schema.CustomField)
+          .where(
+            and(
+              eq(schema.CustomField.organizationId, args.organizationId),
+              eq(schema.CustomField.systemAttribute, 'contact_employer')
+            )
           )
-        )
-        .limit(1),
-      db
-        .select({ id: schema.CustomField.id })
-        .from(schema.CustomField)
-        .where(
-          and(
-            eq(schema.CustomField.organizationId, args.organizationId),
-            eq(schema.CustomField.systemAttribute, 'company_primary_contact')
+          .limit(1),
+        db
+          .select({ id: schema.CustomField.id })
+          .from(schema.CustomField)
+          .where(
+            and(
+              eq(schema.CustomField.organizationId, args.organizationId),
+              eq(schema.CustomField.systemAttribute, 'company_primary_contact')
+            )
           )
-        )
-        .limit(1),
-    ])
+          .limit(1),
+      ])
 
     const updates: Array<Promise<unknown>> = []
 
@@ -96,8 +104,8 @@ export async function linkContactToCompanyByDomain(args: LinkContactArgs): Promi
 
       if (existing.length === 0) {
         updates.push(
-          args.crudHandler.update(toRecordId('contact', args.contactId), {
-            contact_employer: toRecordId('company', companyId),
+          args.crudHandler.update(toRecordId(contactDefId, args.contactId), {
+            contact_employer: toRecordId(companyDefId, companyId),
           })
         )
       }
@@ -120,8 +128,8 @@ export async function linkContactToCompanyByDomain(args: LinkContactArgs): Promi
 
       if (existing.length === 0) {
         updates.push(
-          args.crudHandler.update(toRecordId('company', companyId), {
-            company_primary_contact: toRecordId('contact', args.contactId),
+          args.crudHandler.update(toRecordId(companyDefId, companyId), {
+            company_primary_contact: toRecordId(contactDefId, args.contactId),
           })
         )
       }

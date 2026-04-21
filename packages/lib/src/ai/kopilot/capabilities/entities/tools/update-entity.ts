@@ -1,9 +1,16 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/update-entity.ts
 
+import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
-import { isRecordId } from '../../../../../resources/resource-id'
+import { getDefinitionId, isRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import {
+  formatUnknownFieldsError,
+  resolveFieldLabels,
+  validateFieldKeys,
+} from './field-label-helpers'
+import { formatActorResolutionError, resolveActorValues } from './resolve-actor-values'
 
 export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -11,12 +18,17 @@ export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
     usageNotes: 'Emits an `action-result` block automatically.',
     description: `Update field values on an entity instance.
 
-IMPORTANT: You MUST call list_entity_fields first to discover valid field IDs.
-Pass field values inside the "values" object using the field IDs returned by list_entity_fields.
+REQUIRED BEFORE CALLING: If you have NOT already called \`list_entity_fields\` for this
+entity's type in the current turn, call it first. Do NOT guess field ids from prior
+turns, system prompt, or intuition — always use the exact \`id\` returned by the most
+recent list_entity_fields call.
 
-Example:
+Each key in \`values\` must be an id from list_entity_fields (usually the field's
+systemAttribute like \`company_website\`, \`ticket_status\`). Unknown keys are rejected.
+
+Example (ids match list_entity_fields output):
   recordId: "abc123:def456"
-  values: { "website": "https://new-site.com" }`,
+  values: { "company_website": "https://new-site.com" }`,
     requiresApproval: true,
     parameters: {
       type: 'object',
@@ -28,7 +40,7 @@ Example:
         values: {
           type: 'object',
           description:
-            'Object mapping field IDs to their new values. Field IDs come from list_entity_fields (e.g. { "website": "https://new-site.com" }). Only include fields you want to update.',
+            'Object mapping field IDs to their new values. Keys MUST be exact ids from the most recent list_entity_fields call (usually systemAttribute, e.g. company_website, ticket_status). Only include fields you want to update.',
           additionalProperties: true,
         },
       },
@@ -61,18 +73,46 @@ Example:
         }
       }
 
+      const resource = await findCachedResource(agentDeps.organizationId, getDefinitionId(recordId))
+
+      if (resource) {
+        const { unknownKeys, validIds } = validateFieldKeys(Object.keys(values), resource)
+        if (unknownKeys.length > 0) {
+          return {
+            success: false,
+            output: null,
+            error: formatUnknownFieldsError(unknownKeys, validIds, resource.label),
+          }
+        }
+      }
+
+      let resolvedValues = values
+      if (resource) {
+        const actorResolution = await resolveActorValues(values, resource, {
+          organizationId: agentDeps.organizationId,
+          userId: agentDeps.userId,
+        })
+        if (actorResolution.errors.length > 0) {
+          return {
+            success: false,
+            output: null,
+            error: formatActorResolutionError(actorResolution.errors, agentDeps.userId),
+          }
+        }
+        resolvedValues = actorResolution.values
+      }
+
       const handler = new UnifiedCrudHandler(agentDeps.organizationId, agentDeps.userId, db)
 
       try {
-        await handler.update(recordId, values)
-        const fieldNames = Object.keys(values)
+        await handler.update(recordId, resolvedValues)
+        const fieldIds = Object.keys(resolvedValues)
+        const labels = resolveFieldLabels(resource, fieldIds)
         const summary =
-          fieldNames.length === 1
-            ? `Updated ${fieldNames[0]}`
-            : `Updated ${fieldNames.length} fields`
+          labels.length === 1 ? `Updated ${labels[0]}` : `Updated ${labels.length} fields`
         return {
           success: true,
-          output: { recordId, updatedFields: fieldNames },
+          output: { recordId, updatedFields: labels },
           blocks: [
             {
               type: 'action-result',
@@ -81,7 +121,7 @@ Example:
                 success: true,
                 summary,
                 recordId,
-                count: fieldNames.length,
+                count: labels.length,
               },
             },
           ],

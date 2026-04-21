@@ -16,6 +16,7 @@ export { useEntityDefinitionMutations } from './use-entity-definition-mutations'
 export { useEntityValues } from './use-entity-values'
 export {
   useField,
+  useFieldByKey,
   useFieldIsDeleted,
   useFieldIsPending,
   useFieldSelectOption,

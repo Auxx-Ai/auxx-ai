@@ -10,6 +10,7 @@ import {
 } from '@auxx/services/entity-instances'
 import { getOrgCache } from '../../cache'
 import { CommentService } from '../../comments'
+import { UnprocessableEntityError } from '../../errors'
 import { publisher } from '../../events/publisher'
 import type { FieldValueService } from '../../field-values'
 import { getRealtimeService } from '../../realtime'
@@ -22,10 +23,10 @@ import {
 import type { MergeEntitiesResult } from '../merge'
 import { EntityMergeService } from '../merge'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+import type { ResolvedEntityDefinition } from './types'
 
 const logger = createScopedLogger('unified-handler-mutations')
 
-type EntityDefinitionEntity = typeof schema.EntityDefinition.$inferSelect
 type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
 
 /**
@@ -52,11 +53,11 @@ export interface MutationContext {
   /** Pusher socket ID of the originating client — used for self-event exclusion in realtime sync. */
   socketId?: string
   fieldValueService: FieldValueService
-  resolveEntityDefinition: (entityDefinitionId: string) => Promise<EntityDefinitionEntity>
+  resolveEntityDefinition: (entityDefinitionId: string) => Promise<ResolvedEntityDefinition>
   getFields: (entityDefinitionId: string) => Promise<CustomFieldEntity[]>
   runPreHooks: (
     operation: 'create' | 'update',
-    entityDef: EntityDefinitionEntity,
+    entityDef: ResolvedEntityDefinition,
     values: Record<string, unknown>,
     existingInstance?: EntityInstanceEntity
   ) => Promise<Record<string, unknown>>
@@ -167,6 +168,45 @@ async function invalidateEntitySnapshots(
   }
 }
 
+/**
+ * True if a value is considered present for required-field validation.
+ * Null, undefined, empty string, and empty arrays count as missing.
+ */
+function isValuePresent(value: unknown): boolean {
+  if (value === null || value === undefined) return false
+  if (typeof value === 'string' && value.trim() === '') return false
+  if (Array.isArray(value) && value.length === 0) return false
+  return true
+}
+
+/**
+ * Validate that all creatable+required fields are present in the input map.
+ * Runs BEFORE any pre-hook with DB side effects (e.g. ticket number allocation)
+ * so a missing field never leaves orphaned state behind.
+ *
+ * Keys in `values` can be the field's `systemAttribute`, `name`, or UUID.
+ * Fields with `isCreatable === false` are skipped — those are auto-populated
+ * by hooks (e.g. ticket_number, created_by_id).
+ */
+function assertRequiredFieldsPresent(
+  fields: CustomFieldEntity[],
+  values: Record<string, unknown>
+): void {
+  const missing = fields.filter((f) => {
+    if (!f.required || !f.isCreatable) return false
+    const keys = [f.systemAttribute, f.name, f.id].filter(Boolean) as string[]
+    return !keys.some((k) => k in values && isValuePresent(values[k]))
+  })
+
+  if (missing.length === 0) return
+
+  const labels = missing.map((f) => f.name)
+  throw new UnprocessableEntityError(`Missing required fields: ${labels.join(', ')}`, {
+    missingFields: missing.map((f) => f.systemAttribute ?? f.name),
+    missingFieldLabels: labels,
+  })
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SINGLE RECORD MUTATIONS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -190,6 +230,11 @@ export async function createEntity(
 ): Promise<CreateEntityResult> {
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 
+  // Required-field check BEFORE any side-effect hook (e.g. ticket number allocation).
+  // Validates user-scope required fields only (capabilities.required && isCreatable).
+  const entityFields = await ctx.getFields(entityDef.id)
+  assertRequiredFieldsPresent(entityFields, values)
+
   // Run pre-create hooks (validation, normalization, auto-generation)
   const processedValues = await ctx.runPreHooks('create', entityDef, values)
 
@@ -210,6 +255,17 @@ export async function createEntity(
 
   // Set field values using RecordId
   await ctx.setFieldValues(recordId, processedValues)
+
+  // Re-read the instance so displayName / secondaryDisplayValue / avatarUrl
+  // reflect what setFieldValues' maybeUpdateDisplayValue just wrote. The
+  // in-memory `instance` captured above was snapshotted before those columns
+  // were populated, so using it for the realtime event would poison other
+  // tabs' record store with stale nulls.
+  const freshResult = await getEntityInstance({
+    id: instance.id,
+    organizationId: ctx.organizationId,
+  })
+  const freshInstance = freshResult.isOk() ? freshResult.value : instance
 
   // Invalidate snapshots (unless skipped for bulk operations)
   if (!options.skipSnapshotInvalidation) {
@@ -246,11 +302,11 @@ export async function createEntity(
           {
             entityDefinitionId: entityDef.id,
             record: {
-              id: instance.id,
+              id: freshInstance.id,
               recordId,
-              displayName: instance.displayName,
-              createdAt: instance.createdAt,
-              updatedAt: instance.updatedAt,
+              displayName: freshInstance.displayName,
+              createdAt: freshInstance.createdAt,
+              updatedAt: freshInstance.updatedAt,
             },
           },
           { excludeSocketId: ctx.socketId }
@@ -259,9 +315,10 @@ export async function createEntity(
     }
   }
 
-  // Return instance, recordId, and all processed values (including auto-generated ones)
+  // Return the fresh instance so callers (e.g. the create_entity tool) have a
+  // post-setFieldValues view with the populated displayName.
   return {
-    instance,
+    instance: freshInstance,
     recordId,
     values: processedValues,
   }
@@ -306,6 +363,15 @@ export async function updateEntity(
   // Set field values using resolved RecordId
   await ctx.setFieldValues(resolvedRecordId, processedValues)
 
+  // Re-read so displayName / secondaryDisplayValue / avatarUrl / updatedAt
+  // reflect what setFieldValues just wrote. The `instance` captured at the
+  // top is now stale for any denormalized display column the update touched.
+  const freshResult = await getEntityInstance({
+    id: entityInstanceId,
+    organizationId: ctx.organizationId,
+  })
+  const freshInstance = freshResult.isOk() ? freshResult.value : instance
+
   // Invalidate snapshots (unless skipped for bulk operations)
   if (!options.skipSnapshotInvalidation) {
     await invalidateEntitySnapshots(ctx.organizationId, entityDef.id)
@@ -330,8 +396,34 @@ export async function updateEntity(
     })
   }
 
-  // Return the instance we already fetched (field values are in FieldValue table, not on instance)
-  return instance
+  // Publish record:updated realtime event so other tabs can refresh the row's
+  // denormalized metadata (displayName, etc). Field-value changes ride on
+  // fieldValues:updated; this event is only for the record-level columns.
+  if (!options.skipEvents) {
+    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
+    if (features?.realtimeSync) {
+      getRealtimeService()
+        .sendToOrganization(
+          ctx.organizationId,
+          'record:updated',
+          {
+            entityDefinitionId: entityDef.id,
+            record: {
+              id: freshInstance.id,
+              recordId: resolvedRecordId,
+              displayName: freshInstance.displayName,
+              createdAt: freshInstance.createdAt,
+              updatedAt: freshInstance.updatedAt,
+            },
+          },
+          { excludeSocketId: ctx.socketId }
+        )
+        .catch(() => {})
+    }
+  }
+
+  // Return the fresh instance so callers see the post-update denormalized columns.
+  return freshInstance
 }
 
 /**

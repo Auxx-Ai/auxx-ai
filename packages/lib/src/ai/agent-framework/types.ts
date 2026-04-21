@@ -402,5 +402,7 @@ export type AgentEvent = { turnId?: string } & (
   /** Commits the final assistant prose message for the turn */
   | { type: 'final-message'; agent: string; content: string }
   | { type: 'message'; role: 'assistant'; content: string; blocks?: AgentBlock[] }
+  | { type: 'session-created'; sessionId: string; title: string; createdAt: string }
+  | { type: 'session-title-updated'; sessionId: string; title: string }
   | { type: 'done' }
 )

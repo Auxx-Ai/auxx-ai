@@ -167,11 +167,12 @@ export async function POST(request: NextRequest) {
           savedDomainState = (sessionResult.value.domainState ?? {}) as Record<string, unknown>
           storedModelId = sessionResult.value.modelId ?? null
         } else {
+          const placeholderTitle = message.slice(0, 100)
           const createResult = await createSession({
             organizationId,
             userId,
             type: 'kopilot',
-            title: message.slice(0, 100),
+            title: placeholderTitle,
           })
           if (createResult.isErr()) {
             send({ type: 'error', error: createResult.error.message })
@@ -180,7 +181,12 @@ export async function POST(request: NextRequest) {
           }
           sessionId = createResult.value.id
           isNewSession = true
-          send({ type: 'session-created', sessionId })
+          send({
+            type: 'session-created',
+            sessionId,
+            title: placeholderTitle,
+            createdAt: createResult.value.createdAt.toISOString(),
+          })
         }
 
         const runPath = shouldUseWorker()
@@ -298,6 +304,16 @@ async function runInProcessPath(params: {
     request,
     isNewSession,
   } = params
+
+  // Kick off LLM title generation in parallel with the engine turn so its
+  // latency overlaps. The result is awaited + persisted + emitted at the end.
+  // Errors are swallowed here — a title failure must not block the turn.
+  const titlePromise: Promise<string | null> = isNewSession
+    ? generateSessionTitle(message, { organizationId, userId, db }).catch((err) => {
+        logger.warn('Session auto-title failed', { sessionId, error: String(err) })
+        return null
+      })
+    : Promise.resolve(null)
 
   // Build domain config with capabilities
   const getToolDeps = createToolDepsFactory({
@@ -488,11 +504,18 @@ async function runInProcessPath(params: {
     }
   }
 
-  // Auto-title new sessions after first exchange
+  // Auto-title new sessions after first exchange. The promise was kicked off at
+  // the top of this function so its latency overlaps with the engine run.
   if (isNewSession) {
-    generateSessionTitle(message, { organizationId, userId, db })
-      .then((title) => updateSessionTitle({ sessionId, organizationId, title }))
-      .catch((err) => logger.warn('Session auto-title failed', { sessionId, error: String(err) }))
+    try {
+      const title = await titlePromise
+      if (title && !request.signal.aborted) {
+        await updateSessionTitle({ sessionId, organizationId, title })
+        send({ type: 'session-title-updated', sessionId, title })
+      }
+    } catch (err) {
+      logger.warn('Session auto-title persist failed', { sessionId, error: String(err) })
+    }
   }
 }
 
@@ -516,6 +539,11 @@ async function runWorkerPath(params: {
   const { sessionId, organizationId, userId, message, type, page, context, send, request } = params
 
   // TODO: Add model-switch detection when worker path is enabled
+  // TODO(kopilot-worker-title): the worker path does not emit `session-created`
+  // with a placeholder title or run `generateSessionTitle` + `session-title-updated`.
+  // When USE_AGENT_WORKER is enabled, move title generation into the worker job
+  // (post-engine) and publish `session-title-updated` onto the same Redis channel
+  // that `subscribeToAgentEvents` consumes, so the SSE bridge forwards it.
 
   // 1. Subscribe to Redis events BEFORE enqueuing to avoid race conditions.
   // Use a promise to detect terminal events and close the stream.

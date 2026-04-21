@@ -3,7 +3,9 @@
 import { generateId } from '@auxx/utils/generateId'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type SSEConfig, useSSE } from '~/hooks/use-sse'
+import { api } from '~/trpc/react'
 import { useKopilotStore } from '../stores/kopilot-store'
+import { patchSessionTitleInListCache, upsertSessionInListCache } from './kopilot-session-cache'
 
 export interface KopilotRequest {
   sessionId?: string
@@ -28,6 +30,8 @@ interface UseKopilotSSEOptions {
 
 export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOptions) {
   const [sseConfig, setSSEConfig] = useState<SSEConfig | null>(null)
+
+  const utils = api.useUtils()
 
   const setActiveSessionId = useKopilotStore((s) => s.setActiveSessionId)
   const setCurrentRoute = useKopilotStore((s) => s.setCurrentRoute)
@@ -74,6 +78,18 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
       switch (eventType) {
         case 'session-created': {
           setActiveSessionId(data.sessionId)
+          upsertSessionInListCache(utils, {
+            sessionId: data.sessionId,
+            title: data.title ?? '',
+            createdAt: data.createdAt,
+          })
+          break
+        }
+        case 'session-title-updated': {
+          patchSessionTitleInListCache(utils, {
+            sessionId: data.sessionId,
+            title: data.title,
+          })
           break
         }
         case 'turn-started': {
@@ -270,6 +286,7 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
       }
     },
     [
+      utils,
       setActiveSessionId,
       setCurrentRoute,
       setIsStreaming,

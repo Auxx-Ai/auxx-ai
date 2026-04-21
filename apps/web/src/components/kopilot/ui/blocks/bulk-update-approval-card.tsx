@@ -9,6 +9,7 @@ import { useResource } from '~/components/resources'
 import type { ApprovalCardProps } from './approval-card-registry'
 import { BlockCard, type BlockCardAction, StatusIndicator } from './block-card'
 import { EntityCardItem } from './entity-card-item'
+import { KopilotFieldRow } from './kopilot-field-row'
 
 export function BulkUpdateApprovalCard({ args, status, onApprove, onReject }: ApprovalCardProps) {
   const recordIds = (args.recordIds ?? []) as RecordId[]
@@ -33,8 +34,6 @@ export function BulkUpdateApprovalCard({ args, status, onApprove, onReject }: Ap
   const selectAll = () => setSelectedIds(new Set(recordIds))
   const deselectAll = () => setSelectedIds(new Set())
 
-  const changeSummary = values.map((v) => `${v.fieldId} → ${String(v.value)}`).join(', ')
-
   const actions: BlockCardAction[] = isPending
     ? [
         { label: 'Deny', onClick: onReject },
@@ -51,7 +50,6 @@ export function BulkUpdateApprovalCard({ args, status, onApprove, onReject }: Ap
       data-slot='bulk-update-approval-card'
       indicator={<StatusIndicator status={status} />}
       primaryText={`Update ${totalCount} ${resource?.plural ?? 'Records'}`}
-      secondaryText={changeSummary}
       hasFooter={isPending}
       actionLabel={
         status === 'approved'
@@ -61,6 +59,19 @@ export function BulkUpdateApprovalCard({ args, status, onApprove, onReject }: Ap
             : undefined
       }
       actions={actions}>
+      {values.length > 0 && (
+        <div className='mb-2 border-b pb-2'>
+          {values.map((v) => (
+            <KopilotFieldRow
+              key={v.fieldId}
+              entityDefinitionId={entityDefId}
+              fieldKey={v.fieldId}
+              value={v.value}
+            />
+          ))}
+        </div>
+      )}
+
       <div className='space-y-1'>
         {isPending && totalCount > 2 && (
           <div className='flex gap-2 px-1 pb-1'>

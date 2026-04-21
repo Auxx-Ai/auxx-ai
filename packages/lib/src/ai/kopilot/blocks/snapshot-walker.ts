@@ -134,8 +134,12 @@ function addEntitySnapshot(target: TurnSnapshots, item: Record<string, unknown>)
   if (!recordId) return
   const parts = recordId.split(':')
   if (parts.length < 2) return
+  const displayName = asString(item.displayName)
+  // Skip snapshotting when the tool didn't supply a name — the frontend will
+  // hydrate via useRecord. Falling back to the recordId here poisons the card
+  // with the raw id until hydration resolves.
+  if (!displayName) return
   const entityDefinitionId = parts[0]!
-  const displayName = asString(item.displayName) ?? recordId
   const summary = asString(item.secondaryInfo)
 
   const snap: EntitySnapshot = { recordId, entityDefinitionId, displayName }

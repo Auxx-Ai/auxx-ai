@@ -7,6 +7,7 @@ import type {
   RecordArchivedEvent,
   RecordCreatedEvent,
   RecordDeletedEvent,
+  RecordUpdatedEvent,
 } from '@auxx/lib/realtime'
 import { useCallback, useEffect } from 'react'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -30,6 +31,7 @@ export function useResourceSync() {
   const setValues = useFieldValueStore((s) => s.setValues)
   const invalidateResource = useFieldValueStore((s) => s.invalidateResource)
   const setRecords = useRecordStore((s) => s.setRecords)
+  const updateRecord = useRecordStore((s) => s.updateRecord)
   const removeRecord = useRecordStore((s) => s.removeRecord)
   const invalidateLists = useRecordStore((s) => s.invalidateLists)
 
@@ -52,6 +54,20 @@ export function useResourceSync() {
       }
     },
     [setRecords, invalidateLists, setValues, utils]
+  )
+
+  // Partial-update the cached record if we already have it. If the tab never
+  // fetched this record, do nothing — `useRecord` will fetch fresh when a
+  // component first mounts a card for it.
+  const handleRecordUpdated = useCallback(
+    (raw: unknown) => {
+      const data = raw as RecordUpdatedEvent['data']
+      updateRecord(data.entityDefinitionId, data.record.id, {
+        displayName: data.record.displayName,
+        updatedAt: data.record.updatedAt,
+      })
+    },
+    [updateRecord]
   )
 
   const handleRecordDeleted = useCallback(
@@ -79,12 +95,14 @@ export function useResourceSync() {
 
     orgChannel.bind('fieldValues:updated', handleFieldValuesUpdated)
     orgChannel.bind('record:created', handleRecordCreated)
+    orgChannel.bind('record:updated', handleRecordUpdated)
     orgChannel.bind('record:deleted', handleRecordDeleted)
     orgChannel.bind('record:archived', handleRecordArchived)
 
     return () => {
       orgChannel.unbind('fieldValues:updated', handleFieldValuesUpdated)
       orgChannel.unbind('record:created', handleRecordCreated)
+      orgChannel.unbind('record:updated', handleRecordUpdated)
       orgChannel.unbind('record:deleted', handleRecordDeleted)
       orgChannel.unbind('record:archived', handleRecordArchived)
     }
@@ -93,6 +111,7 @@ export function useResourceSync() {
     realtimeSyncEnabled,
     handleFieldValuesUpdated,
     handleRecordCreated,
+    handleRecordUpdated,
     handleRecordDeleted,
     handleRecordArchived,
   ])

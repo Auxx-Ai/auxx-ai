@@ -240,9 +240,6 @@ export class FieldValueValidator {
       for (const id of entityInstanceIds) {
         result.set(id, { success: true })
       }
-      console.warn(
-        '[FieldValueValidator] Database context not available for batch relationship validation, skipping access checks'
-      )
       return result
     }
 

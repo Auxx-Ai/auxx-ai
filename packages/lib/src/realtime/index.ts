@@ -19,6 +19,7 @@ export type {
   RecordCreatedEvent,
   RecordDeletedEvent,
   RecordMeta,
+  RecordUpdatedEvent,
   ResourceSyncEvent,
   StoredFieldValue,
 } from './events'

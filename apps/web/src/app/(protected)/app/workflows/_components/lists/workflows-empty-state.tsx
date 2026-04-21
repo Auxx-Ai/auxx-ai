@@ -49,11 +49,10 @@ export function WorkflowsEmptyState({
     <div className='flex flex-col items-center flex-1 h-full'>
       <EmptyState
         icon={Workflow}
-        title='Create your first workflow'
+        title='Workflows'
         description={
-          <div className='max-w-md'>
-            Workflows allow you to automate complex business processes with visual, node-based
-            logic. Build powerful automations with conditions, actions, and integrations.
+          <div className='max-w-[250px]'>
+            No workflows yet! Create your first workflow to get started.
           </div>
         }
         button={
