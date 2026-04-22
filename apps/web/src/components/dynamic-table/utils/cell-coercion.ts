@@ -1,7 +1,13 @@
 // apps/web/src/components/dynamic-table/utils/cell-coercion.ts
 'use client'
 
-import type { ResourceField } from '@auxx/lib/resources/client'
+import {
+  getRelatedEntityDefinitionId,
+  isRecordId,
+  parseRecordId,
+  type RecordId,
+  type ResourceField,
+} from '@auxx/lib/resources/client'
 import type { CopyCellPayload } from '../types'
 
 /**
@@ -198,17 +204,39 @@ export function coerceForPaste(
     }
 
     case 'RELATIONSHIP': {
+      const relConfig = targetField.options?.relationship
+      const targetRelatedDefId = relConfig ? getRelatedEntityDefinitionId(relConfig) : null
+      const hasMany = relConfig?.relationshipType === 'has_many'
+
       // Lossless: source is a relationship with a RecordId.
       if (source.fieldType === 'RELATIONSHIP' && typeof source.recordId === 'string') {
-        const targetRelatedDefId = targetField.options?.relationship?.relatedEntityDefinitionId
         if (targetRelatedDefId) {
-          const sourceDefId = source.recordId.split(':')[0]
+          const sourceDefId = parseRecordId(source.recordId as RecordId).entityDefinitionId
           if (sourceDefId !== targetRelatedDefId) {
             return { ok: false, reason: 'wrong-entity-type' }
           }
         }
         return { ok: true, value: source.recordId }
       }
+
+      // RecordId round-trip: when copy falls back to emitting the RecordId in
+      // `display` (dataMap miss at copy time, or plain-text paste from another
+      // auxx tab), accept it directly if the entity def matches the target.
+      // has_many sources come through as ", "-joined RecordIds.
+      const candidates = display
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (candidates.length > 0 && candidates.every(isRecordId)) {
+        if (targetRelatedDefId) {
+          const allMatch = candidates.every(
+            (c) => parseRecordId(c as RecordId).entityDefinitionId === targetRelatedDefId
+          )
+          if (!allMatch) return { ok: false, reason: 'wrong-entity-type' }
+        }
+        return { ok: true, value: hasMany ? candidates : candidates[0] }
+      }
+
       // Display-name lookup (phase 2d callback).
       const resolver = opts.resolveRelationshipByDisplay
       if (resolver) {

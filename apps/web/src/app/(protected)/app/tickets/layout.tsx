@@ -3,6 +3,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -101,6 +102,10 @@ function TicketsLayoutHeader() {
               onClick={() => setCreateDialogOpen(true)}>
               <Plus />
               <span className='hidden sm:inline'>New Ticket</span>
+              <KbdGroup variant='default' size='sm'>
+                <Kbd>c</Kbd>
+                <Kbd>t</Kbd>
+              </KbdGroup>
             </Button>
           )}
           {activeTab === 'dashboard' && (

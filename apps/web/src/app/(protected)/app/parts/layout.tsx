@@ -3,6 +3,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -22,6 +23,10 @@ function PartsLayoutHeader() {
         <Button size='sm' onClick={() => setCreateDialogOpen(true)}>
           <Plus />
           Create Part
+          <KbdGroup variant='default' size='sm'>
+            <Kbd>c</Kbd>
+            <Kbd>p</Kbd>
+          </KbdGroup>
         </Button>
       }>
       <MainPageBreadcrumb>

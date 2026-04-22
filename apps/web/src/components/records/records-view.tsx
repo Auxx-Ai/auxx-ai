@@ -8,6 +8,7 @@ import type { ActorId } from '@auxx/types/actor'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import Loader from '@auxx/ui/components/loader'
 import {
   type DockedPanelConfig,
@@ -37,6 +38,7 @@ import {
 } from '~/components/dynamic-table/stores/store-selectors'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
 import { EmptyState } from '~/components/global/empty-state'
+import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
 import { MergeDialog } from '~/components/merge'
 import { type RecordMeta, toRecordId, useRecordList, useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
@@ -115,6 +117,7 @@ export function RecordsView({
   )
 
   const entityDefinitionId = resource?.id
+  const createHotkey = getCreateHotkey(resource?.apiSlug)
 
   // Create dialog state — synced with ?create URL param for external triggers (e.g. layout header button)
   const [createParam, setCreateParam] = useQueryState('create', parseAsBoolean.withDefault(false))
@@ -793,6 +796,12 @@ export function RecordsView({
             <Button size='sm' variant='outline' onClick={() => setIsCreateDialogOpen(true)}>
               <Plus />
               Create {resource?.label ?? 'Record'}
+              {createHotkey && (
+                <KbdGroup variant='default' size='sm'>
+                  <Kbd>{createHotkey[0]}</Kbd>
+                  <Kbd>{createHotkey[1]}</Kbd>
+                </KbdGroup>
+              )}
             </Button>
           }
         />
@@ -950,6 +959,12 @@ export function RecordsView({
                 onClick={() => setIsCreateDialogOpen(true)}>
                 <Plus className='size-4' />
                 Create {resource.label}
+                {createHotkey && (
+                  <KbdGroup variant='default' size='sm'>
+                    <Kbd>{createHotkey[0]}</Kbd>
+                    <Kbd>{createHotkey[1]}</Kbd>
+                  </KbdGroup>
+                )}
               </Button>
             }>
             <MainPageBreadcrumb>
