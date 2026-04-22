@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.137](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.136...auxx-v0.1.137) (2026-04-22)
+
+
+### Features
+
+* add demo route with redirect to demo URL ([7d7f547](https://github.com/Auxx-Ai/auxx-ai/commit/7d7f5475c18eab8ed95d128255000d910655b5fd))
+
 ## [0.1.136](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.135...auxx-v0.1.136) (2026-04-22)
 
 
