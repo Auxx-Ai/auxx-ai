@@ -96,3 +96,37 @@
   /* Add 50px buffer to pinned width to ensure cell is clearly visible */
   scroll-margin-left: calc(var(--pinned-left-width, 0px) + 50px);
 }
+
+/* Active cell affordance — single focused cell within the range. Drives content
+   expansion in ExpandableCell / PrimaryCell via the existing `.cell-selected`
+   alias (both classes are set on the active cell). Pointer events stay enabled
+   so dblclick/edit still works. */
+.cell-active {
+  position: relative;
+}
+
+.cell-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 0.375rem;
+  box-shadow: inset 0 0 0 1px hsl(217 91% 60%);
+  z-index: 11;
+}
+
+.cell-active.cell-editing::after {
+  box-shadow: inset 0 0 0 1px hsl(217 91% 50%);
+  background: hsl(217 91% 60% / 0.05);
+}
+
+/* Read-only override: gray ring instead of blue */
+.cell-active.read-only::after {
+  box-shadow: inset 0 0 0 1px hsl(220 9% 64%);
+}
+
+/* Cell inside the active range (multi-cell). Pure tint — overlay handles the
+   border. Fades to nothing in the 1×1 case (cells don't get this class then). */
+.cell-in-range {
+  background-color: hsl(217 91% 60% / 0.06);
+}

@@ -3,26 +3,20 @@
 
 import { createContext, type ReactNode, useCallback, useContext, useMemo } from 'react'
 import { useSelectionStore } from '../stores/selection-store'
-import type { CellSelectionConfig, CellSelectionState } from '../types'
+import type {
+  CellAddress,
+  CellRange,
+  CellSelectionConfig,
+  CellSelectionState,
+  RangeEndpoint,
+} from '../types'
+import { isSingleCell, rangeContains, singleRange } from '../utils/range'
+import { useCellIndexerContext } from './cell-indexer-context'
 import { useTableConfig } from './table-config-context'
 
 // ============================================================================
-// TYPES
+// CONTEXT FOR CONFIG (static)
 // ============================================================================
-
-interface CellSelectionContextValue {
-  selectedCell: CellSelectionState | null
-  setSelectedCell: (cell: CellSelectionState | null) => void
-  editingCell: CellSelectionState | null
-  setEditingCell: (cell: CellSelectionState | null) => void
-  cellSelectionConfig?: CellSelectionConfig
-}
-
-// ============================================================================
-// CONTEXT FOR CONFIG
-// ============================================================================
-// We keep a minimal context for the static config (cellSelectionConfig)
-// but use Zustand store for the reactive state (selectedCell, editingCell)
 
 const CellSelectionConfigContext = createContext<CellSelectionConfig | undefined>(undefined)
 
@@ -31,9 +25,6 @@ interface CellSelectionConfigProviderProps {
   config?: CellSelectionConfig
 }
 
-/**
- * Provider for cell selection config (static configuration)
- */
 export function CellSelectionConfigProvider({
   children,
   config,
@@ -45,45 +36,162 @@ export function CellSelectionConfigProvider({
   )
 }
 
+export function useCellSelectionConfig(): CellSelectionConfig | undefined {
+  return useContext(CellSelectionConfigContext)
+}
+
 // ============================================================================
-// HOOKS
+// PRIMITIVE SELECTORS (preferred — return booleans, no per-move cell churn)
 // ============================================================================
 
+/** True for the anchor cell only (drives `.cell-active`, editor target, focus ring, paste origin) */
+export function useIsActiveCell(rowId: string, columnId: string): boolean {
+  const { tableId } = useTableConfig()
+  return useSelectionStore((s) => {
+    const r = s.tables[tableId]?.range
+    if (!r) return false
+    return r.anchor.rowId === rowId && r.anchor.columnId === columnId
+  })
+}
+
 /**
- * Hook to access cell selection state
- *
- * Replaces the old React Context pattern with direct Zustand store access.
- * Uses proper selectors to avoid unnecessary re-renders.
+ * True for any cell inside the current range *except* the anchor — drives
+ * `.cell-in-range` fill tint. The anchor is styled separately as the active
+ * cell. Returns false for the 1×1 case (anchor == focus, nothing to tint).
  */
+export function useIsInRange(rowId: string, columnId: string): boolean {
+  const { tableId } = useTableConfig()
+  const indexer = useCellIndexerContext()
+  return useSelectionStore((s) => {
+    const r = s.tables[tableId]?.range
+    if (!r || isSingleCell(r)) return false
+    if (!indexer) return false
+    const rowIdx = indexer.rowIdToIndex.get(rowId)
+    const colIdx = indexer.columnIdToIndex.get(columnId)
+    if (rowIdx === undefined || colIdx === undefined) return false
+    if (!rangeContains(r, rowIdx, colIdx)) return false
+    // Exclude the anchor — it's rendered as the active cell.
+    return !(r.anchor.rowId === rowId && r.anchor.columnId === columnId)
+  })
+}
+
+/** True iff this cell is the editing target */
+export function useIsEditingCell(rowId: string, columnId: string): boolean {
+  const { tableId } = useTableConfig()
+  return useSelectionStore((s) => {
+    const e = s.tables[tableId]?.editingCell
+    if (!e) return false
+    return e.rowId === rowId && e.columnId === columnId
+  })
+}
+
+/**
+ * Active cell address (range.anchor — the cell the selection started from,
+ * Excel-style). Subscribes to the two primitive ids so the snapshot stays
+ * referentially stable when nothing changed — returning a fresh object inside
+ * the selector would trip Zustand's getSnapshot loop.
+ */
+export function useActiveCell(): CellAddress | null {
+  const { tableId } = useTableConfig()
+  const rowId = useSelectionStore((s) => s.tables[tableId]?.range?.anchor.rowId ?? null)
+  const columnId = useSelectionStore((s) => s.tables[tableId]?.range?.anchor.columnId ?? null)
+  return useMemo(() => (rowId && columnId ? { rowId, columnId } : null), [rowId, columnId])
+}
+
+/** Current range (full object). Use sparingly — changes on every focus move. */
+export function useRange(): CellRange | null {
+  const { tableId } = useTableConfig()
+  return useSelectionStore((s) => s.tables[tableId]?.range ?? null)
+}
+
+// ============================================================================
+// ACTIONS
+// ============================================================================
+
+export interface CellRangeActions {
+  setRange: (range: CellRange | null) => void
+  setRangeFocus: (focus: RangeEndpoint) => void
+  setActiveCell: (cell: CellAddress | null) => void
+  setEditingCell: (cell: CellSelectionState | null) => void
+  clearSelection: () => void
+}
+
+export function useRangeActions(): CellRangeActions {
+  const { tableId } = useTableConfig()
+  const setRange = useSelectionStore((s) => s.setRange)
+  const setRangeFocus = useSelectionStore((s) => s.setRangeFocus)
+  const setSelectedCell = useSelectionStore((s) => s.setSelectedCell)
+  const setEditingCell = useSelectionStore((s) => s.setEditingCell)
+
+  return useMemo(
+    () => ({
+      setRange: (range) => setRange(tableId, range),
+      setRangeFocus: (focus) => setRangeFocus(tableId, focus),
+      setActiveCell: (cell) => setSelectedCell(tableId, cell),
+      setEditingCell: (cell) => setEditingCell(tableId, cell),
+      clearSelection: () => setRange(tableId, null),
+    }),
+    [tableId, setRange, setRangeFocus, setSelectedCell, setEditingCell]
+  )
+}
+
+// ============================================================================
+// COMPAT SHIM — old useCellSelection() shape
+// ============================================================================
+// Old contract: returns `selectedCell` (1×1 only), setSelectedCell, editingCell,
+// setEditingCell, cellSelectionConfig. Kept so non-cell consumers (table-body,
+// dynamic-view) keep working without immediate changes.
+
+interface CellSelectionContextValue {
+  selectedCell: CellSelectionState | null
+  setSelectedCell: (cell: CellSelectionState | null) => void
+  editingCell: CellSelectionState | null
+  setEditingCell: (cell: CellSelectionState | null) => void
+  cellSelectionConfig?: CellSelectionConfig
+}
+
 export function useCellSelection(): CellSelectionContextValue {
   const { tableId } = useTableConfig()
   const cellSelectionConfig = useContext(CellSelectionConfigContext)
 
-  // ─── CELL SELECTION STATE ───────────────────────────────────────────────────
-  // Use proper selectors to avoid re-renders
-  const selectedCell = useSelectionStore((state) => state.tables[tableId]?.selectedCell ?? null)
-  const editingCell = useSelectionStore((state) => state.tables[tableId]?.editingCell ?? null)
-  const storeSetSelectedCell = useSelectionStore((state) => state.setSelectedCell)
-  const storeSetEditingCell = useSelectionStore((state) => state.setEditingCell)
+  // 1×1 shim: subscribe to the primitives that decide whether the shim is
+  // populated, then build the object outside the selector so snapshots stay
+  // referentially stable. Returning a fresh `{rowId, columnId}` *inside* the
+  // selector would trip Zustand's getSnapshot loop.
+  const isOneByOne = useSelectionStore((s) => {
+    const r = s.tables[tableId]?.range
+    return !!r && isSingleCell(r)
+  })
+  const focusRowId = useSelectionStore((s) => s.tables[tableId]?.range?.focus.rowId ?? null)
+  const focusColumnId = useSelectionStore((s) => s.tables[tableId]?.range?.focus.columnId ?? null)
+  const editingRowId = useSelectionStore((s) => s.tables[tableId]?.editingCell?.rowId ?? null)
+  const editingColumnId = useSelectionStore((s) => s.tables[tableId]?.editingCell?.columnId ?? null)
 
-  // ─── STABLE CALLBACKS ───────────────────────────────────────────────────────
+  const storeSetSelectedCell = useSelectionStore((s) => s.setSelectedCell)
+  const storeSetEditingCell = useSelectionStore((s) => s.setEditingCell)
+
   const setSelectedCell = useCallback(
-    (cell: CellSelectionState | null) => {
-      storeSetSelectedCell(tableId, cell)
-    },
+    (cell: CellSelectionState | null) => storeSetSelectedCell(tableId, cell),
     [tableId, storeSetSelectedCell]
   )
-
   const setEditingCell = useCallback(
-    (cell: CellSelectionState | null) => {
-      storeSetEditingCell(tableId, cell)
-    },
+    (cell: CellSelectionState | null) => storeSetEditingCell(tableId, cell),
     [tableId, storeSetEditingCell]
   )
 
-  // ─── RETURN VALUE ───────────────────────────────────────────────────────────
-  // Only depend on primitive values that actually change
-  // biome-ignore lint/correctness/useExhaustiveDependencies: using sub-properties for granular memoization to prevent unnecessary re-renders
+  const selectedCell = useMemo<CellSelectionState | null>(
+    () =>
+      isOneByOne && focusRowId && focusColumnId
+        ? { rowId: focusRowId, columnId: focusColumnId }
+        : null,
+    [isOneByOne, focusRowId, focusColumnId]
+  )
+  const editingCell = useMemo<CellSelectionState | null>(
+    () =>
+      editingRowId && editingColumnId ? { rowId: editingRowId, columnId: editingColumnId } : null,
+    [editingRowId, editingColumnId]
+  )
+
   return useMemo(
     () => ({
       selectedCell,
@@ -92,23 +200,10 @@ export function useCellSelection(): CellSelectionContextValue {
       setEditingCell,
       cellSelectionConfig,
     }),
-    [
-      selectedCell?.rowId,
-      selectedCell?.columnId,
-      setSelectedCell,
-      editingCell?.rowId,
-      editingCell?.columnId,
-      setEditingCell,
-      cellSelectionConfig?.enabled,
-    ]
+    [selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelectionConfig]
   )
 }
 
-/**
- * Hook for components that optionally support cell selection
- *
- * Returns null if not within a TableConfig context (backwards compatible)
- */
 export function useCellSelectionOptional(): CellSelectionContextValue | null {
   try {
     return useCellSelection()
@@ -116,3 +211,6 @@ export function useCellSelectionOptional(): CellSelectionContextValue | null {
     return null
   }
 }
+
+// Re-exports kept so external imports stay stable.
+export { isSingleCell, rangeContains, singleRange }

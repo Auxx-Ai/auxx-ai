@@ -4,7 +4,16 @@
 import { cn } from '@auxx/ui/lib/utils'
 import { type Cell, flexRender } from '@tanstack/react-table'
 import { memo, useCallback, useRef } from 'react'
-import { useCellSelection } from '../context/cell-selection-context'
+import { useCellIndexerContext } from '../context/cell-indexer-context'
+import {
+  useCellSelectionConfig,
+  useIsActiveCell,
+  useIsEditingCell,
+  useIsInRange,
+  useRangeActions,
+} from '../context/cell-selection-context'
+import { useRangeDragContext } from '../context/range-drag-context'
+import type { RangeEndpoint } from '../types'
 import { getEditModeForFieldType } from '../utils/edit-mode'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
 import { CellFieldEditor } from './cell-field-editor'
@@ -18,56 +27,93 @@ interface SelectableTableCellProps<TData> {
   className?: string
 }
 
-/**
- * Table cell with selection support - simple container with selection concerns
- *
- * Cell renderers (FormattedCell, ItemsCellView, custom components) handle
- * their own padding and layout. This component provides:
- * - Selection state management (single click to select)
- * - Edit mode (double click or Enter to edit)
- * - Selection overlay rendering
- * - Cell field editor (popover) when editing
- *
- * PERFORMANCE: Memoized to prevent unnecessary re-renders when parent row updates.
- * Only 1 CellFieldEditor renders at a time (for the editing cell).
- */
 function SelectableTableCellInner<TData>({
   cell,
   rowId,
   columnId,
   className,
 }: SelectableTableCellProps<TData>) {
-  const { selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelectionConfig } =
-    useCellSelection()
+  const cellSelectionConfig = useCellSelectionConfig()
+  const indexer = useCellIndexerContext()
+  const drag = useRangeDragContext()
+
+  const isActive = useIsActiveCell(rowId, columnId)
+  const isInRange = useIsInRange(rowId, columnId)
+  const isEditing = useIsEditingCell(rowId, columnId)
+  const { setActiveCell, setEditingCell, setRange } = useRangeActions()
 
   const cellRef = useRef<HTMLDivElement>(null)
 
-  const isSelected = selectedCell?.rowId === rowId && selectedCell?.columnId === columnId
-  const isEditing = editingCell?.rowId === rowId && editingCell?.columnId === columnId
-
-  // System columns (checkbox) don't support selection
   const isSystemColumn = columnId === '_checkbox'
 
-  // Determine edit mode based on field type
   const field = cellSelectionConfig?.getFieldDefinition?.(columnId)
   const editMode = getEditModeForFieldType(field?.fieldType)
   const isInlineEditing = isEditing && editMode === 'inline'
   const isPopoverEditing = isEditing && editMode === 'popover'
 
-  // Check if field can be updated (respects computed, system field capabilities)
   const isUpdatable = field?.capabilities.updatable !== false
 
-  /** Handle single click - select cell */
+  /** Resolve this cell's range endpoint from the indexer */
+  const resolveEndpoint = useCallback((): RangeEndpoint | null => {
+    if (!indexer) return null
+    const rowIndex = indexer.rowIdToIndex.get(rowId)
+    const colIndex = indexer.columnIdToIndex.get(columnId)
+    if (rowIndex === undefined || colIndex === undefined) return null
+    return { rowId, columnId, rowIndex, colIndex }
+  }, [indexer, rowId, columnId])
+
+  /**
+   * Pointer down — start a range drag (or extend a range if shift is held).
+   * Stops propagation so dnd-kit's row sensor doesn't pick this up as a row drag.
+   * Also calls preventDefault so the browser doesn't begin a text selection on
+   * top of our range drag (caret placement / double-click word select).
+   */
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (!cellSelectionConfig?.enabled || isSystemColumn) return
+      // Ignore non-primary buttons (right-click, middle, etc.)
+      if (e.button !== 0) return
+      e.stopPropagation()
+      e.preventDefault()
+
+      const endpoint = resolveEndpoint()
+      if (!endpoint) {
+        // Indexer not ready — fall back to id-only set; range math kicks in once remap fires.
+        setActiveCell({ rowId, columnId })
+        return
+      }
+
+      if (drag) {
+        drag.beginDrag(endpoint, e.pointerId, e.clientX, e.clientY, { extend: e.shiftKey })
+      } else if (e.shiftKey) {
+        // Manual extend without drag hook: read current range and replace focus.
+        // Falls through to setRange via the actions API.
+        setRange({ anchor: endpoint, focus: endpoint })
+      } else {
+        setActiveCell({ rowId, columnId })
+      }
+    },
+    [
+      cellSelectionConfig?.enabled,
+      isSystemColumn,
+      resolveEndpoint,
+      drag,
+      setActiveCell,
+      setRange,
+      rowId,
+      columnId,
+    ]
+  )
+
+  /** Click is now a no-op for selection (pointerdown handles it) — kept only to swallow row clicks */
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (!cellSelectionConfig?.enabled || isSystemColumn) return
       e.stopPropagation()
-      setSelectedCell({ rowId, columnId })
     },
-    [cellSelectionConfig?.enabled, isSystemColumn, rowId, columnId, setSelectedCell]
+    [cellSelectionConfig?.enabled, isSystemColumn]
   )
 
-  /** Handle double click - start editing */
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       if (!cellSelectionConfig?.enabled || isSystemColumn || !isUpdatable) return
@@ -77,13 +123,11 @@ function SelectableTableCellInner<TData>({
     [cellSelectionConfig?.enabled, isSystemColumn, isUpdatable, rowId, columnId, setEditingCell]
   )
 
-  /** Handle keyboard navigation */
+  /** Keyboard navigation handled centrally in useCellNavigation; only handle local edit-shortcuts */
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (!isSelected) return
-      // Don't handle Escape when editing - let the editor handle it
+      if (!isActive) return
       if (isEditing && e.key === 'Escape') return
-
       switch (e.key) {
         case 'Enter':
           if (!isUpdatable) return
@@ -92,55 +136,46 @@ function SelectableTableCellInner<TData>({
           break
         case 'Escape':
           e.preventDefault()
-          setSelectedCell(null)
+          setActiveCell(null)
           break
-        // Arrow key navigation handled at higher level via useCellNavigation
       }
     },
-    [isSelected, isEditing, isUpdatable, rowId, columnId, setEditingCell, setSelectedCell]
+    [isActive, isEditing, isUpdatable, rowId, columnId, setEditingCell, setActiveCell]
   )
 
-  /** Close editor callback */
   const handleCloseEditor = useCallback(() => {
     setEditingCell(null)
-    setSelectedCell({ rowId, columnId })
-  }, [rowId, columnId, setEditingCell, setSelectedCell])
+    setActiveCell({ rowId, columnId })
+  }, [rowId, columnId, setEditingCell, setActiveCell])
 
   return (
     <div
       ref={cellRef}
       data-col={sanitizeColumnId(columnId)}
       className={cn(
-        'group/cell flex items-center h-full relative outline-none',
-        isSelected && 'cell-selected',
+        'group/cell flex items-center h-full relative outline-none select-none',
+        // .cell-active drives focus ring + content expansion (ExpandableCell, PrimaryCell).
+        // .cell-selected kept as alias so existing CSS selectors keep matching the active cell.
+        isActive && 'cell-active cell-selected',
+        isInRange && 'cell-in-range',
         isEditing && 'cell-editing',
         !isUpdatable && 'read-only',
         className
       )}
+      onPointerDown={handlePointerDown}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}
-      tabIndex={isSelected ? 0 : -1}
+      tabIndex={isActive ? 0 : -1}
       data-row-id={rowId}
       data-column-id={columnId}
-      data-selected={isSelected}
+      data-selected={isActive}
       data-editing={isEditing}
       title={!isUpdatable ? 'This field is read-only' : undefined}>
-      {/* Selection overlay - hidden when inline editing or when child has data-self-overlay */}
-      {/* {!isSystemColumn && !isInlineEditing && (
-        <CellSelectionOverlay
-          isSelected={isSelected}
-          isEditing={isPopoverEditing}
-          className="group-has-[[data-self-overlay]]/cell:hidden"
-        />
-      )} */}
-
-      {/* Cell content - hidden when inline editing */}
       <div className={cn('contents', isInlineEditing && 'invisible')}>
         {flexRender(cell.column.columnDef.cell, cell.getContext())}
       </div>
 
-      {/* Inline editor - renders IN the cell for TEXT, NUMBER, CURRENCY, EMAIL, URL */}
       {isInlineEditing && cellSelectionConfig && (
         <InlineCellEditor
           rowId={rowId}
@@ -150,7 +185,6 @@ function SelectableTableCellInner<TData>({
         />
       )}
 
-      {/* Popover editor - for complex field types */}
       {isPopoverEditing && cellSelectionConfig && (
         <CellFieldEditor
           rowId={rowId}
@@ -164,5 +198,4 @@ function SelectableTableCellInner<TData>({
   )
 }
 
-/** Memoized SelectableTableCell - prevents parent re-renders from cascading */
 export const SelectableTableCell = memo(SelectableTableCellInner) as typeof SelectableTableCellInner

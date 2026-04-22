@@ -12,6 +12,7 @@ import { useTableConfig } from '../context/table-config-context'
 import type { DragDropConfig } from '../types'
 import { ROW_HEIGHT } from '../utils/constants'
 import { DragDropRow } from './drag-drop-row'
+import { SelectionOverlay } from './selection-overlay'
 import { VirtualTableRow } from './virtual-table-row'
 
 interface VirtualTableBodyProps<TData> {
@@ -215,6 +216,7 @@ export function VirtualTableBody<TData>({
           height: `${rowVirtualizer.getTotalSize()}px`,
           position: 'relative',
         }}>
+        {cellSelectionEnabled && <SelectionOverlay scrollContainerRef={scrollContainerRef} />}
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const row = rows[virtualRow.index]
           if (!row) return null

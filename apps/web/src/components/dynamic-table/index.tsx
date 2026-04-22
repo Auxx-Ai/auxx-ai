@@ -20,7 +20,16 @@ export { TableBody } from './components/table-body'
 export { TableContentSkeleton } from './components/table-content-skeleton'
 export { TableToolbar } from './components/table-toolbar'
 export { ToolbarSkeleton } from './components/toolbar-skeleton'
-export { useCellSelection } from './context/cell-selection-context'
+export {
+  useActiveCell,
+  useCellSelection,
+  useCellSelectionConfig,
+  useIsActiveCell,
+  useIsEditingCell,
+  useIsInRange,
+  useRange,
+  useRangeActions,
+} from './context/cell-selection-context'
 // Custom field column factory (for syncer-based custom field columns)
 export {
   type CustomFieldColumnOptions,
@@ -34,7 +43,10 @@ export { useDynamicTable } from './hooks/use-dynamic-table'
 // Re-export types and utilities for convenience
 export type {
   BulkAction,
+  BulkWriteResult,
   CellAction,
+  CellAddress,
+  CellRange,
   CellSelectionConfig,
   CellSelectionState,
   ColumnFormatting,
@@ -46,6 +58,7 @@ export type {
   FormattableFieldType,
   KanbanViewConfig,
   NumberColumnFormatting,
+  RangeEndpoint,
   RowSelectionFeatures,
   SortOption,
   TableView,

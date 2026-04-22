@@ -10,7 +10,7 @@ import {
   type RelationshipConfig,
   type RelationshipType,
 } from '@auxx/types/custom-field'
-import { isFieldPath, parseResourceFieldId } from '@auxx/types/field'
+import { getFieldId, isFieldPath, isResourceFieldId, parseResourceFieldId } from '@auxx/types/field'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
@@ -123,9 +123,16 @@ export async function getField(ctx: FieldValueContext, fieldId: string): Promise
 }
 
 /**
- * Resolve systemAttribute strings to actual CustomField IDs in a batch.
- * Single cache hit to load all custom fields, then remap any value whose
- * fieldId matches a known systemAttribute. Values with real fieldIds pass through unchanged.
+ * Normalize any field identifier accepted at API boundaries to a real FieldId.
+ *
+ * Three input forms are accepted:
+ *   1. `FieldId` (UUID for custom fields, key for system fields) — pass through
+ *   2. `systemAttribute` (e.g. `'primary_email'`) — looked up via the map
+ *   3. `ResourceFieldId` (`entityDefinitionId:fieldId`) — prefix dropped
+ *
+ * The recordIds on the same request already scope the entity definition, so
+ * the prefix in form (3) is redundant. Forms (2) and (3) are normalized to (1)
+ * before downstream lookup.
  */
 export async function resolveFieldIds(
   orgId: string,
@@ -142,12 +149,19 @@ export async function resolveFieldIds(
 
   let changed = false
   const resolved = values.map((v) => {
-    const realId = attrToId.get(v.fieldId)
+    // (3) ResourceFieldId → short FieldId
+    let fieldId = v.fieldId
+    if (isResourceFieldId(fieldId)) {
+      fieldId = getFieldId(fieldId)
+      changed = true
+    }
+    // (2) systemAttribute → real FieldId
+    const realId = attrToId.get(fieldId)
     if (realId) {
       changed = true
       return { ...v, fieldId: realId }
     }
-    return v
+    return fieldId !== v.fieldId ? { ...v, fieldId } : v
   })
 
   return changed ? resolved : values
