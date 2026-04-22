@@ -3,21 +3,8 @@
 import { type Action, useRegisterActions } from 'kbar'
 import React from 'react'
 import { useCreateEntityStore } from '~/components/global-create/create-entity-store'
+import { SYSTEM_CREATE_HOTKEYS } from '~/components/global-create/system-hotkeys'
 import { useResources } from '~/components/resources/hooks/use-resources'
-
-/**
- * Fixed system-entity hotkeys. Keep in sync with GlobalCreateRoot — these are
- * display-only here (kbar renders the kbd hint); the actual binding lives in
- * GlobalCreateRoot via useHotkeySequence.
- *
- * Custom entities do not get hotkeys in v1 — palette search only.
- */
-const SYSTEM_CREATE_HOTKEYS: Record<string, string[]> = {
-  contacts: ['c', 'c'],
-  tickets: ['t', 'c'],
-  parts: ['p', 'c'],
-  companies: ['c', 'o'],
-}
 
 /**
  * Registers a "Create <Entity>" palette action for every visible resource

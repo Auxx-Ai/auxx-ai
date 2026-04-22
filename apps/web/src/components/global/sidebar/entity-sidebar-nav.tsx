@@ -37,6 +37,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { EntityDefinitionDialog } from '~/components/custom-fields/ui/entity-definition-dialog'
 import { EntityTemplateDialog } from '~/components/custom-fields/ui/entity-template-dialog'
 import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
+import { useCreateEntityStore } from '~/components/global-create/create-entity-store'
 import { useEntityDefinitionMutations, useResources } from '~/components/resources/hooks'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -198,6 +199,12 @@ export function EntitySidebarNav() {
 
     return (
       <>
+        <DropdownMenuItem
+          onClick={() =>
+            useCreateEntityStore.getState().openDialog({ entityDefinitionId: entity.id })
+          }>
+          <Plus /> Create {entity.label}
+        </DropdownMenuItem>
         {!isSystemEntity && (
           <DropdownMenuItem onClick={() => handleEditEntity(resource)}>
             <Pencil /> Edit Entity
