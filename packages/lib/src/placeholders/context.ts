@@ -2,7 +2,10 @@
 
 import { type Database, schema } from '@auxx/database'
 import type { IdentifierType } from '@auxx/database/types'
+import type { RecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
+import { toRecordId } from '../resources/resource-id'
 import type { PlaceholderResolutionContext } from './resolver'
 
 export interface BuildContextInput {
@@ -22,17 +25,18 @@ export interface BuildContextInput {
 }
 
 /**
- * Look up the fields needed to resolve placeholders against a thread/ticket/
- * contact context. Runs two concurrent queries (thread record + primary
- * participant). Missing rows are tolerated — the resolver hard-fails per-
- * token when it encounters one whose context it needs.
+ * Look up the fields needed to resolve placeholders against a thread / ticket
+ * / contact context. Runs the thread + participant lookups concurrently with
+ * the entity-definition cache read. Missing rows are tolerated — the resolver
+ * hard-fails per-token when it encounters one whose root isn't in
+ * `recordIdsByRoot`.
  */
 export async function buildPlaceholderContextForThread(
   input: BuildContextInput
 ): Promise<PlaceholderResolutionContext> {
   const { db, organizationId, senderUserId, threadId, primaryRecipient } = input
 
-  const [thread, participant] = await Promise.all([
+  const [thread, participant, entityDefs] = await Promise.all([
     threadId
       ? db
           .select({ ticketId: schema.Thread.ticketId })
@@ -57,14 +61,35 @@ export async function buildPlaceholderContextForThread(
           .limit(1)
           .then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
+    getOrgCache().get(organizationId, 'entityDefs'),
   ])
+
+  const ticketId = thread?.ticketId ?? undefined
+  const contactEntityInstanceId = participant?.entityInstanceId ?? undefined
+
+  const recordIdsByRoot = new Map<string, RecordId>()
+
+  // Slug-rooted (old system types / actor)
+  if (threadId) {
+    recordIdsByRoot.set('thread', toRecordId('thread', threadId))
+  }
+  if (senderUserId) {
+    recordIdsByRoot.set('user', toRecordId('user', senderUserId))
+  }
+
+  // Cuid-rooted EntityDefinitions — the picker emits tokens keyed by
+  // `EntityDefinition.id`, not by entityType slug.
+  if (ticketId && entityDefs.ticket) {
+    recordIdsByRoot.set(entityDefs.ticket, toRecordId('ticket', ticketId))
+  }
+  if (contactEntityInstanceId && entityDefs.contact) {
+    recordIdsByRoot.set(entityDefs.contact, toRecordId('contact', contactEntityInstanceId))
+  }
 
   return {
     db,
     organizationId,
     senderUserId,
-    threadId,
-    ticketId: thread?.ticketId ?? undefined,
-    contactEntityInstanceId: participant?.entityInstanceId ?? undefined,
+    recordIdsByRoot,
   }
 }

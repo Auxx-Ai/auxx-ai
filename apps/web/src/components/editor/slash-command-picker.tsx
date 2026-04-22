@@ -137,6 +137,8 @@ export function SlashCommandPicker(props: SlashCommandPickerProps) {
       <div className='w-72 overflow-hidden'>
         <PlaceholderPickerContent
           onBack={() => setMode('default')}
+          backLabel='Commands'
+          onClose={props.onClose}
           onSelect={(id) => {
             props.onExecute((editor, range) => {
               editor
@@ -294,10 +296,21 @@ function SlashCommandPickerContent({
         onClose()
         return
       }
-      if (!isAtRoot && (e.key === 'Backspace' || e.key === 'ArrowLeft') && !searchQuery) {
-        e.preventDefault()
-        pop()
-        return
+      if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && !searchQuery) {
+        if (!isAtRoot) {
+          e.preventDefault()
+          pop()
+          return
+        }
+        // At root with empty search: Backspace dismisses the popover
+        // (and deletes the trigger character via slashCommand.closePicker).
+        // ArrowLeft is allowed to fall through — moving the caret is
+        // expected behavior inside the cmdk input.
+        if (e.key === 'Backspace') {
+          e.preventDefault()
+          onClose()
+          return
+        }
       }
       if (e.key === 'ArrowRight') {
         const selected = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(

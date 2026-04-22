@@ -1,7 +1,7 @@
 // apps/web/src/components/mail/email-editor/recipient-input.tsx
 'use client'
 import { IdentifierType } from '@auxx/database/enums'
-import type { RecordId, RecordPickerItem } from '@auxx/lib/resources/client'
+import type { RecordPickerItem } from '@auxx/lib/resources/client'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
 import {
@@ -24,9 +24,6 @@ export type RecipientField = 'TO' | 'CC' | 'BCC'
 
 interface RecipientState {
   id: string
-  /** Set when this recipient came from the contact picker — used to exclude the
-   *  contact from future picker results. */
-  recordId?: RecordId
   identifier: string
   identifierType: IdentifierType
   name?: string | null
@@ -47,7 +44,6 @@ interface RecipientInputProps {
   onMoveTo: (id: string, target: RecipientField) => void
   onContactSelect: (contact: {
     id: string
-    recordId?: RecordId
     identifier: string
     identifierType: IdentifierType
     name?: string | null
@@ -227,7 +223,6 @@ export function RecipientInput({
 
       onContactSelect({
         id: item.id,
-        recordId: item.recordId,
         identifier: email,
         identifierType: IdentifierType.EMAIL,
         name: item.displayName || null,
@@ -239,21 +234,19 @@ export function RecipientInput({
     [onContactSelect]
   )
 
-  // RecordIds of contacts already in this field — passed to the picker to
-  // hide them from the suggestions list.
-  const excludeRecordIds = useMemo(
-    () => recipients.map((r) => r.recordId).filter((id): id is RecordId => !!id),
+  // Lowercased emails of recipients already in this field — used to hide their
+  // matching contacts from the picker. Covers picker/draft/reply/free-typed alike.
+  const excludeEmails = useMemo(
+    () => new Set(recipients.map((r) => r.identifier.toLowerCase())),
     [recipients]
   )
-  console.log('[RecipientInput] excludeRecordIds', {
-    field,
-    recipients: recipients.map((r) => ({
-      id: r.id,
-      recordId: r.recordId,
-      identifier: r.identifier,
-    })),
-    excludeRecordIds,
-  })
+  const excludeFilter = useCallback(
+    (item: RecordPickerItem) => {
+      const email = item.secondaryInfo?.toLowerCase()
+      return !!email && excludeEmails.has(email)
+    },
+    [excludeEmails]
+  )
 
   /** Forward a keyboard event to the cmdk Command inside the picker popover */
   const forwardToPicker = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -428,7 +421,7 @@ export function RecipientInput({
             multi={false}
             onSelectItem={handleContactPick}
             externalSearch={inputValue}
-            excludeIds={excludeRecordIds}
+            excludeFilter={excludeFilter}
             placeholder='Search contacts...'
           />
         </PopoverContent>

@@ -572,15 +572,13 @@ export const snippetsRouter = createTRPCRouter({
             .set({ sharingType, updatedAt: new Date() })
             .where(eq(schema.Snippet.id, snippetId))
 
-          // If sharing type is CUSTOM, use ResourceAccess to set permissions
-          if (sharingType === SnippetSharingType.GROUPS && shares && shares.length > 0) {
-            // Separate group and user shares
-            const groupShares = shares.filter((s) => s.granteeType === 'group')
-            const userShares = shares.filter((s) => s.granteeType === 'user')
+          if (sharingType === SnippetSharingType.GROUPS) {
+            // Replace both grantee types (empty array clears that type's grants)
+            const groupShares = (shares ?? []).filter((s) => s.granteeType === 'group')
+            const userShares = (shares ?? []).filter((s) => s.granteeType === 'user')
 
-            // Set group access
             await setInstanceAccess(
-              { db: tx, organizationId },
+              { db: tx, organizationId, userId },
               toRecordId(BuiltInEntityType.snippet, snippetId),
               ResourceGranteeType.group,
               groupShares.map((s) => ({
@@ -590,9 +588,8 @@ export const snippetsRouter = createTRPCRouter({
               }))
             )
 
-            // Set user access
             await setInstanceAccess(
-              { db: tx, organizationId },
+              { db: tx, organizationId, userId },
               toRecordId(BuiltInEntityType.snippet, snippetId),
               ResourceGranteeType.user,
               userShares.map((s) => ({
@@ -601,8 +598,8 @@ export const snippetsRouter = createTRPCRouter({
                   s.permission === 'EDIT' ? ResourcePermission.edit : ResourcePermission.view,
               }))
             )
-          } else if (sharingType !== SnippetSharingType.GROUPS) {
-            // Clear all ResourceAccess for this snippet when not using CUSTOM sharing
+          } else {
+            // Clear all ResourceAccess for this snippet when not using GROUPS sharing
             await tx
               .delete(schema.ResourceAccess)
               .where(

@@ -15,13 +15,20 @@ import type { InlineNodeBadgeProps } from '../types'
  *
  * All visual styling is handled by the badge component.
  *
- * @param renderBadge - Function to render the badge content (receives id + selected)
+ * @param renderBadge - Function to render the badge content
  * @returns React component for NodeView
  */
 export function createInlineNodeView(
   renderBadge: (props: InlineNodeBadgeProps) => React.ReactNode
 ) {
-  return function InlineNodeView({ node, selected, getPos, editor }: NodeViewProps) {
+  return function InlineNodeView({
+    node,
+    selected,
+    getPos,
+    editor,
+    updateAttributes,
+    deleteNode,
+  }: NodeViewProps) {
     /** Handle click to select the node */
     const handleClick = (e: React.MouseEvent) => {
       e.preventDefault()
@@ -41,7 +48,13 @@ export function createInlineNodeView(
         data-selected={selected}
         className='inline-block cursor-pointer align-baseline'
         onClick={handleClick}>
-        {renderBadge({ id, selected })}
+        {renderBadge({
+          id,
+          selected,
+          attrs: node.attrs,
+          updateAttributes,
+          deleteNode,
+        })}
       </NodeViewWrapper>
     )
   }

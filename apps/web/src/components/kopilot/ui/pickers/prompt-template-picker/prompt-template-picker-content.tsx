@@ -18,6 +18,12 @@ interface PromptTemplatePickerContentProps {
   onEditRequest: (template: PromptTemplateItem) => void
   /** Called when user clicks "Browse prompts" — parent opens browse dialog */
   onBrowseRequest: () => void
+  /**
+   * Called when the user presses Backspace on the empty cmdk search.
+   * Wire to the inline-picker hook's `closePicker` to dismiss the popover
+   * and delete the trigger character from the editor.
+   */
+  onClose?: () => void
 }
 
 export function PromptTemplatePickerContent({
@@ -25,6 +31,7 @@ export function PromptTemplatePickerContent({
   onCreateRequest,
   onEditRequest,
   onBrowseRequest,
+  onClose,
 }: PromptTemplatePickerContentProps) {
   const { templates, isLoading } = usePromptTemplates()
   const { remove } = usePromptTemplateMutations()
@@ -65,22 +72,37 @@ export function PromptTemplatePickerContent({
   }
 
   return (
-    <MultiSelectPicker
-      options={templateOptions}
-      value={[]}
-      onChange={() => {}}
-      multi={false}
-      canManage={false}
-      canAdd={true}
-      onCreate={onCreateRequest}
-      createLabel='Create prompt'
-      onBrowse={onBrowseRequest}
-      browseLabel='Browse prompts'
-      onSelectSingle={handleSelectSingle}
-      onEdit={handleEdit}
-      placeholder='Search prompts...'
-      isLoading={isLoading}
-      onOptionsChange={handleOptionsChange}
-    />
+    <div
+      onKeyDown={(e) => {
+        if (!onClose) return
+        if (e.key !== 'Backspace') return
+        // MultiSelectPicker renders a cmdk input; check its value to decide
+        // whether Backspace should dismiss the popover or just delete a char.
+        const input = (e.currentTarget as HTMLElement).querySelector<HTMLInputElement>(
+          '[cmdk-input]'
+        )
+        if (input && input.value.length === 0) {
+          e.preventDefault()
+          onClose()
+        }
+      }}>
+      <MultiSelectPicker
+        options={templateOptions}
+        value={[]}
+        onChange={() => {}}
+        multi={false}
+        canManage={false}
+        canAdd={true}
+        onCreate={onCreateRequest}
+        createLabel='Create prompt'
+        onBrowse={onBrowseRequest}
+        browseLabel='Browse prompts'
+        onSelectSingle={handleSelectSingle}
+        onEdit={handleEdit}
+        placeholder='Search prompts...'
+        isLoading={isLoading}
+        onOptionsChange={handleOptionsChange}
+      />
+    </div>
   )
 }

@@ -5,6 +5,14 @@ export {
   buildPlaceholderContextForThread,
 } from './context'
 export {
+  decodeFallback,
+  encodeFallback,
+  type FallbackPayload,
+  type FallbackSupportedType,
+  isFallbackSupportedType,
+  renderFallbackPayload,
+} from './fallback-codec'
+export {
   type DateSlug,
   type ParsedPlaceholder,
   parsePlaceholderId,

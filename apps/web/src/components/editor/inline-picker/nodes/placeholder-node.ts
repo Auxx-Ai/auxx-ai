@@ -1,5 +1,6 @@
 // apps/web/src/components/editor/inline-picker/nodes/placeholder-node.ts
 
+import { decodeFallback, encodeFallback } from '@auxx/lib/placeholders/client'
 import { createInlineNode } from '../core/inline-node'
 import type { InlineNodeBadgeProps, InlineNodeConfig } from '../types'
 
@@ -28,6 +29,14 @@ const placeholderNodeConfig: InlineNodeConfig = {
       const id = m[1]
       if (!id) throw new Error('placeholder paste pattern matched without id')
       return id
+    },
+  },
+  extraAttrs: {
+    fallback: {
+      default: null,
+      dataAttr: 'data-fallback',
+      serialize: encodeFallback,
+      parse: decodeFallback,
     },
   },
 }

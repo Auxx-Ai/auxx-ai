@@ -2,7 +2,6 @@
 'use client'
 import type { IdentifierType } from '@auxx/database/types'
 import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
-import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
@@ -166,6 +165,7 @@ function ReplyComposeEditorComponent({
   const [showSubject, setShowSubject] = useState(true)
   const [isSending, setIsSending] = useState(false)
   const [isDraftSaved, setIsDraftSaved] = useState(!!initialDraft)
+  const [showNoToWarning, setShowNoToWarning] = useState(false)
 
   // Attachments state - persisted attachments from draft
   const [attachments, setAttachments] = useState<FileAttachment[]>(
@@ -505,6 +505,7 @@ function ReplyComposeEditorComponent({
       if (list.some((r) => r.identifier === recipient.identifier)) return prev
       return { ...prev, [role]: [...list, recipient] }
     })
+    if (role === 'TO') setShowNoToWarning(false)
     setIsDraftSaved(false)
   }, [])
   const removeRecipient = useCallback((role: keyof Recipients, id: string) => {
@@ -540,7 +541,6 @@ function ReplyComposeEditorComponent({
       role: 'TO' | 'CC' | 'BCC',
       contactData: {
         id: string
-        recordId?: RecordId
         identifier: string
         identifierType: IdentifierType
         name?: string | null
@@ -548,7 +548,6 @@ function ReplyComposeEditorComponent({
     ) => {
       upsertRecipient(role, {
         id: contactData.id,
-        recordId: contactData.recordId,
         identifier: contactData.identifier,
         identifierType: contactData.identifierType,
         name: contactData.name,
@@ -572,6 +571,7 @@ function ReplyComposeEditorComponent({
       })
       if (target === 'CC') setShowCc(true)
       if (target === 'BCC') setShowBcc(true)
+      if (target === 'TO') setShowNoToWarning(false)
       setIsDraftSaved(false)
     },
     []
@@ -753,12 +753,8 @@ function ReplyComposeEditorComponent({
         setIsSending(false)
         return
       }
-      const allRecipients = [...recipients.TO, ...recipients.CC, ...recipients.BCC]
-      if (allRecipients.length === 0) {
-        toastError({
-          title: 'Missing Recipient',
-          description: 'Please add at least one recipient (To, Cc, or Bcc).',
-        })
+      if (recipients.TO.length === 0) {
+        setShowNoToWarning(true)
         setIsSending(false)
         return
       }
@@ -883,12 +879,8 @@ function ReplyComposeEditorComponent({
           setIsSending(false)
           return
         }
-        const allRecipients = [...recipients.TO, ...recipients.CC, ...recipients.BCC]
-        if (allRecipients.length === 0) {
-          toastError({
-            title: 'Missing Recipient',
-            description: 'Please add at least one recipient (To, Cc, or Bcc).',
-          })
+        if (recipients.TO.length === 0) {
+          setShowNoToWarning(true)
           setIsSending(false)
           return
         }
@@ -1424,7 +1416,12 @@ function ReplyComposeEditorComponent({
           </div>
 
           {/* Toolbar with integrated AI Tools */}
-          <div className='editor-toolbar-wrapper px-2 py-1 '>
+          <div className='editor-toolbar-wrapper relative px-2 py-1 '>
+            {showNoToWarning && (
+              <Badge variant='red' size='sm' className='absolute right-3 bottom-full z-10'>
+                Add a To recipient to send
+              </Badge>
+            )}
             <div className='flex items-center gap-1 shrink-0 no-scrollbar md:gap-2'>
               <EditorToolbar
                 editor={editor}

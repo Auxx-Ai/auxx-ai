@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/user-fields.ts
 
+import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import type { ResourceField } from '../field-types'
@@ -14,6 +15,7 @@ export const USER_FIELDS: Record<string, ResourceField> = {
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'id',
     nullable: false,
     operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
@@ -32,6 +34,7 @@ export const USER_FIELDS: Record<string, ResourceField> = {
     key: 'email',
     label: 'Email',
     type: BaseType.EMAIL,
+    fieldType: FieldType.EMAIL,
     dbColumn: 'email',
     nullable: false,
     capabilities: {
@@ -49,6 +52,7 @@ export const USER_FIELDS: Record<string, ResourceField> = {
     key: 'name',
     label: 'Name',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'name',
     nullable: true,
     capabilities: {
@@ -67,6 +71,7 @@ export const USER_FIELDS: Record<string, ResourceField> = {
     key: 'assignedTickets',
     label: 'Assigned Tickets',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
     capabilities: {
       filterable: true,
       sortable: false,
@@ -87,6 +92,7 @@ export const USER_FIELDS: Record<string, ResourceField> = {
     key: 'createdAt',
     label: 'Created At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -104,6 +110,7 @@ export const USER_FIELDS: Record<string, ResourceField> = {
     key: 'updatedAt',
     label: 'Updated At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {

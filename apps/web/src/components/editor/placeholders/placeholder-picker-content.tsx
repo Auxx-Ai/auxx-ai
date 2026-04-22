@@ -4,13 +4,19 @@
 
 import type { FieldReference } from '@auxx/types/field'
 import { fieldRefToKey } from '@auxx/types/field'
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
+  CommandBreadcrumb,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
+  CommandNavigation,
+  type NavigationItem,
+  useCommandNavigation,
+  useCommandNavigationOptional,
 } from '@auxx/ui/components/command'
 import {
   Braces,
@@ -66,70 +72,134 @@ const ORG_OPTIONS: OrgOption[] = [
   { slug: 'website', label: 'Website' },
 ]
 
+/** Nav-stack item shape for the placeholder picker. */
+interface PlaceholderNavItem extends NavigationItem {
+  id: RootId
+  label: string
+}
+
 interface PlaceholderPickerContentProps {
   /** Invoked with the token id — caller inserts the placeholder node. */
   onSelect: (id: string) => void
   /** When provided, shows a back affordance from the root level (for embedded usage). */
   onBack?: () => void
+  /**
+   * Label for the parent-back header shown at the root when `onBack` is
+   * provided. Defaults to 'Back'. Pass the parent picker's name (e.g.
+   * 'Commands') so the breadcrumb reads naturally.
+   */
+  backLabel?: string
+  /**
+   * When provided (and no `onBack`), Backspace/Escape at the empty root
+   * search closes the entire popover. Caller should wire this to the
+   * inline-picker hook's `closePicker`.
+   */
+  onClose?: () => void
 }
 
 /**
  * Placeholder picker. Two-level: root (entity-backed roots + `date`) →
  * field picker for that entity or static date list.
  *
- * Mirrors the pattern of `PromptTemplatePickerContent` — a plain content
- * component rendered inside the shared `InlinePickerPopover`.
+ * Navigation reuses the shared `CommandNavigation` primitive so the
+ * breadcrumb / back button match every other cmdk-based picker. When
+ * rendered inside a host that already provides a `CommandNavigation`
+ * (e.g. a future slash-command flow that pushes "Placeholder" onto the
+ * outer stack), this component reuses the parent stack. Otherwise it
+ * wraps itself in a scoped `CommandNavigation`.
  */
-export function PlaceholderPickerContent({ onSelect, onBack }: PlaceholderPickerContentProps) {
-  const [root, setRoot] = useState<RootId | null>(null)
+export function PlaceholderPickerContent(props: PlaceholderPickerContentProps) {
+  const parentNav = useCommandNavigationOptional<PlaceholderNavItem>()
 
-  if (root === 'date') {
-    return <DateListContent onBack={() => setRoot(null)} onSelect={onSelect} />
+  if (parentNav) {
+    return <PlaceholderPickerBody {...props} />
   }
 
-  if (root === 'organization') {
-    return <OrganizationListContent onBack={() => setRoot(null)} onSelect={onSelect} />
+  return (
+    <CommandNavigation<PlaceholderNavItem>>
+      <PlaceholderPickerBody {...props} />
+    </CommandNavigation>
+  )
+}
+
+function PlaceholderPickerBody({
+  onSelect,
+  onBack,
+  onClose,
+  backLabel = 'Back',
+}: PlaceholderPickerContentProps) {
+  const { current } = useCommandNavigation<PlaceholderNavItem>()
+  const rootId = current?.id ?? null
+
+  if (rootId === 'date') {
+    return <DateListContent onSelect={onSelect} />
   }
 
-  if (root !== null) {
+  if (rootId === 'organization') {
+    return <OrganizationListContent onSelect={onSelect} />
+  }
+
+  if (rootId !== null) {
     return (
       <FieldPickerForRoot
-        entityDefinitionId={root}
-        rootLabel={ROOTS.find((r) => r.id === root)?.label ?? root}
-        onBack={() => setRoot(null)}
+        entityDefinitionId={rootId}
+        rootLabel={ROOTS.find((r) => r.id === rootId)?.label ?? rootId}
         onSelect={(fieldRef) => onSelect(fieldRefToKey(fieldRef))}
       />
     )
   }
 
-  return <RootListContent onPick={setRoot} onBack={onBack} />
+  return <RootListContent onBack={onBack} backLabel={backLabel} onClose={onClose} />
 }
 
 function RootListContent({
-  onPick,
   onBack,
+  backLabel,
+  onClose,
 }: {
-  onPick: (id: RootId) => void
   onBack?: () => void
+  backLabel: string
+  onClose?: () => void
 }) {
+  const { push } = useCommandNavigation<PlaceholderNavItem>()
   const [search, setSearch] = useState('')
   const q = search.toLowerCase().trim()
   const filtered = q ? ROOTS.filter((r) => r.label.toLowerCase().includes(q)) : ROOTS
+
+  // onBack wins (embedded use: go back one picker level).
+  // onClose is the fallback (top-level use: close entire popover).
+  const exit = onBack ?? onClose
 
   return (
     <Command
       shouldFilter={false}
       onKeyDown={(e) => {
-        if (!onBack) return
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' && exit) {
           e.stopPropagation()
-          onBack()
-        } else if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && !search) {
+          exit()
+          return
+        }
+        if (e.key === 'Backspace' && !search && exit) {
           e.preventDefault()
-          onBack()
+          exit()
+          return
+        }
+        if (e.key === 'ArrowRight') {
+          // Drill into the highlighted root. Mirrors slash-command-picker's
+          // DOM-query pattern (slash-command-picker.tsx:315-343).
+          const selected = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(
+            '[cmdk-item][data-selected="true"]'
+          )
+          const value = selected?.getAttribute('data-value')?.toLowerCase()
+          if (!value) return
+          const rootChoice = ROOTS.find((r) => r.label.toLowerCase() === value)
+          if (rootChoice) {
+            e.preventDefault()
+            push({ id: rootChoice.id, label: rootChoice.label })
+          }
         }
       }}>
-      {onBack && <BackBar label='Placeholder' onBack={onBack} parentLabel='Commands' />}
+      {onBack && <ParentBackHeader label={backLabel} onBack={onBack} />}
       <CommandInput
         placeholder='Pick a placeholder source...'
         value={search}
@@ -145,7 +215,7 @@ function RootListContent({
               <CommandItem
                 key={r.id}
                 value={r.label}
-                onSelect={() => onPick(r.id)}
+                onSelect={() => push({ id: r.id, label: r.label })}
                 className='flex items-center justify-between'>
                 <div className='flex items-center gap-2'>
                   <Icon className='size-4 text-muted-foreground' />
@@ -161,13 +231,8 @@ function RootListContent({
   )
 }
 
-function DateListContent({
-  onBack,
-  onSelect,
-}: {
-  onBack: () => void
-  onSelect: (id: string) => void
-}) {
+function DateListContent({ onSelect }: { onSelect: (id: string) => void }) {
+  const { pop } = useCommandNavigation<PlaceholderNavItem>()
   const [search, setSearch] = useState('')
   const q = search.toLowerCase().trim()
   const filtered = q ? DATE_OPTIONS.filter((d) => d.label.toLowerCase().includes(q)) : DATE_OPTIONS
@@ -178,13 +243,13 @@ function DateListContent({
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.stopPropagation()
-          onBack()
+          pop()
         } else if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && !search) {
           e.preventDefault()
-          onBack()
+          pop()
         }
       }}>
-      <BackBar label='Date' onBack={onBack} parentLabel='Placeholder' />
+      <CommandBreadcrumb rootLabel='Placeholder' />
       <CommandInput
         placeholder='Search dates...'
         value={search}
@@ -206,13 +271,8 @@ function DateListContent({
   )
 }
 
-function OrganizationListContent({
-  onBack,
-  onSelect,
-}: {
-  onBack: () => void
-  onSelect: (id: string) => void
-}) {
+function OrganizationListContent({ onSelect }: { onSelect: (id: string) => void }) {
+  const { pop } = useCommandNavigation<PlaceholderNavItem>()
   const [search, setSearch] = useState('')
   const q = search.toLowerCase().trim()
   const filtered = q ? ORG_OPTIONS.filter((o) => o.label.toLowerCase().includes(q)) : ORG_OPTIONS
@@ -223,13 +283,13 @@ function OrganizationListContent({
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.stopPropagation()
-          onBack()
+          pop()
         } else if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && !search) {
           e.preventDefault()
-          onBack()
+          pop()
         }
       }}>
-      <BackBar label='Organization' onBack={onBack} parentLabel='Placeholder' />
+      <CommandBreadcrumb rootLabel='Placeholder' />
       <CommandInput
         placeholder='Search organization fields...'
         value={search}
@@ -254,51 +314,45 @@ function OrganizationListContent({
 function FieldPickerForRoot({
   entityDefinitionId,
   rootLabel,
-  onBack,
   onSelect,
 }: {
   entityDefinitionId: string
   rootLabel: string
-  onBack: () => void
   onSelect: (fieldRef: FieldReference) => void
 }) {
+  const { pop } = useCommandNavigation<PlaceholderNavItem>()
   return (
-    <div
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.stopPropagation()
-          onBack()
-        }
-      }}>
-      <BackBar label={rootLabel} onBack={onBack} parentLabel='Placeholder' />
+    <>
+      <CommandBreadcrumb rootLabel='Placeholder' />
       <FieldPickerContent
         entityDefinitionId={entityDefinitionId}
         onSelect={onSelect}
         mode='single'
         searchPlaceholder={`Search ${rootLabel.toLowerCase()} fields...`}
+        onBackFromRoot={pop}
       />
-    </div>
+    </>
   )
 }
 
-function BackBar({
-  label,
-  parentLabel,
-  onBack,
-}: {
-  label: string
-  parentLabel: string
-  onBack: () => void
-}) {
+/**
+ * Small back-to-parent-picker header shown at the root level of the
+ * placeholder picker when it's embedded inside a larger picker (e.g.
+ * slash-command). Mirrors `CommandBreadcrumb`'s visual language (ghost
+ * back icon + ghost-button label) rather than being a full-width clickable
+ * row — the old `BackBar` looked like a `CommandItem` because it had
+ * `hover:bg-accent w-full`, which confused users.
+ */
+function ParentBackHeader({ label, onBack }: { label: string; onBack: () => void }) {
   return (
-    <button
-      type='button'
-      onClick={onBack}
-      className='flex items-center w-full px-3 py-2 gap-1 text-xs text-muted-foreground border-b hover:bg-accent cursor-pointer'>
-      <ChevronLeft className='size-3' />
-      <span>{parentLabel}</span>
-      <ChevronRight className='size-3' />
-      <span className='text-foreground'>{label}</span>
-    </button>
+    <div className='flex items-center border-b px-2 py-1 text-sm shrink-0'>
+      <Button variant='ghost' size='icon-xs' onClick={onBack}>
+        <ChevronLeft />
+        <span className='sr-only'>Back</span>
+      </Button>
+      <Button variant='ghost' size='xs' onClick={onBack}>
+        {label}
+      </Button>
+    </div>
   )
 }

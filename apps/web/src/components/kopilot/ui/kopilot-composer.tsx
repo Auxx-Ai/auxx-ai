@@ -287,7 +287,8 @@ export function KopilotComposer({
 
   const handleInsertSlash = useCallback(() => {
     if (!editor) return
-    editor.chain().focus('end').insertContent('/').run()
+    if (!editor.isFocused) editor.commands.focus('end')
+    editor.commands.insertContent('/')
   }, [editor])
 
   return (
@@ -328,6 +329,7 @@ export function KopilotComposer({
             width={280}
             onClose={slashClosePicker}>
             <PromptTemplatePickerContent
+              onClose={slashClosePicker}
               onSelect={(template) => {
                 slashExecuteCommand((editor, range) => {
                   editor
@@ -362,12 +364,17 @@ export function KopilotComposer({
           />
         </div>
         <div className='absolute bottom-1 right-1 flex items-center gap-0.5'>
-          <Tooltip content='Insert prompt template' shortcut='/'>
+          <Tooltip content='Insert prompt template' shortcut='/' allowInteraction>
             <Button
               size='icon-sm'
               variant='ghost'
               className='shrink-0'
-              onClick={handleInsertSlash}
+              onMouseDown={(e) => {
+                // Prevent editor blur — keeps the Suggestion plugin state
+                // alive so inserting "/" opens the picker.
+                e.preventDefault()
+                handleInsertSlash()
+              }}
               disabled={isStreaming}
               title='Insert prompt template'>
               <SquareSlash />

@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/message-fields.ts
 
+import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import type { ResourceField } from '../field-types'
@@ -15,6 +16,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'id',
     nullable: false,
     operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
@@ -33,6 +35,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'externalId',
     label: 'External ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'externalId',
     nullable: true,
     capabilities: {
@@ -50,6 +53,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'externalThreadId',
     label: 'External Thread ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'externalThreadId',
     nullable: true,
     capabilities: {
@@ -67,6 +71,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'subject',
     label: 'Subject',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'subject',
     nullable: false,
     capabilities: {
@@ -84,6 +89,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'textHtml',
     label: 'HTML Content',
     type: BaseType.STRING,
+    fieldType: FieldType.RICH_TEXT,
     dbColumn: 'textHtml',
     nullable: true,
     capabilities: {
@@ -101,6 +107,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'textPlain',
     label: 'Plain Text',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'textPlain',
     nullable: true,
     capabilities: {
@@ -121,6 +128,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'isInbound',
     label: 'Is Inbound',
     type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
     dbColumn: 'isInbound',
     nullable: true,
     capabilities: {
@@ -140,6 +148,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'isFirstInThread',
     label: 'Is First In Thread',
     type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
     dbColumn: 'isFirstInThread',
     nullable: true,
     capabilities: {
@@ -157,6 +166,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'isReply',
     label: 'Is Reply',
     type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
     dbColumn: 'isReply',
     nullable: true,
     capabilities: {
@@ -174,6 +184,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'sentAt',
     label: 'Sent At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
     dbColumn: 'sentAt',
     nullable: true,
     capabilities: {
@@ -191,6 +202,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'receivedAt',
     label: 'Received At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
     dbColumn: 'receivedAt',
     nullable: true,
     capabilities: {
@@ -208,6 +220,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'hasAttachments',
     label: 'Has Attachments',
     type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
     dbColumn: 'hasAttachments',
     nullable: true,
     capabilities: {
@@ -225,6 +238,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'thread',
     label: 'Thread',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
     dbColumn: 'threadId',
     nullable: false,
     capabilities: {
@@ -247,6 +261,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'createdBy',
     label: 'Created By',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
     dbColumn: 'createdById',
     nullable: true,
     capabilities: {
@@ -269,6 +284,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'from',
     label: 'From',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
     dbColumn: 'fromId',
     nullable: false,
     capabilities: {
@@ -291,6 +307,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     key: 'replyTo',
     label: 'Reply To',
     type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
     dbColumn: 'replyToId',
     nullable: true,
     capabilities: {
