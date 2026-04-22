@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.136](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.135...auxx-v0.1.136) (2026-04-22)
+
+
+### Features
+
+* add Open Graph image generation script and update package.json ([#458](https://github.com/Auxx-Ai/auxx-ai/issues/458)) ([f17b382](https://github.com/Auxx-Ai/auxx-ai/commit/f17b3829f4ec398fbf341ab7350df72f515f7994))
+* **dynamic-table:** enhance cell selection and coercion logic ([#465](https://github.com/Auxx-Ai/auxx-ai/issues/465)) ([109a330](https://github.com/Auxx-Ai/auxx-ai/commit/109a330b40cd2ed15719cfb508de989471ae1b2a))
+* enhance contact conversations tab with thread details and improved message handling ([#464](https://github.com/Auxx-Ai/auxx-ai/issues/464)) ([e4abb2d](https://github.com/Auxx-Ai/auxx-ai/commit/e4abb2d26c73e6196d54cfa577a50a1811b3d21c))
+* enhance email editor and record picker functionality ([#462](https://github.com/Auxx-Ai/auxx-ai/issues/462)) ([f9f3b3e](https://github.com/Auxx-Ai/auxx-ai/commit/f9f3b3ed169bcac4a5b9b9bab9320014323aa4f6))
+* enhance entity update tool and validation mechanisms ([#461](https://github.com/Auxx-Ai/auxx-ai/issues/461)) ([c566b54](https://github.com/Auxx-Ai/auxx-ai/commit/c566b54d6f43cc59c76227ea92cb67c953202e61))
+* remove unused RecordId import and update RecipientState interface in email editor ([#463](https://github.com/Auxx-Ai/auxx-ai/issues/463)) ([f3cb38c](https://github.com/Auxx-Ai/auxx-ai/commit/f3cb38c41610d55cf9abaf0ead62865c04f7ce2e))
+
 ## [0.1.135](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.134...auxx-v0.1.135) (2026-04-20)
 
 
