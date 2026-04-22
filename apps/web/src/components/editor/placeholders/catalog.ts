@@ -9,6 +9,7 @@ import {
   isFallbackSupportedType,
   type OrgSlug,
   tryParsePlaceholderId,
+  type UserSlug,
 } from '@auxx/lib/placeholders/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
@@ -19,7 +20,7 @@ import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useResourceProperty } from '~/components/resources'
 import { useResourceStore } from '~/components/resources/store/resource-store'
-import { shimFieldForOrg } from './field-shim'
+import { shimFieldForOrg, shimFieldForUser } from './field-shim'
 
 const DATE_SLUG_LABELS: Record<string, string> = {
   today: 'Today',
@@ -38,6 +39,22 @@ const ORG_SLUG_FIELD_TYPES: Record<OrgSlug, FallbackSupportedType> = {
   name: 'TEXT',
   handle: 'TEXT',
   website: 'URL',
+}
+
+const USER_SLUG_LABELS: Record<UserSlug, string> = {
+  id: 'ID',
+  email: 'Email',
+  name: 'Name',
+  firstName: 'First Name',
+  lastName: 'Last Name',
+}
+
+const USER_SLUG_FIELD_TYPES: Record<UserSlug, FallbackSupportedType> = {
+  id: 'TEXT',
+  email: 'EMAIL',
+  name: 'TEXT',
+  firstName: 'TEXT',
+  lastName: 'TEXT',
 }
 
 /** Stable module-level empty array — reused so shallow-equality holds across renders. */
@@ -106,6 +123,7 @@ export function usePlaceholderLabel(id: string): PlaceholderLabel {
     if (!parsed) return null
     if (parsed.kind === 'date') return 'Date'
     if (parsed.kind === 'org') return 'Organization'
+    if (parsed.kind === 'user') return 'Sender'
     const res = state.getEffectiveResource(parsed.rootEntityDefinitionId)
     return res?.label ?? parsed.rootEntityDefinitionId
   })
@@ -149,6 +167,20 @@ export function usePlaceholderLabel(id: string): PlaceholderLabel {
       const fieldType = ORG_SLUG_FIELD_TYPES[parsed.slug]
       return {
         breadcrumb: `Organization › ${label}`,
+        resolved: true,
+        iconId: fieldTypeOptions[fieldType]?.iconId ?? 'text',
+        field: shim,
+        fieldType,
+        fallbackSupported: true,
+      }
+    }
+
+    if (parsed.kind === 'user') {
+      const label = USER_SLUG_LABELS[parsed.slug]
+      const shim = shimFieldForUser(parsed.slug)
+      const fieldType = USER_SLUG_FIELD_TYPES[parsed.slug]
+      return {
+        breadcrumb: `Sender › ${label}`,
         resolved: true,
         iconId: fieldTypeOptions[fieldType]?.iconId ?? 'text',
         field: shim,

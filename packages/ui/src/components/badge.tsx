@@ -7,7 +7,7 @@ export type Variant = VariantProps<typeof badgeVariants>['variant']
 export type Shape = VariantProps<typeof badgeVariants>['shape']
 
 const badgeVariants = cva(
-  'ring-1 ring-current/35 [&_svg]:shrink-0 has-[svg]:gap-1 cursor-default inline-flex items-center text-xs font-normal transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2',
+  'ring-1 ring-current/35 [&_svg]:shrink-0 has-[svg]:gap-1 cursor-default inline-flex items-center text-xs font-normal transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 data-selected:text-white dark:data-selected:text-white',
   {
     variants: {
       shape: {
@@ -21,7 +21,7 @@ const badgeVariants = cva(
         destructive:
           'ring-1 ring-transparent bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/80',
         outline: 'ring-1 ring-border text-foreground',
-        pill: 'ring-1 ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-primary-100 dark:ring-primary-100 px-2  py-0',
+        pill: 'ring-1 ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-primary-100 dark:ring-primary-100 px-2  py-0 data-selected:bg-neutral-700 data-selected:ring-neutral-700 dark:data-selected:bg-neutral-200 dark:data-selected:text-neutral-900 dark:data-selected:ring-neutral-200',
         user: 'ring-1 ring-info/20 bg-[#f2f4f7] shadow-xs gap-1 text-foreground/80 dark:bg-[#204684] cursor-pointer py-0',
 
         // Color variants matching Tailwind design system
@@ -31,7 +31,7 @@ const badgeVariants = cva(
         amber:
           'bg-amber-400/20 text-amber-700 hover:bg-amber-400/30 dark:bg-amber-400/10 dark:text-amber-400 dark:hover:bg-amber-400/15',
         yellow:
-          'bg-yellow-400/20 text-yellow-700 hover:bg-yellow-400/30 dark:bg-yellow-400/10 dark:text-yellow-300 dark:hover:bg-yellow-400/15',
+          'bg-yellow-400/20 text-yellow-700 hover:bg-yellow-400/30 dark:bg-yellow-400/10 dark:text-yellow-300 dark:hover:bg-yellow-400/15 data-selected:bg-yellow-600 dark:data-selected:bg-yellow-500 dark:data-selected:text-neutral-900',
         lime: 'bg-lime-400/20 text-lime-700 hover:bg-lime-400/30 dark:bg-lime-400/10 dark:text-lime-300 dark:hover:bg-lime-400/15',
         green:
           'bg-green-500/15 text-green-700 hover:bg-green-500/25 dark:bg-green-500/10 dark:text-green-400 dark:hover:bg-green-500/20',
@@ -40,7 +40,7 @@ const badgeVariants = cva(
         teal: 'bg-teal-500/15 text-teal-700 hover:bg-teal-500/25 dark:bg-teal-500/10 dark:text-teal-300 dark:hover:bg-teal-500/20',
         cyan: 'bg-cyan-400/20 text-cyan-700 hover:bg-cyan-400/30 dark:bg-cyan-400/10 dark:text-cyan-300 dark:hover:bg-cyan-400/15',
         sky: 'bg-sky-500/15 text-sky-700 hover:bg-sky-500/25 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20',
-        blue: 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25 dark:text-blue-400 dark:hover:bg-blue-500/25',
+        blue: 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25 dark:text-blue-400 dark:hover:bg-blue-500/25 data-selected:bg-info dark:data-selected:bg-info',
         indigo:
           'bg-indigo-500/15 text-indigo-700 hover:bg-indigo-500/25 dark:text-indigo-400 dark:hover:bg-indigo-500/20',
         violet:

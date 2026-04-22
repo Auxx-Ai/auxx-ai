@@ -6,9 +6,9 @@ import {
   encodeRFC2231Filename,
   foldMimeHeader,
   generateMimeBoundary,
-  htmlToPlainText,
   normalizeMessageId,
 } from '@auxx/utils'
+import { convert as htmlToText } from 'html-to-text'
 import type { AttachmentFile } from '../../message-provider-interface'
 
 const logger = createScopedLogger('google-create-message')
@@ -167,7 +167,18 @@ function buildMultipartMixed(
     message += `--${altBoundary}\r\n`
     message += `Content-Type: text/plain; charset=UTF-8\r\n`
     message += `Content-Transfer-Encoding: quoted-printable\r\n\r\n`
-    const textContent = text || htmlToPlainText(html || '')
+    // Mirror the composer's outbound-plain-text options (preserve paragraph
+    // breaks, drop images). In practice `text` is always populated upstream,
+    // this branch is only hit when a caller bypasses the composer.
+    const textContent =
+      text ||
+      (html
+        ? htmlToText(html, {
+            wordwrap: false,
+            preserveNewlines: true,
+            selectors: [{ selector: 'img', format: 'skip' }],
+          })
+        : '')
     message += encodeQuotedPrintable(textContent)
     message += `\r\n`
 

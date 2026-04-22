@@ -83,11 +83,10 @@ export function PlaceholderBadge({
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Badge
-          variant={resolved ? 'pill' : 'destructive'}
+          variant={pickVariant(resolved, fallbackSupported, !!fallback)}
+          data-selected={selected || undefined}
           className={cn(
-            'group/badge relative inline-flex items-center gap-1 px-1.5 py-0 text-xs cursor-pointer align-baseline',
-            selected && 'ring-2 ring-primary ring-offset-1',
-            fallback && 'ring-1 ring-primary/30'
+            'group/badge h-5 relative inline-flex items-center gap-1 mx-0.5 px-1.5 py-0 text-xs cursor-pointer align-baseline'
           )}
           title={id}>
           {resolved ? (
@@ -123,6 +122,19 @@ export function PlaceholderBadge({
 }
 
 /**
+ * Badge variant encodes three things at a glance:
+ * - `destructive`: token didn't resolve (deleted field, bad path)
+ * - `pill`: resolved but fallback isn't applicable (e.g. date tokens)
+ * - `yellow`: fallback is supported but not configured — nudges the author to set one
+ * - `blue`: fallback is configured
+ */
+function pickVariant(resolved: boolean, fallbackSupported: boolean, hasFallback: boolean) {
+  if (!resolved) return 'destructive'
+  if (!fallbackSupported) return 'pill'
+  return hasFallback ? 'blue' : 'yellow'
+}
+
+/**
  * Resolve the effective field type for a placeholder id — used to decide
  * whether a fallback payload survives a "Change variable" swap.
  *
@@ -137,6 +149,9 @@ function fieldTypeFromNewId(newId: string): FallbackSupportedType | null {
   if (parsed.kind === 'date') return null
   if (parsed.kind === 'org') {
     return parsed.slug === 'website' ? 'URL' : 'TEXT'
+  }
+  if (parsed.kind === 'user') {
+    return parsed.slug === 'email' ? 'EMAIL' : 'TEXT'
   }
   // Field token — walk the path to the terminal field, look up its fieldType
   // in the resource store, and normalize via mapBaseTypeToFieldType for

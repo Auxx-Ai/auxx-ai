@@ -214,7 +214,9 @@ export function ThreadHeader() {
   return (
     <>
       <ConfirmDialog />
-      <div className='flex items-center px-4 py-2 sticky inset-x-0 top-0 z-1 bg-secondary dark:bg-muted-50 pb-3 mask-b-from-80% mask-b-to-100% w-full'>
+      <div
+        data-slot='thread-header'
+        className='flex items-center px-4 py-2 sticky inset-x-0 top-0 z-1 bg-secondary dark:bg-muted-50 pb-3 mask-b-from-80% mask-b-to-100% w-full'>
         <div className='flex  w-full justify-between shrink-0 overflow-x-auto no-scrollbar '>
           <div className='flex shrink-0 items-start gap-2 pt-0.5 ps-0.5'>
             <InboxPicker
@@ -225,7 +227,7 @@ export function ThreadHeader() {
             </InboxPicker>
             <ThreadTicketControl />
           </div>
-          <div className=' flex items-center '>
+          <div data-slot='thread-header-actions' className=' flex items-center '>
             <Tooltip content={isDone ? 'Unarchive' : 'Archive'}>
               <Button
                 variant='ghost'
