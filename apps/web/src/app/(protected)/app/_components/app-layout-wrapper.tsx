@@ -9,6 +9,7 @@ import { ChannelProvider } from '~/components/channels/providers/channel-provide
 import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
 import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
 import { Dashboard } from '~/components/global/dashboard'
+import { GlobalCreateRoot } from '~/components/global-create/global-create-root'
 import KBar from '~/components/kbar'
 import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { FloatingComposeRoot } from '~/components/mail/email-editor/floating-compose-root'
@@ -86,6 +87,7 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
                   <Dashboard user={user}>{children}</Dashboard>
                   <FloatingComposeRoot />
                   <FloatingTaskRoot />
+                  <GlobalCreateRoot />
                 </TooltipProvider>
               </KBar>
             </ThreadDataProvider>

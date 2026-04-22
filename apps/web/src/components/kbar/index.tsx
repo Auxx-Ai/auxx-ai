@@ -13,6 +13,7 @@ import { useComposeStore } from '~/components/mail/store/compose-store'
 import { useCreateTaskStore } from '~/components/tasks/stores/create-task-store'
 import useKbarSettings, { useKbarAdminSettings } from './kbar-settings'
 import RenderResults from './render-results'
+import { useEntityCreateActions } from './use-entity-create-actions'
 import useFeatureGatedActions from './use-feature-gated-actions'
 import useThemeSwitching from './use-theme-switching'
 
@@ -174,17 +175,6 @@ export default function KBar({ children }: Props) {
       section: 'Navigation',
       perform: () => goTo('/contacts'),
     },
-    {
-      id: 'goToContactsCreate',
-      name: 'Create Contact',
-      subtitle: 'Create a new contact',
-      icon: 'user-plus',
-      shortcut: ['c', 'c'],
-      keywords: 'contacts, create, customer',
-      section: 'Contacts',
-      parent: 'goToContacts',
-      perform: () => goTo('/contacts?create=true'),
-    },
 
     {
       id: 'goToParts',
@@ -195,17 +185,6 @@ export default function KBar({ children }: Props) {
       keywords: 'parts, inventory, manufacturing',
       section: 'Navigation',
       perform: () => goTo('/parts'),
-    },
-    {
-      id: 'goToPartsCreate',
-      name: 'Create Part',
-      subtitle: 'Create a new part',
-      icon: 'plus',
-      shortcut: ['p', 'c'],
-      keywords: 'parts, create',
-      section: 'Parts',
-      parent: 'goToParts',
-      perform: () => goTo('/parts?create=true'),
     },
 
     {
@@ -227,16 +206,6 @@ export default function KBar({ children }: Props) {
       section: 'Tickets',
       parent: 'goToTickets',
       perform: () => goTo('/tickets/list?filter=true'),
-    },
-    {
-      id: 'goToTicketsCreate',
-      name: 'Create',
-      icon: 'plus',
-      shortcut: ['t', 'c'],
-      keywords: 'tickets, create',
-      section: 'Tickets',
-      parent: 'goToTickets',
-      perform: () => goTo('/tickets/list?create=true'),
     },
 
     {
@@ -282,6 +251,7 @@ const ActualComponent = ({ children }: Props) => {
   useKbarSettings()
   useKbarAdminSettings()
   useFeatureGatedActions()
+  useEntityCreateActions()
 
   return (
     <>
