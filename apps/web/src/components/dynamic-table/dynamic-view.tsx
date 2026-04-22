@@ -11,12 +11,22 @@ import { TableContentSkeleton } from './components/table-content-skeleton'
 import { TableScrollArea } from './components/table-scroll-area'
 import { TableToolbar } from './components/table-toolbar'
 import { ToolbarSkeleton } from './components/toolbar-skeleton'
-import { CellSelectionConfigProvider, useCellSelection } from './context/cell-selection-context'
+import { CellIndexerProvider } from './context/cell-indexer-context'
+import {
+  CellSelectionConfigProvider,
+  useCellSelectionConfig,
+} from './context/cell-selection-context'
+import { FillDragProvider } from './context/fill-drag-context'
+import { RangeDragProvider } from './context/range-drag-context'
 import { TableConfigProvider, useTableConfig } from './context/table-config-context'
 import { TableInstanceProvider, useTableInstance } from './context/table-instance-context'
 import { useViewMetadata, ViewMetadataProvider } from './context/view-metadata-context'
+import { useCellClipboard } from './hooks/use-cell-clipboard'
+import { useCellIndexer } from './hooks/use-cell-indexer'
 import { useCellNavigation } from './hooks/use-cell-navigation'
 import { useDynamicTable } from './hooks/use-dynamic-table'
+import { useFillDrag } from './hooks/use-fill-drag'
+import { useRangeDrag } from './hooks/use-range-drag'
 import { useReconciledColumns } from './hooks/use-reconciled-columns'
 import { useDynamicTableStore } from './stores/dynamic-table-store'
 import { useColumnOrder } from './stores/store-selectors'
@@ -69,21 +79,46 @@ function DynamicViewInner<TData extends object>({
   // View store state (skip check for standalone tables)
   const isViewsLoaded = standalone || useDynamicTableStore((state) => state.initialized)
 
-  // Cell selection from separate context
-  const { selectedCell, setSelectedCell, editingCell, setEditingCell, cellSelectionConfig } =
-    useCellSelection()
+  // Cell selection config (static) — primitive selectors handle the reactive state.
+  const cellSelectionConfig = useCellSelectionConfig()
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  // Cell navigation hook
-  useCellNavigation({
-    table,
-    selectedCell,
-    setSelectedCell,
-    editingCell,
-    setEditingCell,
+  // Indexer — id↔index maps + range remap on signature change.
+  const indexer = useCellIndexer(table, tableId)
+
+  // Document-level pointer handling for click-drag selection.
+  const { beginDrag } = useRangeDrag({
+    tableId,
     enabled: cellSelectionConfig?.enabled ?? false,
     scrollContainerRef,
+    indexer,
+  })
+
+  // Excel-style fill-handle drag (the little blue square in the corner).
+  const { beginFillDrag } = useFillDrag({
+    tableId,
+    enabled: cellSelectionConfig?.enabled ?? false,
+    scrollContainerRef,
+    indexer,
+    config: cellSelectionConfig,
+  })
+
+  // Keyboard navigation + range extension.
+  useCellNavigation({
+    table,
+    tableId,
+    enabled: cellSelectionConfig?.enabled ?? false,
+    scrollContainerRef,
+  })
+
+  // Cmd/Ctrl+C and Delete/Backspace.
+  useCellClipboard({
+    tableId,
+    enabled: cellSelectionConfig?.enabled ?? false,
+    scrollContainerRef,
+    config: cellSelectionConfig,
+    indexer,
   })
 
   // Get current view from store
@@ -205,20 +240,26 @@ function DynamicViewInner<TData extends object>({
     <div className='flex flex-col relative h-full flex-1'>
       {toolbar}
 
-      <TableScrollArea viewportRef={scrollContainerRef}>
-        {isInitialLoading ? (
-          <TableContentSkeleton rowCount={12} showCheckbox={enableCheckbox} columnCount={5} />
-        ) : (
-          <>
-            {/* hideToolbar forced true — toolbar is outside the scroll container */}
-            <TableBody hideToolbar scrollContainerRef={scrollContainerRef} />
-            <div className='grow' />
-          </>
-        )}
+      <CellIndexerProvider value={indexer}>
+        <RangeDragProvider value={{ beginDrag }}>
+          <FillDragProvider value={{ beginFillDrag }}>
+            <TableScrollArea viewportRef={scrollContainerRef}>
+              {isInitialLoading ? (
+                <TableContentSkeleton rowCount={12} showCheckbox={enableCheckbox} columnCount={5} />
+              ) : (
+                <>
+                  {/* hideToolbar forced true — toolbar is outside the scroll container */}
+                  <TableBody hideToolbar scrollContainerRef={scrollContainerRef} />
+                  <div className='grow' />
+                </>
+              )}
 
-        {/* Footer */}
-        {!isInitialLoading && footerElement}
-      </TableScrollArea>
+              {/* Footer */}
+              {!isInitialLoading && footerElement}
+            </TableScrollArea>
+          </FillDragProvider>
+        </RangeDragProvider>
+      </CellIndexerProvider>
 
       {overlays}
     </div>

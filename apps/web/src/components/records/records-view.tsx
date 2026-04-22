@@ -2,7 +2,9 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
+import { converters } from '@auxx/lib/field-values/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
+import type { ActorId } from '@auxx/types/actor'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -55,6 +57,9 @@ import { EmptyState } from '~/components/global/empty-state'
 import { MergeDialog } from '~/components/merge'
 import { type RecordMeta, toRecordId, useRecordList, useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { useActorStore } from '~/components/resources/store/actor-store'
+import { useRelationshipStore } from '~/components/resources/store/relationship-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
@@ -541,45 +546,288 @@ export function RecordsView({
     [handleBulkArchive, handleBulkDelete]
   )
 
+  /** Bulk writer used by range delete / paste (Phase 2). */
+  const { saveBulkMultipleFields } = useSaveFieldValue()
+
   /**
    * Cell selection configuration for inline editing
    * Uses getValue from syncer for consistent value reads
    * Uses getResourceId for optimistic updates via PropertyProvider
    */
-  const cellSelectionConfig: CellSelectionConfig = useMemo(
-    () => ({
+  const cellSelectionConfig: CellSelectionConfig = useMemo(() => {
+    const resolveField = (columnId: string): ResourceField | null => {
+      if (columnId.startsWith('_')) return null
+      const decoded = decodeColumnId(columnId)
+      if (decoded.type === 'path') {
+        const lastResourceFieldId = decoded.fieldPath[decoded.fieldPath.length - 1]
+        return fieldMap[lastResourceFieldId] ?? null
+      }
+      return fieldMap[decoded.resourceFieldId] ?? null
+    }
+
+    return {
       enabled: true,
-      getFieldDefinition: (columnId: string): ResourceField | null => {
-        // System columns (like _checkbox) don't have field definitions
-        if (columnId.startsWith('_')) return null
-
-        // Decode column ID to handle both direct fields and fieldpaths
-        const decoded = decodeColumnId(columnId)
-
-        if (decoded.type === 'path') {
-          // Fieldpath: get the last ResourceFieldId (the editable field)
-          const lastResourceFieldId = decoded.fieldPath[decoded.fieldPath.length - 1]
-          return fieldMap[lastResourceFieldId] ?? null
-        }
-
-        // Direct field: look up in fieldMap
-        return fieldMap[decoded.resourceFieldId] ?? null
-      },
+      getFieldDefinition: resolveField,
       getCellValue: (rowId: string, columnId: string) => {
-        // System columns don't have values in the store
         if (columnId.startsWith('_')) return undefined
-
         if (!entityDefinitionId) return undefined
         return getValue(toRecordId(entityDefinitionId, rowId), columnId)
       },
-      // RecordId for optimistic updates via PropertyProvider
       getRecordId: (rowId: string) => {
         if (!entityDefinitionId) return null as unknown as RecordId
         return toRecordId(entityDefinitionId, rowId)
       },
-    }),
-    [getValue, entityDefinitionId, fieldMap]
-  )
+      /**
+       * Format a cell for copy: display string for TSV output + raw primitive
+       * for the JSON sidecar. Relationship cells resolve primary display from
+       * the already-hydrated relationship store — no network call.
+       */
+      formatCellForCopy: (rowId, columnId) => {
+        if (!entityDefinitionId) return null
+        if (columnId.startsWith('_')) return null
+        const field = resolveField(columnId)
+        if (!field) return null
+        const fieldType = field.fieldType as FieldType | undefined
+        if (!fieldType) return null
+
+        const raw = getValue(toRecordId(entityDefinitionId, rowId), columnId)
+        if (raw === null || raw === undefined) {
+          return { display: '', fieldType }
+        }
+
+        const converter = converters[fieldType]
+        if (!converter) return { display: String(raw ?? ''), fieldType }
+
+        // Relationship: display is the linked record's primary display.
+        if (fieldType === 'RELATIONSHIP') {
+          const dataMap = useRelationshipStore.getState().dataMap
+          const resolve = (v: unknown): { recordId: string | null; display: string } => {
+            const rid = converter.toRawValue(v) as string | null
+            if (!rid) return { recordId: null, display: '' }
+            const item = dataMap[rid as RecordId]
+            return { recordId: rid, display: item?.displayName ?? rid }
+          }
+          if (Array.isArray(raw)) {
+            const resolved = raw.map(resolve).filter((r) => r.recordId !== null)
+            const recordIds = resolved.map((r) => r.recordId as string)
+            const displays = resolved.map((r) => r.display)
+            const joined = displays.join(', ')
+            return {
+              display: joined,
+              raw: recordIds,
+              fieldType,
+              primaryDisplay: joined,
+            }
+          }
+          const { recordId, display } = resolve(raw)
+          if (!recordId) return { display: '', fieldType }
+          return {
+            display,
+            raw: recordId,
+            fieldType,
+            recordId,
+            primaryDisplay: display,
+          }
+        }
+
+        // Actor: display is the user/group name from the actor store.
+        // Raw is the ActorId string ("user:id" / "group:id") — matches what
+        // actorConverter.toTypedInput accepts on the paste side.
+        if (fieldType === 'ACTOR') {
+          const actors = useActorStore.getState().actors
+          const resolve = (v: unknown): { actorId: string | null; display: string } => {
+            const rawOut = converter.toRawValue(v) as
+              | { actorId?: string; id?: string }
+              | string
+              | null
+            if (!rawOut) return { actorId: null, display: '' }
+            const actorId =
+              typeof rawOut === 'string' ? rawOut : (rawOut.actorId ?? rawOut.id ?? null)
+            if (!actorId) return { actorId: null, display: '' }
+            const actor = actors.get(actorId as ActorId)
+            return { actorId, display: actor?.name ?? actorId }
+          }
+          if (Array.isArray(raw)) {
+            const resolved = raw.map(resolve).filter((r) => r.actorId !== null)
+            const actorIds = resolved.map((r) => r.actorId as string)
+            const displays = resolved.map((r) => r.display)
+            const joined = displays.join(', ')
+            return {
+              display: joined,
+              raw: actorIds,
+              fieldType,
+              primaryDisplay: joined,
+            }
+          }
+          const { actorId, display } = resolve(raw)
+          if (!actorId) return { display: '', fieldType }
+          return {
+            display,
+            raw: actorId,
+            fieldType,
+            primaryDisplay: display,
+          }
+        }
+
+        // Everything else: use converter display + raw.
+        if (Array.isArray(raw)) {
+          const displays = raw
+            .map((v) => String(converter.toDisplayValue(v, field.options) ?? ''))
+            .filter(Boolean)
+          const rawValues = raw
+            .map((v) => converter.toRawValue(v))
+            .filter((v) => v !== null && v !== undefined)
+          return {
+            display: displays.join(', '),
+            raw: rawValues,
+            fieldType,
+          }
+        }
+        const display = String(converter.toDisplayValue(raw, field.options) ?? '')
+        return {
+          display,
+          raw: converter.toRawValue(raw),
+          fieldType,
+        }
+      },
+      /**
+       * Resolve a relationship target by display name against already-hydrated
+       * records in the relationship store. Case-insensitive exact match on
+       * `displayName`, scoped to the target column's `relatedEntityDefinitionId`.
+       * Sync only — no network lookup. If the user pastes a record that's not
+       * currently loaded, paste skips with "no matching record".
+       */
+      resolveRelationshipByDisplay: (columnId, query) => {
+        const field = resolveField(columnId)
+        if (!field) return null
+        const targetDefId = field.options?.relationship?.relatedEntityDefinitionId
+        if (!targetDefId) return null
+        const q = query.trim().toLowerCase()
+        if (!q) return null
+        const dataMap = useRelationshipStore.getState().dataMap
+        for (const [recordId, item] of Object.entries(dataMap)) {
+          if (!item) continue
+          if (!recordId.startsWith(`${targetDefId}:`)) continue
+          if (item.displayName.toLowerCase() === q) return recordId
+        }
+        return null
+      },
+      /**
+       * Resolve an actor target by display name against the actor store.
+       * Case-insensitive exact match on `name`. Respects the field's `target`
+       * constraint ('user' | 'group' | 'both') so pasting a group name into a
+       * user-only actor column skips.
+       */
+      resolveActorByDisplay: (columnId, query) => {
+        const field = resolveField(columnId)
+        if (!field) return null
+        const target = field.options?.actor?.target ?? 'both'
+        const q = query.trim().toLowerCase()
+        if (!q) return null
+        const actors = useActorStore.getState().actors
+        for (const actor of actors.values()) {
+          if (target === 'user' && actor.type !== 'user' && actor.type !== 'system') continue
+          if (target === 'group' && actor.type !== 'group') continue
+          if (actor.name.toLowerCase() === q) return actor.actorId
+        }
+        return null
+      },
+      /**
+       * Range delete — every (row × column) inside the range gets null.
+       * Cells form a rectangle, so a single cartesian setBulk handles it:
+       *   recordIds = unique rowIds, values = unique writable fieldIds → null
+       * Read-only fields are filtered out of `values`.
+       */
+      clearCells: async (cells) => {
+        if (!entityDefinitionId || cells.length === 0) return { skipped: 0 }
+
+        const rowIds = new Set<string>()
+        const fieldIds = new Set<string>()
+        const fieldTypes = new Map<string, FieldType>()
+        let skipped = 0
+
+        for (const { rowId, columnId } of cells) {
+          const field = resolveField(columnId)
+          if (!field || field.capabilities?.updatable === false) {
+            skipped++
+            continue
+          }
+          rowIds.add(rowId)
+          fieldIds.add(columnId)
+          if (!fieldTypes.has(columnId)) {
+            fieldTypes.set(columnId, field.fieldType as FieldType)
+          }
+        }
+
+        if (rowIds.size === 0 || fieldIds.size === 0) return { skipped }
+
+        const recordIds = Array.from(rowIds).map((id) => toRecordId(entityDefinitionId, id))
+        const fieldValues = Array.from(fieldIds).map((fieldId) => ({
+          fieldId,
+          value: null,
+          fieldType: fieldTypes.get(fieldId) ?? ('TEXT' as FieldType),
+        }))
+
+        saveBulkMultipleFields(recordIds, fieldValues)
+        return { skipped }
+      },
+      /**
+       * Per-cell write (used by paste). Groups by value-tuple so rows that share
+       * the same {field → value} payload coalesce into one setBulk call. Worst
+       * case: N calls for N rows of all-distinct data.
+       */
+      saveCells: async (updates) => {
+        if (!entityDefinitionId || updates.length === 0) return { skipped: 0 }
+
+        let skipped = 0
+        const allowed: typeof updates = []
+        for (const u of updates) {
+          const field = resolveField(u.columnId)
+          if (!field || field.capabilities?.updatable === false) {
+            skipped++
+            continue
+          }
+          allowed.push(u)
+        }
+        if (allowed.length === 0) return { skipped }
+
+        // Bucket: signature (sorted "fieldId|value" tuples) → row ids + field/value list
+        type Bucket = {
+          recordIds: RecordId[]
+          fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
+        }
+        const buckets = new Map<string, Bucket>()
+        const byRow = new Map<string, Array<{ columnId: string; value: unknown }>>()
+        for (const u of allowed) {
+          if (!byRow.has(u.rowId)) byRow.set(u.rowId, [])
+          byRow.get(u.rowId)!.push({ columnId: u.columnId, value: u.value })
+        }
+        for (const [rowId, row] of byRow.entries()) {
+          row.sort((a, b) => (a.columnId < b.columnId ? -1 : a.columnId > b.columnId ? 1 : 0))
+          const sig = row.map((c) => `${c.columnId}|${JSON.stringify(c.value)}`).join('||')
+          let bucket = buckets.get(sig)
+          if (!bucket) {
+            bucket = {
+              recordIds: [],
+              fieldValues: row.map((c) => ({
+                fieldId: c.columnId,
+                value: c.value,
+                fieldType:
+                  (resolveField(c.columnId)?.fieldType as FieldType) ?? ('TEXT' as FieldType),
+              })),
+            }
+            buckets.set(sig, bucket)
+          }
+          bucket.recordIds.push(toRecordId(entityDefinitionId, rowId))
+        }
+
+        for (const bucket of buckets.values()) {
+          saveBulkMultipleFields(bucket.recordIds, bucket.fieldValues)
+        }
+        return { skipped }
+      },
+    }
+  }, [getValue, entityDefinitionId, fieldMap, saveBulkMultipleFields])
 
   /**
    * Empty state component

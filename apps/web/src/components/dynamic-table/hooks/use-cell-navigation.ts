@@ -4,66 +4,56 @@
 import type { Table } from '@tanstack/react-table'
 import type React from 'react'
 import { useCallback, useEffect, useRef } from 'react'
-import type { CellSelectionState } from '../types'
+import { useSelectionStore } from '../stores/selection-store'
+import type { CellRange, CellSelectionState, RangeEndpoint } from '../types'
+import { isSingleCell, singleRange } from '../utils/range'
 
 interface UseCellNavigationOptions<TData> {
   table: Table<TData>
-  selectedCell: CellSelectionState | null
-  setSelectedCell: (cell: CellSelectionState | null) => void
-  editingCell: CellSelectionState | null
-  setEditingCell: (cell: CellSelectionState | null) => void
+  tableId: string
   enabled: boolean
   scrollContainerRef: React.RefObject<HTMLDivElement | null>
 }
 
 /**
- * Hook for keyboard navigation between cells
- * - Arrow keys: move selection between cells
- * - Tab/Shift+Tab: move selection right/left, wrapping to next/previous row
- * - Enter: start editing selected cell
- * - Escape: deselect cell
+ * Keyboard navigation for the cell selection range.
+ *
+ * Single-cell mode (Arrow / Tab / Enter / Escape) preserves today's behavior.
+ * Range mode (Shift+Arrow / Cmd+Shift+Arrow / Cmd+A) extends the focus while
+ * keeping the anchor put.
  */
 export function useCellNavigation<TData>({
   table,
-  selectedCell,
-  setSelectedCell,
-  editingCell,
-  setEditingCell,
+  tableId,
   enabled,
   scrollContainerRef,
 }: UseCellNavigationOptions<TData>) {
-  /** Track last known position for resuming navigation after Escape deselect */
+  /** Track last known position for resuming navigation after Escape clears */
   const lastPositionRef = useRef<CellSelectionState | null>(null)
 
-  /** Update last position when selection changes to a non-null value */
-  useEffect(() => {
-    if (selectedCell) {
-      lastPositionRef.current = selectedCell
-    }
-  }, [selectedCell])
+  // Subscribe to range changes so lastPositionRef stays warm.
+  const range = useSelectionStore((s) => s.tables[tableId]?.range ?? null)
+  const editingCell = useSelectionStore((s) => s.tables[tableId]?.editingCell ?? null)
 
-  /** Scroll cell into view after keyboard navigation */
+  useEffect(() => {
+    if (range) {
+      lastPositionRef.current = { rowId: range.focus.rowId, columnId: range.focus.columnId }
+    }
+  }, [range])
+
   const scrollCellIntoView = useCallback(
     (rowId: string, columnId: string, direction?: 'left' | 'right' | 'up' | 'down') => {
       const container = scrollContainerRef.current
       if (!container) return
 
-      // Use requestAnimationFrame to ensure DOM is updated after state change
       requestAnimationFrame(() => {
         const cell = container.querySelector(
           `[data-row-id="${rowId}"][data-column-id="${columnId}"]`
         ) as HTMLElement | null
 
         if (cell) {
-          // Use 'start' for left navigation to force scroll past pinned columns
-          // 'nearest' doesn't scroll if cell is partially visible (behind pinned area)
           const inlinePosition = direction === 'left' ? 'start' : 'nearest'
-
-          cell.scrollIntoView({
-            block: 'nearest',
-            inline: inlinePosition,
-            behavior: 'auto',
-          })
+          cell.scrollIntoView({ block: 'nearest', inline: inlinePosition, behavior: 'auto' })
         }
       })
     },
@@ -72,23 +62,48 @@ export function useCellNavigation<TData>({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Don't navigate while editing
       if (editingCell || !enabled) return
-
-      // Ignore keystrokes originating outside the table
       if (!scrollContainerRef.current?.contains(e.target as Node)) return
 
-      // Use current selection, or fall back to last position for resuming after Escape
-      const activeCell = selectedCell || lastPositionRef.current
-      if (!activeCell) return
+      const store = useSelectionStore.getState()
+      const currentRange = store.getRange(tableId)
 
       const rows = table.getRowModel().rows
       const columns = table.getVisibleLeafColumns().filter((col) => col.id !== '_checkbox')
+      const isMod = e.metaKey || e.ctrlKey
 
-      const currentRowIndex = rows.findIndex((r) => r.id === activeCell.rowId)
-      const currentColIndex = columns.findIndex((c) => c.id === activeCell.columnId)
+      // Cmd/Ctrl+A — select all visible cells
+      if (isMod && e.key === 'a') {
+        e.preventDefault()
+        const firstRow = rows[0]
+        const firstCol = columns[0]
+        const lastRow = rows[rows.length - 1]
+        const lastCol = columns[columns.length - 1]
+        if (!firstRow || !firstCol || !lastRow || !lastCol) return
+        const anchor: RangeEndpoint = {
+          rowId: firstRow.id,
+          columnId: firstCol.id,
+          rowIndex: 0,
+          colIndex: 0,
+        }
+        const focus: RangeEndpoint = {
+          rowId: lastRow.id,
+          columnId: lastCol.id,
+          rowIndex: rows.length - 1,
+          colIndex: columns.length - 1,
+        }
+        store.setRange(tableId, { anchor, focus })
+        return
+      }
 
-      // If position no longer valid (row deleted, etc.), reset and do nothing
+      // Resolve current focus (use range, or fall back to last position)
+      const focusAddr = currentRange
+        ? { rowId: currentRange.focus.rowId, columnId: currentRange.focus.columnId }
+        : lastPositionRef.current
+      if (!focusAddr) return
+
+      const currentRowIndex = rows.findIndex((r) => r.id === focusAddr.rowId)
+      const currentColIndex = columns.findIndex((c) => c.id === focusAddr.columnId)
       if (currentRowIndex === -1 || currentColIndex === -1) {
         lastPositionRef.current = null
         return
@@ -96,34 +111,34 @@ export function useCellNavigation<TData>({
 
       let newRowIndex = currentRowIndex
       let newColIndex = currentColIndex
-
       let direction: 'left' | 'right' | 'up' | 'down' | undefined
 
       switch (e.key) {
         case 'ArrowUp':
           e.preventDefault()
-          newRowIndex = Math.max(0, currentRowIndex - 1)
+          newRowIndex = isMod ? 0 : Math.max(0, currentRowIndex - 1)
           direction = 'up'
           break
         case 'ArrowDown':
           e.preventDefault()
-          newRowIndex = Math.min(rows.length - 1, currentRowIndex + 1)
+          newRowIndex = isMod ? rows.length - 1 : Math.min(rows.length - 1, currentRowIndex + 1)
           direction = 'down'
           break
         case 'ArrowLeft':
           e.preventDefault()
-          newColIndex = Math.max(0, currentColIndex - 1)
+          newColIndex = isMod ? 0 : Math.max(0, currentColIndex - 1)
           direction = 'left'
           break
         case 'ArrowRight':
           e.preventDefault()
-          newColIndex = Math.min(columns.length - 1, currentColIndex + 1)
+          newColIndex = isMod
+            ? columns.length - 1
+            : Math.min(columns.length - 1, currentColIndex + 1)
           direction = 'right'
           break
         case 'Tab':
           e.preventDefault()
           if (e.shiftKey) {
-            // Move left, or to end of previous row
             if (currentColIndex > 0) {
               newColIndex = currentColIndex - 1
               direction = 'left'
@@ -133,7 +148,6 @@ export function useCellNavigation<TData>({
               direction = 'left'
             }
           } else {
-            // Move right, or to start of next row
             if (currentColIndex < columns.length - 1) {
               newColIndex = currentColIndex + 1
               direction = 'right'
@@ -145,16 +159,19 @@ export function useCellNavigation<TData>({
           }
           break
         case 'Enter':
-          // Only enter edit mode if there's an actual selection (not just lastPosition)
-          if (!selectedCell) return
+          if (!currentRange) return
           e.preventDefault()
-          setEditingCell(selectedCell)
+          store.setEditingCell(tableId, focusAddr)
           return
         case 'Escape':
-          // Only deselect if there's an actual selection
-          if (!selectedCell) return
+          if (!currentRange) return
           e.preventDefault()
-          setSelectedCell(null)
+          // First Escape collapses range to anchor; second clears.
+          if (currentRange && !isSingleCell(currentRange)) {
+            store.setRange(tableId, singleRange(currentRange.anchor))
+          } else {
+            store.setRange(tableId, null)
+          }
           return
         default:
           return
@@ -162,18 +179,30 @@ export function useCellNavigation<TData>({
 
       const newRow = rows[newRowIndex]
       const newCol = columns[newColIndex]
+      if (!newRow || !newCol) return
 
-      if (newRow && newCol) {
-        setSelectedCell({ rowId: newRow.id, columnId: newCol.id })
-        scrollCellIntoView(newRow.id, newCol.id, direction)
+      const newFocus: RangeEndpoint = {
+        rowId: newRow.id,
+        columnId: newCol.id,
+        rowIndex: newRowIndex,
+        colIndex: newColIndex,
       }
+
+      // Tab always collapses to single cell. Shift+Arrow extends; plain Arrow collapses.
+      const shouldExtend = e.shiftKey && e.key !== 'Tab'
+      if (shouldExtend && currentRange) {
+        const next: CellRange = { anchor: currentRange.anchor, focus: newFocus }
+        store.setRange(tableId, next)
+      } else {
+        store.setRange(tableId, { anchor: newFocus, focus: newFocus })
+      }
+      scrollCellIntoView(newRow.id, newCol.id, direction)
     },
-    [table, selectedCell, editingCell, enabled, setSelectedCell, setEditingCell, scrollCellIntoView]
+    [table, tableId, editingCell, enabled, scrollCellIntoView, scrollContainerRef]
   )
 
   useEffect(() => {
     if (!enabled) return
-
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown, enabled])

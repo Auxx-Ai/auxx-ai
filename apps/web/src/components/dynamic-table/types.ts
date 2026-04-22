@@ -46,10 +46,51 @@ export type FormattableFieldType = (typeof FORMATTABLE_FIELD_TYPES)[number]
 // CELL SELECTION TYPES
 // ============================================================================
 
-/** Cell selection state */
+/** Cell address — id-based, stable across virtualization/sort */
 export interface CellSelectionState {
   rowId: string
   columnId: string
+}
+
+/** Alias for clarity at call sites */
+export type CellAddress = CellSelectionState
+
+/** Range endpoint — id is source of truth, indexes are derived for math */
+export interface RangeEndpoint extends CellAddress {
+  rowIndex: number
+  colIndex: number
+}
+
+/** Inclusive rectangular range over visible cells (checkbox column excluded) */
+export interface CellRange {
+  anchor: RangeEndpoint
+  focus: RangeEndpoint
+}
+
+/**
+ * Result of a bulk write — how many cells we couldn't write.
+ * Used to surface "N cells skipped" toasts.
+ */
+export interface BulkWriteResult {
+  skipped: number
+}
+
+/**
+ * Per-cell payload returned by `formatCellForCopy`.
+ * Used by the clipboard hook to build both `text/plain` TSV (for external apps
+ * like Excel/Notion) and a JSON sidecar (for lossless auxx→auxx paste).
+ */
+export interface CopyCellPayload {
+  /** Display string — what Excel/Notion sees. Multi-value cells join with ', '. */
+  display: string
+  /** Raw primitive via converter.toRawValue — used by auxx-to-auxx paste. */
+  raw?: unknown
+  /** Source field type — so paste can route through the correct converter. */
+  fieldType?: FieldType
+  /** RELATIONSHIP only: linked record's primary display (e.g., "Acme Inc"). */
+  primaryDisplay?: string
+  /** RELATIONSHIP only: RecordId in "entityDefId:instanceId" form. */
+  recordId?: string
 }
 
 /** Cell selection configuration */
@@ -62,6 +103,35 @@ export interface CellSelectionConfig {
   getCellValue?: (rowId: string, columnId: string) => any
   /** Get RecordId for a row (required for optimistic updates when editing) */
   getRecordId?: (rowId: string) => RecordId
+  /**
+   * Bulk write — receives cells across the active range. Implementations
+   * group by record/value and dispatch to the underlying bulk endpoint.
+   * Cells the caller cannot accept (read-only, type mismatch) should be
+   * counted in `skipped`.
+   */
+  saveCells?: (
+    updates: Array<{ rowId: string; columnId: string; value: unknown }>
+  ) => Promise<BulkWriteResult> | BulkWriteResult
+  /** Bulk clear (Delete/Backspace on a range) */
+  clearCells?: (
+    cells: Array<{ rowId: string; columnId: string }>
+  ) => Promise<BulkWriteResult> | BulkWriteResult
+  /**
+   * Format a single cell for copy. Returns `{display, raw?, fieldType?, primaryDisplay?, recordId?}`
+   * or `null` to fall back to generic formatting. Enables type-aware copy that
+   * preserves structure for auxx-to-auxx paste.
+   */
+  formatCellForCopy?: (rowId: string, columnId: string) => CopyCellPayload | null
+  /**
+   * Resolve a relationship target by display name on paste.
+   * Sync-only (looks up already-loaded records). Returns a RecordId or null.
+   */
+  resolveRelationshipByDisplay?: (columnId: string, query: string) => string | null
+  /**
+   * Resolve an actor target by display name on paste.
+   * Sync-only. Returns an ActorId or null.
+   */
+  resolveActorByDisplay?: (columnId: string, query: string) => string | null
 }
 
 /**
