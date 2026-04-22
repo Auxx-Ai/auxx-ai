@@ -56,7 +56,7 @@ export function PrimaryCell({
 
   return (
     <>
-      <div className='flex items-center justify-between w-full pl-3 pr-2 text-sm group/primary'>
+      <div className='flex items-center justify-between w-full pl-3 pr-1 text-sm group/primary'>
         <button
           className={cn(
             'flex items-center gap-2 text-left underline decoration-muted-foreground/50 hover:decoration-muted-foreground truncate max-w-[calc(100%-40px)]',
@@ -76,8 +76,8 @@ export function PrimaryCell({
             <DropdownMenuTrigger asChild>
               <Button
                 variant='ghost'
-                size='icon-sm'
-                className='sm:opacity-0 sm:group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100! rounded-full'>
+                size='icon-xs'
+                className='rounded-md sm:opacity-0 sm:group-hover/primary:opacity-100 transition-opacity data-[state=open]:opacity-100!'>
                 <MoreVertical />
               </Button>
             </DropdownMenuTrigger>

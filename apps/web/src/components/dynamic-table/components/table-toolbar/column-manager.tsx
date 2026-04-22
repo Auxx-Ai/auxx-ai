@@ -2,24 +2,19 @@
 
 'use client'
 
-import type { FieldPath, FieldReference } from '@auxx/types/field'
-import { isFieldPath, toFieldId, toResourceFieldId } from '@auxx/types/field'
+import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandBreadcrumb,
   CommandDescription,
-  CommandEmpty,
   CommandGroup,
-  CommandInput,
-  CommandItem,
   CommandList,
   CommandNavigableItem,
   CommandNavigation,
   CommandSeparator,
   CommandSortable,
   CommandSortableItem,
-  type NavigationItem,
   useCommandNavigation,
 } from '@auxx/ui/components/command'
 import {
@@ -36,8 +31,6 @@ import { Columns, EyeOff, MoreHorizontal, Pencil, Plus, Settings2 } from 'lucide
 import { useCallback, useMemo, useState } from 'react'
 import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { Tooltip } from '~/components/global/tooltip'
-import type { FieldPickerNavigationItem } from '~/components/pickers/field-picker'
-import { FieldPickerInnerContent } from '~/components/pickers/field-picker'
 import { useFields } from '~/components/resources/hooks/use-field'
 import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
@@ -56,20 +49,11 @@ import {
 } from '../../stores/store-selectors'
 import type { ExtendedColumnDef, FormattableFieldType } from '../../types'
 import { FORMATTABLE_FIELD_TYPES } from '../../types'
-import { decodeColumnId, encodeFieldPathColumnId } from '../../utils/column-id'
+import { decodeColumnId } from '../../utils/column-id'
 import { doesColumnFieldExist } from '../../utils/field-exists'
 import { EditColumnFormattingDialog } from '../dialogs/edit-column-formatting-dialog'
 import { EditColumnLabelDialog } from '../dialogs/edit-column-label-dialog'
-
-/** Base navigation item for "Add column" action */
-interface AddColumnNavigationItem extends NavigationItem {
-  id: string
-  label: string
-  type: 'add-column'
-}
-
-/** Navigation item type for column manager (union of add-column and relationship drill-down) */
-type ColumnNavigationItem = AddColumnNavigationItem | FieldPickerNavigationItem
+import { AddColumnStack, type ColumnNavigationItem } from './add-column-stack'
 
 /**
  * RootStack - Shows visible columns (sortable, removable)
@@ -333,217 +317,6 @@ function ColumnOptionsDropdown<TData = any>({
           }
         />
       )}
-    </>
-  )
-}
-
-/**
- * AddColumnStack - Shows available fields to add as columns.
- * Uses FieldPickerInnerContent with external navigation to avoid nested breadcrumbs.
- */
-function AddColumnStack({ onCreateField }: { onCreateField: () => void }) {
-  const { tableId, entityDefinitionId } = useTableConfig()
-  const columnVisibility = useColumnVisibility(tableId)
-  const columnOrder = useColumnOrder(tableId)
-  const setColumnVisibility = useSetColumnVisibility(tableId)
-  const setColumnOrder = useSetColumnOrder(tableId)
-  const { stack, current, push, pop } = useCommandNavigation<ColumnNavigationItem>()
-
-  // Get visible column IDs to exclude from picker
-  const visibleColumnIds = useMemo(() => {
-    if (!columnVisibility) return []
-    return Object.entries(columnVisibility)
-      .filter(([_, visible]) => visible !== false)
-      .map(([id]) => id)
-  }, [columnVisibility])
-
-  // Handle field selection - add as column
-  const handleSelectField = useCallback(
-    (fieldReference: FieldReference) => {
-      // Encode the field reference as a column ID
-      // For paths: "product:vendor::vendor:name"
-      // For direct fields: "contact:email"
-      const columnId: string = isFieldPath(fieldReference)
-        ? encodeFieldPathColumnId(fieldReference as FieldPath)
-        : (fieldReference as string)
-
-      // Make column visible
-      setColumnVisibility({
-        ...(columnVisibility ?? {}),
-        [columnId]: true,
-      })
-
-      // Add to column order at the END (after all current visible columns)
-      if (!columnOrder?.includes(columnId)) {
-        // Ensure all currently visible columns are in order first, then add new one
-        const existingOrder = columnOrder ?? []
-        const unorderedVisible = visibleColumnIds.filter((id) => !existingOrder.includes(id))
-        setColumnOrder([...existingOrder, ...unorderedVisible, columnId])
-      }
-
-      // Go back to root stack
-      pop()
-    },
-    [columnVisibility, columnOrder, visibleColumnIds, setColumnVisibility, setColumnOrder, pop]
-  )
-
-  // Filter stack to only include FieldPickerNavigationItem items (for relationship drill-down)
-  const fieldPickerStack = useMemo(() => {
-    return stack.filter((item): item is FieldPickerNavigationItem => 'resourceFieldId' in item)
-  }, [stack])
-
-  // Get current item for resource picker (only if it's a relationship navigation item)
-  const fieldPickerCurrent = useMemo((): FieldPickerNavigationItem | null => {
-    if (!current) return null
-    if ('resourceFieldId' in current) return current as FieldPickerNavigationItem
-    return null
-  }, [current])
-
-  // External navigation adapter for FieldPickerInnerContent
-  const externalNavigation = useMemo(
-    () => ({
-      push: (item: FieldPickerNavigationItem) => push(item),
-      pop,
-      stack: fieldPickerStack,
-      current: fieldPickerCurrent,
-      // "At root" for the resource picker means we're at "Add column" level
-      // (no relationship has been drilled into yet)
-      isAtRoot: fieldPickerStack.length === 0,
-    }),
-    [push, pop, fieldPickerStack, fieldPickerCurrent]
-  )
-
-  // Fallback if no entityDefinitionId (non-resource table)
-  if (!entityDefinitionId) {
-    return <LegacyAddColumnStack onCreateField={onCreateField} />
-  }
-
-  return (
-    <FieldPickerInnerContent
-      entityDefinitionId={entityDefinitionId}
-      excludeFields={visibleColumnIds}
-      mode='single'
-      closeOnSelect={false} // We handle navigation via pop()
-      onSelect={handleSelectField}
-      onCreateField={onCreateField}
-      searchPlaceholder='Search fields...'
-      externalNavigation={externalNavigation}
-    />
-  )
-}
-
-/**
- * LegacyAddColumnStack - Fallback for tables without entityDefinitionId.
- * Shows hidden columns from TanStack Table.
- */
-function LegacyAddColumnStack<TData = any>({ onCreateField }: { onCreateField: () => void }) {
-  const { tableId, entityDefinitionId } = useTableConfig()
-  const { table } = useTableInstance<TData>()
-  const columnLabels = useColumnLabels(tableId)
-  const columnVisibility = useColumnVisibility(tableId)
-  const columnOrder = useColumnOrder(tableId)
-  const setColumnVisibility = useSetColumnVisibility(tableId)
-  const setColumnOrder = useSetColumnOrder(tableId)
-  const [search, setSearch] = useState('')
-
-  // Get visible column IDs (for ensuring order when adding new columns)
-  const visibleColumnIds = useMemo(() => {
-    if (!columnVisibility) return []
-    return Object.entries(columnVisibility)
-      .filter(([_, visible]) => visible !== false)
-      .map(([id]) => id)
-  }, [columnVisibility])
-
-  // Get hidden columns
-  const hiddenColumns = useMemo(() => {
-    // Get all hideable columns
-    const allColumns = table
-      .getAllColumns()
-      .filter((col) => col.getCanHide() && col.id !== '_checkbox')
-
-    // Filter to hidden only (uses TanStack state which includes defaultVisible merging)
-    return allColumns.filter((col) => !col.getIsVisible())
-  }, [table, columnVisibility])
-
-  // Get column name
-  const getColumnName = useCallback(
-    (column: Column<TData, unknown>) => {
-      const label = columnLabels?.[column.id]
-      if (label) return label
-
-      const header = column.columnDef.header
-      if (typeof header === 'string') return header
-
-      return column.id
-    },
-    [columnLabels]
-  )
-
-  // Filter by search
-  const filteredColumns = useMemo(() => {
-    if (!search) return hiddenColumns
-    const query = search.toLowerCase()
-    return hiddenColumns.filter((col) => {
-      const name = getColumnName(col)
-      return name.toLowerCase().includes(query)
-    })
-  }, [hiddenColumns, search, getColumnName])
-
-  // Handle add column
-  const handleAddColumn = useCallback(
-    (columnId: string) => {
-      setColumnVisibility({
-        ...(columnVisibility ?? {}),
-        [columnId]: true,
-      })
-
-      // Add to column order at the END (after all current visible columns)
-      if (!columnOrder?.includes(columnId)) {
-        // Ensure all currently visible columns are in order first, then add new one
-        const existingOrder = columnOrder ?? []
-        const unorderedVisible = visibleColumnIds.filter((id) => !existingOrder.includes(id))
-        setColumnOrder([...existingOrder, ...unorderedVisible, columnId])
-      }
-    },
-    [columnVisibility, columnOrder, visibleColumnIds, setColumnVisibility, setColumnOrder]
-  )
-
-  return (
-    <>
-      <CommandInput
-        placeholder='Search columns...'
-        value={search}
-        onValueChange={setSearch}
-        autoFocus={true}
-      />
-      <CommandList>
-        <CommandEmpty>No hidden columns found.</CommandEmpty>
-        {filteredColumns.length > 0 && (
-          <CommandGroup>
-            {filteredColumns.map((column) => (
-              <CommandItem
-                key={column.id}
-                value={column.id}
-                onSelect={() => handleAddColumn(column.id)}>
-                {getColumnName(column)}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-
-        {/* Create Field Button - only show if entity definition exists */}
-        {entityDefinitionId && (
-          <>
-            {filteredColumns.length > 0 && <CommandSeparator />}
-            <CommandGroup>
-              <CommandItem onSelect={onCreateField}>
-                <Plus />
-                Create field
-              </CommandItem>
-            </CommandGroup>
-          </>
-        )}
-      </CommandList>
     </>
   )
 }

@@ -23,7 +23,9 @@ function TableScrollArea({ children, viewportRef, className }: TableScrollAreaPr
   return (
     <BaseScrollArea.Root
       className={cn('relative box-border overflow-hidden flex flex-col flex-1 h-full', className)}>
-      <BaseScrollArea.Viewport ref={viewportRef} className='h-full w-full flex flex-col'>
+      <BaseScrollArea.Viewport
+        ref={viewportRef}
+        className='h-full w-full flex flex-col outline-none'>
         {children}
       </BaseScrollArea.Viewport>
 

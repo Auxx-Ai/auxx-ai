@@ -18,7 +18,7 @@ export function FillHandle() {
   return (
     <div
       data-slot='fill-handle'
-      className='absolute -right-[6px] -bottom-[6px] h-[14px] w-[14px] flex items-center justify-center cursor-crosshair pointer-events-auto z-30'
+      className='absolute -right-[5px] -bottom-[5px] h-[14px] w-[14px] flex items-center justify-center cursor-crosshair pointer-events-auto z-30'
       onPointerDown={(e) => {
         // Stop propagation so the underlying cell's pointerdown doesn't
         // trigger range-drag or clear the selection.
@@ -27,7 +27,7 @@ export function FillHandle() {
         if (e.pointerType === 'touch') return
         fill?.beginFillDrag(e.pointerId, e.clientX, e.clientY)
       }}>
-      <div className='size-1 rounded-[2px] bg-blue-500 ring-1 ring-white' />
+      <div className='size-1 rounded-[1px] bg-info ring-1 ring-white dark:ring-black/30' />
     </div>
   )
 }
