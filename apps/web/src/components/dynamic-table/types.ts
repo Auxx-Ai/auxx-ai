@@ -367,9 +367,6 @@ export interface DynamicTableProps<TData = any> {
 
   emptyState?: React.ReactNode
 
-  /** React node to render after the last column header (e.g., add column button) */
-  headerActions?: React.ReactNode
-
   // Children
   /** Children elements (e.g., DynamicTableFooter) */
   children?: React.ReactNode

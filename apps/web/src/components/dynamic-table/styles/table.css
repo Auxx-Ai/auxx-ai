@@ -130,3 +130,11 @@
 .cell-in-range {
   background-color: hsl(217 91% 60% / 0.06);
 }
+
+/* Hide the fill handle when the active (anchor) cell is read-only. The scroll
+   container wraps both the cells and the selection overlay, so `:has()` on a
+   shared ancestor reaches across to suppress the handle without any React
+   wiring. */
+:has(> [data-slot='selection-overlay']):has(.cell-active.read-only) [data-slot='fill-handle'] {
+  display: none;
+}

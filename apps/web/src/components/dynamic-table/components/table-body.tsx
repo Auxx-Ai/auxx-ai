@@ -9,6 +9,7 @@ import { useTableConfig } from '../context/table-config-context'
 import { useTableInstance } from '../context/table-instance-context'
 import { useViewStoreInitialized } from '../stores/store-selectors'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
+import { AddColumnButton } from './add-column-button'
 import { CheckboxHeaderCell } from './checkbox-header-cell'
 import { ColumnDndProvider } from './column-dnd-provider'
 import { HeaderCellWrapper } from './header-cell-wrapper'
@@ -33,7 +34,7 @@ export function TableBody<TData extends object>({
   scrollContainerRef,
 }: TableBodyProps) {
   // Get config from focused contexts
-  const { isLoading, headerActions, dragDropConfig, emptyState, standalone } =
+  const { isLoading, entityDefinitionId, dragDropConfig, emptyState, standalone } =
     useTableConfig<TData>()
   const { table } = useTableInstance<TData>()
   const { cellSelectionConfig } = useCellSelection()
@@ -119,10 +120,14 @@ export function TableBody<TData extends object>({
                       return <HeaderCellWrapper key={header.id} header={header} />
                     })}
 
-                  {/* Header Actions (e.g., add column button) - positioned sticky to stay visible on scroll */}
-                  {headerActions && (
-                    <div className='sticky right-0 h-10 flex items-center bg-gradient-to-r from-transparent via-white to-white dark:via-transparent dark:to-transparent'>
-                      {headerActions}
+                  {/* Add Column button - sticky right so it stays visible on scroll.
+                      `shrink-0` keeps flex from squishing it to 0 when column widths
+                      already sum to the container's fixed width (totalSize). Solid
+                      header-matched backdrop (no gradient) so data rows beneath paint
+                      their own bg unmasked to the viewport edge. */}
+                  {entityDefinitionId && (
+                    <div className='sticky right-0 z-20 shrink-0 flex items-center px-1 backdrop-blur bg-white/80 dark:bg-[#2c313a]/80 border-l border-primary-200/50 dark:border-[#1e2227]'>
+                      <AddColumnButton />
                     </div>
                   )}
                 </div>

@@ -7,13 +7,7 @@ import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import Loader from '@auxx/ui/components/loader'
 import {
   type DockedPanelConfig,
@@ -23,21 +17,10 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import {
-  Archive,
-  BookPlus,
-  Combine,
-  Database,
-  FileText,
-  Play,
-  Plus,
-  SquarePen,
-  Trash2,
-} from 'lucide-react'
+import { Archive, Combine, Database, FileText, Play, Plus, SquarePen, Trash2 } from 'lucide-react'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
-import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import type { CellSelectionConfig, ExtendedColumnDef } from '~/components/dynamic-table'
 import {
@@ -78,36 +61,6 @@ const PAGE_SIZE = 100
 export interface EntityRow extends RecordMeta {
   entityDefinitionId: string
   archivedAt: string | null
-}
-
-/**
- * Props for HeaderActionsDropdown component
- */
-interface HeaderActionsDropdownProps {
-  onNewField: () => void
-}
-
-/**
- * Dropdown button for header actions (add new field, etc.)
- */
-function HeaderActionsDropdown({ onNewField }: HeaderActionsDropdownProps) {
-  return (
-    <div className='flex items-center h-8'>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant='ghost' size='icon-xs' className='rounded-sm'>
-            <Plus />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align='end'>
-          <DropdownMenuItem onClick={onNewField}>
-            <BookPlus />
-            New Field
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  )
 }
 
 /**
@@ -193,9 +146,6 @@ export function RecordsView({
 
   // Kanban card selection state (lives here to persist across drawer open/close)
   const [selectedKanbanCardIds, setSelectedKanbanCardIds] = useState<Set<string>>(new Set())
-
-  // Custom field dialog state
-  const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false)
 
   // Bulk update dialog state
   const [isBulkUpdateDialogOpen, setIsBulkUpdateDialogOpen] = useState(false)
@@ -938,7 +888,7 @@ export function RecordsView({
   // Main content (table + footer)
   const mainContent = (
     <MainPageContent dockedPanels={dockedPanels}>
-      <div className='flex-1 overflow-hidden rounded-lg bg-white dark:bg-muted/10 flex-col flex'>
+      <div className='flex-1 overflow-hidden rounded-lg bg-primary-50 dark:bg-background flex-col flex'>
         <DynamicView
           data={records}
           className='h-full flex-1'
@@ -956,7 +906,6 @@ export function RecordsView({
           importHref={`${resolvedBasePath}/import`}
           onScrollToBottom={handleScrollToBottom}
           emptyState={<EmptyStateComponent />}
-          headerActions={<HeaderActionsDropdown onNewField={() => setIsFieldDialogOpen(true)} />}
           cellSelection={cellSelectionConfig}
           entityLabel={resource?.label}
           onAddNew={() => setIsCreateDialogOpen(true)}
@@ -1034,15 +983,6 @@ export function RecordsView({
             refresh()
             setSelectedRowIds(new Set())
           }}
-        />
-      )}
-
-      {/* Custom Field Dialog */}
-      {isFieldDialogOpen && entityDefinitionId && (
-        <CustomFieldDialog
-          open={isFieldDialogOpen}
-          onOpenChange={setIsFieldDialogOpen}
-          entityDefinitionId={entityDefinitionId}
         />
       )}
 

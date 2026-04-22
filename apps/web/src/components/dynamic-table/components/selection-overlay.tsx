@@ -168,7 +168,7 @@ export function SelectionOverlay({ scrollContainerRef }: SelectionOverlayProps) 
   const overlayClassName =
     single || fillDrag
       ? 'absolute pointer-events-none z-20'
-      : 'absolute pointer-events-none rounded-md ring-1 ring-blue-500 ring-inset bg-blue-500/10 z-20'
+      : 'absolute pointer-events-none rounded-md bg-blue-500/10 z-20 before:content-[""] before:absolute before:-inset-x-[2px] before:-inset-y-px before:rounded-md before:pointer-events-none before:ring-1 before:ring-inset before:ring-blue-500'
 
   return (
     <>

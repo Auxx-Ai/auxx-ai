@@ -87,9 +87,6 @@ export interface TableConfigContextValue<TData = any> {
   /** Empty state component */
   emptyState?: React.ReactNode
 
-  /** Header actions */
-  headerActions?: React.ReactNode
-
   /** Drag and drop configuration */
   dragDropConfig?: DragDropConfig<TData>
 
