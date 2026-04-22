@@ -1,13 +1,18 @@
 // packages/lib/src/workflow-engine/resources/registry/resources/user-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import type { ResourceField } from '../field-types'
 
 /**
- * Field definitions for the User resource
- * Defines all fields, their types, capabilities, and validation rules
+ * Field definitions for the User resource.
+ *
+ * Scope kept intentionally minimal — the user resource is only used for
+ * sender/actor context in placeholders today. Relationship traversals
+ * (`user:…::…`) are not supported; if you need to expose another column,
+ * add it here AND register it in the `user:<slug>` synthetic path in
+ * `packages/lib/src/placeholders/path-parser.ts`.
  */
 export const USER_FIELDS: Record<string, ResourceField> = {
   id: {
@@ -65,26 +70,40 @@ export const USER_FIELDS: Record<string, ResourceField> = {
     description: 'User full name',
   },
 
-  // Reverse relationship: assignedTickets (one-to-many)
-  assignedTickets: {
-    id: toFieldId('assignedTickets'),
-    key: 'assignedTickets',
-    label: 'Assigned Tickets',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
+  firstName: {
+    id: toFieldId('firstName'),
+    key: 'firstName',
+    label: 'First Name',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    dbColumn: 'firstName',
+    nullable: true,
     capabilities: {
       filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
       configurable: false,
     },
-    relationship: {
-      inverseResourceFieldId: 'ticket:assignee' as ResourceFieldId,
-      relationshipType: 'has_many',
-      isInverse: true,
+    description: 'User first name',
+  },
+
+  lastName: {
+    id: toFieldId('lastName'),
+    key: 'lastName',
+    label: 'Last Name',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    dbColumn: 'lastName',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
     },
-    description: 'Tickets assigned to this user',
+    description: 'User last name',
   },
 
   createdAt: {

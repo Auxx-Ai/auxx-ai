@@ -43,6 +43,7 @@ function ScrollArea({
       )}>
       <BaseScrollArea.Viewport
         ref={viewportRef}
+        data-slot='scroll-area-viewport'
         className={cn(
           'h-full w-full outline-none',
           !allowScrollChaining && 'overscroll-contain',

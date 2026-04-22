@@ -18,6 +18,8 @@ interface UseThreadListInput {
   filter: ConditionGroup[]
   /** Sort options */
   sort?: ThreadSortDescriptor
+  /** Whether the query should run. Defaults to true. */
+  enabled?: boolean
 }
 
 interface UseThreadListResult {
@@ -58,7 +60,11 @@ interface UseThreadListResult {
  *   sort: { field: 'lastMessageAt', direction: 'desc' }
  * })
  */
-export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadListResult {
+export function useThreadList({
+  filter,
+  sort,
+  enabled = true,
+}: UseThreadListInput): UseThreadListResult {
   // Create a stable context key from the filter for caching
   const contextKey = useMemo(() => JSON.stringify({ filter, sort }), [filter, sort])
 
@@ -83,6 +89,7 @@ export function useThreadList({ filter, sort }: UseThreadListInput): UseThreadLi
     {
       getNextPageParam: (lastPage) => lastPage.nextCursor,
       staleTime: 30_000,
+      enabled,
     }
   )
 

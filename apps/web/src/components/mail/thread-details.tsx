@@ -16,15 +16,29 @@ import { useComposeStore } from './store/compose-store'
 import { ThreadFooter } from './thread-footer'
 import { ThreadHeader } from './thread-header'
 import { ThreadMessages } from './thread-messages'
-import { useThreadContext } from './thread-provider'
+import { useIsNestedThread, useThreadContext } from './thread-provider'
 import { toEditorMessage } from './utils/to-editor-message'
 
 /**
  * Main component for displaying thread details.
  * Includes messages, reply functionality, and comments.
  */
-export default function ThreadDetails({ centered }: { centered?: boolean }) {
+export default function ThreadDetails({
+  centered,
+  portalIdPrefix = '',
+  className,
+}: {
+  centered?: boolean
+  /** Prefix prepended to the reply-portal DOM id, to disambiguate when this
+   * component is mounted alongside another instance for the same thread (e.g.
+   * inside a dialog over the mail page). */
+  portalIdPrefix?: string
+  /** Additional classes for the root ScrollArea (use data-slot descendant
+   * selectors to target inner elements like thread-header). */
+  className?: string
+}) {
   const { threadId, replyBox, handlers, emailActions } = useThreadContext()
+  const isNested = useIsNestedThread()
   const { thread, isLoading, isNotFound } = useThread({ threadId })
   const { openInline, close: closeCompose } = useCompose()
   const instanceIdRef = useRef<string | null>(null)
@@ -73,7 +87,7 @@ export default function ThreadDetails({ centered }: { centered?: boolean }) {
     }
   }, [scheduledMessagesData, threadId, utils])
 
-  const portalTargetId = `reply-portal-${threadId}`
+  const portalTargetId = `${portalIdPrefix}reply-portal-${threadId}`
 
   // Check if there's a floating compose for this thread (for dock-back portal target)
   const floatingInstance = useComposeStore((s) =>
@@ -177,7 +191,7 @@ export default function ThreadDetails({ centered }: { centered?: boolean }) {
     () => {
       if (lastEditorMessage) emailActions.onReplyAll(lastEditorMessage)
     },
-    { enabled: !!thread && !isShowReplyBox, conflictBehavior: 'allow' }
+    { enabled: !!thread && !isShowReplyBox && !isNested, conflictBehavior: 'allow' }
   )
 
   useHotkey(
@@ -185,7 +199,7 @@ export default function ThreadDetails({ centered }: { centered?: boolean }) {
     () => {
       if (lastEditorMessage) emailActions.onForward(lastEditorMessage)
     },
-    { enabled: !!thread && !isShowReplyBox, conflictBehavior: 'allow' }
+    { enabled: !!thread && !isShowReplyBox && !isNested, conflictBehavior: 'allow' }
   )
 
   if (!thread) {
@@ -207,7 +221,13 @@ export default function ThreadDetails({ centered }: { centered?: boolean }) {
   }
 
   return (
-    <ScrollArea className='relative flex h-full flex-col flex-1 w-full' scrollbarClassName='w-1!'>
+    <ScrollArea
+      className={cn(
+        'relative flex h-full flex-col flex-1 w-full',
+        isNested && '**:data-[slot=scroll-area-viewport]:overscroll-none',
+        className
+      )}
+      scrollbarClassName='w-1!'>
       <div className={cn('flex flex-1 flex-col', centered && 'mx-auto w-full max-w-4xl')}>
         <ThreadHeader />
 

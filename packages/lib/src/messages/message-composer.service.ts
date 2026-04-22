@@ -5,10 +5,27 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { ParticipantRole, SendStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
+import { convert as htmlToText } from 'html-to-text'
 import { type FileAttachment, MessageAttachmentService } from './message-attachment.service'
 import type { ComposedMessage, ProcessedParticipants } from './types/message-sending.types'
 
 const logger = createScopedLogger('message-composer')
+
+/**
+ * Convert outbound HTML content to plain text for the `text/plain` MIME part.
+ * Uses `html-to-text` (same library as the inbound IMAP extractor) to
+ * preserve paragraph / line breaks and produce readable URL fallbacks.
+ *
+ * Options differ from inbound: we keep anchor hrefs (plain-text readers
+ * should still see the link) and skip images.
+ */
+function outboundHtmlToText(html: string): string {
+  return htmlToText(html, {
+    wordwrap: false,
+    preserveNewlines: true,
+    selectors: [{ selector: 'img', format: 'skip' }],
+  })
+}
 
 /**
  * Handles message composition and preparation for sending
@@ -85,7 +102,7 @@ export class MessageComposerService {
     const now = new Date()
 
     // Ensure we have plain text version
-    const textPlain = input.textPlain || (input.textHtml ? this.stripHtml(input.textHtml) : '')
+    const textPlain = input.textPlain || (input.textHtml ? outboundHtmlToText(input.textHtml) : '')
 
     // Get thread info
     const thread = await this.db.query.Thread.findFirst({
@@ -300,7 +317,7 @@ export class MessageComposerService {
     const now = new Date()
 
     // Ensure we have plain text version
-    const textPlain = input.textPlain || (input.textHtml ? this.stripHtml(input.textHtml) : '')
+    const textPlain = input.textPlain || (input.textHtml ? outboundHtmlToText(input.textHtml) : '')
 
     // Update the draft message
     const result = await this.db.transaction(async (tx) => {
@@ -416,7 +433,7 @@ export class MessageComposerService {
     const now = new Date()
 
     // Ensure we have plain text version
-    const textPlain = input.textPlain || (input.textHtml ? this.stripHtml(input.textHtml) : '')
+    const textPlain = input.textPlain || (input.textHtml ? outboundHtmlToText(input.textHtml) : '')
 
     // First check what draft actually exists
     const existingDraft = await this.db.query.Message.findFirst({
@@ -582,18 +599,8 @@ export class MessageComposerService {
     return {
       html: content.html ? `${content.html}${signature.body}` : signature.body,
       plain: content.plain
-        ? `${content.plain}\n${this.stripHtml(signature.body)}`
-        : this.stripHtml(signature.body),
+        ? `${content.plain}\n${outboundHtmlToText(signature.body)}`
+        : outboundHtmlToText(signature.body),
     }
-  }
-
-  /**
-   * Helper to strip HTML tags for plain text
-   */
-  private stripHtml(html: string): string {
-    return html
-      .replace(/<[^>]+>/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
   }
 }

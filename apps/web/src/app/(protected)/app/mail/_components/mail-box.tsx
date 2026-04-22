@@ -5,6 +5,7 @@ import { buildConditionGroups } from '@auxx/lib/mail-query/client'
 import { InternalFilterContextType } from '@auxx/lib/types'
 import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
+import { Kbd } from '@auxx/ui/components/kbd'
 import {
   type DockedPanelConfig,
   MainPage,
@@ -510,7 +511,10 @@ function MailboxInner({
                 size='sm'
                 className='h-7 rounded-lg'
                 onClick={() => openCompose()}>
-                Compose
+                Compose{' '}
+                <Kbd size='sm' shortcut='c'>
+                  c
+                </Kbd>
               </Button>
             </div>
           }>

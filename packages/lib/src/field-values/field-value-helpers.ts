@@ -1089,12 +1089,38 @@ export async function getFieldInfoFromRegistry(
 ): Promise<{ fieldType: FieldType; fieldOptions?: FieldOptions }> {
   const resource = await findCachedResource(organizationId, entityDefinitionId)
   if (!resource) {
+    console.error('[getFieldInfoFromRegistry] entity not found', {
+      organizationId,
+      entityDefinitionId,
+      fieldId,
+    })
     throw new Error(`Entity "${entityDefinitionId}" not found`)
   }
 
   const field = resource.fields.find((f) => f.id === fieldId || f.key === fieldId)
-  if (!field || !field.fieldType) {
-    throw new Error(`Field "${fieldId}" not found or missing fieldType`)
+  if (!field) {
+    console.error('[getFieldInfoFromRegistry] field not found on resource', {
+      entityDefinitionId,
+      fieldId,
+      resourceId: resource.id,
+      resourceApiSlug: resource.apiSlug,
+      resourceEntityType: resource.entityType,
+      availableFieldKeys: resource.fields.map((f) => f.key),
+    })
+    throw new Error(`Field "${fieldId}" not found on entity "${entityDefinitionId}"`)
+  }
+  if (!field.fieldType) {
+    console.error('[getFieldInfoFromRegistry] field missing fieldType', {
+      entityDefinitionId,
+      fieldId,
+      resourceId: resource.id,
+      resourceEntityType: resource.entityType,
+      fieldKey: field.key,
+      fieldType: field.fieldType,
+      fieldBaseType: field.type,
+      fieldIsSystem: field.isSystem,
+    })
+    throw new Error(`Field "${fieldId}" missing fieldType on entity "${entityDefinitionId}"`)
   }
 
   return { fieldType: field.fieldType, fieldOptions: field.options }

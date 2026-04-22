@@ -4,10 +4,15 @@ import type { Database } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { type FieldReference, fieldRefToKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
-import { getOrgCache } from '../cache'
+import { getOrgCache, getUserCache } from '../cache'
 import { FieldValueService } from '../field-values/field-value-service'
 import { decodeFallback, renderFallbackPayload } from './fallback-codec'
-import { type OrgSlug, type ParsedPlaceholder, tryParsePlaceholderId } from './path-parser'
+import {
+  type OrgSlug,
+  type ParsedPlaceholder,
+  tryParsePlaceholderId,
+  type UserSlug,
+} from './path-parser'
 
 /**
  * Caller-provided context for placeholder resolution.
@@ -93,6 +98,7 @@ export async function resolvePlaceholdersInHtml(
   const unresolved: string[] = []
   const fieldTokens: { id: string; parsed: Extract<ParsedPlaceholder, { kind: 'field' }> }[] = []
   let needsOrg = false
+  let needsUser = false
   const seen = new Set<string>()
 
   for (const match of html.matchAll(PLACEHOLDER_SPAN_REGEX)) {
@@ -113,6 +119,8 @@ export async function resolvePlaceholdersInHtml(
       fieldTokens.push({ id, parsed })
     } else if (parsed.kind === 'org') {
       needsOrg = true
+    } else if (parsed.kind === 'user') {
+      needsUser = true
     }
   }
 
@@ -122,6 +130,8 @@ export async function resolvePlaceholdersInHtml(
 
   const fieldValues = await resolveFieldTokens(fieldTokens, ctx)
   const orgProfile = needsOrg ? await getOrgCache().get(ctx.organizationId, 'orgProfile') : null
+  const userProfile =
+    needsUser && ctx.senderUserId ? await getUserCache().get(ctx.senderUserId, 'userProfile') : null
   const now = ctx.now ?? new Date()
 
   // Pass 2: rewrite. `replace` evaluates the callback fresh for every match
@@ -148,6 +158,16 @@ export async function resolvePlaceholdersInHtml(
       return escapeHtml(value)
     }
 
+    if (parsed.kind === 'user') {
+      // userProfile is null when senderUserId is absent — treat same as an
+      // empty value so placeholders gracefully degrade without a sender.
+      const value = userProfile ? userColumn(userProfile, parsed.slug) : null
+      if (value === null || value === '') {
+        return fallback ? escapeHtml(renderFallbackPayload(fallback)) : ''
+      }
+      return escapeHtml(value)
+    }
+
     const resolved = fieldValues.get(id)
     if (resolved === null || resolved === '' || resolved === undefined) {
       return fallback ? escapeHtml(renderFallbackPayload(fallback)) : ''
@@ -167,6 +187,30 @@ function orgColumn(
       return row.handle
     case 'website':
       return row.website
+  }
+}
+
+function userColumn(
+  row: {
+    id: string
+    name: string | null
+    email: string | null
+    firstName: string | null
+    lastName: string | null
+  },
+  slug: UserSlug
+): string | null {
+  switch (slug) {
+    case 'id':
+      return row.id
+    case 'email':
+      return row.email
+    case 'name':
+      return row.name
+    case 'firstName':
+      return row.firstName
+    case 'lastName':
+      return row.lastName
   }
 }
 

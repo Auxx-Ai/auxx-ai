@@ -1,23 +1,42 @@
 // apps/web/src/components/mail/mail-contact/mail-contact-thread-item.tsx
 'use client'
 
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import type React from 'react'
 import { useCallback, useMemo } from 'react'
+import { useThread } from '~/components/threads/hooks/use-thread'
 import type { ThreadMeta } from '~/components/threads/store'
 import { getIntegrationIcon } from '../mail-status-config'
 
 interface MailThreadItemProps {
-  item: ThreadMeta
+  threadId: string
+  onOpen?: (threadId: string) => void
 }
+
 /** Displays a single thread preview inside the contact mail view. */
-export function MailContactThreadItem({ item }: MailThreadItemProps) {
+export function MailContactThreadItem({ threadId, onOpen }: MailThreadItemProps) {
+  const { thread, isLoading, isNotFound } = useThread({ threadId })
+
+  if (isNotFound) return null
+  if (!thread) return isLoading ? <MailContactThreadItemSkeleton /> : null
+
+  return <MailContactThreadItemContent item={thread} onOpen={onOpen} />
+}
+
+function MailContactThreadItemContent({
+  item,
+  onOpen,
+}: {
+  item: ThreadMeta
+  onOpen?: (threadId: string) => void
+}) {
   const handleClick = useCallback(
-    (event: React.MouseEvent) => {
-      console.log('Thread clicked:', item.id)
+    (_event: React.MouseEvent) => {
+      onOpen?.(item.id)
     },
-    [item.id]
+    [item.id, onOpen]
   )
 
   const formattedDate = useMemo(() => {
@@ -35,7 +54,7 @@ export function MailContactThreadItem({ item }: MailThreadItemProps) {
   return (
     <button
       className={cn(
-        'group relative flex w-full cursor-grab flex-col items-start gap-1 rounded-lg border bg-background px-6 py-3 text-left text-sm shadow-xs transition-all duration-100 ease-in-out active:cursor-grabbing dark:bg-slate-700'
+        'group relative flex w-full flex-col items-start gap-1 rounded-lg border bg-background px-6 py-3 text-left text-sm shadow-xs transition-all duration-100 ease-in-out active:cursor-grabbing dark:bg-slate-700'
       )}
       onClick={handleClick}
       type='button'>
@@ -76,6 +95,18 @@ export function MailContactThreadItem({ item }: MailThreadItemProps) {
         </div>
       </div>
     </button>
+  )
+}
+
+function MailContactThreadItemSkeleton() {
+  return (
+    <div className='flex w-full flex-col gap-2 rounded-lg border bg-background px-6 py-3 shadow-xs dark:bg-slate-700'>
+      <div className='flex items-center justify-between'>
+        <Skeleton className='h-3 w-24' />
+        <Skeleton className='h-3 w-12' />
+      </div>
+      <Skeleton className='h-3 w-2/3' />
+    </div>
   )
 }
 
