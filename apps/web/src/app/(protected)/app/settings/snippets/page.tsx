@@ -116,7 +116,7 @@ function SnippetsPageContent() {
 
       {/* Create Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={(open) => !open && closeDialogs()}>
-        <DialogContent className='max-h-[90vh] overflow-auto'>
+        <DialogContent position='tc' size='xxl' innerClassName='max-h-[90vh] overflow-auto'>
           <DialogHeader className='mb-4'>
             <DialogTitle>{editingSnippet ? 'Copy Snippet' : 'Create Snippet'}</DialogTitle>
           </DialogHeader>
@@ -133,7 +133,7 @@ function SnippetsPageContent() {
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => !open && closeDialogs()}>
-        <DialogContent className='max-h-[90vh] overflow-auto'>
+        <DialogContent position='tc' size='xxl' innerClassName='max-h-[90vh] overflow-auto'>
           <DialogHeader className='mb-4'>
             <DialogTitle>Edit Snippet</DialogTitle>
           </DialogHeader>

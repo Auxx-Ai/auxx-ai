@@ -27,6 +27,15 @@ export interface InlinePickerExtensionConfig {
   trigger: string
   /** Allow spaces in query (default: false) */
   allowSpaces?: boolean
+  /**
+   * Characters allowed to directly precede the trigger. Default `[' ']` —
+   * the trigger only fires after a space or at the start of a node. This
+   * prevents URLs / email addresses (`http://`, `foo@bar.com`) from opening
+   * pickers. Pass `null` to allow the trigger anywhere, including mid-word
+   * (useful for free-text editors where the trigger is semantic syntax,
+   * e.g. `{` for a placeholder).
+   */
+  allowedPrefixes?: string[] | null
   /** Callback when suggestion state changes */
   onStateChange: (state: InlinePickerState) => void
 }
@@ -52,6 +61,24 @@ export interface InputRuleConfig {
 }
 
 /**
+ * Config for a single extra attribute on an inline node.
+ *
+ * Typed payloads (e.g. the placeholder fallback JSON blob) round-trip through
+ * the DOM as strings — `serialize` runs on render, `parse` on DOM parse. If
+ * omitted, the value is stored as-is (expects string).
+ */
+export interface ExtraAttrConfig<T = unknown> {
+  /** Default runtime value when the attribute is absent. */
+  default: T | null
+  /** DOM `data-*` attribute name. Defaults to `data-${kebab(key)}`. */
+  dataAttr?: string
+  /** Runtime value → attribute string. */
+  serialize?: (value: T) => string
+  /** Attribute string → runtime value. */
+  parse?: (raw: string | null) => T | null
+}
+
+/**
  * Configuration for creating an inline node.
  */
 export interface InlineNodeConfig {
@@ -63,17 +90,29 @@ export interface InlineNodeConfig {
   pastePattern?: PastePatternConfig
   /** Optional input rules for auto-conversion (e.g., {fieldKey} -> node) */
   inputRules?: InputRuleConfig[]
+  /**
+   * Additional node attributes. Keys become `node.attrs.<key>` and are
+   * serialized to / parsed from the DOM via optional codec functions.
+   */
+  extraAttrs?: Record<string, ExtraAttrConfig>
 }
 
 /**
  * Props passed to the badge render function.
- * Badge receives only the id and handles its own display lookup.
+ * Badge receives the id plus node-level controls so interactive content
+ * (popovers, dropdowns) can mutate or delete the node in place.
  */
 export interface InlineNodeBadgeProps {
   /** Node identifier */
   id: string
   /** Whether the node is currently selected */
   selected: boolean
+  /** All node attributes (includes `id` + any `extraAttrs`). */
+  attrs: Record<string, unknown>
+  /** Patch node attrs — maps to TipTap's `updateAttributes`. */
+  updateAttributes: (attrs: Record<string, unknown>) => void
+  /** Remove the node from the document. */
+  deleteNode: () => void
 }
 
 /**

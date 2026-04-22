@@ -45,6 +45,14 @@ export interface FieldPickerContentProps {
 
   /** Optional: Search placeholder */
   searchPlaceholder?: string
+
+  /**
+   * Called when the user presses Escape / Backspace / ArrowLeft while
+   * already at the field picker's own root and the search is empty. Lets
+   * a parent picker that embeds this one handle "back out one more level"
+   * (e.g. pop the outer placeholder nav stack).
+   */
+  onBackFromRoot?: () => void
 }
 
 /**

@@ -1,6 +1,8 @@
+// apps/web/src/app/(protected)/app/settings/snippets/_components/snippet-sharing.tsx
 'use client'
 import { SnippetSharingType as SnippetSharingTypeEnum } from '@auxx/database/enums'
 import type { SnippetSharingType } from '@auxx/database/types'
+import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -12,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
@@ -23,21 +24,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { PlusIcon, SearchIcon, Trash, UserIcon, Users2Icon, UsersIcon } from 'lucide-react'
-// apps/web/src/app/(protected)/app/settings/snippets/_components/snippet-sharing.tsx
+import { Plus, Trash, UserIcon, Users2Icon, UsersIcon } from 'lucide-react'
 import React from 'react'
+import { ActorPicker } from '~/components/pickers/actor-picker'
 import { api } from '~/trpc/react'
 
 interface ShareItem {
+  /** userId for members, groupId for groups */
   id: string
   type: 'group' | 'member'
   name: string
   permission: 'VIEW' | 'EDIT'
   icon?: string
 }
+
 interface SnippetSharingProps {
   snippetId?: string
   initialSharingType: SnippetSharingType
+  /** Staged shares for a new snippet (used only when snippetId is absent) */
+  initialShares?: Array<{
+    granteeType: 'group' | 'user'
+    granteeId: string
+    permission: 'VIEW' | 'EDIT'
+  }>
   open: boolean
   onOpenChange: (open: boolean) => void
   onSave: (
@@ -49,136 +58,152 @@ interface SnippetSharingProps {
     }>
   ) => void
 }
+
 export function SnippetSharing({
   snippetId,
   initialSharingType,
+  initialShares,
   open,
   onOpenChange,
   onSave,
 }: SnippetSharingProps) {
   const [sharingType, setSharingType] = React.useState<SnippetSharingType>(initialSharingType)
   const [selectedItems, setSelectedItems] = React.useState<ShareItem[]>([])
-  const [memberSearchTerm, setMemberSearchTerm] = React.useState('')
-  const [groupSearchTerm, setGroupSearchTerm] = React.useState('')
-  // Fetch groups (using new entityGroup API)
+
   const { data: groupsData } = api.entityGroup.list.useQuery()
-  // Fetch members
   const { data: membersData } = api.member.all.useQuery({})
-  // Fetch existing snippet shares if editing
   const { data: snippetData } = api.snippet.byId.useQuery(
     { id: snippetId || '' },
     { enabled: !!snippetId }
   )
 
-  // Initialize state when snippet data loads
-  React.useEffect(() => {
-    if (!snippetData?.snippet) return
+  // Hydrate shares from a common source shape (server shares or staged shares)
+  const hydrateShares = React.useCallback(
+    (
+      shares: Array<{
+        granteeType: 'group' | 'user'
+        granteeId: string
+        permission: string
+      }>
+    ): ShareItem[] => {
+      const items: ShareItem[] = []
+      for (const share of shares) {
+        const permission = share.permission.toUpperCase() as 'VIEW' | 'EDIT'
 
-    const { snippet } = snippetData
-    setSharingType(snippet.sharingType as SnippetSharingType)
-
-    if (!snippet.shares || snippet.shares.length === 0) {
-      setSelectedItems([])
-      return
-    }
-
-    // Map ResourceAccessInfo to ShareItem using groupsData and membersData
-    const shareItems: ShareItem[] = []
-
-    for (const share of snippet.shares) {
-      // Permission is lowercase in ResourceAccess ('view'/'edit'), uppercase in UI
-      const permission = share.permission.toUpperCase() as 'VIEW' | 'EDIT'
-
-      if (share.granteeType === 'group') {
-        const group = groupsData?.find((g) => g.id === share.granteeId)
-        if (group) {
-          shareItems.push({
-            id: share.granteeId,
-            type: 'group',
-            name: group.displayName || 'Group',
-            permission,
-          })
-        }
-      } else if (share.granteeType === 'user') {
-        const member = membersData?.members?.find(
-          (m) => m.userId === share.granteeId || m.id === share.granteeId
-        )
-        if (member) {
-          shareItems.push({
-            id: member.id,
-            type: 'member',
-            name: member.user.name || member.user.email || 'Unknown',
-            permission,
-            icon: member.user.image || undefined,
-          })
+        if (share.granteeType === 'group') {
+          const group = groupsData?.find((g) => g.id === share.granteeId)
+          if (group) {
+            items.push({
+              id: group.id,
+              type: 'group',
+              name: group.displayName || 'Group',
+              permission,
+            })
+          }
+        } else {
+          // Legacy fallback: older rows may have stored member.id instead of userId
+          const member = membersData?.members?.find(
+            (m) => m.userId === share.granteeId || m.id === share.granteeId
+          )
+          if (member) {
+            items.push({
+              id: member.userId,
+              type: 'member',
+              name: member.user.name || member.user.email || 'Unknown',
+              permission,
+              icon: member.user.image || undefined,
+            })
+          }
         }
       }
-    }
+      return items
+    },
+    [groupsData, membersData?.members]
+  )
 
-    setSelectedItems(shareItems)
-  }, [snippetData, groupsData, membersData?.members])
+  // Initialize state for existing snippets
+  React.useEffect(() => {
+    if (!snippetData?.snippet) return
+    const { snippet } = snippetData
+    setSharingType(snippet.sharingType as SnippetSharingType)
+    setSelectedItems(snippet.shares?.length ? hydrateShares(snippet.shares) : [])
+  }, [snippetData, hydrateShares])
+
+  // Initialize state for new snippets from staged shares — run once when lookups are ready
+  const hasSeededRef = React.useRef(false)
+  React.useEffect(() => {
+    if (hasSeededRef.current || snippetId) return
+    if (!initialShares || initialShares.length === 0) {
+      hasSeededRef.current = true
+      return
+    }
+    if (!groupsData || !membersData?.members) return
+    setSelectedItems(hydrateShares(initialShares))
+    hasSeededRef.current = true
+  }, [snippetId, initialShares, groupsData, membersData?.members, hydrateShares])
 
   // Reset state when dialog closes
   React.useEffect(() => {
     if (!open) {
       setSelectedItems([])
-      setMemberSearchTerm('')
-      setGroupSearchTerm('')
     }
   }, [open])
 
-  const filteredGroups = React.useMemo(() => {
-    if (!groupsData) return []
-    return groupsData.filter(
-      (group) =>
-        !selectedItems.some((item) => item.type === 'group' && item.id === group.id) &&
-        (groupSearchTerm
-          ? group.displayName?.toLowerCase().includes(groupSearchTerm.toLowerCase())
-          : true)
+  // Build ActorId[] for the picker from the current selection
+  const pickerValue = React.useMemo<ActorId[]>(
+    () =>
+      selectedItems.map((item) => toActorId(item.type === 'member' ? 'user' : 'group', item.id)),
+    [selectedItems]
+  )
+
+  // Translate ActorPicker selection back into ShareItem[], preserving permissions for existing items
+  const handlePickerChange = (nextIds: ActorId[]) => {
+    const byActorId = new Map<string, ShareItem>(
+      selectedItems.map((item) => [
+        toActorId(item.type === 'member' ? 'user' : 'group', item.id),
+        item,
+      ])
     )
-  }, [groupsData, selectedItems, groupSearchTerm])
-  // Filter members
-  const filteredMembers = React.useMemo(() => {
-    if (!membersData?.members) return []
-    return membersData.members.filter(
-      (member) =>
-        !selectedItems.some((item) => item.type === 'member' && item.id === member.id) &&
-        (memberSearchTerm
-          ? member.user.name?.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
-            member.user.email?.toLowerCase().includes(memberSearchTerm.toLowerCase())
-          : true)
-    )
-  }, [membersData?.members, selectedItems, memberSearchTerm])
-  // Add group to selection
-  const addGroup = (group: (typeof groupsData)[0]) => {
-    const metadata = (group.metadata as { memberCount?: number }) || {}
-    setSelectedItems([
-      ...selectedItems,
-      { id: group.id, type: 'group', name: group.displayName || 'Group', permission: 'VIEW' },
-    ])
+    const next: ShareItem[] = []
+    for (const actorId of nextIds) {
+      const existing = byActorId.get(actorId)
+      if (existing) {
+        next.push(existing)
+        continue
+      }
+      const { type, id } = parseActorId(actorId)
+      if (type === 'group') {
+        const group = groupsData?.find((g) => g.id === id)
+        if (!group) continue
+        next.push({
+          id: group.id,
+          type: 'group',
+          name: group.displayName || 'Group',
+          permission: 'VIEW',
+        })
+      } else {
+        const member = membersData?.members?.find((m) => m.userId === id)
+        if (!member) continue
+        next.push({
+          id: member.userId,
+          type: 'member',
+          name: member.user.name || member.user.email || 'Unknown',
+          permission: 'VIEW',
+          icon: member.user.image || undefined,
+        })
+      }
+    }
+    setSelectedItems(next)
   }
-  // Add member to selection
-  const addMember = (member: (typeof membersData.members)[0]) => {
-    setSelectedItems([
-      ...selectedItems,
-      {
-        id: member.id,
-        type: 'member',
-        name: member.user.name || member.user.email || 'Unknown',
-        permission: 'VIEW',
-        icon: member.user.image || undefined,
-      },
-    ])
-  }
-  // Remove item from selection
+
   const removeItem = (id: string) => {
     setSelectedItems(selectedItems.filter((item) => item.id !== id))
   }
-  // Update item permission
+
   const updateItemPermission = (id: string, permission: 'VIEW' | 'EDIT') => {
     setSelectedItems(selectedItems.map((item) => (item.id === id ? { ...item, permission } : item)))
   }
-  // Handle save
+
   const handleSave = () => {
     let shares
     if (sharingType === SnippetSharingTypeEnum.GROUPS) {
@@ -191,7 +216,6 @@ export function SnippetSharing({
     onSave(sharingType, shares)
   }
 
-  // Compute disabled state for submit
   const isSubmitDisabled =
     sharingType === SnippetSharingTypeEnum.GROUPS && selectedItems.length === 0
 
@@ -232,164 +256,67 @@ export function SnippetSharing({
             </RadioGroup>
           </div>
 
-          {/* Custom sharing - Groups and Members selection */}
+          {/* Custom sharing - unified picker */}
           {sharingType === SnippetSharingTypeEnum.GROUPS && (
-            <div className='space-y-4'>
-              {/* Selected items */}
-              <div>
+            <div className='space-y-2'>
+              <div className='flex items-center justify-between'>
                 <label className='text-sm font-medium'>Selected Groups & Members</label>
-                {selectedItems.length === 0 ? (
-                  <div className='mt-2 text-sm text-gray-500'>No groups or members selected</div>
-                ) : (
-                  <div className='mt-2 space-y-2'>
-                    {selectedItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className='flex items-center justify-between rounded-2xl border p-1'>
-                        <div className='flex items-center'>
-                          {item.type === 'group' ? (
-                            <Users2Icon size={18} className='mr-2' />
-                          ) : (
-                            <Avatar className='mr-2 size-8 border'>
-                              <AvatarImage src={item.icon} />
-                              <AvatarFallback>{item.name.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                          )}
-                          <span className='text-sm'>{item.name}</span>
-                          <Badge variant='outline' className='ml-2 px-1 text-xs'>
-                            {item.type === 'group' ? 'Group' : 'Member'}
-                          </Badge>
-                        </div>
-                        <div className='flex items-center space-x-2'>
-                          <Select
-                            defaultValue={item.permission}
-                            onValueChange={(value) =>
-                              updateItemPermission(item.id, value as 'VIEW' | 'EDIT')
-                            }>
-                            <SelectTrigger size='sm' className=' w-24'>
-                              <SelectValue placeholder='Permission' />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value='VIEW'>Can View</SelectItem>
-                              <SelectItem value='EDIT'>Can Edit</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            variant='destructive-hover'
-                            size='icon'
-                            className='rounded-full'
-                            onClick={() => removeItem(item.id)}>
-                            <Trash />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <ActorPicker value={pickerValue} onChange={handlePickerChange} target='both' multi>
+                  <Button variant='outline' size='sm'>
+                    <Plus />
+                    Add
+                  </Button>
+                </ActorPicker>
               </div>
 
-              {/* Groups section */}
-              <div className='space-y-2'>
-                <label className='text-sm font-medium'>Add Groups</label>
-                <div className='relative'>
-                  <SearchIcon
-                    size={16}
-                    className='absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400'
-                  />
-                  <Input
-                    placeholder='Search groups...'
-                    value={groupSearchTerm}
-                    onChange={(e) => setGroupSearchTerm(e.target.value)}
-                    className='pl-9'
-                  />
-                </div>
-
-                <div className='max-h-40 space-y-2 overflow-y-auto'>
-                  {filteredGroups.length === 0 ? (
-                    <div className='py-4 text-center text-gray-500 text-sm'>
-                      {groupSearchTerm
-                        ? 'No groups match your search'
-                        : 'No available groups to add'}
-                    </div>
-                  ) : (
-                    filteredGroups.map((group) => {
-                      const metadata = (group.metadata as { memberCount?: number }) || {}
-                      const memberCount = metadata.memberCount ?? 0
-                      return (
-                        <div
-                          key={group.id}
-                          className='flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800'
-                          onClick={() => addGroup(group)}>
-                          <div className='flex items-center'>
-                            <Users2Icon size={18} className='mr-2' />
-                            <div className='flex flex-row gap-2'>
-                              <div className='text-sm'>{group.displayName}</div>
-                              <div className='text-xs text-gray-500'>
-                                {memberCount} member{memberCount !== 1 ? 's' : ''}
-                              </div>
-                            </div>
-                          </div>
-                          <Button variant='ghost' size='icon' className='rounded-full'>
-                            <PlusIcon />
-                          </Button>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Members section */}
-              <div className='space-y-2'>
-                <label className='text-sm font-medium'>Add Members</label>
-                <div className='relative'>
-                  <SearchIcon
-                    size={16}
-                    className='absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400'
-                  />
-                  <Input
-                    placeholder='Search members...'
-                    value={memberSearchTerm}
-                    onChange={(e) => setMemberSearchTerm(e.target.value)}
-                    className='pl-9'
-                  />
-                </div>
-
-                <div className='max-h-40 space-y-2 overflow-y-auto'>
-                  {filteredMembers.length === 0 ? (
-                    <div className='py-4 text-center text-gray-500 text-sm'>
-                      {memberSearchTerm
-                        ? 'No members match your search'
-                        : 'No available members to add'}
-                    </div>
-                  ) : (
-                    filteredMembers.map((member) => (
-                      <div
-                        key={member.id}
-                        className='flex cursor-pointer items-center justify-between rounded-2xl border p-1 hover:bg-gray-50 dark:hover:bg-gray-800'
-                        onClick={() => addMember(member)}>
-                        <div className='flex items-center'>
+              {selectedItems.length === 0 ? (
+                <div className='text-sm text-gray-500'>No groups or members selected</div>
+              ) : (
+                <div className='space-y-2'>
+                  {selectedItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className='flex items-center justify-between rounded-2xl border p-1'>
+                      <div className='flex items-center'>
+                        {item.type === 'group' ? (
+                          <Users2Icon size={18} className='mr-2' />
+                        ) : (
                           <Avatar className='mr-2 size-8 border'>
-                            <AvatarImage src={member.user.image || undefined} />
-                            <AvatarFallback>
-                              {member.user.name?.charAt(0) || member.user.email?.charAt(0) || '?'}
-                            </AvatarFallback>
+                            <AvatarImage src={item.icon} />
+                            <AvatarFallback>{item.name.charAt(0)}</AvatarFallback>
                           </Avatar>
-                          <div className='flex flex-row gap-2'>
-                            <div className='text-sm'>{member.user.name || member.user.email}</div>
-                            <Badge variant='outline' className='px-1 text-xs'>
-                              {member.role}
-                            </Badge>
-                          </div>
-                        </div>
-                        <Button variant='ghost' size='icon' className='rounded-full'>
-                          <PlusIcon size={16} />
+                        )}
+                        <span className='text-sm'>{item.name}</span>
+                        <Badge variant='outline' className='ml-2 px-1 text-xs'>
+                          {item.type === 'group' ? 'Group' : 'Member'}
+                        </Badge>
+                      </div>
+                      <div className='flex items-center space-x-2'>
+                        <Select
+                          defaultValue={item.permission}
+                          onValueChange={(value) =>
+                            updateItemPermission(item.id, value as 'VIEW' | 'EDIT')
+                          }>
+                          <SelectTrigger size='sm' className='w-24'>
+                            <SelectValue placeholder='Permission' />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value='VIEW'>Can View</SelectItem>
+                            <SelectItem value='EDIT'>Can Edit</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant='destructive-hover'
+                          size='icon'
+                          className='rounded-full'
+                          onClick={() => removeItem(item.id)}>
+                          <Trash />
                         </Button>
                       </div>
-                    ))
-                  )}
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>

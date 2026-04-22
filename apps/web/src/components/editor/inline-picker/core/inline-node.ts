@@ -3,8 +3,20 @@
 import { mergeAttributes, Node, nodeInputRule } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { ReactNodeViewRenderer } from '@tiptap/react'
-import type { InlineNodeBadgeProps, InlineNodeConfig } from '../types'
+import type { ExtraAttrConfig, InlineNodeBadgeProps, InlineNodeConfig } from '../types'
 import { createInlineNodeView } from './inline-node-view'
+
+/**
+ * camelCase → kebab-case for default `data-*` attribute names.
+ * `fallback` → `fallback`, `myField` → `my-field`.
+ */
+function kebabCase(s: string): string {
+  return s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+}
+
+function dataAttrFor(key: string, config: ExtraAttrConfig): string {
+  return config.dataAttr ?? `data-${kebabCase(key)}`
+}
 
 /**
  * Creates a TipTap node definition for inline picker items.
@@ -28,7 +40,8 @@ export function createInlineNode(
   config: InlineNodeConfig,
   renderBadge: (props: InlineNodeBadgeProps) => React.ReactNode
 ) {
-  const { type, serialize, pastePattern, inputRules } = config
+  const { type, serialize, pastePattern, inputRules, extraAttrs } = config
+  const extraEntries = Object.entries(extraAttrs ?? {})
 
   return Node.create({
     name: type,
@@ -39,7 +52,7 @@ export function createInlineNode(
     draggable: false,
 
     addAttributes() {
-      return {
+      const attrs: Record<string, unknown> = {
         id: {
           default: null,
           parseHTML: (element: HTMLElement) => element.getAttribute('data-id'),
@@ -49,6 +62,25 @@ export function createInlineNode(
           },
         },
       }
+
+      for (const [key, cfg] of extraEntries) {
+        const attrName = dataAttrFor(key, cfg)
+        attrs[key] = {
+          default: cfg.default,
+          parseHTML: (element: HTMLElement) => {
+            const raw = element.getAttribute(attrName)
+            return cfg.parse ? cfg.parse(raw) : raw
+          },
+          renderHTML: (attributes: Record<string, unknown>) => {
+            const value = attributes[key]
+            if (value == null) return {}
+            const serialized = cfg.serialize ? cfg.serialize(value) : String(value)
+            return { [attrName]: serialized }
+          },
+        }
+      }
+
+      return attrs
     },
 
     parseHTML() {
@@ -57,15 +89,11 @@ export function createInlineNode(
 
     renderHTML({ node, HTMLAttributes }) {
       const id = node.attrs.id as string
+      // HTMLAttributes already carries `data-id` + any extra-attr data-*s
+      // via the per-attribute `renderHTML` functions registered above.
       return [
         'span',
-        mergeAttributes(
-          {
-            'data-type': type,
-            'data-id': id,
-          },
-          HTMLAttributes
-        ),
+        mergeAttributes({ 'data-type': type, 'data-id': id }, HTMLAttributes),
         serialize(id),
       ]
     },

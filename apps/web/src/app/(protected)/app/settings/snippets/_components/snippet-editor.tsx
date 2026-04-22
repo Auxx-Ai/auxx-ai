@@ -7,7 +7,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import Placeholder from '@tiptap/extension-placeholder'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { SquareSlash } from 'lucide-react'
+import { Braces } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   createPlaceholderNode,
@@ -16,6 +16,7 @@ import {
   useSlashCommand,
 } from '~/components/editor/inline-picker'
 import { PlaceholderPickerContent } from '~/components/editor/placeholders/placeholder-picker-content'
+import { Tooltip } from '~/components/global/tooltip'
 
 interface SnippetEditorProps {
   /** Initial HTML content (from snippet.contentHtml). */
@@ -37,11 +38,14 @@ interface SnippetEditorProps {
 export function SnippetEditor({
   contentHtml,
   onChange,
-  placeholder = 'Type / to insert a placeholder...',
+  placeholder = 'Type { to insert a placeholder...',
   wrapperClassName,
   className,
 }: SnippetEditorProps) {
-  const slashCommand = useSlashCommand()
+  // `{` triggers the placeholder picker. allowedPrefixes: null means the
+  // trigger fires mid-word too — snippet authors often type prose like
+  // "Hi {first_name}," where the `{` directly follows non-space text.
+  const slashCommand = useSlashCommand({ trigger: '{', allowedPrefixes: null })
   const containerRef = useRef<HTMLDivElement>(null)
 
   const placeholderNodeExtension = useMemo(
@@ -68,7 +72,7 @@ export function SnippetEditor({
       editorProps: {
         attributes: {
           class: cn(
-            'tiptap-snippet-editor prose prose-sm prose-p:my-0 focus:outline-hidden max-w-none dark:prose-invert min-h-[160px] px-3 py-2',
+            'tiptap-email-editor tiptap-snippet-editor prose prose-sm prose-headings:my-1 prose-ul:my-1 prose-p:my-0 prose-li:my-0 focus:outline-hidden max-w-none dark:prose-invert flex-1',
             className
           ),
         },
@@ -95,9 +99,10 @@ export function SnippetEditor({
     }
   }, [editor, contentHtml])
 
-  const handleInsertSlash = useCallback(() => {
+  const handleInsertTrigger = useCallback(() => {
     if (!editor) return
-    editor.chain().focus('end').insertContent('/').run()
+    if (!editor.isFocused) editor.commands.focus('end')
+    editor.commands.insertContent('{')
   }, [editor])
 
   return (
@@ -107,22 +112,33 @@ export function SnippetEditor({
         'relative rounded-md border focus-within:ring-2 focus-within:ring-info',
         wrapperClassName
       )}>
-      <EditorContent editor={editor} />
+      <EditorContent
+        editor={editor}
+        className='w-full h-full flex flex-col bg-transparent px-3 py-2 text-[15px] leading-relaxed text-foreground outline-hidden ring-0 min-h-[160px] *:outline-hidden'
+      />
       <div className='absolute bottom-1 right-1'>
-        <Button
-          type='button'
-          size='icon-sm'
-          variant='ghost'
-          onClick={handleInsertSlash}
-          title='Insert placeholder'>
-          <SquareSlash />
-        </Button>
+        <Tooltip content='Insert placeholder' shortcut='{' allowInteraction>
+          <Button
+            type='button'
+            size='icon-sm'
+            variant='ghost'
+            onMouseDown={(e) => {
+              // Prevent editor blur when clicking — keeps the Suggestion plugin
+              // state alive so inserting "{" opens the picker.
+              e.preventDefault()
+              handleInsertTrigger()
+            }}>
+            <Braces />
+          </Button>
+        </Tooltip>
       </div>
       <InlinePickerPopover
         state={slashCommand.suggestionState}
         width={288}
+        className='z-[200]'
         onClose={slashCommand.closePicker}>
         <PlaceholderPickerContent
+          onClose={slashCommand.closePicker}
           onSelect={(id) => {
             slashCommand.executeCommand((editor, range) => {
               editor

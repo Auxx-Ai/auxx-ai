@@ -1,8 +1,8 @@
 // components/snippets/SnippetTable.tsx
 
 import type { SnippetSharingType } from '@auxx/database/enums'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { Badge } from '@auxx/ui/components/badge'
+import { toActorId } from '@auxx/types/actor'
+import { Badge, type Variant as BadgeVariant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Input } from '@auxx/ui/components/input'
+import { InputSearch } from '@auxx/ui/components/input-search'
 import {
   Table,
   TableBody,
@@ -29,16 +29,15 @@ import {
   FolderIcon,
   MoreHorizontalIcon,
   PanelLeft,
-  SearchIcon,
   StarIcon,
   Tag,
   Trash2Icon,
   UserIcon,
   UsersIcon,
-  XIcon,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSnippetContext } from '~/hooks/use-snippet-context'
 import { api } from '~/trpc/react'
@@ -69,37 +68,40 @@ interface TableSnippet {
   }
 }
 // Get sharing type label
-const getSharingTypeInfo = (type: SnippetSharingType, shareCount: number) => {
+const getSharingTypeInfo = (
+  type: SnippetSharingType,
+  shareCount: number
+): { label: string; icon: React.ReactNode; variant: BadgeVariant } => {
   switch (type) {
     case 'PRIVATE':
       return {
         label: 'Private',
-        icon: <UserIcon size={14} className='mr-1' />,
-        color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
+        icon: <UserIcon />,
+        variant: 'gray',
       }
     case 'ORGANIZATION':
       return {
         label: 'Organization',
-        icon: <UsersIcon size={14} className='mr-1' />,
-        color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+        icon: <UsersIcon />,
+        variant: 'blue',
       }
     case 'GROUPS':
       return {
         label: `${shareCount} Group${shareCount !== 1 ? 's' : ''}`,
-        icon: <UsersIcon size={14} className='mr-1' />,
-        color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+        icon: <UsersIcon />,
+        variant: 'green',
       }
     case 'MEMBERS':
       return {
         label: `${shareCount} Member${shareCount !== 1 ? 's' : ''}`,
-        icon: <UsersIcon size={14} className='mr-1' />,
-        color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
+        icon: <UsersIcon />,
+        variant: 'purple',
       }
     default:
       return {
         label: 'Unknown',
         icon: null,
-        color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
+        variant: 'gray',
       }
   }
 }
@@ -190,29 +192,16 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
           </Button>
           <span className='text-sm'>{currentFolderName || 'All Snippets'}</span>
         </div>
-        <div className='relative w-64'>
-          <SearchIcon
-            size={16}
-            className='absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400'
-          />
-          <Input
+        <div className='w-64'>
+          <InputSearch
             placeholder='Search snippets...'
             value={localSearchTerm}
             onChange={(e) => setLocalSearchTerm(e.target.value)}
-            className='h-8 pl-9 pr-8'
+            onClear={() => {
+              setLocalSearchTerm('')
+              setSearchTerm('')
+            }}
           />
-          {localSearchTerm && (
-            <Button
-              variant='ghost'
-              size='icon'
-              className='absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 transform'
-              onClick={() => {
-                setLocalSearchTerm('')
-                setSearchTerm('')
-              }}>
-              <XIcon size={14} />
-            </Button>
-          )}
         </div>
       </div>
 
@@ -286,8 +275,14 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
                       </Button>
                     </TableCell>
                     <TableCell className='font-medium'>
-                      <div className='flex flex-col'>
-                        <span>{snippet.title}</span>
+                      <div className='flex flex-col items-start'>
+                        <Button
+                          variant='link'
+                          size='sm'
+                          className='h-auto p-0 font-medium'
+                          onClick={() => onEdit(snippet)}>
+                          {snippet.title}
+                        </Button>
                         {snippet.description && (
                           <span className='max-w-md truncate text-xs text-gray-500'>
                             {snippet.description}
@@ -306,26 +301,16 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant='secondary'
-                        className={cn('flex items-center', sharingInfo.color)}>
-                        {sharingInfo.icon}
-                        {sharingInfo.label}
-                      </Badge>
+                      <div className='w-fit'>
+                        <Badge variant={sharingInfo.variant}>
+                          {sharingInfo.icon}
+                          {sharingInfo.label}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <div className='flex items-center'>
-                        <Avatar className='mr-2 h-6 w-6'>
-                          <AvatarImage src={snippet.createdBy.image || undefined} />
-                          <AvatarFallback>
-                            {snippet.createdBy.name?.charAt(0) ||
-                              snippet.createdBy.email?.charAt(0) ||
-                              '?'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className='text-sm'>
-                          {snippet.createdBy.name || snippet.createdBy.email || 'Unknown user'}
-                        </span>
+                      <div className='w-fit'>
+                        <ActorBadge actorId={toActorId('user', snippet.createdBy.id)} showIcon />
                       </div>
                     </TableCell>
                     <TableCell className='text-sm text-gray-500'>

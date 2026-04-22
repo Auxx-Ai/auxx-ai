@@ -1,53 +1,84 @@
 // packages/lib/src/placeholders/resolver.ts
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { type FieldReference, fieldRefToKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
-import { eq } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
 import { FieldValueService } from '../field-values/field-value-service'
-import { toRecordId } from '../resources/resource-id'
+import { decodeFallback, renderFallbackPayload } from './fallback-codec'
 import { type OrgSlug, type ParsedPlaceholder, tryParsePlaceholderId } from './path-parser'
 
 /**
  * Caller-provided context for placeholder resolution.
  *
- * The resolver never falls back to ambient state — if a placeholder references
- * a root whose id isn't supplied, resolution hard-fails. Callers (e.g. the
- * `thread.sendMessage` tRPC handler) are responsible for deriving
- * `contactEntityInstanceId` / `ticketId` from the thread record.
+ * `recordIdsByRoot` is the authoritative dispatch table: it maps a token's
+ * parsed root (cuid for EntityDefinitions, slug for `thread` / `user`) to
+ * the ambient RecordId the resolver should read from. Callers are
+ * responsible for populating the entries they can support.
+ *
+ * A root absent from the map → the token hard-fails. No switches, no
+ * entityType lookups, no hidden defaults.
  */
 export interface PlaceholderResolutionContext {
   db: Database
   organizationId: string
-  /** Sender user id — required if any `user:<field>` placeholders appear. */
+  /** Sender user id — threaded into `FieldValueService` for audit. */
   senderUserId?: string
-  /** Thread record id — required if any `thread:<field>` placeholders appear. */
-  threadId?: string
-  /** Primary participant's contact entity-instance id. */
-  contactEntityInstanceId?: string
-  /** Ticket entity-instance id linked to the thread. */
-  ticketId?: string
   /** Optional "now" override — defaults to `new Date()`. Useful in tests. */
   now?: Date
+  /**
+   * Root id → RecordId map. Populated by `buildPlaceholderContextForThread`
+   * (or any other context builder). Slug-rooted entries use the slug
+   * literal; cuid-rooted entries use `EntityDefinition.id`.
+   */
+  recordIdsByRoot: Map<string, RecordId>
 }
 
 /**
  * Matches the exact span shape emitted by `createPlaceholderNode`'s
  * `renderHTML`: `<span data-type="placeholder" data-id="..."> {{...}} </span>`.
- * The attribute order is stable because Tiptap's `mergeAttributes` always
- * outputs `data-type` and `data-id` in that order. `data-id` cannot contain
- * unescaped `"` because the picker only yields fieldRefKey / `date:<slug>`.
  */
 const PLACEHOLDER_SPAN_REGEX =
   /<span\b[^>]*data-type="placeholder"[^>]*data-id="([^"]*)"[^>]*>[\s\S]*?<\/span>/g
 
 /**
+ * Extract a `data-*` attribute value from a matched span's open-tag HTML.
+ * Returns the HTML-entity-decoded string, or `null` if the attribute is
+ * absent. The attribute value in the source is always double-quoted (Tiptap
+ * serializer invariant), so `[^"]*` captures up to the closing quote.
+ */
+function extractAttr(spanHtml: string, name: string): string | null {
+  const pattern = new RegExp(`\\b${name}="([^"]*)"`)
+  const m = spanHtml.match(pattern)
+  return m ? decodeHtmlEntities(m[1] ?? '') : null
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+}
+
+function decodeHtmlEntities(s: string): string {
+  return s.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (_, body: string) => {
+    if (body.startsWith('#x') || body.startsWith('#X')) {
+      return String.fromCodePoint(Number.parseInt(body.slice(2), 16))
+    }
+    if (body.startsWith('#')) {
+      return String.fromCodePoint(Number.parseInt(body.slice(1), 10))
+    }
+    return NAMED_ENTITIES[body] ?? `&${body};`
+  })
+}
+
+/**
  * Replace every `<span data-type="placeholder" data-id="...">…</span>` in
- * `html` with the resolved text for its token id. Hard-fails on the first
- * unresolvable token.
- *
- * Phase-1 scope: paths only (no formatter / override / ACL layers).
+ * `html` with the resolved text for its token id. Substitutes a typed
+ * `data-fallback` payload when the resolved value is null / empty;
+ * hard-fails otherwise.
  */
 export async function resolvePlaceholdersInHtml(
   html: string,
@@ -90,49 +121,39 @@ export async function resolvePlaceholdersInHtml(
   }
 
   const fieldValues = await resolveFieldTokens(fieldTokens, ctx)
-  const orgRow = needsOrg ? await loadOrganization(ctx) : null
+  const orgProfile = needsOrg ? await getOrgCache().get(ctx.organizationId, 'orgProfile') : null
   const now = ctx.now ?? new Date()
 
-  // Pass 2: rewrite. `replace` evaluates the callback fresh for every match so
-  // duplicate tokens all get the same resolved text.
-  return html.replace(PLACEHOLDER_SPAN_REGEX, (_match, id: string) => {
+  // Pass 2: rewrite. `replace` evaluates the callback fresh for every match
+  // so duplicate tokens with different `data-fallback` values are each
+  // resolved independently.
+  return html.replace(PLACEHOLDER_SPAN_REGEX, (fullMatch, id: string) => {
     const parsed = tryParsePlaceholderId(id)
     if (!parsed) {
-      // Already guarded in pass 1; repeated here for type-narrowing.
       throw new Error(`Unresolvable placeholder token: ${id}`)
     }
     if (parsed.kind === 'date') {
       return escapeHtml(formatDate(parsed.slug, now))
     }
+
+    const raw = extractAttr(fullMatch, 'data-fallback')
+    const fallback = decodeFallback(raw)
+
     if (parsed.kind === 'org') {
-      if (!orgRow) throw new Error(`Organization row not found for org: ${id}`)
-      const value = orgColumn(orgRow, parsed.slug)
+      if (!orgProfile) throw new Error(`Organization profile not found for org: ${id}`)
+      const value = orgColumn(orgProfile, parsed.slug)
       if (value === null || value === '') {
-        throw new Error(`Placeholder '${id}' resolved to no value`)
+        return fallback ? escapeHtml(renderFallbackPayload(fallback)) : ''
       }
       return escapeHtml(value)
     }
+
     const resolved = fieldValues.get(id)
-    if (resolved === undefined) {
-      throw new Error(`Placeholder value missing after resolution: ${id}`)
+    if (resolved === null || resolved === '' || resolved === undefined) {
+      return fallback ? escapeHtml(renderFallbackPayload(fallback)) : ''
     }
     return escapeHtml(resolved)
   })
-}
-
-async function loadOrganization(
-  ctx: PlaceholderResolutionContext
-): Promise<{ name: string | null; handle: string | null; website: string | null } | null> {
-  const rows = await ctx.db
-    .select({
-      name: schema.Organization.name,
-      handle: schema.Organization.handle,
-      website: schema.Organization.website,
-    })
-    .from(schema.Organization)
-    .where(eq(schema.Organization.id, ctx.organizationId))
-    .limit(1)
-  return rows[0] ?? null
 }
 
 function orgColumn(
@@ -152,16 +173,17 @@ function orgColumn(
 async function resolveFieldTokens(
   tokens: { id: string; parsed: Extract<ParsedPlaceholder, { kind: 'field' }> }[],
   ctx: PlaceholderResolutionContext
-): Promise<Map<string, string>> {
+): Promise<Map<string, string | null>> {
   if (tokens.length === 0) return new Map()
 
   // Group by starting record id so we can batch per-record.
   const byRecordId = new Map<RecordId, { id: string; fieldRef: FieldReference }[]>()
   for (const { id, parsed } of tokens) {
-    const recordId = recordIdForRoot(parsed.rootEntityDefinitionId, ctx)
+    const recordId = ctx.recordIdsByRoot.get(parsed.rootEntityDefinitionId)
     if (!recordId) {
       throw new Error(
-        `Cannot resolve placeholder '${id}': no context for root '${parsed.rootEntityDefinitionId}'`
+        `Cannot resolve placeholder '${id}': no record for root ` +
+          `'${parsed.rootEntityDefinitionId}' in the current context`
       )
     }
     const entry = byRecordId.get(recordId) ?? []
@@ -170,7 +192,7 @@ async function resolveFieldTokens(
   }
 
   const service = new FieldValueService(ctx.organizationId, ctx.senderUserId, ctx.db)
-  const result = new Map<string, string>()
+  const result = new Map<string, string | null>()
 
   for (const [recordId, entries] of byRecordId) {
     const fieldRefs = entries.map((e) => e.fieldRef)
@@ -188,37 +210,12 @@ async function resolveFieldTokens(
     for (const { id, fieldRef } of entries) {
       const key = fieldRefToKey(fieldRef)
       const raw = byKey.get(key)
-      if (raw === undefined || raw === null) {
-        throw new Error(`Placeholder '${id}' resolved to no value`)
-      }
-      result.set(id, typedValueToString(raw))
+      // Null/undefined → let Pass 2 apply the fallback (or hard-fail).
+      result.set(id, raw === undefined || raw === null ? null : typedValueToString(raw))
     }
   }
 
   return result
-}
-
-/**
- * Derive the starting `RecordId` for a root entity-definition from the context.
- * Returns `null` when the required id is missing — caller hard-fails.
- */
-function recordIdForRoot(root: string, ctx: PlaceholderResolutionContext): RecordId | null {
-  switch (root) {
-    case 'thread':
-      return ctx.threadId ? toRecordId('thread', ctx.threadId) : null
-    case 'ticket':
-      return ctx.ticketId ? toRecordId('ticket', ctx.ticketId) : null
-    case 'contact':
-      return ctx.contactEntityInstanceId ? toRecordId('contact', ctx.contactEntityInstanceId) : null
-    case 'organization':
-      return toRecordId('organization', ctx.organizationId)
-    case 'user':
-      return ctx.senderUserId ? toRecordId('user', ctx.senderUserId) : null
-    default:
-      // Any other root is reachable only via relationship traversal as a
-      // *subsequent* segment — it can't be a starting record id. Reject.
-      return null
-  }
 }
 
 function formatDate(slug: 'today' | 'now' | 'tomorrow' | 'yesterday', now: Date): string {

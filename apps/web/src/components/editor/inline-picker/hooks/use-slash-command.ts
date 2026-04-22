@@ -30,6 +30,18 @@ interface UseSlashCommandReturn {
   setEditor: (editor: Editor | null) => void
 }
 
+interface UseSlashCommandOptions {
+  /** Trigger character. Default: `/`. */
+  trigger?: string
+  /**
+   * Characters allowed to precede the trigger. Default `[' ']` — the trigger
+   * only fires after a space or at the start of a node, which is the right
+   * default for generic slash menus inside free-text editors (prevents URLs
+   * from opening pickers). Pass `null` to allow the trigger anywhere.
+   */
+  allowedPrefixes?: string[] | null
+}
+
 /**
  * Hook for slash command picker integration.
  *
@@ -39,7 +51,9 @@ interface UseSlashCommandReturn {
  *
  * Call `setEditor` after the editor is created to wire up command execution.
  */
-export function useSlashCommand(): UseSlashCommandReturn {
+export function useSlashCommand(options?: UseSlashCommandOptions): UseSlashCommandReturn {
+  const { trigger = '/', allowedPrefixes = [' '] } = options ?? {}
+
   const [suggestionState, setSuggestionState] = useState<InlinePickerState>(initialState)
   const rangeRef = useRef<{ from: number; to: number } | null>(null)
   const editorRef = useRef<Editor | null>(null)
@@ -55,15 +69,16 @@ export function useSlashCommand(): UseSlashCommandReturn {
     () =>
       createInlinePickerExtension({
         type: 'slash-command',
-        trigger: '/',
+        trigger,
         allowSpaces: true,
+        allowedPrefixes,
         onStateChange: (state) => {
           // Update ref synchronously so onUpdate can check it in the same tick
           isOpenRef.current = state.isOpen
           setSuggestionState(state)
         },
       }),
-    []
+    [trigger, allowedPrefixes]
   )
 
   // Set the editor ref
@@ -91,11 +106,25 @@ export function useSlashCommand(): UseSlashCommandReturn {
     []
   )
 
-  // Close picker without executing
+  // Close picker without executing — deletes the trigger range (e.g. `/foo`)
+  // and resets state. Matches useInlinePicker.closePicker and
+  // useWorkflowVariableEditor.closePicker so "cancel" consistently removes
+  // the anchor character across every inline picker.
   const closePicker = useCallback(() => {
+    const editor = editorRef.current
+    const range = rangeRef.current
+
+    // Sync refs synchronously so onUpdate sees the picker as closed
     isOpenRef.current = false
+    rangeRef.current = null
+
+    if (editor && range) {
+      editor.chain().focus().deleteRange(range).run()
+    } else {
+      editor?.commands.focus()
+    }
+
     setSuggestionState(initialState)
-    editorRef.current?.commands.focus()
   }, [])
 
   return {

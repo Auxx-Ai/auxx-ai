@@ -70,6 +70,10 @@ export interface RecordPickerContentProps {
   /** RecordIds to exclude from results (filtered client-side) */
   excludeIds?: RecordId[]
 
+  /** Custom predicate — return true to hide an item from the Available section.
+   *  Applied on top of `excludeIds`, selection state, and the Selected-section dedupe. */
+  excludeFilter?: (item: RecordPickerItem) => boolean
+
   /** Called with full item data on single-select (alternative to onSelectSingle) */
   onSelectItem?: (item: RecordPickerItem) => void
 
@@ -111,6 +115,7 @@ export function RecordPickerContent({
   createLabel = 'Create new',
   className,
   excludeIds = [],
+  excludeFilter,
   onSelectItem,
   externalSearch,
   pinnedSelectedIds,
@@ -246,13 +251,14 @@ export function RecordPickerContent({
   const availableItems = useMemo(() => {
     if (!searchResults?.items) return []
     return searchResults.items.filter((item) => {
+      if (excludeFilter?.(item)) return false
       return (
         !isInSelectedSection(item.recordId) &&
         !excludeIds.includes(item.recordId) &&
         !selectedItemIds.has(item.id)
       )
     })
-  }, [searchResults, isInSelectedSection, excludeIds, selectedItemIds])
+  }, [searchResults, isInSelectedSection, excludeIds, selectedItemIds, excludeFilter])
 
   /**
    * Toggle selection of a record

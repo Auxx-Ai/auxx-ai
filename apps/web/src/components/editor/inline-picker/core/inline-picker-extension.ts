@@ -21,7 +21,7 @@ const closedState: InlinePickerState = {
  * @returns Configured TipTap extension
  */
 export function createInlinePickerExtension(config: InlinePickerExtensionConfig) {
-  const { type, trigger, allowSpaces = false, onStateChange } = config
+  const { type, trigger, allowSpaces = false, allowedPrefixes = [' '], onStateChange } = config
   const pluginKey = new PluginKey(`${type}-suggestion`)
 
   return Extension.create({
@@ -34,7 +34,7 @@ export function createInlinePickerExtension(config: InlinePickerExtensionConfig)
           char: trigger,
           allowSpaces,
           startOfLine: false,
-          allowedPrefixes: [' '],
+          allowedPrefixes,
           pluginKey,
           // Items are handled externally - return empty array
           items: () => [],

@@ -106,6 +106,19 @@ function useCommandNavigation<T extends NavigationItem>(): CommandNavigationCont
 }
 
 /**
+ * Hook to optionally access CommandNavigation context — returns `null` when
+ * there is no surrounding provider. Use this from a picker content component
+ * that wants to reuse the parent's nav stack if available, or fall back to
+ * wrapping itself in its own `CommandNavigation`.
+ */
+function useCommandNavigationOptional<
+  T extends NavigationItem,
+>(): CommandNavigationContextValue<T> | null {
+  const context = React.useContext(CommandNavigationContext)
+  return context as CommandNavigationContextValue<T> | null
+}
+
+/**
  * Props for CommandNavigation provider.
  */
 interface CommandNavigationProps<T extends NavigationItem> {
@@ -881,5 +894,6 @@ export {
   CommandSortableItem,
   // Hooks
   useCommandNavigation,
+  useCommandNavigationOptional,
   type NavigationItem,
 }

@@ -1,5 +1,6 @@
 // packages/lib/src/resources/registry/resources/dataset-fields.ts
 
+import { FieldType } from '@auxx/database/enums'
 import { toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { DatasetStatusEnum, VectorDbTypeEnum } from '../enum-values'
@@ -16,6 +17,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'id',
     label: 'ID',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'id',
     nullable: false,
     operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
@@ -34,6 +36,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'name',
     label: 'Name',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'name',
     nullable: false,
     capabilities: {
@@ -53,6 +56,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'description',
     label: 'Description',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'description',
     nullable: true,
     capabilities: {
@@ -71,6 +75,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'status',
     label: 'Status',
     type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
     dbColumn: 'status',
     nullable: false,
     options: { options: DatasetStatusEnum.values },
@@ -90,6 +95,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'documentCount',
     label: 'Document Count',
     type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
     dbColumn: 'documentCount',
     nullable: false,
     capabilities: {
@@ -107,6 +113,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'embeddingModel',
     label: 'Embedding Model',
     type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
     dbColumn: 'embeddingModel',
     nullable: true,
     capabilities: {
@@ -125,6 +132,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'vectorDimension',
     label: 'Vector Dimension',
     type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
     dbColumn: 'vectorDimension',
     nullable: true,
     capabilities: {
@@ -142,6 +150,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'vectorDbType',
     label: 'Vector DB Type',
     type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
     dbColumn: 'vectorDbType',
     nullable: false,
     options: { options: VectorDbTypeEnum.values },
@@ -161,6 +170,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'searchConfig',
     label: 'Search Config',
     type: BaseType.JSON,
+    fieldType: FieldType.JSON,
     dbColumn: 'searchConfig',
     nullable: false,
     capabilities: {
@@ -178,6 +188,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'createdAt',
     label: 'Created At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
     dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
@@ -195,6 +206,7 @@ export const DATASET_FIELDS: Record<string, ResourceField> = {
     key: 'updatedAt',
     label: 'Updated At',
     type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
     dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {

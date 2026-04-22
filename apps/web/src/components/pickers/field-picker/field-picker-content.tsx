@@ -78,6 +78,7 @@ export function FieldPickerInnerContent({
   onClose,
   onCreateField,
   searchPlaceholder = 'Search fields...',
+  onBackFromRoot,
   externalNavigation,
   renderAdditionalContent,
   showBreadcrumb = true,
@@ -86,7 +87,7 @@ export function FieldPickerInnerContent({
 
   // Use external navigation if provided, otherwise use CommandNavigation context
   const contextNav = useCommandNavigation<FieldPickerNavigationItem>()
-  const { stack, current, push, isAtRoot } = externalNavigation ?? contextNav
+  const { stack, current, push, pop, isAtRoot } = externalNavigation ?? contextNav
 
   // Determine which entity to show fields for
   const currentEntityDefinitionId = current?.targetEntityDefinitionId ?? entityDefinitionId
@@ -224,6 +225,55 @@ export function FieldPickerInnerContent({
     }
   }, [stack, current, onSelect, closeOnSelect, onClose])
 
+  /**
+   * Keyboard navigation — mirrors the DOM-query pattern used by
+   * slash-command-picker and variable-explorer-enhanced:
+   * - ArrowRight on a highlighted relationship field → drill into it
+   * - Backspace/ArrowLeft with empty search → pop stack (or onBackFromRoot)
+   * - Escape → same as above
+   */
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (!isAtRoot) {
+          e.stopPropagation()
+          pop()
+          return
+        }
+        if (onBackFromRoot) {
+          e.stopPropagation()
+          onBackFromRoot()
+        }
+        return
+      }
+      if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && !search) {
+        if (!isAtRoot) {
+          e.preventDefault()
+          pop()
+          return
+        }
+        if (onBackFromRoot) {
+          e.preventDefault()
+          onBackFromRoot()
+        }
+        return
+      }
+      if (e.key === 'ArrowRight') {
+        const selected = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(
+          '[cmdk-item][data-selected="true"]'
+        )
+        const value = selected?.getAttribute('data-value')
+        if (!value) return
+        const field = filteredFields.find((f) => (f.resourceFieldId ?? f.id) === value)
+        if (field?.relationship) {
+          e.preventDefault()
+          handleDrillInto(field)
+        }
+      }
+    },
+    [isAtRoot, pop, onBackFromRoot, search, filteredFields, handleDrillInto]
+  )
+
   // Shared content (input + list)
   const content = (
     <>
@@ -293,7 +343,7 @@ export function FieldPickerInnerContent({
 
   // Standalone usage: wrap with Command and breadcrumb
   return (
-    <Command shouldFilter={false}>
+    <Command shouldFilter={false} onKeyDown={handleKeyDown}>
       {showBreadcrumb && <CommandBreadcrumb rootLabel='Fields' />}
       {content}
     </Command>
