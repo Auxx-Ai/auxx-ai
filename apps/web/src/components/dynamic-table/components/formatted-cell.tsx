@@ -2,20 +2,12 @@
 
 'use client'
 
-import { cn } from '@auxx/ui/lib/utils'
 import type { CurrencyDisplayOptions } from '@auxx/utils'
 import { memo } from 'react'
 import { useTableConfig } from '../context/table-config-context'
 import { useColumnFormatting } from '../stores/store-selectors'
 import type { ColumnFormatting } from '../types'
 import { renderCellValue } from '../utils/cell-renderers'
-import { ExpandableCell } from './expandable-cell'
-
-/**
- * Field types that already handle array values internally.
- * These should NOT be wrapped in ItemsCellView when value is array.
- */
-const MULTI_VALUE_FIELD_TYPES = new Set(['TAGS', 'MULTI_SELECT', 'RELATIONSHIP', 'ITEMS'])
 
 /**
  * Config for field-specific data passed to renderers.
@@ -49,43 +41,23 @@ interface FormattedCellProps extends CellConfig {
   columnId?: string
   /** Explicit formatting to apply (takes precedence over context formatting) */
   formatting?: ColumnFormatting
-  /** Additional className for the wrapper */
-  className?: string
   /** True when value comes from a field path (relationship traversal) */
   isFieldPath?: boolean
 }
 
 /**
- * Universal cell renderer - single entry point for ALL cell types.
- *
- * Each renderer handles its own padding via CellPadding internally.
- * This component just routes to the appropriate renderer based on fieldType.
- *
- * For field paths (relationship traversal), handles array values:
- * - Multi-value field types (TAGS, MULTI_SELECT, RELATIONSHIP) handle arrays internally
- * - Other field types get wrapped in ItemsCellView to display each item
+ * Universal cell renderer — single entry point for ALL cell types.
+ * Routes to the appropriate renderer based on fieldType. Each renderer wraps
+ * its output in ExpandableCell, which owns padding, row height, and the
+ * expand-on-select behavior.
  *
  * Memoized to prevent unnecessary re-renders when parent cell updates.
- *
- * Usage:
- * ```tsx
- * // Standard fields
- * <FormattedCell value={email} fieldType="EMAIL" />
- *
- * // Tags/Select with options
- * <FormattedCell value={tagIds} fieldType="TAGS" options={options} />
- *
- * // Field path with potential array values
- * <FormattedCell value={vendorNames} fieldType="TEXT" isFieldPath />
- * ```
  */
 export const FormattedCell = memo(function FormattedCell({
   value,
   fieldType,
   columnId,
   formatting: explicitFormatting,
-  className,
-  isFieldPath = false,
   ...config
 }: FormattedCellProps) {
   const type = fieldType ?? 'TEXT'
@@ -95,7 +67,6 @@ export const FormattedCell = memo(function FormattedCell({
 
   if (!formatting && columnId) {
     try {
-      // Try to get tableId from config context and use granular selector
       const { tableId } = useTableConfig()
       const columnFormatting = useColumnFormatting(tableId)
 
@@ -107,45 +78,5 @@ export const FormattedCell = memo(function FormattedCell({
     }
   }
 
-  // Check if value is an array that needs special handling
-  // (path results can return arrays for non-multi-value field types)
-  // const isArrayValue = Array.isArray(value)
-  // const fieldHandlesArrays = MULTI_VALUE_FIELD_TYPES.has(type)
-
-  // // If array value AND field type doesn't handle arrays → wrap in ItemsCellView
-  // if (isArrayValue && !fieldHandlesArrays && value.length > 0) {
-  //   return (
-  //     <ItemsCellView
-  //       items={value.map((v, i) => ({ id: String(i), value: v }))}
-  //       renderItem={(item) => renderCellValue(item.value, type, formatting, config)}
-  //     />
-  //   )
-  // }
-
-  // Standard rendering (single value or field that handles arrays)
   return <>{renderCellValue(value, type, formatting, config)}</>
-})
-
-/**
- * Padding wrapper for custom cell content with expand-on-selection.
- * - Collapsed: Shows truncated content within cell bounds
- * - Selected: Expands to show full content in overlay
- *
- * Memoized to prevent unnecessary re-renders.
- */
-export const CellPadding = memo(function CellPadding({
-  children,
-  className,
-  expandDirection,
-}: {
-  children: React.ReactNode
-  className?: string
-  /** 'both' for text (wraps), 'horizontal' for numbers (no wrap) */
-  expandDirection?: 'both' | 'horizontal'
-}) {
-  return (
-    <ExpandableCell expandDirection={expandDirection}>
-      <div className={cn('text-sm cursor-default w-full pl-3 pr-2', className)}>{children}</div>
-    </ExpandableCell>
-  )
 })

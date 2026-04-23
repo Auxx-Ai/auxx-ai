@@ -14,7 +14,7 @@ import {
   Video,
 } from 'lucide-react'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
-import { CellPadding, FormattedCell, PrimaryCell } from '~/components/dynamic-table'
+import { ExpandableCell, FormattedCell, PrimaryCell } from '~/components/dynamic-table'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { RecordingStatusBadge } from './recording-status-badge'
 import type { Recording } from './recordings-types'
@@ -161,12 +161,12 @@ export const createRecordingsColumns = (
     cell: ({ getValue }) => {
       const seconds = getValue<number | null>()
       return (
-        <CellPadding>
+        <ExpandableCell>
           <div className='flex items-center gap-1 text-sm text-muted-foreground'>
             <Clock className='size-3' />
             <span>{formatDuration(seconds)}</span>
           </div>
-        </CellPadding>
+        </ExpandableCell>
       )
     },
     enableSorting: true,

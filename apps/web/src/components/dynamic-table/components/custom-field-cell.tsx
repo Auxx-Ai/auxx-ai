@@ -12,7 +12,8 @@ import { AiCellOverlay } from '~/components/fields/ai-overlay/ai-cell-overlay'
 import { useField } from '~/components/resources/hooks/use-field'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { decodeColumnId } from '../utils/column-id'
-import { CellPadding, FormattedCell } from './formatted-cell'
+import { ExpandableCell } from './expandable-cell'
+import { FormattedCell } from './formatted-cell'
 
 interface CustomFieldCellProps {
   /** Record ID (entityDefinitionId:rowId) */
@@ -65,9 +66,9 @@ export const CustomFieldCell = memo(function CustomFieldCell({
 
   if (isLoading && value === undefined) {
     return (
-      <CellPadding>
+      <ExpandableCell>
         <Skeleton className='h-5 w-20' />
-      </CellPadding>
+      </ExpandableCell>
     )
   }
 

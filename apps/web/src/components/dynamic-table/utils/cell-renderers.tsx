@@ -22,7 +22,8 @@ import { ItemsCellView } from '~/components/ui/items-list-view'
 import { TagsCellView } from '~/components/ui/tags-view'
 import { api } from '~/trpc/react'
 import { CopyableLinkCell } from '../components/copyable-link-cell'
-import { type CellConfig, CellPadding } from '../components/formatted-cell'
+import { ExpandableCell } from '../components/expandable-cell'
+import type { CellConfig } from '../components/formatted-cell'
 import type {
   ColumnFormatting,
   CurrencyColumnFormatting,
@@ -146,14 +147,14 @@ type CellRenderer = (
 ) => React.ReactNode
 
 /**
- * Empty state component for null/undefined/empty values
- * Includes CellPadding for consistent cell layout
+ * Empty state component for null/undefined/empty values.
+ * Wrapped in ExpandableCell so the row keeps consistent height + padding.
  */
 export function EmptyCell() {
   return (
-    <CellPadding>
+    <ExpandableCell>
       <span className='text-muted-foreground'></span>
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
@@ -171,7 +172,7 @@ export function renderDateValue(
   try {
     const date = new Date(value as string | number)
     if (Number.isNaN(date.getTime())) {
-      return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
+      return <ExpandableCell mode='horizontal'>{String(value)}</ExpandableCell>
     }
 
     const opts = config?.options as DateFieldOptions | undefined
@@ -199,9 +200,9 @@ export function renderDateValue(
       default:
         formatted = format(date, 'MMM d, yyyy')
     }
-    return <CellPadding expandDirection='horizontal'>{formatted}</CellPadding>
+    return <ExpandableCell mode='horizontal'>{formatted}</ExpandableCell>
   } catch {
-    return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
+    return <ExpandableCell mode='horizontal'>{String(value)}</ExpandableCell>
   }
 }
 
@@ -214,14 +215,14 @@ export function renderTimeValue(value: unknown, config?: CellConfig): React.Reac
   try {
     const date = new Date(value as string | number)
     if (Number.isNaN(date.getTime())) {
-      return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
+      return <ExpandableCell mode='horizontal'>{String(value)}</ExpandableCell>
     }
     const opts = config?.options as DateFieldOptions | undefined
     const timeFormat = opts?.timeFormat ?? '12h'
     const formatStr = timeFormat === '24h' ? 'HH:mm' : 'h:mm a'
-    return <CellPadding expandDirection='horizontal'>{format(date, formatStr)}</CellPadding>
+    return <ExpandableCell mode='horizontal'>{format(date, formatStr)}</ExpandableCell>
   } catch {
-    return <CellPadding expandDirection='horizontal'>{String(value)}</CellPadding>
+    return <ExpandableCell mode='horizontal'>{String(value)}</ExpandableCell>
   }
 }
 
@@ -239,9 +240,9 @@ export function renderNumberValue(
   const num = typeof value === 'number' ? value : parseFloat(value as string)
   if (Number.isNaN(num)) {
     return (
-      <CellPadding expandDirection='horizontal'>
+      <ExpandableCell mode='horizontal'>
         <span className='font-mono'>{String(value)}</span>
-      </CellPadding>
+      </ExpandableCell>
     )
   }
 
@@ -281,13 +282,13 @@ export function renderNumberValue(
   }
 
   return (
-    <CellPadding expandDirection='horizontal'>
+    <ExpandableCell mode='horizontal'>
       <span className='font-mono'>
         {prefix}
         {formatted}
         {suffix}
       </span>
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
@@ -314,9 +315,9 @@ export function renderCurrencyValue(
 
   const formatted = formatCurrency(cents, options)
   return (
-    <CellPadding expandDirection='horizontal'>
+    <ExpandableCell mode='horizontal'>
       <span className='font-mono'>{formatted}</span>
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
@@ -328,9 +329,9 @@ export function renderEmailValue(value: unknown): React.ReactNode {
 
   const email = String(value)
   return (
-    <CellPadding expandDirection='horizontal'>
+    <ExpandableCell mode='horizontal'>
       <CopyableLinkCell displayText={email} value={email} type='email' />
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
@@ -359,9 +360,9 @@ export function renderPhoneValue(
     (formatToDisplayValue({ type: 'text', value: phone }, 'PHONE_INTL', opts) as string) || phone
 
   return (
-    <CellPadding expandDirection='horizontal'>
+    <ExpandableCell mode='horizontal'>
       <CopyableLinkCell displayText={formatted} value={phone} type='phone' />
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
@@ -374,9 +375,9 @@ export function renderUrlValue(value: unknown): React.ReactNode {
   const url = String(value)
   const href = url.startsWith('http') ? url : `https://${url}`
   return (
-    <CellPadding expandDirection='horizontal'>
+    <ExpandableCell mode='horizontal'>
       <CopyableLinkCell displayText={url} value={href} type='url' />
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
@@ -392,28 +393,28 @@ export function renderCheckboxValue(value: unknown, config?: CellConfig): React.
   // Text-only display
   if (checkboxStyle === 'text') {
     return (
-      <CellPadding expandDirection='horizontal'>
+      <ExpandableCell mode='horizontal'>
         <span className='text-muted-foreground'>{value ? trueLabel : falseLabel}</span>
-      </CellPadding>
+      </ExpandableCell>
     )
   }
 
   // Icon-only display
   if (checkboxStyle === 'icon') {
     return (
-      <CellPadding expandDirection='horizontal'>
+      <ExpandableCell mode='horizontal'>
         {value ? (
           <CheckSquare className='size-4 text-green-600' />
         ) : (
           <div className='size-4 border rounded' />
         )}
-      </CellPadding>
+      </ExpandableCell>
     )
   }
 
   // Icon with text display (default)
   return (
-    <CellPadding expandDirection='horizontal'>
+    <ExpandableCell mode='horizontal'>
       <div className='flex items-center gap-2'>
         {value ? (
           <CheckSquare className='size-4 text-green-600' />
@@ -422,7 +423,7 @@ export function renderCheckboxValue(value: unknown, config?: CellConfig): React.
         )}
         <span className='text-muted-foreground'>{value ? trueLabel : falseLabel}</span>
       </div>
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
@@ -444,15 +445,15 @@ export function renderAddressValue(value: unknown): React.ReactNode {
     ].filter(Boolean)
     if (parts.length === 0) return <EmptyCell />
     return (
-      <CellPadding>
+      <ExpandableCell>
         <span className='text-sm'>{parts.join(', ')}</span>
-      </CellPadding>
+      </ExpandableCell>
     )
   }
   return (
-    <CellPadding>
+    <ExpandableCell>
       <span className='text-sm'>{String(value)}</span>
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
@@ -466,11 +467,11 @@ export function renderRichTextValue(value: unknown): React.ReactNode {
   if (!textOnly.trim()) return <EmptyCell />
 
   return (
-    <CellPadding>
+    <ExpandableCell>
       <span className='text-sm' title={textOnly}>
         {textOnly}
       </span>
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
@@ -543,15 +544,16 @@ export function renderTextValue(value: unknown): React.ReactNode {
 
   // Render primitive values
   return (
-    <CellPadding>
+    <ExpandableCell>
       <span className='text-sm'>{String(value)}</span>
-    </CellPadding>
+    </ExpandableCell>
   )
 }
 
 /**
- * Field type to renderer mapping
- * All renderers handle their own padding via CellPadding
+ * Field type to renderer mapping.
+ * All renderers wrap their output in ExpandableCell, which owns padding,
+ * row height, and the expand-on-select behavior.
  */
 const cellRenderers: Record<string, CellRenderer> = {
   // Date types - pass config for displayOptions fallback
@@ -576,7 +578,7 @@ const cellRenderers: Record<string, CellRenderer> = {
   // Boolean - pass config for displayOptions
   CHECKBOX: (value, _, config) => renderCheckboxValue(value, config),
 
-  // Select/Tags types - use TagsCellView which handles its own layout (no CellPadding needed)
+  // Select/Tags types - use TagsCellView which handles its own layout (no ExpandableCell needed)
   // Options can be passed as array directly or as field.options object with .options property
   TAGS: (value, _, config) => {
     const opts = Array.isArray(config?.options)
@@ -608,7 +610,7 @@ const cellRenderers: Record<string, CellRenderer> = {
   },
 
   // Generic items renderer - for groups, sources, any list of items
-  // Uses ItemsCellView which handles its own layout (no CellPadding needed)
+  // Uses ItemsCellView which wraps its own ExpandableCell (mode='items')
   ITEMS: (_, __, config) => (
     <ItemsCellView
       items={config?.items ?? []}
@@ -634,17 +636,17 @@ const cellRenderers: Record<string, CellRenderer> = {
       const { firstName, lastName } = value as { firstName?: string; lastName?: string }
       const display = [firstName, lastName].filter(Boolean).join(' ').trim()
       return display ? (
-        <CellPadding>
+        <ExpandableCell>
           <span className='text-sm'>{display}</span>
-        </CellPadding>
+        </ExpandableCell>
       ) : (
         <EmptyCell />
       )
     }
     return (
-      <CellPadding>
+      <ExpandableCell>
         <span className='text-sm'>{String(value)}</span>
-      </CellPadding>
+      </ExpandableCell>
     )
   },
 

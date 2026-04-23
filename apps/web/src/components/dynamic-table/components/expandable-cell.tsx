@@ -2,58 +2,47 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { CellSelectionOverlay } from './cell-selection-overlay'
+
+/**
+ * Expansion behavior when this cell becomes the active (single-cell) selection.
+ * - text:       single-line ellipsis collapsed; wraps + grows down when active.
+ * - horizontal: single-line ellipsis collapsed; grows right (no wrap) when active.
+ * - items:      horizontal flex with right-edge fade collapsed; flex-wrap when active.
+ * - static:     no expansion. Same padding baseline only.
+ *
+ * Multi-cell selection automatically suppresses expansion via `:has(.cell-in-range)`
+ * on the cell container in `table.css` — pure CSS, zero per-cell JS.
+ */
+export type ExpandMode = 'text' | 'horizontal' | 'items' | 'static'
 
 interface ExpandableCellProps {
   children: React.ReactNode
+  mode?: ExpandMode
   className?: string
-  /**
-   * Expand direction when selected:
-   * - 'both': Expands horizontally and wraps vertically (default, for TEXT)
-   * - 'horizontal': Only expands to the right, no wrapping (for NUMBER, CURRENCY, etc.)
-   */
-  expandDirection?: 'both' | 'horizontal'
 }
 
 /**
- * Wrapper that expands cell content when selected.
- * - Collapsed: Shows truncated content within cell bounds
- * - Selected: Expands to show full content in overlay
- *
- * Follows ItemsCellView pattern with data-self-overlay.
+ * Collapsed (default) layout for each mode. The expanded layout is owned by
+ * the `[data-expand=...]` rules in `table.css`, which key off `.cell-active`
+ * on the parent `SelectableTableCell`.
  */
-export function ExpandableCell({
-  children,
-  className,
-  expandDirection = 'both',
-}: ExpandableCellProps) {
-  const isHorizontalOnly = expandDirection === 'horizontal'
+const COLLAPSED: Record<ExpandMode, string> = {
+  text: 'flex items-center w-full overflow-hidden text-ellipsis whitespace-nowrap pl-3 pr-2',
+  horizontal: 'flex items-center w-full overflow-hidden text-ellipsis whitespace-nowrap pl-3 pr-2',
+  items:
+    'flex items-center gap-1 w-full overflow-hidden ps-3 py-0.5 mask-r-from-[calc(100%-32px)] mask-r-to-[100%]',
+  static: 'flex items-center w-full pl-3 pr-2',
+}
 
+/**
+ * Single-subtree wrapper used by every cell renderer. Owns row height, padding,
+ * and signals the desired expansion mode via `data-expand`. Renders `{children}`
+ * exactly once — there is no separate "expanded" subtree.
+ */
+export function ExpandableCell({ children, mode = 'text', className }: ExpandableCellProps) {
   return (
-    <div
-      data-slot='expandable-cell'
-      className={cn('relative min-w-full w-full min-h-9 flex text-sm')}>
-      {/* Collapsed view - truncated */}
-      <div
-        className={cn('flex items-center w-full overflow-hidden text-ellipsis whitespace-nowrap')}>
-        {children}
-      </div>
-
-      {/* Expanded view - shows full content when cell is selected but NOT editing */}
-      <div
-        data-self-overlay
-        className={cn(
-          'absolute left-0 top-0 z-15 min-h-9',
-          // Show on selection, hide on editing (both popover and inline)
-          'hidden [.cell-selected:not(.cell-editing)_&]:flex',
-          'min-w-full w-max bg-primary-100',
-          isHorizontalOnly
-            ? // Horizontal only: same height, no wrap, just extends right
-              'items-center whitespace-nowrap'
-            : // Both directions: wraps text, expands down
-              'items-start pt-[8px] pb-[4px] max-w-[280px] [&>*]:whitespace-pre-wrap [&>*]:break-words'
-        )}>
-        <CellSelectionOverlay isSelected isEditing={false} />
+    <div data-slot='expandable-cell' className='relative flex w-full min-h-9 text-sm'>
+      <div data-expand={mode} className={cn(COLLAPSED[mode], className)}>
         {children}
       </div>
     </div>
