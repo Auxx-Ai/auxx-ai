@@ -57,7 +57,7 @@ export function KopilotStatusBar({ contentClassName }: KopilotStatusBarProps) {
       )}>
       <div className={cn('flex items-center gap-1.5 px-3 py-1.5 text-xs', contentClassName)}>
         <Loader2 className='size-3 animate-spin' />
-        <TextShimmer text={currentAgent ?? verb} />
+        <TextShimmer as='span'>{verb}</TextShimmer>
         {!currentAgent && <AnimatedDots />}
         {/* {activeTool && (
           <>
@@ -70,7 +70,7 @@ export function KopilotStatusBar({ contentClassName }: KopilotStatusBarProps) {
   )
 }
 
-function AnimatedDots() {
+export function AnimatedDots() {
   return (
     <span className='inline-flex w-4'>
       {[0, 1, 2].map((i) => (

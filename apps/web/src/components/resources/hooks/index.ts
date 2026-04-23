@@ -1,5 +1,6 @@
 // apps/web/src/components/resources/hooks/index.ts
 
+export { useRunAiBulkGenerate } from './run-ai-bulk-generate'
 // Actor hooks
 export {
   useActor,

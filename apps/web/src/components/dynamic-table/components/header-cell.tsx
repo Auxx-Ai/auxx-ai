@@ -4,19 +4,32 @@
 
 import type { FieldType } from '@auxx/database/types'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { isAiEligible } from '@auxx/lib/custom-fields/client'
+import { toRecordId } from '@auxx/lib/resources/client'
+import type { AiOptions } from '@auxx/types/custom-field'
+import {
+  buildFieldValueKey,
+  type FieldId,
+  type FieldReference,
+  type ResourceFieldId,
+} from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { type BreadcrumbSegment, SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
+import { toastInfo } from '@auxx/ui/components/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
-import type { Header } from '@tanstack/react-table'
+import type { Header, Row, Table } from '@tanstack/react-table'
 import {
   ArrowUpDown,
   ChevronDown,
@@ -26,11 +39,18 @@ import {
   Pin,
   PinOff,
   Plus,
+  RefreshCw,
   Settings2,
+  Sparkles,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
+import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
 import { useField, useFields } from '~/components/resources/hooks/use-field'
+import { useFieldValueStore } from '~/components/resources/store/field-value-store'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useTableConfig } from '../context/table-config-context'
+import { useTableInstance } from '../context/table-instance-context'
 import { useViewMetadata } from '../context/view-metadata-context'
 import { getIconForFieldType } from '../custom-field-column-factory'
 import {
@@ -58,6 +78,62 @@ interface HeaderCellProps<TData> {
 }
 
 /**
+ * A cell is "missing" when it has no value (undefined/null/empty string/empty
+ * array) AND is not currently generating AND has no AI result marker. A
+ * previous AI error counts as missing — retrying is the expected behavior.
+ */
+function isMissingCell(value: unknown, aiStatus: string | undefined): boolean {
+  const isEmpty =
+    value === undefined ||
+    value === null ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0)
+  return isEmpty && aiStatus !== 'generating' && aiStatus !== 'result'
+}
+
+/**
+ * Enumerate rows in the currently loaded view that should be targeted by
+ * "Fill missing" vs "Regenerate all". Reads the field-value store imperatively
+ * — no subscription, since this runs inside a click handler.
+ */
+function collectAiTargetRowIds<TData>(
+  rows: Row<TData>[],
+  entityDefinitionId: string,
+  fieldRef: FieldReference,
+  mode: 'fill-missing' | 'regenerate-all'
+): { rowIds: string[]; nonEmptyCount: number } {
+  const { values, aiStates } = useFieldValueStore.getState()
+  const rowIds: string[] = []
+  let nonEmptyCount = 0
+
+  for (const row of rows) {
+    const recordId = toRecordId(entityDefinitionId, row.id)
+    const key = buildFieldValueKey(recordId, fieldRef)
+    const value = values[key]
+    const status = aiStates[key]?.status
+
+    // Skip rows that already have an in-flight AI job either way — the
+    // server would dedupe but this saves a wasted quota attempt.
+    if (status === 'generating') continue
+
+    const isEmpty =
+      value === undefined ||
+      value === null ||
+      value === '' ||
+      (Array.isArray(value) && value.length === 0)
+
+    if (mode === 'fill-missing') {
+      if (isMissingCell(value, status)) rowIds.push(row.id)
+    } else {
+      rowIds.push(row.id)
+      if (!isEmpty) nonEmptyCount++
+    }
+  }
+
+  return { rowIds, nonEmptyCount }
+}
+
+/**
  * Dropdown menu for header cell options (sorting, filtering, hiding)
  * Migrated to use split contexts and stores
  */
@@ -81,6 +157,11 @@ function HeaderCellOptionsDropdown<TData>({
   setPinnedColumn,
   effectiveFieldType,
   terminalDefaultFormatting,
+  aiMenuEnabled,
+  aiField,
+  aiFieldRef,
+  table,
+  entityDefinitionId,
 }: {
   column: Header<TData, unknown>['column']
   columnDef: ExtendedColumnDef<TData>
@@ -101,9 +182,54 @@ function HeaderCellOptionsDropdown<TData>({
   setPinnedColumn: (columnId: string | null) => void
   effectiveFieldType: FieldType | undefined
   terminalDefaultFormatting: Record<string, unknown> | undefined
+  aiMenuEnabled: boolean
+  aiField: { id: FieldId; fieldType: FieldType } | null
+  aiFieldRef: FieldReference | null
+  table: Table<TData>
+  entityDefinitionId: string | undefined
 }) {
   const [showLabelDialog, setShowLabelDialog] = useState(false)
   const [showFormattingDialog, setShowFormattingDialog] = useState(false)
+  const [confirm, ConfirmDialog] = useConfirm()
+  const runAiBulkGenerate = useRunAiBulkGenerate()
+
+  const handleFillMissing = useCallback(() => {
+    if (!aiMenuEnabled || !aiField || !aiFieldRef || !entityDefinitionId) return
+    const rows = table.getRowModel().rows
+    const { rowIds } = collectAiTargetRowIds(rows, entityDefinitionId, aiFieldRef, 'fill-missing')
+    if (rowIds.length === 0) {
+      toastInfo({ title: 'No empty cells in this view' })
+      return
+    }
+    runAiBulkGenerate(rowIds, aiField, entityDefinitionId)
+  }, [aiMenuEnabled, aiField, aiFieldRef, entityDefinitionId, table, runAiBulkGenerate])
+
+  const handleRegenerateAll = useCallback(async () => {
+    if (!aiMenuEnabled || !aiField || !aiFieldRef || !entityDefinitionId) return
+    const rows = table.getRowModel().rows
+    const { rowIds, nonEmptyCount } = collectAiTargetRowIds(
+      rows,
+      entityDefinitionId,
+      aiFieldRef,
+      'regenerate-all'
+    )
+    if (rowIds.length === 0) return
+
+    if (nonEmptyCount > 0) {
+      const ok = await confirm({
+        title: `Regenerate ${rowIds.length} ${rowIds.length === 1 ? 'cell' : 'cells'}?`,
+        description: `${nonEmptyCount} ${
+          nonEmptyCount === 1 ? 'already has' : 'already have'
+        } a value and will be overwritten.`,
+        confirmText: 'Regenerate',
+        cancelText: 'Cancel',
+        destructive: true,
+      })
+      if (!ok) return
+    }
+
+    runAiBulkGenerate(rowIds, aiField, entityDefinitionId)
+  }, [aiMenuEnabled, aiField, aiFieldRef, entityDefinitionId, table, runAiBulkGenerate, confirm])
 
   const isPinned = pinnedColumnId === column.id
   const canPin = column.id !== '_checkbox' // Don't allow pinning special columns
@@ -217,7 +343,28 @@ function HeaderCellOptionsDropdown<TData>({
           </DropdownMenuItem>
         )}
 
-        {canHide && <DropdownMenuSeparator />}
+        {aiMenuEnabled && <DropdownMenuSeparator />}
+
+        {aiMenuEnabled && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <SparkleIcon />
+              AI
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onClick={handleFillMissing}>
+                <SparkleIcon />
+                Fill missing
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleRegenerateAll}>
+                <RefreshCw />
+                Regenerate all
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
+
+        {(canHide || aiMenuEnabled) && <DropdownMenuSeparator />}
 
         <DropdownMenuItem onClick={() => setShowLabelDialog(true)}>
           <Pencil />
@@ -253,6 +400,8 @@ function HeaderCellOptionsDropdown<TData>({
           onSave={(formatting) => setColumnFormatting(column.id, formatting)}
         />
       )}
+
+      <ConfirmDialog />
     </DropdownMenu>
   )
 }
@@ -266,8 +415,9 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   const columnDef = header.column.columnDef as ExtendedColumnDef<TData>
 
   // ─── CONTEXTS & STORES ──────────────────────────────────────────────────────
-  const { tableId } = useTableConfig<TData>()
+  const { tableId, entityDefinitionId } = useTableConfig<TData>()
   const { onAddNew, entityLabel } = useViewMetadata<TData>()
+  const { table } = useTableInstance<TData>()
 
   // Use granular selectors instead of getMergedConfig
   const columnLabels = useColumnLabels(tableId)
@@ -292,8 +442,8 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   // For path columns, get all field definitions for breadcrumb
   const pathFields = useFields(isPathColumn ? decoded.fieldPath : [])
 
-  // For direct fields without an icon, fetch field to get its type
-  const directFieldId = !isPathColumn && !columnDef.icon ? decoded.resourceFieldId : undefined
+  // For direct fields, fetch field metadata (used for icon fallback + AI gate).
+  const directFieldId = !isPathColumn ? decoded.resourceFieldId : undefined
   const directField = useField(directFieldId)
 
   // Build breadcrumb segments for path columns
@@ -320,6 +470,24 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
 
   // Effective fieldType: from columnDef or terminal field for paths
   const effectiveFieldType = columnDef.fieldType ?? terminalFieldMeta?.fieldType
+
+  // ─── AI MENU GATE ─────────────────────────────────────────────────────────
+  // Hide the AI submenu unless this is a direct, AI-enabled custom field.
+  // Mirrors the overlay gate in custom-field-cell.tsx.
+  const aiMenuEnabled =
+    !isPathColumn &&
+    directField?.id != null &&
+    directField.fieldType != null &&
+    isAiEligible(directField.fieldType) &&
+    (directField.options as { ai?: AiOptions } | null | undefined)?.ai?.enabled === true
+
+  const aiField = useMemo<{ id: FieldId; fieldType: FieldType } | null>(() => {
+    if (!aiMenuEnabled || !directField?.id || !directField.fieldType) return null
+    return { id: directField.id, fieldType: directField.fieldType }
+  }, [aiMenuEnabled, directField?.id, directField?.fieldType])
+
+  const aiFieldRef: FieldReference | null =
+    aiMenuEnabled && !isPathColumn ? (decoded.resourceFieldId as ResourceFieldId) : null
 
   // ─── ACTIONS (use centralized action hooks) ────────────────────────────────
   const setFilters = useSetFilters(tableId)
@@ -393,6 +561,11 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
             setPinnedColumn={setPinnedColumn}
             effectiveFieldType={effectiveFieldType}
             terminalDefaultFormatting={terminalFieldMeta?.defaultFormatting}
+            aiMenuEnabled={aiMenuEnabled}
+            aiField={aiField}
+            aiFieldRef={aiFieldRef}
+            table={table}
+            entityDefinitionId={entityDefinitionId}
           />
         </div>
       )}
@@ -411,6 +584,11 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
             />
           ) : (
             <span className='font-medium text-xs'>{headerContent}</span>
+          )}
+
+          {/* AI-enabled indicator */}
+          {aiMenuEnabled && (
+            <Sparkles className='size-3.5 text-quartz fill-quartz *:nth-2:text-purple-400 *:nth-3:text-purple-400' />
           )}
 
           {/* New button (only for primary column with onAddNew) */}

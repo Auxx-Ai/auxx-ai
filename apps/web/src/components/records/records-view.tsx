@@ -43,6 +43,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
 import { MergeDialog } from '~/components/merge'
 import { type RecordMeta, toRecordId, useRecordList, useResource } from '~/components/resources'
+import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useActorStore } from '~/components/resources/store/actor-store'
@@ -502,7 +503,8 @@ export function RecordsView({
   )
 
   /** Bulk writer used by range delete / paste (Phase 2). */
-  const { saveBulkMultipleFields, saveBulkValues } = useSaveFieldValue()
+  const { saveBulkMultipleFields } = useSaveFieldValue()
+  const runAiBulkGenerate = useRunAiBulkGenerate()
 
   /**
    * Cell selection configuration for inline editing
@@ -821,13 +823,16 @@ export function RecordsView({
         for (const [columnId, rowIds] of byCol.entries()) {
           const field = resolveField(columnId)
           if (!field?.fieldType) continue
-          const recordIds = rowIds.map((id) => toRecordId(entityDefinitionId, id))
-          saveBulkValues(recordIds, columnId, null, field.fieldType as FieldType, { ai: true })
+          runAiBulkGenerate(
+            rowIds,
+            { id: field.id, fieldType: field.fieldType as FieldType },
+            entityDefinitionId
+          )
         }
         return { skipped }
       },
     }
-  }, [getValue, entityDefinitionId, fieldMap, saveBulkMultipleFields, saveBulkValues])
+  }, [getValue, entityDefinitionId, fieldMap, saveBulkMultipleFields, runAiBulkGenerate])
 
   /**
    * Empty state component
