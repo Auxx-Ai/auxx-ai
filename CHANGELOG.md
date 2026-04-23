@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.138](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.137...auxx-v0.1.138) (2026-04-23)
+
+
+### Features
+
+* add AI bulk generation functionality and enhance UI components with AI options ([#472](https://github.com/Auxx-Ai/auxx-ai/issues/472)) ([205584e](https://github.com/Auxx-Ai/auxx-ai/commit/205584e403c2e6abc351815cfa276fb6f932e611))
+* add marching-ants copy highlight overlay and improve selection behavior ([#475](https://github.com/Auxx-Ai/auxx-ai/issues/475)) ([73776fc](https://github.com/Auxx-Ai/auxx-ai/commit/73776fc8c53e2215ae28dce58b7404412e257164))
+* **command-palette:** dynamic entity create actions + hotkey fixes ([#467](https://github.com/Auxx-Ai/auxx-ai/issues/467)) ([8cccb80](https://github.com/Auxx-Ai/auxx-ai/commit/8cccb8014ca3e288ab5aeefa82c58b2395bd7346))
+* enhance cell interaction and navigation with context integration and improved event handling ([#474](https://github.com/Auxx-Ai/auxx-ai/issues/474)) ([d7575a8](https://github.com/Auxx-Ai/auxx-ai/commit/d7575a87fa64f4885e064041bb2d5c3abb4e77ad))
+* enhance cell selection overlay behavior and styling ([#471](https://github.com/Auxx-Ai/auxx-ai/issues/471)) ([59ddef3](https://github.com/Auxx-Ai/auxx-ai/commit/59ddef32e58da7f859fefbae7ce27d6d3cbc9954))
+* enhance seeding scenarios and introduce AI options validation ([#470](https://github.com/Auxx-Ai/auxx-ai/issues/470)) ([478fd62](https://github.com/Auxx-Ai/auxx-ai/commit/478fd62ac2c1a4a0d8478113bd8109a3cbcb9259))
+* implement hotkey support for entity creation and enhance UI with keyboard hints ([#469](https://github.com/Auxx-Ai/auxx-ai/issues/469)) ([8c7cb45](https://github.com/Auxx-Ai/auxx-ai/commit/8c7cb45a19d2421f889faf0338e80f294655d8d1))
+
 ## [0.1.137](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.136...auxx-v0.1.137) (2026-04-22)
 
 
