@@ -12,6 +12,7 @@ export const testingScenario: SeedingScenarioDefinition = {
     organizations: 1,
     users: 5,
     customers: 10,
+    companies: 3,
     products: 5,
     orders: 10,
     threads: 4,

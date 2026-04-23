@@ -140,6 +140,124 @@ export const calcOptionsSchema = z.object({
 export type CalcOptions = z.infer<typeof calcOptionsSchema>
 
 // =============================================================================
+// AI OPTIONS (per-field AI generation toggle)
+// =============================================================================
+
+/**
+ * Rich reference prompt schema — TipTap JSON document with inline {fieldId}
+ * badges (stored as `{ type: 'field', attrs: { id } }` nodes). Permissive
+ * shape because TipTap documents carry tool-specific attributes; the server
+ * only cares about traversing `type`, `content`, `text`, and `attrs.id`.
+ */
+export const richReferencePromptSchema: z.ZodType<{
+  type: string
+  content?: unknown[]
+  text?: string
+  attrs?: Record<string, unknown>
+  [key: string]: unknown
+}> = z.lazy(() =>
+  z.object({
+    type: z.string(),
+    content: z.array(z.any()).optional(),
+    text: z.string().optional(),
+    attrs: z.record(z.string(), z.any()).optional(),
+    marks: z.array(z.any()).optional(),
+  })
+)
+
+export type RichReferencePrompt = z.infer<typeof richReferencePromptSchema>
+
+/** When the AI should fire for a field. v1 only handles 'manual'. */
+export const aiTriggerOnValues = ['manual', 'create', 'always'] as const
+export type AiTriggerOn = (typeof aiTriggerOnValues)[number]
+export const aiTriggerOnSchema = z.enum(aiTriggerOnValues)
+
+/**
+ * Per-field AI generation configuration, stored on an AI-eligible field's
+ * `options.ai`. Presence + `enabled=true` is the sole gate for AI behavior
+ * on that field.
+ */
+export const aiOptionsSchema = z.object({
+  enabled: z.boolean(),
+  prompt: richReferencePromptSchema,
+  triggerOn: aiTriggerOnSchema.default('manual'),
+})
+
+export type AiOptions = z.infer<typeof aiOptionsSchema>
+
+/**
+ * Field types that accept an `options.ai` block. Must be kept in sync with
+ * the `canAiGenerate` flag on `fieldTypeOptions` in
+ * `packages/lib/src/custom-fields/types.ts` — both represent the same
+ * whitelist, split only because services cannot import from lib.
+ */
+export const AI_ELIGIBLE_FIELD_TYPES = new Set<string>([
+  FieldTypeEnum.TEXT,
+  FieldTypeEnum.NUMBER,
+  FieldTypeEnum.CHECKBOX,
+  FieldTypeEnum.DATE,
+  FieldTypeEnum.URL,
+  FieldTypeEnum.EMAIL,
+  FieldTypeEnum.SINGLE_SELECT,
+  FieldTypeEnum.MULTI_SELECT,
+])
+
+/** Whether a field type can carry an `options.ai` block. */
+export function isAiEligibleFieldType(type: string): boolean {
+  return AI_ELIGIBLE_FIELD_TYPES.has(type)
+}
+
+/**
+ * Walk a `RichReferencePrompt` (TipTap JSON) and collect every `{fieldId}`
+ * badge id. Deduplicated. Returns `[]` for empty / invalid input.
+ */
+export function extractFieldIdsFromPrompt(prompt: unknown): string[] {
+  const ids: string[] = []
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    const n = node as { type?: string; attrs?: { id?: unknown }; content?: unknown[] }
+    if (n.type === 'field' && typeof n.attrs?.id === 'string' && n.attrs.id) {
+      ids.push(n.attrs.id)
+    }
+    if (Array.isArray(n.content)) {
+      for (const child of n.content) walk(child)
+    }
+  }
+  walk(prompt)
+  return [...new Set(ids)]
+}
+
+/**
+ * Whether a `RichReferencePrompt` contains any non-empty text or field
+ * reference. Empty documents with just empty paragraphs return `false`.
+ */
+export function promptHasContent(prompt: unknown): boolean {
+  let hasContent = false
+  const walk = (node: unknown): void => {
+    if (hasContent || !node || typeof node !== 'object') return
+    const n = node as {
+      type?: string
+      text?: unknown
+      attrs?: { id?: unknown }
+      content?: unknown[]
+    }
+    if (n.type === 'text' && typeof n.text === 'string' && n.text.trim().length > 0) {
+      hasContent = true
+      return
+    }
+    if (n.type === 'field' && typeof n.attrs?.id === 'string' && n.attrs.id) {
+      hasContent = true
+      return
+    }
+    if (Array.isArray(n.content)) {
+      for (const child of n.content) walk(child)
+    }
+  }
+  walk(prompt)
+  return hasContent
+}
+
+// =============================================================================
 // ACTOR OPTIONS
 // =============================================================================
 
@@ -176,6 +294,10 @@ export const displayOptionsSchema = z.object({
   falseLabel: z.string().optional(),
   // PHONE display options
   phoneFormat: z.enum(['raw', 'national', 'international']).optional(),
+  // AI generation toggle — present only on AI-eligible types. Riding
+  // piggyback on displayOptions keeps the union member count flat; the
+  // service layer validates eligibility at save time.
+  ai: aiOptionsSchema.optional(),
 })
 
 /** Display options type */
@@ -268,11 +390,20 @@ export function mergeDisplayOptions(
 /** Zod schema for all possible field options */
 export const fieldOptionsUnionSchema = z.union([
   z.array(selectOptionSchema),
+  // SELECT / MULTI_SELECT carrying both the option list and an AI block —
+  // must be declared before `displayOptionsSchema` so the object is routed
+  // through this dedicated member (displayOptionsSchema would strip the
+  // `options` key).
+  z.object({
+    options: z.array(selectOptionSchema),
+    ai: aiOptionsSchema.optional(),
+  }),
   z.object({ file: fileOptionsSchema }),
   z.object({ currency: currencyOptionsSchema }),
   z.object({ calc: calcOptionsSchema }),
   z.object({ actor: actorOptionsSchema }),
-  // Flat display options for NUMBER, DATE, DATETIME, TIME, CHECKBOX
+  // Flat display options for NUMBER, DATE, DATETIME, TIME, CHECKBOX. Also
+  // carries `ai` for AI-eligible scalar types (TEXT, URL, EMAIL, …).
   displayOptionsSchema,
 ])
 

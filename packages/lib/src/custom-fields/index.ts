@@ -1,5 +1,6 @@
 // packages/lib/src/custom-fields/index.ts
 
+export { getAiPrompt, isAiEligible, isAiField } from './ai'
 export type {
   BuiltInFieldConfig,
   BuiltInFieldHandler,
@@ -22,7 +23,6 @@ export {
   DEFAULT_TIME_OPTIONS,
   fieldTypeDisplayDefaults,
 } from './defaults'
-
 // Export field options types (for converters and seeder)
 export type {
   BooleanFieldOptions,
@@ -36,6 +36,13 @@ export type {
   SelectFieldOptions,
   TextFieldOptions,
 } from './field-options'
+export {
+  extractFieldIds,
+  extractFieldIdsFromString,
+  type FormulaNode,
+  formulaToString,
+  stringToFormula,
+} from './formula-converters'
 // Export unified types from @auxx/database
 export {
   type FieldTypeOption,

@@ -29,18 +29,32 @@ export function useResourceSync() {
 
   // Store actions (selectors to avoid re-renders)
   const setValues = useFieldValueStore((s) => s.setValues)
+  const setAiState = useFieldValueStore((s) => s.setAiState)
   const invalidateResource = useFieldValueStore((s) => s.invalidateResource)
   const setRecords = useRecordStore((s) => s.setRecords)
   const updateRecord = useRecordStore((s) => s.updateRecord)
   const removeRecord = useRecordStore((s) => s.removeRecord)
   const invalidateLists = useRecordStore((s) => s.invalidateLists)
 
+  // Merge fieldValues:updated into the store. An entry with `value` present
+  // goes through `setValues` (which preserves the pending-optimistic skip).
+  // An entry with `aiStatus` present writes the AI marker — `null` clears it.
   const handleFieldValuesUpdated = useCallback(
     (raw: unknown) => {
       const data = raw as FieldValuesUpdatedEvent['data']
-      setValues(data.entries)
+      const valueEntries = data.entries.filter((e) => e.value !== undefined) as Array<{
+        key: (typeof data.entries)[number]['key']
+        value: unknown
+      }>
+      if (valueEntries.length > 0) setValues(valueEntries)
+
+      for (const entry of data.entries) {
+        if (entry.aiStatus !== undefined) {
+          setAiState(entry.key, entry.aiStatus, entry.aiMetadata ?? null)
+        }
+      }
     },
-    [setValues]
+    [setValues, setAiState]
   )
 
   const handleRecordCreated = useCallback(

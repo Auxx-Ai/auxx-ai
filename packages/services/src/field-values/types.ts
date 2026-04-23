@@ -77,6 +77,7 @@ export interface ExistingFieldValueRow {
   relatedEntityDefinitionId: string | null
   actorId: string | null
   sortKey: string
+  aiStatus: string | null
 }
 
 /** Input for inserting a field value - uses RecordId */
@@ -94,6 +95,12 @@ export interface InsertFieldValueInput {
   relatedEntityId?: string | null
   relatedEntityDefinitionId?: string | null
   actorId?: string | null
+  /**
+   * AI generation marker. NULL (or absent) = not AI-generated. Manual writes
+   * that omit this naturally produce `aiStatus=null` rows, clearing any
+   * previous AI marker via the DELETE+INSERT in `setValueWithType`.
+   */
+  aiStatus?: string | null
 }
 
 /** Input for updating a field value */
@@ -109,6 +116,8 @@ export interface UpdateFieldValueInput {
   relatedEntityId?: string | null
   relatedEntityDefinitionId?: string | null
   actorId?: string | null
+  /** See InsertFieldValueInput.aiStatus */
+  aiStatus?: string | null
 }
 
 /** Input for deleting field values */

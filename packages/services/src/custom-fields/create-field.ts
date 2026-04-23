@@ -3,7 +3,7 @@
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
-import type { ActorOptions, CalcOptions } from '@auxx/types/custom-field'
+import type { ActorOptions, AiOptions, CalcOptions } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { getModelType } from '@auxx/types/resource'
 import { getInverseCardinality } from '@auxx/utils'
@@ -26,6 +26,34 @@ import {
   type SelectOption,
   supportsDisplayOptions,
 } from './types'
+import { validateAiOptions } from './validate-ai-options'
+
+/**
+ * Extract an `options.ai` block from the variant-shaped `options` payload.
+ * Accepts any non-array object with an `ai` property; returns `undefined`
+ * for arrays, primitives, or objects without `ai`.
+ */
+function pickAiOptions(options: unknown): AiOptions | undefined {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return undefined
+  const ai = (options as { ai?: unknown }).ai
+  return ai as AiOptions | undefined
+}
+
+/**
+ * Extract a SELECT/MULTI_SELECT option list from the variant-shaped
+ * `options` payload. Accepts both the legacy `SelectOption[]` shape and
+ * the `{ options: SelectOption[], ai?: AiOptions }` shape introduced for
+ * AI-enabled selects.
+ */
+function pickSelectOptions(options: unknown): SelectOption[] | undefined {
+  if (!options) return undefined
+  if (Array.isArray(options)) return options as SelectOption[]
+  if (typeof options === 'object') {
+    const inner = (options as { options?: unknown }).options
+    if (Array.isArray(inner)) return inner as SelectOption[]
+  }
+  return undefined
+}
 
 /**
  * Input for creating a custom field
@@ -38,14 +66,16 @@ export interface CreateCustomFieldInput {
   description?: string
   required?: boolean
   defaultValue?: string
-  /** Field options - select options, file config, currency config, or flat display options */
+  /** Field options - select options, file config, currency config, flat
+   *  display options, or an `{ options, ai }` bag for AI-enabled selects. */
   options?:
     | SelectOption[]
     | { file: FileOptions }
     | { currency: CurrencyOptions }
     | { actor: ActorOptions }
     | { calc: CalcOptions }
-    | DisplayOptions
+    | { options: SelectOption[]; ai?: AiOptions }
+    | (DisplayOptions & { ai?: AiOptions })
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean
@@ -60,6 +90,25 @@ export interface CreateCustomFieldInput {
   isCreatable?: boolean
   /** Whether this field can be modified after creation (default: true) */
   isUpdatable?: boolean
+}
+
+/**
+ * Walk a DESC-ordered sortOrder window and return the first entry that
+ * `generateKeyBetween` accepts. Legacy system-field seeds shipped with
+ * malformed fractional-indexing keys (e.g. 'z9', 'b0'); skipping them
+ * keeps field creation unblocked on orgs that still have them in the DB.
+ */
+function pickValidAnchor(rows: Array<{ sortOrder: string | null }>): string | null {
+  for (const row of rows) {
+    if (!row.sortOrder) continue
+    try {
+      generateKeyBetween(row.sortOrder, null)
+      return row.sortOrder
+    } catch {
+      // Malformed — try the next one.
+    }
+  }
+  return null
 }
 
 /**
@@ -82,12 +131,14 @@ async function getLastFieldSortOrder(
     conditions.push(eq(schema.CustomField.modelType, modelType as any))
   }
 
+  // Pull a window of candidates (not just one) so the caller can skip past
+  // legacy malformed keys without issuing more queries.
   return db
     .select({ sortOrder: schema.CustomField.sortOrder })
     .from(schema.CustomField)
     .where(and(...conditions))
     .orderBy(desc(schema.CustomField.sortOrder))
-    .limit(1)
+    .limit(20)
 }
 
 /**
@@ -242,6 +293,19 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     }
   }
 
+  // Validate AI options block (if present). Runs before options are built
+  // so we can reject an invalid payload without persisting anything.
+  const aiOptions = pickAiOptions(options)
+  const aiValidation = await validateAiOptions({
+    organizationId,
+    type,
+    ai: aiOptions,
+    selectOptions: pickSelectOptions(options),
+  })
+  if (aiValidation.isErr()) {
+    return aiValidation
+  }
+
   // Build field options for non-relationship types
   const fieldOptions: Record<string, any> = {
     icon,
@@ -253,8 +317,9 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     type === FieldTypeEnum.MULTI_SELECT ||
     type === FieldTypeEnum.TAGS
   ) {
-    if (options && Array.isArray(options)) {
-      fieldOptions.options = options
+    const selectOpts = pickSelectOptions(options)
+    if (selectOpts) {
+      fieldOptions.options = selectOpts
     }
   }
 
@@ -295,6 +360,12 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     Object.assign(fieldOptions, mergeDisplayOptions(type, options, {}))
   }
 
+  // Persist options.ai when present on an AI-eligible type (already
+  // validated above; non-eligible types reject before this point).
+  if (aiOptions) {
+    fieldOptions.ai = aiOptions
+  }
+
   // Get last field's sortOrder using provided db context
   const lastFieldResult = await fromDatabase(
     getLastFieldSortOrder(organizationId, dbModelType, entityDefinitionId, db),
@@ -306,8 +377,7 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     return lastFieldResult
   }
 
-  const lastSortOrder = lastFieldResult.value[0]?.sortOrder ?? null
-  const newSortOrder = generateKeyBetween(lastSortOrder, null)
+  const newSortOrder = generateKeyBetween(pickValidAnchor(lastFieldResult.value), null)
 
   // Determine capability flags based on field type and explicit inputs
   // CALC fields are computed and should not be manually creatable or updatable
@@ -436,8 +506,8 @@ async function createRelationshipFieldWithInverse(
       getLastFieldSortOrder(organizationId, inverseModelType, inverseEntityDefinitionId, tx),
     ])
 
-    const primarySortOrder = generateKeyBetween(primarySortResult[0]?.sortOrder ?? null, null)
-    const inverseSortOrder = generateKeyBetween(inverseSortResult[0]?.sortOrder ?? null, null)
+    const primarySortOrder = generateKeyBetween(pickValidAnchor(primarySortResult), null)
+    const inverseSortOrder = generateKeyBetween(pickValidAnchor(inverseSortResult), null)
 
     // Create primary field using tx
     // Initially set inverseResourceFieldId to null - will be updated after inverse field creation

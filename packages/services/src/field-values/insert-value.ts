@@ -34,6 +34,7 @@ export async function insertFieldValue(input: InsertFieldValueInput) {
         relatedEntityId: input.relatedEntityId ?? null,
         relatedEntityDefinitionId: input.relatedEntityDefinitionId ?? null,
         actorId: input.actorId ?? null,
+        aiStatus: input.aiStatus ?? null,
       })
       .returning(),
     'insert-field-value'
@@ -74,6 +75,7 @@ export async function batchInsertFieldValues(inputs: InsertFieldValueInput[]) {
       relatedEntityId: input.relatedEntityId ?? null,
       relatedEntityDefinitionId: input.relatedEntityDefinitionId ?? null,
       actorId: input.actorId ?? null,
+      aiStatus: input.aiStatus ?? null,
     }
   })
 

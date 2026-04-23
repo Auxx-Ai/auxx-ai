@@ -94,7 +94,14 @@ export type CredentialSourceType = 'SYSTEM' | 'CUSTOM' | 'MODEL_SPECIFIC' | 'LOA
 export type ProviderTypeValue = 'SYSTEM' | 'CUSTOM'
 
 /** Source of AI usage for tracking purposes */
-export type UsageSource = 'compose' | 'workflow' | 'dataset' | 'chat' | 'agent' | 'other'
+export type UsageSource =
+  | 'compose'
+  | 'workflow'
+  | 'dataset'
+  | 'chat'
+  | 'agent'
+  | 'autofill'
+  | 'other'
 
 export interface UsageTrackingRequest {
   organizationId: string

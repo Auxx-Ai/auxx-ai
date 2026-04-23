@@ -27,6 +27,14 @@ import {
   useRelationshipSync,
 } from './use-relationship-sync'
 
+/** Optional save-time flags threaded through the save variants. */
+interface SaveOptions {
+  /** Request AI stage-1 generation. Server short-circuits and enqueues a
+   *  BullMQ autofill job; the client keeps an optimistic 'generating' marker
+   *  until the realtime socket delivers the final value. */
+  ai?: boolean
+}
+
 /**
  * Resolve a field identifier to a FieldReference suitable for store key building.
  * If the identifier is a systemAttribute (e.g. 'vendor_part_vendor_sku'), returns
@@ -67,7 +75,8 @@ function prepareOptimisticUpdate(
   fieldId: FieldId,
   value: unknown,
   fieldType: FieldType,
-  getFieldMetadata?: (fieldId: FieldId) => FieldMetadata | undefined
+  getFieldMetadata?: (fieldId: FieldId) => FieldMetadata | undefined,
+  ai?: boolean
 ): OptimisticUpdatePrep {
   const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId))
   const store = useFieldValueStore.getState()
@@ -77,6 +86,24 @@ function prepareOptimisticUpdate(
 
   // Increment version BEFORE optimistic update (for race condition handling)
   const mutationVersion = store.incrementMutationVersion(key)
+
+  // AI stage-1: clear the typed value optimistically; shimmer + sparkle
+  // signal generation is in flight. The realtime stage-2 commit brings the
+  // final value. On error, the value stays null (see handleMutationError).
+  if (ai) {
+    store.setAiStateOptimistic(key, 'generating', {
+      requestedAt: new Date().toISOString(),
+    })
+    store.setValueOptimistic(key, null)
+    return {
+      key,
+      mutationVersion,
+      typedValue: null,
+      inverseInfo: null,
+      oldRelatedRecordIds: [],
+      newRelatedRecordIds: [],
+    }
+  }
 
   // Optimistic update to store (convert to TypedFieldValue format)
   const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
@@ -131,13 +158,24 @@ function prepareOptimisticUpdate(
 function handleMutationSuccess(
   key: FieldValueKey,
   mutationVersion: number,
-  result: { values?: Array<{ id?: string }> } | undefined,
+  result: { state?: string; values?: Array<{ id?: string }>; jobId?: string } | undefined,
   fieldType: FieldType
 ): boolean {
   const store = useFieldValueStore.getState()
   const currentVersion = store.getMutationVersion(key)
 
   if (mutationVersion < currentVersion) return false // Stale
+
+  // AI stage-1 response: the value was optimistically cleared; confirm both
+  // the value-pending flag and the 'generating' marker. The realtime socket
+  // will bring the final value + result marker when the worker commits
+  // stage 2, and that setValues call needs the pending flag cleared to not
+  // be skipped.
+  if (result?.state === 'generating') {
+    store.confirmOptimistic(key)
+    store.confirmAiStateOptimistic(key)
+    return true
+  }
 
   if (result?.values && result.values.length > 0) {
     // Static multi-value types (MULTI_SELECT, TAGS, etc.) always return arrays
@@ -173,14 +211,23 @@ function handleMutationError(
     newRelatedRecordIds: RecordId[]
     inverseInfo: InverseSyncInfo
   }) => void,
-  error: Error | unknown
+  error: Error | unknown,
+  ai?: boolean
 ): void {
   const store = useFieldValueStore.getState()
   const currentVersion = store.getMutationVersion(key)
 
   if (mutationVersion < currentVersion) return // Superseded
 
-  store.rollbackOptimistic(key)
+  if (ai) {
+    // Roll back only the AI marker. Intentionally do NOT rollback the
+    // optimistic value clear — a failed generation leaves the cell empty
+    // with an error badge, and users re-trigger to retry.
+    store.rollbackAiState(key)
+    store.confirmOptimistic(key)
+  } else {
+    store.rollbackOptimistic(key)
+  }
 
   // Rollback inverse cache (swap old/new to reverse)
   if (prep.inverseInfo) {
@@ -226,19 +273,23 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       recordId: RecordId,
       fieldId: string,
       value: StoredFieldValue | unknown,
-      fieldType: FieldType
+      fieldType: FieldType,
+      saveOpts?: SaveOptions
     ): void => {
       const normalizedRecordId = getNormalizedRecordId(recordId)
+      const ai = saveOpts?.ai === true
       const prep = prepareOptimisticUpdate(
         normalizedRecordId,
         fieldId as FieldId,
         value,
         fieldType,
-        getFieldMetadata
+        getFieldMetadata,
+        ai
       )
 
-      // Sync relationship cache
-      if (prep.inverseInfo) {
+      // Sync relationship cache (never for AI requests — stage-1 doesn't
+      // change relationship graph; stage-2 lands through realtime later.)
+      if (prep.inverseInfo && !ai) {
         syncInverseCache({
           sourceRecordId: normalizedRecordId,
           oldRelatedRecordIds: prep.oldRelatedRecordIds,
@@ -249,7 +300,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
       // Fire mutation
       mutation.mutate(
-        { recordId: normalizedRecordId, fieldId, value },
+        { recordId: normalizedRecordId, fieldId, value, ...(ai ? { ai: true } : {}) },
         {
           onSuccess: (result) => {
             if (handleMutationSuccess(prep.key, prep.mutationVersion, result, fieldType)) {
@@ -263,7 +314,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
               prep,
               normalizedRecordId,
               syncInverseCache,
-              error
+              error,
+              ai
             )
           },
         }
@@ -285,19 +337,22 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       recordId: RecordId,
       fieldId: string,
       value: StoredFieldValue | unknown,
-      fieldType: FieldType
+      fieldType: FieldType,
+      saveOpts?: SaveOptions
     ): Promise<{ success: boolean; id?: string } | undefined> => {
       const normalizedRecordId = getNormalizedRecordId(recordId)
+      const ai = saveOpts?.ai === true
       const prep = prepareOptimisticUpdate(
         normalizedRecordId,
         fieldId as FieldId,
         value,
         fieldType,
-        getFieldMetadata
+        getFieldMetadata,
+        ai
       )
 
       // Sync relationship cache
-      if (prep.inverseInfo) {
+      if (prep.inverseInfo && !ai) {
         syncInverseCache({
           sourceRecordId: normalizedRecordId,
           oldRelatedRecordIds: prep.oldRelatedRecordIds,
@@ -311,6 +366,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         recordId: normalizedRecordId,
         fieldId,
         value,
+        ...(ai ? { ai: true } : {}),
       })
 
       // Check if stale (a newer mutation was fired)
@@ -347,10 +403,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
   const saveMultipleAsync = useCallback(
     async (
       recordId: RecordId,
-      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
+      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>,
+      saveOpts?: SaveOptions
     ): Promise<boolean> => {
       const normalizedRecordId = getNormalizedRecordId(recordId)
       const store = useFieldValueStore.getState()
+      const ai = saveOpts?.ai === true
+      const requestedAt = ai ? new Date().toISOString() : undefined
 
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
@@ -358,20 +417,34 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         const key = buildFieldValueKey(normalizedRecordId, resolveFieldRef(fieldId))
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
-        const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
-        store.setValueOptimistic(key, typedValue)
+        if (ai) {
+          store.setAiStateOptimistic(key, 'generating', { requestedAt })
+          store.setValueOptimistic(key, null)
+        } else {
+          const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
+          store.setValueOptimistic(key, typedValue)
+        }
       }
 
       // Build API payload (keep original fieldIds — server resolves systemAttributes)
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       try {
-        await bulkMutation.mutateAsync({ recordIds: [normalizedRecordId], values: apiValues })
+        await bulkMutation.mutateAsync({
+          recordIds: [normalizedRecordId],
+          values: apiValues,
+          ...(ai ? { ai: true } : {}),
+        })
 
         const currentStore = useFieldValueStore.getState()
         for (const { key, version } of keyVersions) {
           if (version >= currentStore.getMutationVersion(key)) {
-            currentStore.confirmOptimistic(key)
+            if (ai) {
+              currentStore.confirmOptimistic(key)
+              currentStore.confirmAiStateOptimistic(key)
+            } else {
+              currentStore.confirmOptimistic(key)
+            }
           }
         }
         onSuccess?.()
@@ -380,7 +453,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         const currentStore = useFieldValueStore.getState()
         for (const { key, version } of keyVersions) {
           if (version >= currentStore.getMutationVersion(key)) {
-            currentStore.rollbackOptimistic(key)
+            if (ai) {
+              // Keep the optimistic null value — see handleMutationError.
+              currentStore.rollbackAiState(key)
+              currentStore.confirmOptimistic(key)
+            } else {
+              currentStore.rollbackOptimistic(key)
+            }
           }
         }
         const errorMessage = error instanceof Error ? error.message : 'Could not save field values'
@@ -403,32 +482,49 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       recordIds: RecordId[],
       fieldId: string,
       value: StoredFieldValue | unknown,
-      fieldType: FieldType
+      fieldType: FieldType,
+      saveOpts?: SaveOptions
     ): void => {
       const normalizedRecordIds = recordIds.map(getNormalizedRecordId)
       const store = useFieldValueStore.getState()
+      const ai = saveOpts?.ai === true
 
       // Build keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
-      const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
+      const typedValue = ai || !fieldType ? value : formatToTypedInput(value, fieldType)
 
       const resolvedRef = resolveFieldRef(fieldId)
+      const requestedAt = ai ? new Date().toISOString() : undefined
       for (const recordId of normalizedRecordIds) {
         const key = buildFieldValueKey(recordId, resolvedRef)
         const version = store.incrementMutationVersion(key)
         keyVersions.push({ key, version })
-        store.setValueOptimistic(key, typedValue)
+        if (ai) {
+          store.setAiStateOptimistic(key, 'generating', { requestedAt })
+          store.setValueOptimistic(key, null)
+        } else {
+          store.setValueOptimistic(key, typedValue)
+        }
       }
 
       // Fire mutation (keep original fieldId — server resolves systemAttributes)
       bulkMutation.mutate(
-        { recordIds: normalizedRecordIds, values: [{ fieldId, value }] },
+        {
+          recordIds: normalizedRecordIds,
+          values: [{ fieldId, value }],
+          ...(ai ? { ai: true } : {}),
+        },
         {
           onSuccess: () => {
             const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
-                currentStore.confirmOptimistic(key)
+                if (ai) {
+                  currentStore.confirmOptimistic(key)
+                  currentStore.confirmAiStateOptimistic(key)
+                } else {
+                  currentStore.confirmOptimistic(key)
+                }
               }
             }
             onSuccess?.()
@@ -437,7 +533,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
             const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
-                currentStore.rollbackOptimistic(key)
+                if (ai) {
+                  // Keep the optimistic null value — see handleMutationError.
+                  currentStore.rollbackAiState(key)
+                  currentStore.confirmOptimistic(key)
+                } else {
+                  currentStore.rollbackOptimistic(key)
+                }
               }
             }
             toastError({
@@ -459,10 +561,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
   const saveBulkMultipleFields = useCallback(
     (
       recordIds: RecordId[],
-      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
+      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>,
+      saveOpts?: SaveOptions
     ): void => {
       const normalizedRecordIds = recordIds.map(getNormalizedRecordId)
       const store = useFieldValueStore.getState()
+      const ai = saveOpts?.ai === true
+      const requestedAt = ai ? new Date().toISOString() : undefined
 
       // Build all keys, capture versions, and apply optimistic updates
       const keyVersions: Array<{ key: string; version: number }> = []
@@ -472,8 +577,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
           const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId))
           const version = store.incrementMutationVersion(key)
           keyVersions.push({ key, version })
-          const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
-          store.setValueOptimistic(key, typedValue)
+          if (ai) {
+            store.setAiStateOptimistic(key, 'generating', { requestedAt })
+            store.setValueOptimistic(key, null)
+          } else {
+            const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
+            store.setValueOptimistic(key, typedValue)
+          }
         }
       }
 
@@ -481,13 +591,22 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
 
       bulkMutation.mutate(
-        { recordIds: normalizedRecordIds, values: apiValues },
+        {
+          recordIds: normalizedRecordIds,
+          values: apiValues,
+          ...(ai ? { ai: true } : {}),
+        },
         {
           onSuccess: () => {
             const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
-                currentStore.confirmOptimistic(key)
+                if (ai) {
+                  currentStore.confirmOptimistic(key)
+                  currentStore.confirmAiStateOptimistic(key)
+                } else {
+                  currentStore.confirmOptimistic(key)
+                }
               }
             }
             onSuccess?.()
@@ -496,7 +615,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
             const currentStore = useFieldValueStore.getState()
             for (const { key, version } of keyVersions) {
               if (version >= currentStore.getMutationVersion(key)) {
-                currentStore.rollbackOptimistic(key)
+                if (ai) {
+                  // Keep the optimistic null value — see handleMutationError.
+                  currentStore.rollbackAiState(key)
+                  currentStore.confirmOptimistic(key)
+                } else {
+                  currentStore.rollbackOptimistic(key)
+                }
               }
             }
             toastError({

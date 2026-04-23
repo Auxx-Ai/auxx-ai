@@ -100,7 +100,7 @@ export function CustomFieldRow({
           </Badge>
         )}
       </TableCell>
-      <TableCell className='text-right py-1 w-[30px]'>
+      <TableCell className='text-right py-1 pr-4 w-[30px]'>
         <div className='flex justify-end gap-2'>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

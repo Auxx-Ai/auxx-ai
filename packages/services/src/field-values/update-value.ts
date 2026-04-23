@@ -29,6 +29,7 @@ export async function updateFieldValue(input: UpdateFieldValueInput) {
         relatedEntityId: updateData.relatedEntityId ?? null,
         relatedEntityDefinitionId: updateData.relatedEntityDefinitionId ?? null,
         actorId: updateData.actorId ?? null,
+        aiStatus: updateData.aiStatus ?? null,
       })
       .where(
         and(eq(schema.FieldValue.id, id), eq(schema.FieldValue.organizationId, organizationId))

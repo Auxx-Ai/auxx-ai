@@ -1,6 +1,7 @@
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { CustomFieldEntity as CustomField, FieldType } from '@auxx/database/types'
 import {
+  aiOptionsSchema,
   currencyOptionsSchema,
   fileOptionsSchema,
   type ModelType,
@@ -55,6 +56,13 @@ export interface FieldTypeOption {
   description: string
   minWidth?: number // Optional minimum width for input popover (in pixels)
   maxWidth?: number // Optional maximum width for input popover (in pixels)
+  /**
+   * Whether this field type can have AI generation enabled via `options.ai`.
+   * When true, the edit dialog shows the AI generation toggle and the value
+   * pipeline accepts stage-1 AI requests. When false or absent, the field
+   * is never AI-generatable.
+   */
+  canAiGenerate?: boolean
 }
 export const customFieldFormSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -123,6 +131,7 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     label: 'Text',
     iconId: 'text',
     description: 'Simple text input for short text entries',
+    canAiGenerate: true,
   },
   [FieldTypeEnum.NAME]: {
     label: 'Name',
@@ -135,6 +144,7 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     description: 'Numeric values only',
     minWidth: 120,
     maxWidth: 120,
+    canAiGenerate: true,
   },
   [FieldTypeEnum.CURRENCY]: {
     label: 'Currency',
@@ -151,11 +161,13 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     label: 'Email',
     iconId: 'mail',
     description: 'Email address with validation',
+    canAiGenerate: true,
   },
   [FieldTypeEnum.URL]: {
     label: 'URL',
     iconId: 'link',
     description: 'Web address with validation',
+    canAiGenerate: true,
   },
   [FieldTypeEnum.DATE]: {
     label: 'Date',
@@ -163,6 +175,7 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     description: 'Date picker for selecting dates',
     minWidth: 240,
     maxWidth: 240,
+    canAiGenerate: true,
   },
   [FieldTypeEnum.DATETIME]: {
     label: 'Date & Time',
@@ -184,6 +197,7 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     description: 'Simple yes/no or true/false option',
     minWidth: 70,
     maxWidth: 70,
+    canAiGenerate: true,
   },
   [FieldTypeEnum.TAGS]: {
     label: 'Tags',
@@ -206,11 +220,13 @@ export const fieldTypeOptions: Record<FieldType, FieldTypeOption> = {
     label: 'Select',
     iconId: 'list',
     description: 'Choose one option from a list',
+    canAiGenerate: true,
   },
   [FieldTypeEnum.MULTI_SELECT]: {
     label: 'Multi-Select',
     iconId: 'list-checks',
     description: 'Choose multiple options from a list',
+    canAiGenerate: true,
   },
   [FieldTypeEnum.RICH_TEXT]: {
     label: 'Rich Text Editor',
@@ -292,11 +308,13 @@ export const baseFieldOptionsSchema = z.object({
  */
 export const textFieldOptionsSchema = baseFieldOptionsSchema.extend({
   displayedMaxRows: z.number().int().min(1).max(10).optional(),
+  ai: aiOptionsSchema.optional(),
 })
 export const numberFieldOptionsSchema = baseFieldOptionsSchema.extend({
   min: z.number().optional(),
   max: z.number().optional(),
   step: z.number().optional(),
+  ai: aiOptionsSchema.optional(),
 })
 export const moneyFieldOptionsSchema = baseFieldOptionsSchema.extend({
   currencyCode: z.string().length(3).optional(),
@@ -308,17 +326,36 @@ export const phoneFieldOptionsSchema = baseFieldOptionsSchema.extend({
 })
 export const checkboxFieldOptionsSchema = baseFieldOptionsSchema.extend({
   label: z.string().optional(),
+  ai: aiOptionsSchema.optional(),
 })
+/**
+ * Shared by SINGLE_SELECT, MULTI_SELECT, and TAGS. The `ai` block is schema-
+ * permissive here; the runtime `canAiGenerate` gate blocks AI on TAGS.
+ */
 export const selectFieldOptionsSchema = baseFieldOptionsSchema.extend({
   options: z.array(selectOptionSchema).optional(),
+  ai: aiOptionsSchema.optional(),
 })
 export const addressFieldOptionsSchema = baseFieldOptionsSchema.extend({
   addressComponents: z.array(z.string()).optional(),
 })
+/**
+ * Shared by DATE, DATETIME, and TIME. The `ai` block is schema-permissive
+ * here; the runtime `canAiGenerate` gate blocks AI on DATETIME/TIME.
+ */
 export const dateFieldOptionsSchema = baseFieldOptionsSchema.extend({
   format: z.string().optional(),
   minDate: z.string().optional(),
   maxDate: z.string().optional(),
+  ai: aiOptionsSchema.optional(),
+})
+/** EMAIL-specific options — dedicated schema so AI stays off other base-schema types. */
+export const emailFieldOptionsSchema = baseFieldOptionsSchema.extend({
+  ai: aiOptionsSchema.optional(),
+})
+/** URL-specific options — dedicated schema so AI stays off other base-schema types. */
+export const urlFieldOptionsSchema = baseFieldOptionsSchema.extend({
+  ai: aiOptionsSchema.optional(),
 })
 export const relationshipFieldOptionsSchema = baseFieldOptionsSchema.extend({
   relationship: relationshipConfigSchema.optional(),
@@ -380,8 +417,8 @@ export const fieldTypeOptionsSchemaMap: Record<FieldType, z.ZodTypeAny> = {
   [FieldTypeEnum.NUMBER]: numberFieldOptionsSchema,
   [FieldTypeEnum.CURRENCY]: currencyFieldOptionsSchema,
   [FieldTypeEnum.PHONE_INTL]: phoneFieldOptionsSchema,
-  [FieldTypeEnum.EMAIL]: baseFieldOptionsSchema,
-  [FieldTypeEnum.URL]: baseFieldOptionsSchema,
+  [FieldTypeEnum.EMAIL]: emailFieldOptionsSchema,
+  [FieldTypeEnum.URL]: urlFieldOptionsSchema,
   [FieldTypeEnum.DATE]: dateFieldOptionsSchema,
   [FieldTypeEnum.DATETIME]: dateFieldOptionsSchema,
   [FieldTypeEnum.TIME]: dateFieldOptionsSchema,

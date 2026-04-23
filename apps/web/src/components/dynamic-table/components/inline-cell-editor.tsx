@@ -4,6 +4,7 @@
 import type { RecordId } from '@auxx/lib/resources/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { createContext, useContext, useEffect, useMemo, useRef } from 'react'
+import { AiEditorSparkle } from '~/components/fields/ai-overlay/ai-editor-sparkle'
 import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { PropertyProvider, usePropertyContext } from '~/components/fields/property-provider'
 import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-handlers'
@@ -74,7 +75,7 @@ export function InlineCellEditor({
  * Uses useFieldPopoverHandlers for consistent behavior with CellFieldEditor
  */
 function InlineCellEditorInner({ onClose }: { onClose: () => void }) {
-  const { field } = usePropertyContext()
+  const { field, recordId, value } = usePropertyContext()
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Use shared handlers - SAME as CellFieldEditorInner
@@ -86,15 +87,17 @@ function InlineCellEditorInner({ onClose }: { onClose: () => void }) {
   // Text-like fields need padding adjustments for visual alignment
   const isTextLikeType = ['TEXT', 'RICH_TEXT', 'EMAIL', 'URL'].includes(field.fieldType)
 
-  // Click outside detection - wired to shared handler
+  // Click outside detection - wired to shared handler.
+  // Capture phase so this fires before descendant cell handlers can stopPropagation
+  // (matches Radix's dismissable-layer pattern for the popover editor).
   useEffect(() => {
     const handlePointerDown = (e: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         handleOutsideEvent()
       }
     }
-    document.addEventListener('pointerdown', handlePointerDown)
-    return () => document.removeEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true)
   }, [handleOutsideEvent])
 
   // Escape key detection - wired to shared handler
@@ -120,6 +123,7 @@ function InlineCellEditorInner({ onClose }: { onClose: () => void }) {
         )}>
         <CellSelectionOverlay isSelected={false} isEditing={true} />
         <div className='w-full'>{InputComponent}</div>
+        <AiEditorSparkle field={field} recordId={recordId} value={value} onTrigger={onClose} />
       </div>
     </InlineEditorContext.Provider>
   )

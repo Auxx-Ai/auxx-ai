@@ -3,6 +3,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
+import { isAiEligible } from '@auxx/lib/custom-fields/client'
 import {
   type CustomFieldFormValues,
   customFieldFormSchema,
@@ -14,6 +15,7 @@ import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { canFieldBeUnique } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { Button, buttonVariants } from '@auxx/ui/components/button'
+import { AnimatedCollapsibleContent, CollapsibleChevron } from '@auxx/ui/components/collapsible'
 import {
   Dialog,
   DialogContent,
@@ -47,7 +49,7 @@ import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { ChevronsUpDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
@@ -62,6 +64,12 @@ import {
   parseActorOptions,
 } from './actor-options-editor'
 import { AddressComponentsEditor, parseAddressComponents } from './address-component-editor'
+import {
+  AiOptionsSection,
+  type AiSectionState,
+  formatAiOptions,
+  parseAiOptions,
+} from './ai-options-section'
 import {
   type CalcEditorOptions,
   CalcFieldEditor,
@@ -188,8 +196,10 @@ export function CustomFieldDialog({
   const [currencyOptions, setCurrencyOptions] = useState<CurrencyOptions>(parseCurrencyOptions())
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({})
   const [showDisplayOptions, setShowDisplayOptions] = useState(false)
+  const [showDescription, setShowDescription] = useState(false)
   const [calcOptions, setCalcOptions] = useState<CalcEditorOptions>(parseCalcOptions())
   const [actorOptions, setActorOptions] = useState<ActorFieldOptions>(getDefaultActorOptions())
+  const [aiState, setAiState] = useState<AiSectionState>(parseAiOptions())
   // State for inverse field name in edit mode
   const [inverseName, setInverseName] = useState('')
   // State for field type picker open
@@ -220,6 +230,21 @@ export function CustomFieldDialog({
       }))
   }, [resourceFields, editingField])
 
+  // AI-enabled sibling ids (excluded from the AI prompt picker to prevent
+  // AI→AI chains — decision T4.2). Derived from the same resourceFields
+  // query the CALC editor uses, so no extra network cost.
+  const aiSiblingFieldIds = useMemo(
+    () =>
+      resourceFields
+        .filter((f) => {
+          if (editingField && f.id === editingField.id) return false
+          const ai = (f.options as { ai?: { enabled?: boolean } } | null | undefined)?.ai
+          return ai?.enabled === true
+        })
+        .map((f) => f.id),
+    [resourceFields, editingField]
+  )
+
   // Track initial values for extra state (not managed by react-hook-form)
   const [initialExtraState, setInitialExtraState] = useState<{
     selectOptions: SelectOption[]
@@ -230,6 +255,7 @@ export function CustomFieldDialog({
     displayOptions: DisplayOptions
     calcOptions: CalcEditorOptions
     actorOptions: ActorFieldOptions
+    aiState: AiSectionState
     inverseName: string
   } | null>(null)
 
@@ -252,6 +278,7 @@ export function CustomFieldDialog({
       JSON.stringify(calcOptions) !== JSON.stringify(initialExtraState.calcOptions)
     const actorOptionsChanged =
       JSON.stringify(actorOptions) !== JSON.stringify(initialExtraState.actorOptions)
+    const aiStateChanged = JSON.stringify(aiState) !== JSON.stringify(initialExtraState.aiState)
     const inverseNameChanged = inverseName !== initialExtraState.inverseName
     return (
       selectOptionsChanged ||
@@ -262,6 +289,7 @@ export function CustomFieldDialog({
       displayOptionsChanged ||
       calcOptionsChanged ||
       actorOptionsChanged ||
+      aiStateChanged ||
       inverseNameChanged
     )
   }, [
@@ -273,6 +301,7 @@ export function CustomFieldDialog({
     displayOptions,
     calcOptions,
     actorOptions,
+    aiState,
     inverseName,
     initialExtraState,
   ])
@@ -308,6 +337,7 @@ export function CustomFieldDialog({
       let initDisplayOptions: DisplayOptions = {}
       let initCalcOptions: CalcEditorOptions = parseCalcOptions()
       let initActorOptions: ActorFieldOptions = getDefaultActorOptions()
+      let initAiState: AiSectionState = parseAiOptions()
       let initInverseName = ''
 
       if (editingField) {
@@ -352,9 +382,15 @@ export function CustomFieldDialog({
         initActorOptions = parseActorOptions(editingField.options as FieldOptions)
         setActorOptions(initActorOptions)
 
+        initAiState = parseAiOptions(editingField.options)
+        setAiState(initAiState)
+
         // Initialize inverse name from inverse field (will update when inverseField loads)
         initInverseName = inverseField?.label ?? ''
         setInverseName(initInverseName)
+
+        // Auto-expand description panel if the field already has one
+        setShowDescription(Boolean(editingField.description))
       } else {
         // Create mode: reset to defaults
         form.reset({
@@ -377,7 +413,9 @@ export function CustomFieldDialog({
         setShowDisplayOptions(false)
         setCalcOptions(initCalcOptions)
         setActorOptions(initActorOptions)
+        setAiState(initAiState)
         setInverseName(initInverseName)
+        setShowDescription(false)
       }
 
       // Set baseline for dirty checking
@@ -390,6 +428,7 @@ export function CustomFieldDialog({
         displayOptions: initDisplayOptions,
         calcOptions: initCalcOptions,
         actorOptions: initActorOptions,
+        aiState: initAiState,
         inverseName: initInverseName,
       })
     }
@@ -442,6 +481,12 @@ export function CustomFieldDialog({
       setDisplayOptions({})
       setShowDisplayOptions(false)
     }
+    // Drop AI options if the new type isn't AI-eligible — applies in both
+    // create and edit modes so a TEXT→CALC switch can't leave a stranded
+    // enabled=true block on the field.
+    if (!isAiEligible(selectedType) && aiState.enabled) {
+      setAiState({ ...aiState, enabled: false })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedType, isEditing])
 
@@ -454,7 +499,8 @@ export function CustomFieldDialog({
 
     // Add type-specific options using format helpers
     if (values.type === FieldType.SINGLE_SELECT || values.type === FieldType.MULTI_SELECT) {
-      submitObj.options = selectOptions
+      const aiBlock = isAiEligible(values.type) ? formatAiOptions(aiState) : undefined
+      submitObj.options = aiBlock ? { options: selectOptions, ai: aiBlock } : selectOptions
     }
 
     if (values.type === FieldType.ADDRESS_STRUCT) {
@@ -493,6 +539,25 @@ export function CustomFieldDialog({
     const formattedDisplayOptions = formatDisplayOptions(displayOptions)
     if (Object.keys(formattedDisplayOptions).length > 0) {
       submitObj.options = { ...submitObj.options, ...formattedDisplayOptions }
+    }
+
+    // Merge AI options for AI-eligible non-SELECT types. SELECT types fold
+    // the ai block into `{ options, ai }` above since they also carry a
+    // choice list. When enabled=false, formatAiOptions returns undefined
+    // so we naturally skip / drop the key on toggle-off.
+    if (
+      isAiEligible(values.type) &&
+      values.type !== FieldType.SINGLE_SELECT &&
+      values.type !== FieldType.MULTI_SELECT
+    ) {
+      const aiBlock = formatAiOptions(aiState)
+      if (aiBlock) {
+        submitObj.options = { ...submitObj.options, ai: aiBlock }
+      } else if (submitObj.options && 'ai' in submitObj.options) {
+        // Drop a stale ai block when the user toggled off in edit mode.
+        const { ai: _ai, ...rest } = submitObj.options as { ai?: unknown }
+        submitObj.options = rest
+      }
     }
 
     try {
@@ -539,6 +604,8 @@ export function CustomFieldDialog({
         setShowDisplayOptions(false)
         setCalcOptions(parseCalcOptions())
         setActorOptions(getDefaultActorOptions())
+        setAiState(parseAiOptions())
+        setShowDescription(false)
       } else {
         onOpenChange(false)
       }
@@ -647,20 +714,18 @@ export function CustomFieldDialog({
     if (!supportsDisplayOptions(selectedType)) return null
 
     return (
-      <div className='space-y-3'>
+      <div>
         <Button
           type='button'
           variant='outline'
           className='w-full justify-between'
           onClick={() => setShowDisplayOptions(!showDisplayOptions)}>
           <span>Display Options</span>
-          <ChevronDown
-            className={`size-4 transition-transform ${showDisplayOptions ? 'rotate-180' : ''}`}
-          />
+          <CollapsibleChevron open={showDisplayOptions} />
         </Button>
-        {showDisplayOptions && (
-          <div className='rounded-lg border p-3'>{renderDisplayOptionsContent()}</div>
-        )}
+        <AnimatedCollapsibleContent open={showDisplayOptions}>
+          <div className='mt-3 rounded-lg border p-3'>{renderDisplayOptionsContent()}</div>
+        </AnimatedCollapsibleContent>
       </div>
     )
   }
@@ -841,73 +906,93 @@ export function CustomFieldDialog({
                       control={form.control}
                       name='description'
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Description (Optional)</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              placeholder='Description or help text for this field'
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
+                        <FormItem className='space-y-0'>
+                          <button
+                            type='button'
+                            onClick={() => setShowDescription(!showDescription)}
+                            className='flex cursor-pointer items-center gap-1 text-sm font-medium'>
+                            <FormLabel className='cursor-pointer'>Description (Optional)</FormLabel>
+                            <CollapsibleChevron open={showDescription} />
+                          </button>
+                          <AnimatedCollapsibleContent open={showDescription}>
+                            <div className='mt-2 space-y-2'>
+                              <FormControl>
+                                <Textarea
+                                  placeholder='Description or help text for this field'
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </div>
+                          </AnimatedCollapsibleContent>
                         </FormItem>
                       )}
                     />
                   </>
                 )}
 
-                {/* Required Switch - hide for certain field types */}
-                {!TYPES_WITHOUT_REQUIRED.includes(selectedType) && (
-                  <FormField
-                    control={form.control}
-                    name='required'
-                    render={({ field }) => (
-                      <FormItem className='flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5'>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            size='sm'
-                          />
-                        </FormControl>
-                        <div className='space-y-1 leading-none'>
-                          <FormLabel>Required Field</FormLabel>
-                          <FormDescription>Make this field mandatory</FormDescription>
-                        </div>
-                      </FormItem>
+                {/* Required + Unique side-by-side (Unique hidden when field type doesn't support it) */}
+                {(!TYPES_WITHOUT_REQUIRED.includes(selectedType) ||
+                  canFieldBeUnique(selectedType, relationshipOptions.relationshipType)) && (
+                  <div className='grid grid-cols-2 gap-3'>
+                    {!TYPES_WITHOUT_REQUIRED.includes(selectedType) && (
+                      <FormField
+                        control={form.control}
+                        name='required'
+                        render={({ field }) => (
+                          <FormItem
+                            className='flex cursor-pointer flex-row items-center justify-between space-y-0 rounded-xl border px-3 py-2.5'
+                            onClick={() => field.onChange(!field.value)}>
+                            <div className='space-y-0.5 leading-none'>
+                              <FormLabel className='cursor-pointer'>Required Field</FormLabel>
+                              <FormDescription>Make this field mandatory</FormDescription>
+                            </div>
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  size='sm'
+                                />
+                              </FormControl>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
                     )}
-                  />
-                )}
-
-                {/* Unique Switch - only shown for uniqueable field types */}
-                {canFieldBeUnique(selectedType, relationshipOptions.relationshipType) && (
-                  <FormField
-                    control={form.control}
-                    name='isUnique'
-                    render={({ field }) => (
-                      <FormItem className='flex flex-row items-center space-x-3 space-y-0 rounded-xl border px-3 py-1.5'>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            size='sm'
-                          />
-                        </FormControl>
-                        <div className='space-y-1 leading-none'>
-                          <FormLabel>Unique Value</FormLabel>
-                          <FormDescription>
-                            Only one record can have this value. Can be used to match records during
-                            import.
-                            {isEditing && !editingField?.isUnique && field.value && (
-                              <span className='block mt-1 text-orange-500'>
-                                Existing values will be checked for duplicates and may error.
-                              </span>
-                            )}
-                          </FormDescription>
-                        </div>
-                      </FormItem>
+                    {canFieldBeUnique(selectedType, relationshipOptions.relationshipType) && (
+                      <FormField
+                        control={form.control}
+                        name='isUnique'
+                        render={({ field }) => (
+                          <FormItem
+                            className='flex cursor-pointer flex-row items-center justify-between space-y-0 rounded-xl border px-3 py-2.5'
+                            onClick={() => field.onChange(!field.value)}>
+                            <div className='space-y-0.5 leading-none'>
+                              <FormLabel className='cursor-pointer'>Unique Value</FormLabel>
+                              <FormDescription>
+                                Prevent duplicate values
+                                {isEditing && !editingField?.isUnique && field.value && (
+                                  <span className='block mt-1 text-orange-500'>
+                                    Existing values will be checked for duplicates and may error.
+                                  </span>
+                                )}
+                              </FormDescription>
+                            </div>
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  size='sm'
+                                />
+                              </FormControl>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
                     )}
-                  />
+                  </div>
                 )}
 
                 {/* Type-specific editors */}
@@ -918,6 +1003,26 @@ export function CustomFieldDialog({
 
                 {/* Display options editors for supported field types */}
                 {renderDisplayOptionsEditor()}
+
+                {/* AI generation — conditional on AI-eligibility of selected type. */}
+                {isAiEligible(selectedType) && (
+                  <AiOptionsSection
+                    state={aiState}
+                    onChange={setAiState}
+                    entityDefinitionId={effectiveEntityDefId}
+                    currentFieldId={editingField?.id}
+                    aiSiblingFieldIds={aiSiblingFieldIds}
+                    availableFields={calcAvailableFields}
+                    fieldType={selectedType}
+                    fieldOptions={
+                      selectedType === FieldType.SINGLE_SELECT ||
+                      selectedType === FieldType.MULTI_SELECT
+                        ? { options: selectOptions }
+                        : undefined
+                    }
+                    fieldName={form.watch('name')}
+                  />
+                )}
               </FieldGroup>
 
               <DialogFooter className='sm:justify-between'>

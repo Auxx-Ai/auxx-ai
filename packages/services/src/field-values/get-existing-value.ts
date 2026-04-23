@@ -30,6 +30,7 @@ export async function getExistingFieldValue(input: GetExistingValueInput) {
         relatedEntityId: schema.FieldValue.relatedEntityId,
         relatedEntityDefinitionId: schema.FieldValue.relatedEntityDefinitionId,
         sortKey: schema.FieldValue.sortKey,
+        aiStatus: schema.FieldValue.aiStatus,
       })
       .from(schema.FieldValue)
       .where(

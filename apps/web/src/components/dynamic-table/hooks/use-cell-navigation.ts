@@ -63,10 +63,25 @@ export function useCellNavigation<TData>({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (editingCell || !enabled) return
-      if (!scrollContainerRef.current?.contains(e.target as Node)) return
+
+      // Don't hijack when the user is typing in a real input/textarea/contentEditable.
+      // Our own hidden paste sink is allowed through.
+      const target = e.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        const isOurSink = target.hasAttribute?.('data-auxx-paste-sink')
+        if (!isOurSink && (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable)) {
+          return
+        }
+      }
 
       const store = useSelectionStore.getState()
       const currentRange = store.getRange(tableId)
+
+      // Gate on range presence, not DOM focus. When a range is active (or we have
+      // a remembered last position) the table owns these keys even if focus is on
+      // the body or the scroll viewport. Mirrors use-cell-clipboard.ts.
+      if (!currentRange && !lastPositionRef.current) return
 
       const rows = table.getRowModel().rows
       const columns = table.getVisibleLeafColumns().filter((col) => col.id !== '_checkbox')
@@ -198,7 +213,7 @@ export function useCellNavigation<TData>({
       }
       scrollCellIntoView(newRow.id, newCol.id, direction)
     },
-    [table, tableId, editingCell, enabled, scrollCellIntoView, scrollContainerRef]
+    [table, tableId, editingCell, enabled, scrollCellIntoView]
   )
 
   useEffect(() => {

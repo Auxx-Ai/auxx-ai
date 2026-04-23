@@ -1,0 +1,1 @@
+ALTER TABLE "FieldValue" ADD COLUMN "aiStatus" text;

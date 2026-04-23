@@ -41,4 +41,6 @@ export enum Queues {
   recordingBotQueue = 'recording-bot',
   // Recording media processing queue (download + S3 upload)
   recordingProcessingQueue = 'recording-processing',
+  // AI autofill queue (per-field AI generation jobs)
+  aiAutofillQueue = 'ai-autofill',
 }

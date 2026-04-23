@@ -3,8 +3,8 @@
 
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { ActorFieldOptions } from '@auxx/types/field'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { AnimatedCollapsibleContent } from '@auxx/ui/components/collapsible'
 import { Label } from '@auxx/ui/components/label'
 import {
   Select,
@@ -17,6 +17,13 @@ import { Switch } from '@auxx/ui/components/switch'
 
 // Re-export ActorFieldOptions for convenience
 export type { ActorFieldOptions }
+
+/**
+ * Feature flag: show group-based actor targeting UI (target selector + group
+ * filter). Kept off until group management ships — flip to `true` to re-enable
+ * the "Who can be assigned?" selector and the Groups filter block.
+ */
+const ACTOR_GROUPS_ENABLED = false
 
 /** Human-readable labels for ActorTarget values */
 const TARGET_OPTIONS = [
@@ -60,9 +67,6 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
   /** Whether to show the roles filter (only when target includes users) */
   const showRolesFilter = options.target === 'user' || options.target === 'both'
 
-  /** Whether to show the groups filter (only when target includes groups) */
-  const showGroupsFilter = options.target === 'group' || options.target === 'both'
-
   /** Toggle a role in the roles array */
   const toggleRole = (role: 'OWNER' | 'ADMIN' | 'USER') => {
     const currentRoles = options.roles ?? []
@@ -74,57 +78,66 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
 
   return (
     <div className='space-y-4'>
-      {/* Target Selector */}
-      <div className='space-y-2'>
-        <Label>Who can be assigned?</Label>
-        <Select
-          value={options.target}
-          onValueChange={(v) => {
-            updateOption('target', v as ActorFieldOptions['target'])
-            // Clear roles/groupIds when target changes
-            if (v === 'user') {
-              updateOption('groupIds', undefined)
-            } else if (v === 'group') {
-              updateOption('roles', undefined)
-            }
-          }}
-          disabled={isEditMode}>
-          <SelectTrigger>
-            <SelectValue placeholder='Select target type' />
-          </SelectTrigger>
-          <SelectContent>
-            {TARGET_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                <div>
-                  <span className='font-medium'>{opt.label}</span>
-                  <span className='text-xs text-muted-foreground ml-2'>{opt.description}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {isEditMode && (
-          <p className='text-xs text-muted-foreground'>
-            Target type cannot be changed after field creation.
-          </p>
-        )}
-      </div>
+      {/* Target Selector — gated behind ACTOR_GROUPS_ENABLED */}
+      {ACTOR_GROUPS_ENABLED && (
+        <div className='space-y-2'>
+          <Label>Who can be assigned?</Label>
+          <Select
+            value={options.target}
+            onValueChange={(v) => {
+              updateOption('target', v as ActorFieldOptions['target'])
+              // Clear roles/groupIds when target changes
+              if (v === 'user') {
+                updateOption('groupIds', undefined)
+              } else if (v === 'group') {
+                updateOption('roles', undefined)
+              }
+            }}
+            disabled={isEditMode}>
+            <SelectTrigger>
+              <SelectValue placeholder='Select target type' />
+            </SelectTrigger>
+            <SelectContent>
+              {TARGET_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  <div>
+                    <span className='font-medium'>{opt.label}</span>
+                    <span className='text-xs text-muted-foreground ml-2'>{opt.description}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isEditMode && (
+            <p className='text-xs text-muted-foreground'>
+              Target type cannot be changed after field creation.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Multiple Switch */}
-      <div className='flex items-center justify-between rounded-lg border px-4 py-3'>
-        <div className='space-y-0.5'>
-          <Label>Allow Multiple Selection</Label>
+      <div
+        className={`flex flex-row items-center justify-between space-y-0 rounded-xl border px-3 py-2.5${isEditMode ? '' : ' cursor-pointer'}`}
+        onClick={
+          isEditMode ? undefined : () => updateOption('multiple', !(options.multiple ?? false))
+        }>
+        <div className='space-y-0.5 leading-none'>
+          <Label className={isEditMode ? undefined : 'cursor-pointer'}>
+            Allow Multiple Selection
+          </Label>
           <p className='text-xs text-muted-foreground'>
-            {options.multiple
-              ? 'Multiple users/groups can be assigned'
-              : 'Only one user/group can be assigned'}
+            {options.multiple ? 'Multiple users can be assigned' : 'Only one user can be assigned'}
           </p>
         </div>
-        <Switch
-          checked={options.multiple}
-          onCheckedChange={(checked) => updateOption('multiple', checked)}
-          disabled={isEditMode}
-        />
+        <div onClick={(e) => e.stopPropagation()}>
+          <Switch
+            size='sm'
+            checked={options.multiple}
+            onCheckedChange={(checked) => updateOption('multiple', checked)}
+            disabled={isEditMode}
+          />
+        </div>
       </div>
       {isEditMode && options.multiple !== undefined && (
         <p className='text-xs text-muted-foreground -mt-2 px-1'>
@@ -134,15 +147,30 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
 
       {/* Roles Filter (optional) */}
       {showRolesFilter && (
-        <Card>
-          <CardHeader className='py-3 px-4'>
-            <CardTitle className='text-sm font-medium'>Limit to Roles (Optional)</CardTitle>
-          </CardHeader>
-          <CardContent className='px-4 pb-4'>
-            <p className='text-xs text-muted-foreground mb-3'>Leave unchecked to allow all roles</p>
-            <div className='flex flex-wrap gap-4'>
+        <div className='rounded-xl border px-3 py-2.5'>
+          <div
+            className='flex cursor-pointer items-center justify-between'
+            onClick={() => updateOption('roles', options.roles === undefined ? [] : undefined)}>
+            <div className='space-y-0.5 leading-none'>
+              <Label className='cursor-pointer text-sm font-medium'>Limit to Roles</Label>
+              <p className='text-xs text-muted-foreground'>
+                {options.roles === undefined
+                  ? 'All roles can be assigned'
+                  : 'Only selected roles can be assigned'}
+              </p>
+            </div>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Switch
+                size='sm'
+                checked={options.roles !== undefined}
+                onCheckedChange={(checked) => updateOption('roles', checked ? [] : undefined)}
+              />
+            </div>
+          </div>
+          <AnimatedCollapsibleContent open={options.roles !== undefined}>
+            <div className='mt-3 flex flex-wrap gap-4 border-t pt-3'>
               {ROLE_OPTIONS.map((role) => (
-                <label key={role.value} className='flex items-center gap-2 cursor-pointer'>
+                <label key={role.value} className='flex cursor-pointer items-center gap-2'>
                   <Checkbox
                     checked={options.roles?.includes(role.value) ?? false}
                     onCheckedChange={() => toggleRole(role.value)}
@@ -151,24 +179,8 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
                 </label>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Groups Filter (optional) - placeholder for future implementation */}
-      {showGroupsFilter && (
-        <Card>
-          <CardHeader className='py-3 px-4'>
-            <CardTitle className='text-sm font-medium'>Limit to Groups (Optional)</CardTitle>
-          </CardHeader>
-          <CardContent className='px-4 pb-4'>
-            <p className='text-xs text-muted-foreground'>
-              Group selection will be available in a future update. Currently, all accessible groups
-              will be available for selection.
-            </p>
-            {/* TODO: Add group multi-select picker */}
-          </CardContent>
-        </Card>
+          </AnimatedCollapsibleContent>
+        </div>
       )}
     </div>
   )
