@@ -2,9 +2,11 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
+import { isAiEligible } from '@auxx/lib/custom-fields/client'
 import { converters } from '@auxx/lib/field-values/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
+import type { AiOptions } from '@auxx/types/custom-field'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
@@ -500,7 +502,7 @@ export function RecordsView({
   )
 
   /** Bulk writer used by range delete / paste (Phase 2). */
-  const { saveBulkMultipleFields } = useSaveFieldValue()
+  const { saveBulkMultipleFields, saveBulkValues } = useSaveFieldValue()
 
   /**
    * Cell selection configuration for inline editing
@@ -779,8 +781,53 @@ export function RecordsView({
         }
         return { skipped }
       },
+      /**
+       * Fill-handle gate: is this column an AI-enabled custom field? Drag
+       * across the fill-handle routes through `saveAiCells` for these
+       * columns rather than coercing the source value.
+       */
+      isAiField: (columnId) => {
+        const field = resolveField(columnId)
+        if (!field?.fieldType) return false
+        if (!isAiEligible(field.fieldType)) return false
+        const ai = (field.options as { ai?: AiOptions } | null | undefined)?.ai
+        return ai?.enabled === true
+      },
+      /**
+       * Kick stage-1 AI autofill for the given (row, column) targets.
+       * Grouped by column so each AI column fires one `setBulk` with
+       * `ai: true`; server fans out to per-cell `setValueWithBuiltIn`
+       * short-circuits that enqueue BullMQ jobs.
+       */
+      saveAiCells: async (cells) => {
+        if (!entityDefinitionId || cells.length === 0) return { skipped: 0 }
+
+        let skipped = 0
+        const byCol = new Map<string, string[]>()
+        for (const { rowId, columnId } of cells) {
+          const field = resolveField(columnId)
+          if (!field || field.capabilities?.updatable === false || !field.fieldType) {
+            skipped++
+            continue
+          }
+          if (!isAiEligible(field.fieldType)) {
+            skipped++
+            continue
+          }
+          if (!byCol.has(columnId)) byCol.set(columnId, [])
+          byCol.get(columnId)!.push(rowId)
+        }
+
+        for (const [columnId, rowIds] of byCol.entries()) {
+          const field = resolveField(columnId)
+          if (!field?.fieldType) continue
+          const recordIds = rowIds.map((id) => toRecordId(entityDefinitionId, id))
+          saveBulkValues(recordIds, columnId, null, field.fieldType as FieldType, { ai: true })
+        }
+        return { skipped }
+      },
     }
-  }, [getValue, entityDefinitionId, fieldMap, saveBulkMultipleFields])
+  }, [getValue, entityDefinitionId, fieldMap, saveBulkMultipleFields, saveBulkValues])
 
   /**
    * Empty state component

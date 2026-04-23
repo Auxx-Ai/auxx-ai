@@ -1,5 +1,6 @@
 // apps/web/src/components/resources/store/field-value-fetch-queue.ts
 
+import type { AiStatus, AiValueMetadata } from '@auxx/lib/realtime/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils/generateId'
@@ -215,11 +216,19 @@ class FieldValueFetchQueue {
 
       // Build entries map from results
       const entriesMap = new Map<FieldValueKey, StoredFieldValue>()
+      const aiEntries: Array<{
+        key: FieldValueKey
+        aiStatus: AiStatus
+        aiMetadata: AiValueMetadata | null
+      }> = []
       for (const result of results) {
         if (result.status === 'fulfilled') {
           for (const v of result.value.values) {
             const key = buildFieldValueKey(v.recordId as RecordId, v.fieldRef)
             entriesMap.set(key, v.value)
+            if (v.aiStatus != null) {
+              aiEntries.push({ key, aiStatus: v.aiStatus, aiMetadata: v.aiMetadata ?? null })
+            }
           }
         } else {
           console.warn('[FieldValueFetchQueue] Chunk fetch failed:', result.reason)
@@ -248,6 +257,12 @@ class FieldValueFetchQueue {
       }
 
       useFieldValueStore.getState().setValues(entries)
+
+      // Rehydrate AI markers so sparkle badges survive refresh.
+      const setAiState = useFieldValueStore.getState().setAiState
+      for (const entry of aiEntries) {
+        setAiState(entry.key, entry.aiStatus, entry.aiMetadata)
+      }
     } catch (error) {
       console.error('[FieldValueFetchQueue] Fetch failed:', error)
     } finally {

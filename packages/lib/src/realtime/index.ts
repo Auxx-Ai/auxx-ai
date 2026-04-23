@@ -14,7 +14,10 @@ export function getRealtimeService(): RealtimeService {
 }
 
 export type {
+  AiStatus,
+  AiValueMetadata,
   FieldValuesUpdatedEvent,
+  FieldValueUpdateEntry,
   RecordArchivedEvent,
   RecordCreatedEvent,
   RecordDeletedEvent,

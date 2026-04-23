@@ -117,6 +117,21 @@ export interface CellSelectionConfig {
     cells: Array<{ rowId: string; columnId: string }>
   ) => Promise<BulkWriteResult> | BulkWriteResult
   /**
+   * Whether a column is an AI-enabled custom field (`options.ai?.enabled` on
+   * an AI-eligible type). The fill-handle uses this to route a drag over an
+   * AI column to `saveAiCells` instead of copying the source value.
+   */
+  isAiField?: (columnId: string) => boolean
+  /**
+   * AI autofill bulk write — fires per-row stage-1 generation for the
+   * provided cells. Values are ignored (the server short-circuits and
+   * enqueues a BullMQ job for each pair). Only invoked by the fill-handle
+   * when the target column returns `true` from `isAiField`.
+   */
+  saveAiCells?: (
+    cells: Array<{ rowId: string; columnId: string }>
+  ) => Promise<BulkWriteResult> | BulkWriteResult
+  /**
    * Format a single cell for copy. Returns `{display, raw?, fieldType?, primaryDisplay?, recordId?}`
    * or `null` to fall back to generic formatting. Enables type-aware copy that
    * preserves structure for auxx-to-auxx paste.

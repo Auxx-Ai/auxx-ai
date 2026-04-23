@@ -1,5 +1,6 @@
 // apps/web/src/stores/custom-field-value-store.ts
 
+import type { AiStatus, AiValueMetadata } from '@auxx/lib/realtime/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import {
   buildFieldValueKey,
@@ -18,6 +19,9 @@ import type { TypedFieldValue } from '@auxx/types/field-value'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { computeDependentCalcValues } from './calc-value-computer'
+
+// Re-export AI types for overlay components that read from the store
+export type { AiStatus, AiValueMetadata } from '@auxx/lib/realtime/client'
 
 // Re-export FieldValueKey from @auxx/types/field for consumers that import from this file
 export type { FieldValueKey } from '@auxx/types/field'
@@ -43,6 +47,23 @@ interface PendingUpdate {
   original: StoredFieldValue
 }
 
+/**
+ * Per-cell AI generation state. Kept in a parallel slice (rather than wedged
+ * onto `StoredFieldValue`, which is a value alias, not an object wrapper) so
+ * cell overlays can subscribe to AI marker changes without touching the
+ * value cache. `aiStatus` undefined means "not AI-generated" (no marker);
+ * any non-undefined value means the cell carries AI chrome.
+ */
+export interface AiCellState {
+  status: AiStatus
+  metadata?: AiValueMetadata
+}
+
+interface PendingAiState {
+  state: AiCellState | undefined
+  original: AiCellState | undefined
+}
+
 interface CustomFieldValueState {
   /** Cached values by composite key (use Record for Zustand reactivity) */
   values: Record<FieldValueKey, StoredFieldValue>
@@ -55,6 +76,16 @@ interface CustomFieldValueState {
 
   /** Pending optimistic updates (key → {newValue, originalValue}) */
   pendingUpdates: Record<FieldValueKey, PendingUpdate>
+
+  /**
+   * AI generation marker state per key. Parallel slice to `values` — the
+   * overlay component reads this, the save hook / realtime handler write it.
+   * Keys without an entry have no AI marker (treat as `initial` / `manual`).
+   */
+  aiStates: Record<FieldValueKey, AiCellState>
+
+  /** Pending optimistic AI markers (for rollback on mutation error). */
+  pendingAiStates: Record<FieldValueKey, PendingAiState>
 
   /** Mutation version per key - incremented on each mutation initiation for race condition handling */
   mutationVersions: Record<FieldValueKey, number>
@@ -80,6 +111,36 @@ interface CustomFieldValueState {
 
   /** Rollback optimistic update on error */
   rollbackOptimistic: (key: FieldValueKey) => void
+
+  // ─────────────────────────────────────────────────────────────────
+  // AI STATE SETTERS
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Apply a confirmed AI marker to a cell (from realtime / server result).
+   * `status=null` clears the marker; otherwise sets status + metadata.
+   */
+  setAiState: (
+    key: FieldValueKey,
+    status: AiStatus | null,
+    metadata?: AiValueMetadata | null
+  ) => void
+
+  /**
+   * Optimistically set an AI marker while a stage-1 mutation is in flight.
+   * Stores the previous marker so `rollbackAiState` can restore it if the
+   * mutation errors.
+   */
+  setAiStateOptimistic: (key: FieldValueKey, status: AiStatus, metadata?: AiValueMetadata) => void
+
+  /** Drop the pending marker after the mutation confirms (no value swap). */
+  confirmAiStateOptimistic: (key: FieldValueKey) => void
+
+  /** Restore the pre-optimistic AI marker (or clear if there was none). */
+  rollbackAiState: (key: FieldValueKey) => void
+
+  /** Remove any AI marker (same as `setAiState(key, null)`). */
+  clearAiState: (key: FieldValueKey) => void
 
   /** Mark a batch of keys as loading */
   startLoading: (batchId: string, keys: FieldValueKey[]) => void
@@ -202,6 +263,8 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
     loadingBatches: {},
     updatedAt: {},
     pendingUpdates: {},
+    aiStates: {},
+    pendingAiStates: {},
     mutationVersions: {},
     fetchingKeys: {},
 
@@ -306,6 +369,69 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       })
     },
 
+    // ─── AI STATE ───────────────────────────────────────────────────
+
+    setAiState: (key, status, metadata) => {
+      set((state) => {
+        if (status === null) {
+          if (!(key in state.aiStates)) return state
+          const { [key]: _, ...rest } = state.aiStates
+          return { aiStates: rest }
+        }
+        return {
+          aiStates: {
+            ...state.aiStates,
+            [key]: { status, metadata: metadata ?? undefined },
+          },
+        }
+      })
+    },
+
+    setAiStateOptimistic: (key, status, metadata) => {
+      set((state) => {
+        const original = state.aiStates[key]
+        const next: AiCellState = { status, metadata }
+        return {
+          aiStates: { ...state.aiStates, [key]: next },
+          pendingAiStates: {
+            ...state.pendingAiStates,
+            [key]: { state: next, original },
+          },
+        }
+      })
+    },
+
+    confirmAiStateOptimistic: (key) => {
+      set((state) => {
+        if (!(key in state.pendingAiStates)) return state
+        const { [key]: _, ...rest } = state.pendingAiStates
+        return { pendingAiStates: rest }
+      })
+    },
+
+    rollbackAiState: (key) => {
+      set((state) => {
+        const pending = state.pendingAiStates[key]
+        if (!pending) return state
+        const { [key]: _, ...restPending } = state.pendingAiStates
+        const newAiStates = { ...state.aiStates }
+        if (pending.original) {
+          newAiStates[key] = pending.original
+        } else {
+          delete newAiStates[key]
+        }
+        return { aiStates: newAiStates, pendingAiStates: restPending }
+      })
+    },
+
+    clearAiState: (key) => {
+      set((state) => {
+        if (!(key in state.aiStates)) return state
+        const { [key]: _, ...rest } = state.aiStates
+        return { aiStates: rest }
+      })
+    },
+
     startLoading: (batchId, keys) => {
       set((state) => ({
         loadingBatches: {
@@ -338,15 +464,17 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       set((state) => {
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
+        const newAiStates = { ...state.aiStates }
 
         for (const key of Object.keys(newValues)) {
           if (fieldValueKeyMatchesResource(key as FieldValueKey, recordId)) {
             delete newValues[key as FieldValueKey]
             delete newUpdatedAt[key as FieldValueKey]
+            delete newAiStates[key as FieldValueKey]
           }
         }
 
-        return { values: newValues, updatedAt: newUpdatedAt }
+        return { values: newValues, updatedAt: newUpdatedAt, aiStates: newAiStates }
       })
     },
 
@@ -354,15 +482,17 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       set((state) => {
         const newValues = { ...state.values }
         const newUpdatedAt = { ...state.updatedAt }
+        const newAiStates = { ...state.aiStates }
 
         for (const key of Object.keys(newValues)) {
           if (fieldValueKeyMatchesField(key as FieldValueKey, fieldRef)) {
             delete newValues[key as FieldValueKey]
             delete newUpdatedAt[key as FieldValueKey]
+            delete newAiStates[key as FieldValueKey]
           }
         }
 
-        return { values: newValues, updatedAt: newUpdatedAt }
+        return { values: newValues, updatedAt: newUpdatedAt, aiStates: newAiStates }
       })
     },
 
@@ -407,6 +537,8 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
         loadingBatches: {},
         updatedAt: {},
         pendingUpdates: {},
+        aiStates: {},
+        pendingAiStates: {},
         mutationVersions: {},
         fetchingKeys: {},
       })

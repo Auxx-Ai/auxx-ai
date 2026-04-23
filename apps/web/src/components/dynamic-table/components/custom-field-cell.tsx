@@ -2,10 +2,13 @@
 
 'use client'
 
+import { isAiEligible } from '@auxx/lib/custom-fields/client'
 import type { RecordId } from '@auxx/lib/resources/client'
-import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
+import type { AiOptions } from '@auxx/types/custom-field'
+import type { FieldId, FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { memo, useMemo } from 'react'
+import { AiCellOverlay } from '~/components/fields/ai-overlay/ai-cell-overlay'
 import { useField } from '~/components/resources/hooks/use-field'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { decodeColumnId } from '../utils/column-id'
@@ -68,8 +71,7 @@ export const CustomFieldCell = memo(function CustomFieldCell({
     )
   }
 
-  // Delegate ALL rendering to FormattedCell (including array handling)
-  return (
+  const cell = (
     <FormattedCell
       value={value}
       fieldType={fieldType}
@@ -77,5 +79,27 @@ export const CustomFieldCell = memo(function CustomFieldCell({
       options={options}
       isFieldPath={isPath}
     />
+  )
+
+  // Wrap with AI overlay only for direct custom fields that have AI enabled.
+  // Paths and non-AI-eligible types short-circuit back to the native cell.
+  const aiEnabled =
+    !isPath &&
+    field?.id != null &&
+    field.fieldType != null &&
+    isAiEligible(field.fieldType) &&
+    (field.options as { ai?: AiOptions } | null | undefined)?.ai?.enabled === true
+
+  if (!aiEnabled) return cell
+
+  return (
+    <AiCellOverlay
+      recordId={recordId}
+      resourceFieldId={fieldRef as ResourceFieldId}
+      fieldId={field.id as FieldId}
+      fieldType={field.fieldType!}
+      value={value}>
+      {cell}
+    </AiCellOverlay>
   )
 })

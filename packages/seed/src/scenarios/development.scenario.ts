@@ -12,6 +12,7 @@ export const developmentScenario: SeedingScenarioDefinition = {
     organizations: 1,
     users: 2,
     customers: 2, // Reduced from 5
+    companies: 2,
     products: 2, // Reduced from 3
     orders: 2, // Reduced from 5
     threads: 1, // Reduced from 2

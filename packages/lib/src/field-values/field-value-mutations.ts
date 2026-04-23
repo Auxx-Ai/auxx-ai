@@ -40,6 +40,8 @@ import {
 } from '../field-triggers/publish'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
+import { applyAiMarker } from './ai-commit'
+import { shortCircuitAiGenerate } from './ai-enqueue'
 import {
   type CachedField,
   canonicalizeRelationshipRecordId,
@@ -294,10 +296,13 @@ export async function setValueWithType(
     return []
   }
 
-  // Generate sort keys for each value
+  // Generate sort keys for each value. When `aiGeneration` is present on
+  // the input (stage-2 AI commit), merge the `aiStatus='result'` + metadata
+  // marker onto each insert row. Absent = manual write → marker stays null,
+  // naturally clearing any prior AI marker via this DELETE+INSERT cycle.
   const insertRows = values.map((v, index) => {
     const sortKey = generateKeyBetween(index === 0 ? null : `a${index - 1}`, null)
-    return buildFieldValueRow({
+    const baseRow = buildFieldValueRow({
       organizationId: ctx.organizationId,
       entityId: entityInstanceId,
       entityDefinitionId,
@@ -305,6 +310,7 @@ export async function setValueWithType(
       value: v,
       sortKey,
     })
+    return params.aiGeneration ? applyAiMarker(baseRow, params.aiGeneration) : baseRow
   })
 
   // Insert all values
@@ -1092,6 +1098,16 @@ export async function setValueWithBuiltIn(
   ctx: FieldValueContext,
   params: SetValueWithBuiltInInput
 ): Promise<SetValueResult> {
+  // Stage 1: AI request — short-circuit before value-conversion / uniqueness
+  // / typed-write. `ai` takes precedence over `aiGeneration` when both are
+  // present (per T3.1c; the commit path cannot also be a request).
+  if (params.ai === true) {
+    return shortCircuitAiGenerate(ctx, {
+      recordId: params.recordId,
+      fieldId: params.fieldId,
+    })
+  }
+
   const { recordId, fieldId, value, publishEvents = true, skipInverseSync = false } = params
 
   // Parse RecordId to get both parts
@@ -1177,6 +1193,7 @@ export async function setValueWithBuiltIn(
     fieldType: field.type as FieldType,
     value: typedValue,
     skipInverseSync,
+    aiGeneration: params.aiGeneration,
   })
 
   // 7. Publish event for contacts (use first value for event compat)
@@ -1219,10 +1236,23 @@ export async function setValueWithBuiltIn(
     const fieldType = field.type as FieldType
     const fieldOptions = field.options as { actor?: { multiple?: boolean } } | undefined
     const storeValue = isArrayReturnFieldType(fieldType, fieldOptions) ? result : result[0]
+    // When this write is an AI stage-2 commit, piggyback the `result`
+    // marker onto the same realtime so clients see value + AI state in
+    // one message. Manual writes carry aiStatus=null to clear any prior
+    // marker in peer stores.
     publishFieldValueUpdates(
       getRealtimeService(),
       ctx.organizationId,
-      [{ key, value: storeValue }],
+      [
+        params.aiGeneration
+          ? {
+              key,
+              value: storeValue,
+              aiStatus: 'result',
+              aiMetadata: params.aiGeneration,
+            }
+          : { key, value: storeValue, aiStatus: null, aiMetadata: null },
+      ],
       { excludeSocketId: ctx.socketId }
     ).catch(() => {})
   }
@@ -1390,6 +1420,29 @@ export async function setBulkValues(
 
   if (recordIds.length === 0 || values.length === 0) {
     return { count: 0 }
+  }
+
+  // AI stage-1 bulk: fan out short-circuit calls per (recordId, fieldId)
+  // pair. Each call runs its own eligibility check, quota consume, upsert,
+  // enqueue, and realtime publish. Failures on individual pairs do not
+  // abort siblings (Promise.allSettled semantics, matching the normal
+  // bulk-write path).
+  if (params.ai === true) {
+    const pairs = recordIds.flatMap((recordId) =>
+      values.map((v) => ({ recordId, fieldId: v.fieldId }))
+    )
+    const results = await Promise.allSettled(
+      pairs.map((pair) =>
+        setValueWithBuiltIn(ctx, {
+          recordId: pair.recordId,
+          fieldId: pair.fieldId,
+          value: null,
+          ai: true,
+        })
+      )
+    )
+    const count = results.filter((r) => r.status === 'fulfilled').length
+    return { count }
   }
 
   // Parse RecordIds and derive modelType from first one (all should be same type in bulk)

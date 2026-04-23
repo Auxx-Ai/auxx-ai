@@ -241,7 +241,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RICH_TEXT,
     isSystem: true,
     systemAttribute: 'meeting_action_items',
-    systemSortOrder: 'b0',
+    systemSortOrder: 'aA',
     nullable: true,
     capabilities: {
       filterable: false,
@@ -261,7 +261,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.URL,
     isSystem: true,
     systemAttribute: 'meeting_recording_url',
-    systemSortOrder: 'b1',
+    systemSortOrder: 'aB',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -281,7 +281,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'meeting_company',
-    systemSortOrder: 'b2',
+    systemSortOrder: 'aC',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -312,7 +312,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'meeting_contact',
-    systemSortOrder: 'b3',
+    systemSortOrder: 'aD',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -343,7 +343,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'created_at',
-    systemSortOrder: 'c0',
+    systemSortOrder: 'aE',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -363,7 +363,7 @@ export const MEETING_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'updated_at',
-    systemSortOrder: 'c1',
+    systemSortOrder: 'aF',
     nullable: false,
     capabilities: {
       filterable: true,

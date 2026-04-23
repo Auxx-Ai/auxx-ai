@@ -5,6 +5,8 @@ import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import type { FieldOptions } from '../custom-fields/field-options'
+import type { AiStatus } from '../realtime/events'
+import type { AiValueMetadata } from './ai-autofill/generation-service'
 
 // Re-export for convenience
 export type { FieldReference, FieldPath, ResourceFieldId }
@@ -44,6 +46,20 @@ export interface SetValueWithBuiltInInput {
   publishEvents?: boolean
   /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
   skipInverseSync?: boolean
+  /**
+   * Stage 1 AI flag. When `true`, `setValueWithBuiltIn` short-circuits
+   * before the value-conversion/uniqueness/write path and enqueues a
+   * BullMQ autofill job instead. `value` is ignored in this mode.
+   */
+  ai?: boolean
+  /**
+   * Stage 2 AI metadata. Populated by the worker when committing a
+   * successful AI generation through the normal set pipeline. The
+   * metadata bag is merged into `FieldValue.valueJson` alongside
+   * `aiStatus='result'`. Mutually exclusive with `ai` — if both are
+   * present, `ai` wins and `aiGeneration` is ignored.
+   */
+  aiGeneration?: AiValueMetadata
 }
 
 /**
@@ -66,6 +82,12 @@ export interface SetValuesForEntityInput {
 export interface SetBulkValuesInput {
   recordIds: RecordId[]
   values: Array<{ fieldId: string; value: unknown }>
+  /**
+   * Stage 1 AI request across the full cartesian product. Each (recordId,
+   * fieldId) pair enqueues its own BullMQ autofill job via the short-circuit
+   * path. The literal `value` for each pair is ignored.
+   */
+  ai?: boolean
 }
 
 /** Input for adding relation values to a single source entity. */
@@ -111,9 +133,11 @@ export interface RemoveRelationValuesBulkInput {
 }
 
 /**
- * Result state for field value mutations
+ * Result state for field value mutations.
+ * `'generating'` is only surfaced when the caller passed `ai: true` —
+ * internal callers that never opt into AI autofill never see it.
  */
-export type SetValueState = 'complete' | 'failed'
+export type SetValueState = 'complete' | 'failed' | 'generating'
 
 /**
  * Result from setValueWithBuiltIn - always returns arrays for consistency
@@ -122,6 +146,12 @@ export interface SetValueResult {
   state: SetValueState
   performedAt: string
   values: TypedFieldValue[]
+  /**
+   * Populated when `state === 'generating'`. The BullMQ job id that will
+   * produce the eventual result — useful as a correlation id. Clients
+   * normally identify cells via `(recordId, fieldId)`, so this is optional.
+   */
+  jobId?: string
 }
 
 /**
@@ -146,6 +176,13 @@ export interface SetValueWithTypeInput {
   value: TypedFieldValueInput | TypedFieldValueInput[] | null
   /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
   skipInverseSync?: boolean
+  /**
+   * AI metadata for stage-2 commits. When present, buildFieldValueRow
+   * merges `aiStatus='result'` + `valueJson=meta` into each insert row.
+   * Absent for manual edits — the DELETE+INSERT then produces rows with
+   * `aiStatus=null`, implicitly clearing any prior AI marker.
+   */
+  aiGeneration?: AiValueMetadata
 }
 
 /** Input for adding a value to a multi-value field */
@@ -227,6 +264,16 @@ export interface TypedFieldValueResult {
 
   /** Field options from CustomField.options — for display formatting (decimals, currency, etc.) */
   fieldOptions?: FieldOptions
+
+  /**
+   * AI marker on the row — `'generating' | 'result' | 'error'` when present,
+   * `null` otherwise. Lets the client rehydrate the sparkle/shimmer state on
+   * refresh without waiting for a realtime event.
+   */
+  aiStatus?: AiStatus | null
+
+  /** AI metadata from the row (model, generatedAt, errorMessage, etc.). */
+  aiMetadata?: AiValueMetadata | null
 
   /** Issues found during fetch (optional) */
   issues?: string[]

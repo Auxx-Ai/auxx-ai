@@ -3,6 +3,12 @@
 
 // Re-export types from @auxx/types for client components
 export {
+  // AI
+  type AiOptions,
+  type AiTriggerOn,
+  aiOptionsSchema,
+  aiTriggerOnSchema,
+  aiTriggerOnValues,
   type CurrencyDisplayType,
   type CurrencyGroups,
   type CurrencyOptions,
@@ -18,6 +24,8 @@ export {
   fieldOptionsUnionSchema,
   // File
   fileOptionsSchema,
+  type RichReferencePrompt,
+  richReferencePromptSchema,
   // Color constants
   SELECT_OPTION_COLORS,
   type SelectOption,
@@ -28,8 +36,16 @@ export {
   // Target Time
   targetTimeInStatusSchema,
 } from '@auxx/types/custom-field'
+export { getAiPrompt, isAiEligible, isAiField } from './ai'
 
 export type { CalcOptions, NameFieldOptions } from './field-options'
+export {
+  extractFieldIds,
+  extractFieldIdsFromString,
+  type FormulaNode,
+  formulaToString,
+  stringToFormula,
+} from './formula-converters'
 export { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from './types'
 
 import type { SelectOptionColor } from '@auxx/types/custom-field'

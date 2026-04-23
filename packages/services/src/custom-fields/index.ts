@@ -64,4 +64,10 @@ export {
 export { type UpdateCustomFieldInput, updateCustomField } from './update-field'
 // Utils
 export { normalizeFieldValue } from './utils/normalize-value'
+// AI options validation
+export {
+  type AiOptionsValidationError,
+  type ValidateAiOptionsInput,
+  validateAiOptions,
+} from './validate-ai-options'
 export { type VerifyEntityInput, verifyEntityExistsQuery } from './verify-entity'

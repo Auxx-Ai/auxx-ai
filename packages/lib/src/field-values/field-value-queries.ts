@@ -15,9 +15,11 @@ import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { findCachedResource } from '../cache'
 import type { FieldOptions, NameFieldOptions } from '../custom-fields/field-options'
+import type { AiStatus } from '../realtime/events'
 import type { TableId } from '../resources/registry/field-registry'
 import { isSystemResourceId } from '../resources/registry/types'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
+import type { AiValueMetadata } from './ai-autofill/generation-service'
 import {
   type CachedField,
   type FieldValueContext,
@@ -469,7 +471,23 @@ async function fetchFieldValueResults(
     const value = isMulti ? typedValues : typedValues[0]!
     const fieldOptions = fieldOptionsMap.get(fieldId)
 
-    results.push({ recordId, fieldRef, value, fieldType, fieldOptions })
+    // AI marker lives on a single row per (entity, field). Multi-value fields
+    // don't carry AI markers today — take the first row's marker for safety.
+    // `ai-commit.ts` only ever writes 'generating' | 'result' | 'error', so
+    // narrowing the broad DB text column to AiStatus here is safe.
+    const firstRow = fieldRows[0]!
+    const aiStatus = (firstRow.aiStatus ?? null) as AiStatus | null
+    const aiMetadata = aiStatus ? (firstRow.aiMetadata as AiValueMetadata | null) : null
+
+    results.push({
+      recordId,
+      fieldRef,
+      value,
+      fieldType,
+      fieldOptions,
+      aiStatus,
+      aiMetadata,
+    })
   }
 
   return results

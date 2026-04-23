@@ -75,7 +75,10 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         unique: variables.isUnique ?? false,
       }
 
-      // Calculate sortOrder to place new field at the end of the list
+      // Calculate sortOrder to place new field at the end of the list.
+      // Legacy system-field seeds shipped with malformed fractional-indexing
+      // keys (e.g. 'z9', 'b0'); skip those when picking the anchor so
+      // `generateKeyBetween` doesn't throw on unseeded-upgrade orgs.
       const existingFields = Object.values(store.fieldMap).filter((field) => {
         const { entityDefinitionId: fieldEntityDefId } = parseResourceFieldId(field.resourceFieldId)
         return fieldEntityDefId === effectiveEntityDefId
@@ -83,8 +86,18 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       const sortedFields = existingFields.sort((a, b) =>
         (a.sortOrder ?? '').localeCompare(b.sortOrder ?? '')
       )
-      const lastSortOrder =
-        sortedFields.length > 0 ? (sortedFields[sortedFields.length - 1]?.sortOrder ?? null) : null
+      let lastSortOrder: string | null = null
+      for (let i = sortedFields.length - 1; i >= 0; i--) {
+        const candidate = sortedFields[i]?.sortOrder
+        if (!candidate) continue
+        try {
+          generateKeyBetween(candidate, null)
+          lastSortOrder = candidate
+          break
+        } catch {
+          // Skip malformed keys and keep walking back.
+        }
+      }
       const newSortOrder = generateKeyBetween(lastSortOrder, null)
 
       // Create optimistic field shape matching ResourceField
@@ -137,11 +150,14 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         unique: result.isUnique,
       }
 
-      // Extract options from server response
-      const rawOptions = result.options as {
-        options?: { value: string; label: string; color?: string }[]
-        relationship?: RelationshipConfig
-      }
+      // Pass the full server options blob through unchanged. Rebuilding it
+      // field-by-field has bitten us once already (dropped `options.ai` and
+      // any other future subkey). We still peek at `relationship` to kick off
+      // the inverse-field fetch.
+      const rawOptions = result.options as
+        | (ResourceField['options'] & { relationship?: RelationshipConfig })
+        | null
+        | undefined
 
       // Extract inverse field ID for fetching the inverse field after creation
       const inverseFieldIdValue = rawOptions?.relationship
@@ -165,12 +181,7 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         isSystem: !!result.systemAttribute,
         showInPanel: true,
         capabilities,
-        options: {
-          options: rawOptions?.options,
-          // Pass through raw RelationshipConfig - consumers derive values using helpers
-          relationship: rawOptions?.relationship,
-        },
-        // Pass through raw RelationshipConfig
+        options: rawOptions ?? undefined,
         relationship: rawOptions?.relationship,
       }
 
@@ -186,10 +197,10 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
           .then((fields) => {
             for (const field of fields) {
               const invBaseType = mapFieldTypeToBaseType(field.type)
-              const invOptions = field.options as {
-                options?: { value: string; label: string; color?: string }[]
-                relationship?: RelationshipConfig
-              }
+              const invOptions = field.options as
+                | (ResourceField['options'] & { relationship?: RelationshipConfig })
+                | null
+                | undefined
 
               const invField: ResourceField = {
                 id: toFieldId(field.id),
@@ -216,12 +227,7 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
                   computed: false,
                   unique: field.isUnique,
                 },
-                options: {
-                  options: invOptions?.options,
-                  // Pass through raw RelationshipConfig - consumers derive values using helpers
-                  relationship: invOptions?.relationship,
-                },
-                // Pass through raw RelationshipConfig
+                options: invOptions ?? undefined,
                 relationship: invOptions?.relationship,
               }
 
@@ -455,24 +461,52 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       // Reorder array to find neighbors at new position
       const reordered = arrayMove(fields, oldIndex, newIndex)
 
-      // Find neighbors that have a sortOrder (skip special fields like recordId, createdAt, updatedAt)
+      // Find neighbors that have a valid sortOrder. Skip fields without one
+      // (system fields like recordId) and skip malformed legacy fractional
+      // keys (e.g. 'z9') that `generateKeyBetween` rejects.
+      const isValidKey = (k: string) => {
+        try {
+          generateKeyBetween(k, null)
+          return true
+        } catch {
+          return false
+        }
+      }
+
       let beforeOrder: string | null = null
       for (let i = newIndex - 1; i >= 0; i--) {
-        if (reordered[i]?.sortOrder) {
-          beforeOrder = reordered[i].sortOrder!
-          break
-        }
+        const candidate = reordered[i]?.sortOrder
+        if (!candidate) continue
+        if (!isValidKey(candidate)) continue
+        beforeOrder = candidate
+        break
       }
 
       let afterOrder: string | null = null
       for (let i = newIndex + 1; i < reordered.length; i++) {
-        if (reordered[i]?.sortOrder) {
-          afterOrder = reordered[i].sortOrder!
-          break
-        }
+        const candidate = reordered[i]?.sortOrder
+        if (!candidate) continue
+        if (!isValidKey(candidate)) continue
+        afterOrder = candidate
+        break
       }
 
-      const newSortOrder = generateKeyBetween(beforeOrder, afterOrder)
+      // `generateKeyBetween` also throws when `before >= after` — which can
+      // happen when filtering malformed keys leaves an out-of-order pair.
+      // Fall back to appending after the highest valid key so the reorder
+      // still lands somewhere sensible instead of blowing up the save.
+      let newSortOrder: string
+      try {
+        newSortOrder = generateKeyBetween(beforeOrder, afterOrder)
+      } catch {
+        let maxValid: string | null = null
+        for (const f of reordered) {
+          const k = f?.sortOrder
+          if (!k || !isValidKey(k)) continue
+          if (maxValid === null || k > maxValid) maxValid = k
+        }
+        newSortOrder = generateKeyBetween(maxValid, null)
+      }
 
       updateField.mutate({
         resourceFieldId: toResourceFieldId(entityDefinitionId, toFieldId(movedField.id)),

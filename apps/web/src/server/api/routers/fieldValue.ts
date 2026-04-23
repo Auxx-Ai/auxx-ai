@@ -38,6 +38,12 @@ export const fieldValueRouter = createTRPCRouter({
         recordId: z.string(), // RecordId format
         fieldId: fieldIdSchema,
         value: z.any().nullable(),
+        /**
+         * Stage 1 AI request. When true, the service short-circuits and
+         * enqueues a BullMQ autofill job instead of writing a literal
+         * value. `value` is ignored in this mode.
+         */
+        ai: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -51,6 +57,7 @@ export const fieldValueRouter = createTRPCRouter({
         recordId: input.recordId as RecordId,
         fieldId: input.fieldId,
         value: input.value ?? null,
+        ai: input.ai,
       })
     }),
 
@@ -68,6 +75,12 @@ export const fieldValueRouter = createTRPCRouter({
             value: z.any().nullable(),
           })
         ),
+        /**
+         * Stage 1 AI request across the full cartesian product. Each
+         * (recordId, fieldId) pair enqueues its own autofill job; the
+         * bulk service fans out per-pair calls to setValueWithBuiltIn.
+         */
+        ai: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -83,6 +96,7 @@ export const fieldValueRouter = createTRPCRouter({
           fieldId: v.fieldId,
           value: v.value ?? null,
         })),
+        ai: input.ai,
       })
     }),
 

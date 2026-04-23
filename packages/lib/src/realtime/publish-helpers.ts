@@ -1,8 +1,7 @@
 // @auxx/lib/realtime/publish-helpers.ts
 
-import type { FieldValueKey } from '@auxx/types/field'
 import { getOrgCache } from '../cache'
-import type { StoredFieldValue } from './events'
+import type { FieldValueUpdateEntry } from './events'
 import type { RealtimeService } from './realtime-service'
 
 const CHUNK_SIZE = 50
@@ -10,11 +9,16 @@ const CHUNK_SIZE = 50
 /**
  * Publish field value updates to the org channel, chunking if needed (Pusher 10KB limit).
  * Fire-and-forget — errors are logged by the provider, not thrown.
+ *
+ * Each entry can carry any combination of `value`, `aiStatus`, and
+ * `aiMetadata`. Omit `value` to publish a pure AI-state transition (e.g. the
+ * stage-1 enqueue or a stage-2 error); include both to commit a successful
+ * AI generation. Omit the AI fields for regular writes.
  */
 export async function publishFieldValueUpdates(
   realtimeService: RealtimeService,
   organizationId: string,
-  entries: Array<{ key: FieldValueKey; value: StoredFieldValue }>,
+  entries: FieldValueUpdateEntry[],
   options?: { excludeSocketId?: string }
 ) {
   if (entries.length === 0) return

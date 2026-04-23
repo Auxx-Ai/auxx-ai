@@ -183,6 +183,7 @@ export function useFillDrag({
       }
 
       const updates: Array<{ rowId: string; columnId: string; value: unknown }> = []
+      const aiCells: Array<{ rowId: string; columnId: string }> = []
       const reasons = new Map<CoerceReason, number>()
       const bump = (r: CoerceReason) => reasons.set(r, (reasons.get(r) ?? 0) + 1)
       let skipped = 0
@@ -197,6 +198,14 @@ export function useFillDrag({
           const targetRowId = idx.rowIds[r]
           const targetColId = idx.columnIds[c]
           if (!targetRowId || !targetColId) continue
+
+          // AI-enabled column: ignore the source value, enqueue stage-1
+          // generation for this target cell. Each cell becomes an independent
+          // autofill job on the server.
+          if (cfg.isAiField?.(targetColId) && cfg.saveAiCells) {
+            aiCells.push({ rowId: targetRowId, columnId: targetColId })
+            continue
+          }
 
           // Tile: source offset by modulo distance from source origin.
           const relR = (((r - sourceB.top) % sourceRows) + sourceRows) % sourceRows
@@ -235,6 +244,22 @@ export function useFillDrag({
           toastError({
             title: 'Error filling cells',
             description: err instanceof Error ? err.message : 'Could not fill selected cells',
+          })
+          return
+        }
+      }
+
+      if (aiCells.length > 0 && cfg.saveAiCells) {
+        try {
+          const aiResult = await cfg.saveAiCells(aiCells)
+          if (aiResult.skipped > 0) {
+            skipped += aiResult.skipped
+            bump('read-only')
+          }
+        } catch (err) {
+          toastError({
+            title: 'Error starting AI autofill',
+            description: err instanceof Error ? err.message : 'Could not autofill selected cells',
           })
           return
         }

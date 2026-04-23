@@ -104,6 +104,23 @@ export const FieldValue = pgTable(
      * Examples: "a", "aV", "aVV", "n" - allows insertion between any two values
      */
     sortKey: text().notNull().default('a'),
+
+    // ========================================
+    // AI generation marker (nullable for non-AI values)
+    // ========================================
+
+    /**
+     * AI generation state for this value row.
+     * NULL => value is not AI-generated (or marker was cleared by manual edit).
+     * Values: 'generating' | 'result' | 'error'.
+     * 'stale' is derived at read time (by comparing valueJson.inputHash to
+     * the live reference hash), not persisted.
+     *
+     * AI metadata (model, generatedAt, inputHash, jobId, errorMessage,
+     * tokens) piggy-backs on the existing valueJson column; safe because no
+     * AI-eligible field type in v1 writes its own value to valueJson.
+     */
+    aiStatus: text(),
   },
   (table) => [
     // Primary lookups

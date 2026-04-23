@@ -3,6 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
+import type { AiOptions } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
@@ -22,6 +23,23 @@ import {
   type SelectOption,
   supportsDisplayOptions,
 } from './types'
+import { validateAiOptions } from './validate-ai-options'
+
+function pickAiOptions(options: unknown): AiOptions | undefined {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return undefined
+  const ai = (options as { ai?: unknown }).ai
+  return ai as AiOptions | undefined
+}
+
+function pickSelectOptions(options: unknown): SelectOption[] | undefined {
+  if (!options) return undefined
+  if (Array.isArray(options)) return options as SelectOption[]
+  if (typeof options === 'object') {
+    const inner = (options as { options?: unknown }).options
+    if (Array.isArray(inner)) return inner as SelectOption[]
+  }
+  return undefined
+}
 
 /**
  * Input for updating a custom field
@@ -33,8 +51,14 @@ export interface UpdateCustomFieldInput {
   description?: string
   required?: boolean
   defaultValue?: string
-  /** Field options - select options, file config, currency config, or flat display options */
-  options?: SelectOption[] | { file: FileOptions } | { currency: CurrencyOptions } | DisplayOptions
+  /** Field options - select options, file config, currency config, flat
+   *  display options, or an `{ options, ai }` bag for AI-enabled selects. */
+  options?:
+    | SelectOption[]
+    | { file: FileOptions }
+    | { currency: CurrencyOptions }
+    | { options: SelectOption[]; ai?: AiOptions }
+    | (DisplayOptions & { ai?: AiOptions })
   addressComponents?: string[]
   icon?: string
   isCustom?: boolean
@@ -125,6 +149,31 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     }
   }
 
+  // Validate options.ai (if the caller is touching it). Uses the caller's
+  // new options when present, else falls back to what's already stored —
+  // so re-saving a field without touching AI doesn't re-validate it.
+  const incomingAi = pickAiOptions(options)
+  const currentAi = (currentField.options as { ai?: AiOptions } | null | undefined)?.ai
+  const effectiveAi = options !== undefined ? incomingAi : currentAi
+  const aiWasEnabled = currentAi?.enabled === true
+  const aiWillBeEnabled = effectiveAi?.enabled === true
+
+  if (options !== undefined) {
+    const selectOpts =
+      pickSelectOptions(options) ??
+      (currentField.options as { options?: SelectOption[] } | null | undefined)?.options
+    const aiValidation = await validateAiOptions({
+      organizationId,
+      type: fieldType,
+      ai: incomingAi,
+      selectOptions: selectOpts,
+      selfFieldId: id,
+    })
+    if (aiValidation.isErr()) {
+      return aiValidation
+    }
+  }
+
   // Build updated options
   let updatedOptions: Record<string, any> | undefined
 
@@ -143,8 +192,9 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
       fieldType === FieldTypeEnum.MULTI_SELECT ||
       fieldType === FieldTypeEnum.TAGS
     ) {
-      if (options !== undefined && Array.isArray(options)) {
-        fieldOptions.options = options
+      const selectOpts = options !== undefined ? pickSelectOptions(options) : undefined
+      if (selectOpts) {
+        fieldOptions.options = selectOpts
       }
     }
 
@@ -189,6 +239,17 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     // Handle flat display options for CHECKBOX, NUMBER, DATE, DATETIME, TIME, PHONE_INTL
     if (supportsDisplayOptions(fieldType) && options !== undefined && isDisplayOptions(options)) {
       Object.assign(fieldOptions, mergeDisplayOptions(fieldType, options, {}))
+    }
+
+    // Handle options.ai: when caller provides options, incomingAi is the
+    // source of truth (undefined or enabled=false both strip the marker).
+    // When caller doesn't touch options at all, preserve whatever was stored.
+    if (options !== undefined) {
+      if (incomingAi) {
+        fieldOptions.ai = incomingAi
+      } else {
+        delete (fieldOptions as { ai?: unknown }).ai
+      }
     }
 
     updatedOptions = fieldOptions
@@ -265,6 +326,26 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
 
   if (updateResult.isErr()) {
     return updateResult
+  }
+
+  // Toggle-off: if AI was enabled on this field and no longer is, clear the
+  // aiStatus marker on all of its FieldValue rows. `valueJson` is left
+  // intact — readers gate on `aiStatus IS NOT NULL`, so stale metadata
+  // becomes invisible without destroying typed values that v2 types may
+  // store in valueJson alongside AI metadata.
+  if (aiWasEnabled && !aiWillBeEnabled) {
+    await fromDatabase(
+      database
+        .update(schema.FieldValue)
+        .set({ aiStatus: null })
+        .where(
+          and(
+            eq(schema.FieldValue.fieldId, id),
+            eq(schema.FieldValue.organizationId, organizationId)
+          )
+        ),
+      'clear-ai-status-on-toggle-off'
+    )
   }
 
   return ok(updateResult.value[0] as CustomFieldEntity)

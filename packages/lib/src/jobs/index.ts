@@ -8,6 +8,8 @@ export {
 } from '../mail-schedule'
 // Usage
 export { type RecordUsageEventJobData, recordUsageEventJob } from '../usage'
+// AI autofill
+export { type AiAutofillJobData, aiAutofillJob } from './ai-autofill/ai-autofill-job'
 export {
   type ApplyScheduledChangesJobData,
   type ApplyScheduledChangesResult,

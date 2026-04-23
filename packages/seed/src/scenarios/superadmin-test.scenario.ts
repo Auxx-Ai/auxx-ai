@@ -12,6 +12,7 @@ export const superadminTestScenario: SeedingScenarioDefinition = {
     organizations: 1,
     users: 2,
     customers: 150,
+    companies: 60,
     products: 20,
     orders: 50,
     threads: 500,

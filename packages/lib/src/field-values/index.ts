@@ -9,6 +9,14 @@ export {
   type ParsedExpression,
   validateCalcExpression,
 } from '@auxx/utils/calc-expression'
+// AI autofill (server-only — these import orchestrator + DB helpers)
+export {
+  type AiValueMetadata,
+  type GenerationResult,
+  generateFieldValue,
+  type PreviewResult,
+  previewFieldValue,
+} from './ai-autofill'
 // Converters (for direct access if needed)
 export {
   booleanConverter,

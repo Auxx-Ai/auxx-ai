@@ -3,8 +3,14 @@
 import { FieldType } from '@auxx/database/enums'
 import { getAllCachedCustomFields } from '@auxx/lib/cache'
 import { CustomFieldService } from '@auxx/lib/custom-fields'
-import { fieldOptionsUnionSchema, relationshipOptionsSchema } from '@auxx/types/custom-field'
+import { previewFieldValue } from '@auxx/lib/field-values'
+import {
+  fieldOptionsUnionSchema,
+  relationshipOptionsSchema,
+  richReferencePromptSchema,
+} from '@auxx/types/custom-field'
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
+import type { RecordId } from '@auxx/types/resource'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -132,5 +138,42 @@ export const customFieldRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const allFields = await getAllCachedCustomFields(organizationId)
       return allFields.filter((f) => input.fieldIds.includes(f.id))
+    }),
+
+  /**
+   * Dry-run an AI autofill prompt against a sample record of the target
+   * entity. Does not persist a FieldValue — returns the resolved prompt
+   * and the generated value so the dialog can show a live preview before
+   * the field is saved.
+   *
+   * Quota is still consumed (same `UsageGuard` + `AiUsage` audit path,
+   * `source: 'autofill-preview'`).
+   */
+  previewAi: protectedProcedure
+    .input(
+      z.object({
+        type: z.enum(FieldType),
+        options: fieldOptionsUnionSchema.optional(),
+        prompt: richReferencePromptSchema,
+        /**
+         * Any record in the target entity type. The client picks one from
+         * the list it already has loaded; the server resolves `{fieldKey}`
+         * badges against this record.
+         */
+        sampleRecordId: z.string(),
+        /** Display name used in the system prompt. */
+        name: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return await previewFieldValue({
+        orgId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        sampleRecordId: input.sampleRecordId as RecordId,
+        type: input.type,
+        promptJson: input.prompt,
+        options: input.options,
+        name: input.name,
+      })
     }),
 })

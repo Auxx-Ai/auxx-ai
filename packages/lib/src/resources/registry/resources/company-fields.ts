@@ -277,7 +277,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'company_primary_contact',
-    systemSortOrder: 'b0',
+    systemSortOrder: 'aA',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -302,7 +302,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'company_employees',
-    systemSortOrder: 'b1',
+    systemSortOrder: 'aB',
     nullable: true,
     capabilities: {
       filterable: true,
@@ -327,7 +327,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'company_meetings',
-    systemSortOrder: 'b2',
+    systemSortOrder: 'aC',
     showInPanel: false,
     capabilities: {
       filterable: true,
@@ -352,7 +352,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'company_enriched_at',
-    systemSortOrder: 'z8',
+    systemSortOrder: 'aY',
     nullable: true,
     capabilities: {
       filterable: false,
@@ -373,7 +373,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.SINGLE_SELECT,
     isSystem: true,
     systemAttribute: 'company_enrichment_status',
-    systemSortOrder: 'z9',
+    systemSortOrder: 'aZ',
     nullable: true,
     options: {
       options: [
@@ -402,7 +402,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'created_at',
-    systemSortOrder: 'c0',
+    systemSortOrder: 'aD',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -422,7 +422,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.DATETIME,
     isSystem: true,
     systemAttribute: 'updated_at',
-    systemSortOrder: 'c1',
+    systemSortOrder: 'aE',
     nullable: false,
     capabilities: {
       filterable: true,

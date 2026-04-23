@@ -21,5 +21,6 @@ export type {
   UpdateDisplayNameInput,
   UpdateFieldValueInput,
 } from './types'
+export { type UpdateAiMarkerInput, updateAiMarker } from './update-ai-marker'
 export { updateEntityDisplayName } from './update-display-name'
 export { updateFieldValue } from './update-value'
