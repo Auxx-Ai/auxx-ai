@@ -42,7 +42,7 @@ export function useCellNavigation<TData>({
   }, [range])
 
   const scrollCellIntoView = useCallback(
-    (rowId: string, columnId: string, direction?: 'left' | 'right' | 'up' | 'down') => {
+    (rowId: string, columnId: string, _direction?: 'left' | 'right' | 'up' | 'down') => {
       const container = scrollContainerRef.current
       if (!container) return
 
@@ -52,8 +52,12 @@ export function useCellNavigation<TData>({
         ) as HTMLElement | null
 
         if (cell) {
-          const inlinePosition = direction === 'left' ? 'start' : 'nearest'
-          cell.scrollIntoView({ block: 'nearest', inline: inlinePosition, behavior: 'auto' })
+          // `inline: 'nearest'` only scrolls when the cell is hidden, and respects
+          // the `scroll-margin-left: calc(var(--pinned-left-width) + 50px)` rule
+          // so cells hidden behind the frozen column scroll just clear of it.
+          // Previously direction='left' used 'start' which yanked already-visible
+          // cells flush against the frozen column.
+          cell.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' })
         }
       })
     },

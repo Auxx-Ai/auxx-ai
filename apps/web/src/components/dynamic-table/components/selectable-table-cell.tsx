@@ -74,6 +74,11 @@ function SelectableTableCellInner<TData>({
       if (!cellSelectionConfig?.enabled || isSystemColumn) return
       // Ignore non-primary buttons (right-click, middle, etc.)
       if (e.button !== 0) return
+      // Ignore events that bubbled here from a React portal (e.g. an open
+      // popover editor like CellFieldEditor). React events bubble through
+      // the React tree even across portals — the DOM target lives outside
+      // this cell, so preventDefault would block the input from focusing.
+      if (!cellRef.current?.contains(e.target as Node)) return
       e.stopPropagation()
       e.preventDefault()
 
@@ -110,6 +115,8 @@ function SelectableTableCellInner<TData>({
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (!cellSelectionConfig?.enabled || isSystemColumn) return
+      // Skip portal-bubbled events (see handlePointerDown).
+      if (!cellRef.current?.contains(e.target as Node)) return
       e.stopPropagation()
     },
     [cellSelectionConfig?.enabled, isSystemColumn]
@@ -118,6 +125,7 @@ function SelectableTableCellInner<TData>({
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       if (!cellSelectionConfig?.enabled || isSystemColumn || !isUpdatable) return
+      if (!cellRef.current?.contains(e.target as Node)) return
       e.stopPropagation()
       setEditingCell({ rowId, columnId })
     },
@@ -129,6 +137,8 @@ function SelectableTableCellInner<TData>({
     (e: React.KeyboardEvent) => {
       if (!isActive) return
       if (isEditing && e.key === 'Escape') return
+      // Skip portal-bubbled events (e.g. typing inside an open popover editor).
+      if (!cellRef.current?.contains(e.target as Node)) return
       switch (e.key) {
         case 'Enter':
           if (!isUpdatable) return
