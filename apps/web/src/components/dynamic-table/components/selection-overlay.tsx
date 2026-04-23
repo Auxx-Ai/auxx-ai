@@ -156,14 +156,16 @@ export function SelectionOverlay({ scrollContainerRef }: SelectionOverlayProps) 
   const { tableId } = useTableConfig()
   const range = useSelectionStore((s) => s.tables[tableId]?.range ?? null)
   const fillDrag = useSelectionStore((s) => s.tables[tableId]?.fillDrag ?? null)
+  const copyHighlight = useSelectionStore((s) => s.tables[tableId]?.copyHighlight ?? null)
   const isEditing = useSelectionStore((s) => s.tables[tableId]?.editingCell != null)
 
   const rangeRect = useRangeRect(range, scrollContainerRef)
   const previewRect = useRangeRect(fillDrag?.preview ?? null, scrollContainerRef)
+  const copyRect = useRangeRect(copyHighlight, scrollContainerRef)
 
   const single = range ? isSingleCell(range) : false
 
-  if (!rangeRect) return null
+  if (!rangeRect && !copyRect) return null
 
   // 1×1 selection: overlay itself is invisible (the cell's `.cell-active`
   // affordance owns the visual). Hide the border/tint while fill-dragging
@@ -175,11 +177,13 @@ export function SelectionOverlay({ scrollContainerRef }: SelectionOverlayProps) 
 
   return (
     <>
-      <PositionedBox rect={rangeRect} className={overlayClassName} dataSlot='selection-overlay'>
-        {/* Single-cell case is owned by ExpandableCell so the handle follows
-            an expanded cell's actual right edge instead of the cell rect. */}
-        {!isEditing && !fillDrag && !single && <FillHandle />}
-      </PositionedBox>
+      {rangeRect && (
+        <PositionedBox rect={rangeRect} className={overlayClassName} dataSlot='selection-overlay'>
+          {/* Single-cell case is owned by ExpandableCell so the handle follows
+              an expanded cell's actual right edge instead of the cell rect. */}
+          {!isEditing && !fillDrag && !single && <FillHandle />}
+        </PositionedBox>
+      )}
 
       {previewRect && (
         <PositionedBox
@@ -187,6 +191,29 @@ export function SelectionOverlay({ scrollContainerRef }: SelectionOverlayProps) 
           className='absolute pointer-events-none border-2 border-dashed border-blue-500 z-30'
           dataSlot='fill-preview-overlay'
         />
+      )}
+
+      {copyRect && (
+        <PositionedBox
+          rect={copyRect}
+          className='copy-highlight-overlay absolute pointer-events-none'
+          dataSlot='copy-highlight'>
+          <svg className='absolute inset-0 h-full w-full overflow-visible' aria-hidden='true'>
+            <rect
+              x='0'
+              y='0'
+              width='100%'
+              height='100%'
+              rx='6'
+              ry='6'
+              fill='none'
+              stroke='rgb(var(--primary))'
+              strokeWidth='1'
+              strokeDasharray='6 4'
+              className='copy-highlight-rect'
+            />
+          </svg>
+        </PositionedBox>
       )}
     </>
   )

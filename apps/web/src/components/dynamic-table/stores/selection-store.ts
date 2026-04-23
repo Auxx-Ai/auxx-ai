@@ -41,6 +41,11 @@ interface TableSelectionState {
   // Fill-handle drag preview (null when not dragging)
   fillDrag: FillDragState | null
 
+  // Marching-ants highlight around the most recently copied range. Cleared on
+  // paste, on Escape, on next copy. Independent of the active selection so the
+  // user can move the cursor without losing the paste-source indicator.
+  copyHighlight: CellRange | null
+
   // Kanban selection
   selectedKanbanCardIds: Set<string>
 
@@ -56,6 +61,7 @@ const DEFAULT_SELECTION_STATE: TableSelectionState = {
   range: null,
   editingCell: null,
   fillDrag: null,
+  copyHighlight: null,
   selectedKanbanCardIds: EMPTY_KANBAN_SELECTION,
   activeDragItems: null,
 }
@@ -108,6 +114,9 @@ interface SelectionStore {
   /** Fill-handle drag: live preview state. null when not dragging. */
   setFillDrag: (tableId: string, drag: FillDragState | null) => void
   getFillDrag: (tableId: string) => FillDragState | null
+
+  /** Copy highlight (marching ants) — set on copy, cleared on paste/Escape. */
+  setCopyHighlight: (tableId: string, range: CellRange | null) => void
 
   /**
    * Re-derive range endpoint indexes from current visible ids.
@@ -307,6 +316,14 @@ export const useSelectionStore = create<SelectionStore>()(
     },
 
     getFillDrag: (tableId) => get().tables[tableId]?.fillDrag ?? null,
+
+    setCopyHighlight: (tableId, range) => {
+      set((state) =>
+        produce(state, (draft) => {
+          ensureTable(draft, tableId).copyHighlight = range
+        })
+      )
+    },
 
     remapRange: (tableId, maps) => {
       set((state) =>

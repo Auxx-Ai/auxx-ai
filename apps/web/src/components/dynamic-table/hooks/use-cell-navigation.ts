@@ -191,6 +191,8 @@ export function useCellNavigation<TData>({
           } else {
             store.setRange(tableId, null)
           }
+          // Escape also dismisses any active marching-ants copy highlight.
+          store.setCopyHighlight(tableId, null)
           return
         default:
           return
