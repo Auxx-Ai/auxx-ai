@@ -85,7 +85,7 @@ export function PrimaryCell({
           </DropdownMenu>
         </div>
       </div>
-      <div className='hidden [.cell-selected:not(.cell-editing)_&]:flex'>
+      <div data-self-overlay className='hidden [.cell-selected:not(.cell-editing)_&]:flex'>
         <CellSelectionOverlay isSelected isEditing={false} />
       </div>
     </>

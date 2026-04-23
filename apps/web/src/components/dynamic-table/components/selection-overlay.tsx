@@ -45,9 +45,12 @@ function useRangeRect(
     const compute = () => {
       const bounds = rangeBounds(range)
 
-      // Vertical: arithmetic, virtualizer-aware
-      const top = bounds.top * ROW_HEIGHT
-      const height = (bounds.bottom - bounds.top + 1) * ROW_HEIGHT
+      // Vertical: arithmetic, virtualizer-aware. Rows have `border-y` (1px top
+      // + 1px bottom) via border-box, so the cell content area is inset 1px on
+      // each end within each ROW_HEIGHT slot. Match that so the range ring
+      // aligns with the anchor cell's `.cell-active::after`.
+      const top = bounds.top * ROW_HEIGHT + 1
+      const height = (bounds.bottom - bounds.top + 1) * ROW_HEIGHT - 2
 
       // Horizontal: read DOM cell rects for the left/right columns from any
       // mounted row. All columns are always rendered (just scrolled), so we
@@ -168,7 +171,7 @@ export function SelectionOverlay({ scrollContainerRef }: SelectionOverlayProps) 
   const overlayClassName =
     single || fillDrag
       ? 'absolute pointer-events-none z-20'
-      : 'absolute pointer-events-none rounded-md bg-blue-500/10 z-20 before:content-[""] before:absolute before:-inset-x-[2px] before:-inset-y-px before:rounded-md before:pointer-events-none before:ring-1 before:ring-inset before:ring-blue-500'
+      : 'absolute pointer-events-none rounded-md bg-info/5 z-20 before:content-[""] before:absolute before:inset-0 before:rounded-md before:pointer-events-none before:ring-1 before:ring-inset before:ring-info/50'
 
   return (
     <>

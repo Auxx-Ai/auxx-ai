@@ -152,7 +152,7 @@ type CellRenderer = (
 export function EmptyCell() {
   return (
     <CellPadding>
-      <span className='text-muted-foreground'>-</span>
+      <span className='text-muted-foreground'></span>
     </CellPadding>
   )
 }

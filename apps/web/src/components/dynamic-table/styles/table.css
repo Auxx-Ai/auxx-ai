@@ -138,3 +138,11 @@
 :has(> [data-slot='selection-overlay']):has(.cell-active.read-only) [data-slot='fill-handle'] {
   display: none;
 }
+
+/* When the range is multi-cell, suppress the anchor cell's expand-on-select
+   overlay (ExpandableCell / PrimaryCell) so its content doesn't overflow past
+   the blue range rectangle. `.cell-in-range` is only applied for multi-cell
+   ranges (see useIsInRange), so its presence is the signal. */
+:has(> [data-slot='selection-overlay']):has(.cell-in-range) [data-self-overlay] {
+  display: none;
+}
