@@ -1,24 +1,34 @@
 // packages/lib/src/ai/errors/quota-errors.ts
 
 /**
- * Custom error class for quota-related issues
+ * Canonical error raised when an organization runs out of AI credits.
+ * Thrown by LLMOrchestrator when both the monthly quota pool and the
+ * bonus `creditsBalance` pool are exhausted.
  */
 export class QuotaExceededError extends Error {
-  /**
-   * Creates a new QuotaExceededError
-   * @param message - Error message describing the quota issue
-   * @param provider - The provider that exceeded quota
-   * @param quotaUsed - Current quota usage
-   * @param quotaLimit - Maximum quota limit
-   */
+  public readonly quotaUsed: number
+  public readonly quotaLimit: number
+  public readonly bonusCredits: number
+  public readonly resetsAt: Date | null
+  public readonly provider: string
+
   constructor(
     message: string,
-    public provider: string,
-    public quotaUsed: number,
-    public quotaLimit: number
+    details?: {
+      provider?: string
+      quotaUsed?: number
+      quotaLimit?: number
+      bonusCredits?: number
+      resetsAt?: Date | null
+    }
   ) {
     super(message)
     this.name = 'QuotaExceededError'
+    this.provider = details?.provider ?? 'system'
+    this.quotaUsed = details?.quotaUsed ?? 0
+    this.quotaLimit = details?.quotaLimit ?? 0
+    this.bonusCredits = details?.bonusCredits ?? 0
+    this.resetsAt = details?.resetsAt ?? null
   }
 }
 
@@ -77,5 +87,5 @@ export function createQuotaError(
   quotaLimit: number
 ): QuotaExceededError {
   const message = quotaCheck.reason || 'Quota exceeded'
-  return new QuotaExceededError(message, provider, quotaUsed, quotaLimit)
+  return new QuotaExceededError(message, { provider, quotaUsed, quotaLimit })
 }

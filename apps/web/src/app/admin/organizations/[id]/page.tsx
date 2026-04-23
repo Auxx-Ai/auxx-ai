@@ -62,6 +62,7 @@ import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { ActionHistoryPanel } from './_components/action-history-panel'
+import { CreditAdjustmentButton } from './_components/credit-adjustment-button'
 import { EnterpriseManagementSection } from './_components/enterprise-management-section'
 import { MembersSection } from './_components/members-section'
 import { OrgFeaturesTab } from './_components/org-features-tab'
@@ -696,7 +697,14 @@ export default function OrganizationDetailsPage() {
                                 Credits Balance
                               </TableCell>
                               <TableCell className='py-2 font-mono'>
-                                {org.subscription.creditsBalance}
+                                <div className='flex items-center justify-between gap-2'>
+                                  <span>{org.subscription.creditsBalance}</span>
+                                  <CreditAdjustmentButton
+                                    organizationId={org.id}
+                                    organizationName={org.name}
+                                    currentBalance={org.subscription.creditsBalance}
+                                  />
+                                </div>
                               </TableCell>
                             </TableRow>
                           </TableBody>

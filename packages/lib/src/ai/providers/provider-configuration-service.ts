@@ -10,6 +10,7 @@ import type {
 } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
+import { getModelCreditMultiplier } from '../quota/credit-multiplier'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
 import { ProviderRegistry } from './provider-registry'
 import {
@@ -24,7 +25,7 @@ import {
   type ModelData,
   type ModelLoadBalancingConfiguration,
   type ModelSettings,
-  type ModelType,
+  ModelType,
   type ProviderCapabilities,
   type ProviderConfiguration,
   ProviderConfigurationError,
@@ -286,7 +287,7 @@ export class ProviderConfigurationService {
         providerPreference?.preferredType === 'SYSTEM' ? ProviderType.SYSTEM : ProviderType.CUSTOM
 
       // Check availability of each provider type
-      const systemViable = systemConfig.enabled && this._hasValidQuota(systemConfig)
+      const systemViable = systemConfig.enabled
       const customAvailable = this._hasCustomCredentials(customConfig)
 
       // Determine actual provider type with fallback logic
@@ -297,10 +298,10 @@ export class ProviderConfigurationService {
           // Preferred SYSTEM is available
           usingProviderType = ProviderType.SYSTEM
         } else if (customAvailable) {
-          // SYSTEM exhausted/disabled, fallback to CUSTOM
+          // SYSTEM disabled, fallback to CUSTOM
           usingProviderType = ProviderType.CUSTOM
         } else {
-          // Neither available, stay with SYSTEM to show quota_exceeded status
+          // Neither available, stay with SYSTEM to show not_configured status
           usingProviderType = ProviderType.SYSTEM
         }
       } else {
@@ -336,7 +337,7 @@ export class ProviderConfigurationService {
       )
 
       // Calculate Provider Status Info (inherited from ProviderData)
-      const statusInfo = this._calculateProviderStatusInfo(provider, basicConfig)
+      const statusInfo = await this._calculateProviderStatusInfo(provider, basicConfig)
 
       // Return Enhanced ProviderConfiguration that extends ProviderData
       return {
@@ -1074,7 +1075,6 @@ export class ProviderConfigurationService {
   async removeCustomCredentials(provider: string): Promise<{
     removed: boolean
     switchedToSystem: boolean
-    hasQuota: boolean
   }> {
     logger.info('Removing custom provider credentials', {
       organizationId: this.organizationId,
@@ -1082,22 +1082,7 @@ export class ProviderConfigurationService {
     })
 
     try {
-      // 1. Check if SYSTEM record exists to determine quota availability
-      const systemConfig = await this.db.query.ProviderConfiguration.findFirst({
-        where: and(
-          eq(schema.ProviderConfiguration.organizationId, this.organizationId),
-          eq(schema.ProviderConfiguration.provider, provider),
-          eq(schema.ProviderConfiguration.providerType, 'SYSTEM')
-        ),
-      })
-
-      const hasQuota = !!(
-        systemConfig?.quotaLimit &&
-        systemConfig.quotaLimit > 0 &&
-        systemConfig.quotaUsed < systemConfig.quotaLimit
-      )
-
-      // 2. Delete the CUSTOM record (SYSTEM record is preserved)
+      // Delete the CUSTOM record (SYSTEM record is preserved if one exists)
       const deleted = await this.db
         .delete(schema.ProviderConfiguration)
         .where(
@@ -1113,14 +1098,13 @@ export class ProviderConfigurationService {
         return {
           removed: false,
           switchedToSystem: false,
-          hasQuota,
         }
       }
 
-      // 3. Update preference to SYSTEM
+      // Update preference to SYSTEM
       await this.switchProviderType(provider, ProviderType.SYSTEM)
 
-      // 4. Delete load balancing configs (tied to custom credentials)
+      // Delete load balancing configs (tied to custom credentials)
       await this.db
         .delete(schema.LoadBalancingConfig)
         .where(
@@ -1136,13 +1120,11 @@ export class ProviderConfigurationService {
         organizationId: this.organizationId,
         provider,
         switchedToSystem: true,
-        hasQuota,
       })
 
       return {
         removed: true,
         switchedToSystem: true,
-        hasQuota,
       }
     } catch (error) {
       logger.error('Failed to remove custom provider credentials', {
@@ -1427,6 +1409,9 @@ export class ProviderConfigurationService {
       modelConfigMap.set(config.model, config) // Just use model name as key since it's provider-specific
     }
 
+    // Provider-level configured flag is invariant across all models — resolve once.
+    const isProviderConfigured = this._isProviderConfigured(basicConfig)
+
     return Array.from(allModelNames)
       .map((modelName) => {
         // Try to get model capabilities from registry first
@@ -1452,7 +1437,7 @@ export class ProviderConfigurationService {
         const modelConfig = modelConfigMap.get(modelName)
 
         // Apply default-enabled logic: models are enabled by default for configured providers
-        const isProviderConfigured = this._isProviderConfigured(basicConfig)
+        // `isProviderConfigured` is hoisted above the .map — invariant per provider.
         const modelEnabled = modelConfig?.enabled ?? true // Default: enabled
 
         // Determine model status (priority: retired > disabled > deprecated > active)
@@ -1475,10 +1460,17 @@ export class ProviderConfigurationService {
             (ms) => ms.model === modelName && ms.loadBalancingConfigs.length > 1
           ) || false
 
+        // Resolve credit multiplier for LLM models (explicit registry value or heuristic)
+        const creditMultiplier =
+          modelCapabilities.modelType === ModelType.LLM
+            ? (modelCapabilities.creditMultiplier ?? getModelCreditMultiplier(provider, modelName))
+            : undefined
+
         // Return complete ModelData with all ModelCapabilities
         return {
           ...modelCapabilities,
           fetchFrom: modelCapabilities.fetchFrom,
+          creditMultiplier,
           // Additional model state fields
           modelId: modelName,
           enabled: modelEnabled,
@@ -1504,10 +1496,7 @@ export class ProviderConfigurationService {
     customConfiguration: CustomConfiguration
   }): boolean {
     if (basicConfig.usingProviderType === ProviderType.SYSTEM) {
-      return (
-        basicConfig.systemConfiguration.enabled &&
-        this._hasValidQuota(basicConfig.systemConfiguration)
-      )
+      return basicConfig.systemConfiguration.enabled
     } else {
       return !!(
         basicConfig.customConfiguration.provider ||
@@ -1523,14 +1512,14 @@ export class ProviderConfigurationService {
    * @param basicConfig - Basic configuration data
    * @returns ProviderStatusInfo - Complete status information
    */
-  private _calculateProviderStatusInfo(
+  private async _calculateProviderStatusInfo(
     provider: string,
     basicConfig: {
       usingProviderType: ProviderType
       systemConfiguration: SystemConfiguration
       customConfiguration: CustomConfiguration
     }
-  ): ProviderStatusInfo {
+  ): Promise<ProviderStatusInfo> {
     // Move logic from ProviderManager._calculateProviderStatus() (lines 462-506)
     const hasCustomConfig = !!(
       basicConfig.customConfiguration.provider || basicConfig.customConfiguration.models.length > 0
@@ -1544,13 +1533,8 @@ export class ProviderConfigurationService {
 
     if (basicConfig.usingProviderType === ProviderType.SYSTEM) {
       if (hasSystemConfig) {
-        if (this._hasValidQuota(basicConfig.systemConfiguration)) {
-          status = 'system_configured'
-          configured = true
-        } else {
-          status = 'quota_exceeded'
-          configured = false
-        }
+        status = 'system_configured'
+        configured = true
       } else {
         status = 'not_configured'
         configured = false
@@ -1570,36 +1554,7 @@ export class ProviderConfigurationService {
       usingProviderType: basicConfig.usingProviderType,
       status,
       hasValidCredentials,
-      quotaStatus: this._getProviderQuotaInfo(basicConfig) || undefined,
     }
-  }
-
-  /**
-   * Get provider quota information
-   * Moved from ProviderManager._getProviderQuotaInfo()
-   * @param basicConfig - Basic configuration with system config
-   * @returns object | null - Quota information or null if not applicable
-   */
-  private _getProviderQuotaInfo(basicConfig: {
-    usingProviderType: ProviderType
-    systemConfiguration: SystemConfiguration
-  }) {
-    // Always show quota if system configuration has quota available
-    // This lets users see their available credits even when using custom credentials
-    const activeQuota = basicConfig.systemConfiguration.quotaConfigurations.find(
-      (q) => q.quotaType === basicConfig.systemConfiguration.currentQuotaType
-    )
-
-    if (activeQuota) {
-      return {
-        type: activeQuota.quotaType,
-        used: activeQuota.quotaUsed,
-        limit: activeQuota.quotaLimit,
-        isValid: activeQuota.isValid,
-        resetsAt: activeQuota.quotaPeriodEnd ?? null,
-      }
-    }
-    return null
   }
 
   // ===== PRIVATE HELPER METHODS =====
@@ -1642,27 +1597,28 @@ export class ProviderConfigurationService {
     provider: string,
     providerRecords: any[]
   ): Promise<SystemConfiguration> {
-    // This would integrate with your hosting configuration
-    // For now, return a basic implementation
     const systemRecord = providerRecords.find((r) => r.providerType === 'SYSTEM')
 
-    // Build quota configurations from the system record
+    // Quota is org-level. Read OrganizationAiQuota; mirror it into the
+    // per-provider `quotaConfigurations` shape so the downstream UI that
+    // still expects a per-provider quota keeps working without a schema break.
     const quotaConfigurations: SystemConfiguration['quotaConfigurations'] = []
-    if (systemRecord?.quotaType && systemRecord?.quotaLimit !== undefined) {
-      const quotaLimit = systemRecord.quotaLimit ?? 0
-      const quotaUsed = systemRecord.quotaUsed ?? 0
-      // Calculate isValid: unlimited (-1) or has remaining quota
+    const orgQuota = await this.db.query.OrganizationAiQuota.findFirst({
+      where: eq(schema.OrganizationAiQuota.organizationId, this.organizationId),
+    })
+    if (orgQuota) {
+      const quotaLimit = orgQuota.quotaLimit
+      const quotaUsed = orgQuota.quotaUsed
       const isValid = quotaLimit === -1 || (quotaLimit > 0 && quotaUsed < quotaLimit)
-
       quotaConfigurations.push({
-        quotaType: systemRecord.quotaType as ProviderQuotaType,
+        quotaType: orgQuota.quotaType as ProviderQuotaType,
         quotaUnit: QuotaUnit.CREDITS,
         quotaLimit,
         quotaUsed,
         isValid,
         restrictModels: [],
-        quotaPeriodStart: systemRecord.quotaPeriodStart ?? null,
-        quotaPeriodEnd: systemRecord.quotaPeriodEnd ?? null,
+        quotaPeriodStart: orgQuota.quotaPeriodStart,
+        quotaPeriodEnd: orgQuota.quotaPeriodEnd,
       })
     }
 
@@ -1676,9 +1632,7 @@ export class ProviderConfigurationService {
 
     return {
       enabled: !!systemRecord?.isEnabled,
-      currentQuotaType: systemRecord?.quotaType
-        ? (systemRecord.quotaType as ProviderQuotaType)
-        : undefined,
+      currentQuotaType: orgQuota?.quotaType ? (orgQuota.quotaType as ProviderQuotaType) : undefined,
       quotaConfigurations,
       credentials,
     }
@@ -1808,25 +1762,6 @@ export class ProviderConfigurationService {
     }
 
     return modelSettings
-  }
-
-  /**
-   * Check if system configuration has valid remaining quota
-   * @param systemConfig - The system configuration to check
-   * @returns boolean - true if quota is available (unlimited or has remaining credits)
-   */
-  private _hasValidQuota(systemConfig: SystemConfiguration): boolean {
-    if (!systemConfig.enabled) return false
-    if (systemConfig.quotaConfigurations.length === 0) return false
-
-    return systemConfig.quotaConfigurations.some((q) => {
-      // quotaLimit = -1 means unlimited
-      if (q.quotaLimit === -1) return true
-      // quotaLimit = 0 means no quota available
-      if (q.quotaLimit === 0) return false
-      // Check if we have remaining quota
-      return q.quotaUsed < q.quotaLimit
-    })
   }
 
   /**

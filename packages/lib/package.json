@@ -76,6 +76,12 @@
       "import": "./dist/ai/providers/types.mjs",
       "default": "./src/ai/providers/types.ts"
     },
+    "./ai/quota": {
+      "types": "./src/ai/quota/index.ts",
+      "source": "./src/ai/quota/index.ts",
+      "import": "./dist/ai/quota/index.mjs",
+      "default": "./src/ai/quota/index.ts"
+    },
     "./apps": {
       "types": "./src/apps/index.ts",
       "source": "./src/apps/index.ts",

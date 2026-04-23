@@ -24,6 +24,7 @@ import {
   generateSessionTitle,
 } from '@auxx/lib/ai/kopilot'
 import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
+import { getModelCreditMultiplier } from '@auxx/lib/ai/quota'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { withRunLog } from '@auxx/logger/run-log'
@@ -246,9 +247,17 @@ export async function POST(request: NextRequest) {
         logger.error('Kopilot stream error', {
           error: error instanceof Error ? error.message : String(error),
         })
+        const errName = error instanceof Error ? error.name : ''
+        const isQuotaExhaustion = errName === 'QuotaExceededError'
+        const isRateLimited = errName === 'UsageLimitError' || errName === 'RateLimitError'
         send({
           type: 'turn-error',
           error: error instanceof Error ? error.message : 'Internal server error',
+          code: isQuotaExhaustion
+            ? 'quota_exhausted'
+            : isRateLimited
+              ? 'rate_limited'
+              : 'internal_error',
         })
       } finally {
         cleanup()
@@ -464,7 +473,10 @@ async function runInProcessPath(params: {
           | 'MODEL_SPECIFIC'
           | 'LOAD_BALANCED'
           | undefined,
-        creditsUsed: event.providerType === 'SYSTEM' ? 1 : 0,
+        creditsUsed:
+          event.providerType === 'SYSTEM'
+            ? getModelCreditMultiplier(event.provider, event.model)
+            : 0,
       })
     }
 

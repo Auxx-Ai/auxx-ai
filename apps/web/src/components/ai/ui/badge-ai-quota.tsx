@@ -9,46 +9,64 @@ import { Tooltip } from '~/components/global/tooltip'
 interface BadgeAiQuotaProps {
   /** Type of quota: trial, paid, free */
   quotaType: string | null
-  /** Current usage amount */
+  /** Credits spent from the monthly allowance. */
   quotaUsed: number
-  /** Maximum quota limit (-1 for unlimited) */
+  /** Monthly allowance from the active plan. -1 = unlimited. */
   quotaLimit: number
-  /** When the quota resets (end of current period) */
+  /** Admin-granted bonus credits (PlanSubscription.creditsBalance). */
+  bonusCredits?: number
+  /** When the monthly quota resets. */
   resetsAt?: Date | string | null
   /** Additional CSS classes */
   className?: string
 }
 
 /**
- * BadgeAiQuota - Shows remaining AI credits
+ * BadgeAiQuota - Shows remaining AI credits (monthly + bonus combined).
+ * Tooltip breaks the total down into monthly remaining + admin-granted bonus.
  */
-export function BadgeAiQuota({ quotaUsed, quotaLimit, resetsAt, className }: BadgeAiQuotaProps) {
+export function BadgeAiQuota({
+  quotaUsed,
+  quotaLimit,
+  bonusCredits = 0,
+  resetsAt,
+  className,
+}: BadgeAiQuotaProps) {
   const isUnlimited = quotaLimit === -1
-  const remaining = isUnlimited ? Infinity : Math.max(0, quotaLimit - quotaUsed)
-  const usagePercent = isUnlimited ? 0 : Math.round((quotaUsed / quotaLimit) * 100)
+  const monthlyRemaining = isUnlimited
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, quotaLimit - quotaUsed)
+  const bonus = Math.max(0, bonusCredits)
+  const totalRemaining = isUnlimited ? Number.POSITIVE_INFINITY : monthlyRemaining + bonus
+  const usagePercent = isUnlimited
+    ? 0
+    : quotaLimit > 0
+      ? Math.round((quotaUsed / quotaLimit) * 100)
+      : 0
 
   /** Format the reset date for tooltip using formatDistance */
   const getResetText = (): string | null => {
     if (!resetsAt) return null
-
     const resetDate = typeof resetsAt === 'string' ? parseISO(resetsAt) : resetsAt
     if (!isValid(resetDate)) return null
-
     const now = new Date()
-
-    // If reset date is in the past, return null to use fallback
     if (resetDate <= now) return null
-
-    // Use formatDistance for human-readable relative time
-    // e.g., "in 5 days", "in about 1 month", "in 2 hours"
     const distance = formatDistance(resetDate, now, { addSuffix: true })
-    return `Resets ${distance}`
+    return `Monthly credits reset ${distance}`
   }
 
   const resetText = getResetText()
-  const tooltipText = isUnlimited
-    ? 'Unlimited credits'
-    : (resetText ?? `Out of a total of ${quotaLimit} (${usagePercent}%)`)
+  const tooltipLines: string[] = []
+  if (isUnlimited) {
+    tooltipLines.push('Unlimited credits')
+  } else {
+    tooltipLines.push(
+      `${monthlyRemaining} monthly credits (of ${quotaLimit}, ${usagePercent}% used)`
+    )
+    if (bonus > 0) tooltipLines.push(`${bonus} bonus credits`)
+    if (resetText) tooltipLines.push(resetText)
+  }
+  const tooltipText = tooltipLines.join(' · ')
 
   return (
     <Tooltip content={tooltipText}>
@@ -57,7 +75,7 @@ export function BadgeAiQuota({ quotaUsed, quotaLimit, resetsAt, className }: Bad
           'Unlimited'
         ) : (
           <>
-            {remaining}
+            {totalRemaining}
             <span className='ms-1 font-semibold'>credits</span>
           </>
         )}

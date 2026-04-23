@@ -154,7 +154,7 @@ export function SystemModelSettingsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <VarEditorField className='p-0'>
+        <VarEditorField orientation='responsive'>
           {MODEL_TYPE_CONFIG.map(({ type, label, description }) => (
             <VarEditorFieldRow key={type} title={label} description={description}>
               {unifiedModelData ? (

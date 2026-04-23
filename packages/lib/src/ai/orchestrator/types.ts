@@ -230,16 +230,4 @@ export class ToolExecutionError extends Error {
   }
 }
 
-export class QuotaExceededError extends Error {
-  public readonly provider: string
-  public readonly organizationId: string
-  public readonly estimatedTokens: number
-
-  constructor(message: string, provider: string, organizationId: string, estimatedTokens: number) {
-    super(message)
-    this.name = 'QuotaExceededError'
-    this.provider = provider
-    this.organizationId = organizationId
-    this.estimatedTokens = estimatedTokens
-  }
-}
+export { QuotaExceededError } from '../errors/quota-errors'

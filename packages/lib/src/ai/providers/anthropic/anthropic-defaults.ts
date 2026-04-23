@@ -46,6 +46,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-opus-4-6': {
     provider: 'anthropic',
     modelId: 'claude-opus-4-6',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Opus 4.6',
     icon: 'anthropic',
@@ -106,6 +107,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-sonnet-4-6': {
     provider: 'anthropic',
     modelId: 'claude-sonnet-4-6',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Sonnet 4.6',
     icon: 'anthropic',
@@ -166,6 +168,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-sonnet-4-5-20250929': {
     provider: 'anthropic',
     modelId: 'claude-sonnet-4-5-20250929',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Sonnet 4.5',
     icon: 'anthropic',
@@ -226,6 +229,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-haiku-4-5-20251001': {
     provider: 'anthropic',
     modelId: 'claude-haiku-4-5-20251001',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Haiku 4.5',
     icon: 'anthropic',
@@ -286,6 +290,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-sonnet-4-20250514': {
     provider: 'anthropic',
     modelId: 'claude-sonnet-4-20250514',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Sonnet 4',
     icon: 'anthropic',
@@ -346,6 +351,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-opus-4-20250514': {
     provider: 'anthropic',
     modelId: 'claude-opus-4-20250514',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Opus 4',
     icon: 'anthropic',
@@ -406,6 +412,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-3-7-sonnet-20250219': {
     provider: 'anthropic',
     modelId: 'claude-3-7-sonnet-20250219',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude 3.7 Sonnet',
     icon: 'anthropic',
@@ -454,6 +461,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-3-5-sonnet-20241022': {
     provider: 'anthropic',
     modelId: 'claude-3-5-sonnet-20241022',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude 3.5 Sonnet (Oct 2024)',
     icon: 'anthropic',
@@ -514,6 +522,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-3-5-haiku-20241022': {
     provider: 'anthropic',
     modelId: 'claude-3-5-haiku-20241022',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude 3.5 Haiku',
     icon: 'anthropic',

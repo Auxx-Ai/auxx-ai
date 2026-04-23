@@ -53,6 +53,7 @@ export enum FeatureKey {
   datasetsLimit = 'datasetsLimit',
   entities = 'entities',
   importRowsLimit = 'importRowsLimit',
+  monthlyAiCredits = 'monthlyAiCredits',
 
   // ── Usage limits (per billing cycle, Soft + Hard) ──
   callRecordingsHoursPerMonthHard = 'callRecordingsHoursPerMonthHard',
@@ -188,6 +189,14 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     group: 'Data',
     unit: 'rows',
     perOperation: true,
+  },
+  {
+    key: FeatureKey.monthlyAiCredits,
+    type: 'static',
+    label: 'AI Credits',
+    description: 'Monthly AI credit pool. Each LLM call deducts credits by its model multiplier.',
+    group: 'AI',
+    unit: 'credits/mo',
   },
 
   // ── Usage limits (paired) ──
@@ -359,4 +368,21 @@ export function parseFeatureLimits(limitsJson: unknown): FeatureDefinition[] {
   } catch {
     return []
   }
+}
+
+/**
+ * Look up a numeric feature limit by key from a plan's featureLimits JSON.
+ * Returns null when the feature is missing, boolean, or non-numeric.
+ */
+export function getNumericFeatureLimit(
+  limitsJson: unknown,
+  key: FeatureKey | string
+): number | null {
+  const defs = parseFeatureLimits(limitsJson)
+  const match = defs.find((d) => d.key === key)
+  if (!match) return null
+  const limit = match.limit
+  if (limit === '+') return -1
+  if (typeof limit === 'number') return limit
+  return null
 }

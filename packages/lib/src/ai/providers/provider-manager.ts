@@ -428,7 +428,6 @@ export class ProviderManager {
   async removeCustomCredentials(provider: string): Promise<{
     removed: boolean
     switchedToSystem: boolean
-    hasQuota: boolean
   }> {
     const result = await this.configurationService.removeCustomCredentials(provider)
     await onCacheEvent('ai-provider.deleted', { orgId: this.organizationId })

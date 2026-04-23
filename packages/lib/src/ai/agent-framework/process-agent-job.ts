@@ -13,6 +13,7 @@ import {
   createToolDepsFactory,
 } from '../kopilot'
 import type { UsageTrackingRequest } from '../orchestrator/types'
+import { getModelCreditMultiplier } from '../quota/credit-multiplier'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
 import { AgentEngine } from './engine'
 import type { AgentJobPayload } from './enqueue-agent-job'
@@ -134,7 +135,10 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
           | 'MODEL_SPECIFIC'
           | 'LOAD_BALANCED'
           | undefined,
-        creditsUsed: event.providerType === 'SYSTEM' ? 1 : 0,
+        creditsUsed:
+          event.providerType === 'SYSTEM'
+            ? getModelCreditMultiplier(event.provider, event.model)
+            : 0,
       })
     }
 

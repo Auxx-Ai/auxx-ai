@@ -11,6 +11,7 @@ import { ModelToggle } from '~/components/ai/ui/model-toggle'
 import { Tooltip } from '~/components/global/tooltip'
 import ModelIcon from '~/components/workflow/ui/model-parameter/model-icon'
 import { CredentialConfigurationDialog } from './credential-configuration-dialog'
+import { CreditMultiplierBadge } from './credit-multiplier-badge'
 import { FeatureBadges } from './feature-badges'
 import { FetchFrom, type ModelData, type ProviderConfiguration } from './utils'
 
@@ -68,6 +69,7 @@ export const ModelRow: React.FC<ModelRowProps> = ({
               C
             </span>
           )}
+          {model.creditMultiplier && <CreditMultiplierBadge multiplier={model.creditMultiplier} />}
           {/* Feature badges */}
           <FeatureBadges
             features={model.features}
@@ -78,9 +80,7 @@ export const ModelRow: React.FC<ModelRowProps> = ({
           {model.deprecated && (
             <Tooltip
               content={`This model is deprecated.${model.replacement ? ` Switch to ${model.replacement}` : ''}`}>
-              <Badge
-                variant='outline'
-                className='text-amber-500 border-amber-500 text-[10px] shrink-0'>
+              <Badge variant='yellow' size='xs'>
                 Deprecated
               </Badge>
             </Tooltip>
@@ -88,9 +88,7 @@ export const ModelRow: React.FC<ModelRowProps> = ({
           {model.retired && (
             <Tooltip
               content={`This model has been retired.${model.replacement ? ` Switch to ${model.replacement}` : ''}`}>
-              <Badge
-                variant='outline'
-                className='text-destructive border-destructive text-[10px] shrink-0'>
+              <Badge variant='red' size='xs'>
                 Retired
               </Badge>
             </Tooltip>

@@ -51,6 +51,7 @@ const Trigger: FC<TriggerProps> = ({
           showMode
           showModelType
           showFeatures
+          showCreditMultiplier
         />
       )}
       {!currentModel && modelId && (
