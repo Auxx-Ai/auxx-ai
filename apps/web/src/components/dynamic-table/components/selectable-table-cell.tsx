@@ -3,7 +3,8 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { type Cell, flexRender } from '@tanstack/react-table'
-import { memo, useCallback, useRef } from 'react'
+import { memo, useCallback, useMemo, useRef } from 'react'
+import { CellActiveProvider } from '../context/cell-active-context'
 import { useCellIndexerContext } from '../context/cell-indexer-context'
 import {
   useCellSelectionConfig,
@@ -148,6 +149,8 @@ function SelectableTableCellInner<TData>({
     setActiveCell({ rowId, columnId })
   }, [rowId, columnId, setEditingCell, setActiveCell])
 
+  const cellActiveValue = useMemo(() => ({ isActive, isEditing }), [isActive, isEditing])
+
   return (
     <div
       ref={cellRef}
@@ -172,28 +175,30 @@ function SelectableTableCellInner<TData>({
       data-selected={isActive}
       data-editing={isEditing}
       title={!isUpdatable ? 'This field is read-only' : undefined}>
-      <div className={cn('contents', isInlineEditing && 'invisible')}>
-        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-      </div>
+      <CellActiveProvider value={cellActiveValue}>
+        <div className={cn('contents', isInlineEditing && 'invisible')}>
+          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        </div>
 
-      {isInlineEditing && cellSelectionConfig && (
-        <InlineCellEditor
-          rowId={rowId}
-          columnId={columnId}
-          cellSelectionConfig={cellSelectionConfig}
-          onClose={handleCloseEditor}
-        />
-      )}
+        {isInlineEditing && cellSelectionConfig && (
+          <InlineCellEditor
+            rowId={rowId}
+            columnId={columnId}
+            cellSelectionConfig={cellSelectionConfig}
+            onClose={handleCloseEditor}
+          />
+        )}
 
-      {isPopoverEditing && cellSelectionConfig && (
-        <CellFieldEditor
-          rowId={rowId}
-          columnId={columnId}
-          cellSelectionConfig={cellSelectionConfig}
-          onClose={handleCloseEditor}
-          anchorRef={cellRef}
-        />
-      )}
+        {isPopoverEditing && cellSelectionConfig && (
+          <CellFieldEditor
+            rowId={rowId}
+            columnId={columnId}
+            cellSelectionConfig={cellSelectionConfig}
+            onClose={handleCloseEditor}
+            anchorRef={cellRef}
+          />
+        )}
+      </CellActiveProvider>
     </div>
   )
 }

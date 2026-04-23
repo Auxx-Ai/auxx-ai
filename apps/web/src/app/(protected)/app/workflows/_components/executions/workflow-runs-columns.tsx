@@ -23,7 +23,7 @@ import {
   Zap,
 } from 'lucide-react'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
-import { CellPadding, FormattedCell, PrimaryCell } from '~/components/dynamic-table'
+import { ExpandableCell, FormattedCell, PrimaryCell } from '~/components/dynamic-table'
 import { ItemsCellView } from '~/components/ui/items-list-view'
 import { type WorkflowRunStatus, WorkflowRunStatusBadge } from './workflow-run-status-badge'
 
@@ -189,12 +189,12 @@ export const createWorkflowRunsColumns = (
     cell: ({ getValue }) => {
       const version = getValue<string>()
       return (
-        <CellPadding>
+        <ExpandableCell>
           <div className='flex items-center gap-1 text-sm'>
             <GitBranch className='size-3 text-muted-foreground' />
             <span className='font-mono'>{version}</span>
           </div>
-        </CellPadding>
+        </ExpandableCell>
       )
     },
     enableSorting: true,
@@ -210,12 +210,12 @@ export const createWorkflowRunsColumns = (
     cell: ({ getValue }) => {
       const elapsedTime = getValue<number | null>()
       return (
-        <CellPadding>
+        <ExpandableCell>
           <div className='flex items-center gap-1 text-sm text-muted-foreground'>
             <Clock className='size-3' />
             <span>{formatElapsedTime(elapsedTime)}</span>
           </div>
-        </CellPadding>
+        </ExpandableCell>
       )
     },
     enableSorting: true,
@@ -232,12 +232,12 @@ export const createWorkflowRunsColumns = (
     cell: ({ getValue }) => {
       const tokens = getValue<number>()
       return (
-        <CellPadding>
+        <ExpandableCell>
           <div className='flex items-center gap-1 text-sm text-muted-foreground'>
             <Coins className='size-3' />
             <span>{tokens.toLocaleString()}</span>
           </div>
-        </CellPadding>
+        </ExpandableCell>
       )
     },
     enableSorting: true,

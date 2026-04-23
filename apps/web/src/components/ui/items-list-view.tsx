@@ -3,8 +3,8 @@
 
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
-import { useEffect, useRef, useState } from 'react'
-import { CellSelectionOverlay } from '../dynamic-table/components/cell-selection-overlay'
+import { ExpandableCell } from '../dynamic-table/components/expandable-cell'
+import { useCellActive } from '../dynamic-table/context/cell-active-context'
 
 /**
  * Base item type - must have an id for keying
@@ -71,34 +71,6 @@ export interface ItemsCellViewProps<T extends ItemsListItem> {
 }
 
 /**
- * Detects whether the nearest ancestor with `data-selected` attribute is selected.
- * Uses MutationObserver to react to selection changes without context coupling.
- */
-function useIsCellSelected(ref: React.RefObject<HTMLElement | null>, enabled: boolean) {
-  const [selected, setSelected] = useState(false)
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: ref.current is read inside effect, ref itself is stable
-  useEffect(() => {
-    if (!enabled) return
-
-    const el = ref.current
-    if (!el) return
-
-    const cellEl = el.closest('[data-selected]')
-    if (!cellEl) return
-
-    const check = () => setSelected(cellEl.getAttribute('data-selected') === 'true')
-    check()
-
-    const observer = new MutationObserver(check)
-    observer.observe(cellEl, { attributes: true, attributeFilter: ['data-selected'] })
-    return () => observer.disconnect()
-  }, [enabled])
-
-  return selected
-}
-
-/**
  * Get key from item - handles both objects with id and primitives
  */
 function getItemKey<T extends ItemsListItem>(item: ItemsListValue<T>): string {
@@ -154,8 +126,14 @@ export function ItemsListView<T extends ItemsListItem>({
 }
 
 /**
- * ItemsCellView - Table cell view with expandable hover
- * Use for dynamic table cells that need to show single or multiple items
+ * ItemsCellView - Table cell view with expandable hover.
+ *
+ * Renders the item list once. Layout (single-line + fade mask vs. flex-wrap)
+ * is driven by the parent `.cell-active` class via `ExpandableCell` mode='items'.
+ *
+ * When `maxDisplay` is set, overflow items are mounted only when the cell is
+ * active — same lazy-mount perf trick as before, but driven by `useCellActive`
+ * (single context subscription) instead of a per-cell `MutationObserver`.
  *
  * @example Single item usage:
  * <ItemsCellView
@@ -179,90 +157,50 @@ export function ItemsCellView<T extends ItemsListItem>({
   className,
   maxDisplay,
 }: ItemsCellViewProps<T>) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const { isActive } = useCellActive()
 
-  // Normalize to array: use items if provided, otherwise wrap single item
-  // Primitives (string/number/boolean) are wrapped as { id: String(value) }
+  // Normalize to array: use items if provided, otherwise wrap single item.
+  // Primitives (string/number/boolean) are wrapped as { id: String(value) }.
   const normalizedItems: T[] =
     items ?? (item != null ? [typeof item === 'object' ? item : ({ id: String(item) } as T)] : [])
 
-  // Truncation: only render first N items in the default view
-  const hasOverflow = maxDisplay != null && normalizedItems.length > maxDisplay
-  const displayItems = hasOverflow ? normalizedItems.slice(0, maxDisplay) : normalizedItems
-  const overflowCount = hasOverflow ? normalizedItems.length - maxDisplay : 0
-
-  // Lazily mount overflow items only when the cell is selected
-  const isCellSelected = useIsCellSelected(containerRef, hasOverflow)
-
-  // Empty state
-  if (!isLoading && normalizedItems.length === 0) {
-    return (
-      <div
-        data-slot='expandable-cell-inner'
-        className={cn('relative w-full min-h-9 flex items-center ps-3', className)}>
-        {emptyContent ?? <span className='text-muted-foreground'>-</span>}
-        <div className='hidden [.cell-selected_&]:flex'>
-          <CellSelectionOverlay isSelected isEditing={false} />
-        </div>
-      </div>
-    )
-  }
-
-  // Loading state
+  // Loading state — render skeletons in the same wrapper.
   if (isLoading && normalizedItems.length === 0) {
     return (
-      <div
-        data-slot='expandable-cell-inner'
-        className={cn('relative w-full min-h-9 flex items-center ps-3 gap-1', className)}>
+      <ExpandableCell mode='items' className={className}>
         {Array.from({ length: loadingCount }).map((_, i) => (
           <Skeleton key={i} className='h-5 w-16 rounded' />
         ))}
-      </div>
+      </ExpandableCell>
     )
   }
 
-  return (
-    <div
-      ref={containerRef}
-      data-slot='expandable-cell-inner'
-      className={cn('relative min-w-full w-full min-h-9 group/items-list flex text-sm', className)}>
-      {/* Items — render displayItems (truncated when maxDisplay is set) */}
-      <div className='flex items-center gap-1 w-full overflow-hidden ps-3 py-0.5 px-0.5 shrink-0 mask-r-from-[calc(100%-32px)] mask-r-to-[100%]'>
-        {displayItems.map((item, index) => (
-          <div key={item.id} className='shrink-0'>
-            {renderItem(item, index)}
-          </div>
-        ))}
-        {overflowCount > 0 && (
-          <span className='shrink-0 text-xs text-muted-foreground'>+{overflowCount}</span>
-        )}
-      </div>
+  // Empty state — render the empty content in the same wrapper.
+  if (normalizedItems.length === 0) {
+    return (
+      <ExpandableCell mode='items' className={className}>
+        {emptyContent ?? <span className='text-muted-foreground'>-</span>}
+      </ExpandableCell>
+    )
+  }
 
-      {/* Expanded view - shows when cell is selected */}
-      {/* When maxDisplay is set, only mount all items when cell is selected (lazy loading) */}
-      <div
-        data-self-overlay
-        data-slot='expandable-cell-inner'
-        className={cn(
-          'absolute left-0 top-0 z-15 min-h-9',
-          'hidden [.cell-selected_&]:flex',
-          'ps-3 px-3',
-          'min-w-full w-max max-w-xs',
-          'bg-primary-100'
-        )}>
-        <CellSelectionOverlay isSelected isEditing={false} />
-        <div className='my-2'>
-          <div className='flex flex-wrap gap-1'>
-            {(hasOverflow && !isCellSelected ? displayItems : normalizedItems).map(
-              (item, index) => (
-                <div key={`expanded-${item.id}`} className='shrink-0'>
-                  {renderItem(item, index)}
-                </div>
-              )
-            )}
-          </div>
+  // Lazy-mount overflow: when collapsed and over the cap, only render the cap.
+  // When the cell becomes active, render all of them.
+  const hasOverflow = maxDisplay != null && normalizedItems.length > maxDisplay
+  const visibleItems =
+    hasOverflow && !isActive ? normalizedItems.slice(0, maxDisplay) : normalizedItems
+  const overflowCount = hasOverflow && !isActive ? normalizedItems.length - maxDisplay : 0
+
+  return (
+    <ExpandableCell mode='items' className={className}>
+      {visibleItems.map((it, index) => (
+        <div key={it.id} className='shrink-0'>
+          {renderItem(it, index)}
         </div>
-      </div>
-    </div>
+      ))}
+      {overflowCount > 0 && (
+        <span className='shrink-0 text-xs text-muted-foreground'>+{overflowCount}</span>
+      )}
+    </ExpandableCell>
   )
 }
