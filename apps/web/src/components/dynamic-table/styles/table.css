@@ -121,16 +121,17 @@
   background: rgb(var(--primary) / 0.1);
 }
 
-/* Read-only override: muted ring instead of primary */
+/* Read-only override: muted gray ring + gray tint instead of blue */
 .cell-active.read-only::after {
-  box-shadow: inset 0 0 0 1px var(--color-muted-foreground);
+  box-shadow: inset 0 0 0 1px rgb(var(--primary-400));
+  background-color: rgb(var(--primary-500) / 0.05);
 }
 
 /* When the active cell's content is expanding (text/horizontal/items modes),
    the expanded element draws its own ring at its actual bounds. Hide the
    cell-bound ::after ring so we don't get a double-ring. Static mode
    (PrimaryCell) keeps the cell ring since it doesn't expand. */
-:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range))
+:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
   .cell-active:not(.cell-editing):has([data-expand]:not([data-expand='static']))::after {
   display: none;
 }
@@ -149,18 +150,30 @@
   display: none;
 }
 
+/* Hide the in-cell FillHandle (rendered by ExpandableCell for the single-cell
+   active case) when there's a multi-cell range or a fill-drag in progress.
+   In multi-cell, SelectionOverlay's own FillHandle takes over at the range
+   bottom-right. During fill-drag, no handle should be visible. */
+:has(> [data-slot='selection-overlay']):has(.cell-in-range)
+  [data-slot='expandable-cell'] [data-slot='fill-handle'],
+:has(> [data-slot='selection-overlay']):has([data-slot='fill-preview-overlay'])
+  [data-slot='expandable-cell'] [data-slot='fill-handle'] {
+  display: none;
+}
+
 /* Expand-on-select overlay
    ----------------------------------------------------------------
    The active cell's content "lifts out" of the row (absolute positioning) and
    can grow beyond the cell rect — wraps text (mode=text), grows right
    (mode=horizontal), or flex-wraps badges (mode=items).
 
-   Multi-cell suppression is automatic: when any `.cell-in-range` exists in the
-   same scroll container, the `:not(:has(.cell-in-range))` chain stops matching
-   and every active cell collapses back to its baseline layout. Pure CSS — no
-   per-cell JS subscription, runs container-wide once. */
+   Suppression is automatic via the `:not(:has(...))` chain:
+   - `.cell-in-range` present → multi-cell selection, collapse all expansions.
+   - `[data-slot='fill-preview-overlay']` present → fill-drag in progress,
+     collapse so the expanded content doesn't obstruct the drag preview.
+   Pure CSS — no per-cell JS subscription, runs container-wide once. */
 
-:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range))
+:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
   .cell-active:not(.cell-editing)
   [data-expand]:not([data-expand='static']) {
   position: absolute;
@@ -185,26 +198,61 @@
   box-shadow: inset 0 0 0 1px rgb(var(--primary));
 }
 
-:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range))
+/* Read-only override on the expanded element — muted gray ring, gray tint
+   instead of blue. Mirrors the cell-bound `.cell-active.read-only::after`. */
+:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
+  .cell-active.read-only:not(.cell-editing)
+  [data-expand]:not([data-expand='static']) {
+  background-image: linear-gradient(
+    rgb(var(--primary-500) / 0.05),
+    rgb(var(--primary-500) / 0.05)
+  );
+  box-shadow: inset 0 0 0 1px rgb(var(--primary-400));
+}
+
+/* Collapsed truncation — direct children (renderers wrap their value in a
+   span/anchor; `text-overflow: ellipsis` doesn't propagate from flex parent
+   to flex-item children, so apply on the children themselves). FillHandle
+   is excluded — it's a visual affordance, not part of the content. */
+[data-expand='text'] > *:not([data-slot='fill-handle']),
+[data-expand='horizontal'] > *:not([data-slot='fill-handle']) {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
   .cell-active:not(.cell-editing)
   [data-expand='text'] {
   max-width: 280px;
   align-items: flex-start;
   padding-top: 8px;
   padding-bottom: 4px;
+}
+
+/* Expanded text — undo the children's truncate so text can wrap. */
+:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
+  .cell-active:not(.cell-editing)
+  [data-expand='text']
+  > *:not([data-slot='fill-handle']) {
+  overflow: visible;
+  text-overflow: clip;
   white-space: pre-wrap;
   word-break: break-word;
-  text-overflow: clip;
 }
 
-:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range))
+/* Expanded horizontal — keep nowrap, undo overflow:hidden so it can grow. */
+:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
   .cell-active:not(.cell-editing)
-  [data-expand='horizontal'] {
-  white-space: nowrap;
+  [data-expand='horizontal']
+  > *:not([data-slot='fill-handle']) {
+  overflow: visible;
   text-overflow: clip;
 }
 
-:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range))
+:has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
   .cell-active:not(.cell-editing)
   [data-expand='items'] {
   max-width: 20rem;

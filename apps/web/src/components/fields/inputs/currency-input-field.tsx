@@ -85,9 +85,11 @@ export function CurrencyInputField() {
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
         e.preventDefault()
-        // Blur triggers: parse -> onValueChange -> save (via shouldSaveRef)
+        // Blur triggers: parse -> onValueChange -> save (via shouldSaveRef).
         e.currentTarget.blur()
-        // Close the popover (value already saved by blur handler)
+        // Closes the PropertyContext (used by the drawer/popover case). For
+        // inline cell editing, InlineCellEditor's document keydown listener
+        // handles exit + row advancement after this commit completes.
         close()
       }
     },

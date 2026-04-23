@@ -176,7 +176,9 @@ export function SelectionOverlay({ scrollContainerRef }: SelectionOverlayProps) 
   return (
     <>
       <PositionedBox rect={rangeRect} className={overlayClassName} dataSlot='selection-overlay'>
-        {!isEditing && !fillDrag && <FillHandle />}
+        {/* Single-cell case is owned by ExpandableCell so the handle follows
+            an expanded cell's actual right edge instead of the cell rect. */}
+        {!isEditing && !fillDrag && !single && <FillHandle />}
       </PositionedBox>
 
       {previewRect && (
