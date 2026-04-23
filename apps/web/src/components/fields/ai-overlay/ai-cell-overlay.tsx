@@ -5,6 +5,7 @@
 import type { FieldType } from '@auxx/database/types'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
+import { TextShimmer } from '@auxx/ui/components/text-shimmer'
 import {
   Tooltip,
   TooltipContent,
@@ -13,6 +14,7 @@ import {
 } from '@auxx/ui/components/tooltip'
 import { AlertTriangle } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { AnimatedDots } from '~/components/kopilot/ui/kopilot-status-bar'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import {
   buildFieldValueKey,
@@ -84,13 +86,15 @@ export function AiCellOverlay({
 
   return (
     <div className='relative group h-full w-full'>
-      <div className='h-full w-full'>{children}</div>
+      {!isGenerating && <div className='h-full w-full'>{children}</div>}
 
       {isGenerating && (
-        <div
-          aria-hidden
-          className='absolute inset-0 z-16 pointer-events-none animate-pulse bg-gradient-to-r from-purple-500/0 via-purple-500/10 to-purple-500/0'
-        />
+        <div className='flex items-center h-full pl-2 pointer-events-none'>
+          <TextShimmer as='span' className='text-xs'>
+            Generating
+          </TextShimmer>
+          <AnimatedDots />
+        </div>
       )}
 
       {showEmptyPlaceholder && <EmptyPlaceholder onClick={generate} />}

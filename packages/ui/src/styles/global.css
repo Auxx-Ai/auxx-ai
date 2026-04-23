@@ -532,6 +532,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-green-50: color(display-p3 0.012 0.596 0.145/0.087);
+  --color-quartz: var(--color-indigo-500);
 
   /* Primary */
   --color-primary: rgb(var(--primary));
