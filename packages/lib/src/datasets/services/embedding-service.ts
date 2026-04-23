@@ -10,6 +10,7 @@ import {
   ModelType,
   type ProviderTypeValue,
 } from '../../ai/providers/types'
+import { QuotaService } from '../../ai/quota/quota-service'
 import {
   type ChunkingOptions,
   SmartChunkingService,
@@ -418,12 +419,14 @@ export class EmbeddingService {
     )
 
     if (!quotaCheck.available) {
-      throw new QuotaExceededError(
-        quotaCheck.reason || 'Embedding quota exceeded',
+      const status = await new QuotaService(this.db, this.organizationId).getQuotaStatus()
+      throw new QuotaExceededError(quotaCheck.reason || 'Embedding quota exceeded', {
         provider,
-        this.organizationId,
-        estimatedCredits
-      )
+        quotaUsed: status?.quotaUsed ?? 0,
+        quotaLimit: status?.quotaLimit ?? 0,
+        bonusCredits: status?.bonusCredits ?? 0,
+        resetsAt: status?.quotaPeriodEnd ?? null,
+      })
     }
   }
 

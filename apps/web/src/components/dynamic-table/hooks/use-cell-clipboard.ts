@@ -50,6 +50,17 @@ interface ClipboardSidecar {
 }
 
 /**
+ * Same-tab sidecar stash. Keyed by the exact TSV written to `text/plain`,
+ * so a paste in the same tab can round-trip typed values (relationships,
+ * structured fields, select option ids) losslessly without writing a custom
+ * MIME type — which would trigger Chromium's clipboard permission prompt.
+ *
+ * Cross-tab auxx→auxx paste loses this and falls back to plain-text TSV
+ * parsing, which is acceptable for v1.
+ */
+let clipboardStash: { tsv: string; sidecar: ClipboardSidecar } | null = null
+
+/**
  * Fallback TSV formatter used when `formatCellForCopy` isn't wired up.
  * Tabs and newlines inside strings would break the format, so we replace
  * them with spaces.
@@ -158,6 +169,9 @@ export function useCellClipboard({
 
     try {
       await writeDualClipboard(tsv, sidecar)
+      // Stash the sidecar keyed by the TSV we just wrote. Lets same-tab
+      // paste reconstruct typed values without reading a custom MIME.
+      clipboardStash = { tsv, sidecar }
       // Marching-ants highlight around the copied range; cleared on paste/Escape.
       useSelectionStore.getState().setCopyHighlight(tableId, range)
     } catch (err) {
@@ -459,9 +473,17 @@ export function useCellClipboard({
 
 /**
  * Parse clipboard contents into a 2D grid of CopyCellPayload.
- * Prefers the JSON sidecar when present; falls back to plain-text TSV.
+ * Priority:
+ *   1. Module stash — exact match on the plain-text we last wrote (same-tab,
+ *      lossless, no permission prompt).
+ *   2. Custom-MIME sidecar — only populated when USE_DUAL_MIME_CLIPBOARD is on.
+ *   3. Plain-text TSV fallback — lossy but works for cross-tab and external
+ *      clipboards (Excel, Notion, etc.).
  */
 function parseClipboardRows(sidecarJson: string, plainText: string): CopyCellPayload[][] {
+  if (clipboardStash && clipboardStash.tsv === plainText) {
+    return clipboardStash.sidecar.rows
+  }
   if (sidecarJson) {
     try {
       const parsed = JSON.parse(sidecarJson) as ClipboardSidecar

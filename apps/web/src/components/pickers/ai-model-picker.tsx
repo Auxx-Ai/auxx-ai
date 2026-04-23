@@ -281,6 +281,7 @@ export function AiModelPicker({
                       showMode={!compact}
                       showModelType={!compact}
                       showFeatures={!compact}
+                      showCreditMultiplier
                     />
                   </>
                 ) : (
@@ -359,6 +360,7 @@ export function AiModelPicker({
                             className='truncate'
                             showMode
                             showModelType
+                            showCreditMultiplier
                           />
                           {model.deprecated && (
                             <Tooltip

@@ -7,6 +7,7 @@ import { WebhookService } from '@auxx/billing'
 import { configService } from '@auxx/credentials'
 import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
+import { onInvoicePaidRefreshQuota, onSubscriptionUpdatedSyncQuota } from '@auxx/lib/ai/quota'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { handlePlanDowngrade } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
@@ -49,12 +50,14 @@ export async function POST(req: NextRequest) {
           logger.info('Checkout session completed, cache invalidated', { eventId: event.id })
         },
         onSubscriptionCreated: async (event, ctx) => {
+          await onSubscriptionUpdatedSyncQuota(database, event, ctx)
           if (ctx.organizationId) {
             await onCacheEvent('plan.subscribed', { orgId: ctx.organizationId })
           }
           logger.info('Subscription created, cache invalidated', { eventId: event.id })
         },
         onSubscriptionUpdated: async (event, ctx) => {
+          await onSubscriptionUpdatedSyncQuota(database, event, ctx)
           if (ctx.organizationId) {
             await onCacheEvent('plan.changed', { orgId: ctx.organizationId })
           }
@@ -67,6 +70,7 @@ export async function POST(req: NextRequest) {
           logger.info('Subscription deleted, cache invalidated', { eventId: event.id })
         },
         onInvoicePaid: async (event, ctx) => {
+          await onInvoicePaidRefreshQuota(database, event, ctx)
           if (ctx.organizationId) {
             await onCacheEvent('plan.changed', { orgId: ctx.organizationId })
           }

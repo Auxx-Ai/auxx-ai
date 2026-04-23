@@ -261,6 +261,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4-turbo': {
     provider: 'openai',
     modelId: 'gpt-4-turbo',
+    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     displayName: 'GPT-4 Turbo',
@@ -323,6 +324,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-chat-latest': {
     provider: 'openai',
     modelId: 'gpt-5-chat-latest',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Chat (Latest)',
     icon: 'openai',
@@ -396,6 +398,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5': {
     provider: 'openai',
     modelId: 'gpt-5',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5',
     icon: 'openai',
@@ -469,6 +472,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.2-chat-latest': {
     provider: 'openai',
     modelId: 'gpt-5.2-chat-latest',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.2 Chat (Latest)',
     icon: 'openai',
@@ -493,6 +497,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.2': {
     provider: 'openai',
     modelId: 'gpt-5.2',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.2',
     icon: 'openai',
@@ -517,6 +522,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.4': {
     provider: 'openai',
     modelId: 'gpt-5.4',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.4',
     icon: 'openai',
@@ -541,6 +547,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.4-mini': {
     provider: 'openai',
     modelId: 'gpt-5.4-mini',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.4 Mini',
     icon: 'openai',
@@ -565,6 +572,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.4-nano': {
     provider: 'openai',
     modelId: 'gpt-5.4-nano',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.4 Nano',
     icon: 'openai',
@@ -589,6 +597,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.4-pro': {
     provider: 'openai',
     modelId: 'gpt-5.4-pro',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.4 Pro',
     icon: 'openai',
@@ -613,6 +622,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.3-chat-latest': {
     provider: 'openai',
     modelId: 'gpt-5.3-chat-latest',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.3 Chat (Latest)',
     icon: 'openai',
@@ -637,6 +647,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.3-codex': {
     provider: 'openai',
     modelId: 'gpt-5.3-codex',
+    creditMultiplier: 3,
     retired: true,
     replacement: 'gpt-5.4',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -663,6 +674,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.1': {
     provider: 'openai',
     modelId: 'gpt-5.1',
+    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-mini',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -777,6 +789,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-mini': {
     provider: 'openai',
     modelId: 'gpt-5-mini',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Mini',
     icon: 'openai',
@@ -850,6 +863,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-mini-2025-08-07': {
     provider: 'openai',
     modelId: 'gpt-5-mini-2025-08-07',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Mini (2025-08-07)',
     icon: 'openai',
@@ -923,6 +937,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-nano': {
     provider: 'openai',
     modelId: 'gpt-5-nano',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Nano',
     icon: 'openai',
@@ -996,6 +1011,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-nano-2025-08-07': {
     provider: 'openai',
     modelId: 'gpt-5-nano-2025-08-07',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Nano (2025-08-07)',
     icon: 'openai',
@@ -1069,6 +1085,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1': {
     provider: 'openai',
     modelId: 'gpt-4.1',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1',
     icon: 'openai',
@@ -1139,6 +1156,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-2025-04-14': {
     provider: 'openai',
     modelId: 'gpt-4.1-2025-04-14',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 (2025-04-14)',
     icon: 'openai',
@@ -1209,6 +1227,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-mini': {
     provider: 'openai',
     modelId: 'gpt-4.1-mini',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 Mini',
     icon: 'openai',
@@ -1269,6 +1288,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-mini-2025-04-14': {
     provider: 'openai',
     modelId: 'gpt-4.1-mini-2025-04-14',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 Mini (2025-04-14)',
     icon: 'openai',
@@ -1329,6 +1349,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-nano': {
     provider: 'openai',
     modelId: 'gpt-4.1-nano',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 Nano',
     icon: 'openai',
@@ -1389,6 +1410,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-nano-2025-04-14': {
     provider: 'openai',
     modelId: 'gpt-4.1-nano-2025-04-14',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 Nano (2025-04-14)',
     icon: 'openai',
@@ -1449,6 +1471,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'chatgpt-4o-latest': {
     provider: 'openai',
     modelId: 'chatgpt-4o-latest',
+    creditMultiplier: 3,
     retired: true,
     replacement: 'gpt-5.3-chat-latest',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1521,6 +1544,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o': {
     provider: 'openai',
     modelId: 'gpt-4o',
+    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1617,6 +1641,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-mini': {
     provider: 'openai',
     modelId: 'gpt-4o-mini',
+    creditMultiplier: 1,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1679,6 +1704,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-2024-05-13': {
     provider: 'openai',
     modelId: 'gpt-4o-2024-05-13',
+    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1751,6 +1777,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-2024-08-06': {
     provider: 'openai',
     modelId: 'gpt-4o-2024-08-06',
+    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1823,6 +1850,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-2024-11-20': {
     provider: 'openai',
     modelId: 'gpt-4o-2024-11-20',
+    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1895,6 +1923,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-audio-preview': {
     provider: 'openai',
     modelId: 'gpt-4o-audio-preview',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4o Audio Preview',
     icon: 'openai',
@@ -1955,6 +1984,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-audio-preview-2025-06-03': {
     provider: 'openai',
     modelId: 'gpt-4o-audio-preview-2025-06-03',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4o Audio Preview (2025-06-03)',
     icon: 'openai',
@@ -2015,6 +2045,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-mini-2024-07-18': {
     provider: 'openai',
     modelId: 'gpt-4o-mini-2024-07-18',
+    creditMultiplier: 1,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -2077,6 +2108,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o4-mini': {
     provider: 'openai',
     modelId: 'o4-mini',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O4 Mini',
     icon: 'openai',
@@ -2101,6 +2133,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o4-mini-2025-04-16': {
     provider: 'openai',
     modelId: 'o4-mini-2025-04-16',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O4 Mini (2025-04-16)',
     icon: 'openai',
@@ -2125,6 +2158,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   o3: {
     provider: 'openai',
     modelId: 'o3',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3',
     icon: 'openai',
@@ -2149,6 +2183,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-2025-04-16': {
     provider: 'openai',
     modelId: 'o3-2025-04-16',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 (2025-04-16)',
     icon: 'openai',
@@ -2173,6 +2208,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-mini': {
     provider: 'openai',
     modelId: 'o3-mini',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 Mini',
     icon: 'openai',
@@ -2197,6 +2233,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-mini-2025-01-31': {
     provider: 'openai',
     modelId: 'o3-mini-2025-01-31',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 Mini (2025-01-31)',
     icon: 'openai',
@@ -2221,6 +2258,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-pro': {
     provider: 'openai',
     modelId: 'o3-pro',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 Pro',
     icon: 'openai',
@@ -2245,6 +2283,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-pro-2025-06-10': {
     provider: 'openai',
     modelId: 'o3-pro-2025-06-10',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 Pro (2025-06-10)',
     icon: 'openai',
@@ -2269,6 +2308,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   o1: {
     provider: 'openai',
     modelId: 'o1',
+    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O1',
     icon: 'openai',
@@ -2293,6 +2333,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o1-mini': {
     provider: 'openai',
     modelId: 'o1-mini',
+    creditMultiplier: 5,
     retired: true,
     replacement: 'o4-mini',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -2331,6 +2372,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o1-mini-2024-09-12': {
     provider: 'openai',
     modelId: 'o1-mini-2024-09-12',
+    creditMultiplier: 5,
     retired: true,
     replacement: 'o4-mini',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -2369,6 +2411,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o1-preview': {
     provider: 'openai',
     modelId: 'o1-preview',
+    creditMultiplier: 5,
     retired: true,
     replacement: 'o3',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -2407,6 +2450,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o1-preview-2024-09-12': {
     provider: 'openai',
     modelId: 'o1-preview-2024-09-12',
+    creditMultiplier: 5,
     deprecated: true,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O1 Preview (2024-09-12)',

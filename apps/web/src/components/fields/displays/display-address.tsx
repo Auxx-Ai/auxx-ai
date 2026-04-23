@@ -18,7 +18,6 @@ export function DisplayAddress() {
 /**
  * DisplayAddressStruct component
  * Renders a structured address from a JSON string or object
- * Supports both old field names (street, postalCode) and new ones (street1, zipCode)
  */
 export function DisplayAddressStruct() {
   const { value } = useFieldContext()
@@ -33,12 +32,11 @@ export function DisplayAddressStruct() {
     address = value as Record<string, string>
   }
 
-  // Support both old and new field names for backward compatibility
-  const street1 = address.street1 || address.street || ''
+  const street1 = address.street1 || ''
   const street2 = address.street2 || ''
   const city = address.city || ''
   const state = address.state || ''
-  const zipCode = address.zipCode || address.postalCode || ''
+  const zipCode = address.zipCode || ''
   const country = address.country || ''
 
   // Format: street1, street2, city, state zipCode, country

@@ -13,9 +13,11 @@ import type {
   ToolCall,
   UsageMetrics,
 } from '../clients/base/types'
+import { QuotaExceededError } from '../errors/quota-errors'
 import { ProviderManager } from '../providers/provider-manager'
 import { ProviderRegistry } from '../providers/provider-registry'
 import { ModelType } from '../providers/types'
+import { QuotaService } from '../quota/quota-service'
 import type {
   AICallbacks,
   BatchLLMRequest,
@@ -78,22 +80,14 @@ export class LLMOrchestrator {
     const startTime = Date.now()
 
     try {
-      // Usage guard: count AI completion before invocation
-      if (this.config.enableQuotaEnforcement && this.db) {
-        const guard = await createUsageGuard(this.db)
-        if (guard) {
-          const usageResult = await guard.consume(organizationId, 'aiCompletions', { userId })
-          if (!usageResult.allowed) {
-            throw new UsageLimitError({
-              metric: 'aiCompletions',
-              current: usageResult.current ?? 0,
-              limit: usageResult.limit ?? 0,
-              message:
-                'You have reached your monthly AI usage limit. Upgrade your plan for more AI completions.',
-            })
-          }
-        }
-      }
+      // Single-pass gate: resolves the client + credential metadata AND enforces
+      // the SYSTEM credit quota + abuse rate-limit. One DB lookup for client
+      // credentials covers both.
+      const {
+        client: llmClient,
+        providerType,
+        credentialSource,
+      } = await this.enforceQuotaGate(provider, model, organizationId, userId)
 
       // Execute callbacks - beforeInvoke
       await this.triggerBeforeCallback(request.callbacks, {
@@ -103,13 +97,6 @@ export class LLMOrchestrator {
         userId,
         context,
       })
-
-      // Get client with credential metadata for quota tracking
-      const {
-        client: llmClient,
-        providerType,
-        credentialSource,
-      } = await this.getClientWithMetadata(provider, model, organizationId, userId)
 
       // Build invocation parameters with enhanced features
       const invokeParams: LLMInvokeParams = {
@@ -172,11 +159,11 @@ export class LLMOrchestrator {
             hasTools: !!response.tool_calls?.length,
             hasStructuredOutput: !!structuredOutput,
           },
-          // Pass provider type for quota tracking - this enables credit deduction for SYSTEM providers
+          // Pass provider type for quota tracking - SYSTEM providers decrement the credit pool.
           providerType,
           credentialSource,
-          creditsUsed: 1, // 1 credit per AI invocation for SYSTEM providers
-          // Source tracking
+          // creditsUsed is left undefined so UsageTrackingService resolves it
+          // via the model credit multiplier (1/3/8 for small/medium/large tiers).
           source,
           sourceId,
         })
@@ -230,7 +217,20 @@ export class LLMOrchestrator {
   }
 
   /**
-   * Stream-specific invocation for real-time applications
+   * Stream-specific invocation for real-time applications.
+   *
+   * **Usage tracking is the caller's responsibility.** Unlike `invoke()`, this
+   * method does NOT call `UsageTrackingService.trackUsage` internally — the
+   * generator's return value (`LLMInvocationResponse`) carries `usage`,
+   * `providerType`, and `credentialSource`, and the caller must forward those
+   * to `UsageTrackingService.trackUsage` or `trackUsageBatch` to (a) record
+   * the `AiUsage` row and (b) deduct SYSTEM credits via `QuotaService`.
+   *
+   * The current callers (`agent-framework/llm-adapter.ts` → kopilot route +
+   * `process-agent-job.ts`) batch usage per turn, which is cheaper than
+   * per-chunk tracking inside the orchestrator. If you add a new direct
+   * `streamInvoke` caller, do not skip this step or SYSTEM credits won't be
+   * deducted.
    */
   async *streamInvoke(
     request: LLMInvocationRequest
@@ -244,30 +244,15 @@ export class LLMOrchestrator {
       userId,
     })
 
-    // Usage guard: count AI completion before streaming
-    if (this.config.enableQuotaEnforcement && this.db) {
-      const guard = await createUsageGuard(this.db)
-      if (guard) {
-        const usageResult = await guard.consume(organizationId, 'aiCompletions', { userId })
-        if (!usageResult.allowed) {
-          throw new UsageLimitError({
-            metric: 'aiCompletions',
-            current: usageResult.current ?? 0,
-            limit: usageResult.limit ?? 0,
-            message:
-              'You have reached your monthly AI usage limit. Upgrade your plan for more AI completions.',
-          })
-        }
-      }
-    }
+    // Single-pass gate: resolves the client + credential metadata AND enforces
+    // the SYSTEM credit quota + abuse rate-limit.
+    const {
+      client: llmClient,
+      providerType,
+      credentialSource,
+    } = await this.enforceQuotaGate(provider, model, organizationId, userId)
 
     try {
-      // Create provider manager and get credentials (with metadata for usage tracking)
-      const {
-        client: llmClient,
-        providerType,
-        credentialSource,
-      } = await this.getClientWithMetadata(provider, model, organizationId, userId)
       // Build invocation parameters
       const invokeParams: LLMInvokeParams = {
         model,
@@ -369,10 +354,12 @@ export class LLMOrchestrator {
   }
 
   /**
-   * Get LLM client with credential metadata for quota tracking
-   * Returns client along with providerType and credentialSource
+   * Get LLM client with credential metadata for quota tracking.
+   * Returns client along with providerType and credentialSource.
+   * Internal — callers should use {@link enforceQuotaGate} for end-to-end
+   * prep (credentials + quota + rate-limit).
    */
-  async getClientWithMetadata(
+  private async getClientWithMetadata(
     provider: string,
     model: string,
     organizationId: string,
@@ -553,6 +540,70 @@ export class LLMOrchestrator {
   }
 
   // ===== PRIVATE METHODS =====
+
+  /**
+   * Prepare for an LLM invocation in a single pass:
+   *   1. Fetch the LLM client + credential metadata (providerType / credentialSource).
+   *   2. If `enableQuotaEnforcement` is on and the call is SYSTEM-credentialed,
+   *      check the org's credit quota (monthly + admin-granted bonus pool).
+   *      Throws {@link QuotaExceededError} when both pools are exhausted.
+   *   3. Regardless of credential source, consume one unit of the
+   *      `aiCompletions` abuse rate-limit. Throws {@link UsageLimitError} when
+   *      the ceiling is hit.
+   *
+   * Returning the client from here avoids a double DB lookup — `getClientWithMetadata`
+   * already tells us the providerType, so we don't need a separate
+   * `ProviderPreference` + `ProviderConfiguration` read to gate the quota.
+   */
+  private async enforceQuotaGate(
+    provider: string,
+    model: string,
+    organizationId: string,
+    userId: string
+  ): Promise<{
+    client: LLMClient
+    providerType: 'SYSTEM' | 'CUSTOM'
+    credentialSource: 'SYSTEM' | 'CUSTOM' | 'MODEL_SPECIFIC' | 'LOAD_BALANCED'
+  }> {
+    const clientMeta = await this.getClientWithMetadata(provider, model, organizationId, userId)
+
+    if (!this.config.enableQuotaEnforcement || !this.db) return clientMeta
+
+    // Tier 1: SYSTEM credit quota.
+    if (clientMeta.providerType === 'SYSTEM') {
+      const quota = new QuotaService(this.db, organizationId)
+      const status = await quota.getQuotaStatus()
+      if (status && status.isExceeded) {
+        throw new QuotaExceededError(
+          "You're out of AI credits. They'll refill at the start of your next billing cycle.",
+          {
+            provider,
+            quotaUsed: status.quotaUsed,
+            quotaLimit: status.quotaLimit,
+            bonusCredits: status.bonusCredits,
+            resetsAt: status.quotaPeriodEnd,
+          }
+        )
+      }
+    }
+
+    // Tier 2: abuse-prevention rate limit. Counts raw call rate, not credit cost.
+    const guard = await createUsageGuard(this.db)
+    if (guard) {
+      const usageResult = await guard.consume(organizationId, 'aiCompletions', { userId })
+      if (!usageResult.allowed) {
+        throw new UsageLimitError({
+          metric: 'aiCompletions',
+          current: usageResult.current ?? 0,
+          limit: usageResult.limit ?? 0,
+          message:
+            'AI request rate limit reached for this billing period. Please contact support if this is unexpected.',
+        })
+      }
+    }
+
+    return clientMeta
+  }
 
   private async handleStreamingInvocation(
     llmClient: LLMClient,

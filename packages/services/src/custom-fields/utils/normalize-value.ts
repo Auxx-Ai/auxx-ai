@@ -221,10 +221,11 @@ export function normalizeFieldValue(
       }
 
       const address = {
-        street: rawValue.street ? String(rawValue.street).trim() : '',
+        street1: rawValue.street1 ? String(rawValue.street1).trim() : '',
+        street2: rawValue.street2 ? String(rawValue.street2).trim() : '',
         city: rawValue.city ? String(rawValue.city).trim() : '',
         state: rawValue.state ? String(rawValue.state).trim() : '',
-        postalCode: rawValue.postalCode ? String(rawValue.postalCode).trim() : '',
+        zipCode: rawValue.zipCode ? String(rawValue.zipCode).trim() : '',
         country: rawValue.country ? String(rawValue.country).trim() : '',
       }
 

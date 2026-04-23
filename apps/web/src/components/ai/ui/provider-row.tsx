@@ -10,7 +10,6 @@ import type { ProviderConfiguration, ProviderStatusInfo } from '~/components/ai/
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { BadgeAiQuota } from './badge-ai-quota'
 import { ProviderActions } from './provider-actions'
 import { ProviderCapabilities } from './provider-capabilities'
 import { ProviderTypeToggle } from './provider-type-toggle'
@@ -162,19 +161,10 @@ export const ProviderRow: React.FC<ProviderRowProps> = ({
 
       {/* Right side - action buttons and status */}
       <div className='flex items-center gap-2 flex-shrink-0 pe-3'>
-        {/* Quota badge - only show for system providers with quota */}
-        {provider.statusInfo.quotaStatus && (
-          <BadgeAiQuota
-            quotaType={provider.statusInfo.quotaStatus.type}
-            quotaUsed={provider.statusInfo.quotaStatus.used}
-            quotaLimit={provider.statusInfo.quotaStatus.limit}
-            resetsAt={provider.statusInfo.quotaStatus.resetsAt}
-            className='mr-1'
-          />
-        )}
-
-        {/* Provider type toggle - system vs custom */}
-        {provider.statusInfo.configured && (
+        {/* Provider type toggle — shown whenever either credential source exists,
+            so users can still switch to their own key when system credits run out. */}
+        {(provider.systemConfiguration?.enabled ||
+          !!provider.customConfiguration?.provider?.credentials) && (
           <ProviderTypeToggle
             provider={provider.provider}
             currentType={provider.statusInfo.usingProviderType === 'SYSTEM' ? 'system' : 'custom'}

@@ -2,8 +2,10 @@
 
 import { type Database, database as db, schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
-import { and, count, eq, gte, isNotNull, lte, sql, sum } from 'drizzle-orm'
+import { and, count, eq, gte, lte, sql, sum } from 'drizzle-orm'
 import type { UsageSource, UsageTrackingRequest } from '../orchestrator/types'
+import { getModelCreditMultiplier } from '../quota/credit-multiplier'
+import { QuotaService } from '../quota/quota-service'
 
 /** Entry for usage grouped by day */
 export interface UsageDayEntry {
@@ -33,113 +35,82 @@ export class UsageTrackingService {
   constructor(private database: Database = db) {}
 
   /**
-   * Check if organization has enough quota for a request
+   * Check if organization has enough quota for a request.
+   * Reads the org-level OrganizationAiQuota table (unified pool, not per-provider).
    */
   async checkQuotaAvailable(
     organizationId: string,
-    provider: string,
-    estimatedTokens: number
+    _provider: string,
+    estimatedCredits: number
   ): Promise<{ available: boolean; reason?: string }> {
     if (isSelfHosted()) return { available: true }
 
-    const config = await this.database.query.ProviderConfiguration.findFirst({
-      where: and(
-        eq(schema.ProviderConfiguration.organizationId, organizationId),
-        eq(schema.ProviderConfiguration.provider, provider)
-      ),
-      columns: {
-        quotaUsed: true,
-        quotaLimit: true,
-        quotaType: true,
-        quotaPeriodEnd: true,
-      },
-    })
+    const quota = new QuotaService(this.database, organizationId)
+    const status = await quota.getQuotaStatus()
+    if (!status) return { available: true }
+    if (status.quotaLimit === -1) return { available: true }
 
-    if (!config || config.quotaLimit === -1) {
-      return { available: true } // Unlimited quota
-    }
-
-    // Check if quota period has expired
-    if (config.quotaPeriodEnd && new Date() > new Date(config.quotaPeriodEnd)) {
+    if (status.totalRemaining < estimatedCredits) {
       return {
         available: false,
-        reason: 'Quota period has expired',
+        reason: `Insufficient quota. Need ${estimatedCredits}, have ${status.totalRemaining}`,
       }
     }
-
-    const remainingQuota = config.quotaLimit - config.quotaUsed
-    if (remainingQuota < estimatedTokens) {
-      return {
-        available: false,
-        reason: `Insufficient quota. Need ${estimatedTokens}, have ${remainingQuota}`,
-      }
-    }
-
     return { available: true }
   }
 
   /**
-   * Track actual usage after API call completion (Orchestrator interface)
+   * Track actual usage after API call completion (Orchestrator interface).
+   *
+   * Credit cost per call = modelMultiplier (1/3/8) unless explicitly overridden.
+   * SYSTEM calls decrement the org credit pool (monthly first, then bonus);
+   * CUSTOM calls write the usage log only.
    */
   async trackUsage(request: UsageTrackingRequest): Promise<void> {
     const inputTokens = request.usage.prompt_tokens || 0
     const outputTokens = request.usage.completion_tokens || 0
     const totalTokens = request.usage.total_tokens || inputTokens + outputTokens
-    const creditsUsed = request.creditsUsed ?? 1 // Default to 1 credit per invocation
+    const multiplier = getModelCreditMultiplier(request.provider, request.model)
+    const creditsUsed = request.creditsUsed ?? multiplier
 
-    await this.database.transaction(async (tx) => {
-      // 1. Create usage log entry with provider type and credential source
-      await tx.insert(schema.AiUsage).values({
-        organizationId: request.organizationId,
-        userId: request.userId,
-        provider: request.provider,
-        model: request.model,
-        modelType: 'llm', // Default to LLM type
-        inputTokens,
-        outputTokens,
-        totalTokens,
-        cost: undefined, // Would need to calculate based on provider pricing
-        endpoint: undefined,
-        requestId: undefined,
-        responseTime: undefined,
-        createdAt: request.timestamp || new Date(),
-        // New fields for credential tracking
-        providerType: request.providerType ?? 'CUSTOM',
-        credentialSource: request.credentialSource ?? 'CUSTOM',
-        creditsUsed,
-        // Source tracking fields
-        source: request.source ?? 'other',
-        sourceId: request.sourceId ?? null,
-      })
-
-      // 2. Only update quota for SYSTEM provider type (credit-based)
-      if (request.providerType === 'SYSTEM') {
-        await tx
-          .update(schema.ProviderConfiguration)
-          .set({
-            quotaUsed: sql`${schema.ProviderConfiguration.quotaUsed} + ${creditsUsed}`,
-          })
-          .where(
-            and(
-              eq(schema.ProviderConfiguration.organizationId, request.organizationId),
-              eq(schema.ProviderConfiguration.provider, request.provider),
-              eq(schema.ProviderConfiguration.providerType, 'SYSTEM'),
-              isNotNull(schema.ProviderConfiguration.quotaType)
-            )
-          )
-      }
+    await this.database.insert(schema.AiUsage).values({
+      organizationId: request.organizationId,
+      userId: request.userId,
+      provider: request.provider,
+      model: request.model,
+      modelType: 'llm',
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      cost: undefined,
+      endpoint: undefined,
+      requestId: undefined,
+      responseTime: undefined,
+      createdAt: request.timestamp || new Date(),
+      providerType: request.providerType ?? 'CUSTOM',
+      credentialSource: request.credentialSource ?? 'CUSTOM',
+      creditsUsed,
+      source: request.source ?? 'other',
+      sourceId: request.sourceId ?? null,
     })
+
+    if (request.providerType === 'SYSTEM' && creditsUsed > 0) {
+      await new QuotaService(this.database, request.organizationId).consumeCredits(creditsUsed)
+    }
   }
 
   /**
-   * Batch-insert multiple usage entries in a single multi-row INSERT.
+   * Batch-insert multiple usage entries in a single multi-row INSERT, then
+   * deduct SYSTEM credits via `QuotaService.consumeCredits`. Same credit
+   * accounting as `trackUsage`, just batched for efficiency (e.g. Kopilot
+   * turns that aggregate multiple internal calls).
+   *
    * Fire-and-forget — caller should catch errors externally.
-   * Does NOT update quota counters (handled by pre-call guards).
    */
   async trackUsageBatch(requests: UsageTrackingRequest[]): Promise<void> {
     if (requests.length === 0) return
 
-    // Aggregate entries by provider+model into a single row per combination
+    // Aggregate entries by provider+model into a single row per combination.
     const grouped = new Map<
       string,
       {
@@ -155,13 +126,15 @@ export class UsageTrackingService {
       const existing = grouped.get(key)
       const inputTokens = req.usage.prompt_tokens || 0
       const outputTokens = req.usage.completion_tokens || 0
+      const multiplier = getModelCreditMultiplier(req.provider, req.model)
+      const credits = req.creditsUsed ?? multiplier
 
       if (existing) {
         existing.inputTokens += inputTokens
         existing.outputTokens += outputTokens
-        existing.creditsUsed += req.creditsUsed ?? 1
+        existing.creditsUsed += credits
       } else {
-        grouped.set(key, { inputTokens, outputTokens, creditsUsed: req.creditsUsed ?? 1, ref: req })
+        grouped.set(key, { inputTokens, outputTokens, creditsUsed: credits, ref: req })
       }
     }
 
@@ -186,102 +159,41 @@ export class UsageTrackingService {
       sourceId: ref.sourceId ?? null,
     }))
 
-    await this.database.transaction(async (tx) => {
-      // 1. Insert aggregated usage rows
-      await tx.insert(schema.AiUsage).values(rows)
+    await this.database.insert(schema.AiUsage).values(rows)
 
-      // 2. Deduct credits from quota for SYSTEM providers
-      const systemRows = rows.filter((r) => r.providerType === 'SYSTEM' && r.creditsUsed > 0)
-      for (const row of systemRows) {
-        await tx
-          .update(schema.ProviderConfiguration)
-          .set({
-            quotaUsed: sql`${schema.ProviderConfiguration.quotaUsed} + ${row.creditsUsed}`,
-          })
-          .where(
-            and(
-              eq(schema.ProviderConfiguration.organizationId, row.organizationId),
-              eq(schema.ProviderConfiguration.provider, row.provider),
-              eq(schema.ProviderConfiguration.providerType, 'SYSTEM'),
-              isNotNull(schema.ProviderConfiguration.quotaType)
-            )
-          )
-      }
-    })
+    // Deduct credits from org-level quota for SYSTEM rows, one org at a time.
+    const perOrgTotals = new Map<string, number>()
+    for (const row of rows) {
+      if (row.providerType !== 'SYSTEM' || row.creditsUsed <= 0) continue
+      perOrgTotals.set(
+        row.organizationId,
+        (perOrgTotals.get(row.organizationId) ?? 0) + row.creditsUsed
+      )
+    }
+    for (const [organizationId, total] of perOrgTotals.entries()) {
+      const quota = new QuotaService(this.database, organizationId)
+      await quota.consumeCredits(total)
+    }
   }
 
   /**
-   * Track actual usage after API call completion (Legacy interface - for direct calls)
-   */
-  async trackUsageLegacy(params: {
-    organizationId: string
-    userId?: string
-    provider: string
-    model: string
-    modelType: string
-    inputTokens: number
-    outputTokens: number
-    totalTokens: number
-    cost?: number
-    endpoint?: string
-    requestId?: string
-    responseTime?: number
-  }): Promise<void> {
-    await this.database.transaction(async (tx) => {
-      // 1. Create usage log entry
-      await tx.insert(schema.AiUsage).values({
-        organizationId: params.organizationId,
-        userId: params.userId,
-        provider: params.provider,
-        model: params.model,
-        modelType: params.modelType,
-        inputTokens: params.inputTokens,
-        outputTokens: params.outputTokens,
-        totalTokens: params.totalTokens,
-        cost: params.cost,
-        endpoint: params.endpoint,
-        requestId: params.requestId,
-        responseTime: params.responseTime,
-      })
-
-      // 2. Update provider configuration quota
-      await tx
-        .update(schema.ProviderConfiguration)
-        .set({
-          quotaUsed: sql`${schema.ProviderConfiguration.quotaUsed} + ${params.totalTokens}`,
-        })
-        .where(
-          and(
-            eq(schema.ProviderConfiguration.organizationId, params.organizationId),
-            eq(schema.ProviderConfiguration.provider, params.provider),
-            isNotNull(schema.ProviderConfiguration.quotaType)
-          )
-        )
-    })
-  }
-
-  /**
-   * Reset quota for a new period (called by cron job)
+   * Reset quota for a new period (called by cron job).
+   * Operates on the org-level OrganizationAiQuota table.
    */
   async resetQuotaPeriod(
     organizationId: string,
-    provider: string,
+    _provider: string,
     newPeriodStart: Date,
     newPeriodEnd: Date
   ): Promise<void> {
     await this.database
-      .update(schema.ProviderConfiguration)
+      .update(schema.OrganizationAiQuota)
       .set({
         quotaUsed: 0,
         quotaPeriodStart: newPeriodStart,
         quotaPeriodEnd: newPeriodEnd,
       })
-      .where(
-        and(
-          eq(schema.ProviderConfiguration.organizationId, organizationId),
-          eq(schema.ProviderConfiguration.provider, provider)
-        )
-      )
+      .where(eq(schema.OrganizationAiQuota.organizationId, organizationId))
   }
 
   /**
@@ -335,11 +247,11 @@ export class UsageTrackingService {
   }
 
   /**
-   * Get quota information for a provider
+   * Get quota information for the organization (provider arg ignored — quota is org-level).
    */
   async getQuotaInfo(
     organizationId: string,
-    provider: string
+    _provider: string
   ): Promise<{
     quotaType: string | null
     quotaUsed: number
@@ -349,33 +261,24 @@ export class UsageTrackingService {
     usagePercentage: number
     isUnlimited: boolean
   } | null> {
-    const config = await this.database.query.ProviderConfiguration.findFirst({
-      where: and(
-        eq(schema.ProviderConfiguration.organizationId, organizationId),
-        eq(schema.ProviderConfiguration.provider, provider)
-      ),
-      columns: {
-        quotaType: true,
-        quotaUsed: true,
-        quotaLimit: true,
-        quotaPeriodStart: true,
-        quotaPeriodEnd: true,
-      },
+    const row = await this.database.query.OrganizationAiQuota.findFirst({
+      where: eq(schema.OrganizationAiQuota.organizationId, organizationId),
     })
+    if (!row) return null
 
-    if (!config) return null
-
-    const isUnlimited = config.quotaLimit === -1
+    const isUnlimited = row.quotaLimit === -1
     const usagePercentage = isUnlimited
       ? 0
-      : Math.round((config.quotaUsed / config.quotaLimit) * 100)
+      : row.quotaLimit > 0
+        ? Math.round((row.quotaUsed / row.quotaLimit) * 100)
+        : 0
 
     return {
-      quotaType: config.quotaType,
-      quotaUsed: config.quotaUsed,
-      quotaLimit: config.quotaLimit,
-      quotaPeriodStart: config.quotaPeriodStart ? new Date(config.quotaPeriodStart) : null,
-      quotaPeriodEnd: config.quotaPeriodEnd ? new Date(config.quotaPeriodEnd) : null,
+      quotaType: row.quotaType,
+      quotaUsed: row.quotaUsed,
+      quotaLimit: row.quotaLimit,
+      quotaPeriodStart: row.quotaPeriodStart,
+      quotaPeriodEnd: row.quotaPeriodEnd,
       usagePercentage,
       isUnlimited,
     }

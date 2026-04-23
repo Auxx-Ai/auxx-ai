@@ -883,6 +883,13 @@
       "when": 1776892674165,
       "tag": "0125_add_ai_status_to_field_value",
       "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1776929019140,
+      "tag": "0126_add_organization_ai_quota",
+      "breakpoints": true
     }
   ]
 }

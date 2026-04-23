@@ -146,6 +146,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-3.1-pro-preview': {
     provider: 'google',
     modelId: 'gemini-3.1-pro-preview',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 3.1 Pro',
     icon: 'google',
@@ -164,6 +165,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-3-flash-preview': {
     provider: 'google',
     modelId: 'gemini-3-flash-preview',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 3 Flash',
     icon: 'google',
@@ -182,6 +184,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-3.1-flash-lite-preview': {
     provider: 'google',
     modelId: 'gemini-3.1-flash-lite-preview',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 3.1 Flash Lite',
     icon: 'google',
@@ -202,6 +205,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-2.5-pro': {
     provider: 'google',
     modelId: 'gemini-2.5-pro',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 2.5 Pro',
     icon: 'google',
@@ -220,6 +224,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-2.5-flash': {
     provider: 'google',
     modelId: 'gemini-2.5-flash',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 2.5 Flash',
     icon: 'google',
@@ -238,6 +243,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-2.5-flash-lite': {
     provider: 'google',
     modelId: 'gemini-2.5-flash-lite',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 2.5 Flash Lite',
     icon: 'google',
@@ -258,6 +264,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-2.0-flash': {
     provider: 'google',
     modelId: 'gemini-2.0-flash',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 2.0 Flash',
     icon: 'google',
@@ -284,6 +291,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-2.0-flash-lite': {
     provider: 'google',
     modelId: 'gemini-2.0-flash-lite',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 2.0 Flash Lite',
     icon: 'google',
@@ -310,6 +318,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-1.5-pro-latest': {
     provider: 'google',
     modelId: 'gemini-1.5-pro-latest',
+    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 1.5 Pro (Legacy)',
     icon: 'google',
@@ -335,6 +344,7 @@ export const GOOGLE_MODELS: Record<string, ModelCapabilities> = {
   'gemini-1.5-flash-latest': {
     provider: 'google',
     modelId: 'gemini-1.5-flash-latest',
+    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Gemini 1.5 Flash (Legacy)',
     icon: 'google',

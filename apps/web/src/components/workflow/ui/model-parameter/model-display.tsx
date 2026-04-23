@@ -22,6 +22,7 @@ const ModelDisplay = ({ currentModel, modelId }: ModelDisplayProps): JSX.Element
       modelItem={currentModel}
       showMode
       showFeatures
+      showCreditMultiplier
     />
   ) : (
     <div className='flex grow items-center gap-1 truncate px-1 py-[3px] opacity-50'>

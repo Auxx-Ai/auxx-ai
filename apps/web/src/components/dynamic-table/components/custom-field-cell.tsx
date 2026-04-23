@@ -94,12 +94,7 @@ export const CustomFieldCell = memo(function CustomFieldCell({
   if (!aiEnabled) return cell
 
   return (
-    <AiCellOverlay
-      recordId={recordId}
-      resourceFieldId={fieldRef as ResourceFieldId}
-      fieldId={field.id as FieldId}
-      fieldType={field.fieldType!}
-      value={value}>
+    <AiCellOverlay recordId={recordId} fieldId={field.id as FieldId} fieldType={field.fieldType!}>
       {cell}
     </AiCellOverlay>
   )

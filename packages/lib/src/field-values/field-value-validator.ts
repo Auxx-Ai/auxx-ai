@@ -115,16 +115,17 @@ export const fieldValueSchemas = {
       message: 'NAME requires at least firstName or lastName',
     }),
 
-  // ADDRESS_STRUCT JSON
+  // ADDRESS_STRUCT JSON — shape matches AddressStruct in custom-fields/types.ts
   addressStructJson: z
     .object({
-      street: z.string().optional(),
+      street1: z.string().optional(),
+      street2: z.string().optional(),
       city: z.string().optional(),
       state: z.string().optional(),
-      zip: z.string().optional(),
+      zipCode: z.string().optional(),
       country: z.string().optional(),
     })
-    .refine((v) => v.street || v.city || v.state || v.zip || v.country, {
+    .refine((v) => v.street1 || v.street2 || v.city || v.state || v.zipCode || v.country, {
       message: 'ADDRESS_STRUCT requires at least one address field',
     }),
 

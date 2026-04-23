@@ -146,7 +146,7 @@ export function AddressStructFields({
 }
 
 /**
- * Parse raw value to AddressStruct, handling legacy field names
+ * Parse raw value to AddressStruct
  */
 function parseAddressValue(value: unknown): AddressStruct {
   const initial = (typeof value === 'object' && value !== null ? value : {}) as Record<
@@ -154,11 +154,11 @@ function parseAddressValue(value: unknown): AddressStruct {
     string
   >
   return {
-    street1: initial.street1 ?? initial.street ?? '',
+    street1: initial.street1 ?? '',
     street2: initial.street2 ?? '',
     city: initial.city ?? '',
     state: initial.state ?? '',
-    zipCode: initial.zipCode ?? initial.postalCode ?? '',
+    zipCode: initial.zipCode ?? '',
     country: initial.country ?? '',
   }
 }

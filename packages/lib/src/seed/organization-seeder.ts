@@ -478,25 +478,21 @@ export class OrganizationSeeder {
   }
 
   /**
-   * Initialize AI provider quotas and preferences for a new organization
-   * Sets up free tier system credentials with monthly quota limits
-   * @param organizationId The organization ID
+   * Initialize AI provider rows + the org-level AI credit pool for a new organization.
+   * - Creates SYSTEM provider configuration rows for supported providers (without quota — quota is org-level)
+   * - Sets a SYSTEM provider preference by default
+   * - Writes the OrganizationAiQuota row with the trial/free allowance
    */
   private async seedAiProviderQuotas(organizationId: string): Promise<void> {
     logger.info('Seeding AI provider quotas for organization', { organizationId })
 
     const now = new Date()
     const periodEnd = new Date(now)
-    periodEnd.setMonth(periodEnd.getMonth() + 1) // Monthly reset
+    periodEnd.setMonth(periodEnd.getMonth() + 1)
 
-    // Providers that support system credentials
     const providers = ['openai', 'anthropic']
-    // Self-hosted: unlimited quota (-1), Cloud: free tier default
-    const quotaLimit = isSelfHosted() ? -1 : DEFAULT_QUOTA_LIMITS[ProviderQuotaType.FREE]
-    const quotaType = isSelfHosted() ? ProviderQuotaType.PAID : ProviderQuotaType.FREE
 
     for (const provider of providers) {
-      // Create system provider configuration with quota
       await this.db
         .insert(schema.ProviderConfiguration)
         .values({
@@ -504,16 +500,10 @@ export class OrganizationSeeder {
           provider,
           providerType: 'SYSTEM',
           isEnabled: true,
-          quotaType,
-          quotaLimit,
-          quotaUsed: 0,
-          quotaPeriodStart: now,
-          quotaPeriodEnd: periodEnd,
           updatedAt: now,
         })
         .onConflictDoNothing()
 
-      // Set preference to system by default (use platform credentials)
       await this.db
         .insert(schema.ProviderPreference)
         .values({
@@ -524,6 +514,26 @@ export class OrganizationSeeder {
         })
         .onConflictDoNothing()
     }
+
+    // Org-level credit pool. Self-hosted = unlimited, cloud = trial (200) by default;
+    // the Stripe `subscription.updated` webhook will later realign it to the plan's
+    // actual `monthlyAiCredits`.
+    const quotaType = isSelfHosted() ? ProviderQuotaType.PAID : ProviderQuotaType.TRIAL
+    const quotaLimit = isSelfHosted() ? -1 : DEFAULT_QUOTA_LIMITS[ProviderQuotaType.TRIAL]
+
+    await this.db
+      .insert(schema.OrganizationAiQuota)
+      .values({
+        organizationId,
+        quotaType,
+        quotaLimit,
+        quotaUsed: 0,
+        quotaPeriodStart: now,
+        quotaPeriodEnd: periodEnd,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing()
 
     logger.info('Successfully seeded AI provider quotas', { organizationId, providers })
   }

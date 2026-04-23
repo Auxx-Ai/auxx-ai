@@ -17,6 +17,7 @@ import {
   oauth2TokenRefreshScannerJob,
   orphanedAppBundleCleanupJob,
   quotaResetJob,
+  recordUsageEventJob,
   sendGettingStartedEmailsJob,
   sendMidTrialEmailsJob,
   sendTrialConversionEmailsJob,
@@ -93,6 +94,9 @@ const jobMappings = {
 
   // Quota management jobs
   quotaResetJob,
+
+  // Usage-event recording (enqueued by UsageGuard after each counted metric)
+  recordUsageEvent: recordUsageEventJob,
 
   // Storage cleanup (on-demand, enqueued by disconnect/delete flows)
   storageCleanupJob,

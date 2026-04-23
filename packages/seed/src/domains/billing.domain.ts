@@ -179,7 +179,15 @@ const BOOLEAN_GATES = {
   },
 } as const
 
-/** Usage limits (per billing cycle) keyed by plan tier */
+/**
+ * Usage limits (per billing cycle) keyed by plan tier.
+ *
+ * `monthlyAiCredits` is the primary AI credit pool — LLM calls decrement it
+ * by the model's credit multiplier (1/3/8 for small/medium/large tiers).
+ *
+ * `aiCompletionsPerMonthHard` is an abuse-prevention ceiling on raw call count
+ * (sized at ~10× the credit pool). Hitting it is an exceptional event.
+ */
 const USAGE_LIMITS = {
   demo: {
     callRecordingsHoursPerMonthHard: 0,
@@ -188,8 +196,9 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: 0,
     workflowRunsPerMonthHard: 10,
     workflowRunsPerMonthSoft: 8,
-    aiCompletionsPerMonthHard: 20,
-    aiCompletionsPerMonthSoft: 15,
+    monthlyAiCredits: 20,
+    aiCompletionsPerMonthHard: 200,
+    aiCompletionsPerMonthSoft: 160,
     apiCallsPerMonthHard: 0,
     apiCallsPerMonthSoft: 0,
     storageGbHard: 0.1,
@@ -204,8 +213,9 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: 80,
     workflowRunsPerMonthHard: 100,
     workflowRunsPerMonthSoft: 80,
-    aiCompletionsPerMonthHard: 50,
-    aiCompletionsPerMonthSoft: 40,
+    monthlyAiCredits: 50,
+    aiCompletionsPerMonthHard: 500,
+    aiCompletionsPerMonthSoft: 400,
     apiCallsPerMonthHard: 0,
     apiCallsPerMonthSoft: 0,
     storageGbHard: 1,
@@ -220,8 +230,9 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: 800,
     workflowRunsPerMonthHard: 5000,
     workflowRunsPerMonthSoft: 4000,
-    aiCompletionsPerMonthHard: 500,
-    aiCompletionsPerMonthSoft: 400,
+    monthlyAiCredits: 600,
+    aiCompletionsPerMonthHard: 6000,
+    aiCompletionsPerMonthSoft: 4800,
     apiCallsPerMonthHard: 0,
     apiCallsPerMonthSoft: 0,
     storageGbHard: 10,
@@ -236,8 +247,9 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: 8000,
     workflowRunsPerMonthHard: 15000,
     workflowRunsPerMonthSoft: 12000,
-    aiCompletionsPerMonthHard: 5000,
-    aiCompletionsPerMonthSoft: 4000,
+    monthlyAiCredits: 1500,
+    aiCompletionsPerMonthHard: 15000,
+    aiCompletionsPerMonthSoft: 12000,
     apiCallsPerMonthHard: 10000,
     apiCallsPerMonthSoft: 8000,
     storageGbHard: 50,
@@ -252,6 +264,7 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: -1,
     workflowRunsPerMonthHard: -1,
     workflowRunsPerMonthSoft: -1,
+    monthlyAiCredits: -1,
     aiCompletionsPerMonthHard: -1,
     aiCompletionsPerMonthSoft: -1,
     apiCallsPerMonthHard: -1,
@@ -262,6 +275,13 @@ const USAGE_LIMITS = {
     appMutationsPerMinuteSoft: -1,
   },
 } as const
+
+/**
+ * Trial credit override: trial users get 200 credits regardless of which plan
+ * they are trialing. This is read in the quota-service when a trial starts.
+ */
+export const TRIAL_MONTHLY_AI_CREDITS = 200
+export const TRIAL_AI_COMPLETIONS_HARD = 2000
 
 /**
  * Compose a FeatureLimit[] from building blocks.

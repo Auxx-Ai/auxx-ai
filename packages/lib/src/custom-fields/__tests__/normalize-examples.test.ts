@@ -177,10 +177,11 @@ describe('normalizeFieldValue', () => {
 
     it('should accept valid address object', () => {
       const address = {
-        street: '123 Main St',
+        street1: '123 Main St',
+        street2: 'Apt 4',
         city: 'New York',
         state: 'NY',
-        postalCode: '10001',
+        zipCode: '10001',
         country: 'USA',
       }
       const result = normalizeFieldValue(address, field)
@@ -191,10 +192,11 @@ describe('normalizeFieldValue', () => {
       const address = { city: 'New York' }
       const result = normalizeFieldValue(address, field)
       expect(result.data).toEqual({
-        street: '',
+        street1: '',
+        street2: '',
         city: 'New York',
         state: '',
-        postalCode: '',
+        zipCode: '',
         country: '',
       })
     })

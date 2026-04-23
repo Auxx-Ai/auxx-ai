@@ -14,6 +14,7 @@ import SettingsPage from '~/components/global/settings-page'
 import { useUser } from '~/hooks/use-user'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { AiUsageDialog } from './ai-usage-dialog'
+import { BadgeAiQuota } from './badge-ai-quota'
 import { CredentialConfigurationDialog } from './credential-configuration-dialog'
 import { SystemModelSettingsDialog } from './system-model-settings-dialog'
 
@@ -39,6 +40,9 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
     { initialData: initialUnifiedData }
   )
   const providersData = data?.providers || []
+
+  // Org-level AI credit pool. Rendered once in the header bar.
+  const { data: quotaStatus } = api.aiIntegration.getQuotaStatus.useQuery()
   // Process data to add capabilities
   // const providersData = React.useMemo(() => {
   //   return processUnifiedModelData(unifiedData)
@@ -121,20 +125,33 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
         />
       ) : (
         <div className='flex-1 h-full shrink-0 flex flex-col @container'>
-          <div className='h-12 shrink-0 flex items-center justify-end border-b px-2 gap-2 bg-primary-200/50 dark:bg-primary-100/50 sticky top-[67px] z-10 backdrop-blur'>
-            <AiUsageDialog
-              trigger={
-                <Button variant='outline' size='sm'>
-                  <BarChart3 />
-                  <span className='hidden @md:inline'>View Usage</span>
-                </Button>
-              }
-            />
-            <SystemModelSettingsDialog />
-            <Button variant='outline' size='sm' onClick={handleCreateGeneric}>
-              <Plus />
-              <span className='hidden @lg:inline'>Add Provider</span>
-            </Button>
+          <div className='h-12 shrink-0 flex items-center justify-between border-b px-2 gap-2 bg-primary-200/50 dark:bg-primary-100/50 sticky top-[67px] z-10 backdrop-blur'>
+            <div className='flex items-center gap-2'>
+              {quotaStatus && (
+                <BadgeAiQuota
+                  quotaType={quotaStatus.quotaType}
+                  quotaUsed={quotaStatus.quotaUsed}
+                  quotaLimit={quotaStatus.quotaLimit}
+                  bonusCredits={quotaStatus.bonusCredits}
+                  resetsAt={quotaStatus.quotaPeriodEnd}
+                />
+              )}
+            </div>
+            <div className='flex items-center gap-2'>
+              <AiUsageDialog
+                trigger={
+                  <Button variant='outline' size='sm'>
+                    <BarChart3 />
+                    <span className='hidden @md:inline'>View Usage</span>
+                  </Button>
+                }
+              />
+              <SystemModelSettingsDialog />
+              <Button variant='outline' size='sm' onClick={handleCreateGeneric}>
+                <Plus />
+                <span className='hidden @lg:inline'>Add Provider</span>
+              </Button>
+            </div>
           </div>
           <div className='space-y-0'>
             {providersData.map((provider) => {

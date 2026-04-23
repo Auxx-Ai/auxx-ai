@@ -202,12 +202,6 @@ export const getProviderStatusInfo = (configStatus: string) => {
         variant: 'blue' as const,
         description: 'Using custom configuration',
       }
-    case 'quota_exceeded':
-      return {
-        label: 'Quota Exceeded',
-        variant: 'yellow' as const,
-        description: 'Usage quota has been exceeded',
-      }
     case 'not_configured':
     default:
       return {

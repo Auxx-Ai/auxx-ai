@@ -19,7 +19,7 @@ import type { AiStatus } from '../realtime/events'
 import type { TableId } from '../resources/registry/field-registry'
 import { isSystemResourceId } from '../resources/registry/types'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
-import type { AiValueMetadata } from './ai-autofill/generation-service'
+import { readAiMetadata } from './ai-commit'
 import {
   type CachedField,
   type FieldValueContext,
@@ -474,10 +474,13 @@ async function fetchFieldValueResults(
     // AI marker lives on a single row per (entity, field). Multi-value fields
     // don't carry AI markers today — take the first row's marker for safety.
     // `ai-commit.ts` only ever writes 'generating' | 'result' | 'error', so
-    // narrowing the broad DB text column to AiStatus here is safe.
+    // narrowing the broad DB text column to AiStatus here is safe. Metadata
+    // lives in the `valueJson` column (no dedicated column), so we go through
+    // `readAiMetadata` — the same helper the write path uses — to keep the
+    // storage detail in one place.
     const firstRow = fieldRows[0]!
     const aiStatus = (firstRow.aiStatus ?? null) as AiStatus | null
-    const aiMetadata = aiStatus ? (firstRow.aiMetadata as AiValueMetadata | null) : null
+    const aiMetadata = readAiMetadata(firstRow)
 
     results.push({
       recordId,

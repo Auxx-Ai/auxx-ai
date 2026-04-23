@@ -330,7 +330,9 @@ export function renderEmailValue(value: unknown): React.ReactNode {
   const email = String(value)
   return (
     <ExpandableCell mode='horizontal'>
-      <CopyableLinkCell displayText={email} value={email} type='email' />
+      <div>
+        <CopyableLinkCell displayText={email} value={email} type='email' />
+      </div>
     </ExpandableCell>
   )
 }
@@ -361,7 +363,9 @@ export function renderPhoneValue(
 
   return (
     <ExpandableCell mode='horizontal'>
-      <CopyableLinkCell displayText={formatted} value={phone} type='phone' />
+      <div>
+        <CopyableLinkCell displayText={formatted} value={phone} type='phone' />
+      </div>
     </ExpandableCell>
   )
 }
@@ -376,7 +380,9 @@ export function renderUrlValue(value: unknown): React.ReactNode {
   const href = url.startsWith('http') ? url : `https://${url}`
   return (
     <ExpandableCell mode='horizontal'>
-      <CopyableLinkCell displayText={url} value={href} type='url' />
+      <div>
+        <CopyableLinkCell displayText={url} value={href} type='url' />
+      </div>
     </ExpandableCell>
   )
 }
@@ -440,7 +446,7 @@ export function renderAddressValue(value: unknown): React.ReactNode {
       addr.street2,
       addr.city,
       addr.state,
-      addr.postalCode,
+      addr.zipCode,
       addr.country,
     ].filter(Boolean)
     if (parts.length === 0) return <EmptyCell />

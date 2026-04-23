@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, eq, lte } from 'drizzle-orm'
+import { eq, lte } from 'drizzle-orm'
 import { z } from 'zod'
 
 const logger = createScopedLogger('quota-reset-job')
@@ -24,8 +24,11 @@ export interface QuotaResetStats {
 }
 
 /**
- * Job handler to reset expired quota periods for system provider configurations.
- * Runs daily to check for quota periods that have ended and resets them.
+ * Daily job (1 AM UTC) that resets expired AI credit pools.
+ * Scans `OrganizationAiQuota` for rows where `quotaPeriodEnd <= now` and
+ * advances each to a fresh monthly window. Stripe `invoice.paid` is the
+ * primary refresh path; this is the backstop for orgs without a recent
+ * paid invoice (free tier, lapsed trials, missed webhooks).
  */
 export const quotaResetJob = async (job: Job): Promise<QuotaResetStats> => {
   const input = payloadSchema.parse(job.data)
@@ -41,65 +44,54 @@ export const quotaResetJob = async (job: Job): Promise<QuotaResetStats> => {
   }
 
   try {
-    // Find all expired quota periods for system providers
-    const expiredConfigs = await db.query.ProviderConfiguration.findMany({
-      where: and(
-        eq(schema.ProviderConfiguration.providerType, 'SYSTEM'),
-        lte(schema.ProviderConfiguration.quotaPeriodEnd, now)
-      ),
+    const expired = await db.query.OrganizationAiQuota.findMany({
+      where: lte(schema.OrganizationAiQuota.quotaPeriodEnd, now),
       limit: input.batchSize,
     })
 
-    stats.scanned = expiredConfigs.length
+    stats.scanned = expired.length
 
-    logger.info('Found expired quota periods', { count: expiredConfigs.length })
+    logger.info('Found expired quota periods', { count: expired.length })
 
     if (input.dryRun) {
       logger.info('[DRY RUN] Would reset quotas', {
-        configIds: expiredConfigs.map((c) => c.id),
-        organizations: expiredConfigs.map((c) => c.organizationId),
+        organizations: expired.map((r) => r.organizationId),
       })
       return stats
     }
 
-    // Process each expired configuration
-    for (const config of expiredConfigs) {
+    for (const row of expired) {
       try {
         const newPeriodStart = new Date()
         const newPeriodEnd = new Date()
         newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1)
 
         await db
-          .update(schema.ProviderConfiguration)
+          .update(schema.OrganizationAiQuota)
           .set({
             quotaUsed: 0,
             quotaPeriodStart: newPeriodStart,
             quotaPeriodEnd: newPeriodEnd,
-            updatedAt: now,
           })
-          .where(eq(schema.ProviderConfiguration.id, config.id))
+          .where(eq(schema.OrganizationAiQuota.organizationId, row.organizationId))
 
         stats.resetCount++
 
-        logger.debug('Reset quota for config', {
-          configId: config.id,
-          organizationId: config.organizationId,
-          provider: config.provider,
-          previousUsed: config.quotaUsed,
-          previousPeriodEnd: config.quotaPeriodEnd,
+        logger.debug('Reset quota for org', {
+          organizationId: row.organizationId,
+          previousUsed: row.quotaUsed,
+          previousPeriodEnd: row.quotaPeriodEnd,
           newPeriodEnd: newPeriodEnd.toISOString(),
         })
       } catch (error) {
-        logger.error('Failed to reset quota for config', {
-          configId: config.id,
-          organizationId: config.organizationId,
+        logger.error('Failed to reset quota for org', {
+          organizationId: row.organizationId,
           error: error instanceof Error ? error.message : String(error),
         })
         stats.errors++
       }
 
-      // Update job progress
-      const progress = ((stats.resetCount + stats.errors) / expiredConfigs.length) * 100
+      const progress = ((stats.resetCount + stats.errors) / expired.length) * 100
       await job.updateProgress(Math.min(progress, 100))
     }
 

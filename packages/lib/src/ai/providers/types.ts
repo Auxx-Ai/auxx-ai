@@ -73,6 +73,12 @@ export interface ModelCapabilities {
     fileInput: boolean
   }
   costPer1kTokens?: { input: number; output: number }
+  /**
+   * Multiplier applied to the org credit pool when this model is used
+   * for a SYSTEM LLM call. Small tier = 1, medium = 3, large = 5.
+   * Defaults to 1 when unset.
+   */
+  creditMultiplier?: 1 | 3 | 5
   deprecated?: boolean
   retired?: boolean
   replacement?: string
@@ -209,18 +215,9 @@ export interface ProviderStatusInfo {
   /** The type of provider configuration currently in use (system or custom) */
   usingProviderType: ProviderType
   /** Detailed status indicating configuration state and any issues */
-  status: 'system_configured' | 'custom_configured' | 'not_configured' | 'quota_exceeded'
+  status: 'system_configured' | 'custom_configured' | 'not_configured'
   /** Whether the provider has valid credentials for API access */
   hasValidCredentials: boolean
-  /** Optional quota information for system providers */
-  quotaStatus?: {
-    type: string
-    used: number
-    limit: number
-    isValid: boolean
-    /** When the quota resets (end of current period) */
-    resetsAt?: Date | null
-  }
 }
 
 export interface CredentialFormField {
@@ -466,18 +463,7 @@ export class ModelNotFoundError extends Error {
   }
 }
 
-export class QuotaExceededError extends Error {
-  constructor(
-    message: string,
-    public provider: string,
-    public quotaType: ProviderQuotaType,
-    public used: number,
-    public limit: number
-  ) {
-    super(message)
-    this.name = 'QuotaExceededError'
-  }
-}
+export { QuotaExceededError } from '../errors/quota-errors'
 
 // ===== UTILITY TYPES =====
 
@@ -529,27 +515,16 @@ export interface CredentialsResponse {
 export const HIDDEN_VALUE = '__HIDDEN__'
 
 /**
- * Default credit limits by quota type
- * Credits are charged per AI invocation (1 credit = 1 AI call)
+ * Default credit limits by quota type.
+ * Credits are deducted per LLM invocation × model multiplier (1/3/8 for small/medium/large).
+ * Plan-specific values come from the plan's `monthlyAiCredits` feature limit; these are only
+ * fallbacks when no plan is resolved.
  */
 export const DEFAULT_QUOTA_LIMITS = {
-  [ProviderQuotaType.TRIAL]: 50, // 50 AI invocations for trial
-  [ProviderQuotaType.FREE]: 100, // 100 AI invocations per month
-  [ProviderQuotaType.PAID]: 1000, // Starter: 1,000 AI invocations per month
+  [ProviderQuotaType.TRIAL]: 200,
+  [ProviderQuotaType.FREE]: 50,
+  [ProviderQuotaType.PAID]: 600,
 } as const
-
-/**
- * Plan-specific credit limits (set directly, no multipliers)
- * These are the monthly AI invocation limits for each subscription tier
- */
-export const PLAN_CREDIT_LIMITS = {
-  starter: 1000,
-  growth: 5000,
-  business: 20000,
-  enterprise: 100000,
-} as const
-
-export type PlanTier = keyof typeof PLAN_CREDIT_LIMITS
 
 export const DEFAULT_CACHE_TTL = {
   PROVIDER_CONFIG: 900, // 15 minutes

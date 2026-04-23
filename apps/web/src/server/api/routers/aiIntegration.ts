@@ -9,12 +9,7 @@ import {
   SystemModelService,
   UsageTrackingService,
 } from '@auxx/lib/ai'
-import {
-  ModelType,
-  PLAN_CREDIT_LIMITS,
-  type PlanTier,
-  ProviderType,
-} from '@auxx/lib/ai/providers/types'
+import { ModelType, ProviderType } from '@auxx/lib/ai/providers/types'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
@@ -199,9 +194,7 @@ export const aiIntegrationRouter = createTRPCRouter({
       return {
         success: true,
         ...result,
-        message: result.hasQuota
-          ? `API key removed. Now using system credits.`
-          : `API key removed.`,
+        message: 'API key removed.',
       }
     }),
 
@@ -575,44 +568,6 @@ export const aiIntegrationRouter = createTRPCRouter({
 
       return { success: true }
     }),
-
-  /**
-   * Upgrade organization to paid tier (called after successful subscription)
-   */
-  upgradeToPaid: protectedProcedure
-    .input(
-      z.object({
-        planTier: z.enum(['starter', 'growth', 'business', 'enterprise']),
-      })
-    )
-    .use(notDemo('upgrade AI quota'))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      if (!organizationId) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
-      }
-
-      const creditLimit = PLAN_CREDIT_LIMITS[input.planTier as PlanTier]
-      const quotaService = new QuotaService(ctx.db, organizationId)
-      await quotaService.upgradeToPaid(creditLimit)
-
-      return { success: true, creditLimit }
-    }),
-
-  /**
-   * Downgrade organization to free tier (called after subscription cancellation)
-   */
-  downgradeToFree: protectedProcedure.mutation(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-    if (!organizationId) {
-      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID is required.' })
-    }
-
-    const quotaService = new QuotaService(ctx.db, organizationId)
-    await quotaService.downgradeToFree()
-
-    return { success: true }
-  }),
 
   /**
    * Get AI usage statistics for the organization
