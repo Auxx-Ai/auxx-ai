@@ -1,7 +1,8 @@
 // apps/web/src/components/fields/property-row.tsx
 'use client'
 
-import type { FieldType } from '@auxx/database/types'
+import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
+import { isAiField } from '@auxx/lib/custom-fields/client'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import { isValueEmpty } from '@auxx/lib/field-values/client'
 import { Badge } from '@auxx/ui/components/badge'
@@ -9,6 +10,10 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useCallback, useMemo } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+import { useFieldAiState } from '~/components/resources/hooks/use-field-values'
+import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { AiGeneratingIndicator } from './ai-overlay/ai-generating-indicator'
+import { SparkleBadge } from './ai-overlay/sparkle-badge'
 import { DisplayField } from './displays/display-field'
 import { FieldInput } from './field-input'
 import { usePropertyContext } from './property-provider'
@@ -26,10 +31,30 @@ function PropertyRow({
   /** Called when this row receives focus (for keyboard navigation) */
   onFocus?: () => void
 }) {
-  const { field, value, isOpen, open, isOutsideClick, isLoading, showTitle } = usePropertyContext()
+  const { field, value, recordId, isOpen, open, isOutsideClick, isLoading, showTitle } =
+    usePropertyContext()
+  const { saveFieldValue } = useSaveFieldValue()
 
   // Get iconId from field or fall back to field type's default icon
   const iconId = field.iconId ?? fieldTypeOptions[field.fieldType as FieldType]?.iconId ?? 'circle'
+
+  // AI state is always subscribed (React hook rules); `aiEnabled` only gates
+  // whether we render the badge/shimmer. The store lookup is cheap and keyed.
+  const aiState = useFieldAiState(recordId, field.id)
+  const isGenerating = aiState?.status === 'generating'
+
+  // `isAiField` reads `field.type` + `options.ai.enabled`; property-row uses
+  // `field.fieldType` on the registry projection, so we adapt the shape here.
+  const aiEnabled =
+    !!field.fieldType &&
+    isAiField({ type: field.fieldType, options: field.options } as CustomFieldEntity) &&
+    !field.readOnly &&
+    !field.isSystem &&
+    !isLoading
+
+  const generate = () => {
+    saveFieldValue(recordId, field.id, null, field.fieldType, { ai: true })
+  }
   // biome-ignore lint/correctness/useExhaustiveDependencies: isOutsideClick is a stable ref
   const handleClick = useCallback(() => {
     if (isLoading) return
@@ -56,6 +81,8 @@ function PropertyRow({
       <div className='items-center flex-1 flex gap-[4px] w-full overflow-y-auto no-scrollbar'>
         {isLoading ? (
           <LoadingFieldSkeleton />
+        ) : isGenerating ? (
+          <GeneratingField />
         ) : !field.readOnly ? (
           <FieldInput>
             {!isValueEmpty(value, field.fieldType) ? <DisplayField /> : <EmptyField />}
@@ -92,6 +119,19 @@ function PropertyRow({
                 U
               </Badge>
             )}
+            {aiEnabled && (
+              <SparkleBadge
+                variant='inline'
+                metadata={aiState?.metadata}
+                onClick={generate}
+                isGenerating={isGenerating}
+                errorMessage={
+                  aiState?.status === 'error'
+                    ? (aiState?.metadata?.errorMessage ?? 'AI generation failed')
+                    : undefined
+                }
+              />
+            )}
           </div>
         </div>
       )}
@@ -114,6 +154,17 @@ function EmptyField() {
       <div className='content-center items-center h-fit flex overflow-hidden whitespace-nowrap py-[2px] text-ellipsis text-neutral-300 dark:text-foreground/40'>
         Empty
       </div>
+    </div>
+  )
+}
+/**
+ * Value-slot view while AI generation is in flight. Mirrors `EmptyField`'s
+ * row chrome so the layout doesn't jump when generation starts/ends.
+ */
+function GeneratingField() {
+  return (
+    <div className='rounded-lg px-1 overflow-hidden h-auto min-h-[28px] flex items-center'>
+      <AiGeneratingIndicator className='whitespace-nowrap py-[2px]' />
     </div>
   )
 }

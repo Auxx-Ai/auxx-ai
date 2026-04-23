@@ -4,7 +4,6 @@
 import type { RecordId } from '@auxx/lib/resources/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { createContext, useContext, useEffect, useMemo, useRef } from 'react'
-import { AiEditorSparkle } from '~/components/fields/ai-overlay/ai-editor-sparkle'
 import { getInputComponentForFieldType } from '~/components/fields/inputs/get-input-component'
 import { PropertyProvider, usePropertyContext } from '~/components/fields/property-provider'
 import { useFieldPopoverHandlers } from '~/components/fields/use-field-popover-handlers'
@@ -191,7 +190,6 @@ function InlineCellEditorInner({
         )}>
         <CellSelectionOverlay isSelected={false} isEditing={true} />
         <div className='w-full'>{InputComponent}</div>
-        <AiEditorSparkle field={field} recordId={recordId} value={value} onTrigger={onClose} />
       </div>
     </InlineEditorContext.Provider>
   )

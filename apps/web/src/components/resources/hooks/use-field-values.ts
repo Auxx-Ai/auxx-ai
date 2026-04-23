@@ -1,11 +1,17 @@
 // apps/web/src/components/resources/hooks/use-field-values.ts
 
-import type { RecordId } from '@auxx/lib/resources/client'
-import { type FieldReference, fieldRefToKey } from '@auxx/types/field'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import {
+  type FieldId,
+  type FieldReference,
+  fieldRefToKey,
+  toResourceFieldId,
+} from '@auxx/types/field'
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
 import {
+  type AiCellState,
   buildFieldValueKey,
   type CustomFieldValueState,
   type StoredFieldValue,
@@ -163,4 +169,18 @@ export function useFieldValues(
   }, [autoFetch, recordId, refsKey, fieldRefs])
 
   return { values, isLoading }
+}
+
+/**
+ * Subscribe to the AI cell state for a given (record, field) pair. Returns
+ * `undefined` when the cell has no AI marker (not AI-generated, or AI has
+ * never touched it). Hides the `parseRecordId → toResourceFieldId →
+ * buildFieldValueKey → useFieldValueStore` chain that every AI overlay
+ * mount point would otherwise re-implement.
+ */
+export function useFieldAiState(recordId: RecordId, fieldId: FieldId): AiCellState | undefined {
+  const { entityDefinitionId } = parseRecordId(recordId)
+  const resourceFieldId = toResourceFieldId(entityDefinitionId, fieldId)
+  const key = buildFieldValueKey(recordId, resourceFieldId)
+  return useFieldValueStore((s) => s.aiStates[key])
 }
