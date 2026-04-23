@@ -132,7 +132,7 @@
    cell-bound ::after ring so we don't get a double-ring. Static mode
    (PrimaryCell) keeps the cell ring since it doesn't expand. */
 :has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
-  .cell-active:not(.cell-editing):has([data-expand]:not([data-expand='static']))::after {
+  .cell-active:not(.cell-editing):not(.cell-copy-source):has([data-expand]:not([data-expand='static']))::after {
   display: none;
 }
 
@@ -190,7 +190,7 @@
    a faded primary color instead so only the border softens. The selector
    mirrors the expansion rule's full prefix so this override wins on specificity. */
 :has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay'])):has(.copy-highlight-overlay)
-  .cell-active:not(.cell-editing)
+  .cell-active:not(.cell-editing):not(.cell-copy-source)
   [data-expand]:not([data-expand='static']) {
   box-shadow: inset 0 0 0 1px rgb(var(--primary) / 0.45);
 }
@@ -227,7 +227,7 @@
    Pure CSS — no per-cell JS subscription, runs container-wide once. */
 
 :has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
-  .cell-active:not(.cell-editing)
+  .cell-active:not(.cell-editing):not(.cell-copy-source)
   [data-expand]:not([data-expand='static']) {
   position: absolute;
   left: 0;
@@ -277,7 +277,7 @@
 }
 
 :has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
-  .cell-active:not(.cell-editing)
+  .cell-active:not(.cell-editing):not(.cell-copy-source)
   [data-expand='text'] {
   max-width: 280px;
   align-items: flex-start;
@@ -287,7 +287,7 @@
 
 /* Expanded text — undo the children's truncate so text can wrap. */
 :has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
-  .cell-active:not(.cell-editing)
+  .cell-active:not(.cell-editing):not(.cell-copy-source)
   [data-expand='text']
   > *:not([data-slot='fill-handle']) {
   overflow: visible;
@@ -298,7 +298,7 @@
 
 /* Expanded horizontal — keep nowrap, undo overflow:hidden so it can grow. */
 :has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
-  .cell-active:not(.cell-editing)
+  .cell-active:not(.cell-editing):not(.cell-copy-source)
   [data-expand='horizontal']
   > *:not([data-slot='fill-handle']) {
   overflow: visible;
@@ -306,13 +306,16 @@
 }
 
 :has(> [data-slot='selection-overlay']):not(:has(.cell-in-range)):not(:has([data-slot='fill-preview-overlay']))
-  .cell-active:not(.cell-editing)
+  .cell-active:not(.cell-editing):not(.cell-copy-source)
   [data-expand='items'] {
   max-width: 20rem;
   flex-wrap: wrap;
   align-items: flex-start;
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
+  /* Mirror the collapsed `ps-3` on the right now that the fade mask is gone,
+     so badges don't touch the expanded box's ring. */
+  padding-inline-end: 0.75rem;
   /* Drop the right-edge fade mask when expanded */
   mask-image: none;
   -webkit-mask-image: none;

@@ -9,6 +9,7 @@ import { useCellIndexerContext } from '../context/cell-indexer-context'
 import {
   useCellSelectionConfig,
   useIsActiveCell,
+  useIsCopySource,
   useIsEditingCell,
   useIsInRange,
   useRangeActions,
@@ -41,6 +42,7 @@ function SelectableTableCellInner<TData>({
   const isActive = useIsActiveCell(rowId, columnId)
   const isInRange = useIsInRange(rowId, columnId)
   const isEditing = useIsEditingCell(rowId, columnId)
+  const isCopySource = useIsCopySource(rowId, columnId)
   const { setActiveCell, setEditingCell, setRange } = useRangeActions()
 
   const cellRef = useRef<HTMLDivElement>(null)
@@ -170,6 +172,9 @@ function SelectableTableCellInner<TData>({
         // .cell-active drives focus ring + content expansion (ExpandableCell, PrimaryCell).
         // .cell-selected kept as alias so existing CSS selectors keep matching the active cell.
         isActive && 'cell-active cell-selected',
+        // Active cell is also the (single-cell) copy-highlight source — suppress
+        // expansion so the marching-ants border sits on the cell rect.
+        isActive && isCopySource && 'cell-copy-source',
         isInRange && 'cell-in-range',
         isEditing && 'cell-editing',
         !isUpdatable && 'read-only',

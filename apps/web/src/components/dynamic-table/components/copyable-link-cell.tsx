@@ -69,7 +69,7 @@ export function CopyableLinkCell({ displayText, value, type, className }: Copyab
         {/* Gradient fade overlay */}
         <div className='w-4 h-full bg-gradient-to-r from-transparent to-primary-50 opacity-0 group-hover/link:opacity-100 transition-opacity duration-200' />
         {/* Buttons */}
-        <div className='flex items-center gap-0.5 bg-primary-50 pr-0.5'>
+        <div className='flex items-center gap-0.5 bg-primary-50 pr-0.5 rounded-r-md'>
           <button
             onClick={handleExternalClick}
             className={cn(

@@ -75,6 +75,22 @@ export function useIsInRange(rowId: string, columnId: string): boolean {
   })
 }
 
+/**
+ * True iff the marching-ants copy highlight is a single cell equal to this
+ * cell. Combined with `isActive` at the render site, lets us suppress the
+ * active cell's expansion so the dashed border sits on the cell rect rather
+ * than on an expanded blob. Multi-cell copy ranges are ignored here — those
+ * are already handled by the `.cell-in-range` gate.
+ */
+export function useIsCopySource(rowId: string, columnId: string): boolean {
+  const { tableId } = useTableConfig()
+  return useSelectionStore((s) => {
+    const c = s.tables[tableId]?.copyHighlight
+    if (!c || !isSingleCell(c)) return false
+    return c.anchor.rowId === rowId && c.anchor.columnId === columnId
+  })
+}
+
 /** True iff this cell is the editing target */
 export function useIsEditingCell(rowId: string, columnId: string): boolean {
   const { tableId } = useTableConfig()

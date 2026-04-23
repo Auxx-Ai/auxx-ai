@@ -26,7 +26,6 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { type BreadcrumbSegment, SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
 import { toastInfo } from '@auxx/ui/components/toast'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
 import type { Header, Row, Table } from '@tanstack/react-table'
@@ -44,6 +43,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
 import { useField, useFields } from '~/components/resources/hooks/use-field'
@@ -588,28 +588,25 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
 
           {/* AI-enabled indicator */}
           {aiMenuEnabled && (
-            <Sparkles className='size-3.5 text-quartz fill-quartz *:nth-2:text-purple-400 *:nth-3:text-purple-400' />
+            <Tooltip content='AI autofill' side='top'>
+              <Sparkles className='size-3.5 text-quartz fill-quartz *:nth-2:text-purple-400 *:nth-3:text-purple-400' />
+            </Tooltip>
           )}
 
           {/* New button (only for primary column with onAddNew) */}
           {showNewButton && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant='ghost'
-                  size='icon-xs'
-                  className='ml-1 bg-primary-100 dark:bg-background hover:bg-primary-200 size-5 rounded-md'
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onAddNew()
-                  }}
-                  aria-label={`New ${entityLabel || ''}`}>
-                  <Plus className='size-3' />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side='top'>
-                <p>New {entityLabel || ''}</p>
-              </TooltipContent>
+            <Tooltip content={`New ${entityLabel || ''}`} side='top'>
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                className='ml-1 bg-primary-100 dark:bg-background hover:bg-primary-200 size-5 rounded-md'
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAddNew()
+                }}
+                aria-label={`New ${entityLabel || ''}`}>
+                <Plus className='size-3' />
+              </Button>
             </Tooltip>
           )}
         </div>

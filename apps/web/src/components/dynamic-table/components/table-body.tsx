@@ -77,7 +77,9 @@ export function TableBody<TData extends object>({
         <div
           ref={containerRef}
           className='min-w-full'
-          style={{ width: `${table.getTotalSize()}px` }}>
+          style={{
+            width: `${table.getTotalSize() + (entityDefinitionId ? 150 : 0)}px`,
+          }}>
           {/* Table Header with Column DndContext */}
           <ColumnDndProvider table={table} visibleColumns={visibleColumns}>
             <div
@@ -126,9 +128,12 @@ export function TableBody<TData extends object>({
                       header-matched backdrop (no gradient) so data rows beneath paint
                       their own bg unmasked to the viewport edge. */}
                   {entityDefinitionId && (
-                    <div className='sticky right-0 z-20 shrink-0 flex items-center px-1 backdrop-blur bg-white/80 dark:bg-[#2c313a]/80 border-l border-primary-200/50 dark:border-[#1e2227]'>
-                      <AddColumnButton />
-                    </div>
+                    <>
+                      <div className='sticky border-l border-primary-200/50 dark:border-[#1e2227] right-0 z-20 shrink-0 flex items-center px-1 backdrop-blur bg-white/80 dark:bg-[#2c313a]/80'>
+                        <AddColumnButton />
+                      </div>
+                      <div className='shrink-0 ' style={{ width: 110 }} />
+                    </>
                   )}
                 </div>
               ))}
