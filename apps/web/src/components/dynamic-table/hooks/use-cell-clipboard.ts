@@ -158,6 +158,8 @@ export function useCellClipboard({
 
     try {
       await writeDualClipboard(tsv, sidecar)
+      // Marching-ants highlight around the copied range; cleared on paste/Escape.
+      useSelectionStore.getState().setCopyHighlight(tableId, range)
     } catch (err) {
       toastError({
         title: 'Could not copy',
@@ -336,6 +338,9 @@ export function useCellClipboard({
           useSelectionStore.getState().setRangeFocus(tableId, newFocus)
         }
       }
+
+      // Paste consumed the clipboard source — drop the marching-ants overlay.
+      useSelectionStore.getState().setCopyHighlight(tableId, null)
 
       if (skipped > 0) {
         const top = [...reasons.entries()].sort((a, b) => b[1] - a[1])[0]
