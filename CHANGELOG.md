@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.139](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.138...auxx-v0.1.139) (2026-04-23)
+
+
+### Features
+
+* AI credit pool + sparkle overlay rework + table polish ([#476](https://github.com/Auxx-Ai/auxx-ai/issues/476)) ([bb32a4d](https://github.com/Auxx-Ai/auxx-ai/commit/bb32a4dd84b69a9a5216c87d68ba44e02903767e))
+
 ## [0.1.138](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.137...auxx-v0.1.138) (2026-04-23)
 
 
