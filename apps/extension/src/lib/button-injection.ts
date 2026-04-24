@@ -91,10 +91,6 @@ export function createAuxxButton(opts: CreateAuxxButtonOptions): HTMLButtonEleme
   })
   btn.innerHTML = `${auxxLogoSvg(20)}<span>Add to Auxx</span>`
 
-  // TODO(plan 19): when we have a typed `record.lookup` endpoint, kick off
-  //   the async "is this already in Auxx?" check here and call
-  //   `markInAuxx({ button: btn })` + `onIsInAuxx?.()` on hit.
-
   return btn
 }
 

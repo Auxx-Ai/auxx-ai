@@ -1,5 +1,7 @@
 // apps/extension/src/content/sales-navigator.tsx
 
+import { salesNavExternalId } from '../lib/external-id'
+import { lookupRecordId } from '../lib/lookup'
 import { parseSalesNavigator } from '../lib/parsers/sales-navigator'
 import { buildAuxxButton, openPanel, setupContentScript } from './_shared'
 
@@ -23,6 +25,22 @@ function ensureButton(): void {
 
   const btn = buildAuxxButton({ host: 'sales-navigator', onClick: openPanel })
   actionBar.appendChild(btn)
+
+  void checkAndFlipButton(btn)
+}
+
+async function checkAndFlipButton(btn: HTMLElement): Promise<void> {
+  const match = location.pathname.match(/^\/sales\/lead\/([^,/]+)/)
+  if (!match?.[1]) return
+  const externalId = salesNavExternalId(match[1])
+  const recordId = await lookupRecordId('contact', [
+    { systemAttribute: 'external_id', value: externalId },
+  ])
+  if (!recordId) return
+  if (!document.contains(btn)) return
+  // `buildAuxxButton` creates a text-only button (no child <span>), so flip
+  // the text node directly.
+  btn.textContent = 'Open in Auxx'
 }
 
 setupContentScript({

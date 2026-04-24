@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/extension.ts
 
+import { fetchAndStoreRemoteImage } from '@auxx/lib/files'
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -9,9 +10,12 @@ const logger = createScopedLogger('api-extension')
 /**
  * Endpoints for the Auxx Chrome extension.
  *
- * Currently only provides a parser-health ping that fires once per
- * content-script load. We aggregate the data downstream (PostHog) so
- * we get an alert when DOM selectors break across many users at once.
+ * - parserHealth: once-per-content-script ping aggregated downstream
+ *   (PostHog) so we get an alert when DOM selectors break across many
+ *   users at once.
+ * - uploadAvatarFromUrl: server-side fetch of a remote avatar/logo URL
+ *   into a MediaAsset. Returns an `asset:<id>` ref the extension injects
+ *   into the FILE field (contact_avatar / company_logo) at record create.
  */
 export const extensionRouter = createTRPCRouter({
   parserHealth: protectedProcedure
@@ -32,5 +36,25 @@ export const extensionRouter = createTRPCRouter({
         extensionVersion: input.extensionVersion,
       })
       return { ok: true as const }
+    }),
+
+  uploadAvatarFromUrl: protectedProcedure
+    .input(
+      z.object({
+        url: z.string().url().max(2048),
+        entityType: z.enum(['contact', 'company']),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const isCompany = input.entityType === 'company'
+      const result = await fetchAndStoreRemoteImage({
+        url: input.url,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        pathPrefix: isCompany ? 'company-logos' : 'contact-avatars',
+        purpose: isCompany ? 'company-logo' : 'contact-avatar',
+        name: isCompany ? 'company-logo' : 'contact-avatar',
+      })
+      return { assetId: result.assetId, ref: result.ref }
     }),
 })

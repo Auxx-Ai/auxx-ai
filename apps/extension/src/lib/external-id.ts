@@ -60,3 +60,15 @@ export function linkedInCompanyExternalId(slug: string): string {
 export function salesNavExternalId(profileId: string): string {
   return buildExternalId('salesnav', profileId)
 }
+
+export function twitterExternalId(username: string): string {
+  return buildExternalId('twitter', username.replace(/^@/, ''))
+}
+
+export function instagramExternalId(username: string): string {
+  return buildExternalId('instagram', username.replace(/^@/, ''))
+}
+
+export function facebookExternalId(idOrVanity: string): string {
+  return buildExternalId('facebook', idOrVanity)
+}

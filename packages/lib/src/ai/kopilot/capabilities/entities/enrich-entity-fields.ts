@@ -122,7 +122,10 @@ export async function enrichEntitiesWithFieldValues(params: {
         const typedValue = rowsToTypedValues(
           fieldRows,
           meta.fieldType,
-          isArrayReturnFieldType(meta.fieldType, { actor: meta.options?.actor })
+          isArrayReturnFieldType(meta.fieldType, {
+            actor: meta.options?.actor,
+            multi: meta.options?.multi,
+          })
         )
 
         if (typedValue === null) continue

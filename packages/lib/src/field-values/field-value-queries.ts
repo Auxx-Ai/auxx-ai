@@ -91,7 +91,7 @@ export async function getValue(
   return rowsToTypedValues(
     rows as unknown as FieldValueRow[],
     field.type,
-    isArrayReturnFieldType(field.type)
+    isArrayReturnFieldType(field.type, field.options as FieldOptions | undefined)
   )
 }
 
@@ -145,11 +145,12 @@ export async function getValues(
   // Convert and store results
   for (const [fieldId, fieldRows] of groupedByField) {
     const fieldType = fieldRows[0]!.CustomField.type as FieldType
+    const fieldOptions = fieldRows[0]!.CustomField.options as FieldOptions | undefined
     const fieldValueRows = fieldRows.map((r) => r.FieldValue as unknown as FieldValueRow)
     const typedValues = rowsToTypedValues(
       fieldValueRows,
       fieldType,
-      isArrayReturnFieldType(fieldType)
+      isArrayReturnFieldType(fieldType, fieldOptions)
     )
     if (typedValues !== null) {
       result.set(fieldId, typedValues)
@@ -464,12 +465,12 @@ async function fetchFieldValueResults(
 
     if (!recordId || !fieldRef || !fieldType) continue
 
-    const isMulti = isArrayReturnFieldType(fieldType)
+    const fieldOptions = fieldOptionsMap.get(fieldId)
+    const isMulti = isArrayReturnFieldType(fieldType, fieldOptions)
     const typedValues = fieldRows.map((row) =>
       rowToTypedValue(row as unknown as FieldValueRow, fieldType)
     )
     const value = isMulti ? typedValues : typedValues[0]!
-    const fieldOptions = fieldOptionsMap.get(fieldId)
 
     // AI marker lives on a single row per (entity, field). Multi-value fields
     // don't carry AI markers today — take the first row's marker for safety.
@@ -679,7 +680,13 @@ async function fetchTerminalFieldValues(
   terminalFieldOptions?: FieldOptions
 ): Promise<Map<RecordId, TypedFieldValue | TypedFieldValue[]>> {
   if (!isSystemResourceId(terminalEntityId)) {
-    return batchFetchFieldValues(ctx, recordIds, terminalFieldId, terminalFieldType)
+    return batchFetchFieldValues(
+      ctx,
+      recordIds,
+      terminalFieldId,
+      terminalFieldType,
+      terminalFieldOptions
+    )
   }
 
   const termResource = await findCachedResource(ctx.organizationId, terminalEntityId)
@@ -744,7 +751,13 @@ async function fetchTerminalFieldValues(
   }
 
   // FieldValue-backed — existing path
-  return batchFetchFieldValues(ctx, recordIds, terminalFieldId, terminalFieldType)
+  return batchFetchFieldValues(
+    ctx,
+    recordIds,
+    terminalFieldId,
+    terminalFieldType,
+    terminalFieldOptions
+  )
 }
 
 /**
@@ -805,7 +818,8 @@ async function batchFetchFieldValues(
   ctx: FieldValueContext,
   recordIds: RecordId[],
   fieldId: string,
-  fieldType: FieldType
+  fieldType: FieldType,
+  fieldOptions?: FieldOptions
 ): Promise<Map<RecordId, TypedFieldValue | TypedFieldValue[]>> {
   const entityInstanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
 
@@ -841,7 +855,7 @@ async function batchFetchFieldValues(
 
   // Convert to typed values
   const result = new Map<RecordId, TypedFieldValue | TypedFieldValue[]>()
-  const isMulti = isArrayReturnFieldType(fieldType)
+  const isMulti = isArrayReturnFieldType(fieldType, fieldOptions)
 
   for (const [recordId, fieldRows] of rowsByRecord) {
     const typedValues = fieldRows.map((row) =>
@@ -922,7 +936,7 @@ function mapResultsToSources(
     // If any hop produced multiple results, or terminal field is multi-value, return array
     // Otherwise, return single value or null
     if (values.length > 0) {
-      const isMultiValueField = isArrayReturnFieldType(terminalFieldType)
+      const isMultiValueField = isArrayReturnFieldType(terminalFieldType, terminalFieldOptions)
       const shouldBeArray = hasMultiHop || values.length > 1 || isMultiValueField
 
       results.push({

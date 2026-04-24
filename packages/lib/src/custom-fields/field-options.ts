@@ -123,6 +123,18 @@ export interface FieldOptions {
   // ─────────────────────────────────────────────────────────────
   /** NAME field options - references two TEXT fields for firstName/lastName */
   name?: NameFieldOptions
+
+  // ─────────────────────────────────────────────────────────────
+  // MULTI-VALUE STORAGE (scalar types with multiple rows)
+  // ─────────────────────────────────────────────────────────────
+  /**
+   * Force multi-value storage for this field regardless of its FieldType.
+   * When true, writes go DELETE+INSERT (one FieldValue row per value)
+   * and reads return an array. Used for scalar-typed fields (TEXT,
+   * EMAIL, URL, PHONE) that need to hold multiple values — e.g.
+   * external source ids from the Chrome extension.
+   */
+  multi?: boolean
 }
 
 /**

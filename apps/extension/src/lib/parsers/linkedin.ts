@@ -2,7 +2,7 @@
 
 import { findBySelectorAsync, textOf } from '../dom'
 import { linkedInExternalId } from '../external-id'
-import { EMPTY_PARSE_RESULT, type ParsedPerson, type ParseResult } from './types'
+import { EMPTY_PARSE_RESULT, type ParsedPerson, type ParseResult, splitName } from './types'
 
 /**
  * LinkedIn (regular profile) parser — DOM-only. Voyager API access is
@@ -34,13 +34,6 @@ const AVATAR_SELECTORS = [
 function profileSlugFromUrl(url: URL): string | null {
   const m = url.pathname.match(/^\/in\/([^/?#]+)/)
   return m?.[1] ?? null
-}
-
-function splitName(full: string): { firstName?: string; lastName?: string } {
-  const parts = full.split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return {}
-  if (parts.length === 1) return { firstName: parts[0] }
-  return { firstName: parts[0], lastName: parts.slice(1).join(' ') }
 }
 
 function isLikelyAvatar(url: string | null | undefined): boolean {

@@ -9,6 +9,7 @@ import {
   index,
   jsonb,
   pgTable,
+  sql,
   text,
   timestamp,
   uniqueIndex,
@@ -168,6 +169,60 @@ export const FieldValue = pgTable(
       table.fieldId.asc().nullsLast(),
       table.sortKey.asc().nullsLast()
     ),
+
+    // Partial indexes for `lookupByField` — one per typed column. Without
+    // these, equality lookups on FieldValue.valueText etc. are Seq Scans
+    // against a table that grows with `entities × fields_per_entity`.
+    // Partial so write-path cost stays at one index update per row
+    // (only the column this row populates).
+    index('FieldValue_lookup_text_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.fieldId.asc().nullsLast(),
+        table.valueText.asc().nullsLast()
+      )
+      .where(sql`"valueText" IS NOT NULL`),
+    index('FieldValue_lookup_number_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.fieldId.asc().nullsLast(),
+        table.valueNumber.asc().nullsLast()
+      )
+      .where(sql`"valueNumber" IS NOT NULL`),
+    index('FieldValue_lookup_option_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.fieldId.asc().nullsLast(),
+        table.optionId.asc().nullsLast()
+      )
+      .where(sql`"optionId" IS NOT NULL`),
+    index('FieldValue_lookup_related_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.fieldId.asc().nullsLast(),
+        table.relatedEntityId.asc().nullsLast()
+      )
+      .where(sql`"relatedEntityId" IS NOT NULL`),
+    index('FieldValue_lookup_actor_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.fieldId.asc().nullsLast(),
+        table.actorId.asc().nullsLast()
+      )
+      .where(sql`"actorId" IS NOT NULL`),
+    index('FieldValue_lookup_date_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.fieldId.asc().nullsLast(),
+        table.valueDate.asc().nullsLast()
+      )
+      .where(sql`"valueDate" IS NOT NULL`),
   ]
 )
 

@@ -34,3 +34,14 @@ export type ParseResult = {
 }
 
 export const EMPTY_PARSE_RESULT: ParseResult = { people: [], companies: [] }
+
+/**
+ * Split a full name on whitespace. First token → firstName, rest → lastName.
+ * Single-token names collapse to `firstName` only; empty input yields `{}`.
+ */
+export function splitName(full: string): { firstName?: string; lastName?: string } {
+  const parts = full.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return {}
+  if (parts.length === 1) return { firstName: parts[0] }
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') }
+}

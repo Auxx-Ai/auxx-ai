@@ -2,15 +2,21 @@
 
 import type { Database } from '@auxx/database'
 import { database as defaultDatabase, schema } from '@auxx/database'
+import type { FieldType } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
 import { checkUniqueValue } from '@auxx/services/custom-fields'
 import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-instances'
 import { ModelTypes } from '@auxx/types/custom-field'
+import { createTypedValueInput } from '@auxx/types/field-value'
 import { isEntityDefinitionType } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
+import { type AnyColumn, and, eq, type SQL } from 'drizzle-orm'
 import { findCachedResource, getCachedCustomFields } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
+import { BadRequestError } from '../../errors'
 import { publisher } from '../../events/publisher'
 import { FieldValueService } from '../../field-values'
+import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
+import { typedColumnMatch } from '../../field-values/typed-column-match'
 import { getOrCreateSnapshot, getSnapshotChunk, invalidateSnapshots } from '../../snapshot'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
@@ -50,6 +56,35 @@ import {
 /** Inferred type for CustomField select (not exported from schema) */
 type CustomFieldEntity = typeof schema.CustomField.$inferSelect
 type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
+
+const lookupLogger = createScopedLogger('unified-handler-lookup')
+
+/**
+ * Candidate for `lookupByField` — one `(systemAttribute, value)` pair to try.
+ */
+export type LookupCandidate = {
+  systemAttribute: string
+  value: unknown
+}
+
+/**
+ * Single match returned by `lookupByField`. `matchedBy` records which
+ * candidate hit this record (useful when callers want to know whether
+ * dedup succeeded via externalId vs. primary_email).
+ */
+export type LookupMatch = {
+  recordId: RecordId
+  matchedBy: { systemAttribute: string; value: unknown }
+}
+
+/**
+ * Result envelope for `lookupByField`. `hasMore` is set when the server
+ * found more than `limit` distinct records across the candidate list.
+ */
+export type LookupByFieldResult = {
+  items: LookupMatch[]
+  hasMore: boolean
+}
 
 /**
  * Helper to unwrap neverthrow Result and throw on error
@@ -176,10 +211,15 @@ export class UnifiedCrudHandler {
    * @param values - Field values to update (map of fieldId -> value)
    * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
    */
-  async update(recordId: RecordId, values: Record<string, unknown>, options: CrudOptions = {}) {
+  async update(
+    recordId: RecordId,
+    values: Record<string, unknown>,
+    modes?: Record<string, 'set' | 'add' | 'remove'>,
+    options: CrudOptions = {}
+  ) {
     const { entityDefinitionId } = parseRecordId(recordId)
     await this.warmCache(entityDefinitionId)
-    return updateEntity(this.getMutationContext(), recordId, values, options)
+    return updateEntity(this.getMutationContext(), recordId, values, modes, options)
   }
 
   /**
@@ -197,36 +237,144 @@ export class UnifiedCrudHandler {
   }
 
   /**
-   * Find entity by field value (e.g., find contact by email)
+   * Find entity by field value (e.g., find contact by email).
+   * Back-compat wrapper around `lookupByField` — routes through the same
+   * column-aware + normalization pipeline so callers (findOrCreate, etc.)
+   * pick up EMAIL lowercasing, URL protocol normalization, etc. for free.
    *
    * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
    * @param fieldSystemAttribute - System attribute like 'primary_email'
    * @param value - Value to search for
    */
   async findByField(entityDefinitionId: string, fieldSystemAttribute: string, value: unknown) {
-    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
+    const { items } = await this.lookupByField({
+      entityDefinitionId,
+      candidates: [{ systemAttribute: fieldSystemAttribute, value }],
+      limit: 1,
+    })
+    if (items.length === 0) return null
+    return this.getById(items[0]!.recordId)
+  }
 
-    // Get field by systemAttribute
-    const field = await this.getFieldBySystemAttribute(entityDef.id, fieldSystemAttribute)
-    if (!field) return null
+  /**
+   * Build a typed equality condition on the right FieldValue column for a
+   * given field + raw value. Returns `null` when the value can't be
+   * coerced / normalized (uncoercible inputs like `Number('foo')` leak
+   * through `createTypedValueInput` as NaN and would silently match zero
+   * rows — gate explicitly instead).
+   */
+  private buildLookupCondition(field: CustomFieldEntity, rawValue: unknown): SQL | null {
+    const normalized = normalizeForLookup(field.type as FieldType, rawValue)
+    if (normalized === null || normalized === undefined) return null
 
-    // Query FieldValue table for matching value
-    const rows = await this.db
-      .select({ entityId: schema.FieldValue.entityId })
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.fieldId, field.id),
-          eq(schema.FieldValue.organizationId, this.organizationId),
-          eq(schema.FieldValue.valueText, String(value))
+    const typedInput = createTypedValueInput(field.type, normalized)
+    if (typedInput === null) return null
+
+    // `createTypedValueInput` does `Number(raw)` / `new Date(raw)` without
+    // validating the result — gate explicitly.
+    if (typedInput.type === 'number' && !Number.isFinite(typedInput.value)) return null
+    if (typedInput.type === 'date' && Number.isNaN(new Date(typedInput.value).getTime())) {
+      return null
+    }
+
+    const { column, value } = typedColumnMatch(typedInput)
+    return eq(schema.FieldValue[column] as AnyColumn, value as string | number | boolean)
+  }
+
+  /**
+   * Lookup record IDs by one or more `(systemAttribute, value)` candidates,
+   * tried in priority order. Column-aware (routes through `typedColumnMatch`)
+   * and value-normalizing (mirrors write-path formatting). Deduplicates hits
+   * across candidates by recordId; the earliest-priority candidate wins
+   * attribution.
+   *
+   * Candidate failure handling: a candidate whose field doesn't exist OR
+   * whose value can't be coerced / normalized is **skipped with a warning
+   * log**, not thrown. Only throws `BadRequestError` when ALL candidates
+   * fail — otherwise one garbage input would take down a best-effort
+   * fallback chain (e.g. externalId → email).
+   *
+   * Does not filter on archived records: re-capture of an archived contact
+   * should link to the same row rather than create a duplicate. Callers
+   * needing only-active records should post-filter via `record.getById`.
+   *
+   * Does not filter on `capabilities.hidden`: the extension is a system
+   * integration and is allowed to address hidden fields (externalId).
+   */
+  async lookupByField(params: {
+    entityDefinitionId: string
+    candidates: LookupCandidate[]
+    limit: number
+  }): Promise<LookupByFieldResult> {
+    const entityDef = await this.resolveEntityDefinition(params.entityDefinitionId)
+    const seen = new Set<RecordId>()
+    const items: LookupMatch[] = []
+    let hasMore = false
+    let anyValid = false
+    const skipped: Array<{ candidate: LookupCandidate; reason: string }> = []
+
+    for (const candidate of params.candidates) {
+      if (items.length >= params.limit) break
+
+      const field = await this.getFieldBySystemAttribute(entityDef.id, candidate.systemAttribute)
+      if (!field) {
+        skipped.push({ candidate, reason: 'field not found' })
+        continue
+      }
+
+      const condition = this.buildLookupCondition(field, candidate.value)
+      if (condition === null) {
+        skipped.push({ candidate, reason: 'uncoercible value' })
+        continue
+      }
+      anyValid = true
+
+      // Fetch `remaining + 1` to detect hasMore. DISTINCT ON collapses
+      // duplicate FieldValue rows on the same entity (e.g. belt-and-braces
+      // against two rows with the same externalId after mode:'add' dedup).
+      const remaining = params.limit - items.length
+      const rows = await this.db
+        .selectDistinctOn([schema.FieldValue.entityId], {
+          entityId: schema.FieldValue.entityId,
+        })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.fieldId, field.id),
+            eq(schema.FieldValue.organizationId, this.organizationId),
+            condition
+          )
         )
+        .limit(remaining + 1)
+
+      for (const row of rows) {
+        const recordId = toRecordId(entityDef.id, row.entityId)
+        if (seen.has(recordId)) continue
+        if (items.length >= params.limit) {
+          hasMore = true
+          break
+        }
+        seen.add(recordId)
+        items.push({
+          recordId,
+          matchedBy: { systemAttribute: candidate.systemAttribute, value: candidate.value },
+        })
+      }
+    }
+
+    if (!anyValid && params.candidates.length > 0) {
+      throw new BadRequestError(
+        `lookupByField: no candidate was valid. Skipped: ${JSON.stringify(skipped)}`
       )
-      .limit(1)
+    }
+    if (skipped.length > 0) {
+      lookupLogger.warn('lookupByField: skipped candidates', {
+        entityDef: entityDef.id,
+        skipped,
+      })
+    }
 
-    if (rows.length === 0) return null
-
-    const recordId = toRecordId(entityDef.id, rows[0]!.entityId)
-    return this.getById(recordId)
+    return { items, hasMore }
   }
 
   /**
@@ -725,12 +873,19 @@ export class UnifiedCrudHandler {
   }
 
   /**
-   * Set field values for an entity using RecordId
+   * Set field values for an entity using RecordId.
    *
    * @param recordId - RecordId in format "entityDefinitionId:instanceId"
    * @param values - Map of fieldId -> value
+   * @param modes - Optional per-field write mode. Fields not listed default
+   *   to `'set'`. `'add'` / `'remove'` route to the multi-value primitives;
+   *   they throw `BadRequestError` on single-value fields.
    */
-  private async setFieldValues(recordId: RecordId, values: Record<string, unknown>): Promise<void> {
+  private async setFieldValues(
+    recordId: RecordId,
+    values: Record<string, unknown>,
+    modes?: Record<string, 'set' | 'add' | 'remove'>
+  ): Promise<void> {
     const { entityDefinitionId } = parseRecordId(recordId)
 
     // Get cached fields and build key → id map for all entity types
@@ -738,18 +893,45 @@ export class UnifiedCrudHandler {
     const fields = await this.getCustomFieldsCached(entityDefinitionId)
     const keyToIdMap = new Map(fields.map((f) => [f.systemAttribute ?? f.name, f.id]))
 
-    const valueArray = Object.entries(values)
-      .filter(([_, value]) => value !== undefined)
-      .map(([key, value]) => ({
-        // Map field key (systemAttribute) → UUID, or pass through if already a UUID
-        fieldId: keyToIdMap.get(key) ?? key,
-        value,
-      }))
+    // Resolve each entry to (fieldId, value, mode) so we can bucket below.
+    // Any key that doesn't match a known systemAttribute/name is passed
+    // through as-is — callers sometimes address fields by UUID directly.
+    type Entry = { key: string; fieldId: string; value: unknown; mode: 'set' | 'add' | 'remove' }
+    const entries: Entry[] = []
+    for (const [key, value] of Object.entries(values)) {
+      if (value === undefined) continue
+      const fieldId = keyToIdMap.get(key) ?? key
+      // modes map is keyed the same way the caller keyed `values` — accept
+      // either systemAttribute or UUID. Prefer an explicit UUID match so
+      // callers mixing keys in one call still work.
+      const mode = modes?.[key] ?? modes?.[fieldId] ?? 'set'
+      entries.push({ key, fieldId, value, mode })
+    }
 
-    if (valueArray.length > 0) {
+    const setEntries = entries.filter((e) => e.mode === 'set')
+    const addEntries = entries.filter((e) => e.mode === 'add')
+    const removeEntries = entries.filter((e) => e.mode === 'remove')
+
+    if (setEntries.length > 0) {
       await this.fieldValueService.setValuesForEntity({
         recordId,
-        values: valueArray,
+        values: setEntries.map((e) => ({ fieldId: e.fieldId, value: e.value })),
+      })
+    }
+
+    for (const e of addEntries) {
+      await this.fieldValueService.addValues({
+        recordId,
+        fieldId: e.fieldId,
+        values: Array.isArray(e.value) ? e.value : [e.value],
+      })
+    }
+
+    for (const e of removeEntries) {
+      await this.fieldValueService.removeValues({
+        recordId,
+        fieldId: e.fieldId,
+        values: Array.isArray(e.value) ? e.value : [e.value],
       })
     }
   }

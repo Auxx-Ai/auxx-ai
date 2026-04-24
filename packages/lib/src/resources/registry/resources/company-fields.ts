@@ -353,18 +353,19 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'external_id',
     systemSortOrder: 'aX',
-    showInPanel: false,
     nullable: true,
     isIdentifier: true,
+    options: { multi: true },
     capabilities: {
       filterable: true,
       sortable: false,
       creatable: true,
       updatable: true,
       configurable: false,
+      hidden: true,
     },
     description:
-      'Stable source identifier (e.g. linkedin-company:slug) set when a company is captured via the Auxx extension.',
+      'Stable source identifiers (e.g. linkedin-company:slug) set when a company is captured via the Auxx extension. Multi-value — a company may be captured from several sources.',
   },
 
   enrichedAt: {

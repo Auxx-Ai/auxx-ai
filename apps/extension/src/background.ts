@@ -4,6 +4,8 @@ import {
   ExternalMessageSchema,
   type InvokeMessage,
   InvokeMessageSchema,
+  type LookupByFieldMessage,
+  LookupByFieldMessageSchema,
   type PageOperation,
 } from './lib/messaging'
 
@@ -225,6 +227,10 @@ async function ensureInjected(tabId: number) {
             case 'parseLinkedIn':
             case 'parseLinkedInCompany':
             case 'parseSalesNavigator':
+            case 'parseTwitterProfile':
+            case 'parseTwitterSearch':
+            case 'parseFacebook':
+            case 'parseInstagramProfile':
               return dispatchToContentScript(operation, args)
             default:
               return null
@@ -261,23 +267,64 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 // ─── Iframe → SW: invoke a page op ─────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const parsed = InvokeMessageSchema.safeParse(message)
-  if (!parsed.success) return false
+  const invoke = InvokeMessageSchema.safeParse(message)
+  if (invoke.success) {
+    const tabId = sender.tab?.id
+    if (!tabId) {
+      sendResponse({ ok: false, error: 'no-tab' })
+      return true
+    }
 
-  const tabId = sender.tab?.id
-  if (!tabId) {
-    sendResponse({ ok: false, error: 'no-tab' })
+    handleInvoke(tabId, invoke.data)
+      .then((value) => sendResponse({ ok: true, value }))
+      .catch((err: unknown) =>
+        sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) })
+      )
+
+    return true // keep the message channel open for the async response
+  }
+
+  const lookup = LookupByFieldMessageSchema.safeParse(message)
+  if (lookup.success) {
+    handleLookupByField(lookup.data)
+      .then((recordId) => sendResponse({ ok: true, recordId }))
+      .catch(() => sendResponse({ ok: true, recordId: null }))
     return true
   }
 
-  handleInvoke(tabId, parsed.data)
-    .then((value) => sendResponse({ ok: true, value }))
-    .catch((err: unknown) =>
-      sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) })
-    )
-
-  return true // keep the message channel open for the async response
+  return false
 })
+
+/**
+ * Proxy a single `record.lookupByField` query from a content script to
+ * auxx.ai. Shares the iframe's cookie jar — the extension's origin is on
+ * the allowlist. Returns the first matched `recordId` or `null` on any
+ * failure. We deliberately never throw upward: in-page buttons silently
+ * stay on the default "Add to Auxx" state if the lookup fails.
+ */
+async function handleLookupByField(msg: LookupByFieldMessage): Promise<string | null> {
+  try {
+    const url = new URL('/api/trpc/record.lookupByField', __AUXX_WEBAPP_URL__)
+    url.searchParams.set(
+      'input',
+      JSON.stringify({
+        json: {
+          entityDefinitionId: msg.entityDefinitionId,
+          candidates: msg.candidates,
+          limit: 1,
+        },
+      })
+    )
+    const res = await fetch(url.toString(), { credentials: 'include' })
+    if (!res.ok) return null
+    const json = (await res.json().catch(() => null)) as {
+      result?: { data?: { json?: { items?: Array<{ recordId?: string }> } } }
+    } | null
+    return json?.result?.data?.json?.items?.[0]?.recordId ?? null
+  } catch {
+    return null
+  }
+}
 
 async function handleInvoke(tabId: number, msg: InvokeMessage) {
   const value = await invokeOnTab(tabId, msg.operation, msg.args ?? [])

@@ -3,8 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { load } from 'cheerio'
-import { createMediaAssetService } from '../../files/core/media-asset-service'
-import { createStorageManager } from '../../files/storage/storage-manager'
+import { assertPublicHost, fetchAndStoreRemoteImage } from '../../files/fetch-remote-image'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { SystemUserService } from '../../users/system-user-service'
 import type { EntityTriggerHandler } from '../types'
@@ -202,66 +201,23 @@ async function fetchAndStoreLogo(args: {
 
   for (const url of candidates) {
     try {
-      assertPublicHost(url)
-
-      const res = await fetchWithTimeout(url, FAVICON_FETCH_TIMEOUT_MS)
-      if (!res.ok) continue
-
-      const contentType = (res.headers.get('content-type') || 'image/x-icon').split(';')[0]!.trim()
-      if (!contentType.startsWith('image/')) continue
-
-      const buf = Buffer.from(await res.arrayBuffer())
-      if (buf.byteLength === 0 || buf.byteLength > MAX_FAVICON_BYTES) continue
-
-      const storageManager = createStorageManager(args.organizationId)
-      const key = `${args.organizationId}/company-logos/${Date.now()}-${cryptoRandomHex()}${extensionFor(contentType)}`
-
-      const storageLocation = await storageManager.uploadContent({
-        provider: 'S3',
-        key,
-        content: buf,
-        mimeType: contentType,
-        size: buf.byteLength,
-        visibility: 'PUBLIC',
+      const result = await fetchAndStoreRemoteImage({
+        url,
         organizationId: args.organizationId,
+        userId: args.userId,
+        pathPrefix: 'company-logos',
+        purpose: 'company-logo',
+        name: 'company-logo',
+        maxBytes: MAX_FAVICON_BYTES,
+        timeoutMs: FAVICON_FETCH_TIMEOUT_MS,
       })
-
-      const mediaAssetService = createMediaAssetService(args.organizationId, args.userId)
-      const { asset } = await mediaAssetService.createWithVersion(
-        {
-          kind: 'SYSTEM_BLOB',
-          purpose: 'company-logo',
-          name: 'company-logo',
-          mimeType: contentType,
-          size: BigInt(buf.byteLength),
-          isPrivate: false,
-          organizationId: args.organizationId,
-          createdById: args.userId,
-        },
-        storageLocation.id
-      )
-
-      return asset.id
+      return result.assetId
     } catch (err) {
       logger.debug('Logo candidate failed', { url, error: (err as Error).message })
     }
   }
 
   return null
-}
-
-async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { 'user-agent': USER_AGENT },
-    })
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────
@@ -290,77 +246,4 @@ function truncate(s: string | null, max: number): string | null {
   const trimmed = s.trim()
   if (trimmed.length === 0) return null
   return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed
-}
-
-function extensionFor(contentType: string): string {
-  switch (contentType) {
-    case 'image/png':
-      return '.png'
-    case 'image/jpeg':
-    case 'image/jpg':
-      return '.jpg'
-    case 'image/gif':
-      return '.gif'
-    case 'image/svg+xml':
-      return '.svg'
-    case 'image/webp':
-      return '.webp'
-    case 'image/x-icon':
-    case 'image/vnd.microsoft.icon':
-      return '.ico'
-    default:
-      return ''
-  }
-}
-
-function cryptoRandomHex(): string {
-  // 8 hex chars — plenty for per-second uniqueness inside an org.
-  return Math.floor(Math.random() * 0xffffffff)
-    .toString(16)
-    .padStart(8, '0')
-}
-
-/**
- * Reject URLs that resolve to private/loopback/link-local IP addresses to
- * avoid server-side request forgery against internal services.
- * Also rejects non-http(s) protocols and bare hostnames that are explicitly
- * private (localhost, *.local, *.internal).
- */
-function assertPublicHost(urlStr: string): void {
-  const url = new URL(urlStr)
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error(`Unsupported protocol: ${url.protocol}`)
-  }
-
-  const hostname = url.hostname.toLowerCase()
-  if (
-    hostname === 'localhost' ||
-    hostname.endsWith('.local') ||
-    hostname.endsWith('.internal') ||
-    hostname === '0.0.0.0'
-  ) {
-    throw new Error(`Refusing to fetch private hostname: ${hostname}`)
-  }
-
-  // Literal IPv4 check
-  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
-  if (ipv4) {
-    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])]
-    const isPrivate =
-      a === 10 ||
-      a === 127 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      a === 0 ||
-      a >= 224
-    if (isPrivate) {
-      throw new Error(`Refusing to fetch private IP: ${hostname}`)
-    }
-  }
-
-  // Literal IPv6 loopback / link-local
-  if (hostname.startsWith('[::1]') || hostname === '::1' || hostname.startsWith('fe80:')) {
-    throw new Error(`Refusing to fetch private IPv6: ${hostname}`)
-  }
 }
