@@ -344,6 +344,29 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     description: 'Meetings associated with this company',
   },
 
+  externalId: {
+    id: toFieldId('externalId'),
+    key: 'externalId',
+    label: 'External ID',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'external_id',
+    systemSortOrder: 'aX',
+    showInPanel: false,
+    nullable: true,
+    isIdentifier: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Stable source identifier (e.g. linkedin-company:slug) set when a company is captured via the Auxx extension.',
+  },
+
   enrichedAt: {
     id: toFieldId('enrichedAt'),
     key: 'enrichedAt',
