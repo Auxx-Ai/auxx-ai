@@ -137,14 +137,13 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'primary_email',
     systemSortOrder: 'a2',
     dbColumn: 'email',
-    nullable: false,
+    nullable: true,
     isIdentifier: true,
     capabilities: {
       filterable: true,
       sortable: true,
       creatable: true,
       updatable: true,
-      required: true,
       configurable: false,
     },
     placeholder: 'Enter email address',
@@ -260,6 +259,29 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter notes',
+  },
+
+  externalId: {
+    id: toFieldId('externalId'),
+    key: 'externalId',
+    label: 'External ID',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'external_id',
+    systemSortOrder: 'b0',
+    showInPanel: false,
+    nullable: true,
+    isIdentifier: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Stable source identifier (e.g. linkedin:slug, gmail:email) set when a record is captured via the Auxx extension.',
   },
 
   createdAt: {

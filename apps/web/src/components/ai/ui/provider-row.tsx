@@ -4,7 +4,6 @@
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 
-import type React from 'react'
 import { ProviderIcon } from '~/components/ai/ui/provider-icon'
 import type { ProviderConfiguration, ProviderStatusInfo } from '~/components/ai/ui/utils'
 import { Tooltip } from '~/components/global/tooltip'
@@ -43,7 +42,7 @@ interface ProviderRowProps {
 /**
  * Expandable provider row component
  */
-export const ProviderRow: React.FC<ProviderRowProps> = ({
+export function ProviderRow({
   provider,
   isExpanded,
   onToggle,
@@ -52,7 +51,7 @@ export const ProviderRow: React.FC<ProviderRowProps> = ({
   onCreateCustomModel,
   disabled = false,
   className,
-}) => {
+}: ProviderRowProps) {
   const utils = api.useUtils()
 
   // Mutations
@@ -210,6 +209,6 @@ interface ProviderHeaderProps {
 /**
  * Simplified provider header for use in layouts
  */
-export const ProviderHeader: React.FC<ProviderHeaderProps> = (props) => {
+export function ProviderHeader(props: ProviderHeaderProps) {
   return <ProviderRow {...props} className='border-0 hover:bg-muted/20' />
 }

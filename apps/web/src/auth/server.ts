@@ -276,11 +276,18 @@ export const auth = betterAuth({
   session: {
     expiresIn: 30 * 24 * 60 * 60, // 30 days
     cookieCache: { enabled: true, maxAge: 5 * 60 },
-    cookieOptions: {
+  },
+  advanced: {
+    // SameSite=None + Secure in every environment, including local dev.
+    // Chrome/Firefox/Safari all treat http://localhost as a secure context,
+    // so `Secure` cookies are accepted there. This keeps dev-prod parity
+    // and lets the chrome-extension origin attach the session cookie via CORS.
+    useSecureCookies: true,
+    defaultCookieAttributes: {
       httpOnly: true,
-      secure: isProduction || !!configService.get<string>('DOMAIN'),
-      sameSite: 'lax',
-      domain: getCookieDomain(),
+      secure: true,
+      sameSite: 'none' as const,
+      ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
     },
   },
   plugins: [

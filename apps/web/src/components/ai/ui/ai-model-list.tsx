@@ -1,5 +1,6 @@
 'use client'
 import { Button } from '@auxx/ui/components/button'
+import { AnimatedCollapsibleContent } from '@auxx/ui/components/collapsible'
 // import { processUnifiedModelData } from './utils'
 import { cn } from '@auxx/ui/lib/utils'
 import { BarChart3, BotIcon, Plus, RefreshCw } from 'lucide-react'
@@ -17,6 +18,10 @@ import { AiUsageDialog } from './ai-usage-dialog'
 import { BadgeAiQuota } from './badge-ai-quota'
 import { CredentialConfigurationDialog } from './credential-configuration-dialog'
 import { SystemModelSettingsDialog } from './system-model-settings-dialog'
+import type { ModelData } from './utils'
+
+const isDeprecatedOrRetired = (model: ModelData) =>
+  model.deprecated === true || model.retired === true || model.status === 'retired'
 
 interface AiModelsListProps {
   initialUnifiedData?: RouterOutputs['aiIntegration']['getUnifiedModelData']
@@ -28,6 +33,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
   const [dialogOperation, setDialogOperation] = React.useState<'create' | 'edit'>('create')
   const [selectedProvider, setSelectedProvider] = React.useState<string | undefined>()
   const [expandedProviders, setExpandedProviders] = React.useState<Set<string>>(new Set())
+  const [showArchivedFor, setShowArchivedFor] = React.useState<Set<string>>(new Set())
   useUser({
     requireOrganization: true, // Require organization membership
     requireRoles: ['ADMIN', 'OWNER'], // Ensure user is an admin or owner
@@ -51,6 +57,18 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
   // Provider expansion handlers
   const toggleProvider = (providerId: string) => {
     setExpandedProviders((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(providerId)) {
+        newSet.delete(providerId)
+      } else {
+        newSet.add(providerId)
+      }
+      return newSet
+    })
+  }
+
+  const toggleArchivedFor = (providerId: string) => {
+    setShowArchivedFor((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(providerId)) {
         newSet.delete(providerId)
@@ -187,17 +205,60 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
                         transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
                         <div className='p-2 inset-shadow-sm'>
                           <div className='bg-background rounded-md'>
-                            {provider.models.map((model) => {
-                              const modelId = `${provider.provider}:${model.modelId}`
-                              return (
-                                <ModelRow
-                                  key={modelId}
-                                  model={model}
-                                  provider={provider}
-                                  providers={providersData}
-                                />
+                            {(() => {
+                              const active = provider.models.filter(
+                                (m) => !isDeprecatedOrRetired(m)
                               )
-                            })}
+                              const archived = provider.models.filter(isDeprecatedOrRetired)
+                              const archivedOpen = showArchivedFor.has(provider.provider)
+                              return (
+                                <>
+                                  {active.map((model) => {
+                                    const modelId = `${provider.provider}:${model.modelId}`
+                                    return (
+                                      <ModelRow
+                                        key={modelId}
+                                        model={model}
+                                        provider={provider}
+                                        providers={providersData}
+                                      />
+                                    )
+                                  })}
+                                  <AnimatedCollapsibleContent open={archivedOpen}>
+                                    {archived.map((model) => {
+                                      const modelId = `${provider.provider}:${model.modelId}`
+                                      return (
+                                        <ModelRow
+                                          key={modelId}
+                                          model={model}
+                                          provider={provider}
+                                          providers={providersData}
+                                        />
+                                      )
+                                    })}
+                                  </AnimatedCollapsibleContent>
+                                  {archived.length > 0 && (
+                                    <button
+                                      type='button'
+                                      onClick={() => toggleArchivedFor(provider.provider)}
+                                      className={cn(
+                                        'flex items-center justify-between w-full px-3 py-1.5 border-muted/30',
+                                        'hover:bg-primary-100/50 transition-all duration-150 ease-in-out',
+                                        'text-sm text-muted-foreground pl-10'
+                                      )}>
+                                      <span>
+                                        {archivedOpen
+                                          ? 'Hide deprecated and retired models'
+                                          : 'Show deprecated and retired models'}
+                                      </span>
+                                      <span className='text-xs text-muted-foreground/70'>
+                                        {archived.length}
+                                      </span>
+                                    </button>
+                                  )}
+                                </>
+                              )
+                            })()}
                           </div>
                         </div>
                       </motion.div>

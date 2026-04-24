@@ -1,19 +1,7 @@
 // packages/services/src/contacts/index.ts
 
 // Query operations
-export {
-  findContactByEmail,
-  getAllContacts,
-  getContactById,
-  getContactsByIds,
-  getCustomFieldValuesForContacts,
-  searchContacts,
-} from './contact-queries'
+export { getContactById, getContactsByIds } from './contact-queries'
 
 // Types
-export type {
-  ContactContext,
-  ContactCursor,
-  GetAllContactsInput,
-  SearchContactsInput,
-} from './types'
+export type { ContactContext } from './types'

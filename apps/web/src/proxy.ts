@@ -41,6 +41,9 @@ const KNOWN_ROUTE_PREFIXES = new Set([
   'kb',
   'ph',
   'setup',
+  // Next.js metadata routes (file-based, no extension in URL)
+  'icon',
+  'apple-icon',
   // Next.js / infra
   '_next',
   'trpc',

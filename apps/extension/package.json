@@ -1,0 +1,43 @@
+{
+  "name": "@auxx/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@auxx/types": "workspace:*",
+    "@auxx/ui": "workspace:*",
+    "@auxx/utils": "workspace:*",
+    "@radix-ui/react-avatar": "^1.1.10",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@tanstack/react-query": "catalog:",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "catalog:",
+    "radix-ui": "^1.4.2",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwind-merge": "^3.0.1",
+    "tailwindcss-animate": "^1.0.7",
+    "tw-animate-css": "^1.3.6",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@auxx/typescript-config": "workspace:*",
+    "@crxjs/vite-plugin": "^2.0.0-beta.32",
+    "@tailwindcss/postcss": "catalog:",
+    "@types/chrome": "^0.0.290",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "postcss": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}
