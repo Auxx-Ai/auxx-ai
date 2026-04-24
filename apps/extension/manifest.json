@@ -23,7 +23,7 @@
     "type": "module"
   },
   "permissions": ["tabs", "scripting", "storage"],
-  "host_permissions": ["https://mail.google.com/*", "https://www.linkedin.com/*"],
+  "host_permissions": ["https://*/*", "http://*/*"],
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
@@ -38,6 +38,18 @@
     {
       "matches": ["https://www.linkedin.com/sales/*"],
       "js": ["src/content/sales-navigator.tsx"]
+    },
+    {
+      "matches": ["https://twitter.com/*", "https://x.com/*"],
+      "js": ["src/content/twitter.tsx"]
+    },
+    {
+      "matches": ["https://www.facebook.com/*"],
+      "js": ["src/content/facebook.tsx"]
+    },
+    {
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["src/content/instagram.tsx"]
     }
   ],
   "externally_connectable": {

@@ -44,6 +44,13 @@ export const fieldValueRouter = createTRPCRouter({
          * value. `value` is ignored in this mode.
          */
         ai: z.boolean().optional(),
+        /**
+         * Write mode. Default `'set'` — replaces the field's rows with
+         * the input (today's behavior). `'add'` / `'remove'` route to
+         * the multi-value primitives and throw `BadRequestError` on
+         * single-value fields.
+         */
+        mode: z.enum(['set', 'add', 'remove']).default('set'),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -53,12 +60,32 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.db,
         ctx.headers.get('x-realtime-socket-id') ?? undefined
       )
-      return await service.setValueWithBuiltIn({
+
+      if (input.mode === 'set') {
+        return await service.setValueWithBuiltIn({
+          recordId: input.recordId as RecordId,
+          fieldId: input.fieldId,
+          value: input.value ?? null,
+          ai: input.ai,
+        })
+      }
+
+      const arr = Array.isArray(input.value) ? input.value : [input.value]
+      if (input.mode === 'add') {
+        const values = await service.addValues({
+          recordId: input.recordId as RecordId,
+          fieldId: input.fieldId,
+          values: arr,
+        })
+        return { state: 'complete' as const, performedAt: new Date().toISOString(), values }
+      }
+
+      await service.removeValues({
         recordId: input.recordId as RecordId,
         fieldId: input.fieldId,
-        value: input.value ?? null,
-        ai: input.ai,
+        values: arr,
       })
+      return { state: 'complete' as const, performedAt: new Date().toISOString(), values: [] }
     }),
 
   /**
@@ -73,6 +100,13 @@ export const fieldValueRouter = createTRPCRouter({
           z.object({
             fieldId: fieldIdSchema,
             value: z.any().nullable(),
+            /**
+             * Per-item write mode. Default `'set'` — replace. Use `'add'` /
+             * `'remove'` to append / delete values on multi-value fields.
+             * Mixing modes across items in one call is the whole point of
+             * putting `mode` here instead of at the top level.
+             */
+            mode: z.enum(['set', 'add', 'remove']).default('set'),
           })
         ),
         /**
@@ -90,14 +124,47 @@ export const fieldValueRouter = createTRPCRouter({
         ctx.db,
         ctx.headers.get('x-realtime-socket-id') ?? undefined
       )
-      return await service.setBulkValues({
-        recordIds: input.recordIds as RecordId[],
-        values: input.values.map((v) => ({
-          fieldId: v.fieldId,
-          value: v.value ?? null,
-        })),
-        ai: input.ai,
-      })
+
+      // AI stage-1 ignores mode — every pair is a request.
+      if (input.ai === true) {
+        return await service.setBulkValues({
+          recordIds: input.recordIds as RecordId[],
+          values: input.values.map((v) => ({ fieldId: v.fieldId, value: v.value ?? null })),
+          ai: true,
+        })
+      }
+
+      // Bucket by mode so each gets the right vectorized call.
+      const setItems = input.values.filter((v) => v.mode === 'set')
+      const addItems = input.values.filter((v) => v.mode === 'add')
+      const removeItems = input.values.filter((v) => v.mode === 'remove')
+
+      let count = 0
+      if (setItems.length > 0) {
+        const res = await service.setBulkValues({
+          recordIds: input.recordIds as RecordId[],
+          values: setItems.map((v) => ({ fieldId: v.fieldId, value: v.value ?? null })),
+        })
+        count = res.count
+      }
+
+      for (const { fieldId, value } of addItems) {
+        await service.addValuesBulk({
+          recordIds: input.recordIds as RecordId[],
+          fieldId,
+          values: Array.isArray(value) ? value : [value],
+        })
+      }
+
+      for (const { fieldId, value } of removeItems) {
+        await service.removeValuesBulk({
+          recordIds: input.recordIds as RecordId[],
+          fieldId,
+          values: Array.isArray(value) ? value : [value],
+        })
+      }
+
+      return { count }
     }),
 
   /**

@@ -147,12 +147,7 @@ function mapRowsToResults(
       const typedValue = columnToTypedFieldValue(entityId, field, rawValue)
       if (!typedValue) continue
 
-      const isMulti = isArrayReturnFieldType(
-        field.fieldType,
-        (field.fieldOptions as any)?.actor
-          ? { actor: (field.fieldOptions as any).actor }
-          : undefined
-      )
+      const isMulti = isArrayReturnFieldType(field.fieldType, field.fieldOptions)
 
       results.push({
         recordId,

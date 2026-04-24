@@ -146,26 +146,48 @@ export class FieldValueService {
   }
 
   /**
-   * Add option values to a multi-value select field (no duplicates).
-   * Appends new values after existing ones.
+   * Append values to any multi-value field (scalar types with options.multi,
+   * MULTI_SELECT, TAGS, RELATIONSHIP, FILE, multi-ACTOR). Server-side dedups
+   * against existing rows via typed equality under an advisory lock.
+   *
+   * Throws `BadRequestError` if the target field is not multi-value.
    */
-  addOptionValues(params: {
+  addValues(params: {
     recordId: RecordId
     fieldId: string
-    optionIds: string[]
-  }): Promise<void> {
-    return mutations.addOptionValues(this.ctx, params)
+    values: unknown[]
+  }): Promise<TypedFieldValue[]> {
+    return mutations.addValues(this.ctx, params)
   }
 
   /**
-   * Remove specific option values from a multi-value select field.
+   * Delete specific values from any multi-value field by typed equality.
+   * Throws `BadRequestError` if the target field is not multi-value.
    */
-  removeOptionValues(params: {
-    recordId: RecordId
+  removeValues(params: { recordId: RecordId; fieldId: string; values: unknown[] }): Promise<void> {
+    return mutations.removeValues(this.ctx, params)
+  }
+
+  /**
+   * Bulk-add the same values to many source records on a single field.
+   */
+  addValuesBulk(params: {
+    recordIds: RecordId[]
     fieldId: string
-    optionIds: string[]
-  }): Promise<void> {
-    return mutations.removeOptionValues(this.ctx, params)
+    values: unknown[]
+  }): Promise<{ inserted: number; skipped: number }> {
+    return mutations.addValuesBulk(this.ctx, params)
+  }
+
+  /**
+   * Bulk-remove the same values from many source records on a single field.
+   */
+  removeValuesBulk(params: {
+    recordIds: RecordId[]
+    fieldId: string
+    values: unknown[]
+  }): Promise<{ removed: number }> {
+    return mutations.removeValuesBulk(this.ctx, params)
   }
 
   /**

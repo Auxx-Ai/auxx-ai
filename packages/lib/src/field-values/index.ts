@@ -69,14 +69,12 @@ export {
 } from './field-value-helpers'
 // Mutations (for direct usage)
 export {
-  addOptionValues,
   addRelationValues,
   addRelationValuesBulk,
   addValue,
   buildFieldValueRow,
   deleteValue,
   extractRelatedIdsFromRaw,
-  removeOptionValues,
   removeRelationValues,
   removeRelationValuesBulk,
   removeValue,
@@ -112,6 +110,8 @@ export {
   type SelectFieldOptions,
   type TextFieldOptions,
 } from './formatter'
+// Read-side value normalization for lookupByField
+export { normalizeForLookup } from './normalize-for-lookup'
 // Relationship error types
 export {
   createCircularReferenceError,
@@ -135,7 +135,6 @@ export {
   toRecordId,
   toRecordIds,
 } from './relationship-field'
-
 // Relationship query helpers (for TagsOnThread migration)
 export {
   batchGetThreadTagIds,
@@ -170,6 +169,8 @@ export {
   validateSelfReferentialChange,
   validateSelfReferentialDelete,
 } from './relationship-validators'
+// Typed column match (shared between write-path dedup and read-path lookup)
+export { type TypedColumnMatch, typedColumnMatch } from './typed-column-match'
 
 // Service types
 export type {

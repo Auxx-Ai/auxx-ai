@@ -10,9 +10,15 @@ import {
   isMultiValueFieldType as isMultiValueType,
 } from '@auxx/types/field-value'
 
-/** Options for field type checking with actor support */
+/**
+ * Options for field type checking.
+ * - `actor`: ACTOR fields with `multiple: true` count as multi-value.
+ * - `multi`: scalar types (TEXT/EMAIL/URL/PHONE/…) with `multi: true`
+ *   are treated as multi-value — array on read, DELETE+INSERT on write.
+ */
 export interface FieldTypeOptions {
   actor?: ActorFieldOptions
+  multi?: boolean
 }
 
 import type { FieldType } from '@auxx/database/types'

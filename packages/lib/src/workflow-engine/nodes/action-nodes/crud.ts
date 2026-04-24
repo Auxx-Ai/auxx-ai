@@ -821,10 +821,9 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
           const optionPromises = modeAwareOptions.map(({ fieldId, values, updateMode }) => {
             if (updateMode === RelationUpdateMode.ADD) {
-              return fieldValueService.addOptionValues({ recordId, fieldId, optionIds: values })
-            } else {
-              return fieldValueService.removeOptionValues({ recordId, fieldId, optionIds: values })
+              return fieldValueService.addValues({ recordId, fieldId, values })
             }
+            return fieldValueService.removeValues({ recordId, fieldId, values })
           })
 
           await Promise.all([...relationPromises, ...optionPromises])

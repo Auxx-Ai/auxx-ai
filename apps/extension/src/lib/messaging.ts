@@ -21,6 +21,10 @@ export const PageOperationSchema = z.enum([
   'parseLinkedIn',
   'parseLinkedInCompany',
   'parseSalesNavigator',
+  'parseTwitterProfile',
+  'parseTwitterSearch',
+  'parseFacebook',
+  'parseInstagramProfile',
 ])
 export type PageOperation = z.infer<typeof PageOperationSchema>
 
@@ -53,6 +57,23 @@ export const TabNavigatedBroadcastSchema = z.object({
   url: z.string(),
 })
 export type TabNavigatedBroadcast = z.infer<typeof TabNavigatedBroadcastSchema>
+
+// ─── Content script → SW: dedup lookup ────────────────────────
+// Lets in-page buttons flip to "Open in Auxx" state without pulling in the
+// iframe tRPC client. SW proxies a single `record.lookupByField` query to
+// auxx.ai with the extension's cookie jar; failure is silent (button just
+// stays on "Add to Auxx").
+export const LookupByFieldMessageSchema = z.object({
+  type: z.literal('lookupByField'),
+  entityDefinitionId: z.enum(['contact', 'company']),
+  candidates: z.array(
+    z.object({
+      systemAttribute: z.enum(['external_id', 'primary_email', 'domain', 'company_domain']),
+      value: z.string(),
+    })
+  ),
+})
+export type LookupByFieldMessage = z.infer<typeof LookupByFieldMessageSchema>
 
 // ─── External (auxx.ai) → SW ───────────────────────────────────
 // Only `version` today — auth state lives on the server and is fetched

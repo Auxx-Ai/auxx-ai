@@ -194,6 +194,14 @@ const ParserHealthOutput = z.object({
 })
 type ParserHealthOutput = z.infer<typeof ParserHealthOutput>
 
+// `extension.uploadAvatarFromUrl` returns `{ assetId, ref }` where `ref` is
+// the `asset:<id>` string that FILE fields accept directly.
+const UploadAvatarOutput = z.object({
+  assetId: z.string(),
+  ref: z.string(),
+})
+type UploadAvatarOutput = z.infer<typeof UploadAvatarOutput>
+
 // ─── Public API ────────────────────────────────────────────────
 
 export type FieldValueMap = Record<string, unknown>
@@ -236,6 +244,50 @@ export function firstResultId(out: RecordSearchOutput): string | null {
   return out.items[0]?.id ?? null
 }
 
+// ─── record.lookupByField ──────────────────────────────────────
+//
+// Typed equality lookup — the dedup primitive. Tries candidates in
+// priority order; the first `limit` distinct recordIds come back.
+// See plans/folk/21-record-lookup-by-field.md for the full rationale.
+
+export type LookupByFieldCandidate = {
+  systemAttribute: 'external_id' | 'primary_email' | 'domain' | 'company_domain'
+  value: string
+}
+
+export type LookupByFieldInput = {
+  entityDefinitionId: 'contact' | 'company'
+  candidates: LookupByFieldCandidate[]
+  limit?: number
+}
+
+const LookupByFieldOutputSchema = z.object({
+  items: z.array(
+    z.object({
+      recordId: z.string(),
+      matchedBy: z.object({
+        systemAttribute: z.string(),
+        value: z.unknown(),
+      }),
+    })
+  ),
+  hasMore: z.boolean(),
+})
+export type LookupByFieldOutput = z.infer<typeof LookupByFieldOutputSchema>
+
+export async function lookupByField(input: LookupByFieldInput): Promise<LookupByFieldOutput> {
+  return call({
+    procedure: 'record.lookupByField',
+    type: 'query',
+    input: {
+      entityDefinitionId: input.entityDefinitionId,
+      candidates: input.candidates,
+      limit: input.limit ?? 1,
+    },
+    outputSchema: LookupByFieldOutputSchema,
+  })
+}
+
 export type ParserHealthInput = {
   host: string
   url: string
@@ -249,6 +301,20 @@ export async function reportParserHealth(input: ParserHealthInput): Promise<Pars
     type: 'mutation',
     input,
     outputSchema: ParserHealthOutput,
+  })
+}
+
+export type UploadAvatarInput = {
+  url: string
+  entityType: 'contact' | 'company'
+}
+
+export async function uploadAvatarFromUrl(input: UploadAvatarInput): Promise<UploadAvatarOutput> {
+  return call({
+    procedure: 'extension.uploadAvatarFromUrl',
+    type: 'mutation',
+    input,
+    outputSchema: UploadAvatarOutput,
   })
 }
 

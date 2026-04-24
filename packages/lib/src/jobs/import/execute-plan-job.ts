@@ -150,8 +150,10 @@ export async function executePlanJob(job: Job<ExecutePlanJobProps>): Promise<voi
       const recordId = toRecordId(entityDefinitionId, id)
       logger.debug('Calling crudHandler.update', { recordId, entityDefinitionId, id })
 
-      // Use UnifiedCrudHandler with skipEvents and skipSnapshotInvalidation
-      const instance = await crudHandler.update(recordId, mergedData, {
+      // Use UnifiedCrudHandler with skipEvents and skipSnapshotInvalidation.
+      // `modes` is undefined — every field falls through to 'set' (today's
+      // behavior); `options` moved to the fourth positional slot.
+      const instance = await crudHandler.update(recordId, mergedData, undefined, {
         skipEvents: true,
         skipSnapshotInvalidation: true,
       })

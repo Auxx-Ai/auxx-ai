@@ -66,6 +66,7 @@ import {
   syncInverseRelationshipsBulk,
 } from './relationship-sync'
 import { type ValidationContext, validateSelfReferentialChange } from './relationship-validators'
+import { type TypedColumnMatch, typedColumnMatch } from './typed-column-match'
 import type {
   AddRelationValuesBulkInput,
   AddRelationValuesInput,
@@ -162,7 +163,9 @@ export async function setValue(
   const fieldType = field.type as FieldType
 
   // 2. Convert raw value to typed input using formatter
-  const fieldOptions = field.options as { actor?: { multiple?: boolean } } | undefined
+  const fieldOptions = field.options as
+    | { actor?: { multiple?: boolean }; multi?: boolean }
+    | undefined
   const rawTypedInput = formatToTypedInput(value, fieldType, {
     selectOptions: field.options as { id?: string; value: string; label: string }[] | undefined,
     fieldOptions,
@@ -972,103 +975,268 @@ export async function removeRelationValuesBulk(
 }
 
 // =============================================================================
-// OPTION ADD / REMOVE MUTATIONS (MULTI_SELECT)
+// GENERIC MULTI-VALUE ADD / REMOVE
+// Works for MULTI_SELECT/TAGS (option), scalar-multi (TEXT/NUMBER/…), ACTOR,
+// and FILE. Relationship fields use addRelationValues* for inverse-sync.
 // =============================================================================
 
+// `TypedColumnMatch` + `typedColumnMatch` live in ./typed-column-match so
+// read-path callers (e.g. UnifiedCrudHandler.lookupByField) can share the
+// same column-routing logic without pulling in the mutation surface.
+
 /**
- * Add option values to a multi-value select field (no duplicates).
- * Appends new values after existing ones using fractional indexing.
- *
- * @param ctx - Field value context
- * @param params - Record ID, field ID, and option IDs to add
+ * Serialize an existing row's value column into the same string shape
+ * `typedColumnMatch` returns — lets us dedup new inputs against existing
+ * rows with a plain Set lookup.
  */
-export async function addOptionValues(
-  ctx: FieldValueContext,
-  params: {
-    recordId: RecordId
-    fieldId: string
-    optionIds: string[]
-  }
-): Promise<void> {
-  const { recordId, fieldId, optionIds } = params
-  if (optionIds.length === 0) return
+function serializeRowMatch(row: FieldValueRow, column: TypedColumnMatch['column']): string | null {
+  const raw = (row as unknown as Record<string, unknown>)[column]
+  if (raw === null || raw === undefined) return null
+  if (column === 'valueJson') return JSON.stringify(raw)
+  if (column === 'valueBoolean') return String(raw)
+  if (column === 'valueNumber') return String(raw)
+  return String(raw)
+}
 
-  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-
-  // Get existing option IDs to avoid duplicates
-  const existingRows = await ctx.db
-    .select({ optionId: schema.FieldValue.optionId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.entityId, entityInstanceId),
-        eq(schema.FieldValue.fieldId, fieldId),
-        eq(schema.FieldValue.organizationId, ctx.organizationId)
-      )
-    )
-
-  const existingSet = new Set(existingRows.map((r) => r.optionId).filter(Boolean))
-  const newIds = optionIds.filter((id) => !existingSet.has(id))
-  if (newIds.length === 0) return
-
-  // Get max sort key for appending
-  const existing = await ctx.db
-    .select({ sortKey: schema.FieldValue.sortKey })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.entityId, entityInstanceId),
-        eq(schema.FieldValue.fieldId, fieldId),
-        eq(schema.FieldValue.organizationId, ctx.organizationId)
-      )
-    )
-    .orderBy(asc(schema.FieldValue.sortKey))
-
-  // Generate sort keys and insert new values
-  let prevKey = existing.length > 0 ? existing[existing.length - 1]!.sortKey : null
-
-  const insertRows = newIds.map((optId) => {
-    const sortKey = generateKeyBetween(prevKey, null)
-    prevKey = sortKey
-    return {
-      organizationId: ctx.organizationId,
-      entityId: entityInstanceId,
-      entityDefinitionId,
-      fieldId,
-      optionId: optId,
-      sortKey,
-      valueText: null,
-      valueNumber: null,
-      valueBoolean: null,
-      valueDate: null,
-      valueJson: null,
-      relatedEntityId: null,
-      relatedEntityDefinitionId: null,
-      actorId: null,
-    }
-  })
-
-  await ctx.db.insert(schema.FieldValue).values(insertRows)
+/** Convert a TypedColumnMatch value to its string form for Set-based dedup. */
+function matchKey(m: TypedColumnMatch): string {
+  if (m.column === 'valueBoolean') return String(m.value)
+  if (m.column === 'valueNumber') return String(m.value)
+  return String(m.value)
 }
 
 /**
- * Remove specific option values from a multi-value select field.
- *
- * @param ctx - Field value context
- * @param params - Record ID, field ID, and option IDs to remove
+ * Serialize a TypedColumnMatch list to the Drizzle `inArray` column filter.
+ * All entries must share the same column (enforced by the caller, since
+ * one field has one type).
  */
-export async function removeOptionValues(
+function buildMatchInClause(
+  column: TypedColumnMatch['column'],
+  values: readonly string[] | readonly number[] | readonly boolean[]
+): ReturnType<typeof inArray> {
+  const col = schema.FieldValue[column as keyof typeof schema.FieldValue] as any
+  return inArray(col, values as any)
+}
+
+/**
+ * Acquire a transaction-scoped advisory lock for (entityId, fieldId).
+ * Serializes concurrent add-with-dedup operations on the same record+field
+ * so the read-filter-insert sequence runs atomically without needing a
+ * per-column unique index. Released automatically at transaction commit.
+ */
+async function acquireFieldValueLock(
+  tx: FieldValueContext['db'],
+  entityId: string,
+  fieldId: string
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${entityId}:${fieldId}`}, 0))`
+  )
+}
+
+/**
+ * Append values to a multi-value field with server-side dedup.
+ *
+ * Works for any field type flagged as multi — MULTI_SELECT/TAGS (via optionId),
+ * RELATIONSHIP (via relatedEntityId), FILE (valueJson), ACTOR multi, and
+ * scalar TEXT/EMAIL/URL/PHONE/NUMBER/DATE fields with `options.multi = true`.
+ *
+ * Atomicity: runs inside a serializable-ish critical section using a
+ * pg advisory lock keyed on (entityId, fieldId). Two concurrent callers
+ * trying to add the same value to the same (record, field) see the same
+ * existing-row set, so exactly one row lands.
+ *
+ * Throws `BadRequestError` if the target field isn't multi-value.
+ */
+export async function addValues(
   ctx: FieldValueContext,
   params: {
     recordId: RecordId
     fieldId: string
-    optionIds: string[]
+    values: unknown[]
+  }
+): Promise<TypedFieldValue[]> {
+  const { recordId, fieldId, values } = params
+  if (values.length === 0) {
+    const existing = await getValue(ctx, { recordId, fieldId })
+    if (existing === null) return []
+    return Array.isArray(existing) ? existing : [existing]
+  }
+
+  const field = await getField(ctx, fieldId)
+  const fieldType = field.type as FieldType
+  const fieldOptions = field.options as
+    | { actor?: { multiple?: boolean }; multi?: boolean }
+    | undefined
+
+  if (!isMultiValueFieldType(fieldType, fieldOptions)) {
+    throw new BadRequestError(
+      `Field ${fieldId} (${fieldType}) is not multi-value; use setValue for single-value fields`
+    )
+  }
+
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+
+  return await ctx.db.transaction(async (tx) => {
+    // Serialize concurrent add-with-dedup on the same (entity, field).
+    // Other non-conflicting writes elsewhere are unaffected.
+    await acquireFieldValueLock(tx, entityInstanceId, fieldId)
+
+    // Convert raw inputs to typed form and extract their (column, value) match tuples.
+    const typedInputs: TypedFieldValueInput[] = []
+    const matches: TypedColumnMatch[] = []
+    for (const raw of values) {
+      const converted = formatToTypedInput(raw, fieldType, {
+        selectOptions: field.options as { id?: string; value: string; label: string }[] | undefined,
+        fieldOptions,
+      })
+      if (converted === null) continue
+      if (Array.isArray(converted)) {
+        for (const c of converted) {
+          typedInputs.push(c)
+          matches.push(typedColumnMatch(c))
+        }
+      } else {
+        typedInputs.push(converted)
+        matches.push(typedColumnMatch(converted))
+      }
+    }
+
+    if (typedInputs.length === 0) {
+      const fullValues = await getValue(ctx, { recordId, fieldId })
+      if (fullValues === null) return []
+      return Array.isArray(fullValues) ? fullValues : [fullValues]
+    }
+
+    const column = matches[0]!.column
+    // One field has one column — sanity-check in dev, but any mismatch here
+    // would indicate a TypedFieldValueInput bug elsewhere.
+
+    // Fetch existing rows inside the lock so read+filter+insert is atomic.
+    const existingRows = (await tx
+      .select()
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.entityId, entityInstanceId),
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId)
+        )
+      )
+      .orderBy(asc(schema.FieldValue.sortKey))) as unknown as FieldValueRow[]
+
+    const seen = new Set<string>()
+    for (const row of existingRows) {
+      const k = serializeRowMatch(row, column)
+      if (k !== null) seen.add(k)
+    }
+
+    // Dedup the typed inputs by existing rows AND by earlier entries in the batch.
+    const survivors: TypedFieldValueInput[] = []
+    const surviving = new Set<string>()
+    for (let i = 0; i < typedInputs.length; i++) {
+      const key = matchKey(matches[i]!)
+      if (seen.has(key) || surviving.has(key)) continue
+      surviving.add(key)
+      survivors.push(typedInputs[i]!)
+    }
+
+    if (survivors.length === 0) {
+      return existingRows.map((r) => rowToTypedValue(r, fieldType))
+    }
+
+    // Generate sortKeys appended after the current max.
+    let prevKey = existingRows.length > 0 ? existingRows[existingRows.length - 1]!.sortKey : null
+    const insertRows = survivors.map((v) => {
+      const sortKey = generateKeyBetween(prevKey, null)
+      prevKey = sortKey
+      return buildFieldValueRow({
+        organizationId: ctx.organizationId,
+        entityId: entityInstanceId,
+        entityDefinitionId,
+        fieldId,
+        value: v,
+        sortKey,
+      })
+    })
+
+    const inserted = (await tx
+      .insert(schema.FieldValue)
+      .values(insertRows)
+      .returning()) as unknown as FieldValueRow[]
+
+    const allRows = [...existingRows, ...inserted]
+    const allTyped = allRows.map((r) => rowToTypedValue(r, fieldType))
+
+    // Update display value (safe no-op when the field isn't a display source).
+    await maybeUpdateDisplayValue(ctx, recordId, field, survivors)
+
+    // Publish the full post-state. Array-return fields publish arrays;
+    // scalar-multi (TEXT/etc. with options.multi) are array-return too.
+    const key = buildFieldValueKey(recordId, fieldId as FieldId)
+    publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [{ key, value: allTyped }], {
+      excludeSocketId: ctx.socketId,
+    }).catch(() => {})
+
+    return allTyped
+  })
+}
+
+/**
+ * Delete specific values from a multi-value field by typed equality.
+ * Matching is per-column (valueText, valueNumber, …) depending on fieldType.
+ *
+ * Throws `BadRequestError` if the target field isn't multi-value.
+ */
+export async function removeValues(
+  ctx: FieldValueContext,
+  params: {
+    recordId: RecordId
+    fieldId: string
+    values: unknown[]
   }
 ): Promise<void> {
-  const { recordId, fieldId, optionIds } = params
-  if (optionIds.length === 0) return
+  const { recordId, fieldId, values } = params
+  if (values.length === 0) return
+
+  const field = await getField(ctx, fieldId)
+  const fieldType = field.type as FieldType
+  const fieldOptions = field.options as
+    | { actor?: { multiple?: boolean }; multi?: boolean }
+    | undefined
+
+  if (!isMultiValueFieldType(fieldType, fieldOptions)) {
+    throw new BadRequestError(
+      `Field ${fieldId} (${fieldType}) is not multi-value; use setValue to clear`
+    )
+  }
 
   const { entityInstanceId } = parseRecordId(recordId)
+
+  // Convert inputs and collect match tuples.
+  const matches: TypedColumnMatch[] = []
+  for (const raw of values) {
+    const converted = formatToTypedInput(raw, fieldType, { fieldOptions })
+    if (converted === null) continue
+    if (Array.isArray(converted)) {
+      for (const c of converted) matches.push(typedColumnMatch(c))
+    } else {
+      matches.push(typedColumnMatch(converted))
+    }
+  }
+
+  if (matches.length === 0) return
+
+  const column = matches[0]!.column
+  const matchValues = matches.map((m) => m.value)
+
+  // Group by column to guard against mixed types (shouldn't happen — one
+  // field = one type — but fail safely if it does).
+  if (matches.some((m) => m.column !== column)) {
+    throw new BadRequestError(
+      `removeValues: mixed value columns for field ${fieldId} — input types inconsistent`
+    )
+  }
 
   await ctx.db
     .delete(schema.FieldValue)
@@ -1076,10 +1244,213 @@ export async function removeOptionValues(
       and(
         eq(schema.FieldValue.entityId, entityInstanceId),
         eq(schema.FieldValue.fieldId, fieldId),
-        inArray(schema.FieldValue.optionId, optionIds),
-        eq(schema.FieldValue.organizationId, ctx.organizationId)
+        eq(schema.FieldValue.organizationId, ctx.organizationId),
+        buildMatchInClause(column, matchValues as any)
       )
     )
+
+  // Publish the remaining array — empty is a valid "cleared" signal.
+  const remaining = await getValue(ctx, { recordId, fieldId })
+  const publishValue = remaining === null ? [] : Array.isArray(remaining) ? remaining : [remaining]
+
+  // Update display (e.g. clear avatar when last file row removed).
+  await maybeUpdateDisplayValue(ctx, recordId, field, remaining ?? null)
+
+  const key = buildFieldValueKey(recordId, fieldId as FieldId)
+  publishFieldValueUpdates(
+    getRealtimeService(),
+    ctx.organizationId,
+    [{ key, value: publishValue }],
+    { excludeSocketId: ctx.socketId }
+  ).catch(() => {})
+}
+
+/**
+ * Bulk-add the same values to a multi-value field on many source records.
+ * Issues one advisory lock per source record, one read per source record,
+ * and a single batch insert. Source recordIds are sorted before lock
+ * acquisition to avoid cross-pair deadlocks under concurrent callers.
+ */
+export async function addValuesBulk(
+  ctx: FieldValueContext,
+  params: {
+    recordIds: RecordId[]
+    fieldId: string
+    values: unknown[]
+  }
+): Promise<{ inserted: number; skipped: number }> {
+  const { recordIds, fieldId, values } = params
+  if (recordIds.length === 0 || values.length === 0) {
+    return { inserted: 0, skipped: 0 }
+  }
+
+  const field = await getField(ctx, fieldId)
+  const fieldType = field.type as FieldType
+  const fieldOptions = field.options as
+    | { actor?: { multiple?: boolean }; multi?: boolean }
+    | undefined
+
+  if (!isMultiValueFieldType(fieldType, fieldOptions)) {
+    throw new BadRequestError(
+      `Field ${fieldId} (${fieldType}) is not multi-value; use setBulkValues for single-value fields`
+    )
+  }
+
+  // Convert inputs once up front.
+  const typedInputs: TypedFieldValueInput[] = []
+  const matches: TypedColumnMatch[] = []
+  for (const raw of values) {
+    const converted = formatToTypedInput(raw, fieldType, { fieldOptions })
+    if (converted === null) continue
+    if (Array.isArray(converted)) {
+      for (const c of converted) {
+        typedInputs.push(c)
+        matches.push(typedColumnMatch(c))
+      }
+    } else {
+      typedInputs.push(converted)
+      matches.push(typedColumnMatch(converted))
+    }
+  }
+  if (typedInputs.length === 0) return { inserted: 0, skipped: 0 }
+
+  const column = matches[0]!.column
+
+  // Parse + sort source record ids for deterministic lock order.
+  const parsed = recordIds.map((rid) => parseRecordId(rid))
+  const entityIds = parsed.map((p) => p.entityInstanceId)
+  const entityDefinitionId = parsed[0]!.entityDefinitionId
+  if (parsed.some((p) => p.entityDefinitionId !== entityDefinitionId)) {
+    throw new BadRequestError('addValuesBulk: all recordIds must share one entityDefinitionId')
+  }
+
+  let insertedCount = 0
+  let skippedCount = 0
+
+  await ctx.db.transaction(async (tx) => {
+    const sortedEntityIds = [...entityIds].sort()
+    for (const entityId of sortedEntityIds) {
+      await acquireFieldValueLock(tx, entityId, fieldId)
+    }
+
+    // Fetch existing rows for every entity in one query.
+    const existingRows = (await tx
+      .select()
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId),
+          inArray(schema.FieldValue.entityId, sortedEntityIds)
+        )
+      )
+      .orderBy(asc(schema.FieldValue.sortKey))) as unknown as FieldValueRow[]
+
+    const existingByEntity = new Map<string, FieldValueRow[]>()
+    for (const row of existingRows) {
+      const arr = existingByEntity.get(row.entityId) ?? []
+      arr.push(row)
+      existingByEntity.set(row.entityId, arr)
+    }
+
+    const insertRows: ReturnType<typeof buildFieldValueRow>[] = []
+    for (const entityId of entityIds) {
+      const existing = existingByEntity.get(entityId) ?? []
+      const seen = new Set<string>()
+      for (const row of existing) {
+        const k = serializeRowMatch(row, column)
+        if (k !== null) seen.add(k)
+      }
+
+      let prevKey = existing.length > 0 ? existing[existing.length - 1]!.sortKey : null
+      const localSeen = new Set<string>()
+      for (let i = 0; i < typedInputs.length; i++) {
+        const key = matchKey(matches[i]!)
+        if (seen.has(key) || localSeen.has(key)) {
+          skippedCount++
+          continue
+        }
+        localSeen.add(key)
+        const sortKey = generateKeyBetween(prevKey, null)
+        prevKey = sortKey
+        insertRows.push(
+          buildFieldValueRow({
+            organizationId: ctx.organizationId,
+            entityId,
+            entityDefinitionId,
+            fieldId,
+            value: typedInputs[i]!,
+            sortKey,
+          })
+        )
+        insertedCount++
+      }
+    }
+
+    if (insertRows.length > 0) {
+      await tx.insert(schema.FieldValue).values(insertRows)
+    }
+  })
+
+  return { inserted: insertedCount, skipped: skippedCount }
+}
+
+/**
+ * Bulk-remove the same values from a multi-value field on many source records.
+ */
+export async function removeValuesBulk(
+  ctx: FieldValueContext,
+  params: {
+    recordIds: RecordId[]
+    fieldId: string
+    values: unknown[]
+  }
+): Promise<{ removed: number }> {
+  const { recordIds, fieldId, values } = params
+  if (recordIds.length === 0 || values.length === 0) return { removed: 0 }
+
+  const field = await getField(ctx, fieldId)
+  const fieldType = field.type as FieldType
+  const fieldOptions = field.options as
+    | { actor?: { multiple?: boolean }; multi?: boolean }
+    | undefined
+
+  if (!isMultiValueFieldType(fieldType, fieldOptions)) {
+    throw new BadRequestError(
+      `Field ${fieldId} (${fieldType}) is not multi-value; use setBulkValues to clear`
+    )
+  }
+
+  const matches: TypedColumnMatch[] = []
+  for (const raw of values) {
+    const converted = formatToTypedInput(raw, fieldType, { fieldOptions })
+    if (converted === null) continue
+    if (Array.isArray(converted)) {
+      for (const c of converted) matches.push(typedColumnMatch(c))
+    } else {
+      matches.push(typedColumnMatch(converted))
+    }
+  }
+  if (matches.length === 0) return { removed: 0 }
+
+  const column = matches[0]!.column
+  const matchValues = matches.map((m) => m.value)
+
+  const entityIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
+
+  const deleted = await ctx.db
+    .delete(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.fieldId, fieldId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId),
+        inArray(schema.FieldValue.entityId, entityIds),
+        buildMatchInClause(column, matchValues as any)
+      )
+    )
+    .returning({ id: schema.FieldValue.id })
+
+  return { removed: deleted.length }
 }
 
 // =============================================================================
@@ -1196,8 +1567,15 @@ export async function setValueWithBuiltIn(
     aiGeneration: params.aiGeneration,
   })
 
-  // 7. Publish event for contacts (use first value for event compat)
+  // 7. Publish event for contacts. For multi-value fields (MULTI_SELECT, TAGS,
+  // RELATIONSHIP, FILE, or scalar types with options.multi=true) publish the
+  // full result array so the timeline handler can render every value. Taking
+  // only result[0] here silently truncated multi-value writes.
   if (publishEvents && modelType === 'contact' && ctx.userId) {
+    const eventFieldOptions = field.options as
+      | { actor?: { multiple?: boolean }; multi?: boolean }
+      | undefined
+    const isArrayReturn = isArrayReturnFieldType(field.type as FieldType, eventFieldOptions)
     await publisher.publishLater({
       type: 'contact:field:updated',
       data: {
@@ -1208,7 +1586,7 @@ export async function setValueWithBuiltIn(
         fieldName: field.name,
         fieldType: field.type,
         oldValue,
-        newValue: result[0] ?? null,
+        newValue: isArrayReturn ? result : (result[0] ?? null),
       },
     } as ContactFieldUpdatedEvent)
   }
@@ -1234,7 +1612,9 @@ export async function setValueWithBuiltIn(
   if (publishEvents && result.length > 0) {
     const key = buildFieldValueKey(recordId, fieldId as FieldId)
     const fieldType = field.type as FieldType
-    const fieldOptions = field.options as { actor?: { multiple?: boolean } } | undefined
+    const fieldOptions = field.options as
+      | { actor?: { multiple?: boolean }; multi?: boolean }
+      | undefined
     const storeValue = isArrayReturnFieldType(fieldType, fieldOptions) ? result : result[0]
     // When this write is an AI stage-2 commit, piggyback the `result`
     // marker onto the same realtime so clients see value + AI state in
@@ -1566,23 +1946,36 @@ export async function setBulkValues(
   const count = results.filter((r) => r.status === 'fulfilled').length
 
   // Batch publish realtime sync for all successful field value changes.
-  // Shape depends on field type: array-return fields always publish arrays.
+  // Shape depends on field type: array-return fields always publish arrays —
+  // including empty arrays so peer clients can clear the field in their
+  // store. Skipping empty results (as the previous implementation did)
+  // silently dropped "cleared" states on array-return fields; peer clients
+  // kept the stale value until a manual refetch.
   const entries: Array<{ key: ReturnType<typeof buildFieldValueKey>; value: unknown }> = []
   for (let i = 0; i < results.length; i++) {
     const result = results[i]
     if (result?.status !== 'fulfilled') continue
     const recordId = recordIds[i]!
     for (const fieldResult of result.value) {
-      if (fieldResult.state !== 'complete' || fieldResult.values.length === 0) continue
+      if (fieldResult.state !== 'complete') continue
       const key = buildFieldValueKey(recordId, fieldResult.fieldId as FieldId)
       const cachedField = ctx.fieldCache.get(fieldResult.fieldId)
       const fieldType = cachedField?.type as FieldType | undefined
-      const fieldOptions = cachedField?.options as { actor?: { multiple?: boolean } } | undefined
+      const fieldOptions = cachedField?.options as
+        | { actor?: { multiple?: boolean }; multi?: boolean }
+        | undefined
       const isArrayReturn = fieldType ? isArrayReturnFieldType(fieldType, fieldOptions) : false
-      entries.push({
-        key,
-        value: isArrayReturn ? fieldResult.values : fieldResult.values[0],
-      })
+
+      // Array-return fields always publish an array (possibly empty = clear).
+      // Single-value fields publish the first value, or `null` when the write
+      // deleted the only row (intentional scalar clear).
+      if (isArrayReturn) {
+        entries.push({ key, value: fieldResult.values })
+      } else if (fieldResult.values.length > 0) {
+        entries.push({ key, value: fieldResult.values[0] })
+      } else {
+        entries.push({ key, value: null })
+      }
     }
   }
   if (entries.length > 0) {

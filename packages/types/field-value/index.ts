@@ -326,19 +326,30 @@ export interface ActorFieldOptions {
 }
 
 /**
+ * Options subset considered when deciding cardinality.
+ * - `actor`: ACTOR fields are conditionally multi based on `actor.multiple`.
+ * - `multi`: forces multi-value storage for any scalar field type
+ *   (see `FieldOptions.multi`). Used for e.g. externalId TEXT fields
+ *   that need to hold multiple rows.
+ */
+export interface MultiValueOptions {
+  actor?: ActorFieldOptions
+  multi?: boolean
+}
+
+/**
  * Check if a field type supports multiple values.
  * Used for WRITE operations to determine DELETE+INSERT vs UPSERT strategy.
  * @param fieldType - The database field type
- * @param options - Optional field options (for ACTOR fields with multiple: true)
+ * @param options - Optional field options (for ACTOR fields with multiple: true, or `multi: true` override)
  * @returns True if field can have multiple values
  */
-export function isMultiValueFieldType(
-  fieldType: string,
-  options?: { actor?: ActorFieldOptions }
-): boolean {
+export function isMultiValueFieldType(fieldType: string, options?: MultiValueOptions): boolean {
   if (MULTI_VALUE_FIELD_TYPES.has(fieldType)) return true
   // ACTOR is conditionally multi-value based on options
   if (fieldType === 'ACTOR' && options?.actor?.multiple) return true
+  // Opt-in multi-value for scalar types (TEXT/EMAIL/URL/PHONE/NUMBER/DATE/…)
+  if (options?.multi) return true
   return false
 }
 
@@ -346,16 +357,15 @@ export function isMultiValueFieldType(
  * Check if a field type should return values as an array.
  * Used for READ operations (getValue, batchGetValues, etc).
  * @param fieldType - The database field type
- * @param options - Optional field options (for ACTOR fields with multiple: true)
+ * @param options - Optional field options (for ACTOR fields with multiple: true, or `multi: true` override)
  * @returns True if getValue/batchGetValues should return array
  */
-export function isArrayReturnFieldType(
-  fieldType: string,
-  options?: { actor?: ActorFieldOptions }
-): boolean {
+export function isArrayReturnFieldType(fieldType: string, options?: MultiValueOptions): boolean {
   if (ARRAY_RETURN_FIELD_TYPES.has(fieldType)) return true
   // ACTOR is conditionally array-return based on options
   if (fieldType === 'ACTOR' && options?.actor?.multiple) return true
+  // Opt-in multi-value scalar fields always return arrays on read.
+  if (options?.multi) return true
   return false
 }
 

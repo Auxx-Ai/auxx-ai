@@ -46,6 +46,9 @@ export type {
   UpdateFileRequest,
   UpdateFolderRequest,
 } from './core/types'
+// Remote image fetch → MediaAsset helper (shared by enrichment triggers and extension)
+export type { FetchRemoteImageInput, FetchRemoteImageResult } from './fetch-remote-image'
+export { assertPublicHost, fetchAndStoreRemoteImage } from './fetch-remote-image'
 
 // Filesystem Service - Unified bulk loading operations
 

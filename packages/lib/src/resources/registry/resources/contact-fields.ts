@@ -270,18 +270,19 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'external_id',
     systemSortOrder: 'b0',
-    showInPanel: false,
     nullable: true,
     isIdentifier: true,
+    options: { multi: true },
     capabilities: {
       filterable: true,
       sortable: false,
       creatable: true,
       updatable: true,
       configurable: false,
+      hidden: true,
     },
     description:
-      'Stable source identifier (e.g. linkedin:slug, gmail:email) set when a record is captured via the Auxx extension.',
+      'Stable source identifiers (e.g. linkedin:slug, gmail:email) set when a record is captured via the Auxx extension. Multi-value — a contact may be captured from several sources.',
   },
 
   createdAt: {

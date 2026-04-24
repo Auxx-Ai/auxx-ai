@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { getCachedResource } from '@auxx/lib/cache'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
+import { BadRequestError } from '@auxx/lib/errors'
 import { getDescendantIds } from '@auxx/lib/field-values'
 import { RESOURCE_TABLE_REGISTRY, UnifiedCrudHandler } from '@auxx/lib/resources'
 import { type FieldId, parseResourceFieldId, resourceFieldIdSchema } from '@auxx/types/field'
@@ -84,11 +85,51 @@ const createInputSchema = z.object({
 })
 
 /**
- * Input for update mutation
+ * Input for `record.lookupByField`.
+ *
+ * Priority-ordered equality lookup by (systemAttribute, value). v1 only
+ * accepts `systemAttribute` — no `fieldId` support yet; we'll add it when
+ * a custom-field caller lands, to avoid dead API surface on the client.
+ *
+ * `limit` caps distinct recordIds across ALL candidates combined (not
+ * per-candidate). Default 1 ("exists or not" — the 90% case). Cap at 25
+ * so callers can't turn this into a listing endpoint through the side
+ * door — beyond 25 the UX should be "search in Auxx".
+ */
+const lookupByFieldInputSchema = z.object({
+  entityDefinitionId: entityDefinitionIdSchema,
+  candidates: z
+    .array(
+      z.object({
+        systemAttribute: z.string().min(1),
+        value: z.union([
+          z.string(),
+          z.number(),
+          z.boolean(),
+          z.array(z.union([z.string(), z.number(), z.boolean()])),
+        ]),
+      })
+    )
+    .min(1)
+    .max(5),
+  limit: z.number().int().min(1).max(25).default(1),
+})
+
+/**
+ * Input for update mutation.
+ *
+ * `values` stays `Record<fieldId, unknown>` — all existing callers keep
+ * working byte-for-byte. The optional parallel `modes` map lets a single
+ * call mix modes across fields (e.g. replace status, add a tag, remove an
+ * externalId in one round-trip). Any field not listed in `modes` defaults
+ * to `'set'` — today's behavior. Note: `'set'` on `record.update` is
+ * per-field replace, not whole-record replace — fields absent from
+ * `values` are left alone.
  */
 const updateInputSchema = z.object({
   recordId: recordIdSchema,
   values: z.record(z.string(), z.any()),
+  modes: z.record(z.string(), z.enum(['set', 'add', 'remove'])).optional(),
 })
 
 /**
@@ -195,6 +236,40 @@ export const recordRouter = createTRPCRouter({
       })
     }
   }),
+
+  /**
+   * Typed equality lookup by `(systemAttribute, value)` — the primitive
+   * the extension uses for capture-side dedup and "already in Auxx"
+   * button state. Column-aware (routes to the right FieldValue typed
+   * column) and value-normalizing (EMAIL lowercased, URL protocol added,
+   * PHONE_INTL to E.164 — matches write-path formatting).
+   *
+   * Accepts a priority list so the caller can express "externalId, else
+   * primary_email" in one round-trip; without that, the extension pays
+   * two iframe→API crossings per capture.
+   */
+  lookupByField: protectedProcedure
+    .input(lookupByFieldInputSchema)
+    .query(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
+        return await handler.lookupByField({
+          entityDefinitionId: input.entityDefinitionId,
+          candidates: input.candidates,
+          limit: input.limit,
+        })
+      } catch (error: unknown) {
+        if (error instanceof BadRequestError) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: error.message })
+        }
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Lookup failed: ${message}`,
+        })
+      }
+    }),
 
   /**
    * List record IDs with server-side filtering (Query Snapshot pattern)
@@ -307,7 +382,7 @@ export const recordRouter = createTRPCRouter({
 
     try {
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx))
-      return await handler.update(input.recordId, input.values)
+      return await handler.update(input.recordId, input.values, input.modes)
     } catch (error: any) {
       if (error.message?.includes('not found')) {
         throw new TRPCError({

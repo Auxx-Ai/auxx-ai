@@ -18,11 +18,18 @@ const EXTENSION_VERSION =
 
 export type ParseOpKey = Extract<
   PageOperation,
-  'parseGmail' | 'parseLinkedIn' | 'parseLinkedInCompany' | 'parseSalesNavigator'
+  | 'parseGmail'
+  | 'parseLinkedIn'
+  | 'parseLinkedInCompany'
+  | 'parseSalesNavigator'
+  | 'parseTwitterProfile'
+  | 'parseTwitterSearch'
+  | 'parseFacebook'
+  | 'parseInstagramProfile'
 >
 
 export type ContentScriptConfig = {
-  host: 'gmail' | 'linkedin' | 'sales-navigator'
+  host: 'gmail' | 'linkedin' | 'sales-navigator' | 'twitter' | 'facebook' | 'instagram'
   /**
    * Map of parse-op → parser. The host receives any op in this map; ops not
    * listed are silently ignored (the SW forwards to every content script).

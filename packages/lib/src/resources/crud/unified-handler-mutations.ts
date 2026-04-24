@@ -68,7 +68,11 @@ export interface MutationContext {
     values: Record<string, unknown>,
     excludeEntityId?: string
   ) => Promise<void>
-  setFieldValues: (recordId: RecordId, values: Record<string, unknown>) => Promise<void>
+  setFieldValues: (
+    recordId: RecordId,
+    values: Record<string, unknown>,
+    modes?: Record<string, 'set' | 'add' | 'remove'>
+  ) => Promise<void>
 }
 
 /**
@@ -410,6 +414,7 @@ export async function updateEntity(
   ctx: MutationContext,
   recordId: RecordId,
   values: Record<string, unknown>,
+  modes?: Record<string, 'set' | 'add' | 'remove'>,
   options: CrudOptions = {}
 ) {
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
@@ -434,8 +439,9 @@ export async function updateEntity(
   // Check uniqueness (excluding current entity)
   await ctx.validateUniqueFields(entityDef.id, processedValues, entityInstanceId)
 
-  // Set field values using resolved RecordId
-  await ctx.setFieldValues(resolvedRecordId, processedValues)
+  // Set field values using resolved RecordId. Per-field modes default to
+  // 'set' when missing — today's behavior for every caller that omits modes.
+  await ctx.setFieldValues(resolvedRecordId, processedValues, modes)
 
   // Re-read so displayName / secondaryDisplayValue / avatarUrl / updatedAt
   // reflect what setFieldValues just wrote. The `instance` captured at the

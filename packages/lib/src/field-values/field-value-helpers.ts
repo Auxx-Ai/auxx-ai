@@ -3,7 +3,12 @@
 import { type Database, database, schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
-import { getValueType, type TypedFieldValue, type TypedFieldValueInput } from '@auxx/types'
+import {
+  getValueType,
+  isMultiValueFieldType,
+  type TypedFieldValue,
+  type TypedFieldValueInput,
+} from '@auxx/types'
 import { type ActorId, isActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import {
   getInverseFieldId,
@@ -15,6 +20,7 @@ import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
+import { BadRequestError } from '../errors'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
@@ -451,8 +457,32 @@ export async function validateAndConvertValue(
     return null
   }
 
-  // Handle arrays (for multi-value fields like MULTI_SELECT, TAGS, RELATIONSHIP)
+  // Handle arrays (for multi-value fields like MULTI_SELECT, TAGS, RELATIONSHIP,
+  // or any scalar field flagged with options.multi = true)
   if (Array.isArray(value)) {
+    const fieldOptions = field.options as
+      | { actor?: { multiple?: boolean }; multi?: boolean }
+      | undefined
+    const isMulti = isMultiValueFieldType(fieldType, fieldOptions)
+
+    // Cardinality guard: reject arrays of length > 1 on single-value fields.
+    // Without this check, `setValueWithType` would DELETE+INSERT one row per
+    // element and the entity would silently end up with multiple FieldValue
+    // rows under a (entityId, fieldId) that the read path expects to be
+    // scalar — hydrated as an array, surprising every downstream consumer.
+    if (!isMulti && value.length > 1) {
+      throw new BadRequestError(
+        `Field ${field.id} (${fieldType}) is single-value; received ${value.length} values`
+      )
+    }
+
+    // Auto-unwrap length-1 arrays on single-value fields so callers that
+    // uniformly wrap values in arrays (for shape consistency) keep working.
+    if (!isMulti) {
+      if (value.length === 0) return null
+      return validateSingleValue(ctx, value[0], fieldType)
+    }
+
     const converted: TypedFieldValueInput[] = []
     for (const v of value) {
       const single = await validateSingleValue(ctx, v, fieldType)

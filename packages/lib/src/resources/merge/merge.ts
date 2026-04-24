@@ -1,7 +1,7 @@
 // packages/lib/src/resources/merge/merge.ts
 
 import type { FieldType } from '@auxx/database/types'
-import { isMultiValueFieldType } from '../../field-values/formatter'
+import { type FieldTypeOptions, isMultiValueFieldType } from '../../field-values/formatter'
 import type { MergeFieldInput, MergeFieldResult } from './types'
 
 /**
@@ -28,7 +28,7 @@ export function mergeFieldValue(input: MergeFieldInput): MergeFieldResult {
     return mergeFiles(targetValue, validSources)
   }
 
-  if (isMultiValueFieldType(fieldType)) {
+  if (isMultiValueFieldType(fieldType, fieldOptions as FieldTypeOptions | undefined)) {
     return mergeMultiValue(targetValue, validSources, fieldType)
   }
 
