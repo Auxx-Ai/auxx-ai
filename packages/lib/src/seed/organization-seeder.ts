@@ -237,7 +237,13 @@ export class OrganizationSeeder {
    * and child tags, plus independent top-level tags.
    */
   private async seedTags(organizationId: string) {
-    const handler = new UnifiedCrudHandler(organizationId, this.userId, this.db)
+    // Dedicated handler with `is_system_tag` bypass — the tag-system-guard
+    // pre-hook drops any write of this flag unless the caller is in the
+    // bypass set. Keeping the bypass scoped to this block (rather than the
+    // whole seed run) documents the privilege boundary.
+    const handler = new UnifiedCrudHandler(organizationId, this.userId, this.db, undefined, {
+      bypassFieldGuards: new Set(['is_system_tag']),
+    })
 
     // Skip snapshot invalidation and events during seeding — no active users to notify,
     // and each invalidation attempt costs 5s on Lambda when Redis is slow/unavailable
@@ -252,6 +258,7 @@ export class OrganizationSeeder {
         tag_description: 'Top-level categorization for support tickets',
         tag_emoji: '🏷️',
         tag_color: 'blue',
+        is_system_tag: true,
       },
       seedOpts
     )
@@ -275,6 +282,7 @@ export class OrganizationSeeder {
         {
           ...tag,
           tag_parent: topicResult.recordId, // Link to parent via RecordId
+          is_system_tag: true,
         },
         seedOpts
       )
@@ -288,7 +296,9 @@ export class OrganizationSeeder {
       { title: 'VIP', tag_emoji: '⭐', tag_color: 'orange' },
     ]
 
-    await Promise.all(independentTags.map((tag) => handler.create('tag', tag, seedOpts)))
+    await Promise.all(
+      independentTags.map((tag) => handler.create('tag', { ...tag, is_system_tag: true }, seedOpts))
+    )
   }
   // Create ticket sequence for the organization
   /**

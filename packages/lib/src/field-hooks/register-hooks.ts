@@ -5,7 +5,17 @@ import { explodeBomMovement } from './post/bom-movement-triggers'
 import { enrichCompanyOnCreate } from './post/company-triggers'
 import { recalculatePartQoH, recalculateStockStatus } from './post/inventory-triggers'
 import { clearOtherPreferred } from './post/vendor-part-triggers'
-import { registerEntityTriggers, registerFieldTriggers } from './registry'
+import {
+  dropUnauthorizedSystemFlag,
+  rejectDeleteIfSystemTag,
+  rejectIfSystemTag,
+} from './pre/tag-system-guard'
+import {
+  registerEntityPreDeleteHooks,
+  registerEntityTriggers,
+  registerFieldPreHooks,
+  registerFieldTriggers,
+} from './registry'
 
 /**
  * Register all field and entity hooks (pre + post).
@@ -42,9 +52,17 @@ export function registerAllHooks(): void {
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS
   // ---------------------------------------------------------------------------
-  //
-  // Per-field pre-hooks (registerFieldPreHooks) and pre-delete hooks
-  // (registerEntityPreDeleteHooks) are added by feature modules in this
-  // section as they come online. The system-tag guard is the first
-  // expected consumer.
+
+  // System tag guard — makes seeded tags read-only for end users.
+  // - is_system_tag: drop any write that isn't bypassed by the seeder.
+  // - title / description / emoji / color / parent: reject edits when the
+  //   record's is_system_tag is true.
+  // - pre-delete: reject deletes of system tags.
+  registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])
+  registerFieldPreHooks('tags', 'title', [rejectIfSystemTag])
+  registerFieldPreHooks('tags', 'tag_description', [rejectIfSystemTag])
+  registerFieldPreHooks('tags', 'tag_emoji', [rejectIfSystemTag])
+  registerFieldPreHooks('tags', 'tag_color', [rejectIfSystemTag])
+  registerFieldPreHooks('tags', 'tag_parent', [rejectIfSystemTag])
+  registerEntityPreDeleteHooks('tags', [rejectDeleteIfSystemTag])
 }

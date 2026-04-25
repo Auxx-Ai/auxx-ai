@@ -7,8 +7,9 @@ import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, ChevronRight, Edit, Plus, SearchIcon, Trash } from 'lucide-react'
+import { ChevronDown, ChevronRight, Edit, Lock, Plus, SearchIcon, Trash } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -177,6 +178,19 @@ export function TagTreeView() {
 
             <span className='font-medium shrink-0'>{tag.title}</span>
 
+            {tag.isSystemTag && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Lock
+                    size={12}
+                    className='ml-1.5 shrink-0 text-muted-foreground'
+                    aria-label='System tag'
+                  />
+                </TooltipTrigger>
+                <TooltipContent>System tag — managed by Auxx, read-only.</TooltipContent>
+              </Tooltip>
+            )}
+
             {tag.tag_description && (
               <span className='ml-2 truncate text-sm text-muted-foreground'>
                 {tag.tag_description}
@@ -190,6 +204,7 @@ export function TagTreeView() {
               type='button'
               variant='ghost'
               size='icon-xs'
+              disabled={tag.isSystemTag}
               onClick={(e) => {
                 e.stopPropagation()
                 handleEditTag(tag)
@@ -203,6 +218,7 @@ export function TagTreeView() {
               variant='destructive-hover'
               size='icon-xs'
               className='border-transparent bg-transparent'
+              disabled={tag.isSystemTag}
               onClick={(e) => {
                 e.stopPropagation()
                 handleDeleteTag(tag)
