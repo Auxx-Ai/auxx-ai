@@ -238,15 +238,17 @@ export const migration004Company: EntityMigration = {
 
     // ── Step 3: Load existing contact fields into allFieldMaps for inverse resolution ──
     if (contactDefId) {
-      for (const [sa, field] of existing.fields) {
+      for (const field of existing.fields.values()) {
         if (field.entityDefinitionId !== contactDefId) continue
-        const contactField = Object.values(CONTACT_FIELDS).find((f) => f.systemAttribute === sa)
+        const contactField = Object.values(CONTACT_FIELDS).find(
+          (f) => f.systemAttribute === field.systemAttribute
+        )
         if (contactField) {
           const key = `contact:${contactField.id}`
           if (!allFieldMaps.has(key)) {
             allFieldMaps.set(key, {
               id: field.id,
-              systemAttribute: sa,
+              systemAttribute: field.systemAttribute,
               options: field.options,
               _fieldDef: contactField,
             })

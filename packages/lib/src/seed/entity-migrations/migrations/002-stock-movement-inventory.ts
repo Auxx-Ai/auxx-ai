@@ -87,15 +87,17 @@ export const migration002StockMovement: EntityMigration = {
       for (const [k, v] of partFields) allFieldMaps.set(k, v)
 
       // Load existing part fields into map for inverse relationship lookup
-      for (const [sa, field] of existing.fields) {
+      for (const field of existing.fields.values()) {
         if (field.entityDefinitionId !== partDefId) continue
-        const partField = Object.values(PART_FIELDS).find((f) => f.systemAttribute === sa)
+        const partField = Object.values(PART_FIELDS).find(
+          (f) => f.systemAttribute === field.systemAttribute
+        )
         if (partField) {
           const key = `part:${partField.id}`
           if (!allFieldMaps.has(key)) {
             allFieldMaps.set(key, {
               id: field.id,
-              systemAttribute: sa,
+              systemAttribute: field.systemAttribute,
               options: field.options,
               _fieldDef: partField,
             })
