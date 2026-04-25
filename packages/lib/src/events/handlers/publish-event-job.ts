@@ -77,6 +77,7 @@ export const EventHandlers: IEventsHandlers = {
   'contact:field:updated': [createTimelineEvent],
   'contact:group:added': [createTimelineEvent],
   'contact:group:removed': [createTimelineEvent],
+  'ticket:field:updated': [createTimelineEvent],
 
   // Comment events → CREATE TIMELINE
   'comment:created': [createTimelineEvent],
@@ -88,6 +89,7 @@ export const EventHandlers: IEventsHandlers = {
   'entity:created': [createTimelineEvent, handleEntityTriggers],
   'entity:updated': [createTimelineEvent],
   'entity:deleted': [createTimelineEvent, handleEntityTriggers],
+  'entity:field:updated': [createTimelineEvent],
 
   // Stock movement events → ENTITY TRIGGERS (inventory QoH recalculation)
   'stock_movement:created': [handleEntityTriggers],

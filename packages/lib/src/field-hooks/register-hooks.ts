@@ -4,6 +4,7 @@ import { recalculatePartCost, recalculatePartCostOnEntityChange } from './post/b
 import { explodeBomMovement } from './post/bom-movement-triggers'
 import { enrichCompanyOnCreate } from './post/company-triggers'
 import { recalculatePartQoH, recalculateStockStatus } from './post/inventory-triggers'
+import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { clearOtherPreferred } from './post/vendor-part-triggers'
 import {
   dropUnauthorizedSystemFlag,
@@ -11,6 +12,7 @@ import {
   rejectIfSystemTag,
 } from './pre/tag-system-guard'
 import {
+  registerEntityFieldChangeHooks,
   registerEntityPreDeleteHooks,
   registerEntityTriggers,
   registerFieldPreHooks,
@@ -48,6 +50,11 @@ export function registerAllHooks(): void {
 
   // Company enrichment — fetch website on company create to fill in name, notes, logo
   registerEntityTriggers('companies', [enrichCompanyOnCreate])
+
+  // Field-change post-hook — fires `<prefix>:field:updated` after every field
+  // write. Registered globally so contacts, tickets, companies, and custom
+  // entities all produce timeline entries.
+  registerEntityFieldChangeHooks('*', [publishFieldChangeEvent])
 
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS

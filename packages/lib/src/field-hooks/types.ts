@@ -111,3 +111,42 @@ export interface EntityPreDeleteEvent {
 }
 
 export type EntityPreDeleteHandler = (event: EntityPreDeleteEvent) => Promise<void>
+
+// =============================================================================
+// POST-WRITE FIELD-CHANGE HOOK TYPES
+// =============================================================================
+
+/**
+ * Event passed to a post-write field-change hook after a value lands.
+ *
+ * Fires from setValueWithBuiltIn once the write and its realtime publish
+ * are complete. Handler failures are logged and swallowed — they must not
+ * break the write.
+ */
+export interface EntityFieldChangeEvent {
+  recordId: RecordId
+  entityDefinitionId: string
+  /** entityType from EntityDefinition (e.g. 'contact', 'ticket'); null for custom entities. */
+  entityType: string | null
+  entitySlug: string
+  field: CachedField
+  /**
+   * Pre-write value on the record. `null` if the field had no value before
+   * this write. For array-return fields (FILE, TAGS, MULTI_SELECT,
+   * RELATIONSHIP, multi-ACTOR) this is the full array pre-write.
+   */
+  oldValue: unknown
+  /**
+   * Post-write value. For array-return fields, the full array that the
+   * write produced. `null` if the write deleted the only row.
+   */
+  newValue: unknown
+  organizationId: string
+  userId: string
+}
+
+/**
+ * Async handler invoked after a successful field write. Errors are logged
+ * and swallowed by the dispatcher — handlers must not break the write.
+ */
+export type EntityFieldChangeHandler = (event: EntityFieldChangeEvent) => Promise<void>

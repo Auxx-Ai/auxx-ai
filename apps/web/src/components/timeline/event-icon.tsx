@@ -55,7 +55,6 @@ export function getEventIcon(eventType: string) {
     case ContactEventType.CREATED:
       return Plus
     case ContactEventType.UPDATED:
-    case ContactEventType.FIELD_UPDATED:
       return Edit
     case ContactEventType.MERGED:
       return Users
@@ -87,7 +86,6 @@ export function getEventIcon(eventType: string) {
     case TicketEventType.CREATED:
       return Plus
     case TicketEventType.UPDATED:
-    case TicketEventType.FIELD_UPDATED:
       return Edit
     case TicketEventType.STATUS_CHANGED:
       return AlertCircle
@@ -121,8 +119,14 @@ export function getEventIcon(eventType: string) {
     case EntityInstanceEventType.CREATED:
       return Plus
     case EntityInstanceEventType.UPDATED:
+      return Edit
+
+    // Field updates — identical Edit icon across contact / ticket / custom entity
+    case ContactEventType.FIELD_UPDATED:
+    case TicketEventType.FIELD_UPDATED:
     case EntityInstanceEventType.FIELD_UPDATED:
       return Edit
+
     case EntityInstanceEventType.DELETED:
       return Trash2
     case EntityInstanceEventType.ARCHIVED:
@@ -152,7 +156,6 @@ export function getEventColor(eventType: string) {
     case ContactEventType.CREATED:
       return 'bg-good-100 text-good-600'
     case ContactEventType.UPDATED:
-    case ContactEventType.FIELD_UPDATED:
     case ContactEventType.GROUP_REMOVED:
     case ContactEventType.TAG_REMOVED:
     case ContactEventType.UNASSIGNED:
@@ -182,7 +185,6 @@ export function getEventColor(eventType: string) {
     case TicketEventType.RESTORED:
       return 'bg-good-100 text-good-600'
     case TicketEventType.UPDATED:
-    case TicketEventType.FIELD_UPDATED:
     case TicketEventType.UNASSIGNED:
       return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-100'
     case TicketEventType.STATUS_CHANGED:
@@ -213,6 +215,11 @@ export function getEventColor(eventType: string) {
     case EntityInstanceEventType.RESTORED:
       return 'bg-good-100 text-good-600'
     case EntityInstanceEventType.UPDATED:
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-100'
+
+    // Field updates — identical neutral-gray styling across contact / ticket / custom entity
+    case ContactEventType.FIELD_UPDATED:
+    case TicketEventType.FIELD_UPDATED:
     case EntityInstanceEventType.FIELD_UPDATED:
       return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-100'
     case EntityInstanceEventType.DELETED:
