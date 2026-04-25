@@ -56,11 +56,20 @@ export interface FieldValuesUpdatedEvent {
   }
 }
 
-/** Record metadata for lifecycle events. */
+/**
+ * Record metadata for lifecycle events.
+ *
+ * All denormalized columns optional so partial updates stay cheap — the
+ * field-value mutation layer emits `record:updated` with only the column
+ * it just changed (see `maybeUpdateDisplayValue`). Missing != null; the
+ * front-end should merge only fields that are present.
+ */
 export interface RecordMeta {
   id: string
   recordId: RecordId
   displayName?: string
+  secondaryDisplayValue?: string | null
+  avatarUrl?: string | null
   createdAt?: string
   updatedAt?: string
 }
@@ -77,9 +86,13 @@ export interface RecordCreatedEvent {
 
 /**
  * A record's denormalized columns changed (displayName, secondaryDisplayValue,
- * avatarUrl, updatedAt). Fires after any `updateEntity` that ran field-value
- * mutations, so other tabs can refresh the row's cached metadata. Field-value
- * updates themselves go through fieldValues:updated.
+ * avatarUrl, updatedAt). Fires from two places:
+ *   - `maybeUpdateDisplayValue` (field-value mutation layer) — whenever a
+ *     field write causes a denormalized column to change. Payload carries
+ *     only the changed column plus updatedAt.
+ *   - `updateEntityAvatarIfApplicable` (thumbnail-job callback) — when the
+ *     avatar-128 preset resolves to a CDN URL after a FILE-ref write.
+ * Field-value changes themselves still go through fieldValues:updated.
  */
 export interface RecordUpdatedEvent {
   event: 'record:updated'
