@@ -36,6 +36,13 @@ const TwitterHomeLocationSchema = z
   })
   .optional()
 
+const TwitterInteractionStatSchema = z
+  .object({
+    interactionType: z.union([z.string(), z.object({}).passthrough(), z.unknown()]).optional(),
+    userInteractionCount: z.union([z.number(), z.string()]).optional(),
+  })
+  .passthrough()
+
 const TwitterProfileSchema = z.object({
   mainEntity: z.object({
     additionalName: z.string().optional(),
@@ -44,6 +51,7 @@ const TwitterProfileSchema = z.object({
     description: z.string().optional(),
     image: TwitterImageSchema,
     homeLocation: TwitterHomeLocationSchema,
+    interactionStatistic: z.array(TwitterInteractionStatSchema).optional(),
   }),
   relatedLink: z.array(z.string()).optional(),
 })
@@ -112,6 +120,69 @@ function collapseWhitespace(s: string | null | undefined): string | undefined {
   return out.length > 0 ? out : undefined
 }
 
+/**
+ * Parse X's follower count from JSON-LD `interactionStatistic`. X tags
+ * followers with `interactionType` either as the string `https://schema.org/FollowAction`
+ * or as a nested `{'@type': 'FollowAction'}` object, depending on release.
+ */
+function followerCountFromStats(
+  stats: Array<{ interactionType?: unknown; userInteractionCount?: unknown }> | undefined
+): number | undefined {
+  if (!stats) return undefined
+  for (const stat of stats) {
+    const t = stat.interactionType
+    const isFollow =
+      (typeof t === 'string' && t.toLowerCase().includes('followaction')) ||
+      (typeof t === 'object' &&
+        t !== null &&
+        String((t as Record<string, unknown>)['@type'] ?? '')
+          .toLowerCase()
+          .includes('followaction'))
+    if (!isFollow) continue
+    const raw = stat.userInteractionCount
+    const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN
+    if (Number.isFinite(n) && n >= 0) return Math.round(n)
+  }
+  return undefined
+}
+
+/**
+ * DOM fallback — read the follower count out of the `/<user>/followers` or
+ * `/<user>/verified_followers` link that X renders under the bio. The count
+ * is the first `<span>` text; we accept shorthand like "1.2K" / "12.3M".
+ */
+function followerCountFromDom(username: string): number | undefined {
+  const selectors = [
+    `a[href="/${username}/verified_followers"] span`,
+    `a[href="/${username}/followers"] span`,
+  ]
+  for (const sel of selectors) {
+    const el = document.querySelector<HTMLElement>(sel)
+    const raw = el?.textContent?.trim()
+    if (!raw) continue
+    const parsed = parseShorthandCount(raw)
+    if (parsed !== undefined) return parsed
+  }
+  return undefined
+}
+
+/** `"1,234"` → 1234, `"1.2K"` → 1200, `"12.3M"` → 12_300_000, `"1.2B"` → 1_200_000_000. */
+function parseShorthandCount(raw: string): number | undefined {
+  const m = raw.replace(/,/g, '').match(/^([\d.]+)\s*([KMB])?$/i)
+  if (!m) return undefined
+  const base = Number(m[1])
+  if (!Number.isFinite(base)) return undefined
+  const mult =
+    m[2]?.toUpperCase() === 'B'
+      ? 1e9
+      : m[2]?.toUpperCase() === 'M'
+        ? 1e6
+        : m[2]?.toUpperCase() === 'K'
+          ? 1e3
+          : 1
+  return Math.round(base * mult)
+}
+
 // ─── Profile parser ────────────────────────────────────────────
 
 export async function parseTwitterProfile(): Promise<ParseResult> {
@@ -149,12 +220,16 @@ export async function parseTwitterProfile(): Promise<ParseResult> {
   for (const link of externalLinks) notesParts.push(link)
   const notes = notesParts.length > 0 ? notesParts.join('\n') : undefined
 
+  const followerCount =
+    followerCountFromStats(parsed.mainEntity.interactionStatistic) ?? followerCountFromDom(username)
+
   const person: ParsedPerson = {
     ...(fullName ? splitName(fullName) : {}),
     fullName,
     avatarUrl: avatar,
     notes,
     externalId: twitterExternalId(username),
+    xFollowerCount: followerCount,
   }
 
   return { people: [person], companies: [] }
