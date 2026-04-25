@@ -27,13 +27,22 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
 
     client = new Redis(url, {
       tls: tls ? {} : undefined,
-      maxRetriesPerRequest: 3,
+      // null = never give up on a single command. Without this, ioredis
+      // throws synchronously after 3 failed reconnect attempts and the
+      // wrapper enters a terminal "Connection is closed" state that
+      // every caller hits forever (until process restart).
+      maxRetriesPerRequest: null,
       enableReadyCheck: true,
       lazyConnect: true,
+      // Always retry — capped backoff. Returning null here puts the
+      // client into the "ended" state, which is what we're trying to
+      // avoid. A transient network blip (Docker bridge, Mac sleep) is
+      // recoverable; a permanent outage will just keep logging.
       retryStrategy: (times: number) => {
-        if (times > 5) return null // stop retrying after 5 attempts
         const delay = Math.min(2 ** times * 100, 5000)
-        logger.warn(`AWS Redis reconnecting in ${delay}ms (attempt ${times})`)
+        if (times === 1 || times % 10 === 0) {
+          logger.warn(`AWS Redis reconnecting in ${delay}ms (attempt ${times})`)
+        }
         return delay
       },
       connectTimeout: 5000,
@@ -67,13 +76,16 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
       host,
       port,
       password,
-      maxRetriesPerRequest: 3,
+      // See AWS branch above — null prevents the terminal "Connection
+      // is closed" state when reconnects briefly fail.
+      maxRetriesPerRequest: null,
       enableReadyCheck: true,
       lazyConnect: true,
       retryStrategy: (times: number) => {
-        if (times > 5) return null // stop retrying after 5 attempts
         const delay = Math.min(2 ** times * 100, 5000)
-        logger.warn(`Hosted Redis reconnecting in ${delay}ms (attempt ${times})`)
+        if (times === 1 || times % 10 === 0) {
+          logger.warn(`Hosted Redis reconnecting in ${delay}ms (attempt ${times})`)
+        }
         return delay
       },
       connectTimeout: 5000,
