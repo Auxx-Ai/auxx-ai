@@ -62,8 +62,10 @@ function RouteView({ route, session }: { route: Route; session: SessionResponse 
     case 'root':
       return <RootRoute session={session} />
     case 'contact':
-      return <ContactRoute {...route} />
+      // Re-key on recordId so navigating between two contact detail views
+      // (without an intermediate root) re-runs the fetch effect.
+      return <ContactRoute key={route.recordId} {...route} />
     case 'company':
-      return <CompanyRoute {...route} />
+      return <CompanyRoute key={route.recordId} {...route} />
   }
 }

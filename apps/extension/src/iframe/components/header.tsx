@@ -3,9 +3,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { ChevronLeft, X } from 'lucide-react'
 import { useRouteStack } from '../hooks/use-route-stack'
-import { titleFor } from '../routes/types'
 import type { DehydratedState, SessionResponse } from '../trpc'
-import { HeaderActions } from './header-actions'
 import { UserOrgMenu } from './user-org-menu'
 
 type Props = {
@@ -16,45 +14,56 @@ type Props = {
 }
 
 /**
- * Root variant: user-org dropdown on the left, close button on the right.
- * Detail variant: back button, route title, right-side action slot, close.
+ * Persistent header. The user/org dropdown is always shown on the left;
+ * the back chevron is always shown when there's somewhere to go back to
+ * (any route that isn't the matches root). No title — the body owns its
+ * own heading + per-record actions (e.g. "Open in Auxx" sits next to the
+ * displayName inside the detail view, not in the header).
  *
  * Sticky top-0 — @auxx/ui tokens handle the surface colour + border.
  */
 export function Header({ session, onSessionChange, onRefreshSession, onClose }: Props) {
   const { top, pop, depth, reset } = useRouteStack()
 
-  const isRoot = depth === 1 && top.kind === 'root'
+  const canGoBack = !(depth === 1 && top.kind === 'root' && top.view === 'matches')
 
   return (
-    <header className='sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background px-2'>
-      {isRoot ? (
-        <SignedInLeftSlot
-          session={session}
-          onSessionChange={onSessionChange}
-          onRefreshSession={onRefreshSession}
-          onSignedOut={reset}
-        />
-      ) : (
-        <>
-          <Button variant='ghost' size='icon' onClick={pop} aria-label='Back' className='size-8'>
-            <ChevronLeft className='size-4' />
-          </Button>
-          <h1 className='min-w-0 truncate text-sm font-medium'>{titleFor(top)}</h1>
-        </>
-      )}
-
-      <div className='ml-auto flex items-center gap-1'>
-        {!isRoot && <HeaderActions route={top} />}
-        <Button
-          variant='ghost'
-          size='icon'
-          onClick={onClose}
-          aria-label='Close panel'
-          className='size-8'>
-          <X className='size-4' />
-        </Button>
+    <header className='sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between gap-1 border-b bg-background px-2'>
+      {/* Back chevron — left edge. Fixed-width slot via `invisible` so the
+          centered dropdown's geometry doesn't depend on whether back is
+          visible. */}
+      <Button
+        variant='ghost'
+        size='icon'
+        onClick={pop}
+        aria-label='Back'
+        className={canGoBack ? 'size-8' : 'pointer-events-none invisible size-8'}
+        tabIndex={canGoBack ? 0 : -1}
+        aria-hidden={!canGoBack}>
+        <ChevronLeft className='size-4' />
+      </Button>
+      {/* Absolute-centered dropdown so it sits in the geometric middle of
+          the header regardless of the side button widths. The flex
+          siblings handle the left/right edges; the absolute element
+          ignores their layout but still gets pointer events. */}
+      <div className='-translate-x-1/2 pointer-events-none absolute left-1/2 flex items-center'>
+        <div className='pointer-events-auto'>
+          <SignedInLeftSlot
+            session={session}
+            onSessionChange={onSessionChange}
+            onRefreshSession={onRefreshSession}
+            onSignedOut={reset}
+          />
+        </div>
       </div>
+      <Button
+        variant='ghost'
+        size='icon'
+        onClick={onClose}
+        aria-label='Close panel'
+        className='size-8'>
+        <X className='size-4' />
+      </Button>
     </header>
   )
 }

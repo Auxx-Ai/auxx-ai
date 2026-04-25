@@ -1,26 +1,18 @@
 // apps/extension/src/iframe/routes/company-route.tsx
 
-import { Button } from '@auxx/ui/components/button'
-import { ParsedFields } from '../components/parsed-fields'
+import { RecordDetailSkeleton } from '../components/record-detail-skeleton'
 import { BASE_URL } from '../trpc'
-import type { Route } from './types'
+import { useRecordFetch } from './contact-route'
+import { instanceIdFromRecordId, type Route } from './types'
 
 type Props = Extract<Route, { kind: 'company' }>
 
-export function CompanyRoute({ company, existingRecordId }: Props) {
-  return (
-    <div className='space-y-4'>
-      <ParsedFields company={company} />
-      {existingRecordId ? (
-        <Button asChild variant='outline' className='w-full'>
-          <a
-            href={`${BASE_URL}/app/companies/${existingRecordId}`}
-            target='_blank'
-            rel='noreferrer'>
-            Open in Auxx
-          </a>
-        </Button>
-      ) : null}
-    </div>
-  )
+/**
+ * Read-only company detail skeleton — same shape as ContactRoute, just
+ * routes to the `companies` deep link.
+ */
+export function CompanyRoute({ recordId }: Props) {
+  const state = useRecordFetch(recordId)
+  const openHref = `${BASE_URL}/app/companies/${instanceIdFromRecordId(recordId)}`
+  return <RecordDetailSkeleton state={state} openHref={openHref} />
 }

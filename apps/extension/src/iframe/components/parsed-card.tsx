@@ -38,14 +38,14 @@ function normalize(props: Props): Normalized {
       : p.phone
         ? { label: 'Phone', value: p.phone }
         : { label: 'Profile', value: externalIdSlug(p.externalId) }
-    return { title, avatarUrl: p.avatarUrl, stat }
+    return { title, avatarUrl: p.avatarPreviewUrl ?? p.avatarUrl, stat }
   }
   const c = props.company!
   const title = c.name ?? 'Unknown'
   const stat = c.domain
     ? { label: 'Domain', value: c.domain }
     : { label: 'Profile', value: externalIdSlug(c.externalId) }
-  return { title, avatarUrl: c.avatarUrl, stat }
+  return { title, avatarUrl: c.avatarPreviewUrl ?? c.avatarUrl, stat }
 }
 
 /**

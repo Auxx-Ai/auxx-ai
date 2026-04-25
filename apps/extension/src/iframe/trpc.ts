@@ -171,6 +171,47 @@ const RecordCreateOutput = z
   .passthrough()
 type RecordCreateOutput = z.infer<typeof RecordCreateOutput>
 
+// `record.getById` returns the EntityInstance row joined with its entity
+// definition + field values (each with its field metadata). We only validate
+// the shape we read in the detail-view skeleton — `displayName`, the joined
+// `entityDefinition.id`, and the `values[]` array — and let everything else
+// passthrough so we can pull more off the response without churning this
+// schema later.
+const RecordFieldValueSchema = z
+  .object({
+    field: z
+      .object({
+        id: z.string(),
+        type: z.string(),
+        label: z.string().nullable().optional(),
+        systemAttribute: z.string().nullable().optional(),
+      })
+      .passthrough(),
+    valueText: z.string().nullable().optional(),
+    valueNumber: z.number().nullable().optional(),
+    valueBoolean: z.boolean().nullable().optional(),
+    valueJson: z.unknown().optional(),
+    valueDate: z.string().nullable().optional(),
+  })
+  .passthrough()
+
+const RecordGetByIdOutput = z
+  .object({
+    id: z.string(),
+    displayName: z.string().nullable().optional(),
+    entityDefinition: z
+      .object({
+        id: z.string(),
+        name: z.string().nullable().optional(),
+        slug: z.string().nullable().optional(),
+      })
+      .passthrough(),
+    values: z.array(RecordFieldValueSchema),
+  })
+  .passthrough()
+export type RecordGetByIdOutput = z.infer<typeof RecordGetByIdOutput>
+export type RecordFieldValue = z.infer<typeof RecordFieldValueSchema>
+
 // `record.search` returns a paginated picker result: `{ items, nextCursor, ... }`.
 // Each item has a bare `id` (instance id) plus a composite `recordId`.
 const RecordSearchOutput = z
@@ -221,6 +262,20 @@ export async function createRecord(input: CreateRecordInput): Promise<RecordCrea
     type: 'mutation',
     input,
     outputSchema: RecordCreateOutput,
+  })
+}
+
+/**
+ * Fetch a single record by composite recordId (`<entityDefinitionId>:<instanceId>`).
+ * The composite form is what `lookupByField` returns, so the extension can
+ * round-trip a hit straight into the detail view without splitting/rejoining.
+ */
+export async function getRecordById(recordId: string): Promise<RecordGetByIdOutput> {
+  return call({
+    procedure: 'record.getById',
+    type: 'query',
+    input: { recordId },
+    outputSchema: RecordGetByIdOutput,
   })
 }
 
