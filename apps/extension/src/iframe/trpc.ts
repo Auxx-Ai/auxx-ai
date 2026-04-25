@@ -363,4 +363,54 @@ export async function signOut(): Promise<void> {
   })
 }
 
+// ─── Embed handshake ───────────────────────────────────────────
+//
+// Mints a short-lived bearer token from the user's existing auxx.ai session
+// cookie. The token is the signed session-token cookie value — passed to the
+// embed iframe via `?token=...` so the in-iframe RSC can call
+// `auth.api.getSession({ headers: { Authorization: 'Bearer ...' } })` and set
+// a partitioned cookie for subsequent client-side calls.
+
+const EmbedTokenOk = z.object({ ok: z.literal(true), token: z.string() })
+const EmbedTokenErr = z.object({ ok: z.literal(false) })
+const EmbedTokenResponse = z.discriminatedUnion('ok', [EmbedTokenOk, EmbedTokenErr])
+export type EmbedTokenResponse = z.infer<typeof EmbedTokenResponse>
+
+export async function fetchEmbedToken(): Promise<EmbedTokenResponse> {
+  const url = new URL('/api/extension/embed-token', BASE_URL).toString()
+  try {
+    const res = await fetch(url, { method: 'POST', credentials: 'include' })
+    if (!res.ok) return { ok: false }
+    const json = (await res.json().catch(() => null)) as unknown
+    const parsed = EmbedTokenResponse.safeParse(json)
+    return parsed.success ? parsed.data : { ok: false }
+  } catch {
+    return { ok: false }
+  }
+}
+
+export type EmbedTheme = 'light' | 'dark'
+
+/**
+ * Build the URL the extension iframe loads to embed an auxx.ai record view.
+ * The token is exchanged once at iframe load and dropped — refreshing the
+ * iframe re-mints.
+ *
+ * RecordIds are `<entityDefinitionId>:<entityInstanceId>` — the colon is a
+ * legal path-segment character, so we embed it directly. Encoding it via
+ * `encodeURIComponent` produces `%3A`, which Next.js keeps URL-encoded when
+ * exposing the dynamic segment via `params`, breaking downstream Zod regex
+ * validation on `record.getByIds`.
+ *
+ * `theme` propagates the extension's chosen colour scheme so the embed
+ * matches even though it loads in a separate document and can't read the
+ * parent's class.
+ */
+export function buildEmbedUrl(recordId: string, token: string, theme: EmbedTheme): string {
+  const url = new URL(`/embed/record/${recordId}`, BASE_URL)
+  url.searchParams.set('token', token)
+  url.searchParams.set('theme', theme)
+  return url.toString()
+}
+
 export { BASE_URL, TrpcCallError }

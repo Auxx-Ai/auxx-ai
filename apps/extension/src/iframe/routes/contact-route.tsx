@@ -1,26 +1,31 @@
 // apps/extension/src/iframe/routes/contact-route.tsx
 
 import { useEffect, useState } from 'react'
-import { RecordDetailSkeleton } from '../components/record-detail-skeleton'
+import { RecordEmbed } from '../components/record-embed'
 import { BASE_URL, getRecordById, type RecordGetByIdOutput, TrpcCallError } from '../trpc'
 import { instanceIdFromRecordId, type Route } from './types'
 
 type Props = Extract<Route, { kind: 'contact' }>
 
 /**
- * Read-only contact detail skeleton. Fetches `record.getById` on mount,
- * renders displayName + every field via the generic `RecordDetailSkeleton`.
- *
- * The "Open in Auxx" link sits inline next to the displayName inside the
- * skeleton — the header is intentionally minimal (dropdown + back chevron).
- *
- * The full editor (typed field renderer, edit mode, mutations) is the next
- * plan — this just proves the route navigation + fetch path.
+ * Contact detail route. Fetches the record once for the displayName surface
+ * shown above the embed, then mounts an `<iframe src="/embed/record/...">`
+ * that hosts the same `PropertyProvider` / `PropertyRow` editing surface the
+ * web sidebar uses — drag-and-drop and edit mode aside.
  */
 export function ContactRoute({ recordId }: Props) {
   const state = useRecordFetch(recordId)
   const openHref = `${BASE_URL}/app/contacts/${instanceIdFromRecordId(recordId)}`
-  return <RecordDetailSkeleton state={state} openHref={openHref} />
+  const displayName = state.status === 'ready' ? (state.record.displayName ?? null) : null
+
+  if (state.status === 'loading') {
+    return <p className='text-sm text-muted-foreground'>Loading…</p>
+  }
+  if (state.status === 'error') {
+    return <p className='text-sm text-destructive'>{state.message}</p>
+  }
+
+  return <RecordEmbed recordId={recordId} openHref={openHref} displayName={displayName} />
 }
 
 export type RecordFetchState =

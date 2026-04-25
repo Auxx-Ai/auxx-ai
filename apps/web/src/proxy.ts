@@ -37,6 +37,7 @@ const KNOWN_ROUTE_PREFIXES = new Set([
   'admin',
   'api',
   'context',
+  'embed',
   'health',
   'kb',
   'ph',
@@ -49,8 +50,44 @@ const KNOWN_ROUTE_PREFIXES = new Set([
   'trpc',
 ])
 
+/**
+ * Top-level origins where the extension injects the outer panel iframe.
+ * `frame-ancestors` checks the full ancestor chain, so the leaf embed must
+ * allow both the immediate chrome-extension iframe and the host page that
+ * contains that extension iframe.
+ */
+const EXTENSION_HOST_FRAME_ANCESTORS = [
+  'https://mail.google.com',
+  'https://www.linkedin.com',
+  'https://twitter.com',
+  'https://x.com',
+  'https://www.facebook.com',
+  'https://www.instagram.com',
+  'http://localhost:*',
+  'http://127.0.0.1:*',
+]
+
+/**
+ * Allowed `frame-ancestors` for the extension's embed iframe. CSP doesn't
+ * allow wildcards on the chrome-extension scheme, so the published Web Store
+ * ID is listed explicitly. Unpacked dev installs reuse the same ID via the
+ * manifest's `key`, so a single env var covers both surfaces.
+ */
+const EXTENSION_ID = process.env.NEXT_PUBLIC_EXTENSION_ID ?? ''
+const EMBED_FRAME_ANCESTORS = EXTENSION_ID
+  ? [`chrome-extension://${EXTENSION_ID}`, ...EXTENSION_HOST_FRAME_ANCESTORS].join(' ')
+  : ''
+
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl
+
+  // CSP for the extension embed iframe — allow the full nested ancestor
+  // chain: supported host page -> chrome-extension panel -> embed page.
+  if (pathname.startsWith('/embed/') && EMBED_FRAME_ANCESTORS) {
+    const response = NextResponse.next()
+    response.headers.set('Content-Security-Policy', `frame-ancestors ${EMBED_FRAME_ANCESTORS};`)
+    return response
+  }
 
   // Org handle deep link detection:
   // If the first path segment is not a known route, treat it as an org handle.

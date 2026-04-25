@@ -24,6 +24,9 @@
   },
   "permissions": ["tabs", "scripting", "storage"],
   "host_permissions": ["https://*/*", "http://*/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; frame-src https://auxx.ai https://*.auxx.ai http://localhost:3000 https://localhost:3000;"
+  },
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
