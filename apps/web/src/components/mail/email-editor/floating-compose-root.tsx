@@ -32,7 +32,7 @@ export function FloatingComposeRoot() {
   // key of c,o arrives — that keypress won't re-enter the single-key `C` handler).
   useEffect(() => {
     const manager = getSequenceManager()
-    return manager.registrations.subscribe(() => {
+    const sub = manager.registrations.subscribe(() => {
       if (!timerRef.current) return
       for (const [id, reg] of manager.registrations.state) {
         const first = reg.sequence[0]
@@ -46,6 +46,7 @@ export function FloatingComposeRoot() {
         }
       }
     })
+    return () => sub.unsubscribe()
   }, [])
 
   useHotkey(
