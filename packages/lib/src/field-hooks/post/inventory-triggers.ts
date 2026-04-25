@@ -1,4 +1,4 @@
-// packages/lib/src/field-triggers/triggers/inventory-triggers.ts
+// packages/lib/src/field-hooks/post/inventory-triggers.ts
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -12,7 +12,7 @@ import { setValueWithType } from '../../field-values/field-value-mutations'
 import { getRealtimeService, publishFieldValueUpdates } from '../../realtime'
 import type { EntityTriggerHandler, FieldTriggerHandler } from '../types'
 
-const logger = createScopedLogger('field-triggers:inventory')
+const logger = createScopedLogger('field-hooks:inventory')
 
 /**
  * Recalculate part_quantity_on_hand and part_stock_status when a stock movement

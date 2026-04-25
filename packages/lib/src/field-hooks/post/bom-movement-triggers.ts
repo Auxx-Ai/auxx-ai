@@ -1,4 +1,4 @@
-// packages/lib/src/field-triggers/triggers/bom-movement-triggers.ts
+// packages/lib/src/field-hooks/post/bom-movement-triggers.ts
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -13,7 +13,7 @@ import { buildFieldValueRow, setValueWithType } from '../../field-values/field-v
 import { getRealtimeService, publishFieldValueUpdates } from '../../realtime'
 import type { EntityTriggerHandler } from '../types'
 
-const logger = createScopedLogger('field-triggers:bom-movement')
+const logger = createScopedLogger('field-hooks:bom-movement')
 
 const MAX_BOM_DEPTH = 20
 

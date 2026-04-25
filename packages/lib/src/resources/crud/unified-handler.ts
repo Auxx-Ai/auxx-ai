@@ -9,6 +9,7 @@ import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-in
 import { ModelTypes } from '@auxx/types/custom-field'
 import { createTypedValueInput } from '@auxx/types/field-value'
 import { isEntityDefinitionType } from '@auxx/types/resource'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { type AnyColumn, and, eq, type SQL } from 'drizzle-orm'
 import { findCachedResource, getCachedCustomFields } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
@@ -139,18 +140,33 @@ export type { CrudOptions } from './unified-handler-mutations'
  * )
  * ```
  */
+/** Optional construction options for `UnifiedCrudHandler`. */
+export interface UnifiedCrudHandlerOptions {
+  /**
+   * SystemAttributes the caller is authorized to write even when a
+   * registered field pre-hook would normally drop or reject them. Forwarded
+   * to the internal `FieldValueService`.
+   */
+  bypassFieldGuards?: ReadonlySet<SystemAttribute>
+}
+
 export class UnifiedCrudHandler {
-  private fieldValueService: FieldValueService
+  fieldValueService: FieldValueService
   private db: Database
+  private bypassFieldGuards: ReadonlySet<SystemAttribute>
 
   constructor(
     private organizationId: string,
     private userId: string,
     db?: Database,
-    private socketId?: string
+    private socketId?: string,
+    options: UnifiedCrudHandlerOptions = {}
   ) {
     this.db = db ?? defaultDatabase
-    this.fieldValueService = new FieldValueService(organizationId, userId, this.db, socketId)
+    this.bypassFieldGuards = options.bypassFieldGuards ?? new Set()
+    this.fieldValueService = new FieldValueService(organizationId, userId, this.db, socketId, {
+      bypassFieldGuards: this.bypassFieldGuards,
+    })
   }
 
   /**

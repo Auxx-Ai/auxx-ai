@@ -18,6 +18,7 @@ import {
 import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
+import { isSystemAttribute } from '@auxx/types/system-attribute'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { getCachedFieldMap, getCachedResource } from '../cache'
@@ -33,11 +34,10 @@ import type { ContactFieldUpdatedEvent } from '../events/types'
 import {
   collectTriggeredFields,
   deduplicateBySystemAttribute,
-} from '../field-triggers/collect-triggers'
-import {
-  publishBatchFieldTriggerEvents,
-  publishFieldTriggerEvents,
-} from '../field-triggers/publish'
+} from '../field-hooks/collect-triggers'
+import { publishBatchFieldTriggerEvents, publishFieldTriggerEvents } from '../field-hooks/publish'
+import { getFieldPreHooks, hasFieldPreHooks } from '../field-hooks/registry'
+import type { FieldPreHookEvent } from '../field-hooks/types'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { applyAiMarker } from './ai-commit'
@@ -83,6 +83,92 @@ import type {
   SetValueWithBuiltInInput,
   SetValueWithTypeInput,
 } from './types'
+
+// =============================================================================
+// FIELD PRE-HOOKS
+// =============================================================================
+
+/**
+ * Outcome of running the per-field pre-hook chain for a single
+ * `(recordId, fieldId)` write.
+ */
+type FieldPreHookOutcome =
+  | { kind: 'continue'; value: TypedFieldValueInput | TypedFieldValueInput[] | null }
+  | { kind: 'drop' }
+
+/**
+ * Fire the registered pre-hook chain for `(entitySlug, systemAttribute)` and
+ * return the (possibly transformed) typed value, or signal the caller to
+ * drop this write. Throws propagate to the caller.
+ *
+ * Hooks fire AFTER coercion (`validateAndConvertValue`) and BEFORE the
+ * null-delete branch / uniqueness check / typed write — so guards observe
+ * `newValue === null` clear-attempts and dropped writes never spend a
+ * uniqueness query.
+ *
+ * Returns `{ kind: 'continue', value: typedValue }` when:
+ *   - `ctx.skipPreHooks` is set (bulk fan-out)
+ *   - the field has no `systemAttribute` (custom fields without a system
+ *     attribute can't be addressed by the registry)
+ *   - the systemAttribute is in `ctx.bypassFieldGuards`
+ *   - no hooks are registered for the `(entitySlug, systemAttribute)` pair
+ */
+async function fireFieldPreHooks(
+  ctx: FieldValueContext,
+  args: {
+    recordId: RecordId
+    field: CachedField
+    typedValue: TypedFieldValueInput | TypedFieldValueInput[] | null
+    existingValue: unknown
+    allValues: ReadonlyMap<string, unknown>
+  }
+): Promise<FieldPreHookOutcome> {
+  if (ctx.skipPreHooks) return { kind: 'continue', value: args.typedValue }
+  const sysAttrRaw = args.field.systemAttribute
+  if (!sysAttrRaw) return { kind: 'continue', value: args.typedValue }
+  if (!isSystemAttribute(sysAttrRaw)) return { kind: 'continue', value: args.typedValue }
+  const systemAttribute = sysAttrRaw
+  if (ctx.bypassFieldGuards.has(systemAttribute)) {
+    return { kind: 'continue', value: args.typedValue }
+  }
+
+  const entityDefinitionId = args.field.entityDefinition?.id ?? args.field.entityDefinitionId
+  if (!entityDefinitionId) return { kind: 'continue', value: args.typedValue }
+
+  const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
+  const entitySlug = resource?.apiSlug
+  if (!entitySlug) return { kind: 'continue', value: args.typedValue }
+
+  if (!hasFieldPreHooks(entitySlug, systemAttribute)) {
+    return { kind: 'continue', value: args.typedValue }
+  }
+
+  const hooks = getFieldPreHooks(entitySlug, systemAttribute)
+  const event: Omit<FieldPreHookEvent, 'newValue'> = {
+    recordId: args.recordId,
+    entityDefinitionId,
+    entityType: resource?.entityType ?? null,
+    entitySlug,
+    fieldId: args.field.id,
+    systemAttribute,
+    field: args.field,
+    existingValue: args.existingValue,
+    allValues: args.allValues,
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    bypass: ctx.bypassFieldGuards,
+  }
+
+  let value: unknown = args.typedValue
+  for (const hook of hooks) {
+    value = await hook({ ...event, newValue: value })
+    if (value === undefined) return { kind: 'drop' }
+  }
+  return {
+    kind: 'continue',
+    value: value as TypedFieldValueInput | TypedFieldValueInput[] | null,
+  }
+}
 
 // =============================================================================
 // SELF-REFERENTIAL VALIDATION
@@ -1521,7 +1607,22 @@ export async function setValueWithBuiltIn(
   const field = await getField(ctx, fieldId)
 
   // 3. Validate and convert raw value to typed input using FieldValueValidator
-  const typedValue = await validateAndConvertValue(ctx, value, field.type, field)
+  const coercedValue = await validateAndConvertValue(ctx, value, field.type, field)
+
+  // 3.5. Per-field pre-hooks: fire BEFORE the null-delete branch so guards can
+  // observe clear-attempts (`newValue === null`). Hooks may transform the
+  // typed value, drop the write (return `undefined`), or throw to reject.
+  const hookOutcome = await fireFieldPreHooks(ctx, {
+    recordId,
+    field,
+    typedValue: coercedValue,
+    existingValue: undefined,
+    allValues: new Map<string, unknown>([[fieldId, coercedValue]]),
+  })
+  if (hookOutcome.kind === 'drop') {
+    return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
+  }
+  const typedValue = hookOutcome.value
 
   // Handle null values (deletion)
   if (typedValue === null) {

@@ -1,4 +1,4 @@
-// packages/lib/src/field-triggers/triggers/company-triggers.ts
+// packages/lib/src/field-hooks/post/company-triggers.ts
 
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
@@ -8,7 +8,7 @@ import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { SystemUserService } from '../../users/system-user-service'
 import type { EntityTriggerHandler } from '../types'
 
-const logger = createScopedLogger('field-triggers:company')
+const logger = createScopedLogger('field-hooks:company')
 
 const HTML_FETCH_TIMEOUT_MS = 8000
 const FAVICON_FETCH_TIMEOUT_MS = 5000

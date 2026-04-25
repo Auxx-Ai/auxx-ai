@@ -212,24 +212,6 @@ const RecordGetByIdOutput = z
 export type RecordGetByIdOutput = z.infer<typeof RecordGetByIdOutput>
 export type RecordFieldValue = z.infer<typeof RecordFieldValueSchema>
 
-// `record.search` returns a paginated picker result: `{ items, nextCursor, ... }`.
-// Each item has a bare `id` (instance id) plus a composite `recordId`.
-const RecordSearchOutput = z
-  .object({
-    items: z
-      .array(
-        z
-          .object({
-            id: z.string(),
-            recordId: z.string().optional(),
-          })
-          .passthrough()
-      )
-      .default([]),
-  })
-  .passthrough()
-type RecordSearchOutput = z.infer<typeof RecordSearchOutput>
-
 const ParserHealthOutput = z.object({
   ok: z.literal(true),
 })
@@ -277,26 +259,6 @@ export async function getRecordById(recordId: string): Promise<RecordGetByIdOutp
     input: { recordId },
     outputSchema: RecordGetByIdOutput,
   })
-}
-
-export type SearchRecordInput = {
-  entityDefinitionId: 'contact' | 'company'
-  /** Free-text query. Used for best-effort dedup on externalId / email. */
-  query: string
-  limit?: number
-}
-
-export async function searchRecords(input: SearchRecordInput): Promise<RecordSearchOutput> {
-  return call({
-    procedure: 'record.search',
-    type: 'query',
-    input: { ...input, limit: input.limit ?? 5 },
-    outputSchema: RecordSearchOutput,
-  })
-}
-
-export function firstResultId(out: RecordSearchOutput): string | null {
-  return out.items[0]?.id ?? null
 }
 
 // ─── record.lookupByField ──────────────────────────────────────

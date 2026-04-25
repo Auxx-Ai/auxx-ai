@@ -1,4 +1,4 @@
-// packages/lib/src/field-triggers/triggers/bom-cost-triggers.ts
+// packages/lib/src/field-hooks/post/bom-cost-triggers.ts
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -7,7 +7,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { recalculateAffectedParts, recalculateAllPartCosts } from '../../bom/cost-calculator'
 import type { EntityTriggerHandler, FieldTriggerHandler } from '../types'
 
-const logger = createScopedLogger('field-triggers:bom-cost')
+const logger = createScopedLogger('field-hooks:bom-cost')
 
 /**
  * Recalculate part costs when vendor_part_unit_price, vendor_part_is_preferred,

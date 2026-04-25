@@ -2,7 +2,7 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
-import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
+import type { FieldType } from '@auxx/database/types'
 import {
   getValueType,
   isMultiValueFieldType,
@@ -17,6 +17,7 @@ import {
 } from '@auxx/types/custom-field'
 import { getFieldId, isFieldPath, isResourceFieldId, parseResourceFieldId } from '@auxx/types/field'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
@@ -27,24 +28,10 @@ import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-fie
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
 import type { InverseFieldInfo } from './relationship-sync'
-import type { FieldReference, FieldValueRow } from './types'
+import type { CachedField, FieldReference, FieldValueRow } from './types'
 
 // Re-export for convenience
-export type { InverseFieldInfo }
-
-// =============================================================================
-// CACHED FIELD TYPE
-// =============================================================================
-
-/** Field definition enriched with display config from the resource cache. */
-export type CachedField = CustomFieldEntity & {
-  entityDefinition: {
-    id: string
-    primaryDisplayFieldId: string | null
-    secondaryDisplayFieldId: string | null
-    avatarFieldId: string | null
-  } | null
-}
+export type { InverseFieldInfo, CachedField }
 
 // =============================================================================
 // CONTEXT INTERFACE
@@ -68,11 +55,33 @@ export interface FieldValueContext {
   entityDefIdCache?: Map<string, string>
   /** Shared validator instance (stateless, reusable) */
   validator: FieldValueValidator
+  /**
+   * Set of systemAttributes the caller is authorized to write even if a
+   * registered pre-hook would normally drop or reject them. Used by trusted
+   * code paths (e.g. the seeder setting `is_system_tag = true` on system
+   * records). Empty set by default — user/API requests have no bypass.
+   */
+  bypassFieldGuards: ReadonlySet<SystemAttribute>
+  /**
+   * When `true`, suppresses per-field pre-hook invocation inside
+   * `setValueWithBuiltIn`. Set by the bulk path (`setBulkValues`) after it
+   * has run pre-hooks once across the batched fan-out, so individual writes
+   * don't re-fire the hooks.
+   */
+  skipPreHooks?: boolean
 }
 
 // =============================================================================
 // CONTEXT FACTORY
 // =============================================================================
+
+/** Optional extras for `createFieldValueContext`. */
+export interface CreateFieldValueContextOptions {
+  bypassFieldGuards?: ReadonlySet<SystemAttribute>
+  skipPreHooks?: boolean
+}
+
+const EMPTY_BYPASS: ReadonlySet<SystemAttribute> = new Set()
 
 /**
  * Create a new FieldValueContext.
@@ -81,7 +90,8 @@ export function createFieldValueContext(
   organizationId: string,
   userId?: string,
   db: Database = database,
-  socketId?: string
+  socketId?: string,
+  options: CreateFieldValueContextOptions = {}
 ): FieldValueContext {
   return {
     db,
@@ -91,6 +101,8 @@ export function createFieldValueContext(
     fieldCache: new Map(),
     batchRelationshipValidationCache: new Map(),
     validator: new FieldValueValidator(),
+    bypassFieldGuards: options.bypassFieldGuards ?? EMPTY_BYPASS,
+    skipPreHooks: options.skipPreHooks,
   }
 }
 

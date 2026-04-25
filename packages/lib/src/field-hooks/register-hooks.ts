@@ -1,20 +1,21 @@
-// packages/lib/src/field-triggers/register-triggers.ts
+// packages/lib/src/field-hooks/register-hooks.ts
 
+import { recalculatePartCost, recalculatePartCostOnEntityChange } from './post/bom-cost-triggers'
+import { explodeBomMovement } from './post/bom-movement-triggers'
+import { enrichCompanyOnCreate } from './post/company-triggers'
+import { recalculatePartQoH, recalculateStockStatus } from './post/inventory-triggers'
+import { clearOtherPreferred } from './post/vendor-part-triggers'
 import { registerEntityTriggers, registerFieldTriggers } from './registry'
-import {
-  recalculatePartCost,
-  recalculatePartCostOnEntityChange,
-} from './triggers/bom-cost-triggers'
-import { explodeBomMovement } from './triggers/bom-movement-triggers'
-import { enrichCompanyOnCreate } from './triggers/company-triggers'
-import { recalculatePartQoH, recalculateStockStatus } from './triggers/inventory-triggers'
-import { clearOtherPreferred } from './triggers/vendor-part-triggers'
 
 /**
- * Register all field and entity triggers.
+ * Register all field and entity hooks (pre + post).
  * Called once at startup (e.g., from the worker entry point).
  */
-export function registerAllTriggers(): void {
+export function registerAllHooks(): void {
+  // ---------------------------------------------------------------------------
+  // POST-WRITE TRIGGERS
+  // ---------------------------------------------------------------------------
+
   // BOM cost field triggers — fire when specific field values change
   registerFieldTriggers('vendor_part_unit_price', [recalculatePartCost])
   registerFieldTriggers('vendor_part_shipping_cost', [recalculatePartCost])
@@ -37,4 +38,13 @@ export function registerAllTriggers(): void {
 
   // Company enrichment — fetch website on company create to fill in name, notes, logo
   registerEntityTriggers('companies', [enrichCompanyOnCreate])
+
+  // ---------------------------------------------------------------------------
+  // PRE-WRITE HOOKS
+  // ---------------------------------------------------------------------------
+  //
+  // Per-field pre-hooks (registerFieldPreHooks) and pre-delete hooks
+  // (registerEntityPreDeleteHooks) are added by feature modules in this
+  // section as they come online. The system-tag guard is the first
+  // expected consumer.
 }

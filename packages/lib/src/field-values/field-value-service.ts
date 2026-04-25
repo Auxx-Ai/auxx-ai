@@ -3,6 +3,7 @@
 import { type Database, database } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getCachedResourceFields } from '../cache'
 import {
   type CachedField,
@@ -40,17 +41,30 @@ import type {
  * - Uses UPDATE for single-value fields instead of DELETE+INSERT
  * - Automatically updates EntityInstance.displayName when primary display field changes
  */
+/** Optional extras for `FieldValueService` construction. */
+export interface FieldValueServiceOptions {
+  /**
+   * SystemAttributes the caller is authorized to write even when a
+   * registered field pre-hook would normally drop or reject them. Used
+   * by trusted code paths like the seeder.
+   */
+  bypassFieldGuards?: ReadonlySet<SystemAttribute>
+}
+
 export class FieldValueService {
   /** Internal context shared across mutations and queries */
-  private ctx: FieldValueContext
+  readonly ctx: FieldValueContext
 
   constructor(
     private readonly organizationId: string,
     private readonly userId?: string,
     db: Database = database,
-    socketId?: string
+    socketId?: string,
+    options: FieldValueServiceOptions = {}
   ) {
-    this.ctx = createFieldValueContext(organizationId, userId, db, socketId)
+    this.ctx = createFieldValueContext(organizationId, userId, db, socketId, {
+      bypassFieldGuards: options.bypassFieldGuards,
+    })
   }
 
   // ─────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import { findCachedResource, getOrgCache } from '../../cache'
 import { CommentService } from '../../comments'
 import { UnprocessableEntityError } from '../../errors'
 import { publisher } from '../../events/publisher'
+import { getEntityPreDeleteHooks } from '../../field-hooks/registry'
 import type { FieldValueService } from '../../field-values'
 import { getRealtimeService } from '../../realtime'
 import { invalidateSnapshots } from '../../snapshot'
@@ -650,13 +651,35 @@ export async function deleteEntity(
 
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 
-  // Capture field values before deletion so the event carries relationship data
-  // (needed by entity triggers like BOM cost recalculation)
+  // Capture field values before deletion so:
+  //   1. The deleted event carries relationship data (entity triggers like
+  //      BOM cost recalculation depend on this)
+  //   2. Any registered pre-delete hooks can inspect the record's current
+  //      state to decide whether to reject the delete
+  // Pre-delete hooks are orthogonal to event publishing — capture is
+  // required whenever either consumer is active.
+  const preDeleteHooks = entityDef.apiSlug ? getEntityPreDeleteHooks(entityDef.apiSlug) : []
   let eventData: Record<string, unknown> = { hardDelete: true }
-  if (!options.skipEvents) {
+  if (!options.skipEvents || preDeleteHooks.length > 0) {
     const fields = await ctx.getFields(entityDef.id)
     const captured = await captureEventData(ctx.fieldValueService, recordId, fields)
     eventData = { hardDelete: true, ...captured }
+  }
+
+  // Pre-delete hooks: throw to reject the delete (4xx surfaced by caller).
+  if (preDeleteHooks.length > 0 && entityDef.apiSlug) {
+    for (const hook of preDeleteHooks) {
+      await hook({
+        recordId,
+        entityDefinitionId: entityDef.id,
+        entityType: entityDef.entityType,
+        entitySlug: entityDef.apiSlug,
+        values: eventData,
+        organizationId: ctx.organizationId,
+        userId: ctx.userId,
+        bypass: ctx.fieldValueService.ctx.bypassFieldGuards,
+      })
+    }
   }
 
   // Delete comments using RecordId

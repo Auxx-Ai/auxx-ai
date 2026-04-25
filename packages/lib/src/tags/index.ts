@@ -1,13 +1,7 @@
 // packages/lib/src/tags/index.ts
 
-// TagService - CRUD operations for tags using UnifiedCrudHandler
-export {
-  type CreateTagInput,
-  type TagData,
-  TagService,
-  type TagWithChildren,
-  type UpdateTagInput,
-} from './tag-service'
+// TagService - read-only tag queries built on UnifiedCrudHandler
+export { type TagData, TagService, type TagWithChildren } from './tag-service'
 
 // Re-export RecordId utilities for convenience
 // export { type RecordId, toRecordId, parseRecordId } from '../resources/resource-id'

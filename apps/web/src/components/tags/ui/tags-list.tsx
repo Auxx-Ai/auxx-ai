@@ -42,7 +42,6 @@ export function TagTreeView() {
   // Fetch tag hierarchy
   const { hierarchy: tagHierarchy, isLoading, refresh, entityDefinitionId } = useTagHierarchy()
 
-  // Delete record mutation (replaces api.tag.delete)
   const deleteRecord = api.record.delete.useMutation({
     onSuccess: () => {
       refresh()
