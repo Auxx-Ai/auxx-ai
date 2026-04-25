@@ -1,4 +1,4 @@
-// packages/lib/src/field-triggers/entity-trigger-handler.ts
+// packages/lib/src/field-hooks/entity-hook-handler.ts
 
 import { createScopedLogger } from '@auxx/logger'
 import type {
@@ -15,7 +15,7 @@ import type {
 } from '../events/types'
 import { getEntityTriggers } from './registry'
 
-const logger = createScopedLogger('field-triggers:entity')
+const logger = createScopedLogger('field-hooks:entity')
 
 /** All entity event types that can carry entity triggers */
 type EntityTriggerEvent =

@@ -1,4 +1,4 @@
-// packages/lib/src/field-triggers/field-trigger-job.ts
+// packages/lib/src/field-hooks/field-hook-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
@@ -6,7 +6,7 @@ import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { FieldTriggerJobEvent } from '../events/types'
 import { getFieldTriggers } from './registry'
 
-const logger = createScopedLogger('field-triggers')
+const logger = createScopedLogger('field-hooks')
 
 /**
  * BullMQ job handler for field:trigger events.

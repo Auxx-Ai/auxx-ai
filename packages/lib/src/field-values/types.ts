@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/types.ts
 
-import type { FieldType } from '@auxx/database/types'
+import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
 import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
@@ -10,6 +10,20 @@ import type { AiValueMetadata } from './ai-autofill/generation-service'
 
 // Re-export for convenience
 export type { FieldReference, FieldPath, ResourceFieldId }
+
+// =============================================================================
+// CACHED FIELD TYPE
+// =============================================================================
+
+/** Field definition enriched with display config from the resource cache. */
+export type CachedField = CustomFieldEntity & {
+  entityDefinition: {
+    id: string
+    primaryDisplayFieldId: string | null
+    secondaryDisplayFieldId: string | null
+    avatarFieldId: string | null
+  } | null
+}
 
 // =============================================================================
 // MODEL TYPES

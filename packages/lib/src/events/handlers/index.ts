@@ -1,7 +1,7 @@
 // packages/lib/src/events/handlers/index.ts
 
-export { handleEntityTriggers } from '../../field-triggers/entity-trigger-handler'
-export { handleFieldTriggerJob } from '../../field-triggers/field-trigger-job'
+export { handleEntityTriggers } from '../../field-hooks/entity-hook-handler'
+export { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
 export { createEventJob } from './create-event-job'
 export { createTimelineEvent } from './create-timeline-event'
 export { EventHandlers, publishEventJob } from './publish-event-job'

@@ -1,4 +1,4 @@
-// packages/lib/src/field-triggers/collect-triggers.ts
+// packages/lib/src/field-hooks/collect-triggers.ts
 
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { isSystemAttribute } from '@auxx/types/system-attribute'

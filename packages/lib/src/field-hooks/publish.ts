@@ -1,10 +1,10 @@
-// packages/lib/src/field-triggers/publish.ts
+// packages/lib/src/field-hooks/publish.ts
 
 import type { RecordId } from '@auxx/types/resource'
 import { publisher } from '../events'
 import type { FieldTriggerJobEvent } from '../events/types'
 import type { TriggeredField } from './collect-triggers'
-import { handleFieldTriggerJob } from './field-trigger-job'
+import { handleFieldTriggerJob } from './field-hook-job'
 
 /** Set to `true` to dispatch field triggers async via BullMQ instead of inline. */
 const FIELD_TRIGGERS_ASYNC = false

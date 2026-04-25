@@ -1,4 +1,4 @@
-// packages/lib/src/field-triggers/triggers/vendor-part-triggers.ts
+// packages/lib/src/field-hooks/post/vendor-part-triggers.ts
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -10,7 +10,7 @@ import { requireCachedEntityDefId } from '../../cache'
 import { getRealtimeService, publishFieldValueUpdates } from '../../realtime'
 import type { FieldTriggerHandler } from '../types'
 
-const logger = createScopedLogger('field-triggers:vendor-part')
+const logger = createScopedLogger('field-hooks:vendor-part')
 
 /**
  * When vendor_part_is_preferred changes to true, clear isPreferred on all

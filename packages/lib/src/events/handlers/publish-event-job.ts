@@ -1,8 +1,8 @@
 // packages/lib/src/events/handlers/publish-event-job.ts
 
 import type { Job } from 'bullmq'
-import { handleEntityTriggers } from '../../field-triggers/entity-trigger-handler'
-import { handleFieldTriggerJob } from '../../field-triggers/field-trigger-job'
+import { handleEntityTriggers } from '../../field-hooks/entity-hook-handler'
+import { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import type { AuxxEvent, IEventsHandlers } from '../types'
