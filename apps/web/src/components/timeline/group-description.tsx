@@ -21,73 +21,26 @@ interface GroupDescriptionProps {
  */
 export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
   const firstEvent = events[0]
+  const actor = <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span>
 
   switch (eventType) {
-    // Contact field updates
+    // Field updates — identical across contact / ticket / custom entity
     case ContactEventType.FIELD_UPDATED:
-      return (
-        <span>
-          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> updated multiple
-          fields
-        </span>
-      )
-
-    case ContactEventType.TAG_ADDED:
-      return (
-        <span>
-          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> added multiple
-          tags
-        </span>
-      )
-
-    case ContactEventType.TAG_REMOVED:
-      return (
-        <span>
-          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> removed multiple
-          tags
-        </span>
-      )
-
-    // Ticket field updates
     case TicketEventType.FIELD_UPDATED:
-      return (
-        <span>
-          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> updated multiple
-          fields
-        </span>
-      )
-
-    case TicketEventType.TAG_ADDED:
-      return (
-        <span>
-          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> added multiple
-          tags
-        </span>
-      )
-
-    case TicketEventType.TAG_REMOVED:
-      return (
-        <span>
-          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> removed multiple
-          tags
-        </span>
-      )
-
-    // Entity instance field updates
     case EntityInstanceEventType.FIELD_UPDATED:
-      return (
-        <span>
-          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> updated multiple
-          fields
-        </span>
-      )
+      return <span>{actor} updated multiple fields</span>
+
+    // Tag adds — identical across contact / ticket
+    case ContactEventType.TAG_ADDED:
+    case TicketEventType.TAG_ADDED:
+      return <span>{actor} added multiple tags</span>
+
+    // Tag removes — identical across contact / ticket
+    case ContactEventType.TAG_REMOVED:
+    case TicketEventType.TAG_REMOVED:
+      return <span>{actor} removed multiple tags</span>
 
     default:
-      return (
-        <span>
-          <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span> made multiple
-          changes
-        </span>
-      )
+      return <span>{actor} made multiple changes</span>
   }
 }

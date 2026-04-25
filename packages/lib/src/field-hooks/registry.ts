@@ -3,6 +3,7 @@
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { registerAllHooks } from './register-hooks'
 import type {
+  EntityFieldChangeHandler,
   EntityPreDeleteHandler,
   EntityTriggerHandler,
   FieldPreHookHandler,
@@ -38,6 +39,14 @@ const FIELD_PRE_HOOKS: Map<string, FieldPreHookHandler[]> = new Map()
 
 /** Pre-delete entity hooks keyed by entitySlug. */
 const ENTITY_PRE_DELETE_HOOKS: Map<string, EntityPreDeleteHandler[]> = new Map()
+
+/**
+ * Per-entity field-change post-hooks. Keyed by entitySlug, with the sentinel
+ * `'*'` reserved for handlers that fire on every field write regardless of
+ * entity. Entity-scoped handlers run before global handlers in the composed
+ * chain.
+ */
+const ENTITY_FIELD_CHANGE_HOOKS: Map<string, EntityFieldChangeHandler[]> = new Map()
 
 // =============================================================================
 // LAZY INIT
@@ -160,4 +169,47 @@ export function registerEntityPreDeleteHooks(
 export function getEntityPreDeleteHooks(entitySlug: string): EntityPreDeleteHandler[] {
   ensureInitialized()
   return ENTITY_PRE_DELETE_HOOKS.get(entitySlug) ?? []
+}
+
+// =============================================================================
+// POST-WRITE FIELD-CHANGE HOOK ACCESSORS
+// =============================================================================
+
+/**
+ * Register entity field-change handlers. Use the sentinel `'*'` for
+ * `entitySlug` to register a global handler that fires on every field write
+ * regardless of entity. Appends to any existing handlers.
+ */
+export function registerEntityFieldChangeHooks(
+  entitySlug: string | '*',
+  handlers: EntityFieldChangeHandler[]
+): void {
+  if (handlers.length === 0) return
+  const existing = ENTITY_FIELD_CHANGE_HOOKS.get(entitySlug) ?? []
+  ENTITY_FIELD_CHANGE_HOOKS.set(entitySlug, [...existing, ...handlers])
+}
+
+/**
+ * Get the composed field-change hook chain for a given entitySlug.
+ * Entity-scoped handlers run first, global (`'*'`) handlers run after.
+ */
+export function getEntityFieldChangeHooks(entitySlug: string): EntityFieldChangeHandler[] {
+  ensureInitialized()
+  const scoped = ENTITY_FIELD_CHANGE_HOOKS.get(entitySlug) ?? []
+  const global = ENTITY_FIELD_CHANGE_HOOKS.get('*') ?? []
+  if (scoped.length === 0) return global
+  if (global.length === 0) return scoped
+  return [...scoped, ...global]
+}
+
+/**
+ * Cheap probe used at the fire point to skip the oldValue pre-fetch when
+ * nobody is listening for this entity (and no global handler is registered).
+ */
+export function hasEntityFieldChangeHooks(entitySlug: string): boolean {
+  ensureInitialized()
+  return (
+    (ENTITY_FIELD_CHANGE_HOOKS.get(entitySlug)?.length ?? 0) > 0 ||
+    (ENTITY_FIELD_CHANGE_HOOKS.get('*')?.length ?? 0) > 0
+  )
 }

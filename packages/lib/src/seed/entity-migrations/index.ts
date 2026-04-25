@@ -17,6 +17,8 @@ import { migration011ExtensionExternalId } from './migrations/011-extension-exte
 import { migration012ContactEmailOptional } from './migrations/012-contact-email-optional'
 import { migration013ContactCompanyExternalIdFix } from './migrations/013-contact-company-external-id-fix'
 import { migration014BackfillSystemTags } from './migrations/014-backfill-system-tags'
+import { migration015BackfillFieldUpdatedEventData } from './migrations/015-backfill-field-updated-event-data'
+import { migration016StripLegacyContactIdFromFieldUpdated } from './migrations/016-strip-legacy-contact-id-from-field-updated'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -39,6 +41,8 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration012ContactEmailOptional,
   migration013ContactCompanyExternalIdFix,
   migration014BackfillSystemTags,
+  migration015BackfillFieldUpdatedEventData,
+  migration016StripLegacyContactIdFromFieldUpdated,
 ]
 
 // ─── Public API ──────────────────────────────────────────────────────

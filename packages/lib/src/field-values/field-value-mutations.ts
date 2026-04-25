@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
 import {
   batchInsertFieldValues,
   deleteFieldValues,
@@ -29,14 +30,17 @@ import {
 } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
 import { BadRequestError } from '../errors'
-import { publisher } from '../events'
-import type { ContactFieldUpdatedEvent } from '../events/types'
 import {
   collectTriggeredFields,
   deduplicateBySystemAttribute,
 } from '../field-hooks/collect-triggers'
 import { publishBatchFieldTriggerEvents, publishFieldTriggerEvents } from '../field-hooks/publish'
-import { getFieldPreHooks, hasFieldPreHooks } from '../field-hooks/registry'
+import {
+  getEntityFieldChangeHooks,
+  getFieldPreHooks,
+  hasEntityFieldChangeHooks,
+  hasFieldPreHooks,
+} from '../field-hooks/registry'
 import type { FieldPreHookEvent } from '../field-hooks/types'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
@@ -84,6 +88,8 @@ import type {
   SetValueWithTypeInput,
 } from './types'
 
+const logger = createScopedLogger('field-value-mutations')
+
 // =============================================================================
 // FIELD PRE-HOOKS
 // =============================================================================
@@ -121,6 +127,10 @@ async function fireFieldPreHooks(
     typedValue: TypedFieldValueInput | TypedFieldValueInput[] | null
     existingValue: unknown
     allValues: ReadonlyMap<string, unknown>
+    /** Pre-resolved entitySlug. When provided, skips the cache lookup. */
+    entitySlug?: string
+    /** Pre-resolved entityType. When provided, skips the cache lookup. */
+    entityType?: string | null
   }
 ): Promise<FieldPreHookOutcome> {
   if (ctx.skipPreHooks) return { kind: 'continue', value: args.typedValue }
@@ -135,8 +145,13 @@ async function fireFieldPreHooks(
   const entityDefinitionId = args.field.entityDefinition?.id ?? args.field.entityDefinitionId
   if (!entityDefinitionId) return { kind: 'continue', value: args.typedValue }
 
-  const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
-  const entitySlug = resource?.apiSlug
+  let entitySlug = args.entitySlug
+  let entityType = args.entityType
+  if (entitySlug === undefined || entityType === undefined) {
+    const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
+    entitySlug = resource?.apiSlug
+    entityType = resource?.entityType ?? null
+  }
   if (!entitySlug) return { kind: 'continue', value: args.typedValue }
 
   if (!hasFieldPreHooks(entitySlug, systemAttribute)) {
@@ -147,7 +162,7 @@ async function fireFieldPreHooks(
   const event: Omit<FieldPreHookEvent, 'newValue'> = {
     recordId: args.recordId,
     entityDefinitionId,
-    entityType: resource?.entityType ?? null,
+    entityType,
     entitySlug,
     fieldId: args.field.id,
     systemAttribute,
@@ -1606,6 +1621,12 @@ export async function setValueWithBuiltIn(
   // 2. Get field definition (cached)
   const field = await getField(ctx, fieldId)
 
+  // Resolve entity metadata once — shared by pre-hook, oldValue gate, and
+  // post-hook so we hit the resource cache a single time per write.
+  const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
+  const entitySlug = resource?.apiSlug ?? ''
+  const entityType = resource?.entityType ?? null
+
   // 3. Validate and convert raw value to typed input using FieldValueValidator
   const coercedValue = await validateAndConvertValue(ctx, value, field.type, field)
 
@@ -1618,11 +1639,48 @@ export async function setValueWithBuiltIn(
     typedValue: coercedValue,
     existingValue: undefined,
     allValues: new Map<string, unknown>([[fieldId, coercedValue]]),
+    entitySlug,
+    entityType,
   })
   if (hookOutcome.kind === 'drop') {
     return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
   }
   const typedValue = hookOutcome.value
+
+  // 3.6. Capture oldValue BEFORE the null-delete branch — both set and clear
+  // paths need it to fire post-hooks identically. Gated on
+  // `hasEntityFieldChangeHooks` so entities without listeners pay nothing.
+  const willFirePostHook =
+    publishEvents && ctx.userId !== undefined && hasEntityFieldChangeHooks(entitySlug)
+  const oldValue: TypedFieldValue | TypedFieldValue[] | null = willFirePostHook
+    ? await getValue(ctx, { recordId, fieldId })
+    : null
+
+  // Closure so set + clear branches fire the post-hook chain identically.
+  const firePostHook = async (newValue: unknown): Promise<void> => {
+    if (!willFirePostHook) return
+    for (const handler of getEntityFieldChangeHooks(entitySlug)) {
+      try {
+        await handler({
+          recordId,
+          entityDefinitionId,
+          entityType,
+          entitySlug,
+          field,
+          oldValue,
+          newValue,
+          organizationId: ctx.organizationId,
+          userId: ctx.userId!,
+        })
+      } catch (error) {
+        logger.error(`Field-change handler failed for ${entitySlug}`, {
+          fieldId: field.id,
+          recordId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+  }
 
   // Handle null values (deletion)
   if (typedValue === null) {
@@ -1634,6 +1692,7 @@ export async function setValueWithBuiltIn(
         excludeSocketId: ctx.socketId,
       }).catch(() => {})
     }
+    await firePostHook(null)
     return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
   }
 
@@ -1652,12 +1711,6 @@ export async function setValueWithBuiltIn(
     )
   }
 
-  // 5. Get old value for event (only if publishing for contacts)
-  let oldValue: TypedFieldValue | TypedFieldValue[] | null = null
-  if (publishEvents && modelType === 'contact') {
-    oldValue = await getValue(ctx, { recordId, fieldId })
-  }
-
   // 6. Set the value
   const result = await setValueWithType(ctx, {
     recordId,
@@ -1668,29 +1721,14 @@ export async function setValueWithBuiltIn(
     aiGeneration: params.aiGeneration,
   })
 
-  // 7. Publish event for contacts. For multi-value fields (MULTI_SELECT, TAGS,
-  // RELATIONSHIP, FILE, or scalar types with options.multi=true) publish the
-  // full result array so the timeline handler can render every value. Taking
-  // only result[0] here silently truncated multi-value writes.
-  if (publishEvents && modelType === 'contact' && ctx.userId) {
-    const eventFieldOptions = field.options as
-      | { actor?: { multiple?: boolean }; multi?: boolean }
-      | undefined
-    const isArrayReturn = isArrayReturnFieldType(field.type as FieldType, eventFieldOptions)
-    await publisher.publishLater({
-      type: 'contact:field:updated',
-      data: {
-        contactId: entityInstanceId,
-        organizationId: ctx.organizationId,
-        userId: ctx.userId,
-        fieldId: field.id,
-        fieldName: field.name,
-        fieldType: field.type,
-        oldValue,
-        newValue: isArrayReturn ? result : (result[0] ?? null),
-      },
-    } as ContactFieldUpdatedEvent)
-  }
+  // 7. Fire field-change post-hooks. For multi-value fields (MULTI_SELECT,
+  // TAGS, RELATIONSHIP, FILE, or scalar types with options.multi=true) we
+  // pass the full result array so handlers can render every value.
+  const eventFieldOptions = field.options as
+    | { actor?: { multiple?: boolean }; multi?: boolean }
+    | undefined
+  const isArrayReturn = isArrayReturnFieldType(field.type as FieldType, eventFieldOptions)
+  await firePostHook(isArrayReturn ? result : (result[0] ?? null))
 
   // 8. Check for field triggers (only when publishing events, to avoid double-fire from setBulkValues)
   if (publishEvents && ctx.userId) {
@@ -1712,11 +1750,7 @@ export async function setValueWithBuiltIn(
   // single value.
   if (publishEvents && result.length > 0) {
     const key = buildFieldValueKey(recordId, fieldId as FieldId)
-    const fieldType = field.type as FieldType
-    const fieldOptions = field.options as
-      | { actor?: { multiple?: boolean }; multi?: boolean }
-      | undefined
-    const storeValue = isArrayReturnFieldType(fieldType, fieldOptions) ? result : result[0]
+    const storeValue = isArrayReturn ? result : result[0]
     // When this write is an AI stage-2 commit, piggyback the `result`
     // marker onto the same realtime so clients see value + AI state in
     // one message. Manual writes carry aiStatus=null to clear any prior

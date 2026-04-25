@@ -208,24 +208,6 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
         </div>
       )
 
-    case ContactEventType.FIELD_UPDATED:
-      return (
-        <div className='flex flex-wrap items-center gap-2'>
-          <span>
-            <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated{' '}
-            <span className='font-medium'>{event.eventData.fieldName}</span>
-          </span>
-          {hasExpandableContent && (
-            <button
-              type='button'
-              onClick={onToggleExpand}
-              className='inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100'>
-              View changes
-            </button>
-          )}
-        </div>
-      )
-
     case ContactEventType.ASSIGNED:
       return (
         <>
@@ -456,24 +438,6 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
         </div>
       )
 
-    case TicketEventType.FIELD_UPDATED:
-      return (
-        <div className='flex flex-wrap items-center gap-2'>
-          <span>
-            <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated{' '}
-            <span className='font-medium'>{event.eventData.fieldName}</span>
-          </span>
-          {hasExpandableContent && (
-            <button
-              type='button'
-              onClick={onToggleExpand}
-              className='inline-flex items-center rounded bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700 transition-colors hover:bg-accent-100'>
-              View changes
-            </button>
-          )}
-        </div>
-      )
-
     case TicketEventType.WORKFLOW_TRIGGERED:
       return (
         <>
@@ -505,6 +469,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
         </>
       )
 
+    // Field-updated: identical rendering for contact / ticket / custom entity
+    case ContactEventType.FIELD_UPDATED:
+    case TicketEventType.FIELD_UPDATED:
     case EntityInstanceEventType.FIELD_UPDATED:
       return (
         <div className='flex flex-wrap items-center gap-2'>

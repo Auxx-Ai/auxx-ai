@@ -8,18 +8,23 @@ export { registerAllHooks } from './register-hooks'
 export {
   ENTITY_TRIGGERS,
   FIELD_TRIGGERS,
+  getEntityFieldChangeHooks,
   getEntityPreDeleteHooks,
   getEntityTriggers,
   getFieldPreHooks,
   getFieldTriggers,
+  hasEntityFieldChangeHooks,
   hasFieldPreHooks,
   hasFieldTriggers,
+  registerEntityFieldChangeHooks,
   registerEntityPreDeleteHooks,
   registerEntityTriggers,
   registerFieldPreHooks,
   registerFieldTriggers,
 } from './registry'
 export type {
+  EntityFieldChangeEvent,
+  EntityFieldChangeHandler,
   EntityPreDeleteEvent,
   EntityPreDeleteHandler,
   EntityTriggerEvent,

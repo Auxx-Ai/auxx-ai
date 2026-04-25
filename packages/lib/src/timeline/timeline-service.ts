@@ -33,6 +33,8 @@ const GROUPING_CONFIG = {
     'contact:tag:added',
     'contact:tag:removed',
     'contact:group:added',
+    // Ticket events
+    'ticket:field:updated',
     // Custom entity events
     'entity:field:updated',
   ] as TimelineEventType[],

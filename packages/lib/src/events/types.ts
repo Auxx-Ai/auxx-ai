@@ -59,6 +59,8 @@ export type Events =
   | 'entity:created'
   | 'entity:updated'
   | 'entity:deleted'
+  | 'entity:field:updated'
+  | 'ticket:field:updated'
   | 'stock_movement:created'
   | 'stock_movement:deleted'
   | 'vendor_part:created'
@@ -445,20 +447,34 @@ export type ContactMergedEvent = AuxxEventGeneric<
     totalMerged: number
   }
 >
+/**
+ * Shared payload for `<prefix>:field:updated` events. Identical shape across
+ * contact, ticket, and custom-entity variants — only the event `type` differs.
+ * Consumers that need entity-specific rendering switch on the event type.
+ */
+export type FieldUpdatedData = {
+  recordId: RecordId
+  entityDefinitionId: string
+  entitySlug: string
+  organizationId: string
+  userId: string
+  fieldId: string
+  fieldName: string
+  fieldType: string
+  oldValue?: any
+  newValue: any
+}
+
 // Contact Field Updated Event
-export type ContactFieldUpdatedEvent = AuxxEventGeneric<
-  'contact:field:updated',
-  {
-    contactId: string
-    organizationId: string
-    userId: string
-    // Timeline metadata
-    fieldId: string
-    fieldName: string
-    fieldType: string
-    oldValue?: any
-    newValue: any
-  }
+export type ContactFieldUpdatedEvent = AuxxEventGeneric<'contact:field:updated', FieldUpdatedData>
+
+// Ticket Field Updated Event
+export type TicketFieldUpdatedEvent = AuxxEventGeneric<'ticket:field:updated', FieldUpdatedData>
+
+// Entity Instance Field Updated Event (custom entities + any built-in type without a dedicated prefix)
+export type EntityInstanceFieldUpdatedEvent = AuxxEventGeneric<
+  'entity:field:updated',
+  FieldUpdatedData
 >
 // Contact Group Added Event
 export type ContactGroupAddedEvent = AuxxEventGeneric<
@@ -826,6 +842,7 @@ export type AuxxEvent =
   | ContactFieldUpdatedEvent
   | ContactGroupAddedEvent
   | ContactGroupRemovedEvent
+  | TicketFieldUpdatedEvent
   | CommentCreatedEvent
   | CommentUpdatedEvent
   | CommentDeletedEvent
@@ -833,6 +850,7 @@ export type AuxxEvent =
   | EntityInstanceCreatedEvent
   | EntityInstanceUpdatedEvent
   | EntityInstanceDeletedEvent
+  | EntityInstanceFieldUpdatedEvent
   | StockMovementCreatedEvent
   | StockMovementDeletedEvent
   | VendorPartCreatedEvent
@@ -897,6 +915,7 @@ export interface IEventsHandlers {
   'contact:field:updated': EventHandler<ContactFieldUpdatedEvent>[]
   'contact:group:added': EventHandler<ContactGroupAddedEvent>[]
   'contact:group:removed': EventHandler<ContactGroupRemovedEvent>[]
+  'ticket:field:updated': EventHandler<TicketFieldUpdatedEvent>[]
   'comment:created': EventHandler<CommentCreatedEvent>[]
   'comment:updated': EventHandler<CommentUpdatedEvent>[]
   'comment:deleted': EventHandler<CommentDeletedEvent>[]
@@ -904,6 +923,7 @@ export interface IEventsHandlers {
   'entity:created': EventHandler<EntityInstanceCreatedEvent>[]
   'entity:updated': EventHandler<EntityInstanceUpdatedEvent>[]
   'entity:deleted': EventHandler<EntityInstanceDeletedEvent>[]
+  'entity:field:updated': EventHandler<EntityInstanceFieldUpdatedEvent>[]
   'stock_movement:created': EventHandler<StockMovementCreatedEvent>[]
   'stock_movement:deleted': EventHandler<StockMovementDeletedEvent>[]
   'vendor_part:created': EventHandler<VendorPartCreatedEvent>[]

@@ -2,7 +2,7 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { toRecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import {
   ContactEventType,
   EntityInstanceEventType,
@@ -25,11 +25,13 @@ import type {
   ContactUpdatedEvent,
   EntityInstanceCreatedEvent,
   EntityInstanceDeletedEvent,
+  EntityInstanceFieldUpdatedEvent,
   EntityInstanceUpdatedEvent,
   MessageReceivedEvent,
   MessageSentEvent,
   TicketCreatedEvent,
   TicketDeletedEvent,
+  TicketFieldUpdatedEvent,
   TicketStatusChangedEvent,
   TicketUpdatedEvent,
 } from '../types'
@@ -299,33 +301,26 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
       ]
     }
 
-    case 'contact:field:updated': {
-      const data = event.data as ContactFieldUpdatedEvent['data']
+    case 'contact:field:updated':
+      return mapFieldUpdated(
+        event as ContactFieldUpdatedEvent,
+        ContactEventType.FIELD_UPDATED,
+        'contact'
+      )
 
-      return [
-        {
-          eventType: ContactEventType.FIELD_UPDATED,
-          recordId: toRecordId('contact', data.contactId),
-          relatedRecordId: toRecordId('custom_field', data.fieldId),
-          actorType: TimelineActorType.USER,
-          actorId: data.userId,
-          eventData: {
-            contactId: data.contactId,
-            fieldId: data.fieldId,
-            fieldName: data.fieldName,
-            fieldType: data.fieldType,
-          },
-          changes: [
-            {
-              field: data.fieldName,
-              oldValue: data.oldValue,
-              newValue: data.newValue,
-            },
-          ],
-          organizationId: data.organizationId,
-        },
-      ]
-    }
+    case 'ticket:field:updated':
+      return mapFieldUpdated(
+        event as TicketFieldUpdatedEvent,
+        TicketEventType.FIELD_UPDATED,
+        'ticket'
+      )
+
+    case 'entity:field:updated':
+      return mapFieldUpdated(
+        event as EntityInstanceFieldUpdatedEvent,
+        EntityInstanceEventType.FIELD_UPDATED,
+        null
+      )
 
     case 'contact:group:added': {
       const data = event.data as ContactGroupAddedEvent['data']
@@ -526,4 +521,57 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
     default:
       return []
   }
+}
+
+/**
+ * Build a timeline event for any `<prefix>:field:updated` variant.
+ *
+ * The timeline row's `recordId` column is parsed by storage into entityType
+ * + entityId columns and is queried as an exact match. Existing reads on the
+ * contact and ticket detail pages query with `toRecordId('contact', id)` /
+ * `toRecordId('ticket', id)`, so the row must keep that legacy-prefixed
+ * shape for those entities. Custom entities have no legacy form and use the
+ * canonical RecordId (`<entityDefinitionId>:<entityInstanceId>`) directly.
+ *
+ * The canonical recordId is preserved in `eventData.recordId` for any
+ * future reader. When the read-side migration to canonical IDs lands, drop
+ * the `legacyPrefix` arg and use `data.recordId` for both columns.
+ */
+function mapFieldUpdated(
+  event: ContactFieldUpdatedEvent | TicketFieldUpdatedEvent | EntityInstanceFieldUpdatedEvent,
+  eventType:
+    | ContactEventType.FIELD_UPDATED
+    | TicketEventType.FIELD_UPDATED
+    | EntityInstanceEventType.FIELD_UPDATED,
+  legacyPrefix: 'contact' | 'ticket' | null
+): CreateTimelineEventInput[] {
+  const data = event.data
+  const rowRecordId = legacyPrefix
+    ? toRecordId(legacyPrefix, parseRecordId(data.recordId).entityInstanceId)
+    : data.recordId
+  return [
+    {
+      eventType,
+      recordId: rowRecordId,
+      relatedRecordId: toRecordId('custom_field', data.fieldId),
+      actorType: TimelineActorType.USER,
+      actorId: data.userId,
+      eventData: {
+        recordId: data.recordId,
+        entityDefinitionId: data.entityDefinitionId,
+        entitySlug: data.entitySlug,
+        fieldId: data.fieldId,
+        fieldName: data.fieldName,
+        fieldType: data.fieldType,
+      },
+      changes: [
+        {
+          field: data.fieldName,
+          oldValue: data.oldValue,
+          newValue: data.newValue,
+        },
+      ],
+      organizationId: data.organizationId,
+    },
+  ]
 }
