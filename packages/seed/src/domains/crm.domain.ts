@@ -618,8 +618,9 @@ export class CrmDomain {
     console.log(`🏢 Generating ${count} companies via UnifiedCrudHandler...`)
 
     const roster = COMPANY_ROSTER.slice(0, Math.min(count, COMPANY_ROSTER.length))
+    const namePrefix = this.scenario.isExample ? '[Example] ' : ''
     const values = roster.map((c) => ({
-      company_name: c.name,
+      company_name: `${namePrefix}${c.name}`,
       company_domain: c.domain,
       company_website: `https://${c.domain}`,
       company_industry: c.industry,

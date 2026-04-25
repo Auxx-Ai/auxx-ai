@@ -24,7 +24,7 @@ export class OrganizationSeeder {
   static async seedOrganization(
     organizationId: string,
     mode: 'reset' | 'additive',
-    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' = 'demo'
+    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' | 'example' = 'demo'
   ): Promise<SeedingResult> {
     const webhookCoordinator = new OrganizationWebhookCoordinator(organizationId)
     let webhookState: Awaited<ReturnType<typeof webhookCoordinator.disconnectAll>> | null = null
@@ -45,9 +45,12 @@ export class OrganizationSeeder {
       }
       logger.info('Organization found', { org })
 
-      // Skip webhook management for demo/test scenarios (mock integrations have no real webhooks)
+      // Skip webhook management for demo/test/example scenarios (mock integrations have no real webhooks)
       const shouldManageWebhooks =
-        mode === 'reset' && scenario !== 'demo' && scenario !== 'superadmin-test'
+        mode === 'reset' &&
+        scenario !== 'demo' &&
+        scenario !== 'superadmin-test' &&
+        scenario !== 'example'
 
       if (mode === 'reset') {
         if (shouldManageWebhooks) {
@@ -120,7 +123,7 @@ export class OrganizationSeeder {
    */
   static async resetAndSeed(
     organizationId: string,
-    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' = 'demo'
+    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' | 'example' = 'demo'
   ): Promise<SeedingResult> {
     return OrganizationSeeder.seedOrganization(organizationId, 'reset', scenario)
   }
@@ -130,7 +133,7 @@ export class OrganizationSeeder {
    */
   static async addSeedData(
     organizationId: string,
-    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' = 'demo'
+    scenario: 'demo' | 'development' | 'testing' | 'superadmin-test' | 'example' = 'demo'
   ): Promise<SeedingResult> {
     return OrganizationSeeder.seedOrganization(organizationId, 'additive', scenario)
   }
@@ -220,7 +223,7 @@ export class OrganizationSeeder {
   private static async seedOrganizationDirectly(
     organizationId: string,
     ownerId: string,
-    scenarioName: 'demo' | 'development' | 'testing' | 'superadmin-test'
+    scenarioName: 'demo' | 'development' | 'testing' | 'superadmin-test' | 'example'
   ): Promise<void> {
     try {
       logger.info('seedOrganizationDirectly: Starting', { organizationId, ownerId, scenarioName })
@@ -231,6 +234,7 @@ export class OrganizationSeeder {
       const { developmentScenario } = await import('../scenarios/development.scenario')
       const { testingScenario } = await import('../scenarios/testing.scenario')
       const { superadminTestScenario } = await import('../scenarios/superadmin-test.scenario')
+      const { exampleScenario } = await import('../scenarios/example.scenario')
       logger.info('seedOrganizationDirectly: Scenarios loaded')
 
       // Select scenario
@@ -239,6 +243,7 @@ export class OrganizationSeeder {
         development: developmentScenario,
         testing: testingScenario,
         'superadmin-test': superadminTestScenario,
+        example: exampleScenario,
       }
       const scenario = scenarioMap[scenarioName]
       logger.info('seedOrganizationDirectly: Scenario selected', { scenarioName })
@@ -344,13 +349,26 @@ export class OrganizationSeeder {
         integrationsCount: context.services.integrations.length,
       })
 
-      // For demo/superadmin-test scenarios, create mock integrations before domain seeding
-      if (scenarioName === 'demo' || scenarioName === 'superadmin-test') {
-        logger.info('seedOrganizationDirectly: Creating demo integrations')
-        const { DemoIntegrationDomain } = await import('../domains/demo-integration.domain')
-        const demoIntegrations = new DemoIntegrationDomain(organizationId, ownerId)
-        await demoIntegrations.insertDirectly(db)
-        logger.info('seedOrganizationDirectly: Demo integrations created')
+      // For scenarios without a real integration, create a mock one before domain seeding.
+      // demo/superadmin-test: full mock (Gmail + Shopify). example: Gmail only (no Shopify).
+      if (
+        scenarioName === 'demo' ||
+        scenarioName === 'superadmin-test' ||
+        scenarioName === 'example'
+      ) {
+        if (scenarioName === 'example') {
+          logger.info('seedOrganizationDirectly: Creating example integration')
+          const { ExampleIntegrationDomain } = await import('../domains/example-integration.domain')
+          const exampleIntegrations = new ExampleIntegrationDomain(organizationId)
+          await exampleIntegrations.insertDirectly(db)
+          logger.info('seedOrganizationDirectly: Example integration created')
+        } else {
+          logger.info('seedOrganizationDirectly: Creating demo integrations')
+          const { DemoIntegrationDomain } = await import('../domains/demo-integration.domain')
+          const demoIntegrations = new DemoIntegrationDomain(organizationId, ownerId)
+          await demoIntegrations.insertDirectly(db)
+          logger.info('seedOrganizationDirectly: Demo integrations created')
+        }
 
         // Re-fetch integrations after creating them
         const freshIntegrations = await db
@@ -469,6 +487,21 @@ export class OrganizationSeeder {
         )
         await communication.insertDirectly(db)
         logger.info('seedOrganizationDirectly: Communication domain complete')
+      }
+
+      // Workflows (example scenario instantiates one from a public template)
+      if (scenario.scales.workflows && scenario.scales.workflows > 0) {
+        logger.info('seedOrganizationDirectly: Seeding workflow domain')
+        console.log('💾 Inserting workflow data...')
+        const { WorkflowDomain } = await import('../domains/workflow.domain')
+        const workflow = new WorkflowDomain(scenarioWithRefinements, organizationId, ownerId)
+        try {
+          await workflow.insertDirectly(db)
+          logger.info('seedOrganizationDirectly: Workflow domain complete')
+        } catch (error) {
+          // Non-fatal: example data is still useful without the workflow.
+          logger.error('seedOrganizationDirectly: Workflow domain failed', { error })
+        }
       }
 
       // AI

@@ -385,6 +385,7 @@ export class ChannelService {
           email: schema.Integration.email,
           metadata: schema.Integration.metadata,
           inboxId: schema.InboxIntegration.inboxId,
+          isExample: schema.Integration.isExample,
         })
         .from(schema.Integration)
         .leftJoin(
@@ -413,6 +414,7 @@ export class ChannelService {
           email,
           settings: ((int.metadata as any)?.settings as ChannelSettings) || {},
           inboxId: int.inboxId,
+          isExample: int.isExample,
         }
       })
       return emailClients

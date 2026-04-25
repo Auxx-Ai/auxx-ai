@@ -243,10 +243,24 @@ export default function ThreadDetails({
 
         {/* Reply editor portal target — the editor renders here via portal when docked */}
         <div ref={replyBoxRef} className=''>
-          {(isShowReplyBox || hasFloatingCompose) && (
-            <div className='px-4 py-4 pb-[90px]'>
-              <div id={portalTargetId} />
+          {thread.integrationIsExample ? (
+            <div className='px-4 py-4 pb-[0px]'>
+              <div className='rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 px-4 py-3 text-sm text-muted-foreground'>
+                This is example data.{' '}
+                <a
+                  href='/app/settings/channels'
+                  className='font-medium text-foreground underline underline-offset-4 hover:no-underline'>
+                  Connect a real channel
+                </a>{' '}
+                to send replies.
+              </div>
             </div>
+          ) : (
+            (isShowReplyBox || hasFloatingCompose) && (
+              <div className='px-4 py-4 pb-[90px]'>
+                <div id={portalTargetId} />
+              </div>
+            )
           )}
         </div>
 

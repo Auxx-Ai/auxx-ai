@@ -151,6 +151,36 @@ export class OrganizationSeeder {
         this.seedSystemModelDefaults(organizationId),
       ])
       logger.info('Successfully completed seeding for organization', { organizationId })
+
+      // Enqueue async example data seeding (companies, contacts, threads, workflow).
+      // Skip for demo signups — the /demo route owns its own seeding flow and will
+      // enqueue a demo-scenario orgSeedJob of its own. Mirrors seedTrialSubscription's
+      // demo-email check. Non-fatal on enqueue failure.
+      const { getDemoEmailDomain } = await import('../demo')
+      const isDemoEmail = !!this.userEmail && this.userEmail.endsWith(`@${getDemoEmailDomain()}`)
+
+      if (!isDemo && !isDemoEmail) {
+        try {
+          const { getQueue, Queues } = await import('../jobs/queues')
+          await getQueue(Queues.maintenanceQueue).add(
+            'orgSeedJob',
+            {
+              organizationId,
+              userId: this.userId,
+              userEmail: this.userEmail,
+              scenario: 'example' as const,
+            },
+            {
+              attempts: 3,
+              backoff: { type: 'exponential', delay: 5000 },
+              removeOnComplete: { age: 300 },
+              removeOnFail: { count: 10 },
+            }
+          )
+        } catch (error) {
+          logger.error('Failed to enqueue orgSeedJob (example)', { organizationId, error })
+        }
+      }
     } catch (error) {
       logger.error('Failed to seed organization', { organizationId, error })
       throw error

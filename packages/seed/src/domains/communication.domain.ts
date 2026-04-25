@@ -4,6 +4,10 @@
 import { createId } from '@paralleldrive/cuid2'
 import { and, eq, sql } from 'drizzle-orm'
 import { ContentEngine } from '../generators/content-engine'
+import {
+  EXAMPLE_CONVERSATIONS,
+  type ExampleConversation,
+} from '../generators/example-conversations'
 import type {
   SeedingContext,
   SeedingScenario,
@@ -584,8 +588,15 @@ export class CommunicationDomain {
     )
 
     threads.forEach((thread: any, threadIndex: number) => {
-      // Vary message count per thread (1-5 messages) but respect the average
-      const messageCount = Math.min(5, messagesPerThread + (threadIndex % 2 === 0 ? 0 : -1))
+      // Example scenario: map each thread to its scripted conversation (by subject) and
+      // use the script's message count/bodies instead of the random content generator.
+      const exampleConversation = this.scenario.isExample
+        ? EXAMPLE_CONVERSATIONS.find((c) => c.subject === thread.subject)
+        : undefined
+
+      const messageCount = exampleConversation
+        ? exampleConversation.messages.length
+        : Math.min(5, messagesPerThread + (threadIndex % 2 === 0 ? 0 : -1))
 
       // Get participant assignments from the stored map
       const assignment = this.threadParticipantAssignments.get(thread.id)
@@ -606,14 +617,18 @@ export class CommunicationDomain {
       const supportUser = users.find((u: any) => u.email === supportParticipant.identifier)
 
       for (let i = 0; i < messageCount; i++) {
-        // Alternate: Customer sends first (inbound), then support replies (outbound)
-        const isInbound = i % 2 === 0
+        // Example conversations drive inbound/outbound from the script; other scenarios
+        // alternate customer/agent starting with the customer.
+        const scriptedMessage = exampleConversation?.messages[i]
+        const isInbound = scriptedMessage ? scriptedMessage.from === 'customer' : i % 2 === 0
         const messageId = createId()
         const sentTime = new Date(Date.now() - (messageCount - i) * 3600000)
 
         if (isInbound) {
           // INBOUND: Customer → Support
-          const messageContent = this.generateMessageContent(i, true)
+          const messageContent = scriptedMessage
+            ? scriptedMessage.body
+            : this.generateMessageContent(i, true)
           messages.push({
             id: messageId,
             threadId: thread.id,
@@ -651,7 +666,9 @@ export class CommunicationDomain {
           })
         } else {
           // OUTBOUND: Support → Customer
-          const messageContent = this.generateMessageContent(i, false)
+          const messageContent = scriptedMessage
+            ? scriptedMessage.body
+            : this.generateMessageContent(i, false)
           messages.push({
             id: messageId,
             threadId: thread.id,
@@ -807,8 +824,19 @@ export class CommunicationDomain {
 
   /** generateThreadSubjects creates realistic support thread subjects. */
   private generateThreadSubjects(): string[] {
+    if (this.scenario.isExample) {
+      return Array.from(
+        { length: this.scenario.scales.threads },
+        (_, i) => EXAMPLE_CONVERSATIONS[i % EXAMPLE_CONVERSATIONS.length]!.subject
+      )
+    }
     const emails = this.content.generateRealisticEmails(this.scenario.scales.threads)
     return emails.map((email) => email.subject)
+  }
+
+  /** getExampleConversationForIndex returns the scripted thread content at a given thread index. */
+  private getExampleConversationForIndex(index: number): ExampleConversation {
+    return EXAMPLE_CONVERSATIONS[index % EXAMPLE_CONVERSATIONS.length]!
   }
 
   /** generateIntegrationTypes creates realistic integration types. */

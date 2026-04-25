@@ -732,7 +732,7 @@ export class ThreadQueryService {
         eq(schema.Thread.organizationId, this.organizationId)
       ),
       with: {
-        integration: { columns: { provider: true } },
+        integration: { columns: { provider: true, isExample: true } },
       },
     })
 
@@ -857,6 +857,7 @@ export class ThreadQueryService {
           participantCount: t.participantCount,
           integrationId: t.integrationId,
           integrationProvider: (t.integration?.provider as ChannelProvider) ?? null,
+          integrationIsExample: t.integration?.isExample ?? false,
           assigneeId: t.assigneeId ? toActorId('user', t.assigneeId) : null,
           latestMessageId: t.latestMessageId ?? null,
           latestCommentId: t.latestCommentId ?? null,

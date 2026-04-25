@@ -92,6 +92,8 @@ export interface ThreadMeta {
   // Foreign keys (IDs only - frontend resolves via separate stores)
   integrationId: string
   integrationProvider: ChannelProvider | null
+  /** True when the thread belongs to an example (seeded) integration that can't actually send. */
+  integrationIsExample: boolean
 
   /**
    * Assignee as branded ActorId string (e.g., "user:abc123").

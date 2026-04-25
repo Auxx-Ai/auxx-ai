@@ -265,6 +265,15 @@ export function ThreadProvider({
       },
 
       openReplyBox: (mode: EditorMode | 'generic', message?: any) => {
+        // Example threads belong to a seeded placeholder integration that can't
+        // actually send — short-circuit and surface the inline banner instead.
+        if (thread?.integrationIsExample) {
+          toastError({
+            title: 'This is example data',
+            description: 'Connect a real inbox to send replies.',
+          })
+          return
+        }
         if (mode === 'generic') {
           handleShowGenericReply()
         } else if (message) {

@@ -8,6 +8,7 @@ export type SeedingScenarioName =
   | 'screenshot'
   | 'performance'
   | 'demo'
+  | 'example'
   | 'superadmin-test'
 
 /** AuthSeederResult captures authentication entities shared with downstream refinements. */
@@ -103,6 +104,8 @@ export interface ScenarioScales {
   tickets: number
   /** datasets indicates how many knowledge base datasets to create. */
   datasets?: number
+  /** workflows indicates how many workflows to instantiate from public templates. */
+  workflows?: number
 }
 
 /** ScenarioFeatures toggles optional features for a scenario. */
@@ -160,6 +163,8 @@ export interface SeedingScenarioDefinition {
   features: ScenarioFeatures
   /** dataQuality captures narrative and realism settings. */
   dataQuality: ScenarioDataQuality
+  /** isExample marks rows as starter data visible to real users — adds [Example] prefix to user-visible names. */
+  isExample?: boolean
   /** performance optionally stores scenario-specific performance flags. */
   performance?: {
     /** batchSize configures streaming/batch insertion sizing. */
