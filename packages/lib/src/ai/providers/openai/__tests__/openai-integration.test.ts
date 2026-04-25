@@ -20,6 +20,8 @@ import { OpenAILLMClient } from '../openai-llm-client'
 
 /** Models to test — covers each family/class without exhaustive enumeration */
 const REPRESENTATIVE_MODELS = [
+  'gpt-5.5', // GPT-5.5 frontier, conditional reasoning, vision, tools
+  'gpt-5.5-pro', // GPT-5.5 Pro, pro-only reasoning, structured: false
   'gpt-5.4-nano', // GPT-5.4 (cheapest, fast)
   'gpt-5.4-mini', // GPT-5.4 mid-tier
   'gpt-4.1-nano', // GPT-4.1 (non-reasoning baseline)
