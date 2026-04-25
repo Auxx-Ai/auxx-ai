@@ -3,25 +3,21 @@
 
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
 import { BLOCKED_SUBSCRIPTION_STATUSES } from '@auxx/types/billing'
-import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import type { ReactNode } from 'react'
 import { ChannelProvider } from '~/components/channels/providers/channel-provider'
 import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
-import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
+import { AuxxAppProviders } from '~/components/global/auxx-app-providers'
 import { Dashboard } from '~/components/global/dashboard'
 import { GlobalCreateRoot } from '~/components/global-create/global-create-root'
 import KBar from '~/components/kbar'
 import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { FloatingComposeRoot } from '~/components/mail/email-editor/floating-compose-root'
-import { ResourceProvider } from '~/components/resources'
-import { useResourceSync } from '~/components/resources/hooks/use-resource-sync'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
 import { FloatingTaskRoot } from '~/components/tasks/ui/floating-task-root'
 import { ThreadDataProvider } from '~/components/threads'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
-import { useRealtimeLifecycle } from '~/realtime/use-realtime-lifecycle'
 
 interface AppLayoutWrapperProps {
   children: ReactNode
@@ -70,30 +66,21 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
     )
   }
 
-  // Drive realtime adapter lifecycle (connect/disconnect/org subscribe)
-  useRealtimeLifecycle()
-  // Subscribe to real-time resource events and feed into stores
-  useResourceSync()
-
-  // Show normal dashboard for active subscriptions
+  // Active subscription — wrap chrome around the shared provider stack.
   return (
     <ViewStoreProvider>
-      <ResourceProvider>
+      <AuxxAppProviders>
         <ChannelProvider>
-          <FilesystemProvider>
-            <ThreadDataProvider>
-              <KBar>
-                <TooltipProvider>
-                  <Dashboard user={user}>{children}</Dashboard>
-                  <FloatingComposeRoot />
-                  <FloatingTaskRoot />
-                  <GlobalCreateRoot />
-                </TooltipProvider>
-              </KBar>
-            </ThreadDataProvider>
-          </FilesystemProvider>
+          <ThreadDataProvider>
+            <KBar>
+              <Dashboard user={user}>{children}</Dashboard>
+              <FloatingComposeRoot />
+              <FloatingTaskRoot />
+              <GlobalCreateRoot />
+            </KBar>
+          </ThreadDataProvider>
         </ChannelProvider>
-      </ResourceProvider>
+      </AuxxAppProviders>
     </ViewStoreProvider>
   )
 }

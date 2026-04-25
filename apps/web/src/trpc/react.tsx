@@ -1,3 +1,4 @@
+// apps/web/src/trpc/react.tsx
 'use client'
 
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -43,6 +44,13 @@ export type RouterInputs = inferRouterInputs<AppRouter>
  */
 export type RouterOutputs = inferRouterOutputs<AppRouter>
 
+/** Read the extension embed bearer token injected by `/embed/*` pages. */
+function getEmbedToken(): string | null {
+  if (typeof window === 'undefined') return null
+  if (!window.location.pathname.startsWith('/embed/')) return null
+  return ((window as Window & { AUXX_EMBED_TOKEN?: string }).AUXX_EMBED_TOKEN ?? null) || null
+}
+
 export function TRPCReactProvider(props: { children: React.ReactNode }) {
   const queryClient = getQueryClient()
 
@@ -63,6 +71,10 @@ export function TRPCReactProvider(props: { children: React.ReactNode }) {
             const socketId = getRealtimeSocketId()
             if (socketId) {
               headers.set('x-realtime-socket-id', socketId)
+            }
+            const embedToken = getEmbedToken()
+            if (embedToken) {
+              headers.set('authorization', `Bearer ${embedToken}`)
             }
             return headers
           },
@@ -85,6 +97,7 @@ export function TRPCReactProvider(props: { children: React.ReactNode }) {
   )
 }
 
+/** Resolve the base URL for browser, deployed server, and local server contexts. */
 function getBaseUrl() {
   if (typeof window !== 'undefined') return window.location.origin
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`

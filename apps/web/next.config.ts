@@ -63,26 +63,48 @@ const nextConfig = {
     root: path.join(dirName, '../..'),
   },
   async headers() {
-    return [
+    // HSTS must NEVER be served on http://localhost during dev — once the
+    // browser caches it, every subsequent http://localhost request gets
+    // force-upgraded to https, the dev server (http only) returns nothing,
+    // and you get "localhost refused to connect" until you flush the policy
+    // at chrome://net-internals/#hsts.
+    const isProduction = process.env.NODE_ENV === 'production'
+
+    // Shared baseline headers (safe to apply everywhere, including /embed)
+    const baselineHeaders = [
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      ...(isProduction
+        ? [
+            {
+              key: 'Strict-Transport-Security',
+              value: 'max-age=31536000; includeSubDomains',
+            },
+          ]
+        : []),
       {
-        source: '/(.*)',
+        key: 'Permissions-Policy',
+        value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+      },
+    ]
+    return [
+      // Everything except /embed/* gets the strict no-framing policy.
+      // The extension iframe at /embed/* needs to be framed by the
+      // chrome-extension origin; CSP for that path is set in proxy.ts.
+      {
+        source: '/((?!embed/).*)',
         headers: [
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          ...baselineHeaders,
           { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          {
-            key: 'Strict-Transport-Security',
-            value: 'max-age=31536000; includeSubDomains',
-          },
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
-          },
           {
             key: 'Content-Security-Policy',
             value: "frame-ancestors 'none'; upgrade-insecure-requests",
           },
         ],
+      },
+      {
+        source: '/embed/:path*',
+        headers: baselineHeaders,
       },
     ]
   },
