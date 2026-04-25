@@ -2,7 +2,6 @@
 'use client'
 
 import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditions/client'
-import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -103,8 +102,12 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
       if (viewMode === 'edit') {
         event.preventDefault()
-        toggleSelection(threadId)
-        setActiveThread(threadId)
+        if (event.shiftKey && selectionAnchorId) {
+          selectRange(selectionAnchorId, threadId, threadIds)
+        } else {
+          toggleSelection(threadId)
+        }
+        setSelectionAnchor(threadId)
       } else {
         handleThreadClick(threadId, event)
         if (isUnread) {
@@ -112,7 +115,18 @@ export const CompactThreadItem = memo(function CompactThreadItem({
         }
       }
     },
-    [handleThreadClick, threadId, markAsRead, isUnread, viewMode, toggleSelection, setActiveThread]
+    [
+      handleThreadClick,
+      threadId,
+      threadIds,
+      markAsRead,
+      isUnread,
+      viewMode,
+      toggleSelection,
+      selectRange,
+      setSelectionAnchor,
+      selectionAnchorId,
+    ]
   )
 
   const formattedDate = useMemo(() => {
@@ -311,10 +325,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                   }
                   update={update}
                   isUpdating={isUpdating}
-                  onOpenChange={(open) => {
-                    setIsMenuOpen(open)
-                    if (!open) setIsHovered(false)
-                  }}
+                  onOpenChange={setIsMenuOpen}
                 />
               </div>
               <span className='text-xs text-muted-foreground w-16 text-right'>{formattedDate}</span>

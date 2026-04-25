@@ -60,12 +60,13 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
   const { thread, isLoading, isNotFound } = useThread({ threadId })
   const { isUnread, markAsRead } = useThreadReadStatus(threadId)
 
-  // Mark thread as read when displayed
+  // Mark thread as read when displayed. Skip in edit mode — the thread isn't
+  // rendered, the user is just multi-selecting.
   useEffect(() => {
-    if (threadId && isUnread) {
+    if (threadId && isUnread && viewMode !== 'edit') {
       markAsRead()
     }
-  }, [threadId, isUnread, markAsRead])
+  }, [threadId, isUnread, markAsRead, viewMode])
 
   // BulkActionToolbar is self-managing (renders only when it has selection / edit mode).
   // The detail pane follows the *active* thread: whenever the user has opened one,
@@ -80,7 +81,7 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
   return (
     <div className='flex h-full flex-col flex-1'>
       <BulkActionToolbar />
-      {thread ? (
+      {thread && viewMode !== 'edit' ? (
         isChatThread(thread.integrationProvider) ? (
           <ChatInterface
             threadId={thread.id}
