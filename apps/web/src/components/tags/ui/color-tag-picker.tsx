@@ -13,12 +13,17 @@ import { Check } from 'lucide-react'
 interface ColorPickerProps {
   value: SelectOptionColor
   onChange: (value: SelectOptionColor) => void
+  disabled?: boolean
 }
 
 /** ColorTagPicker component for selecting from predefined named colors */
-function ColorTagPicker({ onChange, value }: ColorPickerProps) {
+function ColorTagPicker({ onChange, value, disabled = false }: ColorPickerProps) {
   return (
-    <div className='flex flex-wrap items-center gap-2'>
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-2',
+        disabled && 'opacity-60 pointer-events-none'
+      )}>
       {OPTION_COLORS.map((color) => {
         const isSelected = value === color.id
         return (
@@ -31,6 +36,7 @@ function ColorTagPicker({ onChange, value }: ColorPickerProps) {
             )}
             onClick={() => onChange(color.id)}
             type='button'
+            disabled={disabled}
             aria-label={`Select ${color.label}`}>
             {isSelected && <Check className='size-4 text-white' />}
           </button>
@@ -45,17 +51,19 @@ export function FormColorTagPicker({
   value = DEFAULT_SELECT_OPTION_COLOR,
   onChange,
   onBlur,
+  disabled = false,
   ...props
 }: Omit<ColorPickerProps, 'value' | 'onChange'> & {
   value?: SelectOptionColor
   onChange?: (value: SelectOptionColor) => void
   onBlur?: () => void
+  disabled?: boolean
 }) {
   const handleChange = (color: SelectOptionColor) => {
     onChange?.(color)
   }
 
-  return <ColorTagPicker value={value} onChange={handleChange} {...props} />
+  return <ColorTagPicker value={value} onChange={handleChange} disabled={disabled} {...props} />
 }
 
 export { ColorTagPicker }

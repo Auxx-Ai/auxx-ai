@@ -213,7 +213,6 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'is_system_tag',
     systemSortOrder: 'a8',
     showInPanel: false,
-    dbColumn: 'isSystemTag',
     nullable: false,
     defaultValue: false,
     capabilities: {

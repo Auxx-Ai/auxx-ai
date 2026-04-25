@@ -78,6 +78,12 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
   // Fetch tag hierarchy for parent selection (includes fields map for saving)
   const { hierarchy, flatTags, tagMap, fields, entityDefinitionId, refresh } = useTagHierarchy()
 
+  // System tags are read-only: server rejects edits via field-hooks guard, and
+  // the dialog disables inputs + hides the save button as a UX safety net.
+  const isSystemTag =
+    isEditing && editingInstanceId ? tagMap.get(editingInstanceId)?.isSystemTag === true : false
+  const isReadOnly = isSystemTag
+
   // Track if dialog has been initialized
   const isInitialized = useRef(false)
 
@@ -280,13 +286,23 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size='sm' position='tc'>
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Tag' : 'Create New Tag'}</DialogTitle>
+          <DialogTitle>
+            {isReadOnly ? 'System Tag' : isEditing ? 'Edit Tag' : 'Create New Tag'}
+          </DialogTitle>
           <DialogDescription>
-            {isEditing
-              ? "Update this tag's details below."
-              : 'Fill out the form below to create a new tag.'}
+            {isReadOnly
+              ? 'Managed by Auxx — read-only.'
+              : isEditing
+                ? "Update this tag's details below."
+                : 'Fill out the form below to create a new tag.'}
           </DialogDescription>
         </DialogHeader>
+
+        {isReadOnly && (
+          <div className='rounded-md bg-amber-100 border border-amber-300 px-3 py-2 text-sm text-amber-900'>
+            This is a system tag. It cannot be modified or deleted.
+          </div>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)}>
@@ -304,7 +320,11 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                             value={field.value || ''}
                             onChange={field.onChange}
                             modal={false}>
-                            <Button variant='outline' size='icon' className='mt-px rounded-full'>
+                            <Button
+                              variant='outline'
+                              size='icon'
+                              className='mt-px rounded-full'
+                              disabled={isReadOnly}>
                               {field.value || <Tag />}
                             </Button>
                           </FormEmojiPicker>
@@ -320,7 +340,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                     render={({ field }) => (
                       <FormItem>
                         <FormControl>
-                          <Input placeholder='Tag name' {...field} />
+                          <Input placeholder='Tag name' {...field} disabled={isReadOnly} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -341,6 +361,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                         className='h-20 resize-none'
                         {...field}
                         value={field.value || ''}
+                        disabled={isReadOnly}
                       />
                     </FormControl>
                     <FormDescription>Brief description of this tag's purpose</FormDescription>
@@ -357,7 +378,11 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                   <FormItem>
                     <FormLabel>Color</FormLabel>
                     <FormControl>
-                      <FormColorTagPicker value={field.value || 'gray'} onChange={field.onChange} />
+                      <FormColorTagPicker
+                        value={field.value || 'gray'}
+                        onChange={field.onChange}
+                        disabled={isReadOnly}
+                      />
                     </FormControl>
                     <FormDescription>Choose a color for this tag</FormDescription>
                     <FormMessage />
@@ -372,7 +397,10 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Parent Tag</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ''}>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value || ''}
+                      disabled={isReadOnly}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder='No parent (root level)' />
@@ -421,24 +449,36 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
 
               {/* Right side: Action buttons */}
               <div className='flex items-center gap-2'>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant='ghost'
-                  onClick={() => onOpenChange(false)}
-                  disabled={isPending}>
-                  Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-                </Button>
-                <Button
-                  size='sm'
-                  variant='outline'
-                  type='submit'
-                  loading={isPending}
-                  loadingText={isEditing ? 'Saving...' : 'Creating...'}
-                  data-dialog-submit>
-                  {isEditing ? 'Save Changes' : 'Create Tag'}{' '}
-                  <KbdSubmit variant='outline' size='sm' />
-                </Button>
+                {isReadOnly ? (
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant='outline'
+                    onClick={() => onOpenChange(false)}>
+                    Close <Kbd shortcut='esc' variant='outline' size='sm' />
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant='ghost'
+                      onClick={() => onOpenChange(false)}
+                      disabled={isPending}>
+                      Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+                    </Button>
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      type='submit'
+                      loading={isPending}
+                      loadingText={isEditing ? 'Saving...' : 'Creating...'}
+                      data-dialog-submit>
+                      {isEditing ? 'Save Changes' : 'Create Tag'}{' '}
+                      <KbdSubmit variant='outline' size='sm' />
+                    </Button>
+                  </>
+                )}
               </div>
             </DialogFooter>
           </form>

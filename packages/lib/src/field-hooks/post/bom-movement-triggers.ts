@@ -65,18 +65,22 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
     return
   }
 
-  // Flatten to leaf targets (in-memory)
-  const leafTargets = getDeductionTargets(partInstanceId, quantity, subpartGraph)
+  // Flatten to descendant targets (in-memory). The root is excluded — the
+  // user-submitted parent movement itself counts as the root's deduction.
+  const targets = getDeductionTargets(partInstanceId, quantity, subpartGraph)
 
-  if (leafTargets.length === 0) {
-    logger.warn('BOM explosion produced no leaf targets', { partInstanceId })
+  if (targets.length === 0) {
+    logger.warn('BOM explosion produced no descendant targets', { partInstanceId })
+    // Parent movement is the root's deduction — clear flag and recalc root.
+    await clearAdjustSubpartsFlag(organizationId, entityInstanceId)
+    await batchRecalculateQoH(organizationId, [partInstanceId])
     return
   }
 
-  logger.info('Exploding BOM movement to leaf parts', {
+  logger.info('Exploding BOM movement to descendant parts', {
     parentPart: partInstanceId,
     parentQuantity: quantity,
-    leafCount: leafTargets.length,
+    descendantCount: targets.length,
   })
 
   // Resolve IDs from cache (0 DB calls)
@@ -103,7 +107,7 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
   const insertedInstances = await database
     .insert(schema.EntityInstance)
     .values(
-      leafTargets.map(() => ({
+      targets.map(() => ({
         entityDefinitionId: stockMovementDefId,
         organizationId,
         createdById: userId || null,
@@ -115,8 +119,8 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
   // ── Batch INSERT: FieldValue rows (1 query) ──
   const fieldValueRows: Array<typeof schema.FieldValue.$inferInsert> = []
 
-  for (let i = 0; i < leafTargets.length; i++) {
-    const target = leafTargets[i]!
+  for (let i = 0; i < targets.length; i++) {
+    const target = targets[i]!
     const instanceId = insertedInstances[i]!.id
 
     // Define typed values for this child movement
@@ -176,15 +180,19 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
 
   await database.insert(schema.FieldValue).values(fieldValueRows)
 
-  // ── Batch recalculate QoH for all affected leaf parts ──
-  await batchRecalculateQoH(
-    organizationId,
-    leafTargets.map((t) => t.partInstanceId)
-  )
+  // Now that descendant movements are in place, clear the flag on the parent
+  // movement so it counts toward the root part's QoH directly.
+  await clearAdjustSubpartsFlag(organizationId, entityInstanceId)
+
+  // ── Batch recalculate QoH for the root part + all affected descendants ──
+  await batchRecalculateQoH(organizationId, [
+    partInstanceId,
+    ...targets.map((t) => t.partInstanceId),
+  ])
 
   logger.info('BOM explosion complete', {
     parentMovement: entityInstanceId,
-    childMovementsCreated: leafTargets.length,
+    childMovementsCreated: targets.length,
   })
 }
 
@@ -293,8 +301,10 @@ async function loadSubpartGraph(
 // ─── Leaf Target Calculation ───────────────────────────────────────────
 
 /**
- * Walk the BOM graph from root and collect all parts with multiplied quantities.
- * Both intermediate and leaf nodes are included (all have tracked inventory).
+ * Walk the BOM graph from root and collect all DESCENDANT parts with multiplied
+ * quantities. The root itself is excluded — the user-submitted parent movement
+ * already accounts for the root's deduction. Both intermediate and leaf
+ * descendants are included (all have tracked inventory).
  * Includes circular reference detection via visited Set and maxDepth safeguard.
  */
 function getDeductionTargets(
@@ -302,7 +312,8 @@ function getDeductionTargets(
   rootQuantity: number,
   graph: Map<string, { childId: string; qty: number }[]>,
   visited: Set<string> = new Set(),
-  depth: number = 0
+  depth: number = 0,
+  isRoot: boolean = true
 ): { partInstanceId: string; quantity: number }[] {
   // Circular reference protection — same pattern as cost-calculator.ts
   if (visited.has(rootPartId)) {
@@ -319,25 +330,32 @@ function getDeductionTargets(
       partId: rootPartId,
       depth,
     })
-    return [{ partInstanceId: rootPartId, quantity: rootQuantity }]
+    return isRoot ? [] : [{ partInstanceId: rootPartId, quantity: rootQuantity }]
   }
 
   visited.add(rootPartId)
 
   const children = graph.get(rootPartId)
 
-  // No children = leaf node, just return this part
+  // No children = leaf node. Skip if this is the root (parent movement covers it).
   if (!children || children.length === 0) {
-    return [{ partInstanceId: rootPartId, quantity: rootQuantity }]
+    return isRoot ? [] : [{ partInstanceId: rootPartId, quantity: rootQuantity }]
   }
 
-  // Has children = include this intermediate node AND recurse into children
-  const targets: { partInstanceId: string; quantity: number }[] = [
-    { partInstanceId: rootPartId, quantity: rootQuantity },
-  ]
+  // Has children = include this node (unless it's the root) AND recurse into children
+  const targets: { partInstanceId: string; quantity: number }[] = isRoot
+    ? []
+    : [{ partInstanceId: rootPartId, quantity: rootQuantity }]
   for (const child of children) {
     targets.push(
-      ...getDeductionTargets(child.childId, rootQuantity * child.qty, graph, visited, depth + 1)
+      ...getDeductionTargets(
+        child.childId,
+        rootQuantity * child.qty,
+        graph,
+        visited,
+        depth + 1,
+        false
+      )
     )
   }
 
