@@ -1,0 +1,1 @@
+ALTER TABLE "Integration" ADD COLUMN "is_example" boolean DEFAULT false NOT NULL;

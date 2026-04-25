@@ -1268,6 +1268,20 @@ export const adminRouter = createTRPCRouter({
         message: `Successfully updated feature limits for ${plansUpdated} plans`,
       }
     }),
+
+    /**
+     * Seed the bundled public WorkflowTemplate rows. Idempotent — matches on name
+     * and updates in place, so it's safe to re-run after deploys.
+     */
+    seedWorkflowTemplates: superAdminProcedure.mutation(async ({ ctx }) => {
+      const { WorkflowTemplateDomain } = await import('@auxx/seed')
+      const templateDomain = new WorkflowTemplateDomain()
+      await templateDomain.insertDirectly(ctx.db)
+      return {
+        success: true,
+        message: 'Workflow templates seeded',
+      }
+    }),
   }),
 
   /**

@@ -441,19 +441,17 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
   }
 
   return (
-    <div className='sticky top-0 py-3 z-10 h-10 sm:mr-3 flex flex-row items-center justify-between pl-4 bg-secondary dark:bg-background sm:dark:bg-muted-50 mask-b-from-80% mask-b-to-100%'>
+    <div className='sticky top-0 py-3 z-10 h-10 sm:mr-3 flex flex-row items-center justify-between pl-1 bg-secondary dark:bg-background sm:dark:bg-muted-50 mask-b-from-80% mask-b-to-100%'>
       <div className='flex items-center justify-start flex-row gap-2'>
         <div className='flex items-center justify-center rounded-full font-medium transition-colors text-xs py-0 w-[97px]'>
-          {viewMode === 'edit' && (
-            <div
-              className='ps-3 pe-2 border border-r-0 h-6 rounded-full rounded-r-none flex items-center justify-center cursor-pointer hover:bg-foreground/10'
-              onClick={handleSelectAll}>
-              <Checkbox
-                checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-                className='pointer-events-none'
-              />
-            </div>
-          )}
+          <div
+            className='ps-2 pe-2 border border-r-0 h-6 rounded-full rounded-r-none flex items-center justify-center cursor-pointer hover:bg-foreground/10'
+            onClick={handleSelectAll}>
+            <Checkbox
+              checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+              className='pointer-events-none'
+            />
+          </div>
 
           <Button
             variant='ghost'
@@ -461,13 +459,13 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
             onClick={() => handleViewModeChange(viewMode === 'edit' ? 'view' : 'edit')}
             className={cn(
               'border h-6 flex text-muted-foreground px-2 hover:bg-foreground/10 flex-1',
-              viewMode === 'edit' ? 'rounded-full rounded-l-none' : 'rounded-full'
+              'rounded-full rounded-l-none'
             )}>
             {viewMode === 'edit' ? 'Edit' : 'View'}
             <ChevronDown className='size-3 ml-auto' />
           </Button>
         </div>
-        {viewMode === 'edit' && selectedCount > 0 && (
+        {selectedCount > 0 && (
           <div className='px-2 flex items-center border bg-red-400 dark:bg-bad-300 border-black/5 h-5.5 rounded-full text-xs text-white'>
             {selectedCount}
           </div>

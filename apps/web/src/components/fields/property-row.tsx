@@ -163,8 +163,11 @@ function EmptyField() {
  */
 function GeneratingField() {
   return (
-    <div className='rounded-lg px-1 overflow-hidden h-auto min-h-[28px] flex items-center'>
-      <AiGeneratingIndicator className='whitespace-nowrap py-[2px]' />
+    <div className='relative rounded-lg px-1 overflow-hidden h-auto min-h-[28px] flex items-center w-full'>
+      {/* <div className='pointer-events-none absolute inset-0 scale-100 opacity-75 blur-lg transition-all duration-300 dark:opacity-50'>
+        <div className='bg-linear-to-r/increasing animate-hue-rotate absolute inset-x-6 inset-y-3 from-pink-400 to-purple-400' />
+      </div> */}
+      <AiGeneratingIndicator className='relative z-10 whitespace-nowrap py-[2px]' />
     </div>
   )
 }

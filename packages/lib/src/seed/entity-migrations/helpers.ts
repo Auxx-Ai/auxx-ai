@@ -23,11 +23,25 @@ const logger = createScopedLogger('entity-migrations:helpers')
 interface ExistingState {
   /** EntityDefinitions keyed by entityType */
   entityDefs: Map<string, { id: string; entityType: string }>
-  /** CustomFields keyed by systemAttribute */
+  /**
+   * CustomFields keyed by `${entityDefinitionId}:${systemAttribute}`.
+   * Scoped by entity definition because multiple entities may share a
+   * systemAttribute (e.g. `external_id` on thread, contact, and company).
+   * Use `fieldKey()` to construct lookup keys.
+   */
   fields: Map<
     string,
     { id: string; systemAttribute: string; entityDefinitionId: string; options: FieldOptions }
   >
+}
+
+/**
+ * Build the composite key used by `ExistingState.fields`.
+ * Callers that know `(entityDefinitionId, systemAttribute)` should use
+ * this rather than hand-rolling the template literal.
+ */
+export function fieldKey(entityDefinitionId: string, systemAttribute: string): string {
+  return `${entityDefinitionId}:${systemAttribute}`
 }
 
 interface CreatedState {
@@ -72,9 +86,12 @@ export async function loadExistingState(
     ),
     fields: new Map(
       fields
-        .filter((f): f is typeof f & { systemAttribute: string } => f.systemAttribute != null)
+        .filter(
+          (f): f is typeof f & { systemAttribute: string; entityDefinitionId: string } =>
+            f.systemAttribute != null && f.entityDefinitionId != null
+        )
         .map((f) => [
-          f.systemAttribute,
+          fieldKey(f.entityDefinitionId, f.systemAttribute),
           {
             id: f.id,
             systemAttribute: f.systemAttribute,
@@ -164,7 +181,7 @@ export async function ensureCustomFields(
     if (!shouldCreateField(field, ENTITY_INSTANCE_COLUMNS)) continue
 
     const key = `${entityType}:${field.id}`
-    const existingField = existing.fields.get(field.systemAttribute!)
+    const existingField = existing.fields.get(fieldKey(entityDefId, field.systemAttribute!))
 
     if (existingField) {
       fieldMap.set(key, {

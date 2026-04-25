@@ -121,6 +121,26 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     description: 'Registrable domain used to auto-link contacts by email. Unique per organization.',
   },
 
+  xFollowerCount: {
+    id: toFieldId('xFollowerCount'),
+    key: 'xFollowerCount',
+    label: 'X Followers',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'company_x_follower_count',
+    systemSortOrder: 'a3c',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Enter X follower count',
+  },
+
   industry: {
     id: toFieldId('industry'),
     key: 'industry',
@@ -206,6 +226,34 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter annual revenue',
+  },
+
+  fundingRaised: {
+    id: toFieldId('fundingRaised'),
+    key: 'fundingRaised',
+    label: 'Funding Raised',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'company_funding_raised',
+    systemSortOrder: 'a6a',
+    nullable: true,
+    options: {
+      currency: {
+        currencyCode: 'USD',
+        decimalPlaces: 'two-places',
+        displayType: 'symbol',
+        groups: 'default',
+      },
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Enter total funding raised',
   },
 
   founded: {

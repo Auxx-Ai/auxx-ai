@@ -1,10 +1,12 @@
 // apps/extension/src/iframe/routes/root-route.tsx
 
 import { Button } from '@auxx/ui/components/button'
-import { useCallback, useEffect, useState } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PageOperation } from '../../lib/messaging'
 import type { ParsedCompany, ParsedPerson, ParseResult } from '../../lib/parsers/types'
 import { ParsedCard } from '../components/parsed-card'
+import { useRouteStack } from '../hooks/use-route-stack'
 import {
   BASE_URL,
   createRecord,
@@ -15,6 +17,7 @@ import {
   TrpcCallError,
   uploadAvatarFromUrl,
 } from '../trpc'
+import { instanceIdFromRecordId } from './types'
 
 /**
  * The capture-from-this-page flow. Lives inside the iframe shell's main
@@ -49,14 +52,29 @@ type Phase =
       person: ParsedPerson | null
       company: ParsedCompany | null
       /**
-       * Set when a prior capture of this same URL exists — either as a contact
-       * OR a company, since the "Save as" buttons let the user pick either.
-       * `entityType` is the one we actually found (may differ from
-       * `target.entityType`), used to build the correct deep link.
+       * All existing records matching the parse identity, across both
+       * contact and company. Folk's "N similar found" list — clicking a
+       * row pushes the corresponding detail route. Sorted with same-
+       * entity-type-as-target hits first so the most likely hit shows up
+       * top.
        */
-      existingMatch: { recordId: string; entityType: EntityType } | null
+      existingMatches: ExistingMatch[]
+      /**
+       * Lookup status. `loading` after parse but before the
+       * `record.lookupByField` round-trip resolves. We need this
+       * distinct from "loaded with zero matches" so the view doesn't
+       * briefly render the capture form (no matches → ReadyToSaveView)
+       * before the matches arrive — which is what produced the
+       * "flash of Add-anyway view on back-navigation" bug.
+       */
+      matchesStatus: 'loading' | 'loaded'
+      /**
+       * Which Save button is mid-flight, if any. Drives the per-button
+       * `loading` state without flipping the whole panel into the
+       * "parsing" phase (which would unmount the parsed card).
+       */
+      savingAs: EntityType | null
     }
-  | { kind: 'saved'; entityType: EntityType; recordId: string }
   | { kind: 'needs-fb-contact-info'; profileUrl: string }
   | { kind: 'error'; message: string }
 
@@ -250,10 +268,35 @@ function detectTarget(url: string | undefined): Target | null {
   }
 }
 
-async function readActiveTab(): Promise<chrome.tabs.Tab | null> {
+/**
+ * The iframe's own tab id, written into `iframe.src` as `?tabId=N` by the
+ * MAIN-world inject script (see `background.ts`). Captured at module load
+ * because window.location is fixed for the iframe's lifetime.
+ *
+ * Reading the iframe's *own* tab — instead of `chrome.tabs.query({active})`
+ * — is what keeps a background-tab iframe from re-rendering with the
+ * focused tab's URL when something else triggers a re-boot.
+ */
+const OWN_TAB_ID: number | null = (() => {
+  const raw = new URLSearchParams(window.location.search).get('tabId')
+  if (!raw) return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+})()
+
+async function readOwnTab(): Promise<chrome.tabs.Tab | null> {
+  if (OWN_TAB_ID === null) {
+    // Fallback for older injected frames (no tabId param) — preserves the
+    // prior behaviour. Should be unreachable in practice once users reload.
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+      return tab ?? null
+    } catch {
+      return null
+    }
+  }
   try {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-    return tab ?? null
+    return await chrome.tabs.get(OWN_TAB_ID)
   } catch {
     return null
   }
@@ -279,9 +322,14 @@ async function invokeOnPage<T = unknown>(operation: PageOperation): Promise<T | 
 
 function buildContactFieldValues(person: ParsedPerson): Record<string, unknown> {
   return {
+    // full_name is FieldType.NAME — a server-derived view over first_name +
+    // last_name (see field-value-helpers.ts resolveNameFieldDisplayValue /
+    // field-value-queries.ts NAME hydration). Writing to it directly would
+    // fail validation (NAME expects { firstName, lastName }, not a string),
+    // and it's redundant — setting first/last populates the displayName
+    // column and synthesises the NAME value on read.
     first_name: person.firstName,
     last_name: person.lastName,
-    full_name: person.fullName,
     primary_email: person.primaryEmail,
     phone: person.phone,
     notes: person.notes,
@@ -299,6 +347,7 @@ function buildCompanyFieldValues(company: ParsedCompany): Record<string, unknown
     company_name: company.name,
     company_domain: company.domain,
     company_notes: company.notes,
+    company_x_follower_count: company.xFollowerCount,
     // externalId is multi-value — see buildContactFieldValues.
     external_id: [company.externalId],
     // company_logo is a FILE field — populated separately via
@@ -322,6 +371,7 @@ function personToCompany(person: ParsedPerson | null): ParsedCompany | null {
     avatarUrl: person.avatarUrl,
     notes: person.notes,
     externalId: person.externalId,
+    xFollowerCount: person.xFollowerCount,
   }
 }
 
@@ -370,18 +420,25 @@ async function buildAvatarFieldValue(
 // primary_email / company_domain as a wider-net fallback. See
 // plans/folk/21-record-lookup-by-field.md §"Wire shape" for why we send
 // the whole list in one call rather than two serial searches.
+//
+// Limit raised to 5 so the iframe can show folk's "N similar found" list
+// instead of pretending the first hit is the only one.
+
+const LOOKUP_LIMIT = 5
 
 /**
- * `lookupByField` returns a composite RecordId (`contact:abc123`); the detail
- * routes (`/app/contacts/[contactId]`) take the bare instance id. Strip the
- * entity prefix so deep-links resolve instead of falling through to root.
+ * One existing-match row for the "N similar found" list. Carries the
+ * composite recordId (what `record.getById` takes) plus the entity type so
+ * the click handler can push the right route variant without re-deriving
+ * either from the recordId's entity-definition prefix.
  */
-function instanceIdFromRecordId(recordId: string): string {
-  const colon = recordId.indexOf(':')
-  return colon === -1 ? recordId : recordId.slice(colon + 1)
+type ExistingMatch = {
+  recordId: string
+  entityType: EntityType
+  matchedBy: { systemAttribute: string; value: string }
 }
 
-async function findExistingByPerson(person: ParsedPerson): Promise<string | null> {
+async function findExistingByPerson(person: ParsedPerson): Promise<ExistingMatch[]> {
   const candidates: LookupByFieldCandidate[] = [
     { systemAttribute: 'external_id', value: person.externalId },
   ]
@@ -389,15 +446,25 @@ async function findExistingByPerson(person: ParsedPerson): Promise<string | null
     candidates.push({ systemAttribute: 'primary_email', value: person.primaryEmail })
   }
   try {
-    const result = await lookupByField({ entityDefinitionId: 'contact', candidates })
-    const hit = result.items[0]?.recordId
-    return hit ? instanceIdFromRecordId(hit) : null
+    const result = await lookupByField({
+      entityDefinitionId: 'contact',
+      candidates,
+      limit: LOOKUP_LIMIT,
+    })
+    return result.items.map((item) => ({
+      recordId: item.recordId,
+      entityType: 'contact',
+      matchedBy: {
+        systemAttribute: item.matchedBy.systemAttribute,
+        value: String(item.matchedBy.value ?? ''),
+      },
+    }))
   } catch {
-    return null
+    return []
   }
 }
 
-async function findExistingByCompany(company: ParsedCompany): Promise<string | null> {
+async function findExistingByCompany(company: ParsedCompany): Promise<ExistingMatch[]> {
   const candidates: LookupByFieldCandidate[] = [
     { systemAttribute: 'external_id', value: company.externalId },
   ]
@@ -405,16 +472,26 @@ async function findExistingByCompany(company: ParsedCompany): Promise<string | n
     candidates.push({ systemAttribute: 'company_domain', value: company.domain })
   }
   try {
-    const result = await lookupByField({ entityDefinitionId: 'company', candidates })
-    const hit = result.items[0]?.recordId
-    return hit ? instanceIdFromRecordId(hit) : null
+    const result = await lookupByField({
+      entityDefinitionId: 'company',
+      candidates,
+      limit: LOOKUP_LIMIT,
+    })
+    return result.items.map((item) => ({
+      recordId: item.recordId,
+      entityType: 'company',
+      matchedBy: {
+        systemAttribute: item.matchedBy.systemAttribute,
+        value: String(item.matchedBy.value ?? ''),
+      },
+    }))
   } catch {
-    return null
+    return []
   }
 }
 
 /**
- * Look up an existing record in a specific entity type, synthesizing the
+ * Look up existing records in a specific entity type, synthesizing the
  * cross-entity candidate via personToCompany / companyToPerson when the
  * parse result only carries the other shape. Twitter profiles, for
  * example, always parse as a person — but the user may have hit the
@@ -426,18 +503,19 @@ async function findExistingInEntity(
   entityType: EntityType,
   person: ParsedPerson | null,
   company: ParsedCompany | null
-): Promise<string | null> {
+): Promise<ExistingMatch[]> {
   if (entityType === 'contact') {
     const p = person ?? companyToPerson(company)
-    return p ? findExistingByPerson(p) : null
+    return p ? findExistingByPerson(p) : []
   }
   const c = company ?? personToCompany(person)
-  return c ? findExistingByCompany(c) : null
+  return c ? findExistingByCompany(c) : []
 }
 
 async function findExistingByGenericPage(page: GenericPage): Promise<string | null> {
-  // Mirror the externalId shape we write in `handleSaveGenericCompany` so the
-  // two paths dedupe against each other.
+  // Generic-site capture stays single-hit — the URL→company mapping is
+  // 1:1 (we key on hostname), so a list view would only ever have one
+  // row. Single string return preserves the existing call sites.
   const candidates: LookupByFieldCandidate[] = [
     { systemAttribute: 'external_id', value: `website:${page.hostname}` },
     { systemAttribute: 'company_domain', value: page.hostname },
@@ -466,24 +544,38 @@ type Props = {
 }
 
 export function RootRoute({ session }: Props) {
+  const { top: routeTop, push: routePush, replace: routeReplace } = useRouteStack()
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   // Bumped whenever we want to force a re-parse (session change, or the
   // `panelOpened` broadcast from the SW after the user clicks the toolbar
   // button on a different profile). Without this the boot effect sticks on
   // its first `ready` state and never picks up SPA navigation.
   const [rebootToken, setRebootToken] = useState(0)
+  // Tracks the (session, url) the boot effect last consumed so duplicate
+  // tabNavigated/panelOpened events for an unchanged URL don't re-trigger
+  // parse + reportParserHealth + lookupByField. Without this guard a
+  // single SPA pushState burst (Instagram fires several per real
+  // navigation) costs us N round-trips per burst.
+  const lastBootedKey = useRef<string | null>(null)
 
   // SW broadcasts on:
   //   - `panelOpened` — every showFrame/toggleFrame
   //   - `tabNavigated` — URL changes (including SPA pushState inside LinkedIn)
   // Either signal bumps the boot effect so we re-detect + re-parse.
+  //
+  // Both broadcasts go to every iframe in every tab via
+  // chrome.runtime.sendMessage. We must filter on tabId so a navigation
+  // in tab 4 doesn't trigger a re-parse in tab 3's iframe — without this
+  // filter, every URL change anywhere causes every open iframe to re-read
+  // the active tab and re-parse, which is what was driving the
+  // continuous lookup loop.
   useEffect(() => {
     const handler = (msg: unknown): void => {
       if (typeof msg !== 'object' || msg === null) return
-      const type = (msg as { type?: string }).type
-      if (type === 'panelOpened' || type === 'tabNavigated') {
-        setRebootToken((n) => n + 1)
-      }
+      const m = msg as { type?: string; tabId?: number }
+      if (m.type !== 'panelOpened' && m.type !== 'tabNavigated') return
+      if (OWN_TAB_ID !== null && typeof m.tabId === 'number' && m.tabId !== OWN_TAB_ID) return
+      setRebootToken((n) => n + 1)
     }
     chrome.runtime.onMessage.addListener(handler)
     return () => chrome.runtime.onMessage.removeListener(handler)
@@ -498,14 +590,22 @@ export function RootRoute({ session }: Props) {
     async function boot() {
       if (!session.signedIn) {
         setPhase({ kind: 'signed-out' })
+        lastBootedKey.current = 'signed-out'
         return
       }
       if (!session.state.organizationId) {
         setPhase({ kind: 'no-org' })
+        lastBootedKey.current = 'no-org'
         return
       }
-      const tab = await readActiveTab()
+      const tab = await readOwnTab()
       if (cancelled) return
+      // Skip when we've already booted this exact (org, url) pair —
+      // suppresses the parse/lookup storm when the SW broadcasts
+      // tabNavigated for an unchanged URL (or for a URL we just parsed).
+      const key = `${session.state.organizationId}::${tab?.url ?? ''}`
+      if (lastBootedKey.current === key) return
+      lastBootedKey.current = key
       const target = detectTarget(tab?.url)
       if (!target) {
         setPhase({ kind: 'generic-site', page: readGenericPage(tab), existingRecordId: null })
@@ -570,7 +670,9 @@ export function RootRoute({ session }: Props) {
         target: resolvedTarget,
         person,
         company,
-        existingMatch: null,
+        existingMatches: [],
+        matchesStatus: 'loading',
+        savingAs: null,
       })
 
       // Cross-entity dedup: the "Save as contact / Save as company" buttons
@@ -581,23 +683,34 @@ export function RootRoute({ session }: Props) {
       const primary = resolvedTarget.entityType
       const other: EntityType = primary === 'contact' ? 'company' : 'contact'
       const parseExternalId = person?.externalId ?? company?.externalId ?? null
+      // Don't gate on `cancelled` here — it flips to true on the normal
+      // parsing→ready transition (the cleanup below runs when phase
+      // changes), which would silently drop the lookup result. The
+      // setPhase updater already guards against stale state via
+      // `current.kind` + externalId identity checks.
       void Promise.all([
         findExistingInEntity(primary, person, company),
         findExistingInEntity(other, person, company),
-      ]).then(([primaryHit, otherHit]) => {
-        if (cancelled) return
-        const match = primaryHit
-          ? { recordId: primaryHit, entityType: primary }
-          : otherHit
-            ? { recordId: otherHit, entityType: other }
-            : null
-        if (!match) return
+      ]).then(([primaryHits, otherHits]) => {
+        // Same-entity-type hits first (matches the Save button's primary
+        // pick), then cross-entity hits. Dedup by composite recordId in
+        // case lookupByField returned the same row from both branches.
+        const merged: ExistingMatch[] = []
+        const seen = new Set<string>()
+        for (const m of [...primaryHits, ...otherHits]) {
+          if (seen.has(m.recordId)) continue
+          seen.add(m.recordId)
+          merged.push(m)
+        }
+        // Always flip matchesStatus to 'loaded' even when there are zero
+        // hits — the empty-result case is a meaningful state (capture
+        // view), distinct from "still checking" (loading state).
         setPhase((current) => {
           if (current.kind !== 'ready') return current
           const currentExternalId =
             current.person?.externalId ?? current.company?.externalId ?? null
           if (currentExternalId !== parseExternalId) return current
-          return { ...current, existingMatch: match }
+          return { ...current, existingMatches: merged, matchesStatus: 'loaded' }
         })
       })
     }
@@ -628,6 +741,29 @@ export function RootRoute({ session }: Props) {
     }
   }, [phase])
 
+  /**
+   * After a successful save, navigate to the newly-created record's
+   * detail view. If the user came via "Add anyway?" (root.capture sub-
+   * view), `replace` it so the back chevron returns to the matches root
+   * — not to a now-stale capture form. Otherwise (saved from a no-
+   * matches root.matches view, or from generic-site capture), `push`
+   * so back returns to where they were.
+   *
+   * `created.recordId` is the composite `<entityDef>:<instance>` that
+   * the detail route fetches via `record.getById`.
+   */
+  const navigateToDetail = useCallback(
+    (entityType: EntityType, recordId: string) => {
+      const target = { kind: entityType, recordId } as const
+      if (routeTop.kind === 'root' && routeTop.view === 'capture') {
+        routeReplace(target)
+      } else {
+        routePush(target)
+      }
+    },
+    [routeTop, routePush, routeReplace]
+  )
+
   const handleSaveGenericCompany = useCallback(async () => {
     if (phase.kind !== 'generic-site' || !phase.page) return
     const page = phase.page
@@ -642,7 +778,7 @@ export function RootRoute({ session }: Props) {
           external_id: [`website:${page.hostname}`],
         },
       })
-      setPhase({ kind: 'saved', entityType: 'company', recordId: created.instance.id })
+      navigateToDetail('company', created.recordId)
     } catch (err) {
       const message =
         err instanceof TrpcCallError
@@ -652,16 +788,20 @@ export function RootRoute({ session }: Props) {
             : 'Save failed.'
       setPhase({ kind: 'error', message })
     }
-  }, [phase])
+  }, [phase, navigateToDetail])
 
   const handleSaveAs = useCallback(
     async (entityType: EntityType) => {
       if (phase.kind !== 'ready') return
-      const target = phase.target
-      setPhase({ kind: 'parsing', target })
+      if (phase.savingAs) return
+      // Snapshot the ready phase so the avatar upload + create can run
+      // without us flipping back to "parsing" (which would unmount the
+      // ParsedCard and lose the in-flight `savingAs` flag).
+      const ready = phase
+      setPhase({ ...ready, savingAs: entityType })
       try {
         if (entityType === 'contact') {
-          const person = phase.person ?? companyToPerson(phase.company)
+          const person = ready.person ?? companyToPerson(ready.company)
           if (!person) {
             setPhase({ kind: 'error', message: 'Nothing to save.' })
             return
@@ -671,10 +811,10 @@ export function RootRoute({ session }: Props) {
             entityDefinitionId: 'contact',
             values: { ...buildContactFieldValues(person), ...avatarValue },
           })
-          setPhase({ kind: 'saved', entityType: 'contact', recordId: created.instance.id })
+          navigateToDetail('contact', created.recordId)
           return
         }
-        const company = phase.company ?? personToCompany(phase.person)
+        const company = ready.company ?? personToCompany(ready.person)
         if (!company) {
           setPhase({ kind: 'error', message: 'Nothing to save.' })
           return
@@ -684,7 +824,7 @@ export function RootRoute({ session }: Props) {
           entityDefinitionId: 'company',
           values: { ...buildCompanyFieldValues(company), ...avatarValue },
         })
-        setPhase({ kind: 'saved', entityType: 'company', recordId: created.instance.id })
+        navigateToDetail('company', created.recordId)
       } catch (err) {
         const message =
           err instanceof TrpcCallError
@@ -695,7 +835,7 @@ export function RootRoute({ session }: Props) {
         setPhase({ kind: 'error', message })
       }
     },
-    [phase]
+    [phase, navigateToDetail]
   )
 
   return (
@@ -770,35 +910,20 @@ function PhaseView({
           />
         )
       }
-      if (phase.existingMatch) {
-        return (
-          <SavedView
-            phase={phase}
-            recordId={phase.existingMatch.recordId}
-            entityType={phase.existingMatch.entityType}
-            heading={`Already in Auxx`}
-            cta='Open in Auxx'
-          />
-        )
+      // Defer rendering the matches/capture decision until the lookup
+      // round-trip resolves — without this, the empty-matches branch
+      // renders briefly before matches arrive (visible as a flash of
+      // the capture view on back-navigation from a detail route).
+      if (phase.matchesStatus === 'loading') {
+        return <p className='text-sm text-muted-foreground'>Checking for existing records…</p>
       }
-      return <ReadyToSaveView phase={phase} onSaveAs={onSaveAs} />
+      // Two-step UX when there are existing matches: show the "N similar
+      // found" list first (no parsed card, no save buttons) so the user
+      // doesn't accidentally double-save. They can opt into the capture
+      // view via "Add anyway?" — that path renders the parsed card +
+      // save buttons, identical to the no-matches path. Folk's flow.
+      return <ReadyView phase={phase} onSaveAs={onSaveAs} />
     }
-
-    case 'saved':
-      return (
-        <Empty
-          title='Saved to Auxx'
-          body={
-            phase.entityType === 'contact'
-              ? 'The contact is now in your workspace.'
-              : 'The company is now in your workspace.'
-          }
-          action={{
-            label: 'Open in Auxx',
-            href: recordDeepLink(phase.entityType, phase.recordId),
-          }}
-        />
-      )
 
     case 'needs-fb-contact-info':
       return (
@@ -886,6 +1011,44 @@ function GenericSiteView({
   )
 }
 
+/**
+ * Top-level switch for the `ready` phase. Reads the root sub-view off the
+ * route stack — `matches` shows the existing-matches list (default when
+ * any matches were found), `capture` shows the parsed card + save buttons
+ * (folk's "Add anyway?" path).
+ *
+ * Putting this in the route stack (instead of local useState) lets the
+ * header's back chevron handle "back to matches" for free, and pops on
+ * parse-identity change so a SPA navigation to a different profile resets
+ * to the matches list for that profile.
+ */
+function ReadyView({
+  phase,
+  onSaveAs,
+}: {
+  phase: Extract<Phase, { kind: 'ready' }>
+  onSaveAs: (entityType: EntityType) => void
+}) {
+  const { top, push, pop } = useRouteStack()
+  const parseKey = phase.person?.externalId ?? phase.company?.externalId ?? ''
+  // biome-ignore lint/correctness/useExhaustiveDependencies: parseKey is the trigger; pop/top are read live.
+  useEffect(() => {
+    if (top.kind === 'root' && top.view === 'capture') pop()
+  }, [parseKey])
+
+  const isCaptureView = top.kind === 'root' && top.view === 'capture'
+
+  if (phase.existingMatches.length > 0 && !isCaptureView) {
+    return (
+      <MatchesOnlyView
+        matches={phase.existingMatches}
+        onAddAnyway={() => push({ kind: 'root', view: 'capture' })}
+      />
+    )
+  }
+  return <ReadyToSaveView phase={phase} onSaveAs={onSaveAs} />
+}
+
 function ReadyToSaveView({
   phase,
   onSaveAs,
@@ -898,15 +1061,49 @@ function ReadyToSaveView({
   // ambiguous, so we always let the user pick.
   const primary = phase.target.entityType
   const secondary: EntityType = primary === 'contact' ? 'company' : 'contact'
+  const isSaving = phase.savingAs !== null
   return (
     <div className='space-y-4'>
       {phase.person && <ParsedCard person={phase.person} />}
       {phase.company && <ParsedCard company={phase.company} />}
-      <Button onClick={() => onSaveAs(primary)} className='w-full'>
+      <Button
+        onClick={() => onSaveAs(primary)}
+        className='w-full'
+        loading={phase.savingAs === primary}
+        loadingText={savingLabel(primary)}
+        disabled={isSaving && phase.savingAs !== primary}>
         {saveLabel(primary)}
       </Button>
-      <Button onClick={() => onSaveAs(secondary)} variant='outline' className='w-full'>
+      <Button
+        onClick={() => onSaveAs(secondary)}
+        variant='outline'
+        className='w-full'
+        loading={phase.savingAs === secondary}
+        loadingText={savingLabel(secondary)}
+        disabled={isSaving && phase.savingAs !== secondary}>
         {saveLabel(secondary)}
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * Default view when existing matches are found. Suppresses the parsed
+ * card + save buttons so the user doesn't accidentally create a
+ * duplicate. "Add anyway?" reveals the standard capture view.
+ */
+function MatchesOnlyView({
+  matches,
+  onAddAnyway,
+}: {
+  matches: ExistingMatch[]
+  onAddAnyway: () => void
+}) {
+  return (
+    <div className='space-y-4'>
+      <SimilarMatchesList matches={matches} />
+      <Button onClick={onAddAnyway} variant='outline' className='w-full'>
+        Add anyway?
       </Button>
     </div>
   )
@@ -916,29 +1113,51 @@ function saveLabel(entityType: EntityType): string {
   return entityType === 'contact' ? 'Save as contact' : 'Save as company'
 }
 
-function SavedView({
-  phase,
-  recordId,
-  entityType,
-  heading,
-  cta,
-}: {
-  phase: Extract<Phase, { kind: 'ready' }>
-  recordId: string
-  entityType: EntityType
-  heading: string
-  cta: string
-}) {
+function savingLabel(entityType: EntityType): string {
+  return entityType === 'contact' ? 'Saving contact…' : 'Saving company…'
+}
+
+/**
+ * Folk's "N similar found" list. Each row pushes the corresponding detail
+ * route, which fetches the full record via `record.getById`. The matched
+ * field's value is shown as the row label — it's the most useful identifier
+ * we have at this point in the flow (no displayName comes back from
+ * `lookupByField`); the detail view fills in the rest.
+ */
+function SimilarMatchesList({ matches }: { matches: ExistingMatch[] }) {
+  const { push } = useRouteStack()
+  const heading =
+    matches.length === 1 ? '1 similar record found' : `${matches.length} similar records found`
   return (
-    <div className='space-y-4'>
-      <h2 className='text-sm text-muted-foreground'>{heading}</h2>
-      {phase.person && <ParsedCard person={phase.person} />}
-      {phase.company && <ParsedCard company={phase.company} />}
-      <Button asChild className='w-full'>
-        <a href={recordDeepLink(entityType, recordId)} target='_blank' rel='noreferrer'>
-          {cta}
-        </a>
-      </Button>
+    <div className='space-y-2'>
+      <h3 className='text-xs font-medium text-muted-foreground'>{heading}</h3>
+      <ul className='space-y-1'>
+        {matches.map((match) => (
+          <li key={match.recordId}>
+            <button
+              type='button'
+              onClick={() =>
+                push({
+                  kind: match.entityType,
+                  recordId: match.recordId,
+                })
+              }
+              className='flex w-full items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-left text-sm transition-colors hover:bg-muted'>
+              <span className='min-w-0 flex-1'>
+                <span className='block truncate font-medium'>
+                  {match.entityType === 'contact' ? 'Contact' : 'Company'}
+                </span>
+                <span
+                  className='block truncate text-xs text-muted-foreground'
+                  title={match.matchedBy.value}>
+                  matched on {match.matchedBy.systemAttribute}: {match.matchedBy.value}
+                </span>
+              </span>
+              <ChevronRight className='size-4 shrink-0 text-muted-foreground' />
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

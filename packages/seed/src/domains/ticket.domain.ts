@@ -246,6 +246,7 @@ export class TicketDomain {
 
   /** generateTicketTitle creates type-appropriate titles. */
   private generateTicketTitle(type: string, index: number): string {
+    const prefix = this.scenario.isExample ? '[Example] ' : ''
     const titles: Record<string, string[]> = {
       GENERAL: [
         'General inquiry about services',
@@ -286,7 +287,7 @@ export class TicketDomain {
     }
 
     const typeTemplates = titles[type] || titles.GENERAL
-    return typeTemplates[index % typeTemplates.length]!
+    return `${prefix}${typeTemplates[index % typeTemplates.length]!}`
   }
 
   /** generateTicketDescription creates type-appropriate descriptions. */

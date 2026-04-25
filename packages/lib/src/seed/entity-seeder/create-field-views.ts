@@ -188,7 +188,14 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'company',
     contextType: 'panel',
     name: 'Default Panel View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'company_meetings'],
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'company_meetings',
+      'company_funding_raised',
+    ],
   },
 
   // Company table view — hide logo (avatar shown inline in table row)
@@ -196,7 +203,15 @@ const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     entityType: 'company',
     contextType: 'table',
     name: 'Default Table View',
-    excludeFields: ['id', 'created_at', 'updated_at', 'created_by_id', 'company_logo'],
+    excludeFields: [
+      'id',
+      'created_at',
+      'updated_at',
+      'created_by_id',
+      'company_logo',
+      'company_funding_raised',
+      'company_x_follower_count',
+    ],
   },
 
   // Company create dialog — minimal fields for quick creation

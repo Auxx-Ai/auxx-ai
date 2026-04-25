@@ -14,18 +14,35 @@ export type ParsedPerson = {
   primaryEmail?: string
   phone?: string
   avatarUrl?: string
+  /**
+   * Optional data/blob URL used only for the in-iframe preview card. Set by
+   * parsers whose host CDN rejects cross-origin img loads (e.g. Instagram's
+   * fbcdn — Referer/session-scoped signed URLs). The remote `avatarUrl` is
+   * still threaded to the server-side upload path; this one just renders.
+   */
+  avatarPreviewUrl?: string
   /** Bio text, job title concat, or any free-text the parser surfaces. */
   notes?: string
   /** e.g. 'linkedin:markus-klooth'. Always present. */
   externalId: string
+  /**
+   * X/Twitter follower count. Captured on profile parses; carried here so
+   * the secondary "Save as company" flow can thread it to the company field
+   * via personToCompany. Undefined for non-X parses.
+   */
+  xFollowerCount?: number
 }
 
 export type ParsedCompany = {
   name?: string
   domain?: string
   avatarUrl?: string
+  /** See ParsedPerson.avatarPreviewUrl. */
+  avatarPreviewUrl?: string
   notes?: string
   externalId: string
+  /** X/Twitter follower count on company/brand accounts. */
+  xFollowerCount?: number
 }
 
 export type ParseResult = {

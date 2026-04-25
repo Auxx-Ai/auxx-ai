@@ -183,7 +183,6 @@ export const MailThreadItem = memo(function MailThreadItem({
 
   // --- Selection store actions ---
   const toggleSelection = useThreadSelectionStore((s) => s.toggleSelection)
-  const setActiveThread = useThreadSelectionStore((s) => s.setActiveThread)
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setSelectionAnchor)
   const selectRange = useThreadSelectionStore((s) => s.selectRange)
   const selectionAnchorId = useSelectionAnchorId()
@@ -245,8 +244,12 @@ export const MailThreadItem = memo(function MailThreadItem({
 
       if (viewMode === 'edit') {
         event.preventDefault()
-        toggleSelection(threadId)
-        setActiveThread(threadId)
+        if (event.shiftKey && selectionAnchorId) {
+          selectRange(selectionAnchorId, threadId, threadIds)
+        } else {
+          toggleSelection(threadId)
+        }
+        setSelectionAnchor(threadId)
       } else {
         // Split-mode plain click abandons any checkbox multi-selection that was
         // built up via cmd/shift-click. Modifier clicks keep their own selection
@@ -268,12 +271,15 @@ export const MailThreadItem = memo(function MailThreadItem({
     [
       handleThreadClick,
       threadId,
+      threadIds,
       markAsRead,
       isUnread,
       viewMode,
       toggleSelection,
-      setActiveThread,
       setSelectedThreads,
+      selectRange,
+      setSelectionAnchor,
+      selectionAnchorId,
     ]
   )
 

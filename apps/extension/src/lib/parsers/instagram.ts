@@ -50,6 +50,34 @@ function buildNotes(bio: string | null | undefined, externalUrl: string | null |
   return parts.length > 0 ? parts.join('\n') : undefined
 }
 
+/**
+ * Fetch an Instagram CDN image from within the content script (instagram.com
+ * origin) and return a base64 data URL. Rendering the raw CDN URL from the
+ * extension iframe's `chrome-extension://` origin fails — the `_nc_sid`
+ * signed variants 403 on cross-origin Referer. Folk sidesteps this with a
+ * blob URL; we use a data URL because our preview card lives in a separate
+ * iframe origin where blob URLs scoped to instagram.com are unreachable.
+ */
+async function fetchImageAsDataUrl(url: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(url, { credentials: 'omit', mode: 'cors' })
+    if (!res.ok) return undefined
+    const blob = await res.blob()
+    if (blob.size === 0) return undefined
+    return await new Promise<string | undefined>((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const out = typeof reader.result === 'string' ? reader.result : undefined
+        resolve(out)
+      }
+      reader.onerror = () => resolve(undefined)
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return undefined
+  }
+}
+
 // ─── Primary strategy: web API ─────────────────────────────────
 
 async function tryWebApi(username: string): Promise<ParsedPerson | undefined> {
@@ -69,11 +97,13 @@ async function tryWebApi(username: string): Promise<ParsedPerson | undefined> {
 
     const fullName = user.full_name?.trim() || undefined
     const avatarUrl = user.profile_pic_url_hd?.trim() || user.profile_pic_url?.trim() || undefined
+    const avatarPreviewUrl = avatarUrl ? await fetchImageAsDataUrl(avatarUrl) : undefined
 
     return {
       ...(fullName ? splitName(fullName) : {}),
       fullName,
       avatarUrl,
+      avatarPreviewUrl,
       notes: buildNotes(user.biography, user.external_url),
       externalId: instagramExternalId(username),
     }
@@ -84,12 +114,13 @@ async function tryWebApi(username: string): Promise<ParsedPerson | undefined> {
 
 // ─── Fallback strategy: DOM scrape ─────────────────────────────
 
-function tryDomFallback(username: string): ParsedPerson {
+async function tryDomFallback(username: string): Promise<ParsedPerson> {
   const header = document.querySelector('[role="main"] header, main header')
   const displayName =
     textOf(header?.querySelector('h2')) || textOf(header?.querySelector('h1')) || undefined
   const avatarEl = header?.querySelector<HTMLImageElement>('img')
   const avatarUrl = avatarEl?.src?.trim() || undefined
+  const avatarPreviewUrl = avatarUrl ? await fetchImageAsDataUrl(avatarUrl) : undefined
 
   // The bio sits as a <span> or <div> after the action row; Instagram's
   // layout frequently changes, so we lift the first text-heavy descendant
@@ -106,6 +137,7 @@ function tryDomFallback(username: string): ParsedPerson {
     ...(fullName ? splitName(fullName) : {}),
     fullName,
     avatarUrl,
+    avatarPreviewUrl,
     notes: buildNotes(bioCandidate ?? null, null),
     externalId: instagramExternalId(username),
   }
@@ -131,6 +163,6 @@ export async function parseInstagramProfile(): Promise<ParseResult> {
   )
 
   const viaApi = await tryWebApi(username)
-  const person = viaApi ?? tryDomFallback(username)
+  const person = viaApi ?? (await tryDomFallback(username))
   return { people: [person], companies: [] }
 }

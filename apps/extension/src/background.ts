@@ -88,8 +88,15 @@ async function ensureInjected(tabId: number) {
     await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
-      args: [frameUrl],
-      func: (url: string) => {
+      args: [frameUrl, tabId],
+      func: (rawUrl: string, ownTabId: number) => {
+        // The iframe needs to know which tab it lives in so it can (a) read
+        // its own tab's URL via chrome.tabs.get(ownTabId) instead of falling
+        // back to chrome.tabs.query({active:true}) (which returns the
+        // currently focused tab — wrong for an iframe sitting in a
+        // background tab), and (b) filter cross-tab broadcasts so a
+        // navigation in tab 4 doesn't trigger a re-parse in tab 3's iframe.
+        const url = `${rawUrl}?tabId=${ownTabId}`
         // biome-ignore lint/suspicious/noExplicitAny: cross-world bridge
         const w = window as any
         if (w.__AUXX_INJECTED) return
@@ -151,7 +158,13 @@ async function ensureInjected(tabId: number) {
           frame.id = FRAME_ID
           frame.src = url
           frame.setAttribute('data-visible', desiredVisible ? 'true' : 'false')
-          document.body.appendChild(frame)
+          // Mount on documentElement, NOT document.body. React-driven SPAs
+          // (Instagram in particular) re-render document.body's subtree and
+          // will wipe anything they don't own — every wipe forces a fresh
+          // React mount inside the iframe, which is what causes the
+          // "drawer reloaded itself when I switched tabs" symptom.
+          // documentElement is outside React's reconciler footprint.
+          document.documentElement.appendChild(frame)
           return frame
         }
 
@@ -170,15 +183,14 @@ async function ensureInjected(tabId: number) {
           return desiredVisible
         }
 
-        // LinkedIn (and some other SPAs) will occasionally wipe our iframe
-        // from document.body when they re-render around navigation. Watch
-        // for it and re-append — React inside the iframe will re-mount and
-        // re-boot from the freshly loaded src.
+        // Belt-and-braces: even with the iframe mounted on documentElement
+        // (outside React's reach), some sites still occasionally wipe the
+        // node — observe and re-append. Cheap to keep around.
         function guardAgainstRemoval() {
           const observer = new MutationObserver(() => {
             if (!document.getElementById(FRAME_ID)) ensureFrame()
           })
-          observer.observe(document.body, { childList: true })
+          observer.observe(document.documentElement, { childList: true })
         }
         guardAgainstRemoval()
 
@@ -246,10 +258,24 @@ async function ensureInjected(tabId: number) {
 }
 
 // Drop tabs from the injected set when they navigate away or close.
-chrome.tabs.onRemoved.addListener((tabId) => injectedTabs.delete(tabId))
+chrome.tabs.onRemoved.addListener((tabId) => {
+  injectedTabs.delete(tabId)
+  lastBroadcastUrl.delete(tabId)
+})
+
+// Track the last URL we broadcast per tab so we can suppress duplicate
+// onUpdated events. Chrome fires `info.url` whenever the URL field
+// changes for ANY reason (including the same value being re-set by SPA
+// router internals), and Instagram/LinkedIn do this multiple times per
+// pushState. Without dedup the iframe re-boots and re-parses on every
+// duplicate event.
+const lastBroadcastUrl = new Map<number, string>()
+
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status === 'loading') injectedTabs.delete(tabId)
   if (info.url) {
+    if (lastBroadcastUrl.get(tabId) === info.url) return
+    lastBroadcastUrl.set(tabId, info.url)
     // SPA-style URL change (pushState) — tell the iframe so it can
     // re-parse the new page. Full reloads also fire this but the fresh
     // iframe mount already re-boots, so the duplicate signal is harmless.

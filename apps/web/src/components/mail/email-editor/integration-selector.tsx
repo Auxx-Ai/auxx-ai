@@ -29,7 +29,14 @@ const IntegrationSelector: React.FC<IntegrationSelectorProps> = ({
   disabled,
   className,
 }) => {
-  const { data: integrations, isLoading } = api.channel.getEmailClients.useQuery()
+  const { data: allIntegrations, isLoading } = api.channel.getEmailClients.useQuery()
+
+  // Example integrations are seeded placeholders — they can't actually send, so hide
+  // them from the "Send as" picker. See plans/seeding/example-data-for-new-accounts.md §7a.
+  const integrations = React.useMemo(
+    () => allIntegrations?.filter((i) => !i.isExample),
+    [allIntegrations]
+  )
 
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')

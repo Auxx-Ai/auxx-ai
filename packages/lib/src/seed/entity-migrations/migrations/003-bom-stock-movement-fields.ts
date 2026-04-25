@@ -4,7 +4,7 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { STOCK_MOVEMENT_FIELDS } from '../../../resources/registry/resources/stock-movement-fields'
-import { ensureCustomFields, linkNewRelationships, loadExistingState } from '../helpers'
+import { ensureCustomFields, fieldKey, linkNewRelationships, loadExistingState } from '../helpers'
 import type { EntityMigration, EntityMigrationResult } from '../types'
 
 /**
@@ -56,15 +56,17 @@ export const migration003BomStockMovementFields: EntityMigration = {
     for (const [k, v] of smFields) allFieldMaps.set(k, v)
 
     // Load existing stock_movement fields into map for inverse relationship lookup
-    for (const [sa, field] of existing.fields) {
+    for (const field of existing.fields.values()) {
       if (field.entityDefinitionId !== smDef.id) continue
-      const smField = Object.values(STOCK_MOVEMENT_FIELDS).find((f) => f.systemAttribute === sa)
+      const smField = Object.values(STOCK_MOVEMENT_FIELDS).find(
+        (f) => f.systemAttribute === field.systemAttribute
+      )
       if (smField) {
         const key = `stock_movement:${smField.id}`
         if (!allFieldMaps.has(key)) {
           allFieldMaps.set(key, {
             id: field.id,
-            systemAttribute: sa,
+            systemAttribute: field.systemAttribute,
             options: field.options,
             _fieldDef: smField,
           })
@@ -76,7 +78,7 @@ export const migration003BomStockMovementFields: EntityMigration = {
     await linkNewRelationships(db, allFieldMaps, entityDefIds, state)
 
     // ── Step 3: Add 'sale' option to stock_movement_type ──
-    const typeField = existing.fields.get('stock_movement_type')
+    const typeField = existing.fields.get(fieldKey(smDef.id, 'stock_movement_type'))
     if (typeField) {
       const currentOptions = (typeField.options as any)?.options ?? []
       const hasSale = currentOptions.some((o: any) => o.value === 'sale')

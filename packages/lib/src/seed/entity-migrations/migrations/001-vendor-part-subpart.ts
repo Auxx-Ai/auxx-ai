@@ -14,6 +14,7 @@ import {
   ensureCustomFields,
   ensureEntityDefinitions,
   ensureFieldViews,
+  fieldKey,
   linkDisplayFields,
   linkNewRelationships,
   loadExistingState,
@@ -140,16 +141,18 @@ export const migration001VendorPartSubpart: EntityMigration = {
     // ── Step 3: Link relationships ──
     // Need all existing part/contact fields in the map too for inverse lookups
     if (partDefId) {
-      for (const [sa, field] of refreshedExisting.fields) {
+      for (const field of refreshedExisting.fields.values()) {
         if (field.entityDefinitionId !== partDefId) continue
         // Find matching field def by systemAttribute
-        const partField = Object.values(PART_FIELDS).find((f) => f.systemAttribute === sa)
+        const partField = Object.values(PART_FIELDS).find(
+          (f) => f.systemAttribute === field.systemAttribute
+        )
         if (partField) {
           const key = `part:${partField.id}`
           if (!allFieldMaps.has(key)) {
             allFieldMaps.set(key, {
               id: field.id,
-              systemAttribute: sa,
+              systemAttribute: field.systemAttribute,
               options: field.options,
               _fieldDef: partField,
             })
@@ -158,15 +161,17 @@ export const migration001VendorPartSubpart: EntityMigration = {
       }
     }
     if (contactDefId) {
-      for (const [sa, field] of refreshedExisting.fields) {
+      for (const field of refreshedExisting.fields.values()) {
         if (field.entityDefinitionId !== contactDefId) continue
-        const contactField = Object.values(CONTACT_FIELDS).find((f) => f.systemAttribute === sa)
+        const contactField = Object.values(CONTACT_FIELDS).find(
+          (f) => f.systemAttribute === field.systemAttribute
+        )
         if (contactField) {
           const key = `contact:${contactField.id}`
           if (!allFieldMaps.has(key)) {
             allFieldMaps.set(key, {
               id: field.id,
-              systemAttribute: sa,
+              systemAttribute: field.systemAttribute,
               options: field.options,
               _fieldDef: contactField,
             })
@@ -225,11 +230,14 @@ async function renameCostAttribute(
   organizationId: string,
   existing: Awaited<ReturnType<typeof loadExistingState>>
 ): Promise<void> {
-  // If 'part_cost' already exists, nothing to do
-  if (existing.fields.has('part_cost')) return
+  const partDefId = existing.entityDefs.get('part')?.id
+  if (!partDefId) return
 
-  // If 'cost' exists, rename it
-  const oldCostField = existing.fields.get('cost')
+  // If 'part_cost' already exists on part, nothing to do
+  if (existing.fields.has(fieldKey(partDefId, 'part_cost'))) return
+
+  // If 'cost' exists on part, rename it
+  const oldCostField = existing.fields.get(fieldKey(partDefId, 'cost'))
   if (!oldCostField) return
 
   await db

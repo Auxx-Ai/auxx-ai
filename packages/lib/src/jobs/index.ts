@@ -83,6 +83,11 @@ export {
 } from './maintenance/media-asset-cleanup-job'
 export { type MidTrialStats, sendMidTrialEmailsJob } from './maintenance/mid-trial-job'
 export { oauth2TokenRefreshScannerJob } from './maintenance/oauth2-token-refresh-scanner-job'
+export {
+  type OrgSeedJobData,
+  type OrgSeedScenario,
+  orgSeedJob,
+} from './maintenance/org-seed-job'
 export { type QuotaResetStats, quotaResetJob } from './maintenance/quota-reset-job'
 export {
   enqueueStorageCleanupJob,

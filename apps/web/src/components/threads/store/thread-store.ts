@@ -43,6 +43,8 @@ export interface ThreadMeta {
   // Foreign keys (IDs only - frontend resolves via separate stores)
   integrationId: string
   integrationProvider: ChannelProvider | null
+  /** True when the integration is a seeded placeholder — blocks reply in the UI. */
+  integrationIsExample: boolean
   assigneeId: ActorId | null
 
   // Denormalized for performance (avoid extra fetches for list display)

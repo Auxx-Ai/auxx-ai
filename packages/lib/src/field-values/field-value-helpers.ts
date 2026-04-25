@@ -21,6 +21,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { BadRequestError } from '../errors'
+import { getRealtimeService } from '../realtime'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
@@ -848,6 +849,47 @@ async function resolveNameFieldDisplayValue(
 }
 
 /**
+ * Publish a `record:updated` realtime event carrying just the denormalized
+ * column(s) that changed. Matches RecordUpdatedEvent's intended contract:
+ * "denormalized columns changed". Gated on the org's realtimeSync feature
+ * flag and excludes the originating socket.
+ */
+async function publishRecordColumnUpdate(
+  ctx: FieldValueContext,
+  entityDefId: string,
+  entityInstanceId: string,
+  columns: {
+    displayName?: string | null
+    secondaryDisplayValue?: string | null
+    avatarUrl?: string | null
+  }
+): Promise<void> {
+  try {
+    const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
+    if (!features?.realtimeSync) return
+    const recordId = toRecordId(entityDefId, entityInstanceId)
+    getRealtimeService()
+      .sendToOrganization(
+        ctx.organizationId,
+        'record:updated',
+        {
+          entityDefinitionId: entityDefId,
+          record: {
+            id: entityInstanceId,
+            recordId,
+            ...columns,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        { excludeSocketId: ctx.socketId }
+      )
+      .catch(() => {})
+  } catch {
+    // non-critical — realtime push is best-effort
+  }
+}
+
+/**
  * Update EntityInstance display columns if field is a display field.
  * Handles primary (displayName), secondary (secondaryDisplayValue), and avatar (avatarUrl).
  */
@@ -895,6 +937,9 @@ export async function maybeUpdateDisplayValue(
       if (deps.length > 0) {
         await cascadeDependentDisplayNames(ctx, entityInstanceId, result, deps)
       }
+      await publishRecordColumnUpdate(ctx, entityDef.id, entityInstanceId, {
+        displayName: result,
+      })
       return
     }
   }
@@ -980,6 +1025,8 @@ export async function maybeUpdateDisplayValue(
       await cascadeDependentDisplayNames(ctx, entityInstanceId, displayValue, deps)
     }
   }
+
+  await publishRecordColumnUpdate(ctx, entityDef.id, entityInstanceId, { [column]: displayValue })
 }
 
 // =============================================================================

@@ -5,6 +5,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@auxx/ui/components/dialog'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@auxx/ui/components/empty'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
@@ -17,7 +24,6 @@ import { Bell, Check, Mail as MailIcon, Play, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 // components/notifications/notification-center.tsx
 import { useEffect, useState } from 'react'
-import { EmptyState } from '~/components/global/empty-state'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useEnv } from '~/providers/dehydrated-state-provider'
@@ -309,25 +315,28 @@ export const NotificationCenter = () => {
         </RadioTab>
       </div>
 
-      <div className='flex flex-col m-0 flex-1 min-h-[200px]'>
+      <div className='flex flex-col m-0 flex-1'>
         {isLoading ? (
-          <div className='max-h-96 overflow-y-auto py-2'>
+          <div className='h-[320px] overflow-y-auto py-2'>
             <NotificationSkeleton />
             <NotificationSkeleton />
             <NotificationSkeleton />
           </div>
         ) : mode === 'all' ? (
           data?.notifications.length === 0 ? (
-            <div className='flex flex-1 items-center justify-center'>
-              <EmptyState
-                icon={Bell}
-                title='No notifications yet'
-                className='py-8'
-                iconClassName='h-8 w-8'
-              />
+            <div className='h-[320px] flex items-center justify-center'>
+              <Empty className='border-0'>
+                <EmptyHeader>
+                  <EmptyMedia variant='icon'>
+                    <Bell />
+                  </EmptyMedia>
+                  <EmptyTitle>No notifications yet</EmptyTitle>
+                  <EmptyDescription>You're all caught up.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             </div>
           ) : (
-            <div className='max-h-96 overflow-y-auto py-2'>
+            <div className='h-[320px] overflow-y-auto py-2'>
               {data?.notifications.map((notification) => (
                 <NotificationItem
                   key={notification.id!}
@@ -341,16 +350,19 @@ export const NotificationCenter = () => {
           )
         ) : mode === 'unread' ? (
           data?.notifications.filter((n) => !n.isRead).length === 0 ? (
-            <div className='flex flex-1 items-center justify-center'>
-              <EmptyState
-                icon={Bell}
-                title='No unread notifications'
-                className='py-8'
-                iconClassName='h-8 w-8'
-              />
+            <div className='h-[320px] flex items-center justify-center'>
+              <Empty className='border-0'>
+                <EmptyHeader>
+                  <EmptyMedia variant='icon'>
+                    <Bell />
+                  </EmptyMedia>
+                  <EmptyTitle>No unread notifications</EmptyTitle>
+                  <EmptyDescription>You're all caught up.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             </div>
           ) : (
-            <div className='max-h-96 overflow-y-auto py-2'>
+            <div className='h-[320px] overflow-y-auto py-2'>
               {data?.notifications
                 .filter((notification) => !notification.isRead)
                 .map((notification) => (

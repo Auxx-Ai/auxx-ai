@@ -14,6 +14,7 @@ import {
   demoCleanupJob,
   expiredTrialAccountCleanupJob,
   type JobHandler,
+  type OrgSeedJobData,
   oauth2TokenRefreshScannerJob,
   orphanedAppBundleCleanupJob,
   quotaResetJob,
@@ -31,19 +32,47 @@ import { createWorker } from '../utils/createWorker'
 
 const logger = createScopedLogger('maintenance-worker')
 
-/** Real demoSeedJob handler — imports @auxx/seed which is only available in the worker. */
-const demoSeedJobHandler: JobHandler = async (ctx) => {
-  const { organizationId } = ctx.data as DemoSeedJobData
-  if (!isDemoEnabled()) {
-    logger.info('Demo disabled, skipping seed', { organizationId })
-    return { success: false, reason: 'demo_disabled' }
+/**
+ * Unified orgSeedJob handler — dispatches on `scenario` to either demo or example seeding.
+ * The enqueue side (seedNewOrganization + /demo route) guarantees that a demo signup
+ * never enqueues an example job, so no race guard is needed here.
+ */
+const orgSeedJobHandler: JobHandler = async (ctx) => {
+  const { organizationId, scenario } = ctx.data as OrgSeedJobData
+
+  if (scenario === 'demo') {
+    if (!isDemoEnabled()) {
+      logger.info('Demo disabled, skipping seed', { organizationId })
+      return { success: false, reason: 'demo_disabled' }
+    }
+  } else if (scenario !== 'example') {
+    logger.warn('orgSeedJob received unknown scenario', { organizationId, scenario })
+    return { success: false, reason: 'unknown_scenario' }
   }
 
-  logger.info('Starting demo data seed', { organizationId })
+  logger.info(`Starting ${scenario} data seed`, { organizationId })
   const { OrganizationSeeder } = await import('@auxx/seed')
-  await OrganizationSeeder.seedOrganization(organizationId, 'additive', 'demo')
-  logger.info('Demo data seed completed', { organizationId })
-  return { success: true, organizationId }
+  await OrganizationSeeder.seedOrganization(organizationId, 'additive', scenario)
+  logger.info(`${scenario} data seed completed`, { organizationId })
+  return { success: true, organizationId, scenario }
+}
+
+/**
+ * Legacy demoSeedJob alias — forwards any still-enqueued demoSeedJob messages through
+ * orgSeedJobHandler with scenario: 'demo'. Remove after one release once the queue
+ * drains.
+ */
+const demoSeedJobAliasHandler: JobHandler = async (ctx) => {
+  const { organizationId, userId, userEmail } = ctx.data as DemoSeedJobData
+  return orgSeedJobHandler({
+    ...ctx,
+    data: {
+      organizationId,
+      userId,
+      userEmail,
+      scenario: 'demo',
+    },
+  })
 }
 
 /** Wraps a job handler to skip execution in self-hosted mode (defense in depth) */
@@ -74,7 +103,9 @@ const jobMappings = {
 
   // Account management jobs (cloud-only)
   demoCleanupJob: cloudOnly(demoCleanupJob),
-  demoSeedJob: cloudOnly(demoSeedJobHandler),
+  orgSeedJob: cloudOnly(orgSeedJobHandler),
+  // Thin alias for any in-flight demoSeedJob messages at cutover; remove after one release.
+  demoSeedJob: cloudOnly(demoSeedJobAliasHandler),
   expiredTrialAccountCleanup: cloudOnly(expiredTrialAccountCleanupJob),
 
   // Lifecycle email jobs (cloud-only)

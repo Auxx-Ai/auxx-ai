@@ -91,6 +91,54 @@ export function setupContentScript(config: ContentScriptConfig): void {
   } catch {
     /* extension may not be ready yet — content script observers re-fire later */
   }
+
+  // 5. dev-only: detect extension reload and refresh the page so we don't
+  //    leave an orphaned content script holding a dead chrome.runtime
+  //    handle. After a crxjs reload, chrome.runtime.id goes undefined for
+  //    every previously-injected page; the only recovery is a page reload
+  //    (which re-fires content_scripts against the new extension build).
+  //    Stripped from prod builds via the import.meta.env.DEV gate.
+  if (import.meta.env.DEV) {
+    setupExtensionReloadGuard()
+  }
+}
+
+function setupExtensionReloadGuard(): void {
+  // Two complementary triggers — Vite's HMR throws an unhandled error from
+  // its port the moment the context is invalidated, which is the fastest
+  // way to detect it. The interval is the fallback for non-HMR-driven
+  // invalidations (manual reload via chrome://extensions).
+  let reloaded = false
+  function reloadOnce() {
+    if (reloaded) return
+    reloaded = true
+    // Strip our injected UI before reloading so the user doesn't see a
+    // brief flash of the orphaned button against the new content script.
+    document.getElementById('auxx-panel')?.remove()
+    location.reload()
+  }
+  const interval = setInterval(() => {
+    // chrome.runtime.id is undefined the moment the extension is unloaded
+    // or reloaded — cheap enough to poll once a second.
+    if (!chrome.runtime?.id) {
+      clearInterval(interval)
+      reloadOnce()
+    }
+  }, 1000)
+  window.addEventListener('error', (e) => {
+    if (e.error?.message?.includes('Extension context invalidated')) {
+      e.preventDefault()
+      reloadOnce()
+    }
+  })
+  window.addEventListener('unhandledrejection', (e) => {
+    const msg =
+      e.reason instanceof Error ? e.reason.message : typeof e.reason === 'string' ? e.reason : ''
+    if (msg.includes('Extension context invalidated')) {
+      e.preventDefault()
+      reloadOnce()
+    }
+  })
 }
 
 const AUXX_BUTTON_ID_PREFIX = 'auxx-add-button'

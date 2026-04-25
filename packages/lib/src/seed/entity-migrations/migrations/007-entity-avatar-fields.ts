@@ -4,7 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
 import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
-import { ensureCustomFields, loadExistingState } from '../helpers'
+import { ensureCustomFields, fieldKey, loadExistingState } from '../helpers'
 import type { EntityMigration, EntityMigrationResult } from '../types'
 
 const logger = createScopedLogger('entity-migrations:007')
@@ -59,8 +59,8 @@ export const migration007EntityAvatarFields: EntityMigration = {
       const entityDef = after.entityDefs.get(entityType)
       if (!entityDef) continue
 
-      const field = after.fields.get(systemAttribute)
-      if (!field || field.entityDefinitionId !== entityDef.id) continue
+      const field = after.fields.get(fieldKey(entityDef.id, systemAttribute))
+      if (!field) continue
 
       const updated = await db
         .update(schema.EntityDefinition)

@@ -1,0 +1,313 @@
+{
+  "name": "Shopify Order Lookup & Reply",
+  "description": "When a customer emails about an order, this workflow extracts the order number, looks it up in Shopify, and generates a contextual AI reply with real order details (status, tracking, items). If no order is found, it sends a helpful fallback asking for the order number.",
+  "categories": ["customer-service", "shopify", "ai"],
+  "status": "public",
+  "popularity": 95,
+  "triggerType": "message-received",
+  "triggerConfig": null,
+  "requiredApps": [
+    {
+      "appSlug": "shopify",
+      "appTitle": "Shopify",
+      "blockIds": ["shopify"],
+      "triggerIds": [],
+      "required": true
+    }
+  ],
+  "requiredEntities": [],
+  "envVars": [],
+  "variables": [],
+  "graph": {
+    "nodes": [
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": { "x": 100, "y": 250 },
+        "data": {
+          "id": "trigger_1",
+          "type": "message-received",
+          "title": "Customer Email",
+          "desc": "Triggered when a new customer email arrives",
+          "variables": [],
+          "filters": { "from": [], "subject_contains": [], "body_contains": [] }
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "extractor_1",
+        "type": "standard",
+        "position": { "x": 400, "y": 250 },
+        "data": {
+          "id": "extractor_1",
+          "type": "information-extractor",
+          "title": "Extract Order Number",
+          "desc": "Extract the order number and customer intent from the email",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": { "temperature": 0.2 }
+          },
+          "text": "Subject: {{trigger_1.message.subject}}\n\nBody: {{trigger_1.message.body}}",
+          "structured_output": {
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "order_number": {
+                  "type": "string",
+                  "description": "The Shopify order number (e.g., '1042', '#1042'). Extract digits only, no '#' prefix. Empty string if not found."
+                },
+                "intent": {
+                  "type": "string",
+                  "description": "What the customer wants: order-status, shipping-tracking, return-request, cancellation, product-issue, or general"
+                },
+                "urgency": {
+                  "type": "string",
+                  "description": "Urgency level: low, medium, or high"
+                }
+              },
+              "required": ["order_number", "intent", "urgency"]
+            }
+          },
+          "vision": { "enabled": false },
+          "instruction": {
+            "enabled": true,
+            "text": "Extract the Shopify order number from the customer email. Look for patterns like #1042, order 1042, order number 1042, etc. Return only the numeric part without '#'. If no order number is found, return an empty string. Also determine the customer's intent and urgency."
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_has_order",
+        "type": "standard",
+        "position": { "x": 750, "y": 250 },
+        "data": {
+          "id": "ifelse_has_order",
+          "type": "if-else",
+          "title": "Has Order Number?",
+          "desc": "Check if an order number was found in the email",
+          "cases": [
+            {
+              "id": "case_has_order",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_1",
+                  "variableId": "extractor_1.extracted_data.order_number",
+                  "comparison_operator": "not empty",
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            { "id": "true", "name": "Found", "type": "default" },
+            { "id": "false", "name": "Not Found", "type": "default" }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "shopify_get_order",
+        "type": "standard",
+        "position": { "x": 1100, "y": 125 },
+        "data": {
+          "id": "shopify_get_order",
+          "type": "@shopify:shopify",
+          "appSlug": "shopify",
+          "blockId": "shopify",
+          "title": "Shopify: Get Order",
+          "desc": "Look up the customer's order in Shopify",
+          "resource": "order",
+          "operation": "get",
+          "getOrderId": "{{extractor_1.extracted_data.order_number}}",
+          "getFields": [],
+          "fieldModes": {
+            "getOrderId": false
+          },
+          "_connectedSourceHandleIds": ["source"],
+          "_connectedTargetHandleIds": ["target"]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_order_reply",
+        "type": "standard",
+        "position": { "x": 1450, "y": 125 },
+        "data": {
+          "id": "ai_order_reply",
+          "type": "ai",
+          "title": "AI: Order Reply",
+          "desc": "Generate a reply using real Shopify order data",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": { "temperature": 0.7 }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "text": "You are a friendly, professional customer support agent for a Shopify store. You have access to the customer's real order data. Use it to give a specific, helpful response.\n\nCustomer intent: {{extractor_1.extracted_data.intent}}\nUrgency: {{extractor_1.extracted_data.urgency}}\n\nOrder details:\n- Order: #{{shopify_get_order.name}}\n- Status: {{shopify_get_order.financialStatus}}\n- Fulfillment: {{shopify_get_order.fulfillmentStatus}}\n- Total: {{shopify_get_order.totalPrice}} {{shopify_get_order.currency}}\n- Items: {{shopify_get_order.lineItems}}\n- Tracking: {{shopify_get_order.orderStatusUrl}}\n- Created: {{shopify_get_order.createdAt}}\n\nGuidelines:\n- Reference specific order details (order number, items, status)\n- If fulfillment status is available, share tracking info\n- If the order is unfulfilled, set expectations about processing time\n- For return/cancellation requests, outline next steps\n- If urgency is high, prioritize and acknowledge the urgency\n- Keep the reply concise and actionable"
+            },
+            {
+              "role": "user",
+              "text": "Customer email:\nSubject: {{trigger_1.message.subject}}\n\n{{trigger_1.message.body}}"
+            }
+          ],
+          "context": { "enabled": false, "variable_selector": [] },
+          "vision": { "enabled": false },
+          "structured_output": { "enabled": false }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_order",
+        "type": "standard",
+        "position": { "x": 1800, "y": 125 },
+        "data": {
+          "id": "answer_order",
+          "type": "answer",
+          "title": "Send Order Reply",
+          "desc": "Reply with order-specific information",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_order_reply.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_no_order_reply",
+        "type": "standard",
+        "position": { "x": 1100, "y": 375 },
+        "data": {
+          "id": "ai_no_order_reply",
+          "type": "ai",
+          "title": "AI: Ask for Order #",
+          "desc": "Generate a helpful reply asking for the order number",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": { "temperature": 0.7 }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "text": "You are a friendly, professional customer support agent for a Shopify store. The customer's email didn't include an order number, so you can't look up their order yet.\n\nCustomer intent: {{extractor_1.extracted_data.intent}}\nUrgency: {{extractor_1.extracted_data.urgency}}\n\nGuidelines:\n- Acknowledge their inquiry warmly\n- Politely ask for their order number (explain where to find it — confirmation email, account page)\n- If their intent is clear (e.g., return request), briefly outline what you'll need\n- If urgency is high, reassure them you'll prioritize once you have the order number\n- Keep it concise — don't over-explain"
+            },
+            {
+              "role": "user",
+              "text": "Customer email:\nSubject: {{trigger_1.message.subject}}\n\n{{trigger_1.message.body}}"
+            }
+          ],
+          "context": { "enabled": false, "variable_selector": [] },
+          "vision": { "enabled": false },
+          "structured_output": { "enabled": false }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_no_order",
+        "type": "standard",
+        "position": { "x": 1450, "y": 375 },
+        "data": {
+          "id": "answer_no_order",
+          "type": "answer",
+          "title": "Send Fallback Reply",
+          "desc": "Ask customer for their order number",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_no_order_reply.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_extractor",
+        "source": "trigger_1",
+        "target": "extractor_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_extractor_ifelse",
+        "source": "extractor_1",
+        "target": "ifelse_has_order",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_shopify",
+        "source": "ifelse_has_order",
+        "target": "shopify_get_order",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_shopify_ai",
+        "source": "shopify_get_order",
+        "target": "ai_order_reply",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_answer_order",
+        "source": "ai_order_reply",
+        "target": "answer_order",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_no_order",
+        "source": "ifelse_has_order",
+        "target": "ai_no_order_reply",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_answer_no_order",
+        "source": "ai_no_order_reply",
+        "target": "answer_no_order",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 0.7 }
+  }
+}

@@ -7,13 +7,9 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuPortal,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { getInitialsFromName } from '@auxx/utils'
@@ -104,45 +100,33 @@ export function UserOrgMenu({ state, onOrgSwitched, onSignedOut }: Props) {
         <DropdownMenuSeparator />
 
         <DropdownMenuGroup>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Building2 />
-              Switch organization
-            </DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent className='min-w-56'>
-                <DropdownMenuLabel className='text-xs text-muted-foreground'>
-                  Organizations
-                </DropdownMenuLabel>
+          <DropdownMenuLabel className='text-xs text-muted-foreground'>
+            Organizations
+          </DropdownMenuLabel>
 
-                <DropdownMenuRadioGroup value={activeOrgId} onValueChange={handleSwitch}>
-                  {state.organizations.map((org) => (
-                    <DropdownMenuRadioItem value={org.id} key={org.id} className='gap-2 p-1 pr-3'>
-                      <div className='flex size-5 items-center justify-center rounded-full border'>
-                        <Building2 className='size-3 shrink-0' />
-                      </div>
-                      {org.name ?? org.handle ?? org.id}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
+          <DropdownMenuRadioGroup value={activeOrgId} onValueChange={handleSwitch}>
+            {state.organizations.map((org) => (
+              <DropdownMenuRadioItem value={org.id} key={org.id} className='gap-2 p-1 pr-3'>
+                <div className='flex size-5 items-center justify-center rounded-full border'>
+                  <Building2 className='size-3 shrink-0' />
+                </div>
+                {org.name ?? org.handle ?? org.id}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
 
-                <DropdownMenuSeparator />
-
-                <DropdownMenuItem asChild>
-                  <a
-                    href={`${BASE_URL}/app/settings/organization`}
-                    target='_blank'
-                    rel='noreferrer'
-                    className='flex items-center gap-2'>
-                    <div className='-ml-1 flex size-5 items-center justify-center rounded-full border bg-background'>
-                      <Building2 className='size-3' />
-                    </div>
-                    View all
-                  </a>
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
+          <DropdownMenuItem asChild>
+            <a
+              href={`${BASE_URL}/app/settings/organization`}
+              target='_blank'
+              rel='noreferrer'
+              className='flex items-center gap-2'>
+              <div className='-ml-1 flex size-5 items-center justify-center rounded-full border bg-background'>
+                <Building2 className='size-3' />
+              </div>
+              View all
+            </a>
+          </DropdownMenuItem>
         </DropdownMenuGroup>
 
         <DropdownMenuSeparator />

@@ -73,13 +73,21 @@ export function useResourceSync() {
   // Partial-update the cached record if we already have it. If the tab never
   // fetched this record, do nothing — `useRecord` will fetch fresh when a
   // component first mounts a card for it.
+  //
+  // Merge only keys present on the payload. The field-value layer emits
+  // column-specific events (`{ displayName }` or `{ avatarUrl }` only), so
+  // treat `undefined` as "don't touch" and `null` as "clear".
   const handleRecordUpdated = useCallback(
     (raw: unknown) => {
       const data = raw as RecordUpdatedEvent['data']
-      updateRecord(data.entityDefinitionId, data.record.id, {
-        displayName: data.record.displayName,
-        updatedAt: data.record.updatedAt,
-      })
+      const { displayName, secondaryDisplayValue, avatarUrl, updatedAt } = data.record
+      const patch: Record<string, unknown> = {}
+      if (displayName !== undefined) patch.displayName = displayName
+      if (secondaryDisplayValue !== undefined) patch.secondaryDisplayValue = secondaryDisplayValue
+      if (avatarUrl !== undefined) patch.avatarUrl = avatarUrl
+      if (updatedAt !== undefined) patch.updatedAt = updatedAt
+      if (Object.keys(patch).length === 0) return
+      updateRecord(data.entityDefinitionId, data.record.id, patch)
     },
     [updateRecord]
   )

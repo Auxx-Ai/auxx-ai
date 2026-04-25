@@ -158,11 +158,12 @@ export async function POST(request: NextRequest) {
     try {
       const maintenanceQueue = getQueue(Queues.maintenanceQueue)
       const job = await maintenanceQueue.add(
-        'demoSeedJob',
+        'orgSeedJob',
         {
           organizationId,
           userId,
           userEmail: email,
+          scenario: 'demo',
         },
         {
           attempts: 3,
