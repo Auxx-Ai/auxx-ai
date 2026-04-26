@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.141](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.140...auxx-v0.1.141) (2026-04-26)
+
+
+### Bug Fixes
+
+* **privacy:** correct AI auto-send disclosure ([f13c33c](https://github.com/Auxx-Ai/auxx-ai/commit/f13c33c2a5d90d6cb6b7097990509519291c3741))
+
 ## [0.1.140](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.139...auxx-v0.1.140) (2026-04-26)
 
 
