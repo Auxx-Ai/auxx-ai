@@ -35,13 +35,17 @@ export default function PrivacyPolicyPage() {
                       browser extension, and services (collectively, the "Service"). We are
                       committed to protecting your personal information and your right to privacy.
                     </p>
-                    <h3 className='text-xl font-semibold mt-6'>Data Controller</h3>
+                    <h3 className='text-xl font-semibold mt-6'>Geographic Scope</h3>
                     <p>
-                      For the purposes of the EU General Data Protection Regulation (GDPR) and the
-                      UK GDPR, the data controller responsible for your personal information is:
+                      The Service is intended for users in the <strong>United States</strong>. We do
+                      not target or actively offer the Service to individuals located in the
+                      European Economic Area (EEA), the United Kingdom, or Switzerland, and we ask
+                      that residents of those regions not use the Service. If you access the Service
+                      from outside the United States, you do so on your own initiative and are
+                      responsible for compliance with your local laws. We may decline accounts or
+                      billing addresses associated with regions where we do not currently operate.
                     </p>
-                    {/* LAWYER REVIEW: confirm the registered legal entity name, address, and
-                        whether we need to name an EU representative under GDPR Art. 27. */}
+                    <h3 className='text-xl font-semibold mt-6'>Who We Are</h3>
                     <ul className='list-disc pl-6'>
                       <li>
                         <strong>Legal entity:</strong> {config.shortName}{' '}
@@ -61,11 +65,11 @@ export default function PrivacyPolicyPage() {
                     </ul>
                     <p className='mt-2'>
                       When you use the {config.shortName} browser extension to capture contact or
-                      company information about other people (for example, from a LinkedIn profile),
-                      <strong> you act as the data controller</strong> for that captured data, and{' '}
-                      {config.shortName} processes it on your behalf as a data processor. Your use
-                      of the Service is subject to our standard Data Processing Agreement, available
-                      on request.
+                      company information about other people (for example, from a LinkedIn profile),{' '}
+                      <strong>you are responsible for that captured data</strong> — including
+                      ensuring you have a lawful basis under applicable U.S. law and the terms of
+                      service of the source site. {config.shortName} stores and processes that data
+                      on your behalf as part of providing the Service.
                     </p>
                   </section>
 
@@ -104,9 +108,6 @@ export default function PrivacyPolicyPage() {
                         preferences at any time via the "Cookie settings" link in our footer.
                       </li>
                     </ul>
-                    {/* LAWYER REVIEW: confirm we have a cookie banner and preference center wired
-                        up to actually gate non-essential cookies before consent — the policy
-                        promise must match the implementation. */}
                   </section>
 
                   <section>
@@ -128,34 +129,6 @@ export default function PrivacyPolicyPage() {
                       <li>Comply with legal obligations</li>
                     </ul>
 
-                    <h3 className='text-xl font-semibold mt-4'>Legal Bases (EU/UK GDPR)</h3>
-                    <p>
-                      Where the GDPR or UK GDPR applies, we rely on the following legal bases for
-                      processing your personal information:
-                    </p>
-                    <ul className='list-disc pl-6'>
-                      <li>
-                        <strong>Performance of a contract</strong> (Art. 6(1)(b)): to provide the
-                        Service to you under our Terms of Service — including account management,
-                        ticket processing, AI-powered reply generation, and integrations with Gmail,
-                        Outlook, Shopify, and other connected services.
-                      </li>
-                      <li>
-                        <strong>Legitimate interests</strong> (Art. 6(1)(f)): to secure the Service
-                        against fraud and abuse, to analyze usage and improve product quality, and
-                        to send transactional service updates.
-                      </li>
-                      <li>
-                        <strong>Consent</strong> (Art. 6(1)(a)): for non-essential cookies, for
-                        marketing communications, and for any optional integrations you actively
-                        connect.
-                      </li>
-                      <li>
-                        <strong>Legal obligation</strong> (Art. 6(1)(c)): to comply with tax,
-                        accounting, anti-money-laundering, and other applicable laws.
-                      </li>
-                    </ul>
-
                     <h3 className='text-xl font-semibold mt-4'>Marketing Communications</h3>
                     <p>
                       You can opt out of marketing emails at any time by clicking the "Unsubscribe"
@@ -171,9 +144,7 @@ export default function PrivacyPolicyPage() {
                   </section>
 
                   <section>
-                    <h2 className='text-2xl font-semibold'>
-                      3. Data Storage, Retention, and International Transfers
-                    </h2>
+                    <h2 className='text-2xl font-semibold'>3. Data Storage and Retention</h2>
                     <p>
                       Your data is stored on cloud servers located in the United States, encrypted
                       at rest and in transit. We use industry-standard security measures to protect
@@ -181,9 +152,6 @@ export default function PrivacyPolicyPage() {
                     </p>
 
                     <h3 className='text-xl font-semibold mt-4'>Retention</h3>
-                    {/* LAWYER REVIEW: confirm the specific retention periods below match
-                        operational reality (e.g. Stripe billing records are 7 years, account
-                        data should be deleted within 30 days of close, etc.). */}
                     <ul className='list-disc pl-6'>
                       <li>
                         <strong>Account data</strong> (name, email, organization): for as long as
@@ -210,25 +178,6 @@ export default function PrivacyPolicyPage() {
                         days, after which deletions propagate fully.
                       </li>
                     </ul>
-
-                    <h3 className='text-xl font-semibold mt-4'>International Data Transfers</h3>
-                    <p>
-                      Our servers and most subprocessors are located in the United States. If you
-                      access the Service from the European Economic Area, the United Kingdom, or
-                      Switzerland, your personal information will be transferred to and processed in
-                      the U.S. We rely on the European Commission's{' '}
-                      <a
-                        href='https://commission.europa.eu/law/law-topic/data-protection/international-dimension-data-protection/standard-contractual-clauses-scc_en'
-                        target='_blank'
-                        rel='noopener noreferrer'
-                        className='text-blue-600 hover:underline dark:text-blue-400'>
-                        Standard Contractual Clauses
-                      </a>{' '}
-                      (SCCs) and the UK International Data Transfer Addendum as the lawful transfer
-                      mechanism, supplemented by appropriate technical and organizational measures.
-                      Where a subprocessor is certified under the EU-U.S. Data Privacy Framework, we
-                      rely on that certification.
-                    </p>
                   </section>
 
                   <section>
@@ -244,7 +193,7 @@ export default function PrivacyPolicyPage() {
                       Section 5 below.
                     </p>
 
-                    <h3 className='text-xl font-semibold mt-4'>Automated Decision-Making and AI</h3>
+                    <h3 className='text-xl font-semibold mt-4'>Use of AI in the Service</h3>
                     <p>
                       The Service uses large language models (currently provided by OpenAI and
                       Anthropic) to draft replies, classify tickets, and surface suggested actions
@@ -256,40 +205,25 @@ export default function PrivacyPolicyPage() {
                       workspace operator chain an AI generation step directly to a "send reply"
                       step. When an operator configures and enables such a workflow, replies can be
                       generated and sent to customers without a human reviewing each individual
-                      message. The workspace operator decides whether to put a human in the loop,
+                      message. The workspace operator chooses whether to put a human in the loop,
                       what triggers the workflow, and what the AI is allowed to send.{' '}
-                      {config.shortName} executes the workflow as configured.
+                      {config.shortName} executes the workflow as configured. If you operate a
+                      workflow whose AI-generated outputs could meaningfully affect a recipient (for
+                      example, denying a refund or closing an account), you are responsible for
+                      ensuring appropriate human review and for making any required disclosures to
+                      the people you communicate with.
                     </p>
                     <p className='mt-2'>
-                      Customer-support replies generally do not produce "legal or similarly
-                      significant effects" on a recipient under GDPR Art. 22(1), so we do not treat
-                      these workflows as restricted automated decision-making. If you operate a
-                      workflow whose outputs could have such effects (for example, denying a refund,
-                      closing an account, or making an eligibility determination), you are
-                      responsible — as the data controller for your customers — for ensuring an
-                      appropriate human-review step under Art. 22 and for making the required
-                      disclosures to your customers.
-                    </p>
-                    <p className='mt-2'>
-                      If you are an end recipient of an AI-generated reply and you would like a
-                      human review, or you have questions about how AI affected a specific outcome,
-                      contact the workspace that messaged you (they are the data controller). You
-                      can also contact us at{' '}
+                      If you receive a message from a {config.shortName} workspace and have
+                      questions about how AI was used, contact that workspace directly. You can also
+                      reach us at{' '}
                       <a
                         href={`mailto:${config.emails.privacy}`}
                         className='text-blue-600 hover:underline dark:text-blue-400'>
                         {config.emails.privacy}
                       </a>{' '}
-                      and we will route the request appropriately.
+                      and we will route the request to the responsible workspace.
                     </p>
-                    {/* LAWYER REVIEW: workflows can chain an AI node to a send/answer node, so
-                        AI-generated replies CAN be sent without per-message human approval when a
-                        workspace operator wires it that way. Confirm the position taken above —
-                        that customer-support replies generally fall outside Art. 22(1) and that
-                        the workspace operator (not Auxx) carries the Art. 22 obligations for any
-                        workflow whose outputs could have legal/similarly-significant effects.
-                        Also confirm whether we need to expose a workflow-level "human review
-                        required" toggle as a default safeguard. */}
                   </section>
 
                   <section>
@@ -479,15 +413,12 @@ export default function PrivacyPolicyPage() {
                     </h3>
                     <p>
                       When you use the extension to save a profile or page as a contact or company,
-                      you are capturing personal information about another individual. As described
-                      under "Data Controller" at the top of this Policy,{' '}
-                      <strong>you act as the data controller for the captured data</strong>, and{' '}
-                      {config.shortName} processes it on your behalf as a processor. You are
-                      responsible for ensuring you have a lawful basis to capture and store that
-                      information under applicable laws (including GDPR Art. 6 and any platform
-                      terms of service for the source site). On request from a captured individual
-                      who exercises their data-subject rights, we will assist you in fulfilling that
-                      request as required by our Data Processing Agreement.
+                      you are capturing personal information about another individual.{' '}
+                      <strong>You are responsible for that captured data</strong> — including
+                      ensuring you have a lawful basis to capture and store it under applicable U.S.
+                      law and the terms of service of the source site (LinkedIn, Gmail, X, Facebook,
+                      Instagram, etc.). If a captured individual asks us to remove their
+                      information, we will work with you to honor that request.
                     </p>
                   </section>
 
@@ -522,9 +453,6 @@ export default function PrivacyPolicyPage() {
                     </ul>
 
                     <h3 className='text-xl font-semibold mt-4'>Categories of Subprocessors</h3>
-                    {/* LAWYER REVIEW: confirm this list matches the actual subprocessor inventory.
-                        Maintain the canonical list at auxx.ai/subprocessors so this section can
-                        link out instead of duplicating. */}
                     <ul className='list-disc pl-6'>
                       <li>
                         <strong>Cloud infrastructure:</strong> Amazon Web Services (US) — hosting,
@@ -564,24 +492,20 @@ export default function PrivacyPolicyPage() {
 
                   <section>
                     <h2 className='text-2xl font-semibold'>9. Your Rights and Choices</h2>
-                    <p>
-                      Depending on your location, you may have certain rights regarding your
-                      personal information:
-                    </p>
+                    <p>Subject to applicable U.S. law, you may request to:</p>
                     <ul className='list-disc pl-6'>
-                      <li>Access your personal data</li>
-                      <li>Correct inaccuracies in your personal data</li>
-                      <li>Delete your personal data</li>
-                      <li>Object to the processing of your personal data</li>
-                      <li>Request restriction of processing your personal data</li>
-                      <li>Request transfer of your personal data (data portability)</li>
+                      <li>Access the personal information we hold about you</li>
+                      <li>Correct inaccurate personal information</li>
+                      <li>Delete your personal information (subject to legal exceptions)</li>
                       <li>
                         Withdraw consent at any time, where we rely on consent (this does not affect
                         the lawfulness of processing carried out before withdrawal)
                       </li>
+                      <li>Opt out of marketing communications</li>
                     </ul>
                     <p className='mt-4'>
-                      To exercise any of these rights, email us at{' '}
+                      California residents have additional rights — see Section 10. To exercise any
+                      of the rights above, email us at{' '}
                       <a
                         href={`mailto:${config.emails.privacy}`}
                         className='text-blue-600 hover:underline dark:text-blue-400'>
@@ -589,33 +513,6 @@ export default function PrivacyPolicyPage() {
                       </a>
                       . We will respond within 30 days. We may need to verify your identity before
                       acting on a request.
-                    </p>
-
-                    <h3 className='text-xl font-semibold mt-4'>
-                      Right to Lodge a Complaint (EU/UK/EEA)
-                    </h3>
-                    <p>
-                      If you are in the European Economic Area, the United Kingdom, or Switzerland,
-                      and you believe we have processed your personal information in a way that
-                      violates the GDPR or local data-protection law, you have the right to lodge a
-                      complaint with your local supervisory authority. A list of EU supervisory
-                      authorities is available at{' '}
-                      <a
-                        href='https://edpb.europa.eu/about-edpb/about-edpb/members_en'
-                        target='_blank'
-                        rel='noopener noreferrer'
-                        className='text-blue-600 hover:underline dark:text-blue-400'>
-                        edpb.europa.eu
-                      </a>
-                      ; in the UK, the supervisory authority is the{' '}
-                      <a
-                        href='https://ico.org.uk/'
-                        target='_blank'
-                        rel='noopener noreferrer'
-                        className='text-blue-600 hover:underline dark:text-blue-400'>
-                        Information Commissioner's Office
-                      </a>
-                      .
                     </p>
                   </section>
 
@@ -632,9 +529,6 @@ export default function PrivacyPolicyPage() {
                     <h3 className='text-xl font-semibold mt-4'>
                       Categories of Personal Information We Collect
                     </h3>
-                    {/* LAWYER REVIEW: confirm each CCPA category disclosure matches the actual
-                        data collected. The 11 statutory categories are listed below; mark each
-                        as collected / not collected. */}
                     <ul className='list-disc pl-6'>
                       <li>
                         <strong>Identifiers</strong> (name, email, IP address, account ID):
@@ -740,10 +634,9 @@ export default function PrivacyPolicyPage() {
                     <p>
                       Our Service is intended for use by businesses and is not directed to children.
                       We do not knowingly collect personal information from children under 13 (under
-                      the U.S. Children's Online Privacy Protection Act, "COPPA") or from children
-                      under 16 (under GDPR Art. 8, where local law sets the digital-consent age at
-                      16). If you are a parent or guardian and you believe your child has provided
-                      us with personal information, please contact us at{' '}
+                      the U.S. Children's Online Privacy Protection Act, "COPPA"). If you are a
+                      parent or guardian and you believe your child has provided us with personal
+                      information, please contact us at{' '}
                       <a
                         href={`mailto:${config.emails.privacy}`}
                         className='text-blue-600 hover:underline dark:text-blue-400'>

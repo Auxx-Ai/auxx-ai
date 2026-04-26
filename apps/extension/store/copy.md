@@ -4,11 +4,11 @@ Limits enforced by the Chrome Web Store dev console — keep within them.
 
 ## Name (≤45 chars)
 
-> Auxx.ai — Add Contacts from Anywhere
+Auxx.ai — Add Contacts from Anywhere
 
 ## Short description (≤132 chars)
 
-> Save contacts and companies to Auxx.ai from LinkedIn, Gmail, X, Facebook, and Instagram — in one click.
+Save contacts and companies to Auxx.ai from LinkedIn, Gmail, X, Facebook, and Instagram — in one click.
 
 ## Long description (≤16,000 chars)
 

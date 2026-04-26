@@ -7,31 +7,19 @@ These mirror what's declared in `apps/extension/manifest.json`.
 
 ## `activeTab`
 
-> To inject the Auxx.ai panel iframe into the current page when the user
-> clicks the toolbar icon. `activeTab` grants temporary host access to
-> the tab the user explicitly activated, scoped to a single user gesture
-> and revoked on navigation. Used in place of broad host permissions so
-> the extension cannot touch any tab the user did not opt into.
+To inject the Auxx.ai panel iframe into the current page when the user clicks the toolbar icon. `activeTab` grants temporary host access to the tab the user explicitly activated, scoped to a single user gesture and revoked on navigation. Used in place of broad host permissions so the extension cannot touch any tab the user did not opt into.
 
 ## `scripting`
 
-> To run `chrome.scripting.executeScript` against the active tab on
-> toolbar click, which injects the Auxx.ai panel iframe element and a small
-> inline bridge script that forwards parser invocations from the iframe
-> to the page-side content script.
+To run `chrome.scripting.executeScript` against the active tab on toolbar click, which injects the Auxx.ai panel iframe element and a small inline bridge script that forwards parser invocations from the iframe to the page-side content script.
 
 ## `storage`
 
-> To persist the user's theme preference (light/dark) and active Auxx.ai
-> workspace identifier between browser sessions in `chrome.storage.local`.
+To persist the user's theme preference (light/dark) and active Auxx.ai workspace identifier between browser sessions in `chrome.storage.local`.
 
 ## `tabs`
 
-> To read `tab.url` from the `chrome.tabs.onUpdated` listener so the
-> service worker can detect SPA navigation (LinkedIn / Instagram /
-> Twitter pushState) and tell the iframe panel to re-parse the new page.
-> Without this permission, URL changes that don't trigger a full reload
-> would leave the panel showing stale data.
+To read `tab.url` from the `chrome.tabs.onUpdated` listener so the service worker can detect SPA navigation (LinkedIn / Instagram / Twitter pushState) and tell the iframe panel to re-parse the new page. Without this permission, URL changes that don't trigger a full reload would leave the panel showing stale data.
 
 ## `host_permissions`
 
