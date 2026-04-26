@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "package": "pnpm build && node scripts/package.mjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo"
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo *.zip"
   },
   "dependencies": {
     "@auxx/types": "workspace:*",

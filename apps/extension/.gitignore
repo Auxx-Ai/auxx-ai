@@ -4,3 +4,7 @@ dist
 *.tsbuildinfo
 *.pem
 auxx-extension-key.pem
+
+# Web Store submission artifacts — regenerable via `pnpm package`. Pin a
+# specific build by git-tagging the source commit, not by committing the zip.
+*.zip

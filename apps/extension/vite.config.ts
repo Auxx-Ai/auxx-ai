@@ -44,7 +44,7 @@ function resolveWebappUrl(): string {
   return `http://localhost:${port}`
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react(), crx({ manifest })],
   resolve: {
     alias: {
@@ -57,7 +57,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'chrome116',
-    sourcemap: true,
+    // Source maps in dev only. The Chrome Web Store warns on shipped maps
+    // and they roughly triple the zip size with no review-side benefit
+    // (the store expects minified extension code).
+    sourcemap: command !== 'build',
     emptyOutDir: true,
     rollupOptions: {
       input: {
@@ -76,4 +79,4 @@ export default defineConfig({
     // chrome-extension:// origin in `Access-Control-Allow-Origin`.
     cors: { origin: [/chrome-extension:\/\//] },
   },
-})
+}))

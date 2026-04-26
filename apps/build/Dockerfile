@@ -64,7 +64,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 FROM slim AS runner
 
 ARG PROJECT_PATH
-ARG DOMAIN=dev.auxx.ai
+ARG DOMAIN
 ARG GIT_SHA
 ARG APP_VERSION
 ARG BUILD_TIME

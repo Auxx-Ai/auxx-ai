@@ -97,7 +97,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # ──────────────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
-ARG DOMAIN=dev.auxx.ai
+ARG DOMAIN
 ARG GIT_SHA
 ARG APP_VERSION
 ARG BUILD_TIME
