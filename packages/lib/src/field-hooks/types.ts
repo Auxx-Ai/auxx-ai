@@ -3,6 +3,7 @@
 import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { CachedField } from '../field-values/types'
+import type { TimelineFieldChangeSnapshotValue } from '../timeline/field-change-snapshot'
 
 // =============================================================================
 // POST-WRITE TRIGGER TYPES (existing)
@@ -141,8 +142,26 @@ export interface EntityFieldChangeEvent {
    * write produced. `null` if the write deleted the only row.
    */
   newValue: unknown
+  /**
+   * Server-resolved snapshot of `oldValue` with frozen labels — render
+   * from this, not from `oldValue`. `null` when the field was empty.
+   */
+  oldDisplay: TimelineFieldChangeSnapshotValue
+  /**
+   * Server-resolved snapshot of `newValue` with frozen labels — render
+   * from this, not from `newValue`. `null` when the field was cleared.
+   */
+  newDisplay: TimelineFieldChangeSnapshotValue
   organizationId: string
   userId: string
+  /**
+   * When set, this event is one of many emitted by a single bulk operation
+   * (e.g. `setBulkValues`, `addValuesBulk`, `removeValuesBulk`). Forwarded
+   * onto the published `<prefix>:field:updated` event and persisted into the
+   * timeline row's `eventData` for future cross-record grouping. Single-write
+   * paths leave this `undefined`.
+   */
+  bulkOperationId?: string
 }
 
 /**

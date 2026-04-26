@@ -20,6 +20,7 @@ import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/ty
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { isSystemAttribute } from '@auxx/types/system-attribute'
+import { generateId } from '@auxx/utils'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { getCachedFieldMap, getCachedResource } from '../cache'
@@ -46,6 +47,7 @@ import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { applyAiMarker } from './ai-commit'
 import { shortCircuitAiGenerate } from './ai-enqueue'
+import { batchGetExistingFieldValues } from './batch-existing-values'
 import {
   type CachedField,
   canonicalizeRelationshipRecordId,
@@ -70,6 +72,12 @@ import {
   syncInverseRelationshipsBulk,
 } from './relationship-sync'
 import { type ValidationContext, validateSelfReferentialChange } from './relationship-validators'
+import {
+  type BulkSnapshotWrite,
+  preloadSnapshotCache,
+  resolveFieldChangeSnapshotPair,
+  resolveFieldChangeSnapshotsBulk,
+} from './timeline-snapshot'
 import { type TypedColumnMatch, typedColumnMatch } from './typed-column-match'
 import type {
   AddRelationValuesBulkInput,
@@ -1428,6 +1436,12 @@ export async function addValuesBulk(
   let insertedCount = 0
   let skippedCount = 0
 
+  // Pre-write rows per entity, plus the new typed inputs each entity got.
+  // Captured inside the transaction; consumed below to fire field-change
+  // events without a post-write read.
+  const oldRowsByEntity = new Map<string, FieldValueRow[]>()
+  const insertedTypedByEntity = new Map<string, TypedFieldValueInput[]>()
+
   await ctx.db.transaction(async (tx) => {
     const sortedEntityIds = [...entityIds].sort()
     for (const entityId of sortedEntityIds) {
@@ -1457,6 +1471,7 @@ export async function addValuesBulk(
     const insertRows: ReturnType<typeof buildFieldValueRow>[] = []
     for (const entityId of entityIds) {
       const existing = existingByEntity.get(entityId) ?? []
+      oldRowsByEntity.set(entityId, existing)
       const seen = new Set<string>()
       for (const row of existing) {
         const k = serializeRowMatch(row, column)
@@ -1465,6 +1480,7 @@ export async function addValuesBulk(
 
       let prevKey = existing.length > 0 ? existing[existing.length - 1]!.sortKey : null
       const localSeen = new Set<string>()
+      const insertedTyped: TypedFieldValueInput[] = []
       for (let i = 0; i < typedInputs.length; i++) {
         const key = matchKey(matches[i]!)
         if (seen.has(key) || localSeen.has(key)) {
@@ -1484,7 +1500,11 @@ export async function addValuesBulk(
             sortKey,
           })
         )
+        insertedTyped.push(typedInputs[i]!)
         insertedCount++
+      }
+      if (insertedTyped.length > 0) {
+        insertedTypedByEntity.set(entityId, insertedTyped)
       }
     }
 
@@ -1492,6 +1512,29 @@ export async function addValuesBulk(
       await tx.insert(schema.FieldValue).values(insertRows)
     }
   })
+
+  // Field-change post-hooks for entities that actually received inserts.
+  // Old display = pre-write rows; new display = pre-write rows + inserts.
+  // Bulk renderer surfaces this as an "added" diff.
+  if (insertedTypedByEntity.size > 0 && ctx.userId !== undefined) {
+    const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
+    const entitySlug = resource?.apiSlug ?? ''
+    if (hasEntityFieldChangeHooks(entitySlug)) {
+      await dispatchAddRemoveFieldChangeEvents({
+        ctx,
+        field,
+        fieldType,
+        entityDefinitionId,
+        entitySlug,
+        entityType: resource?.entityType ?? null,
+        recordIds,
+        entityIds,
+        oldRowsByEntity,
+        deltaTypedByEntity: insertedTypedByEntity,
+        mode: 'add',
+      })
+    }
+  }
 
   return { inserted: insertedCount, skipped: skippedCount }
 }
@@ -1537,9 +1580,38 @@ export async function removeValuesBulk(
   const column = matches[0]!.column
   const matchValues = matches.map((m) => m.value)
 
-  const entityIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
+  const parsed = recordIds.map((rid) => parseRecordId(rid))
+  const entityIds = parsed.map((p) => p.entityInstanceId)
+  const entityDefinitionId = parsed[0]!.entityDefinitionId
 
-  const deleted = await ctx.db
+  // Pre-fetch existing rows so we can derive each entity's new (post-delete)
+  // value list in memory, without a second SELECT after the delete. Gated on
+  // listener presence so silent paths skip the read entirely.
+  const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
+  const entitySlug = resource?.apiSlug ?? ''
+  const willDispatchFieldChange = ctx.userId !== undefined && hasEntityFieldChangeHooks(entitySlug)
+
+  const oldRowsByEntity = new Map<string, FieldValueRow[]>()
+  if (willDispatchFieldChange) {
+    const rows = (await ctx.db
+      .select()
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId),
+          inArray(schema.FieldValue.entityId, entityIds)
+        )
+      )
+      .orderBy(asc(schema.FieldValue.sortKey))) as unknown as FieldValueRow[]
+    for (const row of rows) {
+      const arr = oldRowsByEntity.get(row.entityId) ?? []
+      arr.push(row)
+      oldRowsByEntity.set(row.entityId, arr)
+    }
+  }
+
+  const deleted = (await ctx.db
     .delete(schema.FieldValue)
     .where(
       and(
@@ -1549,7 +1621,33 @@ export async function removeValuesBulk(
         buildMatchInClause(column, matchValues as any)
       )
     )
-    .returning({ id: schema.FieldValue.id })
+    .returning({
+      id: schema.FieldValue.id,
+      entityId: schema.FieldValue.entityId,
+    })) as Array<{ id: string; entityId: string }>
+
+  if (willDispatchFieldChange && deleted.length > 0) {
+    const deletedIdsByEntity = new Map<string, Set<string>>()
+    for (const row of deleted) {
+      const set = deletedIdsByEntity.get(row.entityId) ?? new Set<string>()
+      set.add(row.id)
+      deletedIdsByEntity.set(row.entityId, set)
+    }
+
+    await dispatchAddRemoveFieldChangeEvents({
+      ctx,
+      field,
+      fieldType,
+      entityDefinitionId,
+      entitySlug,
+      entityType: resource?.entityType ?? null,
+      recordIds,
+      entityIds,
+      oldRowsByEntity,
+      deletedIdsByEntity,
+      mode: 'remove',
+    })
+  }
 
   return { removed: deleted.length }
 }
@@ -1657,8 +1755,16 @@ export async function setValueWithBuiltIn(
     : null
 
   // Closure so set + clear branches fire the post-hook chain identically.
+  // Resolves snapshots once per write so handlers (timeline writer especially)
+  // get frozen labels without each one re-resolving the same refs.
   const firePostHook = async (newValue: unknown): Promise<void> => {
     if (!willFirePostHook) return
+    const { oldDisplay, newDisplay } = await resolveFieldChangeSnapshotPair(
+      { db: ctx.db, organizationId: ctx.organizationId },
+      field,
+      oldValue,
+      newValue as TypedFieldValue | TypedFieldValue[] | null
+    )
     for (const handler of getEntityFieldChangeHooks(entitySlug)) {
       try {
         await handler({
@@ -1669,6 +1775,8 @@ export async function setValueWithBuiltIn(
           field,
           oldValue,
           newValue,
+          oldDisplay,
+          newDisplay,
           organizationId: ctx.organizationId,
           userId: ctx.userId!,
         })
@@ -2027,6 +2135,25 @@ export async function setBulkValues(
     oldRelatedIdsMap.set(rf.fieldId, oldIds)
   }
 
+  // Pre-capture pre-write typed values for every (entityId, customFieldId)
+  // we're about to touch. Required for the post-hook dispatch below so each
+  // emitted event carries an accurate `oldValue`/`oldDisplay`. Gated on
+  // listener presence — entities without registered field-change hooks pay
+  // nothing here.
+  const entitySlug = resource?.apiSlug ?? ''
+  const entityType = resource?.entityType ?? null
+  const willDispatchFieldChange =
+    ctx.userId !== undefined && customFieldIds.length > 0 && hasEntityFieldChangeHooks(entitySlug)
+
+  const oldValuesMap = willDispatchFieldChange
+    ? await batchGetExistingFieldValues(
+        { db: ctx.db, organizationId: ctx.organizationId },
+        entityInstanceIds,
+        customFieldIds,
+        ctx.fieldCache
+      )
+    : null
+
   // Set values for all entities in parallel
   // Skip inverse sync here - we'll do bulk sync at the end
   const results = await Promise.allSettled(
@@ -2119,7 +2246,270 @@ export async function setBulkValues(
     }).catch(() => {})
   }
 
+  // Dispatch per-record field-change events for every successful (recordId,
+  // fieldId) write. All events share one bulkOperationId so the timeline
+  // can later group/cite them as a single bulk action. System writes
+  // (no userId) skip dispatch — matches the per-write path's gate.
+  if (willDispatchFieldChange && oldValuesMap) {
+    await dispatchBulkFieldChangeEvents({
+      ctx,
+      results,
+      recordIds,
+      validValues,
+      modelType,
+      entityDefinitionId,
+      entitySlug,
+      entityType,
+      oldValuesMap,
+    })
+  }
+
   return { count }
+}
+
+/**
+ * Build per-record field-change events for every successful (recordId,
+ * fieldId) write, resolve their snapshots in one batched pass, and run the
+ * registered handler chain with a shared bulkOperationId. Failures are
+ * logged and swallowed — they must not surface as bulk-write errors.
+ */
+async function dispatchBulkFieldChangeEvents(args: {
+  ctx: FieldValueContext
+  results: Array<PromiseSettledResult<SetValuesResult[]>>
+  recordIds: RecordId[]
+  validValues: Array<{ fieldId: string; value: unknown }>
+  modelType: ReturnType<typeof getModelType>
+  entityDefinitionId: string
+  entitySlug: string
+  entityType: string | null
+  oldValuesMap: Awaited<ReturnType<typeof batchGetExistingFieldValues>>
+}): Promise<void> {
+  const {
+    ctx,
+    results,
+    recordIds,
+    validValues,
+    modelType,
+    entityDefinitionId,
+    entitySlug,
+    entityType,
+    oldValuesMap,
+  } = args
+
+  // Built-in fields don't fire field-change events on the per-write path
+  // either (setValueWithBuiltIn returns early before the post-hook).
+  // Restrict the bulk dispatch to custom fields for parity.
+  const customFieldIdSet = new Set(
+    validValues.filter((v) => !isBuiltInField(v.fieldId, modelType)).map((v) => v.fieldId)
+  )
+  if (customFieldIdSet.size === 0) return
+
+  const writes: BulkSnapshotWrite[] = []
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    if (result?.status !== 'fulfilled') continue
+    const recordId = recordIds[i]!
+    const { entityInstanceId } = parseRecordId(recordId)
+    const oldByField = oldValuesMap.get(entityInstanceId) ?? new Map()
+    for (const fieldResult of result.value) {
+      if (fieldResult.state !== 'complete') continue
+      if (!customFieldIdSet.has(fieldResult.fieldId)) continue
+      const field = ctx.fieldCache.get(fieldResult.fieldId)
+      if (!field) continue
+
+      const fieldOptions = field.options as
+        | { actor?: { multiple?: boolean }; multi?: boolean }
+        | undefined
+      const isArrayReturn = isArrayReturnFieldType(field.type as FieldType, fieldOptions)
+      const newValue: TypedFieldValue | TypedFieldValue[] | null = isArrayReturn
+        ? fieldResult.values
+        : (fieldResult.values[0] ?? null)
+      const oldValue = oldByField.get(fieldResult.fieldId) ?? null
+
+      writes.push({ recordId, field, oldValue, newValue })
+    }
+  }
+  if (writes.length === 0) return
+
+  const bulkOperationId = generateId()
+
+  let snapshots: Awaited<ReturnType<typeof resolveFieldChangeSnapshotsBulk>>
+  try {
+    const cache = await preloadSnapshotCache(ctx.organizationId, writes)
+    snapshots = await resolveFieldChangeSnapshotsBulk(
+      { db: ctx.db, organizationId: ctx.organizationId, cache },
+      writes
+    )
+  } catch (error) {
+    logger.error('Bulk snapshot resolution failed; dispatching with empty snapshots', {
+      writes: writes.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    snapshots = new Map()
+  }
+
+  // Bound concurrency so a 1000-record bulk op doesn't spawn 1000+ handler
+  // promises in parallel. Each chunk runs in parallel; chunks run serially.
+  const handlers = getEntityFieldChangeHooks(entitySlug)
+  if (handlers.length === 0) return
+
+  const CHUNK_SIZE = 100
+  for (let i = 0; i < writes.length; i += CHUNK_SIZE) {
+    const chunk = writes.slice(i, i + CHUNK_SIZE)
+    await Promise.all(
+      chunk.map(async (w) => {
+        const snapshot = snapshots.get(`${w.recordId}:${w.field.id}`)
+        for (const handler of handlers) {
+          try {
+            await handler({
+              recordId: w.recordId,
+              entityDefinitionId,
+              entityType,
+              entitySlug,
+              field: w.field,
+              oldValue: w.oldValue,
+              newValue: w.newValue,
+              oldDisplay: snapshot?.oldDisplay ?? null,
+              newDisplay: snapshot?.newDisplay ?? null,
+              organizationId: ctx.organizationId,
+              userId: ctx.userId!,
+              bulkOperationId,
+            })
+          } catch (error) {
+            logger.error(`Bulk field-change handler failed for ${entitySlug}`, {
+              fieldId: w.field.id,
+              recordId: w.recordId,
+              bulkOperationId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
+      })
+    )
+  }
+}
+
+/**
+ * Build per-record field-change events for `addValuesBulk` /
+ * `removeValuesBulk`. The event carries the *full* old + new typed value
+ * arrays so the renderer can show "added X" / "removed Y" diffs without
+ * any post-write read.
+ */
+async function dispatchAddRemoveFieldChangeEvents(
+  args: {
+    ctx: FieldValueContext
+    field: CachedField
+    fieldType: FieldType
+    entityDefinitionId: string
+    entitySlug: string
+    entityType: string | null
+    recordIds: RecordId[]
+    entityIds: string[]
+    oldRowsByEntity: Map<string, FieldValueRow[]>
+  } & (
+    | { mode: 'add'; deltaTypedByEntity: Map<string, TypedFieldValueInput[]> }
+    | { mode: 'remove'; deletedIdsByEntity: Map<string, Set<string>> }
+  )
+): Promise<void> {
+  const {
+    ctx,
+    field,
+    fieldType,
+    entityDefinitionId,
+    entitySlug,
+    entityType,
+    recordIds,
+    entityIds,
+    oldRowsByEntity,
+  } = args
+
+  const writes: BulkSnapshotWrite[] = []
+  for (let i = 0; i < entityIds.length; i++) {
+    const entityId = entityIds[i]!
+    const recordId = recordIds[i]!
+    const oldRows = oldRowsByEntity.get(entityId) ?? []
+    const oldTyped = oldRows.map((r) => rowToTypedValue(r, fieldType))
+
+    let newTyped: TypedFieldValue[]
+    if (args.mode === 'add') {
+      const delta = args.deltaTypedByEntity.get(entityId)
+      if (!delta || delta.length === 0) continue
+      // Cast TypedFieldValueInput[] → TypedFieldValue[]; for renderer purposes
+      // the input shape carries the same display-relevant fields. We don't
+      // synthesize ids/sortKeys here — the snapshot resolver doesn't need them.
+      const newAdditions = delta as unknown as TypedFieldValue[]
+      newTyped = [...oldTyped, ...newAdditions]
+    } else {
+      const deletedIds = args.deletedIdsByEntity.get(entityId)
+      if (!deletedIds || deletedIds.size === 0) continue
+      newTyped = oldTyped.filter((tv) => !deletedIds.has(tv.id))
+      if (newTyped.length === oldTyped.length) continue
+    }
+
+    writes.push({
+      recordId,
+      field,
+      oldValue: oldTyped.length > 0 ? oldTyped : null,
+      newValue: newTyped.length > 0 ? newTyped : null,
+    })
+  }
+
+  if (writes.length === 0) return
+
+  const bulkOperationId = generateId()
+
+  let snapshots: Awaited<ReturnType<typeof resolveFieldChangeSnapshotsBulk>>
+  try {
+    const cache = await preloadSnapshotCache(ctx.organizationId, writes)
+    snapshots = await resolveFieldChangeSnapshotsBulk(
+      { db: ctx.db, organizationId: ctx.organizationId, cache },
+      writes
+    )
+  } catch (error) {
+    logger.error('Bulk add/remove snapshot resolution failed; dispatching with empty snapshots', {
+      writes: writes.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    snapshots = new Map()
+  }
+
+  const handlers = getEntityFieldChangeHooks(entitySlug)
+  if (handlers.length === 0) return
+
+  const CHUNK_SIZE = 100
+  for (let i = 0; i < writes.length; i += CHUNK_SIZE) {
+    const chunk = writes.slice(i, i + CHUNK_SIZE)
+    await Promise.all(
+      chunk.map(async (w) => {
+        const snapshot = snapshots.get(`${w.recordId}:${w.field.id}`)
+        for (const handler of handlers) {
+          try {
+            await handler({
+              recordId: w.recordId,
+              entityDefinitionId,
+              entityType,
+              entitySlug,
+              field: w.field,
+              oldValue: w.oldValue,
+              newValue: w.newValue,
+              oldDisplay: snapshot?.oldDisplay ?? null,
+              newDisplay: snapshot?.newDisplay ?? null,
+              organizationId: ctx.organizationId,
+              userId: ctx.userId!,
+              bulkOperationId,
+            })
+          } catch (error) {
+            logger.error(`Bulk add/remove field-change handler failed for ${entitySlug}`, {
+              fieldId: w.field.id,
+              recordId: w.recordId,
+              bulkOperationId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
+      })
+    )
+  }
 }
 
 // =============================================================================

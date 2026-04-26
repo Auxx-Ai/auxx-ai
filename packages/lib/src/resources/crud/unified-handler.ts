@@ -71,11 +71,17 @@ export type LookupCandidate = {
 /**
  * Single match returned by `lookupByField`. `matchedBy` records which
  * candidate hit this record (useful when callers want to know whether
- * dedup succeeded via externalId vs. primary_email).
+ * dedup succeeded via externalId vs. primary_email). The denormalized
+ * display columns from EntityInstance ride along so list-style consumers
+ * (e.g. the extension's "N similar found" view) can render an avatar +
+ * name + subtitle without a second round-trip.
  */
 export type LookupMatch = {
   recordId: RecordId
   matchedBy: { systemAttribute: string; value: unknown }
+  displayName: string | null
+  secondaryDisplayValue: string | null
+  avatarUrl: string | null
 }
 
 /**
@@ -348,12 +354,19 @@ export class UnifiedCrudHandler {
       // Fetch `remaining + 1` to detect hasMore. DISTINCT ON collapses
       // duplicate FieldValue rows on the same entity (e.g. belt-and-braces
       // against two rows with the same externalId after mode:'add' dedup).
+      // Inner-join EntityInstance so each match carries the denormalized
+      // displayName / secondaryDisplayValue / avatarUrl columns that the
+      // FieldValueService write path keeps in sync.
       const remaining = params.limit - items.length
       const rows = await this.db
         .selectDistinctOn([schema.FieldValue.entityId], {
           entityId: schema.FieldValue.entityId,
+          displayName: schema.EntityInstance.displayName,
+          secondaryDisplayValue: schema.EntityInstance.secondaryDisplayValue,
+          avatarUrl: schema.EntityInstance.avatarUrl,
         })
         .from(schema.FieldValue)
+        .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
         .where(
           and(
             eq(schema.FieldValue.fieldId, field.id),
@@ -374,6 +387,9 @@ export class UnifiedCrudHandler {
         items.push({
           recordId,
           matchedBy: { systemAttribute: candidate.systemAttribute, value: candidate.value },
+          displayName: row.displayName,
+          secondaryDisplayValue: row.secondaryDisplayValue,
+          avatarUrl: row.avatarUrl,
         })
       }
     }

@@ -563,10 +563,17 @@ function mapFieldUpdated(
         fieldId: data.fieldId,
         fieldName: data.fieldName,
         fieldType: data.fieldType,
+        ...(data.bulkOperationId ? { bulkOperationId: data.bulkOperationId } : {}),
       },
       changes: [
         {
           field: data.fieldName,
+          fieldType: data.fieldType,
+          oldDisplay: data.oldDisplay,
+          newDisplay: data.newDisplay,
+          // Legacy raw values — kept through one release as backwards-compat
+          // ballast for any consumer still reading the raw shape. Drop in a
+          // follow-up migration once the renderer no longer needs them.
           oldValue: data.oldValue,
           newValue: data.newValue,
         },
