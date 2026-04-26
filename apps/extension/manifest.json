@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Auxx.ai",
   "description": "Capture contacts and companies into Auxx.ai from anywhere.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgpVe5gy5FMgYfRhlo6oDP4B1HJIA05uwWalYrMD+fM3H9Nzh5KlpmeQTvPuymJMm2ASvR6BU43jiImFtrCdXkrEiaPjEoXiMfiR/mzdsZTTc9DW2w+8t+Y9onGIcRcT8scoybKJ0a/TU/EGB32ngUCsUz6zAyePDlxGHjVwHxbrNRzdIVLeWhWpsTQFR+fk/qtBzr7MV4edRQkJlljk94Ml35zoYvFNw/99JNPFD2jHMT5jEcI5yODr/mSIZwsLlMGCa0LH24rW06U9Ywr18NHgpNCCiMixeJ7hFK1iA5dtoP19MCpWDR+oPV+6/7zqex322A+RUpucRw4NNvVrJ0QIDAQAB",
   "icons": {
     "16": "icons/icon16.png",
