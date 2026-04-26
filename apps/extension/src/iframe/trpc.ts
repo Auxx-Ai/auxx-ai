@@ -177,41 +177,6 @@ type RecordCreateOutput = z.infer<typeof RecordCreateOutput>
 // `entityDefinition.id`, and the `values[]` array — and let everything else
 // passthrough so we can pull more off the response without churning this
 // schema later.
-const RecordFieldValueSchema = z
-  .object({
-    field: z
-      .object({
-        id: z.string(),
-        type: z.string(),
-        label: z.string().nullable().optional(),
-        systemAttribute: z.string().nullable().optional(),
-      })
-      .passthrough(),
-    valueText: z.string().nullable().optional(),
-    valueNumber: z.number().nullable().optional(),
-    valueBoolean: z.boolean().nullable().optional(),
-    valueJson: z.unknown().optional(),
-    valueDate: z.string().nullable().optional(),
-  })
-  .passthrough()
-
-const RecordGetByIdOutput = z
-  .object({
-    id: z.string(),
-    displayName: z.string().nullable().optional(),
-    entityDefinition: z
-      .object({
-        id: z.string(),
-        name: z.string().nullable().optional(),
-        slug: z.string().nullable().optional(),
-      })
-      .passthrough(),
-    values: z.array(RecordFieldValueSchema),
-  })
-  .passthrough()
-export type RecordGetByIdOutput = z.infer<typeof RecordGetByIdOutput>
-export type RecordFieldValue = z.infer<typeof RecordFieldValueSchema>
-
 const ParserHealthOutput = z.object({
   ok: z.literal(true),
 })
@@ -247,20 +212,6 @@ export async function createRecord(input: CreateRecordInput): Promise<RecordCrea
   })
 }
 
-/**
- * Fetch a single record by composite recordId (`<entityDefinitionId>:<instanceId>`).
- * The composite form is what `lookupByField` returns, so the extension can
- * round-trip a hit straight into the detail view without splitting/rejoining.
- */
-export async function getRecordById(recordId: string): Promise<RecordGetByIdOutput> {
-  return call({
-    procedure: 'record.getById',
-    type: 'query',
-    input: { recordId },
-    outputSchema: RecordGetByIdOutput,
-  })
-}
-
 // ─── record.lookupByField ──────────────────────────────────────
 //
 // Typed equality lookup — the dedup primitive. Tries candidates in
@@ -282,10 +233,12 @@ const LookupByFieldOutputSchema = z.object({
   items: z.array(
     z.object({
       recordId: z.string(),
-      matchedBy: z.object({
-        systemAttribute: z.string(),
-        value: z.unknown(),
-      }),
+      // Denormalized display columns from EntityInstance — let the iframe
+      // render an avatar + name + subtitle for each "similar found" row
+      // without an N+1 record.getById fan-out.
+      displayName: z.string().nullable(),
+      secondaryDisplayValue: z.string().nullable(),
+      avatarUrl: z.string().nullable(),
     })
   ),
   hasMore: z.boolean(),

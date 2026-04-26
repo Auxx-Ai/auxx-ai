@@ -1,5 +1,6 @@
 // apps/extension/src/iframe/app.tsx
 
+import Loader from '@auxx/ui/components/loader'
 import { useCallback } from 'react'
 import { Header } from './components/header'
 import { RouteStackContext, useRouteStackValue } from './hooks/use-route-stack'
@@ -31,11 +32,7 @@ export function App() {
   }, [])
 
   if (state.status === 'loading') {
-    return (
-      <div className='flex h-full items-center justify-center text-sm text-muted-foreground'>
-        Loading…
-      </div>
-    )
+    return <Loader size='sm' title='Loading' subtitle='' className='h-full' />
   }
 
   const session = state.session
@@ -49,7 +46,7 @@ export function App() {
           onRefreshSession={refresh}
           onClose={closePanel}
         />
-        <main className='flex-1 overflow-y-auto p-4'>
+        <main className='flex-1 overflow-y-auto'>
           <RouteView route={stackValue.top} session={session} />
         </main>
       </div>

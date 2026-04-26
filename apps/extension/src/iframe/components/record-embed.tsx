@@ -1,7 +1,6 @@
 // apps/extension/src/iframe/components/record-embed.tsx
 
-import { Button } from '@auxx/ui/components/button'
-import { ExternalLink } from 'lucide-react'
+import Loader from '@auxx/ui/components/loader'
 import { useEffect, useRef, useState } from 'react'
 import { buildEmbedUrl, type EmbedTheme, fetchEmbedToken } from '../trpc'
 
@@ -18,10 +17,6 @@ function readEmbedTheme(): EmbedTheme {
 
 interface RecordEmbedProps {
   recordId: string
-  /** Outer "Open in Auxx" link; the embed itself doesn't render one. */
-  openHref: string
-  /** Display name for the back-of-card title row above the iframe. */
-  displayName: string | null | undefined
 }
 
 /**
@@ -30,13 +25,14 @@ interface RecordEmbedProps {
  * `/api/extension/embed-token` (cookies via CORS), then constructs the
  * iframe URL with `?token=...`. The embed page validates the token, sets a
  * partitioned session cookie, and renders the same `PropertyProvider` /
- * `PropertyRow` editing surface the web sidebar uses.
+ * `PropertyRow` editing surface the web sidebar uses — including the
+ * identity header + "Open in Auxx" CTA.
  *
- * Falls back to a plain "Open in Auxx" CTA if the token mint fails — almost
- * always means the user is signed out, which the outer extension shell will
- * pick up on its next session probe.
+ * Surfaces a "Sign in" hint if the token mint fails — almost always means
+ * the user is signed out, which the outer extension shell will pick up on
+ * its next session probe.
  */
-export function RecordEmbed({ recordId, openHref, displayName }: RecordEmbedProps) {
+export function RecordEmbed({ recordId }: RecordEmbedProps) {
   const [state, setState] = useState<'minting' | 'ready' | 'error'>('minting')
   const [src, setSrc] = useState<string | null>(null)
   // Re-mint on remount; an old token in memory is worthless once the iframe
@@ -63,16 +59,7 @@ export function RecordEmbed({ recordId, openHref, displayName }: RecordEmbedProp
 
   return (
     <div className='flex h-full flex-col'>
-      <div className='flex shrink-0 items-start justify-between gap-2 px-1 pb-2'>
-        <h2 className='min-w-0 flex-1 truncate text-sm font-medium'>{displayName ?? 'Untitled'}</h2>
-        <Button asChild variant='ghost' size='sm' className='shrink-0 gap-1'>
-          <a href={openHref} target='_blank' rel='noreferrer'>
-            <ExternalLink className='size-3.5' />
-            Open
-          </a>
-        </Button>
-      </div>
-      {state === 'minting' && <p className='px-1 text-sm text-muted-foreground'>Loading…</p>}
+      {state === 'minting' && <Loader size='sm' title='Loading' subtitle='' className='h-full' />}
       {state === 'error' && (
         <p className='px-1 text-sm text-muted-foreground'>Sign in to Auxx to view this record.</p>
       )}

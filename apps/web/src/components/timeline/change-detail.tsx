@@ -1,47 +1,35 @@
 // apps/web/src/components/timeline/change-detail.tsx
 import { ArrowRight } from 'lucide-react'
+import { pickRenderable, type SnapshotChange, SnapshotValue } from './snapshot-chip'
 
-/**
- * Props for the ChangeDetail component
- */
 interface ChangeDetailProps {
-  change: {
-    field: string
-    oldValue: any
-    newValue: any
-  }
+  change: SnapshotChange
 }
 
 /**
- * Formats a value for display in change details
- */
-function formatValue(value: any): string {
-  if (value === null || value === undefined) {
-    return 'null'
-  }
-  if (typeof value === 'boolean') {
-    return value ? 'true' : 'false'
-  }
-  if (typeof value === 'object') {
-    return JSON.stringify(value)
-  }
-  return String(value)
-}
-
-/**
- * Displays a single field change with old and new values
+ * Renders a single field-change row. Prefers the server-resolved snapshots
+ * (`oldDisplay`/`newDisplay`); falls back to a pure unwrap of legacy raw
+ * values for rows that pre-date the snapshot system.
  */
 export function ChangeDetail({ change }: ChangeDetailProps) {
+  const oldSnap = pickRenderable(change, 'old')
+  const newSnap = pickRenderable(change, 'new')
+  const hasOld = oldSnap !== null && (Array.isArray(oldSnap) ? oldSnap.length > 0 : true)
+
   return (
     <div className='flex items-center gap-2'>
       <span className='font-medium'>{change.field}:</span>
-      {change.oldValue !== null && change.oldValue !== undefined && (
+      {hasOld && (
         <>
-          <span className='text-primary-400 line-through'>{formatValue(change.oldValue)}</span>
+          <span className='text-primary-400 line-through'>
+            <SnapshotValue snap={oldSnap} />
+          </span>
           <ArrowRight />
         </>
       )}
-      <span className='emphasis'>{formatValue(change.newValue)}</span>
+      <span className='emphasis'>
+        <SnapshotValue snap={newSnap} />
+      </span>
     </div>
   )
 }

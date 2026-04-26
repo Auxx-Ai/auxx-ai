@@ -2,8 +2,37 @@
 
 import type { RecordId } from '@auxx/types/resource'
 import type { TimelineActorType, TimelineEventType } from './event-types'
+import type { TimelineFieldChangeSnapshotValue } from './field-change-snapshot'
 
 export { ContactEventType } from './event-types'
+
+/**
+ * One change row stored on a timeline event. New rows carry frozen
+ * `oldDisplay` / `newDisplay` snapshots; legacy rows still carry only the
+ * raw `oldValue` / `newValue` (the renderer falls back to a best-effort
+ * unwrap in that case).
+ */
+export interface TimelineChange {
+  field: string
+  /** Field type at write time — used as a hint for empty-state rendering. */
+  fieldType?: string
+  /** Server-resolved snapshot of the pre-write value. */
+  oldDisplay?: TimelineFieldChangeSnapshotValue
+  /** Server-resolved snapshot of the post-write value. */
+  newDisplay?: TimelineFieldChangeSnapshotValue
+  /** Total elements in `oldDisplay` if it was truncated to the array cap. */
+  oldDisplayCount?: number
+  /** Total elements in `newDisplay` if it was truncated to the array cap. */
+  newDisplayCount?: number
+  /** Set when the array was capped at the snapshot limit. */
+  oldDisplayTruncated?: boolean
+  /** Set when the array was capped at the snapshot limit. */
+  newDisplayTruncated?: boolean
+  /** Legacy raw value — kept through one release for backwards-compat ballast. */
+  oldValue?: any
+  /** Legacy raw value — kept through one release for backwards-compat ballast. */
+  newValue?: any
+}
 
 /** Actor who performed the action */
 export interface TimelineActor {
@@ -32,11 +61,7 @@ export interface TimelineEventBase {
   actor: TimelineActor
 
   eventData: Record<string, any>
-  changes?: {
-    field: string
-    oldValue: any
-    newValue: any
-  }[]
+  changes?: TimelineChange[]
   metadata?: Record<string, any>
 
   isGrouped: boolean
@@ -97,11 +122,7 @@ export interface CreateTimelineEventInput {
   actorId: string
 
   eventData?: Record<string, any>
-  changes?: Array<{
-    field: string
-    oldValue: any
-    newValue: any
-  }>
+  changes?: TimelineChange[]
   metadata?: Record<string, any>
 
   organizationId: string

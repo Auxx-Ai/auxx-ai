@@ -21,7 +21,11 @@ export function EmbedShell({
   children: ReactNode
 }) {
   return (
-    <div className={cn('min-h-full bg-background text-foreground', theme === 'dark' && 'dark')}>
+    <div
+      className={cn(
+        'h-screen overflow-y-auto bg-background text-foreground',
+        theme === 'dark' && 'dark'
+      )}>
       {children}
     </div>
   )

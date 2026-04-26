@@ -34,6 +34,9 @@ export const publishFieldChangeEvent: EntityFieldChangeHandler = async (event) =
     fieldType: event.field.type,
     oldValue: event.oldValue,
     newValue: event.newValue,
+    oldDisplay: event.oldDisplay,
+    newDisplay: event.newDisplay,
+    ...(event.bulkOperationId ? { bulkOperationId: event.bulkOperationId } : {}),
   }
 
   const type =

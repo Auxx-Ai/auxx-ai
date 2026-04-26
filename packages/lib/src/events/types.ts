@@ -1,6 +1,7 @@
 import type { InvitationStatus, SYNC_STATUS, UserEntity as User } from '@auxx/database/types'
 import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import type { TimelineFieldChangeSnapshotValue } from '../timeline/field-change-snapshot'
 export type Events =
   | 'user:created'
   | 'workspace:created'
@@ -461,8 +462,17 @@ export type FieldUpdatedData = {
   fieldId: string
   fieldName: string
   fieldType: string
+  /** Raw — kept for compat / analytics. May be removed in a follow-up. */
   oldValue?: any
   newValue: any
+  /** Server-resolved snapshot. Render from these, not from oldValue/newValue. */
+  oldDisplay?: TimelineFieldChangeSnapshotValue
+  newDisplay?: TimelineFieldChangeSnapshotValue
+  /**
+   * When set, this event is one of many emitted by a single bulk operation.
+   * Persisted into timeline `eventData` for later cross-record grouping.
+   */
+  bulkOperationId?: string
 }
 
 // Contact Field Updated Event
