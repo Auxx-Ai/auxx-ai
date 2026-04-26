@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.140](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.139...auxx-v0.1.140) (2026-04-26)
+
+
+### Features
+
+* enhance multi-value field handling and normalization ([#480](https://github.com/Auxx-Ai/auxx-ai/issues/480)) ([3270a3a](https://github.com/Auxx-Ai/auxx-ai/commit/3270a3a132eaf33f43f43dd31d1e80e3d5432e2a))
+* extension record embed (iframe-based field editor) ([#485](https://github.com/Auxx-Ai/auxx-ai/issues/485)) ([b36450d](https://github.com/Auxx-Ai/auxx-ai/commit/b36450d290e224b871de243f59f717ac6eab5c69))
+* field-change post-hooks + ticket/entity field-updated events ([#484](https://github.com/Auxx-Ai/auxx-ai/issues/484)) ([b4a89f4](https://github.com/Auxx-Ai/auxx-ai/commit/b4a89f4c337a0bc36e38b91d2cc87b84210f4e44))
+* field-hooks framework (pre-write field hooks + pre-delete entity hooks) ([#482](https://github.com/Auxx-Ai/auxx-ai/issues/482)) ([009bbc9](https://github.com/Auxx-Ai/auxx-ai/commit/009bbc99412358d68fbe7f910d1bb4c2554b5452))
+* **migrations:** add externalId field to contact and company entities ([#478](https://github.com/Auxx-Ai/auxx-ai/issues/478)) ([a06a9c3](https://github.com/Auxx-Ai/auxx-ai/commit/a06a9c3f71f666d5ea7f3ea7b8a1775100376825))
+* system tag read-only guards + BOM descendant explosion fix ([#483](https://github.com/Auxx-Ai/auxx-ai/issues/483)) ([5b722d8](https://github.com/Auxx-Ai/auxx-ai/commit/5b722d80990ad25516fcf6e3f9c6e6709152ae02))
+* timeline field-change snapshots + extension root-route refactor ([#486](https://github.com/Auxx-Ai/auxx-ai/issues/486)) ([92dee7d](https://github.com/Auxx-Ai/auxx-ai/commit/92dee7dd73b129bda9fd064364d0aa4456c21854))
+
 ## [0.1.139](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.138...auxx-v0.1.139) (2026-04-23)
 
 
