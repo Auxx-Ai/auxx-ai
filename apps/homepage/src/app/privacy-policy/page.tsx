@@ -248,28 +248,48 @@ export default function PrivacyPolicyPage() {
                     <p>
                       The Service uses large language models (currently provided by OpenAI and
                       Anthropic) to draft replies, classify tickets, and surface suggested actions
-                      to your support agents.{' '}
-                      <strong>
-                        A human always reviews and approves AI-drafted replies before they are sent
-                      </strong>{' '}
-                      — the Service does not autonomously send messages on your behalf without an
-                      in-app confirmation. As such, our AI processing does not constitute "solely
-                      automated decision-making producing legal or similarly significant effects"
-                      under GDPR Art. 22.
+                      to your support agents. By default, AI-drafted replies appear as drafts that a
+                      human reviews and sends from the {config.shortName} inbox.
                     </p>
                     <p className='mt-2'>
-                      If you have questions about how AI affects a specific decision, or you want a
-                      human-only review of an outcome, contact us at{' '}
+                      The Service also offers a <strong>workflow builder</strong> that lets the
+                      workspace operator chain an AI generation step directly to a "send reply"
+                      step. When an operator configures and enables such a workflow, replies can be
+                      generated and sent to customers without a human reviewing each individual
+                      message. The workspace operator decides whether to put a human in the loop,
+                      what triggers the workflow, and what the AI is allowed to send.{' '}
+                      {config.shortName} executes the workflow as configured.
+                    </p>
+                    <p className='mt-2'>
+                      Customer-support replies generally do not produce "legal or similarly
+                      significant effects" on a recipient under GDPR Art. 22(1), so we do not treat
+                      these workflows as restricted automated decision-making. If you operate a
+                      workflow whose outputs could have such effects (for example, denying a refund,
+                      closing an account, or making an eligibility determination), you are
+                      responsible — as the data controller for your customers — for ensuring an
+                      appropriate human-review step under Art. 22 and for making the required
+                      disclosures to your customers.
+                    </p>
+                    <p className='mt-2'>
+                      If you are an end recipient of an AI-generated reply and you would like a
+                      human review, or you have questions about how AI affected a specific outcome,
+                      contact the workspace that messaged you (they are the data controller). You
+                      can also contact us at{' '}
                       <a
                         href={`mailto:${config.emails.privacy}`}
                         className='text-blue-600 hover:underline dark:text-blue-400'>
                         {config.emails.privacy}
-                      </a>
-                      .
+                      </a>{' '}
+                      and we will route the request appropriately.
                     </p>
-                    {/* LAWYER REVIEW: confirm that we do not have any flow that auto-sends
-                        AI-generated replies without human approval. If we ever ship one (e.g.
-                        an autoreply mode), Article 22 disclosures escalate. */}
+                    {/* LAWYER REVIEW: workflows can chain an AI node to a send/answer node, so
+                        AI-generated replies CAN be sent without per-message human approval when a
+                        workspace operator wires it that way. Confirm the position taken above —
+                        that customer-support replies generally fall outside Art. 22(1) and that
+                        the workspace operator (not Auxx) carries the Art. 22 obligations for any
+                        workflow whose outputs could have legal/similarly-significant effects.
+                        Also confirm whether we need to expose a workflow-level "human review
+                        required" toggle as a default safeguard. */}
                   </section>
 
                   <section>
