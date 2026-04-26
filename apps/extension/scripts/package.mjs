@@ -76,10 +76,7 @@ function stripDevOnly(manifest) {
     }
   }
 
-  if (
-    m.content_security_policy &&
-    typeof m.content_security_policy.extension_pages === 'string'
-  ) {
+  if (m.content_security_policy && typeof m.content_security_policy.extension_pages === 'string') {
     const stripped = m.content_security_policy.extension_pages
       // Drop any localhost URL token (with optional leading space).
       .replace(/\s?https?:\/\/localhost(:\d+)?(\/[^\s;]*)?/g, '')
