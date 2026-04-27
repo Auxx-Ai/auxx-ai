@@ -475,6 +475,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'created_at',
     systemSortOrder: 'aD',
+    dbColumn: 'createdAt',
     nullable: false,
     capabilities: {
       filterable: true,
@@ -495,6 +496,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'updated_at',
     systemSortOrder: 'aE',
+    dbColumn: 'updatedAt',
     nullable: false,
     capabilities: {
       filterable: true,

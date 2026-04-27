@@ -1,13 +1,8 @@
 // ~/components/global/sidebar/views-group.tsx
 'use client'
 
-import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
-import {
-  SidebarGroup,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from '@auxx/ui/components/sidebar'
+import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
+import { SidebarMenu, SidebarMenuButton, SidebarMenuSubItem } from '@auxx/ui/components/sidebar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
@@ -32,38 +27,35 @@ import { TableProperties, Trash2 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { useDndState } from '~/app/context/dnd-state-context'
+import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
 import { EditableSidebarItem } from '~/components/global/sidebar/editable-sidebar-item'
-import { SidebarGroupHeader } from '~/components/global/sidebar/sidebar-group-header'
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import { useMailCountsStore } from '~/components/mail/store'
 import { MailViewDialog } from '~/components/mail-views/mail-view-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { useSidebarStateContext } from './sidebar-state-context'
-
-// import { useDndState } from '~/context/dnd-state-context'; // <-- IMPORT NEW HOOK
 
 export interface MailView {
   id: string
   name: string
   color: string
   unassignedCount?: number
-  isVisible?: boolean // Keep isVisible as it's managed by settings
+  isVisible?: boolean
 }
 
-interface ViewsGroupProps {
-  views: MailView[] // Use the processed inboxes from the hook
+interface ViewsSectionProps {
+  views: MailView[]
   isLoading: boolean
   isEditMode: boolean
   onToggleEditMode: () => void
   onUpdateViewsVisibility?: (viewId: string, isVisible: boolean) => void
-  onReorderViews?: (orderedViewIds: string[]) => void // New prop for saving order
-  isGroupVisible: boolean
-  onToggleGroupVisibility: () => void
+  onReorderViews?: (orderedViewIds: string[]) => void
+  isSectionVisible: boolean
+  onToggleSectionVisibility: () => void
 }
 
 /**
- * Wrapper component to make a SidebarItem representing a shared inbox droppable.
+ * Wrapper component to make a SidebarItem representing a mail view droppable.
  */
 const DroppableViewSidebarItem = ({
   view,
@@ -76,9 +68,7 @@ const DroppableViewSidebarItem = ({
   isEditMode: boolean
   onToggleEditMode: () => void
 }) => {
-  // const { activeDragItem } = useMailFilter()
-  // const isDraggingThread = activeDragItem?.data.current?.type === 'thread'
-  const { activeDndItem } = useDndState() // <-- Use new hook
+  const { activeDndItem } = useDndState()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const isDraggingThread = activeDndItem?.data.current?.type === 'thread'
@@ -94,7 +84,6 @@ const DroppableViewSidebarItem = ({
     },
   })
 
-  /** Handles the delete action with confirmation */
   const handleDelete = async () => {
     const confirmed = await confirm({
       title: 'Delete this view?',
@@ -110,16 +99,16 @@ const DroppableViewSidebarItem = ({
   }
 
   const { setNodeRef, isOver } = useDroppable({
-    id: `view-${view.id}`, // Unique ID for the drop target
+    id: `view-${view.id}`,
     data: {
-      type: 'view-target', // Identify the drop target type
+      type: 'view-target',
       viewId: view.id,
     },
-    disabled: !isDraggingThread || isEditMode, // Disable dropping while sidebar is in edit mode
+    disabled: !isDraggingThread || isEditMode,
   })
 
-  const itemHref = `/app/mail/views/${view.id}/unassigned` // Your existing logic
-  const pathname = usePathname() // Get pathname if needed for isActive
+  const itemHref = `/app/mail/views/${view.id}/unassigned`
+  const pathname = usePathname()
   const isActive = pathname?.startsWith(`/app/mail/views/${view.id}`)
 
   const editItems = (
@@ -139,9 +128,9 @@ const DroppableViewSidebarItem = ({
     <>
       <ConfirmDialog />
       <div
-        ref={setNodeRef} // Assign the node ref for dnd-kit
+        ref={setNodeRef}
         className={cn(
-          'rounded-md transition-colors duration-150 ease-in-out', // Base styles for the droppable area
+          'rounded-md transition-colors duration-150 ease-in-out',
           isDraggingThread && 'outline-solid outline-dashed outline-1 outline-primary/30',
           isDraggingThread && isOver && 'bg-primary/20 outline-primary/80 ring-2 ring-primary/60'
         )}>
@@ -150,7 +139,6 @@ const DroppableViewSidebarItem = ({
           isOpen={isDialogOpen}
           onClose={() => setIsDialogOpen(false)}
         />
-        {/* Render the actual SidebarItem inside */}
         <SidebarItem
           id={view.id}
           name={view.name}
@@ -167,53 +155,40 @@ const DroppableViewSidebarItem = ({
   )
 }
 
-export function ViewsGroup({
-  views, // This list is now pre-sorted and visibility-marked
+export function ViewsSection({
+  views,
   isLoading,
   isEditMode,
   onToggleEditMode,
   onUpdateViewsVisibility,
-  onReorderViews, // Receive the handler
-  isGroupVisible,
-  onToggleGroupVisibility,
-}: ViewsGroupProps) {
+  onReorderViews,
+  isSectionVisible,
+  onToggleSectionVisibility,
+}: ViewsSectionProps) {
   const pathname = usePathname()
-  const { getGroupOpen, toggleGroup } = useSidebarStateContext()
-  const isOpen = getGroupOpen('views')
   const [showCreateView, setShowCreateView] = useState(false)
-  const getViewHref = (inboxId: string): string => {
-    // Default to the "unassigned" view for a specific inbox
-    return `/app/mail/views/${inboxId}/unassigned`
-  }
 
-  // Use the mail counts store for view counts
   const viewCounts = useMailCountsStore((s) => s.counts.views)
 
-  // Dnd-kit sensors setup
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      // Require the mouse to move by 10 pixels before starting a drag
-      // helps prevent drags initiated accidentally on click
       activationConstraint: { distance: 5 },
     }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // Toggle inbox visibility (pass through to hook via prop)
   const handleToggleVisibility = useCallback(
-    (inboxId: string) => {
+    (viewId: string) => {
       if (onUpdateViewsVisibility) {
-        // Find the current state to toggle it
-        const currentInbox = views.find((i) => i.id === inboxId)
-        if (currentInbox) {
-          onUpdateViewsVisibility(inboxId, !(currentInbox.isVisible ?? true))
+        const currentView = views.find((i) => i.id === viewId)
+        if (currentView) {
+          onUpdateViewsVisibility(viewId, !(currentView.isVisible ?? true))
         }
       }
     },
     [views, onUpdateViewsVisibility]
   )
 
-  // Handle drag end event
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
@@ -229,131 +204,115 @@ export function ViewsGroup({
         }
       }
     },
-    [views, onReorderViews] // Depend on current inboxes and the callback
+    [views, onReorderViews]
   )
 
-  // Determine which inboxes to show in non-edit mode
-  const visibleViews = views?.filter((view) => view.isVisible)
-  const allViewsIds = views?.map((view) => view.id)
-
-  function handleToggleOpen() {
-    toggleGroup('views')
-  }
+  const visibleViews = views?.filter((view) => view.isVisible) ?? []
+  const allViewsIds = views?.map((view) => view.id) ?? []
 
   const renderViewList = () => {
     if (isLoading) {
       return Array(3)
         .fill(0)
         .map((_, i) => (
-          <SidebarMenuItem key={`skeleton-${i}`}>
+          <SidebarMenuSubItem key={`skeleton-${i}`}>
             <div className='flex items-center space-x-2 px-2 py-1.5'>
               <Skeleton className='h-4 w-4 rounded-full' />
               <Skeleton className='h-4 w-24' />
             </div>
-          </SidebarMenuItem>
+          </SidebarMenuSubItem>
         ))
     }
 
     if (!isEditMode) {
       if (visibleViews.length === 0) {
         return (
-          <SidebarMenuButton
-            variant='dashed'
-            size='sm'
-            onClick={() => setShowCreateView(true)}
-            className='group-data-[collapsible=icon]:hidden'>
-            Create a view
-          </SidebarMenuButton>
+          <SidebarMenuSubItem>
+            <SidebarMenuButton
+              variant='dashed'
+              size='sm'
+              onClick={() => setShowCreateView(true)}
+              className='group-data-[collapsible=icon]:hidden'>
+              Create a view
+            </SidebarMenuButton>
+          </SidebarMenuSubItem>
         )
       }
 
       return visibleViews.map((view) => {
-        const itemHref = getViewHref(view.id)
-        // Check if the current path *starts with* the specific view base URL
-        // This handles /views/[id]/unassigned, /views/[id]/assigned, etc.
-        const isActive = pathname?.startsWith(`/app/mail/views/${view.id}`)
         const count = viewCounts[view.id] ?? 0
 
         return (
-          <SidebarMenuItem key={view.id}>
+          <SidebarMenuSubItem key={view.id}>
             <DroppableViewSidebarItem
               onToggleEditMode={onToggleEditMode}
               view={view}
               count={count}
               isEditMode={isEditMode}
             />
-          </SidebarMenuItem>
+          </SidebarMenuSubItem>
         )
       })
-    } else {
-      // Edit mode: Render all inboxes within Dnd context
-      return views.length > 0 ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-          modifiers={[restrictToVerticalAxis]}>
-          <SortableContext
-            items={allViewsIds} // Use IDs of all inboxes for context
-            strategy={verticalListSortingStrategy}>
-            {views.map((view) => (
-              <SidebarMenuItem key={view.id} className='p-0'>
-                <EditableSidebarItem
-                  id={view.id}
-                  name={view.name}
-                  count={view.unassignedCount}
-                  isVisible={view.isVisible || false}
-                  isLocked={false} // Assuming shared inboxes aren't lockable for now
-                  onToggleVisibility={handleToggleVisibility}
-                  isDraggable={true} // Enable dragging features
-                />
-              </SidebarMenuItem>
-            ))}
-          </SortableContext>
-        </DndContext>
-      ) : (
-        <SidebarMenuItem>
-          <div className='px-2 py-1.5 text-sm text-muted-foreground'>No views to edit</div>
-        </SidebarMenuItem>
-      )
     }
+
+    return views.length > 0 ? (
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+        modifiers={[restrictToVerticalAxis]}>
+        <SortableContext items={allViewsIds} strategy={verticalListSortingStrategy}>
+          {views.map((view) => (
+            <SidebarMenuSubItem key={view.id} className='p-0'>
+              <EditableSidebarItem
+                id={view.id}
+                name={view.name}
+                count={view.unassignedCount}
+                isVisible={view.isVisible || false}
+                isLocked={false}
+                onToggleVisibility={handleToggleVisibility}
+                isDraggable={true}
+              />
+            </SidebarMenuSubItem>
+          ))}
+        </SortableContext>
+      </DndContext>
+    ) : (
+      <SidebarMenuSubItem>
+        <div className='px-2 py-1.5 text-sm text-muted-foreground'>No views to edit</div>
+      </SidebarMenuSubItem>
+    )
   }
 
-  const additionalOptions = (
-    <>
-      <DropdownMenuItem
-        onClick={() => setShowCreateView(true)}
-        className='group-data-[collapsible=icon]:hidden!'>
-        <TableProperties />
-        Create view
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-    </>
+  const isAnyViewActive = pathname?.startsWith('/app/mail/views/')
+
+  const actions = (
+    <DropdownMenuItem
+      onClick={() => setShowCreateView(true)}
+      className='group-data-[collapsible=icon]:hidden!'>
+      <TableProperties />
+      Create view
+    </DropdownMenuItem>
   )
-
-  const isSharedSectionActive = pathname?.startsWith('/app/mail/views/') // Active if any inbox route is active
-
-  // Don't render the group if it's hidden (unless in edit mode)
-  if (!isGroupVisible && !isEditMode) {
-    return null
-  }
 
   return (
     <>
       <MailViewDialog isOpen={showCreateView} onClose={() => setShowCreateView(false)} />
-      <SidebarGroup className='group'>
-        <SidebarGroupHeader
+      <SidebarMenu className='gap-0'>
+        <CollapsibleSidebarSection
           title='Views'
+          icon={<TableProperties />}
+          preventNavigation
           isEditMode={isEditMode}
-          onToggleEditMode={onToggleEditMode}
-          toggleOpen={handleToggleOpen}
-          additionalOptions={additionalOptions}
-          isOpen={isOpen}
-          isGroupVisible={isGroupVisible}
-          onToggleGroupVisibility={onToggleGroupVisibility}
-        />
-        {(isEditMode || isOpen) && <SidebarMenu className='gap-0'>{renderViewList()}</SidebarMenu>}
-      </SidebarGroup>
+          isActive={!!isAnyViewActive}
+          defaultOpen
+          sectionId='mail.views'
+          actions={actions}
+          isVisible={isSectionVisible}
+          onToggleVisibility={onToggleSectionVisibility}>
+          {renderViewList()}
+        </CollapsibleSidebarSection>
+      </SidebarMenu>
     </>
   )
 }

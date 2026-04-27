@@ -18,9 +18,8 @@ const INBOX_VISIBILITY_SETTING_KEY = 'sidebar.inboxes'
 const PERSONAL_ITEMS_SETTING_KEY = 'sidebar.personalItems'
 const GROUP_VISIBILITY_SETTING_KEY = 'sidebar.groupVisibility'
 
-// Group visibility type
+// Group visibility type — drives whole-section visibility for the unified Mail sidebar.
 export interface GroupVisibilitySettings {
-  personal: boolean
   views: boolean
   shared: boolean
 }
@@ -90,10 +89,6 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
     return sortedInboxes
   }, [rawInboxes, getSetting])
 
-  const viewsOrder = (getSetting(VIEWS_ORDER_SETTING_KEY) as string[]) || []
-  const viewsVisibilitySettings =
-    (getSetting(VIEWS_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {}
-
   // Process mail views: apply saved order and visibility
   const processedViews = useMemo((): Inbox[] => {
     if (!mailViews) return []
@@ -143,7 +138,6 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
   const groupVisibility = useMemo((): GroupVisibilitySettings => {
     const settings = (getSetting(GROUP_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {}
     return {
-      personal: settings.personal !== false, // Default true
       views: settings.views !== false, // Default true
       shared: settings.shared !== false, // Default true
     }
@@ -213,7 +207,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
 
   // Update group visibility
   const updateGroupVisibility = useCallback(
-    (groupId: 'personal' | 'views' | 'shared', isVisible: boolean) => {
+    (groupId: 'views' | 'shared', isVisible: boolean) => {
       const currentSettings =
         (getSetting(GROUP_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {}
       const updatedSettings = { ...currentSettings, [groupId]: isVisible }
@@ -224,7 +218,7 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
 
   // Toggle group visibility
   const toggleGroupVisibility = useCallback(
-    (groupId: 'personal' | 'views' | 'shared') => {
+    (groupId: 'views' | 'shared') => {
       const currentSettings =
         (getSetting(GROUP_VISIBILITY_SETTING_KEY) as Record<string, boolean>) || {}
       const currentValue = currentSettings[groupId] !== false

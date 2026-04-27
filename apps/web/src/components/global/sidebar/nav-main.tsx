@@ -3,6 +3,7 @@
 
 import {
   SidebarGroup,
+  SidebarGroupCollapse,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuSubItem,
@@ -97,7 +98,7 @@ export function NavMain({ menu, itemActions }: Props) {
         toggleOpen={handleToggleOpen}
         hideEditOption
       />
-      {isOpen && (
+      <SidebarGroupCollapse open={isOpen}>
         <SidebarMenu>
           {menu.items.map((item) => (
             <div key={item.id}>
@@ -133,7 +134,6 @@ export function NavMain({ menu, itemActions }: Props) {
                     href={item.url!}
                     icon={item.icon}
                     isActive={isActive(item)}
-                    className='ps-[30px]'
                     editItems={itemActions?.[item.id]?.()}
                   />
                 </SidebarMenuItem>
@@ -141,7 +141,7 @@ export function NavMain({ menu, itemActions }: Props) {
             </div>
           ))}
         </SidebarMenu>
-      )}
+      </SidebarGroupCollapse>
     </SidebarGroup>
   )
 }

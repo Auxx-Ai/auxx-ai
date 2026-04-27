@@ -3,6 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { CollapsibleChevron } from '@auxx/ui/components/collapsible'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +13,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { SidebarGroupLabel } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, ChevronRight, MoreVertical, Pencil } from 'lucide-react'
+import { Check, MoreVertical, Pencil } from 'lucide-react'
 import React from 'react'
 
 interface SidebarGroupHeaderProps {
@@ -71,9 +72,7 @@ export function SidebarGroupHeader({
       ) : (
         <SidebarGroupLabel className='cursor-pointer select-none'>
           {title}
-          <ChevronRight
-            className={cn('transition-transform duration-200', isOpen && 'rotate-90')}
-          />
+          <CollapsibleChevron open={isOpen} />
         </SidebarGroupLabel>
       )}
       {!isEditMode && (additionalOptions || !hideEditOption) && (
