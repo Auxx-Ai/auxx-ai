@@ -2,6 +2,7 @@
 // Drizzle table for FieldValue - typed field value storage for unified entity architecture
 
 import { createId } from '@paralleldrive/cuid2'
+import { textCollateC } from './_collations'
 import {
   type AnyPgColumn,
   boolean,
@@ -101,10 +102,11 @@ export const FieldValue = pgTable(
     // ========================================
 
     /**
-     * Sort key for multi-value field ordering (fractional indexing)
-     * Examples: "a", "aV", "aVV", "n" - allows insertion between any two values
+     * Sort key for multi-value field ordering (fractional indexing).
+     * Examples: "a", "aV", "aVV", "n" - allows insertion between any two values.
+     * Uses C (byte-order) collation so MAX/ORDER BY match the lib's `0…9<A…Z<a…z` order.
      */
-    sortKey: text().notNull().default('a'),
+    sortKey: textCollateC().notNull().default('a'),
 
     // ========================================
     // AI generation marker (nullable for non-AI values)

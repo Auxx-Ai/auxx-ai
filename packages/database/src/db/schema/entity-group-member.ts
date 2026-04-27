@@ -3,6 +3,7 @@
 
 import { createId } from '@paralleldrive/cuid2'
 import type { MemberType } from '../../enums'
+import { textCollateC } from './_collations'
 import { type AnyPgColumn, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { EntityInstance } from './entity-instance'
 import { User } from './user'
@@ -47,7 +48,7 @@ export const EntityGroupMember = pgTable(
     }),
 
     /** Ordering within group (fractional indexing) */
-    sortKey: text().notNull().default('a0'),
+    sortKey: textCollateC().notNull().default('a0'),
 
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 })

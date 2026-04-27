@@ -1,6 +1,7 @@
 // packages/database/src/db/schema/insight-template.ts
 
 import { createId } from '@paralleldrive/cuid2'
+import { textCollateC } from './_collations'
 import {
   type AnyPgColumn,
   boolean,
@@ -45,7 +46,7 @@ export const InsightTemplate = pgTable(
     isDefault: boolean().notNull().default(false),
 
     /** Lexicographic ordering */
-    sortOrder: text().notNull(),
+    sortOrder: textCollateC().notNull(),
 
     createdById: text()
       .notNull()
