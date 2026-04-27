@@ -5,6 +5,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, eq, isNull } from 'drizzle-orm'
+import { AuthErrorHandler } from '../../providers/auth-error-handler'
 import { GoogleOAuthService } from '../../providers/google/google-oauth'
 import { OutlookOAuthService } from '../../providers/outlook/outlook-oauth'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
@@ -84,7 +85,7 @@ export const channelTokenRefreshJob = async (
           logger.info('Successfully refreshed Outlook token', { integrationId })
         }
 
-        // Update auth status to healthy
+        // Update auth status to healthy and clear any prior failure streak
         await db
           .update(schema.Integration)
           .set({
@@ -92,6 +93,7 @@ export const channelTokenRefreshJob = async (
             updatedAt: new Date(),
           })
           .where(eq(schema.Integration.id, integrationId))
+        await AuthErrorHandler.resetFailureCounter(integrationId)
       } catch (error: any) {
         result.errors.push(`Token refresh failed: ${error.message}`)
         logger.error('Failed to refresh token', {
