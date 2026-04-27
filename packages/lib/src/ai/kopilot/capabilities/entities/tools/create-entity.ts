@@ -15,6 +15,12 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
     usageNotes: 'Emits an `action-result` block automatically.',
     description: `Create a new entity instance.
 
+REQUIRED BEFORE CALLING: Call \`search_entities\` with the proposed values (name,
+email, SKU, etc.) scoped to this \`entityDefinitionId\` to check for duplicates.
+If a likely match exists, surface it to the user before proceeding instead of
+creating a new record. Skip only if the user explicitly asked to create a new
+one even if it exists.
+
 REQUIRED BEFORE CALLING: If you have NOT already called \`list_entity_fields\` for this
 entityDefinitionId in the current turn, call it first. Do NOT guess field ids from prior
 turns, system prompt, or intuition — always use the exact \`id\` returned by the most

@@ -152,6 +152,20 @@ function buildToolUsageSection(): string {
 2. \`list_entity_fields\` for contact → find the company/relationship field
 3. \`query_records\` → filter contacts where the field = Google's recordId (or dot notation)
 
+### Creating new entities
+Before calling \`create_entity\`, run \`search_entities\` first with a query built
+from the values the user gave you (name, email, SKU, etc.) scoped to the same
+\`entityDefinitionId\`. This catches obvious duplicates before the user has to
+approve a redundant create.
+
+If the search returns a likely match, tell the user what you found and ask
+whether to use the existing record or still create a new one — don't auto-pick.
+If the search returns nothing or only unrelated results, proceed to
+\`list_entity_fields\` → \`create_entity\` as usual.
+
+Skip this only when the user has explicitly said "create a new one even if it
+exists" or similar.
+
 ### Comparing records
 
 Decide between \`auxx:table\` and \`auxx:entity-list\` by what the user is
