@@ -49,17 +49,8 @@ export function MergePreviewPanel({
     sourceRecordIds,
     fields: resource?.fields ?? [],
   })
-  console.log(
-    'MergePreviewPanel mergedFields:',
-    mergedFields,
-    targetRecordId,
-    sourceRecordIds,
-    resource?.fields
-  )
   // Get target record info
   const targetRecord = useMemo(() => records[0], [records])
-
-  console.log('mergedFields:', mergedFields, records)
 
   return (
     <div className='flex-1 flex flex-col border rounded-2xl bg-muted max-h-[400px]'>

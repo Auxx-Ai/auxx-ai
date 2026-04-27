@@ -16,6 +16,7 @@ import { useIsMobile } from '@auxx/ui/hooks/use-mobile'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { PanelLeft } from 'lucide-react'
+import { motion } from 'motion/react'
 import { Slot as SlotPrimitive } from 'radix-ui'
 import * as React from 'react'
 
@@ -366,7 +367,7 @@ function SidebarContent({ className, children, ...props }: React.ComponentProps<
       {...props}>
       <div
         data-sidebar='content'
-        className='flex flex-col gap-2 py-2 pe-0.5 sm:pe-2 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pe-0'>
+        className='flex flex-col gap-0.5 py-2 pe-0.5 sm:pe-2 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pe-0'>
         {children}
       </div>
     </ScrollArea>
@@ -430,6 +431,35 @@ function SidebarGroupAction({
 
 function SidebarGroupContent({ className, ...props }: React.ComponentProps<'div'>) {
   return <div data-sidebar='group-content' className={cn('w-full text-sm', className)} {...props} />
+}
+
+interface SidebarGroupCollapseProps {
+  /** Whether the collapsed content is visible. */
+  open: boolean
+  className?: string
+  children: React.ReactNode
+}
+
+/**
+ * Always-mounted collapse container for sidebar groups and sub-sections.
+ * Animates height + opacity + blur with the same spring as `AnimatedCollapsibleContent`,
+ * but keeps children mounted so DnD contexts and other always-on subscriptions keep working.
+ */
+function SidebarGroupCollapse({ open, className, children }: SidebarGroupCollapseProps) {
+  return (
+    <motion.div
+      initial={false}
+      animate={{
+        height: open ? 'auto' : 0,
+        opacity: open ? 1 : 0,
+        filter: open ? 'blur(0px)' : 'blur(3px)',
+      }}
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      style={{ overflow: 'hidden' }}
+      className={className}>
+      {children}
+    </motion.div>
+  )
 }
 
 function SidebarMenu({ className, ...props }: React.ComponentProps<'ul'>) {
@@ -672,6 +702,7 @@ export {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupAction,
+  SidebarGroupCollapse,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,

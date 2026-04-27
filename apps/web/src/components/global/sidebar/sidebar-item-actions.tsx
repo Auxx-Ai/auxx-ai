@@ -3,9 +3,10 @@
 
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
-import { LayoutTemplate, Workflow } from 'lucide-react'
+import { CheckSquare, LayoutTemplate, Workflow } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { useCreateTaskStore } from '~/components/tasks/stores/create-task-store'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { WorkflowTemplateDialog } from '~/components/workflow/dialogs/workflow-template-dialog'
 import { useOrganization } from '~/hooks/use-organization'
@@ -47,6 +48,15 @@ export function useSidebarItemActions(): SidebarItemActionsResult {
             <AnimatedGradientText>Create from template</AnimatedGradientText>
           </DropdownMenuItem>
         </>
+      ),
+      tasks: () => (
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation()
+            useCreateTaskStore.getState().openDialog()
+          }}>
+          <CheckSquare /> Create task
+        </DropdownMenuItem>
       ),
     },
     dialogs: (

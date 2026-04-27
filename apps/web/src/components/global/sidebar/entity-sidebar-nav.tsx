@@ -9,6 +9,7 @@ import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dro
 import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   SidebarGroup,
+  SidebarGroupCollapse,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -346,7 +347,7 @@ export function EntitySidebarNav() {
         />
 
         {/* Empty state when all items hidden (but group is visible) */}
-        {allItemsHidden && !isEditMode && isOpen && isGroupVisible && (
+        <SidebarGroupCollapse open={allItemsHidden && !isEditMode && isOpen && isGroupVisible}>
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton onClick={toggleEditMode}>
@@ -355,15 +356,17 @@ export function EntitySidebarNav() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-        )}
+        </SidebarGroupCollapse>
 
         {/* Entity list - only show when group is visible or in edit mode */}
-        {(isEditMode || (isOpen && isGroupVisible)) && !allItemsHidden && (
+        <SidebarGroupCollapse open={(isEditMode || (isOpen && isGroupVisible)) && !allItemsHidden}>
           <SidebarMenu>{isEditMode ? renderEditModeList() : renderNormalModeList()}</SidebarMenu>
-        )}
+        </SidebarGroupCollapse>
 
         {/* Edit mode list when all items are hidden */}
-        {isEditMode && allItemsHidden && <SidebarMenu>{renderEditModeList()}</SidebarMenu>}
+        <SidebarGroupCollapse open={isEditMode && allItemsHidden}>
+          <SidebarMenu>{renderEditModeList()}</SidebarMenu>
+        </SidebarGroupCollapse>
       </SidebarGroup>
 
       {/* Done button footer for edit mode */}

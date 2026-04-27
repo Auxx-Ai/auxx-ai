@@ -7,7 +7,7 @@ const SIDEBAR_STATE_KEY = 'auxx:sidebar-state'
 
 /** Represents the persisted state of sidebar groups and sections */
 interface SidebarState {
-  /** Group headers: PersonalMailGroup, ViewsGroup, SharedInboxesGroup */
+  /** Sidebar group headers (e.g. unified Mail group, Records group) */
   groups: Record<string, boolean>
   /** Collapsible sections within NavMain (by item id) */
   sections: Record<string, boolean>
@@ -15,9 +15,7 @@ interface SidebarState {
 
 const DEFAULT_STATE: SidebarState = {
   groups: {
-    personal: true,
-    views: true,
-    shared: true,
+    mail: true,
   },
   sections: {},
 }

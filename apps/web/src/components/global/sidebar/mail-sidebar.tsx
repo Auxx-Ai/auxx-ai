@@ -1,22 +1,16 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Separator } from '@auxx/ui/components/separator'
-import {
-  SidebarGroup,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from '@auxx/ui/components/sidebar'
-import { Settings2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo } from 'react'
-import { PersonalMailGroup } from '~/components/global/sidebar/personal-mail-group'
-import { SharedInboxesGroup } from '~/components/global/sidebar/shared-inbox-group'
+import { SidebarGroup, SidebarGroupCollapse, SidebarMenu } from '@auxx/ui/components/sidebar'
+import { useCallback, useEffect } from 'react'
+import { PersonalMailItems } from '~/components/global/sidebar/personal-mail-group'
+import { SharedInboxesSection } from '~/components/global/sidebar/shared-inbox-group'
 import { useMailSidebar } from '~/hooks/use-mail-sidebar'
-import { ViewsGroup } from './views-group'
+import { SidebarGroupHeader } from './sidebar-group-header'
+import { useSidebarStateContext } from './sidebar-state-context'
+import { ViewsSection } from './views-group'
 
 export function MailSidebar() {
-  // Use the hook to get all state and functions
   const {
     isEditMode,
     inboxes,
@@ -35,17 +29,13 @@ export function MailSidebar() {
     toggleGroupVisibility,
   } = useMailSidebar()
 
-  // Check if all groups are hidden
-  const allGroupsHidden = useMemo(
-    () => !groupVisibility.personal && !groupVisibility.views && !groupVisibility.shared,
-    [groupVisibility]
-  )
+  const { getGroupOpen, toggleGroup } = useSidebarStateContext()
+  const isMailOpen = getGroupOpen('mail')
 
-  // Create stable toggle handlers for each group
-  const togglePersonalVisibility = useCallback(
-    () => toggleGroupVisibility('personal'),
-    [toggleGroupVisibility]
-  )
+  const handleToggleMailOpen = useCallback(() => {
+    toggleGroup('mail')
+  }, [toggleGroup])
+
   const toggleViewsVisibility = useCallback(
     () => toggleGroupVisibility('views'),
     [toggleGroupVisibility]
@@ -62,68 +52,51 @@ export function MailSidebar() {
         toggleEditMode()
       }
     }
-    // Adding toggleEditMode to the dependency array is safe because it's memoized
   }, [isEditMode, toggleEditMode])
 
   return (
-    <div className='flex flex-col'>
-      <div className=''>
-        {/* Empty state when all groups are hidden */}
-        {allGroupsHidden && !isEditMode && (
-          <SidebarGroup className='group'>
-            <SidebarMenu className='gap-0'>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className='h-7 py-0 pe-[3px]' tooltip='Edit Sidebar'>
-                  <button
-                    onClick={toggleEditMode}
-                    className='group/item flex h-7 w-full items-center'>
-                    <span className='[&_svg]:size-4 mr-2'>
-                      <Settings2 />
-                    </span>
-                    <span className='group-data-[collapsible=icon]:hidden'>Edit Sidebar</span>
-                  </button>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroup>
-        )}
-
-        {/* Personal Mail Group */}
-        <PersonalMailGroup
+    <>
+      <SidebarGroup className='group'>
+        <SidebarGroupHeader
+          title='Mail'
           isEditMode={isEditMode}
           onToggleEditMode={toggleEditMode}
-          settings={personalItems}
-          onUpdateSettings={updatePersonalItems}
-          settingsLoading={settingsLoading}
-          isGroupVisible={groupVisibility.personal}
-          onToggleGroupVisibility={togglePersonalVisibility}
+          isOpen={isMailOpen}
+          toggleOpen={handleToggleMailOpen}
         />
+        <SidebarGroupCollapse open={isEditMode || isMailOpen}>
+          <SidebarMenu className='gap-0'>
+            <PersonalMailItems
+              isEditMode={isEditMode}
+              onToggleEditMode={toggleEditMode}
+              settings={personalItems}
+              onUpdateSettings={updatePersonalItems}
+              settingsLoading={settingsLoading}
+            />
+            <ViewsSection
+              views={mailViews}
+              isLoading={mailViewsLoading}
+              isEditMode={isEditMode}
+              onToggleEditMode={toggleEditMode}
+              onUpdateViewsVisibility={updateViewsVisibility}
+              onReorderViews={updateViewsOrder}
+              isSectionVisible={groupVisibility.views}
+              onToggleSectionVisibility={toggleViewsVisibility}
+            />
+            <SharedInboxesSection
+              inboxes={inboxes}
+              isLoading={inboxesLoading}
+              isEditMode={isEditMode}
+              onToggleEditMode={toggleEditMode}
+              onUpdateInboxVisibility={updateInboxVisibility}
+              onReorderInboxes={updateInboxOrder}
+              isSectionVisible={groupVisibility.shared}
+              onToggleSectionVisibility={toggleSharedVisibility}
+            />
+          </SidebarMenu>
+        </SidebarGroupCollapse>
+      </SidebarGroup>
 
-        <ViewsGroup
-          views={mailViews}
-          isLoading={mailViewsLoading}
-          isEditMode={isEditMode}
-          onToggleEditMode={toggleEditMode}
-          onUpdateViewsVisibility={updateViewsVisibility}
-          onReorderViews={updateViewsOrder}
-          isGroupVisible={groupVisibility.views}
-          onToggleGroupVisibility={toggleViewsVisibility}
-        />
-
-        {/* Shared Inboxes Group */}
-        <SharedInboxesGroup
-          inboxes={inboxes}
-          isLoading={inboxesLoading}
-          isEditMode={isEditMode}
-          onToggleEditMode={toggleEditMode}
-          onUpdateInboxVisibility={updateInboxVisibility}
-          onReorderInboxes={updateInboxOrder}
-          isGroupVisible={groupVisibility.shared}
-          onToggleGroupVisibility={toggleSharedVisibility}
-        />
-      </div>
-
-      {/* Footer section for Done button */}
       {isEditMode && (
         <div className='flex shrink-0 items-center justify-end gap-2 border-t p-2'>
           <Button className='w-full rounded-md' size='sm' onClick={toggleEditMode}>
@@ -131,7 +104,6 @@ export function MailSidebar() {
           </Button>
         </div>
       )}
-      <Separator className='mt-1 mb-2' />
-    </div>
+    </>
   )
 }

@@ -1,19 +1,27 @@
 // components/global/sidebar/collapsible-sidebar-section.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import { CollapsibleChevron } from '@auxx/ui/components/collapsible'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@auxx/ui/components/collapsible'
-import { SidebarMenuButton, SidebarMenuItem, SidebarMenuSub } from '@auxx/ui/components/sidebar'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import {
+  SidebarGroupCollapse,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+} from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronRight } from 'lucide-react'
+import { MoreVertical } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { type MouseEvent, memo, type ReactNode, useCallback, useEffect, useState } from 'react'
 import { useSidebarState } from '~/hooks/use-sidebar-state'
 
-// CollapsibleSidebarSectionProps describes the inputs accepted by the collapsible sidebar section component.
 interface CollapsibleSidebarSectionProps {
   title: string
   icon?: ReactNode
@@ -22,15 +30,21 @@ interface CollapsibleSidebarSectionProps {
   isEditMode: boolean
   defaultOpen?: boolean
   count?: number
+  /** @deprecated Children are now always mounted via the animated wrapper. Kept for backward compatibility. */
   alwaysShowChildren?: boolean
   href?: string
   isActive: boolean
   preventNavigation?: boolean
   /** Optional unique identifier for localStorage persistence of open/closed state */
   sectionId?: string
+  /** Dropdown content rendered inside a hover-revealed More button (e.g. "Create view"). */
+  actions?: ReactNode
+  /** Whole-section visibility, edit-mode only. Defaults to true. */
+  isVisible?: boolean
+  /** Called when the edit-mode visibility checkbox is toggled. */
+  onToggleVisibility?: () => void
 }
 
-// CollapsibleSidebarSectionComponent renders a collapsible sidebar group with optional navigation behavior and edit mode support.
 function CollapsibleSidebarSectionComponent({
   title,
   icon,
@@ -39,53 +53,46 @@ function CollapsibleSidebarSectionComponent({
   isEditMode,
   defaultOpen = false,
   count,
-  alwaysShowChildren = false,
   href,
   isActive,
   preventNavigation = false,
   sectionId,
+  actions,
+  isVisible = true,
+  onToggleVisibility,
 }: CollapsibleSidebarSectionProps) {
   const router = useRouter()
 
-  // If sectionId is provided, use localStorage-backed state via the hook
   const sidebarState = useSidebarState()
 
-  // Get persisted open state if sectionId is provided
   const persistedOpen = sectionId ? sidebarState.getSectionOpen(sectionId, defaultOpen) : null
 
-  // Local state fallback for components that don't use persistence
   const [localOpen, setLocalOpen] = useState(defaultOpen)
 
-  // Use persisted state if available, otherwise use local state
   const isOpen = persistedOpen ?? localOpen
 
-  // Always open when in edit mode without triggering redundant renders.
+  const [actionsOpen, setActionsOpen] = useState(false)
+
   useEffect(() => {
     if (isEditMode && !sectionId) {
       setLocalOpen(true)
     }
   }, [isEditMode, sectionId])
 
-  // Keep local state aligned with defaultOpen when the prop changes outside edit mode.
   useEffect(() => {
     if (!isEditMode && !sectionId) {
       setLocalOpen((previous) => (previous === defaultOpen ? previous : defaultOpen))
     }
   }, [defaultOpen, isEditMode, sectionId])
 
-  // handleOpenChange stabilizes external open state updates emitted by Radix Collapsible.
-  const handleOpenChange = useCallback(
-    (nextState: boolean) => {
-      if (sectionId) {
-        sidebarState.setSectionOpen(sectionId, nextState)
-      } else {
-        setLocalOpen((previous) => (previous === nextState ? previous : nextState))
-      }
-    },
-    [sectionId, sidebarState]
-  )
+  const toggleOpen = useCallback(() => {
+    if (sectionId) {
+      sidebarState.toggleSection(sectionId)
+    } else {
+      setLocalOpen((previous) => !previous)
+    }
+  }, [sectionId, sidebarState])
 
-  // handleContainerClick manages toggling open state or routing depending on navigation settings.
   const handleContainerClick = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
       let element = event.target as HTMLElement | null
@@ -95,11 +102,7 @@ function CollapsibleSidebarSectionComponent({
       }
 
       if (preventNavigation) {
-        if (sectionId) {
-          sidebarState.toggleSection(sectionId)
-        } else {
-          setLocalOpen((previous) => !previous)
-        }
+        toggleOpen()
         return
       }
 
@@ -107,59 +110,117 @@ function CollapsibleSidebarSectionComponent({
         router.push(href)
       }
     },
-    [href, preventNavigation, router, sectionId, sidebarState]
+    [href, preventNavigation, router, toggleOpen]
   )
 
   const computedOpen = isEditMode ? true : isOpen
-  const shouldRenderChildren = computedOpen || alwaysShowChildren
+
+  // Hide the entire section when whole-section visibility is off and we're not editing.
+  if (!isVisible && !isEditMode) {
+    return null
+  }
+
+  const showVisibilityCheckbox = isEditMode && !!onToggleVisibility
+  const showActionsButton = !!actions && !isEditMode
 
   return (
-    <Collapsible open={computedOpen} onOpenChange={isEditMode ? undefined : handleOpenChange}>
-      <SidebarMenuItem>
-        <SidebarMenuButton asChild className='h-7 py-0' tooltip={title}>
-          <div
-            onClick={handleContainerClick}
-            className={cn('cursor-pointer group/collapsible relative', {
-              'font-bold': isActive,
-              // 'bg-foreground/10': isActive,
-            })}>
-            <CollapsibleTrigger
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild className='h-7 py-0 pe-[3px]' tooltip={title}>
+        <div
+          onClick={handleContainerClick}
+          className={cn('group/collapsible relative cursor-pointer', {
+            'font-bold': isActive,
+            'opacity-50': isEditMode && !isVisible,
+          })}>
+          {showVisibilityCheckbox && (
+            <span
               data-selectable={false}
               onClick={(e) => {
                 e.stopPropagation()
-              }}>
-              <ChevronRight
-                className={cn(
-                  'size-4 transition-transform duration-200 group-data-[collapsible=icon]:hidden',
-                  isOpen && 'rotate-90'
-                )}
+                e.preventDefault()
+              }}
+              className='flex items-center'>
+              <Checkbox
+                checked={isVisible}
+                className='border-blue-500 data-[state=checked]:border-info data-[state=checked]:bg-info'
+                onCheckedChange={onToggleVisibility}
               />
-            </CollapsibleTrigger>
+            </span>
+          )}
 
-            {avatar ? avatar : icon ? <span className='[&_svg]:size-4'>{icon}</span> : null}
-            <span className='group-data-[collapsible=icon]:hidden'>{title}</span>
-            {count ? (
-              <div className='pointer-events-none absolute right-[11px] top-1/2 flex -translate-y-1/2 text-right text-xs group-hover/item:opacity-0'>
+          {avatar ? avatar : icon ? <span className='[&_svg]:size-4'>{icon}</span> : null}
+          <span className='group-data-[collapsible=icon]:hidden'>{title}</span>
+
+          {!isEditMode && (
+            <button
+              type='button'
+              data-selectable={false}
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleOpen()
+              }}
+              className='inline-flex items-center text-muted-foreground group-data-[collapsible=icon]:hidden'>
+              <CollapsibleChevron open={isOpen} />
+            </button>
+          )}
+
+          <div className='ml-auto flex items-center group-data-[collapsible=icon]:hidden'>
+            {typeof count === 'number' && count > 0 && (
+              <span
+                className={cn(
+                  'pointer-events-none text-xs text-muted-foreground',
+                  showActionsButton &&
+                    'transition-opacity sm:group-hover/collapsible:opacity-0 sm:absolute sm:right-[11px] sm:top-1/2 sm:-translate-y-1/2'
+                )}>
                 {count}
-              </div>
-            ) : // <Badge className="ml-auto group-data-[collapsible=icon]:hidden" variant="secondary">
-            //   {count}
-            // </Badge>
-            null}
-          </div>
-        </SidebarMenuButton>
+              </span>
+            )}
 
-        {shouldRenderChildren && (
-          <CollapsibleContent>
-            <SidebarMenuSub className={cn('me-0 pe-0', { 'mx-0 border-l-0 px-0': isEditMode })}>
-              {children}
-            </SidebarMenuSub>
-          </CollapsibleContent>
-        )}
-      </SidebarMenuItem>
-    </Collapsible>
+            {showActionsButton && (
+              <div
+                data-selectable={false}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                }}>
+                <DropdownMenu open={actionsOpen} onOpenChange={setActionsOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      className={cn(
+                        'size-6 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
+                        {
+                          'bg-primary-200 opacity-100': actionsOpen,
+                          'sm:group-hover/collapsible:opacity-100': !actionsOpen,
+                        }
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        setActionsOpen(!actionsOpen)
+                      }}>
+                      <MoreVertical className='size-3.5' />
+                      <span className='sr-only'>Options</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className='w-50' align='start'>
+                    <DropdownMenuGroup>{actions}</DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
+          </div>
+        </div>
+      </SidebarMenuButton>
+
+      <SidebarGroupCollapse open={computedOpen}>
+        <SidebarMenuSub className={cn('me-0 pe-0', { 'mx-0 border-l-0 px-0': isEditMode })}>
+          {children}
+        </SidebarMenuSub>
+      </SidebarGroupCollapse>
+    </SidebarMenuItem>
   )
 }
 
-// CollapsibleSidebarSection memoizes the sidebar section to avoid unnecessary rerenders driven by parent state changes.
 export const CollapsibleSidebarSection = memo(CollapsibleSidebarSectionComponent)
