@@ -17,7 +17,7 @@ import { AttachmentService, type GroupedAttachmentInfo } from '../files/core/att
 import { MediaAssetService } from '../files/core/media-asset-service'
 import { NotificationService } from '../notifications/notification-service'
 import { PermissionService } from '../permissions/permission-service'
-import { parseRecordId, type RecordId } from '../resources/resource-id'
+import { parseRecordId, type RecordId, toRecordId } from '../resources/resource-id'
 
 // System entity types (hardcoded)
 export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const
@@ -230,46 +230,32 @@ export class CommentService {
       if (!result) {
         throw new Error('Failed to create comment')
       }
-      // Publish timeline event
-      // Determine contactId based on entity type
-      // TODO: Ticket/Contact tables dropped. Contact association via EntityInstance not yet implemented.
-      let contactId: string | undefined
-      const normalizedType = entityType.toLowerCase()
-      if (normalizedType === 'contact') {
-        contactId = entityId
-      } else {
-        // Ticket and custom entities - no contact association for now
-        contactId = undefined
-      }
+      // Publish timeline event for whichever entity the comment is attached
+      // to (thread / ticket / contact / custom entity).
+      await publisher.publishLater({
+        type: 'comment:created',
+        data: {
+          commentId: result.id,
+          organizationId: this.organizationId,
+          createdById: this.userId,
+          recordId: data.recordId,
+          content: data.content.substring(0, 150),
+          hasAttachments: (data.fileAttachments?.length || 0) > 0,
+        },
+      } as CommentCreatedEvent)
 
-      // Only publish if we have a contactId
-      if (contactId) {
+      if (data.parentId) {
         await publisher.publishLater({
-          type: 'comment:created',
+          type: 'comment:replied',
           data: {
             commentId: result.id,
             organizationId: this.organizationId,
             createdById: this.userId,
-            entityId: contactId, // entityId IS the contactId
+            recordId: data.recordId,
+            parentCommentId: data.parentId,
             content: data.content.substring(0, 150),
-            hasAttachments: (data.fileAttachments?.length || 0) > 0,
           },
-        } as CommentCreatedEvent)
-
-        // Also check if it's a reply
-        if (data.parentId) {
-          await publisher.publishLater({
-            type: 'comment:replied',
-            data: {
-              commentId: result.id,
-              organizationId: this.organizationId,
-              createdById: this.userId,
-              entityId: contactId, // entityId IS the contactId
-              parentCommentId: data.parentId,
-              content: data.content.substring(0, 150),
-            },
-          } as CommentRepliedEvent)
-        }
+        } as CommentRepliedEvent)
       }
 
       return result
@@ -357,32 +343,22 @@ export class CommentService {
         )
       }
 
-      // Get the comment to find contactId
+      // Get the comment so we can re-derive its host recordId for the event.
       const comment = await this.db.query.Comment.findFirst({
         where: eq(schema.Comment.id, id),
       })
 
-      let contactId: string | undefined
       if (comment) {
-        // TODO: Ticket/Contact tables dropped. Contact association via EntityInstance not yet implemented.
-        const normalizedType = comment.entityDefinitionId.toLowerCase()
-        if (normalizedType === 'contact') {
-          contactId = comment.entityId
-        }
-
-        // Only publish if we have a contactId
-        if (contactId) {
-          await publisher.publishLater({
-            type: 'comment:updated',
-            data: {
-              commentId: id,
-              organizationId: this.organizationId,
-              createdById: this.userId,
-              entityId: contactId, // entityId IS the contactId
-              content: (content || comment.content).substring(0, 150),
-            },
-          } as CommentUpdatedEvent)
-        }
+        await publisher.publishLater({
+          type: 'comment:updated',
+          data: {
+            commentId: id,
+            organizationId: this.organizationId,
+            createdById: this.userId,
+            recordId: toRecordId(comment.entityDefinitionId, comment.entityId),
+            content: (content || comment.content).substring(0, 150),
+          },
+        } as CommentUpdatedEvent)
       }
 
       return result.comment!
@@ -454,27 +430,16 @@ export class CommentService {
         await this.recalculateLatestCommentId(comment.entityId)
       }
 
-      // Publish event after deletion
       if (comment) {
-        let contactId: string | undefined
-        // TODO: Ticket/Contact tables dropped. Contact association via EntityInstance not yet implemented.
-        const normalizedType = comment.entityDefinitionId.toLowerCase()
-        if (normalizedType === 'contact') {
-          contactId = comment.entityId
-        }
-
-        // Only publish if we have a contactId
-        if (contactId) {
-          await publisher.publishLater({
-            type: 'comment:deleted',
-            data: {
-              commentId: id,
-              organizationId: this.organizationId,
-              createdById: this.userId,
-              entityId: contactId, // entityId IS the contactId
-            },
-          } as CommentDeletedEvent)
-        }
+        await publisher.publishLater({
+          type: 'comment:deleted',
+          data: {
+            commentId: id,
+            organizationId: this.organizationId,
+            createdById: this.userId,
+            recordId: toRecordId(comment.entityDefinitionId, comment.entityId),
+          },
+        } as CommentDeletedEvent)
       }
     } catch (error) {
       logger.error('Error deleting comment', { error, id })

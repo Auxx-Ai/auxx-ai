@@ -2,7 +2,7 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { toRecordId } from '@auxx/types/resource'
 import {
   ContactEventType,
   EntityInstanceEventType,
@@ -202,21 +202,21 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
     // ========================================
     case 'message:received': {
       const data = event.data as MessageReceivedEvent['data']
-      if (!('contactId' in data)) return []
+      if (!data.recordId) return []
 
       return [
         {
           eventType: ContactEventType.EMAIL_RECEIVED,
-          recordId: toRecordId('contact', data.contactId as string),
+          recordId: data.recordId,
           relatedRecordId: toRecordId('message', data.messageId),
           actorType: TimelineActorType.SYSTEM,
           actorId: 'email-sync',
           eventData: {
             messageId: data.messageId,
-            ...('threadId' in data && { threadId: data.threadId }),
-            ...('subject' in data && { subject: data.subject }),
-            ...('from' in data && { from: data.from }),
-            ...('snippet' in data && { snippet: data.snippet }),
+            ...(data.threadId && { threadId: data.threadId }),
+            ...(data.subject && { subject: data.subject }),
+            ...(data.from && { from: data.from }),
+            ...(data.snippet && { snippet: data.snippet }),
           },
           organizationId: data.organizationId,
         },
@@ -225,21 +225,21 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
 
     case 'message:sent': {
       const data = event.data as MessageSentEvent['data']
-      if (!('contactId' in data)) return []
+      if (!data.recordId) return []
 
       return [
         {
           eventType: ContactEventType.EMAIL_SENT,
-          recordId: toRecordId('contact', data.contactId as string),
+          recordId: data.recordId,
           relatedRecordId: toRecordId('message', data.messageId),
-          actorType: 'userId' in data ? TimelineActorType.USER : TimelineActorType.SYSTEM,
-          actorId: 'userId' in data ? (data.userId as string) : 'system',
+          actorType: data.userId ? TimelineActorType.USER : TimelineActorType.SYSTEM,
+          actorId: data.userId ?? 'system',
           eventData: {
             messageId: data.messageId,
-            ...('threadId' in data && { threadId: data.threadId }),
-            ...('subject' in data && { subject: data.subject }),
-            ...('to' in data && { to: data.to }),
-            ...('snippet' in data && { snippet: data.snippet }),
+            ...(data.threadId && { threadId: data.threadId }),
+            ...(data.subject && { subject: data.subject }),
+            ...(data.to && { to: data.to }),
+            ...(data.snippet && { snippet: data.snippet }),
           },
           organizationId: data.organizationId,
         },
@@ -287,12 +287,12 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
       return [
         {
           eventType: ContactEventType.MERGED,
-          recordId: toRecordId('contact', data.contactId),
-          relatedRecordId: toRecordId('contact', data.contactId),
+          recordId: data.recordId,
+          relatedRecordId: data.recordId,
           actorType: TimelineActorType.USER,
           actorId: data.userId,
           eventData: {
-            contactId: data.contactId,
+            recordId: data.recordId,
             mergedContactIds: data.mergedContactIds,
             totalMerged: data.totalMerged,
           },
@@ -302,24 +302,15 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
     }
 
     case 'contact:field:updated':
-      return mapFieldUpdated(
-        event as ContactFieldUpdatedEvent,
-        ContactEventType.FIELD_UPDATED,
-        'contact'
-      )
+      return mapFieldUpdated(event as ContactFieldUpdatedEvent, ContactEventType.FIELD_UPDATED)
 
     case 'ticket:field:updated':
-      return mapFieldUpdated(
-        event as TicketFieldUpdatedEvent,
-        TicketEventType.FIELD_UPDATED,
-        'ticket'
-      )
+      return mapFieldUpdated(event as TicketFieldUpdatedEvent, TicketEventType.FIELD_UPDATED)
 
     case 'entity:field:updated':
       return mapFieldUpdated(
         event as EntityInstanceFieldUpdatedEvent,
-        EntityInstanceEventType.FIELD_UPDATED,
-        null
+        EntityInstanceEventType.FIELD_UPDATED
       )
 
     case 'contact:group:added': {
@@ -328,12 +319,12 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
       return [
         {
           eventType: ContactEventType.GROUP_ADDED,
-          recordId: toRecordId('contact', data.contactId),
+          recordId: data.recordId,
           relatedRecordId: toRecordId('customer_group', data.groupId),
           actorType: TimelineActorType.USER,
           actorId: data.userId,
           eventData: {
-            contactId: data.contactId,
+            recordId: data.recordId,
             groupId: data.groupId,
             groupName: data.groupName,
           },
@@ -348,12 +339,12 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
       return [
         {
           eventType: ContactEventType.GROUP_REMOVED,
-          recordId: toRecordId('contact', data.contactId),
+          recordId: data.recordId,
           relatedRecordId: toRecordId('customer_group', data.groupId),
           actorType: TimelineActorType.USER,
           actorId: data.userId,
           eventData: {
-            contactId: data.contactId,
+            recordId: data.recordId,
             groupId: data.groupId,
             groupName: data.groupName,
           },
@@ -370,15 +361,15 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
 
       return [
         {
-          eventType: ContactEventType.NOTE_ADDED,
-          recordId: toRecordId('contact', data.entityId),
+          eventType: EntityInstanceEventType.NOTE_ADDED,
+          recordId: data.recordId,
           relatedRecordId: toRecordId('comment', data.commentId),
           actorType: TimelineActorType.USER,
           actorId: data.createdById,
           eventData: {
             commentId: data.commentId,
             content: data.content,
-            ...('hasAttachments' in data && { hasAttachments: data.hasAttachments }),
+            ...(data.hasAttachments !== undefined && { hasAttachments: data.hasAttachments }),
           },
           organizationId: data.organizationId,
         },
@@ -390,8 +381,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
 
       return [
         {
-          eventType: ContactEventType.NOTE_UPDATED,
-          recordId: toRecordId('contact', data.entityId),
+          eventType: EntityInstanceEventType.NOTE_UPDATED,
+          recordId: data.recordId,
           relatedRecordId: toRecordId('comment', data.commentId),
           actorType: TimelineActorType.USER,
           actorId: data.createdById,
@@ -409,8 +400,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
 
       return [
         {
-          eventType: ContactEventType.NOTE_DELETED,
-          recordId: toRecordId('contact', data.entityId),
+          eventType: EntityInstanceEventType.NOTE_DELETED,
+          recordId: data.recordId,
           relatedRecordId: toRecordId('comment', data.commentId),
           actorType: TimelineActorType.USER,
           actorId: data.createdById,
@@ -427,8 +418,8 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
 
       return [
         {
-          eventType: ContactEventType.NOTE_ADDED,
-          recordId: toRecordId('contact', data.entityId),
+          eventType: EntityInstanceEventType.NOTE_ADDED,
+          recordId: data.recordId,
           relatedRecordId: toRecordId('comment', data.commentId),
           actorType: TimelineActorType.USER,
           actorId: data.createdById,
@@ -523,36 +514,19 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
   }
 }
 
-/**
- * Build a timeline event for any `<prefix>:field:updated` variant.
- *
- * The timeline row's `recordId` column is parsed by storage into entityType
- * + entityId columns and is queried as an exact match. Existing reads on the
- * contact and ticket detail pages query with `toRecordId('contact', id)` /
- * `toRecordId('ticket', id)`, so the row must keep that legacy-prefixed
- * shape for those entities. Custom entities have no legacy form and use the
- * canonical RecordId (`<entityDefinitionId>:<entityInstanceId>`) directly.
- *
- * The canonical recordId is preserved in `eventData.recordId` for any
- * future reader. When the read-side migration to canonical IDs lands, drop
- * the `legacyPrefix` arg and use `data.recordId` for both columns.
- */
+/** Build a timeline event for any `<prefix>:field:updated` variant. */
 function mapFieldUpdated(
   event: ContactFieldUpdatedEvent | TicketFieldUpdatedEvent | EntityInstanceFieldUpdatedEvent,
   eventType:
     | ContactEventType.FIELD_UPDATED
     | TicketEventType.FIELD_UPDATED
-    | EntityInstanceEventType.FIELD_UPDATED,
-  legacyPrefix: 'contact' | 'ticket' | null
+    | EntityInstanceEventType.FIELD_UPDATED
 ): CreateTimelineEventInput[] {
   const data = event.data
-  const rowRecordId = legacyPrefix
-    ? toRecordId(legacyPrefix, parseRecordId(data.recordId).entityInstanceId)
-    : data.recordId
   return [
     {
       eventType,
-      recordId: rowRecordId,
+      recordId: data.recordId,
       relatedRecordId: toRecordId('custom_field', data.fieldId),
       actorType: TimelineActorType.USER,
       actorId: data.userId,
@@ -571,9 +545,6 @@ function mapFieldUpdated(
           fieldType: data.fieldType,
           oldDisplay: data.oldDisplay,
           newDisplay: data.newDisplay,
-          // Legacy raw values — kept through one release as backwards-compat
-          // ballast for any consumer still reading the raw shape. Drop in a
-          // follow-up migration once the renderer no longer needs them.
           oldValue: data.oldValue,
           newValue: data.newValue,
         },

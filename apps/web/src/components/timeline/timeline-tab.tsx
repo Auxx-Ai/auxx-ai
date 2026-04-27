@@ -4,6 +4,7 @@
 import { getDefinitionId, isSystemModelType, type RecordId } from '@auxx/types/resource'
 import { Clock, History } from 'lucide-react'
 import { EmptyState } from '~/components/global/empty-state'
+import { useNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
 import { api } from '~/trpc/react'
 import { Timeline } from './timeline'
 
@@ -98,11 +99,16 @@ export function TimelineTab({
   emptyTitle,
   emptyDescription,
 }: TimelineTabProps) {
+  // Normalize incoming recordId to canonical `<entityDefinitionId>:<instanceId>`
+  // form so legacy `toRecordId('contact', id)` callers still hit the correct
+  // timeline rows. Falls through unchanged once resources have loaded.
+  const normalizedRecordId = useNormalizedRecordId(recordId) ?? recordId
+
   // Fetch timeline events with infinite scroll
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     api.timeline.getTimeline.useInfiniteQuery(
       {
-        recordId,
+        recordId: normalizedRecordId,
         limit,
         isGroupingDisabled,
       },
