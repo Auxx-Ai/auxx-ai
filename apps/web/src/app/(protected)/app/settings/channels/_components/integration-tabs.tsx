@@ -129,6 +129,7 @@ export default function IntegrationTabs() {
                 lastAuthError: integration.lastAuthError,
                 lastAuthErrorAt: integration.lastAuthErrorAt!,
                 requiresReauth: true,
+                metadata: integration.metadata,
               }}
             />
           )}

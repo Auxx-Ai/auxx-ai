@@ -122,7 +122,21 @@ export class AuthErrorHandler {
     }
     // Outlook-specific error parsing
     else if (this.providerId === 'outlook') {
-      if (errorMessage.includes('invalid_grant') || errorCode === 'invalid_grant') {
+      // OutlookProviderError carries a normalized `code` (see outlook-errors.ts).
+      // Match those first so MSAL-classified failures route correctly.
+      if (errorCode === 'INVALID_REFRESH_TOKEN') {
+        type = AuthErrorType.INVALID_GRANT
+        requiresReauth = true
+        retryable = false
+      } else if (errorCode === 'INSUFFICIENT_PERMISSIONS') {
+        type = AuthErrorType.INSUFFICIENT_SCOPE
+        requiresReauth = true
+        retryable = false
+      } else if (errorCode === 'TEMPORARY_ERROR') {
+        type = AuthErrorType.PROVIDER_ERROR
+        requiresReauth = false
+        retryable = true
+      } else if (errorMessage.includes('invalid_grant') || errorCode === 'invalid_grant') {
         type = AuthErrorType.INVALID_GRANT
         requiresReauth = true
         retryable = false
@@ -382,6 +396,12 @@ export class AuthErrorHandler {
           .set({
             metadata: updatedMetadata,
             authStatus: IntegrationAuthStatus.AUTHENTICATED,
+            // A successful refresh proves the credential works — clear the
+            // banner so the user isn't asked to reauth for a transient blip
+            // that has already self-recovered.
+            requiresReauth: false,
+            lastAuthError: null,
+            lastAuthErrorAt: null,
           })
           .where(eq(schema.Integration.id, integrationId))
 

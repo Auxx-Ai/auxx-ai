@@ -1,9 +1,8 @@
 // packages/lib/src/jobs/calendar/calendar-sync-job.ts
 
-import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { eq } from 'drizzle-orm'
+import { AuthErrorHandler } from '../../providers/auth-error-handler'
 import { syncCalendarForIntegration } from '../../recording/calendar'
 
 /**
@@ -41,8 +40,14 @@ export const calendarSyncJob = async (jobOrCtx: Job<CalendarSyncJobData>) => {
   })
 
   if (result.isErr()) {
-    if (isAuthError(result.error)) {
-      await markCalendarSyncAuthFailure(integrationId, result.error)
+    // refreshTokens already routes through AuthErrorHandler — re-invoking here
+    // would double-count consecutiveFailures. Only handle locally if the auth
+    // failure surfaced from a direct API call (e.g. events.list 401) that
+    // bypassed the refresh path.
+    const alreadyHandled = result.error.message.includes('Failed to refresh Google access token')
+    if (!alreadyHandled && isAuthError(result.error)) {
+      const handler = new AuthErrorHandler('google', integrationId)
+      await handler.handleAuthError(result.error, 'calendar_sync')
     }
 
     logger.error('Calendar sync job failed', {
@@ -53,6 +58,8 @@ export const calendarSyncJob = async (jobOrCtx: Job<CalendarSyncJobData>) => {
 
     throw result.error
   }
+
+  await AuthErrorHandler.resetFailureCounter(integrationId)
 
   logger.info('Calendar sync job completed', {
     jobId: job.id,
@@ -68,57 +75,20 @@ export const calendarSyncJob = async (jobOrCtx: Job<CalendarSyncJobData>) => {
 
 /**
  * Detect whether an error indicates authentication or consent failure.
+ * The AuthErrorHandler does the precise classification (invalid_rapt vs hard
+ * invalid_grant vs insufficient scope); this is just the gate that decides
+ * whether the error is even auth-shaped.
  */
 function isAuthError(error: Error): boolean {
   const message = error.message.toLowerCase()
   return (
     message.includes('invalid_grant') ||
+    message.includes('invalid_rapt') ||
+    message.includes('reauth related error') ||
     message.includes('insufficient permissions') ||
     message.includes('insufficient authentication scopes') ||
+    message.includes('insufficient_scope') ||
     message.includes('missing refresh token') ||
     message.includes('unauthorized')
   )
-}
-
-/**
- * Mark the integration as needing re-auth and disable future calendar scans.
- */
-async function markCalendarSyncAuthFailure(integrationId: string, error: Error): Promise<void> {
-  const integration = await db.query.Integration.findFirst({
-    where: (integrations, { eq }) => eq(integrations.id, integrationId),
-  })
-
-  if (!integration) {
-    return
-  }
-
-  const metadata = readMetadata(integration.metadata)
-  await db
-    .update(schema.Integration)
-    .set({
-      metadata: {
-        ...metadata,
-        calendarSyncEnabled: false,
-        calendarSyncToken: null,
-      },
-      requiresReauth: true,
-      authStatus: error.message.toLowerCase().includes('insufficient')
-        ? 'INSUFFICIENT_SCOPE'
-        : 'INVALID_GRANT',
-      lastAuthError: error.message,
-      lastAuthErrorAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.Integration.id, integrationId))
-}
-
-/**
- * Normalize integration metadata into a mutable record.
- */
-function readMetadata(metadata: unknown): Record<string, unknown> {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    return {}
-  }
-
-  return metadata as Record<string, unknown>
 }

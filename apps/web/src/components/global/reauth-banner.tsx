@@ -21,9 +21,26 @@ interface ReauthBannerProps {
     lastAuthError?: string
     lastAuthErrorAt?: Date
     requiresReauth?: boolean
+    metadata?: unknown
   }
   onDismiss?: () => void
   className?: string
+}
+
+/**
+ * Detect Google Workspace RAPT (Reauthentication Policy Token) failures.
+ * These come from a Workspace admin policy that expires sessions for sensitive
+ * scopes, *not* a revoked refresh token — the user can keep reauthing daily
+ * forever unless their admin extends the Google Cloud session length.
+ *
+ * @see https://support.google.com/a/answer/9368756
+ */
+function isRaptFailure(integration: ReauthBannerProps['integration']): boolean {
+  if (integration.provider !== 'google') return false
+  const subtype = (integration.metadata as any)?.auth?.googleErrorSubtype
+  if (subtype === 'invalid_rapt') return true
+  const lastErr = integration.lastAuthError?.toLowerCase() ?? ''
+  return lastErr.includes('invalid_rapt') || lastErr.includes('reauth related error')
 }
 
 /**
@@ -90,6 +107,8 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
     return null
   }
 
+  const isRapt = isRaptFailure(integration)
+
   return (
     <>
       <Alert
@@ -128,8 +147,27 @@ export function ReauthBanner({ integration, onDismiss, className }: ReauthBanner
                   'text-red-800 dark:text-red-200',
                   isSmallScreen ? 'text-xs leading-relaxed' : 'text-sm'
                 )}>
-                Email sync has stopped working due to expired authentication. Please re-authenticate
-                to resume email processing.
+                {isRapt ? (
+                  <>
+                    Your Google Workspace admin enforces periodic re-authentication for this
+                    account. Reconnect now to resume sync — and to stop the recurring prompts, ask
+                    your Workspace admin to extend{' '}
+                    <a
+                      href='https://admin.google.com/ac/security/contextawareaccess/sessioncontrols'
+                      target='_blank'
+                      rel='noopener noreferrer'
+                      className='underline font-medium'>
+                      Google Cloud session control
+                    </a>{' '}
+                    (Security → Access and data control) to{' '}
+                    <span className='font-medium'>Session never expires</span>.
+                  </>
+                ) : (
+                  <>
+                    Email sync has stopped working due to expired authentication. Please
+                    re-authenticate to resume email processing.
+                  </>
+                )}
               </AlertDescription>
 
               {/* Action Buttons */}

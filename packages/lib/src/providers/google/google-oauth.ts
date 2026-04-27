@@ -8,6 +8,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { type Common, google } from 'googleapis'
 import { InboxService } from '../../inboxes/inbox-service'
 import { SettingsService } from '../../settings/settings-service'
+import { AuthErrorHandler } from '../auth-error-handler'
 import { ChannelTokenAccessor, type ChannelTokens } from '../channel-token-accessor'
 import { PROVIDER_CREDENTIAL_CONFIG } from '../provider-credentials-config'
 
@@ -566,6 +567,7 @@ export class GoogleOAuthService {
       }
 
       await ChannelTokenAccessor.setTokens(integrationId, tokenUpdate)
+      await AuthErrorHandler.resetFailureCounter(integrationId)
 
       const [updatedIntegration] = await db
         .select()
@@ -575,29 +577,9 @@ export class GoogleOAuthService {
 
       return updatedIntegration
     } catch (error: any) {
-      logger.error('Error refreshing Google access token:', {
-        error: error.message,
-        response: error.response?.data,
-        integrationId,
-      })
-      if (error.response?.data?.error === 'invalid_grant') {
-        logger.warn('Refresh token is invalid or revoked. Disabling integration.', {
-          integrationId,
-        })
-        await db
-          .update(schema.Integration)
-          .set({
-            enabled: false,
-            requiresReauth: true,
-            lastAuthError: 'Refresh token is invalid or revoked',
-            lastAuthErrorAt: new Date(),
-            authStatus: 'INVALID_GRANT',
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.Integration.id, integrationId))
-        throw new Error('Google refresh token is invalid or revoked.')
-      }
-      throw new Error(`Failed to refresh Google access token: ${error.message}`)
+      const handler = new AuthErrorHandler('google', integrationId)
+      const details = await handler.handleAuthError(error, 'token_refresh')
+      throw new Error(`Failed to refresh Google access token: ${details.message}`)
     }
   }
 

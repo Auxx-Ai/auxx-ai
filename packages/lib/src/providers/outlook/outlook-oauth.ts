@@ -9,6 +9,7 @@ import { ConfidentialClientApplication, LogLevel } from '@azure/msal-node'
 import { Client } from '@microsoft/microsoft-graph-client'
 import { eq } from 'drizzle-orm'
 import { InboxService } from '../../inboxes/inbox-service'
+import { AuthErrorHandler } from '../auth-error-handler'
 import { ChannelTokenAccessor } from '../channel-token-accessor'
 import { PROVIDER_CREDENTIAL_CONFIG } from '../provider-credentials-config'
 import { parseMsalError } from './outlook-errors'
@@ -534,6 +535,7 @@ export class OutlookOAuthService {
       }
 
       await ChannelTokenAccessor.setTokens(integrationId, tokenUpdate)
+      await AuthErrorHandler.resetFailureCounter(integrationId)
 
       const [updatedIntegration] = await db
         .select()
@@ -543,33 +545,8 @@ export class OutlookOAuthService {
       return updatedIntegration
     } catch (error) {
       const parsed = parseMsalError(error)
-
-      logger.error('Error refreshing Outlook access token:', {
-        error: parsed.message,
-        code: parsed.code,
-        integrationId,
-      })
-
-      if (parsed.code === 'INVALID_REFRESH_TOKEN') {
-        logger.warn('Outlook refresh token is invalid or revoked. Disabling integration.', {
-          integrationId,
-        })
-        await db
-          .update(schema.Integration)
-          .set({
-            enabled: false,
-            requiresReauth: true,
-            lastAuthError: parsed.message,
-            lastAuthErrorAt: new Date(),
-            authStatus: 'INVALID_GRANT',
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.Integration.id, integrationId))
-          .catch((dbErr: unknown) =>
-            logger.error('Failed to disable integration after invalid grant', { dbErr })
-          )
-      }
-
+      const handler = new AuthErrorHandler('outlook', integrationId)
+      await handler.handleAuthError(parsed, 'token_refresh')
       throw parsed
     }
   }
@@ -661,28 +638,16 @@ export class OutlookOAuthService {
           done(null, response.accessToken)
         } catch (error) {
           const parsed = parseMsalError(error)
-          logger.error('Error refreshing token in Graph authProvider:', {
-            error: parsed.message,
-            code: parsed.code,
-            integrationId,
-          })
-
-          if (parsed.code === 'INVALID_REFRESH_TOKEN') {
-            logger.warn('Refresh token invalid. Disabling integration.', { integrationId })
-            db.update(schema.Integration)
-              .set({
-                enabled: false,
-                requiresReauth: true,
-                lastAuthError: parsed.message,
-                lastAuthErrorAt: new Date(),
-                authStatus: 'INVALID_GRANT',
-                updatedAt: new Date(),
-              })
-              .where(eq(schema.Integration.id, integrationId))
-              .catch((dbErr: unknown) =>
-                logger.error('Failed to disable integration after invalid grant', { dbErr })
-              )
-          }
+          const handler = new AuthErrorHandler('outlook', integrationId)
+          // Fire-and-forget here is acceptable: the Graph authProvider callback
+          // signature requires a synchronous `done()` call; the handler write
+          // is best-effort and the surfaced error still triggers the caller's
+          // own retry/failure path.
+          handler
+            .handleAuthError(parsed, 'graph_auth_provider')
+            .catch((handlerErr: unknown) =>
+              logger.error('AuthErrorHandler failed in Graph authProvider', { handlerErr })
+            )
 
           done(parsed, null)
         }

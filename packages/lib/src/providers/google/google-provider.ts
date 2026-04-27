@@ -346,27 +346,37 @@ export class GoogleProvider
   }
   /** Checks token validity and attempts refresh if nearing expiry */
   private async checkTokenValidity(): Promise<void> {
-    if (!this.client || !this.integration?.expiresAt) return
+    if (!this.client || !this.integration?.expiresAt || !this.integrationId) return
     // Check if token is expired or nearing expiry (e.g., within 5 minutes)
     const buffer = 5 * 60 * 1000
-    if (this.integration.expiresAt.getTime() - buffer < Date.now()) {
-      logger.info('Google access token nearing expiry or expired, attempting refresh...', {
-        integrationId: this.integrationId,
-      })
-      try {
-        await this.client.getAccessToken() // Triggers 'tokens' event listener on successful refresh
-        logger.info('Google access token refreshed successfully during validity check.', {
-          integrationId: this.integrationId,
-        })
-      } catch (error: any) {
-        // Use standardized error handling
-        const { AuthErrorHandler } = await import('../auth-error-handler')
-        const errorHandler = new AuthErrorHandler('google', this.integrationId || 'unknown')
-        const errorDetails = await errorHandler.handleAuthError(error, 'token_refresh')
-        // Throw standardized error for upstream handling
-        throw new Error(`Failed to refresh Google access token: ${errorDetails.message}`)
-      }
+    if (this.integration.expiresAt.getTime() - buffer >= Date.now()) return
+
+    logger.info('Google access token nearing expiry or expired, attempting refresh...', {
+      integrationId: this.integrationId,
+    })
+
+    // Use GoogleOAuthService.refreshTokens — it awaits the encrypted-credential
+    // write before returning, unlike the OAuth client's `tokens` event listener
+    // which fires-and-forgets the persistence and risks the next API call
+    // hitting an `invalid_grant` against a stale in-memory token.
+    // Errors here are already routed through AuthErrorHandler inside refreshTokens.
+    await GoogleOAuthService.refreshTokens(this.integrationId)
+
+    // Reload the persisted tokens into the in-memory OAuth2 client so the
+    // upcoming Gmail API call uses the freshly-rotated access token.
+    const tokens = await ChannelTokenAccessor.getTokens(this.integrationId)
+    this.client.setCredentials({
+      refresh_token: tokens.refreshToken || undefined,
+      access_token: tokens.accessToken || undefined,
+      expiry_date: tokens.expiresAt ? tokens.expiresAt.getTime() : undefined,
+    })
+    if (this.integration) {
+      this.integration.expiresAt = tokens.expiresAt
     }
+
+    logger.info('Google access token refreshed successfully during validity check.', {
+      integrationId: this.integrationId,
+    })
   }
   /**
    * Sends an email using the Gmail API.
