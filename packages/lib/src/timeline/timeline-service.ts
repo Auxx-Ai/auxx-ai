@@ -8,7 +8,10 @@ import {
   getRelatedTimelineEvents,
   getTimelineEvents,
 } from '@auxx/services/timeline'
+import { type ActorId, toActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
+import { getCachedMembersByUserIds } from '../cache/org-cache-helpers'
+import type { OrgMemberInfo } from '../cache/org-cache-keys'
 import type { TimelineEventType } from './event-types'
 import type {
   CreateTimelineEventInput,
@@ -133,8 +136,12 @@ export class TimelineService {
 
     const { events, nextCursor } = result.value
 
+    // Resolve user-actor display info from the org members cache so the
+    // client doesn't have to round-trip per row.
+    const memberMap = await this.resolveActorMembers(organizationId, events)
+
     // Map events
-    const mappedEvents = events.map((e) => this.mapEventToBase(e))
+    const mappedEvents = events.map((e) => this.mapEventToBase(e, memberMap))
 
     // Group events if enabled
     const timelineItems = isGroupingDisabled
@@ -173,7 +180,9 @@ export class TimelineService {
       throw new Error(`Failed to get related timeline: ${result.error.message}`)
     }
 
-    return result.value.map((e) => this.mapEventToBase(e))
+    const memberMap = await this.resolveActorMembers(organizationId, result.value)
+
+    return result.value.map((e) => this.mapEventToBase(e, memberMap))
   }
 
   /**
@@ -200,9 +209,18 @@ export class TimelineService {
   }
 
   /**
-   * Map database event to TimelineEventBase
+   * Map database event to TimelineEventBase, resolving user-actor display
+   * info from the cached members map when available.
    */
-  private mapEventToBase(event: any): TimelineEventBase {
+  private mapEventToBase(event: any, memberMap?: Map<string, OrgMemberInfo>): TimelineEventBase {
+    const member = memberMap?.get(event.actorId)
+    // Format user actor ids as `user:<id>` so the client can use them with
+    // ActorBadge / useActor directly. Non-user actors keep the raw sentinel
+    // id (e.g. 'email-sync') — the brand is wider than reality.
+    const actorId: ActorId =
+      event.actorType === 'user' && event.actorId
+        ? toActorId('user', event.actorId)
+        : (event.actorId as ActorId)
     return {
       id: event.id,
       eventType: event.eventType,
@@ -216,7 +234,9 @@ export class TimelineService {
       relatedEntityId: event.relatedEntityId,
       actor: {
         type: event.actorType,
-        id: event.actorId,
+        id: actorId,
+        ...(member?.user?.name && { name: member.user.name }),
+        ...(member?.user?.email && { email: member.user.email }),
       },
       eventData: event.eventData || {},
       changes: event.changes,
@@ -227,6 +247,24 @@ export class TimelineService {
       createdAt: event.createdAt,
       updatedAt: event.updatedAt,
     }
+  }
+
+  /**
+   * Batch-resolve user actors from the org members cache.
+   * System / automation / api / integration actors are skipped (no User row).
+   */
+  private async resolveActorMembers(
+    organizationId: string,
+    events: Array<{ actorType?: string | null; actorId?: string | null }>
+  ): Promise<Map<string, OrgMemberInfo>> {
+    const userIds = Array.from(
+      new Set(
+        events.filter((e) => e.actorType === 'user' && e.actorId).map((e) => e.actorId as string)
+      )
+    )
+    if (userIds.length === 0) return new Map()
+    const members = await getCachedMembersByUserIds(organizationId, userIds)
+    return new Map(members.map((m) => [m.userId, m]))
   }
 
   /**

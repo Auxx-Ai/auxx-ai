@@ -1,5 +1,6 @@
 // packages/lib/src/timeline/types.ts
 
+import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
 import type { TimelineActorType, TimelineEventType } from './event-types'
 import type { TimelineFieldChangeSnapshotValue } from './field-change-snapshot'
@@ -37,7 +38,14 @@ export interface TimelineChange {
 /** Actor who performed the action */
 export interface TimelineActor {
   type: TimelineActorType
-  id: string
+  /**
+   * Pre-formatted ActorId (`user:<id>`) for user actors so the client can pass
+   * it directly to ActorBadge without reconstructing. For non-user actors
+   * (system / automation / api / integration) this is the raw sentinel id —
+   * the brand is wider than reality, so non-user consumers should branch on
+   * `type` before treating it as a real ActorId.
+   */
+  id: ActorId
   name?: string
   email?: string
 }

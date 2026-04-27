@@ -7,6 +7,7 @@ import {
   TicketEventType,
   type TimelineEventBase,
 } from '@auxx/lib/timeline/client'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
 
 /**
  * Props for the GroupDescription component
@@ -21,7 +22,20 @@ interface GroupDescriptionProps {
  */
 export function GroupDescription({ eventType, events }: GroupDescriptionProps) {
   const firstEvent = events[0]
-  const actor = <span className='emphasis'>{firstEvent?.actor.name || 'Someone'}</span>
+  const firstActor = firstEvent?.actor
+  const actor =
+    firstActor?.type === 'user' && firstActor.id ? (
+      <span className='inline-flex align-middle'>
+        <ActorBadge
+          actorId={firstActor.id}
+          variant='text'
+          showIcon={false}
+          className='emphasis !text-[14px] !leading-normal'
+        />
+      </span>
+    ) : (
+      <span className='emphasis'>{firstActor?.name || 'System'}</span>
+    )
 
   switch (eventType) {
     // Field updates — identical across contact / ticket / custom entity

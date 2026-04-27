@@ -1,5 +1,5 @@
 // apps/web/src/components/timeline/change-detail.tsx
-import { ArrowRight } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { pickRenderable, type SnapshotChange, SnapshotValue } from './snapshot-chip'
 
 interface ChangeDetailProps {
@@ -24,7 +24,7 @@ export function ChangeDetail({ change }: ChangeDetailProps) {
           <span className='text-primary-400 line-through'>
             <SnapshotValue snap={oldSnap} />
           </span>
-          <ArrowRight />
+          <ChevronRight className='text-sm font-normal size-4' />
         </>
       )}
       <span className='emphasis'>

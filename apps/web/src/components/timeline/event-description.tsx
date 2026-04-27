@@ -10,8 +10,30 @@ import {
 } from '@auxx/lib/timeline/client'
 import { Badge } from '@auxx/ui/components/badge'
 import DOMPurify from 'dompurify'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { StatusBadge } from './status-badge'
+
+/**
+ * Render the actor for a timeline event. User actors get a full ActorBadge
+ * (avatar + name resolved from the actor store cache); non-user actors
+ * (system / automation / api / integration) fall back to a static label.
+ */
+function TimelineActorName({ actor }: { actor: TimelineEventBase['actor'] }) {
+  if (actor.type === 'user' && actor.id) {
+    return (
+      <span className='inline-flex align-middle'>
+        <ActorBadge
+          actorId={actor.id}
+          variant='text'
+          showIcon={false}
+          className='emphasis !text-[14px] !leading-normal'
+        />
+      </span>
+    )
+  }
+  return <span className='emphasis'>{actor.name || 'System'}</span>
+}
 
 /**
  * Props for the EventDescription component
@@ -46,7 +68,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case ContactEventType.UPDATED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated contact details
+          <TimelineActorName actor={event.actor} /> updated contact details
         </>
       )
 
@@ -79,7 +101,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
             </div>
           )}
           {event.relatedRecordId && (
-            <div className='mt-1 flex'>
+            <div className='mt-1 inline-flex'>
               <RecordBadge
                 recordId={event.relatedRecordId as RecordId}
                 showIcon
@@ -126,7 +148,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case ContactEventType.NOTE_ADDED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> added a note
+          <TimelineActorName actor={event.actor} /> added a note
           {event.eventData.content && (
             <div
               className='mt-1 line-clamp-2 text-xs'
@@ -141,14 +163,14 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case ContactEventType.NOTE_UPDATED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated a note
+          <TimelineActorName actor={event.actor} /> updated a note
         </>
       )
 
     case ContactEventType.NOTE_DELETED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> deleted a note
+          <TimelineActorName actor={event.actor} /> deleted a note
         </>
       )
 
@@ -156,7 +178,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className='emphasis'>{event.actor.name || 'Someone'}</span> added to group
+            <TimelineActorName actor={event.actor} /> added to group
           </span>
           <Badge variant='green' size='sm'>
             {event.eventData.groupName}
@@ -168,7 +190,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className='emphasis'>{event.actor.name || 'Someone'}</span> removed from group
+            <TimelineActorName actor={event.actor} /> removed from group
           </span>
           <Badge variant='red' size='sm'>
             {event.eventData.groupName}
@@ -180,7 +202,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className='emphasis'>{event.actor.name || 'Someone'}</span> added tags
+            <TimelineActorName actor={event.actor} /> added tags
           </span>
           <div className='flex gap-1'>
             {event.eventData.tags?.map((tag: string, idx: number) => (
@@ -196,7 +218,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className='emphasis'>{event.actor.name || 'Someone'}</span> removed tags
+            <TimelineActorName actor={event.actor} /> removed tags
           </span>
           <div className='flex gap-1'>
             {event.eventData.tags?.map((tag: string, idx: number) => (
@@ -238,9 +260,9 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
               {event.eventData.ticket_title || event.eventData.title}
             </div>
           )}
-          {' for'}
+          {' for '}
           {event.relatedRecordId && (
-            <div className='flex-inline'>
+            <div className='inline-flex'>
               <RecordBadge
                 recordId={event.relatedRecordId as RecordId}
                 showIcon
@@ -255,7 +277,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.UPDATED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated ticket details
+          <TimelineActorName actor={event.actor} /> updated ticket details
         </>
       )
 
@@ -295,14 +317,14 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.ARCHIVED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> archived this ticket
+          <TimelineActorName actor={event.actor} /> archived this ticket
         </>
       )
 
     case TicketEventType.RESTORED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> restored this ticket
+          <TimelineActorName actor={event.actor} /> restored this ticket
         </>
       )
 
@@ -350,7 +372,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.NOTE_ADDED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> added a note
+          <TimelineActorName actor={event.actor} /> added a note
           {event.eventData.content && (
             <div
               className='mt-1 line-clamp-2 text-xs'
@@ -365,14 +387,14 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case TicketEventType.NOTE_UPDATED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated a note
+          <TimelineActorName actor={event.actor} /> updated a note
         </>
       )
 
     case TicketEventType.NOTE_DELETED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> deleted a note
+          <TimelineActorName actor={event.actor} /> deleted a note
         </>
       )
 
@@ -410,7 +432,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className='emphasis'>{event.actor.name || 'Someone'}</span> added tags
+            <TimelineActorName actor={event.actor} /> added tags
           </span>
           <div className='flex gap-1'>
             {event.eventData.tags?.map((tag: string, idx: number) => (
@@ -426,7 +448,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className='emphasis'>{event.actor.name || 'Someone'}</span> removed tags
+            <TimelineActorName actor={event.actor} /> removed tags
           </span>
           <div className='flex gap-1'>
             {event.eventData.tags?.map((tag: string, idx: number) => (
@@ -465,7 +487,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case EntityInstanceEventType.UPDATED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated this record
+          <TimelineActorName actor={event.actor} /> updated this record
         </>
       )
 
@@ -476,7 +498,7 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
       return (
         <div className='flex flex-wrap items-center gap-2'>
           <span>
-            <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated{' '}
+            <TimelineActorName actor={event.actor} /> updated{' '}
             <span className='font-medium'>{event.eventData.fieldName}</span>
           </span>
           {hasExpandableContent && (
@@ -500,35 +522,43 @@ export function EventDescription({ event, onToggleExpand }: EventDescriptionProp
     case EntityInstanceEventType.ARCHIVED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> archived this record
+          <TimelineActorName actor={event.actor} /> archived this record
         </>
       )
 
     case EntityInstanceEventType.RESTORED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> restored this record
+          <TimelineActorName actor={event.actor} /> restored this record
         </>
       )
 
     case EntityInstanceEventType.NOTE_ADDED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> added a note
+          <TimelineActorName actor={event.actor} /> added a note
+          {event.eventData.content && (
+            <div
+              className='mt-1 line-clamp-2 text-xs'
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(event.eventData.content),
+              }}
+            />
+          )}
         </>
       )
 
     case EntityInstanceEventType.NOTE_UPDATED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> updated a note
+          <TimelineActorName actor={event.actor} /> updated a note
         </>
       )
 
     case EntityInstanceEventType.NOTE_DELETED:
       return (
         <>
-          <span className='emphasis'>{event.actor.name || 'Someone'}</span> deleted a note
+          <TimelineActorName actor={event.actor} /> deleted a note
         </>
       )
 

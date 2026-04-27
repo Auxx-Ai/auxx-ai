@@ -1,9 +1,21 @@
 // apps/web/src/components/timeline/snapshot-chip.tsx
+'use client'
+
 import type {
+  TimelineActorSnapshot,
   TimelineFieldChangeSnapshot,
   TimelineFieldChangeSnapshotValue,
+  TimelineOptionSnapshot,
+  TimelineRelationshipSnapshot,
 } from '@auxx/lib/timeline/client'
 import { legacyTypedFieldValueToSnapshot } from '@auxx/lib/timeline/client'
+import type { SelectOption } from '@auxx/types/custom-field'
+import DOMPurify from 'dompurify'
+import { useActor } from '~/components/resources/hooks/use-actor'
+import { useRecord } from '~/components/resources/hooks/use-record'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
+import { TagsView } from '~/components/ui/tags-view'
 
 /**
  * Field-change row payload as it appears on the timeline. New rows carry
@@ -34,7 +46,9 @@ export function pickRenderable(
 }
 
 /**
- * Render the chosen snapshot — single, array, or null.
+ * Render the chosen snapshot — single, array, or null. Multi-value option
+ * types (SINGLE_SELECT/MULTI_SELECT/TAGS) collapse into a single TagsView so
+ * the array renders as a row of styled chips rather than N inline spans.
  */
 export function SnapshotValue({ snap }: { snap: TimelineFieldChangeSnapshotValue }) {
   if (snap === null || snap === undefined) {
@@ -42,6 +56,9 @@ export function SnapshotValue({ snap }: { snap: TimelineFieldChangeSnapshotValue
   }
   if (Array.isArray(snap)) {
     if (snap.length === 0) return <span className='italic text-primary-400'>empty</span>
+    if (isOptionSnapshot(snap[0]!)) {
+      return <OptionTagsView snaps={snap as TimelineOptionSnapshot[]} />
+    }
     return (
       <span className='inline-flex flex-wrap items-center gap-1'>
         {snap.map((s, i) => (
@@ -50,38 +67,72 @@ export function SnapshotValue({ snap }: { snap: TimelineFieldChangeSnapshotValue
       </span>
     )
   }
+  if (isOptionSnapshot(snap)) {
+    return <OptionTagsView snaps={[snap]} />
+  }
   return <SnapshotChip snap={snap} />
 }
 
 /**
- * Render a single snapshot chip per `kind`.
+ * Render a single snapshot chip per `fieldType`.
  */
 export function SnapshotChip({ snap }: { snap: TimelineFieldChangeSnapshot }) {
-  switch (snap.kind) {
-    case 'text':
+  switch (snap.fieldType) {
+    case 'TEXT':
+    case 'EMAIL':
+    case 'URL':
+    case 'NAME':
+    case 'PHONE_INTL':
       return (
         <span>
           {snap.text}
           {snap.truncated ? '…' : ''}
         </span>
       )
-    case 'number':
+
+    case 'RICH_TEXT':
+      return (
+        <span
+          className='[&_p]:inline'
+          // eslint-disable-next-line react/no-danger -- sanitized via DOMPurify
+          dangerouslySetInnerHTML={{
+            __html: DOMPurify.sanitize(snap.html) + (snap.truncated ? '…' : ''),
+          }}
+        />
+      )
+
+    case 'NUMBER':
+    case 'CURRENCY':
       return <span>{snap.formatted}</span>
-    case 'boolean':
+
+    case 'CHECKBOX':
       return <span>{snap.value ? 'true' : 'false'}</span>
-    case 'date':
-      return <FormattedDate iso={snap.iso} variant={snap.variant} />
-    case 'option':
-      return <OptionBadge label={snap.label} color={snap.color} />
-    case 'relationship':
-      return <span className='font-medium'>{snap.label}</span>
-    case 'actor':
-      return <span className='font-medium'>{snap.label}</span>
-    case 'file':
+
+    case 'DATE':
+    case 'DATETIME':
+    case 'TIME':
+      return <FormattedDate iso={snap.iso} fieldType={snap.fieldType} />
+
+    case 'SINGLE_SELECT':
+    case 'MULTI_SELECT':
+    case 'TAGS':
+      // Single-option case — wrap into a one-item TagsView so the styling
+      // matches the array path.
+      return <OptionTagsView snaps={[snap]} />
+
+    case 'RELATIONSHIP':
+      return <RelationshipChip snap={snap} />
+
+    case 'ACTOR':
+      return <ActorChip snap={snap} />
+
+    case 'FILE':
       return (
         <span>{snap.count && snap.count > 1 ? `${snap.count} files` : snap.label || 'File'}</span>
       )
-    case 'json':
+
+    case 'JSON':
+    case 'ADDRESS_STRUCT':
       return (
         <code className='text-xs'>
           {JSON.stringify(snap.value)}
@@ -91,27 +142,73 @@ export function SnapshotChip({ snap }: { snap: TimelineFieldChangeSnapshot }) {
   }
 }
 
-function FormattedDate({ iso, variant }: { iso: string; variant: 'date' | 'datetime' | 'time' }) {
+function isOptionSnapshot(s: TimelineFieldChangeSnapshot): s is TimelineOptionSnapshot {
+  return s.fieldType === 'SINGLE_SELECT' || s.fieldType === 'MULTI_SELECT' || s.fieldType === 'TAGS'
+}
+
+/**
+ * Render a list of option snapshots through the shared `TagsView` so the
+ * timeline matches the rest of the app's tag styling. Snapshots are
+ * self-contained (each carries its frozen label + color), so we synthesize
+ * the option list inline without any cache/store lookup.
+ */
+function OptionTagsView({ snaps }: { snaps: TimelineOptionSnapshot[] }) {
+  const value = snaps.map((s) => s.optionId)
+  const options: SelectOption[] = snaps.map((s) => ({
+    value: s.optionId,
+    label: s.label,
+    ...(s.color ? { color: s.color as SelectOption['color'] } : {}),
+  }))
+  return <TagsView value={value} options={options} variant='pill' />
+}
+
+/**
+ * Render a relationship via `RecordBadge`, falling back to the snapshot's
+ * frozen label when the referenced record is no longer resolvable in the
+ * client cache (deleted / no permission / cross-org reference).
+ */
+function RelationshipChip({ snap }: { snap: TimelineRelationshipSnapshot }) {
+  const { isNotFound } = useRecord({ recordId: snap.recordId })
+  if (isNotFound) {
+    return <span className='font-medium'>{snap.label}</span>
+  }
+  return (
+    <span className='inline-flex align-middle'>
+      <RecordBadge recordId={snap.recordId} />
+    </span>
+  )
+}
+
+/**
+ * Render an actor via `ActorBadge`, falling back to the snapshot's frozen
+ * label when the actor has been removed or can't be resolved.
+ */
+function ActorChip({ snap }: { snap: TimelineActorSnapshot }) {
+  const { isNotFound } = useActor({ actorId: snap.actorId })
+  if (isNotFound) {
+    return <span className='font-medium'>{snap.label}</span>
+  }
+  return (
+    <span className='inline-flex align-middle'>
+      <ActorBadge actorId={snap.actorId} />
+    </span>
+  )
+}
+
+function FormattedDate({
+  iso,
+  fieldType,
+}: {
+  iso: string
+  fieldType: 'DATE' | 'DATETIME' | 'TIME'
+}) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return <span>{iso}</span>
   const formatted =
-    variant === 'time'
+    fieldType === 'TIME'
       ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-      : variant === 'datetime'
+      : fieldType === 'DATETIME'
         ? d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
         : d.toLocaleDateString(undefined, { dateStyle: 'medium' })
   return <span>{formatted}</span>
-}
-
-function OptionBadge({ label, color }: { label: string; color?: string }) {
-  const style = color
-    ? ({ backgroundColor: `var(--color-${color}-100, ${color})` } as React.CSSProperties)
-    : undefined
-  return (
-    <span
-      className='inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-accent-50 text-accent-700'
-      style={style}>
-      {label}
-    </span>
-  )
 }

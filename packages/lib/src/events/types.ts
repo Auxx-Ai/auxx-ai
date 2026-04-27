@@ -147,8 +147,9 @@ export type MessageReceivedEvent = AuxxEventGeneric<
   {
     messageId: string
     organizationId: string
-    // Timeline metadata (optional)
-    contactId?: string
+    // Timeline metadata (optional). When present, the contact's canonical
+    // recordId — drives timeline routing.
+    recordId?: RecordId
     threadId?: string
     subject?: string
     from?: string
@@ -160,8 +161,9 @@ export type MessageSentEvent = AuxxEventGeneric<
   {
     messageId: string
     organizationId: string
-    // Timeline metadata (optional)
-    contactId?: string
+    // Timeline metadata (optional). When present, the contact's canonical
+    // recordId — drives timeline routing.
+    recordId?: RecordId
     threadId?: string
     userId?: string
     subject?: string
@@ -440,7 +442,7 @@ export type ContactDeletedEvent = AuxxEventGeneric<
 export type ContactMergedEvent = AuxxEventGeneric<
   'contact:merged',
   {
-    contactId: string // Primary contact ID
+    recordId: RecordId // Primary contact's canonical recordId
     organizationId: string
     userId: string
     // Timeline metadata
@@ -490,7 +492,7 @@ export type EntityInstanceFieldUpdatedEvent = AuxxEventGeneric<
 export type ContactGroupAddedEvent = AuxxEventGeneric<
   'contact:group:added',
   {
-    contactId: string
+    recordId: RecordId
     organizationId: string
     userId: string
     // Timeline metadata
@@ -502,7 +504,7 @@ export type ContactGroupAddedEvent = AuxxEventGeneric<
 export type ContactGroupRemovedEvent = AuxxEventGeneric<
   'contact:group:removed',
   {
-    contactId: string
+    recordId: RecordId
     organizationId: string
     userId: string
     // Timeline metadata
@@ -517,8 +519,9 @@ export type CommentCreatedEvent = AuxxEventGeneric<
     commentId: string
     organizationId: string
     createdById: string // User who created the comment
-    // Timeline metadata
-    entityId: string // This IS the contactId directly
+    // Canonical recordId of the entity the comment is attached to
+    // (thread / ticket / contact / custom entity).
+    recordId: RecordId
     content: string // First 150 chars for preview
     hasAttachments?: boolean
   }
@@ -530,8 +533,7 @@ export type CommentUpdatedEvent = AuxxEventGeneric<
     commentId: string
     organizationId: string
     createdById: string // User who updated the comment
-    // Timeline metadata
-    entityId: string // This IS the contactId directly
+    recordId: RecordId
     content: string // Updated content (first 150 chars)
   }
 >
@@ -542,8 +544,7 @@ export type CommentDeletedEvent = AuxxEventGeneric<
     commentId: string
     organizationId: string
     createdById: string // User who deleted the comment
-    // Timeline metadata
-    entityId: string // This IS the contactId directly
+    recordId: RecordId
   }
 >
 // Comment Replied Event
@@ -553,8 +554,7 @@ export type CommentRepliedEvent = AuxxEventGeneric<
     commentId: string // ID of the reply
     organizationId: string
     createdById: string // User who created the reply
-    // Timeline metadata
-    entityId: string // This IS the contactId directly
+    recordId: RecordId
     parentCommentId: string
     content: string // Reply content (first 150 chars)
   }

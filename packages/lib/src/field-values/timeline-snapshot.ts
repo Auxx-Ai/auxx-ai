@@ -427,37 +427,55 @@ function buildSnapshotSingle(
   value: TypedFieldValue,
   lookups: ResolvedLookups
 ): TimelineFieldChangeSnapshot | null {
-  const fieldType = field.type as FieldType
+  // CALC fields are persisted under the resolved sub-type so the renderer
+  // never branches on `'CALC'`. Resolve once up front.
+  const rawType = field.type as FieldType
+  const fieldType: FieldType =
+    rawType === 'CALC'
+      ? (((field.options as { calc?: { resultFieldType?: string } } | null)?.calc
+          ?.resultFieldType as FieldType | undefined) ?? 'TEXT')
+      : rawType
 
   switch (fieldType) {
     case 'TEXT':
     case 'EMAIL':
     case 'URL':
-    case 'ADDRESS':
-    case 'RICH_TEXT': {
+    case 'NAME': {
+      if (fieldType === 'NAME' && value.type === 'json') {
+        const obj = value.value as { firstName?: string; lastName?: string }
+        const text = [obj?.firstName, obj?.lastName].filter(Boolean).join(' ').trim()
+        return { fieldType: 'NAME', text }
+      }
       if (value.type !== 'text') return null
       const [text, truncated] = truncateForSnapshot(value.value ?? '', TIMELINE_SNAPSHOT_BODY_LIMIT)
-      return truncated ? { kind: 'text', text, truncated: true } : { kind: 'text', text }
+      return truncated ? { fieldType, text, truncated: true } : { fieldType, text }
     }
 
-    case 'PHONE':
     case 'PHONE_INTL': {
       if (value.type !== 'text') return null
       const formatted = phoneConverter.toDisplayValue(value, field.options ?? undefined)
-      return { kind: 'text', text: String(formatted ?? value.value ?? '') }
+      return { fieldType: 'PHONE_INTL', text: String(formatted ?? value.value ?? '') }
     }
 
-    case 'NAME': {
-      if (value.type !== 'json') return null
-      const obj = value.value as { firstName?: string; lastName?: string }
-      const text = [obj?.firstName, obj?.lastName].filter(Boolean).join(' ').trim()
-      return { kind: 'text', text }
+    case 'RICH_TEXT': {
+      if (value.type !== 'text') return null
+      // Stored as raw HTML (truncated by char count). The renderer
+      // re-sanitizes via DOMPurify before insertion. Truncation may break
+      // mid-tag — DOMPurify's auto-close tolerates it.
+      const [html, truncated] = truncateForSnapshot(value.value ?? '', TIMELINE_SNAPSHOT_BODY_LIMIT)
+      return truncated
+        ? { fieldType: 'RICH_TEXT', html, truncated: true }
+        : { fieldType: 'RICH_TEXT', html }
     }
 
     case 'NUMBER': {
       if (value.type !== 'number') return null
       const formatted = numberConverter.toDisplayValue(value, field.options ?? undefined)
-      return { kind: 'number', value: value.value, formatted: String(formatted ?? value.value) }
+      return {
+        fieldType: 'NUMBER',
+        value: value.value,
+        formatted: String(formatted ?? value.value),
+      }
     }
 
     case 'CURRENCY': {
@@ -466,7 +484,7 @@ function buildSnapshotSingle(
       const currency = (field.options as { currency?: { currency?: string } } | null)?.currency
         ?.currency
       return {
-        kind: 'number',
+        fieldType: 'CURRENCY',
         value: value.value,
         formatted: String(formatted ?? value.value),
         ...(currency ? { currency } : {}),
@@ -476,16 +494,14 @@ function buildSnapshotSingle(
     case 'CHECKBOX': {
       if (value.type !== 'boolean') return null
       const bool = booleanConverter.toRawValue(value) as boolean
-      return { kind: 'boolean', value: bool }
+      return { fieldType: 'CHECKBOX', value: bool }
     }
 
     case 'DATE':
     case 'DATETIME':
     case 'TIME': {
       if (value.type !== 'date') return null
-      const variant: 'date' | 'datetime' | 'time' =
-        fieldType === 'DATETIME' ? 'datetime' : fieldType === 'TIME' ? 'time' : 'date'
-      return { kind: 'date', iso: value.value, variant }
+      return { fieldType, iso: value.value }
     }
 
     case 'SINGLE_SELECT':
@@ -502,7 +518,7 @@ function buildSnapshotSingle(
       const labelRaw = match?.label ?? value.label ?? optionId
       const [label] = truncateForSnapshot(labelRaw, TIMELINE_SNAPSHOT_LABEL_LIMIT)
       const color = match?.color ?? value.color
-      return { kind: 'option', optionId, label, ...(color ? { color } : {}) }
+      return { fieldType, optionId, label, ...(color ? { color } : {}) }
     }
 
     case 'RELATIONSHIP': {
@@ -514,7 +530,7 @@ function buildSnapshotSingle(
       const [label] = truncateForSnapshot(labelRaw, TIMELINE_SNAPSHOT_LABEL_LIMIT)
       const resource = lookups.resourcesById.get(entityDefinitionId)
       return {
-        kind: 'relationship',
+        fieldType: 'RELATIONSHIP',
         recordId: value.recordId,
         label,
         entityType: resource?.entityType ?? null,
@@ -543,7 +559,7 @@ function buildSnapshotSingle(
       const [label] = truncateForSnapshot(labelRaw, TIMELINE_SNAPSHOT_LABEL_LIMIT)
       const actorId: ActorId = value.actorId ?? toActorId(value.actorType, value.id)
       return {
-        kind: 'actor',
+        fieldType: 'ACTOR',
         actorId,
         actorType: value.actorType,
         label,
@@ -553,7 +569,7 @@ function buildSnapshotSingle(
 
     case 'FILE': {
       // V1: generic file activity, no metadata resolution.
-      return { kind: 'file', label: 'File' }
+      return { fieldType: 'FILE', label: 'File' }
     }
 
     case 'ADDRESS_STRUCT':
@@ -561,17 +577,12 @@ function buildSnapshotSingle(
       if (value.type !== 'json') return null
       const stringified = JSON.stringify(value.value)
       if (stringified.length <= TIMELINE_SNAPSHOT_BODY_LIMIT) {
-        return { kind: 'json', value: value.value }
+        return { fieldType, value: value.value }
       }
       // Drop into a small "_truncated" shape so the renderer doesn't dump
       // megabytes of JSON into the timeline view.
       const [truncated] = truncateForSnapshot(stringified, TIMELINE_SNAPSHOT_BODY_LIMIT)
-      return { kind: 'json', value: { _truncated: truncated }, truncated: true }
-    }
-
-    case 'CALC': {
-      // CALC fields don't fire field-change post-hooks today; render skipped.
-      return null
+      return { fieldType, value: { _truncated: truncated }, truncated: true }
     }
 
     default:
