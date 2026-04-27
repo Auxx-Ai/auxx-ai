@@ -27,6 +27,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import type { FileItem } from './files-store'
 import { getFileIcon } from './utils/file-icon'
 
@@ -229,6 +230,15 @@ export function FileNameCell({ item, depth = 0, isMoving = false, actions }: Fil
                   <FolderIcon />
                   Open Folder
                 </DropdownMenuItem>
+              )}
+
+              {item.type === 'file' ? (
+                <FavoriteToggleMenuItem
+                  targetType='FILE'
+                  targetIds={{ folderFileId: item.id, folderId: item.parentId ?? '' }}
+                />
+              ) : (
+                <FavoriteToggleMenuItem targetType='FOLDER' targetIds={{ folderId: item.id }} />
               )}
 
               <DropdownMenuSeparator />

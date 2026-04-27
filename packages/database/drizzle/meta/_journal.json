@@ -904,6 +904,13 @@
       "when": 1777065390984,
       "tag": "0128_add_is_example_integration",
       "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1777313820166,
+      "tag": "0129_add_favorites",
+      "breakpoints": true
     }
   ]
 }

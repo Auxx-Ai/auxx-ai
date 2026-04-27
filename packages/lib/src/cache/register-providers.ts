@@ -29,6 +29,7 @@ import { publishedAppsProvider } from './providers/published-apps-provider'
 import { resourcesProvider } from './providers/resources-provider'
 import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
+import { userFavoritesProvider } from './providers/user-favorites-provider'
 import { userMailViewsProvider } from './providers/user-mail-views-provider'
 import { userMembershipsProvider } from './providers/user-memberships-provider'
 import { userProfileProvider } from './providers/user-profile-provider'
@@ -79,6 +80,7 @@ export function registerAllProviders(
   userCache.register('userMemberships', userMembershipsProvider)
   userCache.register('userMailViews', userMailViewsProvider)
   userCache.register('userTableViews', userTableViewsProvider)
+  userCache.register('userFavorites', userFavoritesProvider)
 
   // App-scoped (global)
   appCache.register('plans', plansProvider)

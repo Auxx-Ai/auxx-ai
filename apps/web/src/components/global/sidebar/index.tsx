@@ -13,6 +13,7 @@ import { MailSidebar } from '~/components/global/sidebar/mail-sidebar'
 import { SIDEBAR_MENU } from '~/constants/menu'
 import AppFooter from './app-footer'
 import { EntitySidebarNav } from './entity-sidebar-nav'
+import { FavoritesSidebar } from './favorites-sidebar'
 import { NavMain } from './nav-main'
 import { NavUser } from './nav-user'
 import { useSidebarItemActions } from './sidebar-item-actions'
@@ -44,6 +45,7 @@ export default function AppSidebar({ user, ...props }: Prop) {
         <SidebarContent className='gap-0'>
           <MailSidebar />
           <NavMain menu={navMain} itemActions={editItems} />
+          <FavoritesSidebar />
           <EntitySidebarNav />
         </SidebarContent>
         <SidebarFooter>

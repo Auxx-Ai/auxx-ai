@@ -45,6 +45,7 @@ import {
   Trash,
 } from 'lucide-react'
 import { useState } from 'react'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { DYNAMIC_TABLE_CONFIG } from '../../config/table-config'
@@ -355,6 +356,11 @@ export function ViewSelector({
                 <Pin />
                 Make Default
               </DropdownMenuItem>
+
+              <FavoriteToggleMenuItem
+                targetType='TABLE_VIEW'
+                targetIds={{ tableViewId: activeView.id, tableId }}
+              />
 
               <DropdownMenuSeparator />
 

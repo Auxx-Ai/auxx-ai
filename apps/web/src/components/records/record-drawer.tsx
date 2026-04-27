@@ -31,6 +31,7 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { MergeDialog } from '~/components/merge'
@@ -301,6 +302,13 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                       <Edit />
                       Edit {resource?.label?.toLowerCase() || 'record'}
                     </DropdownMenuItem>
+                  )}
+
+                  {entityDefinitionId && entityInstanceId && (
+                    <FavoriteToggleMenuItem
+                      targetType='ENTITY_INSTANCE'
+                      targetIds={{ entityDefinitionId, entityInstanceId }}
+                    />
                   )}
 
                   {actions?.enableRename && (

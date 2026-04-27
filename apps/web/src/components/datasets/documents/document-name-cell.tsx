@@ -5,6 +5,7 @@ import type { DocumentEntity as Document } from '@auxx/database/types'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { Archive, ArchiveRestore, Download, Eye, Trash2 } from 'lucide-react'
 import { PrimaryCell } from '~/components/dynamic-table'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { FileIcon } from '~/components/files/utils/file-icon'
 
 /**
@@ -54,6 +55,10 @@ export function DocumentNameCell({
         <Download />
         Download
       </DropdownMenuItem>
+      <FavoriteToggleMenuItem
+        targetType='DOCUMENT'
+        targetIds={{ documentId: document.id, datasetId: document.datasetId }}
+      />
       <DropdownMenuSeparator />
       {document.status === 'ARCHIVED' ? (
         <DropdownMenuItem onClick={() => onUnarchive(document)}>

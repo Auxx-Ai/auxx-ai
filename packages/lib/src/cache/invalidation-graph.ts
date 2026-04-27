@@ -100,6 +100,10 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'table-view.deleted': { user: ['userTableViews'], org: ['overages'] },
   'table-view.default-changed': { user: ['userTableViews'] },
 
+  // ── Favorite events ──
+  'favorite.changed': { user: ['userFavorites'] },
+  'favorite-folder.changed': { user: ['userFavorites'] },
+
   // ── KB & article events (affects overages for knowledgeBases / kbPublishedArticles) ──
   'kb.created': ['overages'],
   'kb.deleted': ['overages'],
