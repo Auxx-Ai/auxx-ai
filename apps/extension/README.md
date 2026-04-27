@@ -46,18 +46,25 @@ running with `DOMAIN` set (any value — it flips `SameSite=None; Secure` on
 the session cookie). In `apps/web/.env.local`:
 
 ```bash
-# Extension ID derived from manifest "key" (see below)
-NEXT_PUBLIC_EXTENSION_ID=<your-extension-id>
+# Extension ID(s) the web app accepts via CORS / frame-ancestors.
+# Comma-separated so the Web Store ID and a local unpacked dev ID can coexist.
+# Find each ID at chrome://extensions on the relevant install.
+NEXT_PUBLIC_EXTENSION_ID=<web-store-id>,<local-unpacked-id>
 # Flip session cookie to SameSite=None; Secure so chrome-extension:// can read it
 DOMAIN=localhost
 ```
 
-### Pinned extension ID
+### Extension IDs (Web Store vs local unpacked)
 
-The manifest already has a stable `key` baked in, so the extension ID is the
-same in dev, staging, prod, and the Web Store. The matching private `.pem`
-must be kept somewhere safe (1Password / shared vault) — losing it means
-losing the ability to publish updates under the same extension ID.
+The committed manifest has a stable `key` baked in, so the unpacked dev
+install always derives the same ID across machines. The Web Store assigns
+its own ID at publish time (the packaging script strips `key` before upload),
+so the published ID generally differs from the unpacked one. Both are
+supported simultaneously via the comma-separated `NEXT_PUBLIC_EXTENSION_ID`.
+
+The matching private `.pem` for the unpacked `key` must be kept somewhere
+safe (1Password / shared vault) — losing it changes the unpacked ID for
+every developer.
 
 If you ever need to regenerate (only if the private key is lost AND we accept
 a new extension ID):
@@ -230,9 +237,9 @@ and zipped `dist/` manually. Run `pnpm package` instead.
 rejects re-uploads with the same version string.
 
 **Iframe shows "Sign in to Auxx.ai"** — the bearer-token mint failed. Confirm
-you're logged into auxx.ai in the same browser profile, and that
-`NEXT_PUBLIC_EXTENSION_ID` matches the actual loaded extension ID
-(`chrome://extensions` → copy the ID under the Auxx.ai card).
+you're logged into auxx.ai in the same browser profile, and that the loaded
+extension's ID is included in `NEXT_PUBLIC_EXTENSION_ID` (comma-separated;
+copy the ID from `chrome://extensions` and add it to the list).
 
 **Content script not loading after a manifest change** — reload the
 extension card on `chrome://extensions` AND reload the host page. Manifest

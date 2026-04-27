@@ -6,13 +6,18 @@ import type { NextRequest } from 'next/server'
 import { appRouter } from '~/server/api/root'
 import { createTRPCContext } from '~/server/api/trpc'
 
-const EXTENSION_ID = configService.get<string>('NEXT_PUBLIC_EXTENSION_ID') ?? ''
-const EXTENSION_ORIGIN = EXTENSION_ID ? `chrome-extension://${EXTENSION_ID}` : null
+const EXTENSION_ORIGINS = new Set(
+  (configService.get<string>('NEXT_PUBLIC_EXTENSION_ID') ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map((id) => `chrome-extension://${id}`)
+)
 
 /** Headers that allow the Auxx Chrome extension to call tRPC with credentials. */
 function buildCorsHeaders(origin: string | null): Record<string, string> {
   if (!origin) return {}
-  if (origin !== EXTENSION_ORIGIN) return {}
+  if (!EXTENSION_ORIGINS.has(origin)) return {}
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Credentials': 'true',
