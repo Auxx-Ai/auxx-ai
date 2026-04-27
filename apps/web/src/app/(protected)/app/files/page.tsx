@@ -11,10 +11,11 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { Lock } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { parseAsString, useQueryState } from 'nuqs'
+import { useCallback, useEffect, useMemo } from 'react'
 import { FilesManagement } from '~/components/files'
 import { FileDetailDrawer } from '~/components/files/file-detail-drawer'
-import type { FileItem } from '~/components/files/files-store'
+import { type FileItem, useFileSystemStore } from '~/components/files/files-store'
 import { EmptyState } from '~/components/global/empty-state'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -27,21 +28,66 @@ function FilesPageContent() {
   const minWidth = useDockStore((state) => state.minWidth)
   const maxWidth = useDockStore((state) => state.maxWidth)
 
-  // Drawer state
-  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  // ── URL state ───────────────────────────────────────────────────────────
+  // ?folder=<folderId> mirrors the filesystem store's currentFolderId
+  // ?id=<fileId> opens the file detail drawer
+  const [folderId, setFolderId] = useQueryState('folder', parseAsString.withDefault(''))
+  const [selectedFileId, setSelectedFileId] = useQueryState('id', parseAsString.withDefault(''))
 
-  /** Handle file selection from FilesManagement */
-  const handleFileSelect = useCallback((file: FileItem) => {
-    setSelectedFile(file)
-    setIsDrawerOpen(true)
-  }, [])
+  // ── Bidirectional sync between ?folder= and store.currentFolderId ───────
+  // URL → store: applies on mount and any URL change.
+  const setCurrentFolder = useFileSystemStore((s) => s.setCurrentFolder)
+  const storeCurrentFolderId = useFileSystemStore((s) => s.currentFolderId)
+  useEffect(() => {
+    const target = folderId || null
+    if (storeCurrentFolderId !== target) {
+      setCurrentFolder(target)
+    }
+  }, [folderId, storeCurrentFolderId, setCurrentFolder])
 
-  /** Handle drawer close */
-  const handleDrawerOpenChange = useCallback((open: boolean) => {
-    setIsDrawerOpen(open)
-    if (!open) setSelectedFile(null)
-  }, [])
+  // Store → URL: when in-page navigation (breadcrumbs, folder click) updates
+  // the store, mirror the change into the URL so deep-links and back/forward work.
+  useEffect(() => {
+    return useFileSystemStore.subscribe(
+      (s) => s.currentFolderId,
+      (next, prev) => {
+        if (next === prev) return
+        setFolderId(next ?? null)
+      }
+    )
+  }, [setFolderId])
+
+  // Look up the selected FileItem from the store
+  const selectedFile = useFileSystemStore((s) => {
+    if (!selectedFileId) return null
+    return s.itemsById.get(selectedFileId) ?? null
+  })
+
+  const isDrawerOpen = !!selectedFileId && !!selectedFile
+
+  /** Selecting a file from the table writes to ?id= */
+  const handleFileSelect = useCallback(
+    (file: FileItem) => {
+      setSelectedFileId(file.id)
+    },
+    [setSelectedFileId]
+  )
+
+  /** Closing the drawer clears ?id= */
+  const handleDrawerOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) setSelectedFileId(null)
+    },
+    [setSelectedFileId]
+  )
+
+  /** FileDetailDrawer can switch which file it shows (e.g. next/prev). */
+  const handleSetSelectedFile = useCallback(
+    (file: FileItem | null) => {
+      setSelectedFileId(file?.id ?? null)
+    },
+    [setSelectedFileId]
+  )
 
   // Build docked panels
   const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
@@ -52,7 +98,7 @@ function FilesPageContent() {
         content: (
           <FileDetailDrawer
             file={selectedFile}
-            setSelectedFile={setSelectedFile}
+            setSelectedFile={handleSetSelectedFile}
             onOpenChange={handleDrawerOpenChange}
           />
         ),
@@ -67,6 +113,7 @@ function FilesPageContent() {
     isDrawerOpen,
     selectedFile,
     handleDrawerOpenChange,
+    handleSetSelectedFile,
     dockedWidth,
     setDockedWidth,
     minWidth,
@@ -88,7 +135,7 @@ function FilesPageContent() {
         {!isDocked && selectedFile && isDrawerOpen && (
           <FileDetailDrawer
             file={selectedFile}
-            setSelectedFile={setSelectedFile}
+            setSelectedFile={handleSetSelectedFile}
             onOpenChange={handleDrawerOpenChange}
           />
         )}
