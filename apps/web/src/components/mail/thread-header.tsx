@@ -228,7 +228,7 @@ export function ThreadHeader() {
             <ThreadTicketControl />
           </div>
           <div data-slot='thread-header-actions' className=' flex items-center '>
-            <Tooltip content={isDone ? 'Unarchive' : 'Archive'}>
+            <Tooltip content={isDone ? 'Unarchive' : 'Archive'} shortcut='D'>
               <Button
                 variant='ghost'
                 size='icon'
@@ -240,7 +240,7 @@ export function ThreadHeader() {
               </Button>
             </Tooltip>
 
-            <Tooltip content={isTrash ? 'Restore from trash' : 'Trash Thread'}>
+            <Tooltip content={isTrash ? 'Restore from trash' : 'Trash Thread'} shortcut='#'>
               <Button
                 variant='ghost'
                 size='icon'
@@ -251,7 +251,7 @@ export function ThreadHeader() {
                 <span className='sr-only'>{isTrash ? 'Restore' : 'Delete'}</span>
               </Button>
             </Tooltip>
-            <Tooltip content={isSpam ? 'Not spam' : 'Mark as spam'}>
+            <Tooltip content={isSpam ? 'Not spam' : 'Mark as spam'} shortcut='!'>
               <Button
                 variant='ghost'
                 size='icon'
@@ -263,7 +263,7 @@ export function ThreadHeader() {
               </Button>
             </Tooltip>
 
-            <Tooltip content='Apply Tags'>
+            <Tooltip content='Apply Tags' shortcut='L'>
               <Button
                 ref={tagButtonRef}
                 variant='ghost'
@@ -287,7 +287,7 @@ export function ThreadHeader() {
               />
             )}
             <ManualTriggerButton recordId={toRecordId('thread', thread.id)}>
-              <Tooltip content='Run workflow'>
+              <Tooltip content='Run workflow' shortcut='W'>
                 <Button
                   variant='ghost'
                   size='icon'
@@ -307,7 +307,7 @@ export function ThreadHeader() {
               target='user'
               emptyLabel='Assign'>
               <div>
-                <Tooltip content={assignee ? assignee.name || 'Assigned' : 'Assign'}>
+                <Tooltip content={assignee ? assignee.name || 'Assigned' : 'Assign'} shortcut='A'>
                   <Button
                     variant='ghost'
                     size='icon'
