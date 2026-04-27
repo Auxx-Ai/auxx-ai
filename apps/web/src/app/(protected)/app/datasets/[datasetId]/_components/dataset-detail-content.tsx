@@ -14,7 +14,8 @@ import {
 } from '@auxx/ui/components/main-page'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { FileText, Search, Settings } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { parseAsString, useQueryState } from 'nuqs'
+import { useCallback, useMemo } from 'react'
 import { DocumentDetailDrawer } from '~/components/datasets/documents/document-detail-drawer'
 import { DocumentManagement } from '~/components/datasets/documents/document-management'
 import { DatasetSearch } from '~/components/datasets/search/dataset-search'
@@ -37,21 +38,32 @@ export function DatasetDetailContent() {
   const maxWidth = useDockStore((state) => state.maxWidth)
   const { currentTab, setCurrentTab, dataset, documents } = useDatasetDetail()
 
-  // Drawer state
-  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  // Drawer state — synced to URL via ?id= param
+  const [selectedDocumentId, setSelectedDocumentId] = useQueryState(
+    'id',
+    parseAsString.withDefault('')
+  )
+  const isDrawerOpen = !!selectedDocumentId
+  const selectedDocument = useMemo<Document | null>(
+    () => documents.find((doc) => doc.id === selectedDocumentId) ?? null,
+    [documents, selectedDocumentId]
+  )
 
   /** Handle document selection from DocumentManagement */
-  const handleDocumentSelect = useCallback((document: Document) => {
-    setSelectedDocument(document)
-    setIsDrawerOpen(true)
-  }, [])
+  const handleDocumentSelect = useCallback(
+    (document: Document) => {
+      setSelectedDocumentId(document.id)
+    },
+    [setSelectedDocumentId]
+  )
 
   /** Handle drawer close */
-  const handleDrawerOpenChange = useCallback((open: boolean) => {
-    setIsDrawerOpen(open)
-    if (!open) setSelectedDocument(null)
-  }, [])
+  const handleDrawerOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) setSelectedDocumentId(null)
+    },
+    [setSelectedDocumentId]
+  )
 
   // Build docked panels - only show when on documents tab
   const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
