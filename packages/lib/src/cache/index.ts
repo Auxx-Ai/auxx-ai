@@ -82,7 +82,12 @@ export {
   getUserCache,
 } from './singletons'
 export { TokenCacheService } from './token-cache-service'
-export type { CachedTableView, UserCacheDataMap, UserCacheKeyName } from './user-cache-keys'
+export type {
+  CachedFavorite,
+  CachedTableView,
+  UserCacheDataMap,
+  UserCacheKeyName,
+} from './user-cache-keys'
 export { UserCacheService } from './user-cache-service'
 export {
   getCachedWorkflowApp,

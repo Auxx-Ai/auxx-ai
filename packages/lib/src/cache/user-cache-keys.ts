@@ -44,6 +44,22 @@ export interface CachedTableView {
   updatedAt: string
 }
 
+/** Cached favorite (JSON-serializable; Date → ISO string) */
+export interface CachedFavorite {
+  id: string
+  organizationMemberId: string
+  organizationId: string
+  userId: string
+  nodeType: 'ITEM' | 'FOLDER'
+  title: string | null
+  targetType: string | null
+  targetIds: Record<string, string> | null
+  parentFolderId: string | null
+  sortOrder: string
+  createdAt: string
+  updatedAt: string
+}
+
 /** All user-scoped cache keys and their data types */
 export interface UserCacheDataMap {
   userProfile: DehydratedUser
@@ -51,6 +67,7 @@ export interface UserCacheDataMap {
   userMemberships: UserMembership[]
   userMailViews: CachedMailView[]
   userTableViews: CachedTableView[]
+  userFavorites: CachedFavorite[]
 }
 
 export type UserCacheKeyName = keyof UserCacheDataMap
@@ -60,6 +77,7 @@ export const ORG_SCOPED_USER_KEYS = new Set<UserCacheKeyName>([
   'userSettings',
   'userMailViews',
   'userTableViews',
+  'userFavorites',
 ])
 
 const ONE_DAY = 60 * 60 * 24
@@ -74,4 +92,5 @@ export const USER_CACHE_KEY_CONFIG: Record<
   userMemberships: { prefix: 'user:memberships', ttlSeconds: ONE_DAY },
   userMailViews: { prefix: 'user:mail-views', ttlSeconds: ONE_DAY },
   userTableViews: { prefix: 'user:table-views', ttlSeconds: ONE_DAY },
+  userFavorites: { prefix: 'user:favorites', ttlSeconds: ONE_DAY },
 }

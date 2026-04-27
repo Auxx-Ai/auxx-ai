@@ -146,6 +146,7 @@ export const fulfillmentStatus = pgEnum('FULFILLMENT_STATUS', [
   'OPEN',
   'PENDING',
 ])
+export const favoriteNodeType = pgEnum('FavoriteNodeType', ['ITEM', 'FOLDER'])
 export const fileStatus = pgEnum('FileStatus', [
   'PENDING',
   'CONFIRMED',

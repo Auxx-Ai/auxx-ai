@@ -232,6 +232,18 @@
       "import": "./dist/events/handlers/index.mjs",
       "default": "./src/events/handlers/index.ts"
     },
+    "./favorites": {
+      "types": "./src/favorites/index.ts",
+      "source": "./src/favorites/index.ts",
+      "import": "./dist/favorites/index.mjs",
+      "default": "./src/favorites/index.ts"
+    },
+    "./favorites/client": {
+      "types": "./src/favorites/client.ts",
+      "source": "./src/favorites/client.ts",
+      "import": "./dist/favorites/client.mjs",
+      "default": "./src/favorites/client.ts"
+    },
     "./field-values": {
       "types": "./src/field-values/index.ts",
       "source": "./src/field-values/index.ts",

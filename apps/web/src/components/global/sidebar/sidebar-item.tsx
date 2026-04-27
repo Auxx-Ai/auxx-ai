@@ -14,7 +14,7 @@ import { SidebarMenuButton, SidebarMenuSubButton } from '@auxx/ui/components/sid
 import { cn } from '@auxx/ui/lib/utils'
 import { MoreVertical, Pencil } from 'lucide-react'
 import Link from 'next/link'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 interface SidebarItemProps {
   id: string
@@ -29,6 +29,16 @@ interface SidebarItemProps {
   isInbox?: boolean
   editItems?: ReactNode
   onToggleEditMode?: () => void
+  /** When true, renders the name as an editable input. Click-through to navigation is suppressed. */
+  isEditing?: boolean
+  /** Current draft value while editing. Required when isEditing is true. */
+  editValue?: string
+  /** Called when the editing value changes. */
+  onEditChange?: (value: string) => void
+  /** Called on Enter or blur to commit the edit. */
+  onEditCommit?: () => void
+  /** Called on Escape to cancel the edit. */
+  onEditCancel?: () => void
 }
 
 export function SidebarItem({
@@ -44,6 +54,11 @@ export function SidebarItem({
   editItems,
   isInbox = false,
   onToggleEditMode,
+  isEditing = false,
+  editValue,
+  onEditChange,
+  onEditCommit,
+  onEditCancel,
 }: SidebarItemProps) {
   // Choose the right component based on whether it's a submenu item
   const Component = isSubmenu ? SidebarMenuSubButton : SidebarMenuButton
@@ -51,16 +66,29 @@ export function SidebarItem({
   // Only show dropdown if there's content to display
   const hasDropdownContent = editItems || onToggleEditMode
 
+  // Reliably focus the input on entering edit mode (autoFocus alone races with
+  // the closing dropdown returning focus to its trigger button).
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (!isEditing) return
+    const id = requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    })
+    return () => cancelAnimationFrame(id)
+  }, [isEditing])
+
   return (
     <Component asChild className='h-7 py-0 pe-[3px]' tooltip={name}>
       <Link
         href={href}
+        onClick={isEditing ? (e) => e.preventDefault() : undefined}
         className={cn(`group/item flex h-7 w-full items-center justify-between ${className}`, {
           'bg-sidebar-accent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground':
             isActive,
-          'bg-sidebar-accent': popoverOpen,
+          'bg-sidebar-accent': popoverOpen || isEditing,
         })}>
-        <div className='flex items-center'>
+        <div className='flex min-w-0 items-center grow'>
           {color && !icon && (
             <div
               className={cn(
@@ -69,10 +97,33 @@ export function SidebarItem({
               )}
             />
           )}
-          {icon && <span className='[&_svg]:size-4 mr-2'>{icon}</span>}
-          <span className='group-data-[collapsible=icon]:hidden'>{name}</span>
+          {icon && <span className='[&_svg]:size-4 mr-2 shrink-0'>{icon}</span>}
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              value={editValue ?? ''}
+              onChange={(e) => onEditChange?.(e.target.value)}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              onBlur={() => onEditCommit?.()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  onEditCommit?.()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  onEditCancel?.()
+                }
+              }}
+              className='h-5 min-w-0 grow rounded bg-background px-1 text-sm outline-none ring-1 ring-border group-data-[collapsible=icon]:hidden'
+            />
+          ) : (
+            <span className='truncate group-data-[collapsible=icon]:hidden'>{name}</span>
+          )}
         </div>
-        <div className='flex items-center group-data-[collapsible=icon]:hidden'>
+        <div className='flex items-center group-data-[collapsible=icon]:hidden shrink-0'>
           {!popoverOpen && typeof count === 'number' && (
             <>
               <span className='pointer-events-none text-xs text-muted-foreground sm:hidden'>
@@ -95,7 +146,7 @@ export function SidebarItem({
                     variant='ghost'
                     size='icon'
                     className={cn(
-                      'size-6 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
+                      'size-6 shrink-0 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
                       {
                         'bg-primary-200 opacity-100': popoverOpen,
                         'sm:group-hover/item:opacity-100': !popoverOpen,
@@ -110,7 +161,10 @@ export function SidebarItem({
                     <span className='sr-only'>Options</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className='w-50' align='start'>
+                <DropdownMenuContent
+                  className='w-50'
+                  align={isSubmenu ? 'end' : 'start'}
+                  sideOffset={4}>
                   <DropdownMenuGroup>
                     {editItems}
                     {onToggleEditMode && (

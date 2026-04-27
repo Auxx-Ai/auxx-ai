@@ -39,6 +39,7 @@ import {
   useTableSorting,
 } from '~/components/dynamic-table/stores/store-selectors'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
 import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
 import { MergeDialog } from '~/components/merge'
@@ -422,6 +423,15 @@ export function RecordsView({
                 <SquarePen />
                 Edit
               </DropdownMenuItem>
+              {entityDefinitionId && (
+                <FavoriteToggleMenuItem
+                  targetType='ENTITY_INSTANCE'
+                  targetIds={{
+                    entityDefinitionId,
+                    entityInstanceId: row.original.id,
+                  }}
+                />
+              )}
               <DropdownMenuItem onClick={() => handleArchive(row.original.id)}>
                 <Archive />
                 Archive

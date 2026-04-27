@@ -3,6 +3,7 @@
 
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import type { ReactNode } from 'react'
+import { FavoritesProvider } from '~/components/favorites/providers/favorites-provider'
 import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
 import { ResourceProvider } from '~/components/resources'
 import { useResourceSync } from '~/components/resources/hooks/use-resource-sync'
@@ -32,7 +33,9 @@ export function AuxxAppProviders({ children }: AuxxAppProvidersProps) {
   return (
     <ResourceProvider>
       <FilesystemProvider>
-        <TooltipProvider>{children}</TooltipProvider>
+        <FavoritesProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </FavoritesProvider>
       </FilesystemProvider>
     </ResourceProvider>
   )

@@ -36,6 +36,7 @@ import {
   UsersIcon,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -332,6 +333,10 @@ export function SnippetTable({ onEdit, onCopy }: SnippetTableProps) {
                             <CopyIcon />
                             Duplicate
                           </DropdownMenuItem>
+                          <FavoriteToggleMenuItem
+                            targetType='SNIPPET'
+                            targetIds={{ snippetId: snippet.id }}
+                          />
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => handleDeleteSnippet(snippet)}

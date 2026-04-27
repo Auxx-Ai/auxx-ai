@@ -24,6 +24,8 @@ import { createPortal } from 'react-dom'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { OverageBanner } from '~/components/banner/overage-banner'
 import { DemoBanner } from '~/components/demo/demo-banner'
+import { useFavoriteDragEnd } from '~/components/favorites/hooks/use-favorite-drag-end'
+import { FavoriteDragOverlay } from '~/components/favorites/ui/favorite-drag-overlay'
 import AppSidebar from '~/components/global/sidebar'
 import { KopilotDock } from '~/components/kopilot/ui/kopilot-dock'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
@@ -86,6 +88,7 @@ export const Dashboard = ({
 
   // Use unified mutation hook for optimistic updates
   const { updateBulk } = useThreadMutation()
+  const handleFavoriteDragEnd = useFavoriteDragEnd()
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -94,23 +97,29 @@ export const Dashboard = ({
       setActiveDragData(null)
       setActiveDndItem(null)
 
-      if (over && active.id !== over.id) {
-        const activeData = active.data.current ?? {}
-        const overData = over.data.current ?? {}
-        if (activeData.type === 'thread' && overData.type === 'shared-inbox-target') {
-          const droppedThreadIds: string[] = activeData.draggedThreadIds ?? []
-          const targetInboxId: string = overData.inboxId
-          if (droppedThreadIds.length > 0 && targetInboxId) {
-            // Convert raw inbox ID to RecordId format for tRPC schema validation
-            const inboxRecordId = toRecordId('inbox', targetInboxId)
-            // Use optimistic update - store updates immediately
-            updateBulk(droppedThreadIds, { inboxId: inboxRecordId })
-            toastSuccess({ title: `${droppedThreadIds.length} thread(s) moved` })
-          }
+      if (!over || active.id === over.id) return
+
+      const activeData = active.data.current ?? {}
+      const overData = over.data.current ?? {}
+
+      if (activeData.type === 'thread' && overData.type === 'shared-inbox-target') {
+        const droppedThreadIds: string[] = activeData.draggedThreadIds ?? []
+        const targetInboxId: string = overData.inboxId
+        if (droppedThreadIds.length > 0 && targetInboxId) {
+          // Convert raw inbox ID to RecordId format for tRPC schema validation
+          const inboxRecordId = toRecordId('inbox', targetInboxId)
+          // Use optimistic update - store updates immediately
+          updateBulk(droppedThreadIds, { inboxId: inboxRecordId })
+          toastSuccess({ title: `${droppedThreadIds.length} thread(s) moved` })
         }
+        return
+      }
+
+      if (activeData.type === 'favorite') {
+        handleFavoriteDragEnd(activeData as Parameters<typeof handleFavoriteDragEnd>[0], overData)
       }
     },
-    [updateBulk]
+    [updateBulk, handleFavoriteDragEnd]
   )
 
   return (
@@ -144,6 +153,8 @@ export const Dashboard = ({
                   items={activeDragData?.draggedThreadIds ?? []}
                   isDragging
                 />
+              ) : activeDndItem?.data.current?.type === 'favorite' ? (
+                <FavoriteDragOverlay favoriteId={activeDndItem.data.current.favoriteId} />
               ) : null}
             </DragOverlay>,
             portalContainer

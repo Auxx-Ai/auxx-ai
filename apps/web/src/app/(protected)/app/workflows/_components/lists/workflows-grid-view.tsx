@@ -18,6 +18,7 @@ import { Copy, Edit, MoreVertical, Pause, Play, TestTube, Trash } from 'lucide-r
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { Tooltip } from '~/components/global/tooltip'
 import { DuplicateWorkflowDialog } from '~/components/workflow/dialogs/duplicate-workflow-dialog'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
@@ -162,6 +163,10 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
                 <Copy />
                 Duplicate
               </DropdownMenuItem>
+              <FavoriteToggleMenuItem
+                targetType='WORKFLOW'
+                targetIds={{ workflowId: workflow.id }}
+              />
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleToggleEnabled} disabled={updateWorkflow.isPending}>
                 {workflow.enabled ? (

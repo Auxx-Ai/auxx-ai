@@ -24,6 +24,7 @@ import {
   Settings,
   Trash,
 } from 'lucide-react'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { useDatasetActions } from './hooks/use-dataset-actions'
 
 interface DatasetCardProps {
@@ -95,6 +96,10 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
                   <Settings />
                   Settings
                 </DropdownMenuItem>
+                <FavoriteToggleMenuItem
+                  targetType='DATASET'
+                  targetIds={{ datasetId: dataset.id }}
+                />
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleArchive}>
                   <Archive />

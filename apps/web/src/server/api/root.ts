@@ -30,6 +30,7 @@ import { embeddingRouter } from './routers/embedding'
 import { entityDefinitionRouter } from './routers/entityDefinition'
 import { entityGroupRouter } from './routers/entityGroup'
 import { extensionRouter } from './routers/extension'
+import { favoriteRouter } from './routers/favorite'
 import { featurePermissionsRouter } from './routers/featurePermissions'
 import { fieldValueRouter } from './routers/fieldValue'
 import { fileRouter } from './routers/file'
@@ -113,6 +114,7 @@ export const appRouter = createTRPCRouter({
   entityDefinition: entityDefinitionRouter,
   entityGroup: entityGroupRouter,
   extension: extensionRouter,
+  favorite: favoriteRouter,
   featurePermission: featurePermissionsRouter,
   inbox: inboxRouter,
   channel: channelRouter,
