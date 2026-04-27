@@ -4,6 +4,7 @@
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { useCallback, useState } from 'react'
 import {
+  useActiveThreadId,
   useFocusedThreadId,
   useHasMultipleSelected,
   useThreadSelectionStore,
@@ -12,12 +13,15 @@ import {
 import { useThreadMutation } from './use-thread-mutation'
 
 /**
- * Registers action shortcuts (D, #, !, W, L) for the focused thread in compact view.
+ * Registers action shortcuts (D, #, !, W, L, A) for the focused thread (compact/list view)
+ * or the active thread (split view) when no focus cursor is set.
  * Disabled when bulk mode is active so bulk shortcuts take priority.
  * Returns UI state (workflow dialog, tag picker) for rendering by the parent component.
  */
 export function useFocusedThreadShortcuts() {
   const focusedThreadId = useFocusedThreadId()
+  const activeThreadId = useActiveThreadId()
+  const targetThreadId = focusedThreadId ?? activeThreadId
   const hasMultipleSelected = useHasMultipleSelected()
   const viewMode = useViewMode()
   const { update, isUpdating } = useThreadMutation()
@@ -28,24 +32,33 @@ export function useFocusedThreadShortcuts() {
   const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
   const [workflowThreadId, setWorkflowThreadId] = useState<string | null>(null)
 
-  const enabled = !!focusedThreadId && !hasMultipleSelected && viewMode !== 'edit'
+  const enabled = !!targetThreadId && !hasMultipleSelected && viewMode !== 'edit'
   const actionsEnabled = enabled && !isFocusLocked
 
+  // Advance to the next thread after a destructive action.
+  // In list/compact view (focusedThreadId set), move the focus cursor.
+  // In split view (only activeThreadId set), move the active thread so the
+  // next one auto-opens via the URL sync.
   const advanceFocus = useCallback(() => {
     const store = useThreadSelectionStore.getState()
-    const { listThreadIds, focusedThreadId: currentId } = store
+    const { listThreadIds, focusedThreadId: currentFocused, activeThreadId: currentActive } = store
+    const currentId = currentFocused ?? currentActive
     if (!currentId) return
     const idx = listThreadIds.indexOf(currentId)
     const nextId = listThreadIds[idx + 1] ?? listThreadIds[idx - 1] ?? null
-    store.setFocusedThread(nextId)
+    if (currentFocused) {
+      store.setFocusedThread(nextId)
+    } else {
+      store.setActiveThread(nextId)
+    }
   }, [])
 
   // D — Archive
   useHotkey(
     'D',
     () => {
-      if (focusedThreadId && !isUpdating) {
-        update(focusedThreadId, { status: 'ARCHIVED' })
+      if (targetThreadId && !isUpdating) {
+        update(targetThreadId, { status: 'ARCHIVED' })
         advanceFocus()
       }
     },
@@ -56,8 +69,8 @@ export function useFocusedThreadShortcuts() {
   useHotkey(
     'Shift+3',
     () => {
-      if (focusedThreadId && !isUpdating) {
-        update(focusedThreadId, { status: 'TRASH' })
+      if (targetThreadId && !isUpdating) {
+        update(targetThreadId, { status: 'TRASH' })
         advanceFocus()
       }
     },
@@ -68,8 +81,8 @@ export function useFocusedThreadShortcuts() {
   useHotkey(
     'Shift+1',
     () => {
-      if (focusedThreadId && !isUpdating) {
-        update(focusedThreadId, { status: 'SPAM' })
+      if (targetThreadId && !isUpdating) {
+        update(targetThreadId, { status: 'SPAM' })
         advanceFocus()
       }
     },
@@ -80,8 +93,8 @@ export function useFocusedThreadShortcuts() {
   useHotkey(
     'W',
     () => {
-      if (focusedThreadId) {
-        setWorkflowThreadId(focusedThreadId)
+      if (targetThreadId) {
+        setWorkflowThreadId(targetThreadId)
         setWorkflowDialogOpen(true)
         setFocusLocked(true)
       }
@@ -104,8 +117,8 @@ export function useFocusedThreadShortcuts() {
   useHotkey(
     'A',
     () => {
-      if (focusedThreadId) {
-        setAssignPickerThreadId(focusedThreadId)
+      if (targetThreadId) {
+        setAssignPickerThreadId(targetThreadId)
         setAssignPickerOpen(true)
         setFocusLocked(true)
       }
@@ -138,8 +151,8 @@ export function useFocusedThreadShortcuts() {
   useHotkey(
     'L',
     () => {
-      if (focusedThreadId) {
-        setTagPickerThreadId(focusedThreadId)
+      if (targetThreadId) {
+        setTagPickerThreadId(targetThreadId)
         setTagPickerOpen(true)
         setFocusLocked(true)
       }
