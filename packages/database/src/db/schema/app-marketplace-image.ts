@@ -2,6 +2,7 @@
 // Drizzle table for app marketplace image
 
 import { createId } from '@paralleldrive/cuid2'
+import { textCollateC } from './_collations'
 import { type AnyPgColumn, index, pgTable, text, timestamp } from './_shared'
 import { App } from './app'
 import { DeveloperAccount } from './developer-account'
@@ -26,8 +27,8 @@ export const AppMarketplaceImage = pgTable(
 
     // File info
     fileExtension: text().notNull(), // png, jpg
-    sortOrder: text(),
-    savedSortOrder: text(),
+    sortOrder: textCollateC(),
+    savedSortOrder: textCollateC(),
 
     // Upload status
     uploadCompletedAt: timestamp({ precision: 3 }),
