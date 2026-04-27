@@ -13,7 +13,7 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
   return {
     name: 'create_task',
     description:
-      'Create a new task. Before calling: use list_members to find user IDs for assignment, and use search_entities to find linkedRecordIds for any referenced entities (products, orders, contacts, etc.). Supports natural language deadlines like "next Friday", "in 3 days", "end of week".',
+      'Create a new task. Resolving names: try list_members first for the assignee. If the name does not match any workspace member, fall back to search_entities — they are likely a contact (or the subject is a company/record). Pass the matched recordId to linkedRecordIds and leave assigneeIds empty so the task is assigned to the current user. Use search_entities for any other referenced records (products, orders, etc.). Supports natural language deadlines like "next Friday", "in 3 days", "end of week".',
     requiresApproval: true,
     usageNotes: "Emits an `action-result` block automatically. Don't re-embed anything for it.",
     parameters: {
