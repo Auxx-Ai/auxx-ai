@@ -69,14 +69,21 @@ const EXTENSION_HOST_FRAME_ANCESTORS = [
 
 /**
  * Allowed `frame-ancestors` for the extension's embed iframe. CSP doesn't
- * allow wildcards on the chrome-extension scheme, so the published Web Store
- * ID is listed explicitly. Unpacked dev installs reuse the same ID via the
- * manifest's `key`, so a single env var covers both surfaces.
+ * allow wildcards on the chrome-extension scheme, so each allowed extension
+ * ID is listed explicitly. `NEXT_PUBLIC_EXTENSION_ID` is comma-separated so
+ * the Web Store ID and a local unpacked dev ID can coexist.
  */
-const EXTENSION_ID = process.env.NEXT_PUBLIC_EXTENSION_ID ?? ''
-const EMBED_FRAME_ANCESTORS = EXTENSION_ID
-  ? [`chrome-extension://${EXTENSION_ID}`, ...EXTENSION_HOST_FRAME_ANCESTORS].join(' ')
-  : ''
+const EXTENSION_IDS = (process.env.NEXT_PUBLIC_EXTENSION_ID ?? '')
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean)
+const EMBED_FRAME_ANCESTORS =
+  EXTENSION_IDS.length > 0
+    ? [
+        ...EXTENSION_IDS.map((id) => `chrome-extension://${id}`),
+        ...EXTENSION_HOST_FRAME_ANCESTORS,
+      ].join(' ')
+    : ''
 
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl

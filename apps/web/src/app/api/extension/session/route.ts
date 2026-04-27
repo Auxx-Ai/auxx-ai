@@ -19,11 +19,16 @@ import { auth } from '~/auth/server'
  * the Redis-backed cache. Called once per iframe mount — not on a timer.
  */
 
-const EXTENSION_ID = configService.get<string>('NEXT_PUBLIC_EXTENSION_ID') ?? ''
-const EXTENSION_ORIGIN = EXTENSION_ID ? `chrome-extension://${EXTENSION_ID}` : null
+const EXTENSION_ORIGINS = new Set(
+  (configService.get<string>('NEXT_PUBLIC_EXTENSION_ID') ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map((id) => `chrome-extension://${id}`)
+)
 
 function corsHeaders(origin: string | null): Record<string, string> {
-  if (!origin || origin !== EXTENSION_ORIGIN) return {}
+  if (!origin || !EXTENSION_ORIGINS.has(origin)) return {}
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Credentials': 'true',
