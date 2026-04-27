@@ -126,150 +126,148 @@ export function FavoriteFolder({ folder, items, index }: FavoriteFolderProps) {
   const childIds = items.map((it) => `favorite-row-${it.id}`)
 
   return (
-    <>
-      <SidebarMenuItem
-        ref={setRefs}
-        style={style}
-        className={cn(
-          'rounded-md transition-colors duration-150',
-          sortable.isDragging && 'opacity-40',
-          isDraggingFavoriteItem &&
-            'outline-dashed outline-1 outline-primary/30 [outline-offset:-1px]',
-          isFolderDropOver && 'bg-primary/20 outline-primary/80 ring-2 ring-inset ring-primary/60'
-        )}>
-        <SidebarMenuButton
-          asChild
-          className='h-7 py-0 pe-[3px]'
-          tooltip={folder.title ?? 'Folder'}
-          {...(editing ? {} : sortable.attributes)}
-          {...(editing ? {} : sortable.listeners)}>
-          <div
-            className='group/item relative flex h-7 w-full cursor-pointer items-center justify-between'
-            onClick={(e) => {
-              if ((e.target as HTMLElement).closest('[data-no-toggle]')) return
-              if (editing) return
-              sidebarState.toggleSection(sectionId)
-            }}>
-            <div className='flex min-w-0 items-center grow'>
-              <Folder className='size-4 mr-2 shrink-0' />
-              {editing ? (
-                <input
-                  data-no-toggle
-                  autoFocus
-                  value={draftTitle}
-                  onChange={(e) => setDraftTitle(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onBlur={commitRename}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      commitRename()
-                    } else if (e.key === 'Escape') {
-                      e.preventDefault()
-                      cancelRename()
-                    }
-                  }}
-                  className='h-5 min-w-0 grow rounded bg-background px-1 text-sm outline-none ring-1 ring-border'
-                />
-              ) : (
-                <>
-                  <span className='truncate group-data-[collapsible=icon]:hidden'>
-                    {folder.title}
-                  </span>
-                  <button
-                    type='button'
-                    data-no-toggle
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      sidebarState.toggleSection(sectionId)
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    className='ml-1 inline-flex shrink-0 items-center text-muted-foreground group-data-[collapsible=icon]:hidden'>
-                    <CollapsibleChevron open={isOpen} />
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div className='flex items-center group-data-[collapsible=icon]:hidden'>
-              {!editing && (
-                <div
+    <SidebarMenuItem
+      ref={setRefs}
+      style={style}
+      className={cn(
+        'rounded-md transition-colors duration-150',
+        sortable.isDragging && 'opacity-40',
+        isDraggingFavoriteItem &&
+          'outline-dashed outline-1 outline-primary/30 [outline-offset:-1px]',
+        isFolderDropOver && 'bg-primary/20 outline-primary/80 ring-2 ring-inset ring-primary/60'
+      )}>
+      <SidebarMenuButton
+        asChild
+        className='h-7 py-0 pe-[3px]'
+        tooltip={folder.title ?? 'Folder'}
+        {...(editing ? {} : sortable.attributes)}
+        {...(editing ? {} : sortable.listeners)}>
+        <div
+          className='group/item relative flex h-7 w-full cursor-pointer items-center justify-between'
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('[data-no-toggle]')) return
+            if (editing) return
+            sidebarState.toggleSection(sectionId)
+          }}>
+          <div className='flex min-w-0 items-center grow'>
+            <Folder className='size-4 mr-2 shrink-0' />
+            {editing ? (
+              <input
+                data-no-toggle
+                autoFocus
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    commitRename()
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    cancelRename()
+                  }
+                }}
+                className='h-5 min-w-0 grow rounded bg-background px-1 text-sm outline-none ring-1 ring-border'
+              />
+            ) : (
+              <>
+                <span className='truncate group-data-[collapsible=icon]:hidden'>
+                  {folder.title}
+                </span>
+                <button
+                  type='button'
                   data-no-toggle
                   onClick={(e) => {
                     e.stopPropagation()
-                    e.preventDefault()
+                    sidebarState.toggleSection(sectionId)
                   }}
-                  onPointerDown={(e) => e.stopPropagation()}>
-                  <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant='ghost'
-                        size='icon'
-                        className={cn(
-                          'size-6 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
-                          {
-                            'bg-primary-200 opacity-100': menuOpen,
-                            'sm:group-hover/item:opacity-100': !menuOpen,
-                          }
-                        )}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className='ml-1 inline-flex shrink-0 items-center text-muted-foreground group-data-[collapsible=icon]:hidden'>
+                  <CollapsibleChevron open={isOpen} />
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className='flex items-center group-data-[collapsible=icon]:hidden'>
+            {!editing && (
+              <div
+                data-no-toggle
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                }}
+                onPointerDown={(e) => e.stopPropagation()}>
+                <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      className={cn(
+                        'size-6 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
+                        {
+                          'bg-primary-200 opacity-100': menuOpen,
+                          'sm:group-hover/item:opacity-100': !menuOpen,
+                        }
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        setMenuOpen(!menuOpen)
+                      }}>
+                      <MoreVertical className='size-3.5' />
+                      <span className='sr-only'>Folder options</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className='w-50' align='start'>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
                         onClick={(e) => {
                           e.stopPropagation()
-                          e.preventDefault()
-                          setMenuOpen(!menuOpen)
+                          setDraftTitle(folder.title ?? '')
+                          setEditing(true)
                         }}>
-                        <MoreVertical className='size-3.5' />
-                        <span className='sr-only'>Folder options</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className='w-50' align='start'>
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDraftTitle(folder.title ?? '')
-                            setEditing(true)
-                          }}>
-                          <Pencil />
-                          Rename
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant='destructive'
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDelete()
-                          }}>
-                          <Trash2 />
-                          Delete folder
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              )}
-            </div>
+                        <Pencil />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant='destructive'
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDelete()
+                        }}>
+                        <Trash2 />
+                        Delete folder
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
           </div>
-        </SidebarMenuButton>
+        </div>
+      </SidebarMenuButton>
 
-        <SidebarGroupCollapse open={isOpen}>
-          <SidebarMenuSub className='me-0 pe-0'>
-            <SortableContext items={childIds} strategy={verticalListSortingStrategy}>
-              {items.length > 0 ? (
-                items.map((it, i) => (
-                  <SortableFavoriteRow
-                    key={it.id}
-                    favorite={it}
-                    parentFolderId={folder.id}
-                    index={i}
-                  />
-                ))
-              ) : (
-                <li className='px-3 py-1 text-xs text-muted-foreground italic'>Empty folder</li>
-              )}
-            </SortableContext>
-          </SidebarMenuSub>
-        </SidebarGroupCollapse>
-      </SidebarMenuItem>
-    </>
+      <SidebarGroupCollapse open={isOpen}>
+        <SidebarMenuSub className='me-0 pe-0'>
+          <SortableContext items={childIds} strategy={verticalListSortingStrategy}>
+            {items.length > 0 ? (
+              items.map((it, i) => (
+                <SortableFavoriteRow
+                  key={it.id}
+                  favorite={it}
+                  parentFolderId={folder.id}
+                  index={i}
+                />
+              ))
+            ) : (
+              <li className='px-3 py-1 text-xs text-muted-foreground italic'>Empty folder</li>
+            )}
+          </SortableContext>
+        </SidebarMenuSub>
+      </SidebarGroupCollapse>
+    </SidebarMenuItem>
   )
 }
