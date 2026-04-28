@@ -34,6 +34,7 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
       audioType: typeof params.audio,
       format: params.format,
       language: params.language,
+      mimeType: params.mimeType,
     })
 
     try {
@@ -41,7 +42,7 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
         async () => {
           const requestParams: any = {
             model: params.model,
-            file: this.prepareAudioFile(params.audio),
+            file: this.prepareAudioFile(params.audio, params.mimeType, params.filename),
           }
 
           if (params.language) {
@@ -80,14 +81,30 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
     }
   }
 
-  private prepareAudioFile(audio: Buffer | string): any {
+  private prepareAudioFile(audio: Buffer | string, mimeType?: string, filename?: string): any {
     if (Buffer.isBuffer(audio)) {
-      // Create a File-like object for OpenAI API
-      return new File([audio], 'audio.mp3', { type: 'audio/mpeg' })
+      // Whisper detects format via the filename extension on multipart uploads,
+      // so we must derive both type and extension from the caller's mimeType
+      // rather than hardcoding mp3.
+      const resolvedType = mimeType || 'audio/webm'
+      const resolvedName = filename || `audio.${this.extensionForMime(resolvedType)}`
+      return new File([audio], resolvedName, { type: resolvedType })
     } else {
       // Assume it's a file path - this would need proper file handling in real implementation
       throw new Error('File path audio input not supported in this implementation')
     }
+  }
+
+  /** Map a MIME type to one of the file extensions whisper-1 accepts. */
+  private extensionForMime(mimeType: string): string {
+    const lower = mimeType.toLowerCase()
+    if (lower.includes('webm')) return 'webm'
+    if (lower.includes('mp4') || lower.includes('m4a') || lower.includes('aac')) return 'm4a'
+    if (lower.includes('ogg') || lower.includes('opus')) return 'ogg'
+    if (lower.includes('wav')) return 'wav'
+    if (lower.includes('flac')) return 'flac'
+    if (lower.includes('mpeg') || lower.includes('mp3')) return 'mp3'
+    return 'webm'
   }
 
   private processTranscriptionResponse(
@@ -96,7 +113,7 @@ export class OpenAISpeech2TextClient extends Speech2TextClient {
   ): TranscribeResponse {
     const format = params.response_format || params.format || 'json'
 
-    if (format === 'json') {
+    if (format === 'json' || format === 'verbose_json') {
       return {
         text: response.text,
         language: response.language,

@@ -138,6 +138,9 @@ catalogs:
     nodemailer:
       specifier: ^8.0.1
       version: 8.0.2
+    ogl:
+      specifier: ^1.0.11
+      version: 1.0.11
     openai:
       specifier: ^5.12.2
       version: 5.23.2
@@ -1099,6 +1102,9 @@ importers:
       nuqs:
         specifier: ^2.4.0
         version: 2.8.8(next@16.0.10(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+      ogl:
+        specifier: 'catalog:'
+        version: 1.0.11
       openai:
         specifier: 'catalog:'
         version: 5.23.2(ws@8.19.0)(zod@4.1.5)
@@ -2415,6 +2421,9 @@ importers:
       next-themes:
         specifier: ^0.4.4
         version: 0.4.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      ogl:
+        specifier: 'catalog:'
+        version: 1.0.11
       radix-ui:
         specifier: ^1.4.2
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.3))(@types/react@19.2.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -11810,6 +11819,9 @@ packages:
 
   obug@2.1.1:
     resolution: {integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==}
+
+  ogl@1.0.11:
+    resolution: {integrity: sha512-kUpC154AFfxi16pmZUK4jk3J+8zxwTWGPo03EoYA8QPbzikHoaC82n6pNTbd+oEaJonaE8aPWBlX7ad9zrqLsA==}
 
   oidc-token-hash@5.2.0:
     resolution: {integrity: sha512-6gj2m8cJZ+iSW8bm0FXdGF0YhIQbKrfP4yWTNzxc31U6MOjfEmB1rHvlYvxI1B7t7BCi1F2vYTT6YhtQRG4hxw==}
@@ -25066,6 +25078,8 @@ snapshots:
   obliterator@1.6.1: {}
 
   obug@2.1.1: {}
+
+  ogl@1.0.11: {}
 
   oidc-token-hash@5.2.0: {}
 

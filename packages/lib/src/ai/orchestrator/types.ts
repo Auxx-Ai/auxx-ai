@@ -7,6 +7,7 @@ import type {
   ModelParameters,
   Tool,
   ToolCall,
+  TranscriptSegment,
   UsageMetrics,
 } from '../clients/base/types'
 
@@ -58,6 +59,39 @@ export interface LLMInvocationResponse extends LLMResponse {
   credentialSource?: CredentialSourceType
 }
 
+// ===== SPEECH-TO-TEXT REQUEST/RESPONSE TYPES =====
+
+export interface Speech2TextInvocationRequest {
+  audio: Buffer
+  /** MIME type of the audio buffer (e.g. 'audio/webm', 'audio/mp4'). */
+  mimeType?: string
+  /** Optional original filename — providers use the extension to detect format. */
+  filename?: string
+  /** Optional override. When omitted the orchestrator resolves the org default for ModelType.SPEECH2TEXT. */
+  model?: string
+  provider?: string
+  /** ISO 639-1 code; omit to let the provider auto-detect. */
+  language?: string
+  organizationId: string
+  userId: string
+  context?: {
+    source?: UsageSource
+    [key: string]: any
+  }
+}
+
+export interface Speech2TextInvocationResponse {
+  text: string
+  language?: string
+  segments?: TranscriptSegment[]
+  durationSeconds?: number
+  usage: UsageMetrics
+  provider: string
+  model: string
+  providerType?: ProviderTypeValue
+  credentialSource?: CredentialSourceType
+}
+
 // ===== CALLBACK TYPES =====
 
 export interface AICallbacks {
@@ -101,6 +135,7 @@ export type UsageSource =
   | 'chat'
   | 'agent'
   | 'autofill'
+  | 'transcription'
   | 'other'
 
 export interface UsageTrackingRequest {

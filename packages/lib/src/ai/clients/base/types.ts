@@ -229,6 +229,10 @@ export interface TranscribeParams {
   temperature?: number
   response_format?: string
   user?: string
+  /** Original filename — providers use the extension to detect audio format. */
+  filename?: string
+  /** MIME type of the audio buffer (e.g. 'audio/webm', 'audio/mp4'). */
+  mimeType?: string
 }
 
 export interface TranscriptSegment {

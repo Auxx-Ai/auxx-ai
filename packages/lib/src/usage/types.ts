@@ -4,7 +4,12 @@
  * Metered usage metrics. These map to FeatureKey pairs:
  * e.g. 'outboundEmails' → outboundEmailsPerMonthHard / outboundEmailsPerMonthSoft
  */
-export type UsageMetric = 'outboundEmails' | 'workflowRuns' | 'aiCompletions' | 'apiCalls'
+export type UsageMetric =
+  | 'outboundEmails'
+  | 'workflowRuns'
+  | 'aiCompletions'
+  | 'aiTranscriptions'
+  | 'apiCalls'
 
 /** Result from UsageGuard.consume() */
 export type UsageResult =
