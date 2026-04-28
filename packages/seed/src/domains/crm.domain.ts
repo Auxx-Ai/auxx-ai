@@ -669,6 +669,7 @@ export class CrmDomain {
         first_name: firstName,
         last_name: lastName,
         phone: this.generatePhone(i),
+        job_title: this.generateJobTitle(i),
         contact_status: 'ACTIVE',
       })
     }
@@ -937,6 +938,39 @@ export class CrmDomain {
     const last = lastName.toLowerCase()
     const suffix = index > 10 ? index : ''
     return `${first}.${last}${suffix}@${domain}`
+  }
+
+  /** generateJobTitle picks a believable job title. ~15% of contacts get no title. */
+  private generateJobTitle(index: number): string | null {
+    if (index % 7 === 0) return null
+    const titles = [
+      'CEO',
+      'CTO',
+      'COO',
+      'CFO',
+      'VP of Engineering',
+      'VP of Sales',
+      'VP of Marketing',
+      'Head of Product',
+      'Head of Customer Success',
+      'Director of Operations',
+      'Engineering Manager',
+      'Product Manager',
+      'Marketing Manager',
+      'Sales Manager',
+      'Account Executive',
+      'Customer Success Manager',
+      'Software Engineer',
+      'Senior Software Engineer',
+      'Staff Engineer',
+      'Designer',
+      'Data Analyst',
+      'Operations Lead',
+      'Founder',
+      'Owner',
+      'Office Manager',
+    ]
+    return titles[index % titles.length]!
   }
 
   /** generatePhone creates realistic phone numbers. */

@@ -118,7 +118,7 @@ export function RecordBadge({
   variant,
   size,
   link,
-  hoverCard,
+  hoverCard = true,
   ...props
 }: RecordBadgeProps) {
   // Fetch record data (displayName, avatarUrl)

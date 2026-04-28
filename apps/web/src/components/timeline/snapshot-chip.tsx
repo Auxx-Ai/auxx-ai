@@ -131,8 +131,18 @@ export function SnapshotChip({ snap }: { snap: TimelineFieldChangeSnapshot }) {
         <span>{snap.count && snap.count > 1 ? `${snap.count} files` : snap.label || 'File'}</span>
       )
 
+    case 'ADDRESS_STRUCT': {
+      const formatted = formatAddressStruct(snap.value)
+      if (formatted) return <span>{formatted}</span>
+      return (
+        <code className='text-xs'>
+          {JSON.stringify(snap.value)}
+          {snap.truncated ? '…' : ''}
+        </code>
+      )
+    }
+
     case 'JSON':
-    case 'ADDRESS_STRUCT':
       return (
         <code className='text-xs'>
           {JSON.stringify(snap.value)}
@@ -140,6 +150,21 @@ export function SnapshotChip({ snap }: { snap: TimelineFieldChangeSnapshot }) {
         </code>
       )
   }
+}
+
+function formatAddressStruct(value: Record<string, unknown>): string {
+  const get = (k: string) => (typeof value[k] === 'string' ? (value[k] as string) : '')
+  const street1 = get('street1')
+  const street2 = get('street2')
+  const city = get('city')
+  const state = get('state')
+  const zipCode = get('zipCode')
+  const country = get('country')
+  const streetPart = [street1, street2].filter(Boolean).join(', ')
+  const cityStatePart = [city, [state, zipCode].filter(Boolean).join(' ')]
+    .filter(Boolean)
+    .join(', ')
+  return [streetPart, cityStatePart, country].filter(Boolean).join(', ')
 }
 
 function isOptionSnapshot(s: TimelineFieldChangeSnapshot): s is TimelineOptionSnapshot {

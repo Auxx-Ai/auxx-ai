@@ -172,7 +172,7 @@ function RecordHoverCardBody({ recordId, fields, onOpenInDrawer }: BodyProps) {
 
       {/* Fields */}
       {resolvedFields.length > 0 && (
-        <div className='mt-3 space-y-1 border-t pt-2'>
+        <div className='pt-2'>
           {resolvedFields.map((ref) => (
             <RecordHoverCardField key={String(ref)} recordId={recordId} fieldRef={ref} />
           ))}
@@ -183,7 +183,7 @@ function RecordHoverCardBody({ recordId, fields, onOpenInDrawer }: BodyProps) {
       {hasFooter && (
         <div
           className={cn(
-            'mt-3 flex items-center justify-end gap-1 pt-2',
+            'flex items-center justify-end gap-1 pt-2',
             // Only render the divider once — fields section already has its own.
             !resolvedFields.length && showDivider && 'border-t'
           )}>

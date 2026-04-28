@@ -17,6 +17,8 @@ export {
   type PreviewResult,
   previewFieldValue,
 } from './ai-autofill'
+// Server-side CALC resolution
+export { type CalcResolution, resolveCalcForRecord } from './calc-resolver'
 // Converters (for direct access if needed)
 export {
   booleanConverter,

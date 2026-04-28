@@ -6,7 +6,6 @@ export {
   formatCalcOptions,
   parseCalcOptions,
 } from './calc-field-editor'
-export { FieldBadge } from './field-badge'
 export {
   extractFieldIds,
   extractFieldIdsFromString,

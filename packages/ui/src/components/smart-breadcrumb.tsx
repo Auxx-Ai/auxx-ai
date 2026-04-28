@@ -17,7 +17,7 @@ import {
 
 /** CVA variants for the breadcrumb container */
 const smartBreadcrumbVariants = cva(
-  'flex items-center text-muted-foreground overflow-hidden min-w-0',
+  'flex items-center text-muted-foreground overflow-hidden min-w-0 ',
   {
     variants: {
       size: {
@@ -118,7 +118,7 @@ function useBreadcrumbLayout(
   useDoubleChevron: boolean
 } {
   return React.useMemo(() => {
-    if (segments.length === 0 || containerWidth === 0) {
+    if (segments.length === 0) {
       return { visibleSegments: [], collapsedSegments: [], useDoubleChevron: false }
     }
 
@@ -131,8 +131,15 @@ function useBreadcrumbLayout(
     const totalSeparatorWidth = (segments.length - 1) * SEPARATOR_WIDTH
     const totalNeeded = totalSegmentWidth + totalSeparatorWidth
 
-    // If everything fits, show all segments
-    if (totalNeeded <= containerWidth) {
+    // Render all segments unrestricted when:
+    //   - Container width hasn't been measured yet (`0` = initial mount or
+    //     `display: none` ancestor). Returning empty here would create a
+    //     chicken-and-egg: nothing rendered → `<ol>` has 0 content → measured
+    //     width stays 0 → never escape. Letting the full layout render lets
+    //     `ResizeObserver` see the *actual* content/parent width on the next
+    //     tick, after which truncation can kick in if the parent is constrained.
+    //   - Everything fits within the measured width.
+    if (containerWidth === 0 || totalNeeded <= containerWidth) {
       return {
         visibleSegments: segments.map((segment, i) => ({
           segment,
@@ -165,18 +172,30 @@ function useBreadcrumbLayout(
       }
     }
 
-    // Two segments - fit both, truncating if needed
+    // Two segments — render both with their full labels and let CSS handle
+    // visual truncation (each segment's `<span class='truncate'>` already has
+    // `overflow:hidden; text-overflow:ellipsis; white-space:nowrap`).
+    //
+    // Why not truncate the strings ourselves? The string-level approach feeds
+    // back: `truncateText` cuts at character boundaries so the rendered text
+    // is *narrower* than `availableForEach`. When the parent (Badge here) is
+    // content-sized — `inline-flex`/`flex` with `max-w`, which is content-
+    // driven below the cap — that narrower content shrinks the parent →
+    // ResizeObserver fires smaller → tighter target → smaller text → loop.
+    // We saw it spiral 168 → 154 → 141 → … → 43.
+    //
+    // CSS truncation doesn't loop because the box width that the browser
+    // truncates against is the layout-assigned width, not the text width
+    // post-truncation; once flexbox distributes shrinkage proportionally,
+    // the boxes are stable.
     if (segments.length === 2) {
-      const availableForEach = (containerWidth - SEPARATOR_WIDTH) / 2
       return {
-        visibleSegments: segments.map((segment, i) => {
-          const width = widths[i] ?? 0
-          const displayLabel =
-            width > availableForEach
-              ? truncateText(segment.label, availableForEach, font)
-              : segment.label
-          return { segment, width, displayLabel, visible: true }
-        }),
+        visibleSegments: segments.map((segment, i) => ({
+          segment,
+          width: widths[i] ?? 0,
+          displayLabel: segment.label,
+          visible: true,
+        })),
         collapsedSegments: [],
         useDoubleChevron: false,
       }
@@ -452,21 +471,20 @@ export function SmartBreadcrumb({
   const [containerRef, containerWidth] = useContainerWidth<HTMLOListElement>()
   const [font, setFont] = React.useState('14px sans-serif')
 
-  // Extract font from container element
+  // Extract font from container element. The `font` shorthand returns `''`
+  // in most browsers, so always build from longhand properties to avoid
+  // silently falling through to the `'14px sans-serif'` default — which
+  // over-measures `text-xs` (12px) by ~17% and forces premature truncation.
   React.useEffect(() => {
     const element = containerRef.current
     if (!element) return
 
-    const computedStyle = getComputedStyle(element)
-    const computedFont = computedStyle.getPropertyValue('font')
-    if (computedFont) {
-      setFont(computedFont)
-    } else {
-      // Fallback: construct font string from individual properties
-      const fontSize = computedStyle.getPropertyValue('font-size') || '14px'
-      const fontFamily = computedStyle.getPropertyValue('font-family') || 'sans-serif'
-      setFont(`${fontSize} ${fontFamily}`)
-    }
+    const cs = getComputedStyle(element)
+    const fontStyle = cs.getPropertyValue('font-style') || 'normal'
+    const fontWeight = cs.getPropertyValue('font-weight') || '400'
+    const fontSize = cs.getPropertyValue('font-size') || '14px'
+    const fontFamily = cs.getPropertyValue('font-family') || 'sans-serif'
+    setFont(`${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`)
   }, [containerRef])
 
   const { visibleSegments, collapsedSegments, useDoubleChevron } = useBreadcrumbLayout(
@@ -482,8 +500,11 @@ export function SmartBreadcrumb({
   }
 
   return (
-    <nav aria-label='breadcrumb' className={cn('min-w-0 flex-1', className)} {...props}>
-      <ol ref={containerRef} className={cn(smartBreadcrumbVariants({ size }))}>
+    <nav aria-label='breadcrumb' className={cn('min-w-0 flex-auto', className)} {...props}>
+      <ol
+        ref={containerRef}
+        data-slot='breadcrumb-list'
+        className={cn(smartBreadcrumbVariants({ size }))}>
         {visibleSegments.map((item, index) => {
           const isFirst = index === 0
           const isLast = index === visibleSegments.length - 1

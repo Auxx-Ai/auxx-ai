@@ -1007,8 +1007,8 @@ async function resolveNameFieldValues(
 
     if (firstName || lastName) {
       result.set(recordId, {
-        type: 'NAME',
-        value: JSON.stringify({ firstName, lastName }),
+        type: 'json',
+        value: { firstName, lastName },
       } as TypedFieldValue)
     }
   }

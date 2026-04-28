@@ -12,7 +12,7 @@ import {
   createInlinePickerExtension,
   type InlinePickerState,
 } from '~/components/editor/inline-picker'
-import { FieldBadge } from './field-badge'
+import { FieldBadge } from '~/components/resources/ui'
 import { extractFieldIds, formulaToString, stringToFormula } from './formula-converters'
 
 /** Options for the useCalcFormula hook */
@@ -46,6 +46,7 @@ const initialSuggestionState: InlinePickerState = {
 export function useCalcFormula({
   initialExpression = '',
   onExpressionChange,
+  entityDefinitionId,
   availableFields,
   placeholder = 'Type { to insert a field or function...',
 }: UseCalcFormulaOptions) {
@@ -54,16 +55,11 @@ export function useCalcFormula({
   const contentRef = useRef(initialExpression)
   const onChangeRef = useRef(onExpressionChange)
   const suggestionRangeRef = useRef<{ from: number; to: number } | null>(null)
-  const availableFieldsRef = useRef(availableFields)
 
   // Update refs when values change
   useEffect(() => {
     onChangeRef.current = onExpressionChange
   }, [onExpressionChange])
-
-  useEffect(() => {
-    availableFieldsRef.current = availableFields
-  }, [availableFields])
 
   // Track suggestion range for insertion
   useEffect(() => {
@@ -105,10 +101,10 @@ export function useCalcFormula({
           inputRules: [{ find: /\{([\w-]+)\}$/, getId: (match) => match[1]! }],
         },
         ({ id, selected }) => (
-          <FieldBadge id={id} selected={selected} availableFields={availableFieldsRef.current} />
+          <FieldBadge id={id} entityDefinitionId={entityDefinitionId} selected={selected} />
         )
       ),
-    []
+    [entityDefinitionId]
   )
 
   // Build editor configuration
