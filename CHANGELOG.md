@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.143](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.142...auxx-v0.1.143) (2026-04-28)
+
+
+### Features
+
+* **ai:** speech-to-text voice input for email composer ([#506](https://github.com/Auxx-Ai/auxx-ai/issues/506)) ([6d0a638](https://github.com/Auxx-Ai/auxx-ai/commit/6d0a63805ec2718ea5ebff35c48e0f5e479e8427))
+
 ## [0.1.142](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.141...auxx-v0.1.142) (2026-04-28)
 
 
