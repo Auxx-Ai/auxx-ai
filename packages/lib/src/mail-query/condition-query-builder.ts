@@ -273,20 +273,22 @@ function buildInboxQuery(operator: Operator, value: any): SQL<unknown> | null {
 
 /**
  * Build ticket condition query.
- * Filters threads linked to a specific ticket EntityInstance.
+ * Filters threads whose primary EntityInstance points at the given ticket.
+ * Now backed by `Thread.primaryEntityInstanceId` (the legacy `ticketId` column
+ * was renamed in Phase 1 of the multi-entity linking refactor).
  */
 function buildTicketQuery(operator: Operator, value: any): SQL<unknown> | null {
   const ticketId = isRecordId(value) ? getInstanceId(value as RecordId) : value
 
   switch (operator) {
     case 'is':
-      return eq(Thread.ticketId, ticketId)
+      return eq(Thread.primaryEntityInstanceId, ticketId)
     case 'is not':
-      return not(eq(Thread.ticketId, ticketId))
+      return not(eq(Thread.primaryEntityInstanceId, ticketId))
     case 'empty':
-      return isNull(Thread.ticketId)
+      return isNull(Thread.primaryEntityInstanceId)
     case 'not empty':
-      return isNotNull(Thread.ticketId)
+      return isNotNull(Thread.primaryEntityInstanceId)
     default:
       return null
   }

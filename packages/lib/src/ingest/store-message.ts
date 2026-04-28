@@ -4,6 +4,7 @@ import { schema } from '@auxx/database'
 import { ParticipantRole as ParticipantRoleEnum, ThreadStatus } from '@auxx/database/enums'
 import type { ParticipantEntity as Participant, ParticipantRole } from '@auxx/database/types'
 import { and, eq, isNull } from 'drizzle-orm'
+import { touchActivityForThreadLinks } from '../entity-instances/activity'
 import type { IngestContext } from './context'
 import { shouldIgnoreMessage } from './filtering/should-ignore'
 import { storeIgnoredMessage } from './filtering/store-ignored'
@@ -392,6 +393,10 @@ export async function storeMessage(
     if (shouldUpdateThreadMetadata) {
       await updateThreadMetadataEfficient(ctx, thread.id)
     }
+
+    // Advance lastActivityAt for any entity linked to this thread (primary +
+    // active secondaries). Best-effort; helper logs and swallows on failure.
+    await touchActivityForThreadLinks(thread.id, messageData.organizationId, messageData.sentAt)
 
     ctx.logger.info('Message stored successfully (Revised Schema v2)', {
       messageId: messageRecord.id,

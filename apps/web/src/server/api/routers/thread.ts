@@ -19,6 +19,7 @@ import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@au
 import { ProviderRegistryService, whereThreadMessageType } from '@auxx/lib/providers'
 import {
   type ListThreadIdsInput,
+  linkEntityToThread,
   ThreadMutationService,
   ThreadQueryService,
   UnreadService,
@@ -412,13 +413,18 @@ export const threadRouter = createTRPCRouter({
         })
         const sentMessage = await messageSender.sendMessage(senderInput)
 
-        // Auto-link thread to ticket if linkTicketId is provided
+        // Auto-link thread to ticket if linkTicketId is provided.
+        // Uses linkEntityToThread so primary swaps demote the prior primary
+        // atomically and entityDefinitionId is read from EntityInstance.
         if (input.linkTicketId && sentMessage.threadId) {
           try {
-            await ctx.db
-              .update(schema.Thread)
-              .set({ ticketId: input.linkTicketId })
-              .where(eq(schema.Thread.id, sentMessage.threadId))
+            await linkEntityToThread({
+              threadId: sentMessage.threadId,
+              entityInstanceId: input.linkTicketId,
+              role: 'primary',
+              organizationId,
+              actorId: userId,
+            })
             logger.info('Auto-linked new thread to ticket', {
               threadId: sentMessage.threadId,
               ticketId: input.linkTicketId,
@@ -853,42 +859,21 @@ export const threadRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = getServiceDependencies(ctx)
 
-      // Verify thread belongs to org
-      const [thread] = await ctx.db
-        .select({ id: schema.Thread.id })
-        .from(schema.Thread)
-        .where(
-          and(
-            eq(schema.Thread.id, input.threadId),
-            eq(schema.Thread.organizationId, organizationId)
-          )
-        )
-        .limit(1)
-
-      if (!thread) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
+      try {
+        await linkEntityToThread({
+          threadId: input.threadId,
+          entityInstanceId: input.ticketId,
+          role: 'primary',
+          organizationId,
+          actorId: userId,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (message.includes('not found')) {
+          throw new TRPCError({ code: 'NOT_FOUND', message })
+        }
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message })
       }
-
-      // Verify ticket entity instance belongs to org
-      const [ticket] = await ctx.db
-        .select({ id: schema.EntityInstance.id })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.id, input.ticketId),
-            eq(schema.EntityInstance.organizationId, organizationId)
-          )
-        )
-        .limit(1)
-
-      if (!ticket) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Ticket not found' })
-      }
-
-      await ctx.db
-        .update(schema.Thread)
-        .set({ ticketId: input.ticketId })
-        .where(eq(schema.Thread.id, input.threadId))
 
       logger.info('Thread linked to ticket', {
         threadId: input.threadId,
@@ -923,7 +908,7 @@ export const threadRouter = createTRPCRouter({
 
       await ctx.db
         .update(schema.Thread)
-        .set({ ticketId: null })
+        .set({ primaryEntityInstanceId: null, primaryEntityDefinitionId: null })
         .where(eq(schema.Thread.id, input.threadId))
 
       logger.info('Thread unlinked from ticket', {

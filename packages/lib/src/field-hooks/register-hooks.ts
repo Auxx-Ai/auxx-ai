@@ -5,6 +5,7 @@ import { explodeBomMovement } from './post/bom-movement-triggers'
 import { enrichCompanyOnCreate } from './post/company-triggers'
 import { recalculatePartQoH, recalculateStockStatus } from './post/inventory-triggers'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
+import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import { clearOtherPreferred } from './post/vendor-part-triggers'
 import {
   dropUnauthorizedSystemFlag,
@@ -54,7 +55,7 @@ export function registerAllHooks(): void {
   // Field-change post-hook — fires `<prefix>:field:updated` after every field
   // write. Registered globally so contacts, tickets, companies, and custom
   // entities all produce timeline entries.
-  registerEntityFieldChangeHooks('*', [publishFieldChangeEvent])
+  registerEntityFieldChangeHooks('*', [publishFieldChangeEvent, touchActivityOnFieldChange])
 
   // ---------------------------------------------------------------------------
   // PRE-WRITE HOOKS

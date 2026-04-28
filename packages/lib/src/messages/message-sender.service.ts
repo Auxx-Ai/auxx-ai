@@ -5,6 +5,7 @@ import type { ParticipantRole as ParticipantRoleType } from '@auxx/database/type
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { touchActivityForThreadLinks } from '../entity-instances/activity'
 import { UsageLimitError } from '../errors'
 import { FileService } from '../files/core/file-service'
 import { MediaAssetService } from '../files/core/media-asset-service'
@@ -164,6 +165,8 @@ export class MessageSenderService {
       // Step 8: Update thread metadata
       await this.threadManager.updateThreadMetadata(threadContext.id)
       await this.threadManager.updateThreadParticipants(threadContext.id)
+      // Outbound send is real activity on any linked entity (deal/ticket/lead).
+      await touchActivityForThreadLinks(threadContext.id, this.organizationId)
       // Step 9: Trigger post-send sync
       await this.triggerPostSendSync(input.integrationId, {
         messageId: composed.id,

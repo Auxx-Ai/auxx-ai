@@ -862,7 +862,18 @@ export class ThreadQueryService {
           latestMessageId: t.latestMessageId ?? null,
           latestCommentId: t.latestCommentId ?? null,
           inboxId: t.inboxId ? toRecordId(inboxEntityDefId, t.inboxId) : null,
-          ticketId: t.ticketId ? toRecordId(ticketEntityDefId, t.ticketId) : null,
+          // Backwards-compat shim for the frontend: if the primary entity is a
+          // Ticket, surface its instance id under the legacy `ticketId` key.
+          // Non-ticket primaries (deals, leads, …) leave `ticketId` null —
+          // the new `primaryEntity` field carries the full reference.
+          ticketId:
+            t.primaryEntityInstanceId && t.primaryEntityDefinitionId === ticketEntityDefId
+              ? toRecordId(ticketEntityDefId, t.primaryEntityInstanceId)
+              : null,
+          primaryEntity:
+            t.primaryEntityInstanceId && t.primaryEntityDefinitionId
+              ? toRecordId(t.primaryEntityDefinitionId, t.primaryEntityInstanceId)
+              : null,
           externalId: t.externalId ?? null,
           tagIds,
           isUnread,

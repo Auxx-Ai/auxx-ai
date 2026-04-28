@@ -38,6 +38,7 @@ export async function createEntityInstance(params: CreateEntityInstanceParams, t
 
   const db = tx ?? database
 
+  const now = new Date()
   const dbResult = await fromDatabase(
     db
       .insert(schema.EntityInstance)
@@ -49,7 +50,10 @@ export async function createEntityInstance(params: CreateEntityInstanceParams, t
         secondaryDisplayValue: secondaryDisplayValue ?? null,
         avatarUrl: avatarUrl ?? null,
         metadata: metadata ?? null,
-        updatedAt: new Date(),
+        // Initialize activity at creation — keeps freshness scanners from
+        // surfacing brand-new entities as stale on first scan.
+        lastActivityAt: now,
+        updatedAt: now,
       })
       .returning(),
     'create-entity-instance'

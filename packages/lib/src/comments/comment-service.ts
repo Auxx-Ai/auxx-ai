@@ -6,6 +6,7 @@ import type {
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { touchActivityForThreadLinks, touchEntityActivity } from '../entity-instances/activity'
 import { publisher } from '../events'
 import type {
   CommentCreatedEvent,
@@ -188,6 +189,11 @@ export class CommentService {
             .update(schema.Thread)
             .set({ latestCommentId: comment!.id })
             .where(eq(schema.Thread.id, entityId))
+          // Comment on a thread = activity on whatever entities are linked.
+          await touchActivityForThreadLinks(entityId, this.organizationId, new Date(), tx)
+        } else {
+          // Comment directly on an entity (deal, ticket, lead, contact, custom).
+          await touchEntityActivity([entityId], this.organizationId, new Date(), tx)
         }
 
         return comment

@@ -19,6 +19,11 @@ export {
   type TaskSortOption,
 } from './config'
 export { DateLanguageModule } from './date-language-module'
+export {
+  type ScanAndFireOptions,
+  type ScanAndFireResult,
+  scanAndFireTaskDeadlines,
+} from './scan-and-fire.service'
 export { createTaskService, TaskService } from './task-service'
 export type {
   CreateTaskInput,

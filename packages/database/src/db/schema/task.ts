@@ -66,6 +66,12 @@ export const Task = pgTable(
     /** Archived timestamp for soft delete (null = active) */
     archivedAt: timestamp({ precision: 3 }),
 
+    /**
+     * When the deadline scanner fired a notification for this task.
+     * Used to make the scanner idempotent — set once, never fired again.
+     */
+    firedAt: timestamp({ precision: 3 }),
+
     /** Combined searchable text from title + description (for full-text search) */
     searchText: text().notNull(),
 
@@ -119,6 +125,16 @@ export const Task = pgTable(
       table.organizationId.asc().nullsLast(),
       table.completedAt.asc().nullsLast()
     ),
+
+    // Deadline-scanner partial index: only un-fired, active tasks matter.
+    index('Task_organizationId_firedAt_deadline_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.firedAt.asc().nullsLast(),
+        table.deadline.asc().nullsLast()
+      )
+      .where(sql`"completedAt" IS NULL AND "archivedAt" IS NULL`),
 
     // Note: Full-text search GIN index should be added via raw SQL migration:
     // CREATE INDEX Task_searchText_gin ON "Task" USING GIN(to_tsvector('english', "searchText"))

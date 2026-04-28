@@ -285,7 +285,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
     systemAttribute: 'thread_ticket',
-    dbColumn: 'ticketId',
+    dbColumn: 'primaryEntityInstanceId',
     nullable: true,
     capabilities: {
       filterable: true,

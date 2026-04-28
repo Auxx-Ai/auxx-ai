@@ -68,6 +68,13 @@ export const EntityInstance = pgTable(
      * @see packages/lib/src/entity-instances/metadata-types.ts
      */
     metadata: jsonb(),
+
+    /**
+     * Last meaningful activity on this entity (message in/out, comment, field
+     * change, etc.). Advanced monotonically by `touchEntityActivity()`.
+     * Drives staleness scanners (Today, etc.).
+     */
+    lastActivityAt: timestamp({ precision: 3 }),
   },
   (table) => [
     // Index for entity definition lookups
@@ -90,6 +97,13 @@ export const EntityInstance = pgTable(
     ),
     // Index for display name sorting
     index('EntityInstance_displayName_idx').using('btree', table.displayName.asc().nullsLast()),
+    // Staleness scanner index: org + entity type + activity recency.
+    index('EntityInstance_organizationId_entityDefinitionId_lastActivityAt_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.entityDefinitionId.asc().nullsLast(),
+      table.lastActivityAt.asc().nullsLast()
+    ),
     // Note: GIN index for searchText full-text search should be added via raw SQL:
     // CREATE INDEX "EntityInstance_search_idx" ON "EntityInstance" USING gin (to_tsvector('english', COALESCE("searchText", '')));
     // Note: Partial indexes on metadata fields should be added via raw SQL:
