@@ -10,6 +10,12 @@ export interface SessionContext extends Record<string, unknown> {
   activeContactId?: string
   /** Active record (generic) the user has open, if any */
   activeRecordId?: string
+  /** Active meeting (EntityInstance) the user has open, if any */
+  activeMeetingId?: string
+  /** Active call recording the user has open, if any */
+  activeCallRecordingId?: string
+  /** Active transcript-selection (e.g. user has highlighted a span on a transcript) */
+  activeTranscriptSelection?: { callRecordingId: string; startMs: number; endMs: number }
   /** Active filter payload the user has applied to the current page */
   activeFilters?: Record<string, unknown>
 }

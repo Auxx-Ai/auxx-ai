@@ -43,6 +43,11 @@ export function buildAgentSystemPrompt(
     ctx.activeThreadId ? `Active thread: ${ctx.activeThreadId}` : '',
     ctx.activeContactId ? `Active contact: ${ctx.activeContactId}` : '',
     ctx.activeRecordId ? `Active record: ${ctx.activeRecordId}` : '',
+    ctx.activeMeetingId ? `Active meeting: ${ctx.activeMeetingId}` : '',
+    ctx.activeCallRecordingId ? `Active call recording: ${ctx.activeCallRecordingId}` : '',
+    ctx.activeTranscriptSelection
+      ? `Active transcript selection: ${ctx.activeTranscriptSelection.callRecordingId} ${ctx.activeTranscriptSelection.startMs}–${ctx.activeTranscriptSelection.endMs}ms`
+      : '',
   ]
     .filter(Boolean)
     .join('\n')
