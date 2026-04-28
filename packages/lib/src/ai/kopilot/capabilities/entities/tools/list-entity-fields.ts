@@ -1,6 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/list-entity-fields.ts
 
-import { findCachedResource } from '../../../../../cache/org-cache-helpers'
+import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { buildListEntityFieldsOutput } from './list-entity-fields-output'
@@ -27,7 +27,8 @@ Response shape:
       properties: {
         entityDefinitionId: {
           type: 'string',
-          description: 'Entity definition ID, apiSlug, or entityType (from list_entities result)',
+          description:
+            'Entity type — pass the apiSlug from the entity catalog (e.g. "contact", "company").',
         },
         query: {
           type: 'string',
@@ -43,10 +44,12 @@ Response shape:
 
       const resource = await findCachedResource(agentDeps.organizationId, key)
       if (!resource) {
+        const allResources = await getCachedResources(agentDeps.organizationId)
+        const validSlugs = allResources.map((r) => r.apiSlug).join(', ')
         return {
           success: false,
           output: null,
-          error: `Entity type "${key}" not found. Call list_entities to discover available entity types.`,
+          error: `Entity type "${key}" not found. Use one of these apiSlugs: ${validSlugs}.`,
         }
       }
 

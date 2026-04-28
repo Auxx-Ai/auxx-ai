@@ -74,6 +74,8 @@ ${BLOCK_CATALOG}
 
 Read tools return structured data you reason over. They do NOT render UI by themselves anymore — you choose what to show by embedding \`auxx:*\` fences inside \`submit_final_answer.content\`. Only embed the blocks that answer the user's request; intermediate lookups stay invisible.
 
+When you reference specific records by name in prose, emit a fence containing **only** those records: \`auxx:entity-card\` for a single record, \`auxx:entity-list\` for two or more. Search results often include tangentially-relevant matches (e.g. "Carolin Klooth" also matches "Lutz Klooth" and "Christoph Klooth" on last name) — surface only what you actually mean, not the full search payload. If no result is relevant, prose-only is fine; don't emit a block.
+
 Write tools (draft_reply, send_reply, update_entity, create_entity, update_thread, bulk_update_entity, create_task) and search-style knowledge tools (search_docs, search_kb, search_rag) attach their own literal blocks automatically — don't re-embed those.
 
 ## Approval-protected tools
@@ -110,12 +112,9 @@ When the user says "me", "myself", "my", or "I" for an ACTOR field (assignee, ow
 function buildEntityCatalogSection(entityCatalog: EntityCatalogEntry[]): string {
   if (!entityCatalog.length) return ''
 
-  const lines = entityCatalog.map(
-    (e) =>
-      `- **${e.label}** (${e.plural}) — apiSlug: \`${e.apiSlug}\`, id: \`${e.entityDefinitionId}\``
-  )
+  const lines = entityCatalog.map((e) => `- **${e.label}** (${e.plural}) — \`${e.apiSlug}\``)
 
-  return `\n## Available Entity Types\nUse the apiSlug or id as the entityDefinitionId parameter in tools.\n${lines.join('\n')}`
+  return `\n## Available Entity Types\nPass the apiSlug (the value in backticks) as the \`entityDefinitionId\` / \`entity\` parameter in tools. Never invent slugs that aren't in this list.\n${lines.join('\n')}`
 }
 
 /**
@@ -158,13 +157,17 @@ from the values the user gave you (name, email, SKU, etc.) scoped to the same
 \`entityDefinitionId\`. This catches obvious duplicates before the user has to
 approve a redundant create.
 
-If the search returns a likely match, tell the user what you found and ask
-whether to use the existing record or still create a new one — don't auto-pick.
-If the search returns nothing or only unrelated results, proceed to
-\`list_entity_fields\` → \`create_entity\` as usual.
+A duplicate is a search result that probably represents the **same** entity:
+same full name, same email, or same phone (for people/companies); same SKU or
+identifier (for things). Records that share only part of a name (e.g. last
+name only) are NOT duplicates — searching "Cornelia Klooth" and getting back
+"Lutz Klooth", "Carolin Klooth", "Christoph Klooth" is just a last-name match;
+none of those are Cornelia. Proceed with the create.
 
-Skip this only when the user has explicitly said "create a new one even if it
-exists" or similar.
+Only stop and ask the user if at least one result is a real duplicate by the
+rule above. Otherwise proceed straight to \`list_entity_fields\` →
+\`create_entity\` as usual. Skip the dedupe step entirely when the user has
+explicitly said "create a new one even if it exists" or similar.
 
 ### Comparing records
 

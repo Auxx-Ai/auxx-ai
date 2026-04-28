@@ -10,7 +10,7 @@ import { useKopilotStore } from '../stores/kopilot-store'
 import './blocks/register-blocks'
 import { api } from '~/trpc/react'
 import { KopilotComposer, type KopilotComposerHandle } from './kopilot-composer'
-import { KopilotMessageList } from './kopilot-message-list'
+import { KopilotMessageList, type KopilotMessageListHandle } from './kopilot-message-list'
 import { KopilotStatusBar } from './kopilot-status-bar'
 
 export interface KopilotChatProps {
@@ -41,6 +41,7 @@ export function KopilotChat({
   const addMessage = useKopilotStore((s) => s.addMessage)
 
   const composerRef = useRef<KopilotComposerHandle>(null)
+  const messageListRef = useRef<KopilotMessageListHandle>(null)
   const [pendingRequest, setPendingRequest] = useState<KopilotRequest | null>(null)
 
   // SSE hook
@@ -148,6 +149,7 @@ export function KopilotChat({
   return (
     <>
       <KopilotMessageList
+        ref={messageListRef}
         contentClassName={contentClassName}
         onApprovalAction={handleApprovalAction}
         onEditMessage={handleEditMessage}

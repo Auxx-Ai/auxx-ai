@@ -39,11 +39,14 @@ verbatim from tool results — never construct them.
 \\\`\\\`\\\`auxx:entity-list
 {"recordIds": ["<defId>:<instId>", "<defId>:<instId>"]}
 \\\`\\\`\\\`
+- Use for **two or more** records. For a single record, prefer \`auxx:entity-card\`.
+- Filter intermediate search results to what you actually mean. Example: \`search_entities("Carolin Klooth")\` returns Carolin, Lutz, Christoph (all match on last name). If the user asked specifically about Carolin, emit \`auxx:entity-card\` with just Carolin's recordId — do NOT include Lutz or Christoph just because they were in the search payload.
 
 #### \`auxx:entity-card\`
 \\\`\\\`\\\`auxx:entity-card
 {"recordId": "<defId>:<instId>"}
 \\\`\\\`\\\`
+- Use for a **single** record. For two or more, use \`auxx:entity-list\`.
 
 #### \`auxx:thread-list\`
 \\\`\\\`\\\`auxx:thread-list

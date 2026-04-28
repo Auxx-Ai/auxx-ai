@@ -33,7 +33,12 @@ import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AttachmentDisplay } from '~/components/files/utils/attachment-display'
-import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
+import {
+  useMessage,
+  useMessageParticipants,
+  useThread,
+  useThreadReadStatus,
+} from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
 import { api } from '~/trpc/react'
 import { Tooltip } from '../global/tooltip'
@@ -68,6 +73,12 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
 
   // Fetch message from store
   const { message, isLoading } = useMessage({ messageId })
+
+  // Resolve thread to surface integrationId for the participant "Ignore from" submenu
+  const { thread } = useThread({
+    threadId: message?.threadId ?? null,
+    enabled: !!message?.threadId,
+  })
 
   // Get read status mutation for this thread
   const { markAsUnread } = useThreadReadStatus(message?.threadId ?? null)
@@ -239,7 +250,11 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
                   e.stopPropagation()
                 }
               }}>
-              <ParticipantList participants={participantEntries} />
+              <ParticipantList
+                participants={participantEntries}
+                integrationId={thread?.integrationId}
+                threadId={message.threadId}
+              />
               <AnimatePresence initial={false}>
                 {selected && (
                   <motion.div

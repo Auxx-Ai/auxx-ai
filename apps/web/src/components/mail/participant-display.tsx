@@ -1,14 +1,24 @@
 // apps/web/src/components/mail/participant-display.tsx
 'use client'
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { titleize } from '@auxx/utils/strings'
+import { Ban, Copy, User } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import React from 'react'
-import { ContactHoverCard } from '~/components/contacts/contact-hover-card'
-import { useParticipant } from '~/components/threads/hooks'
+import { useParticipant, useThreadMutation } from '~/components/threads/hooks'
 import type { ParticipantMeta } from '~/components/threads/store'
+import { api } from '~/trpc/react'
 
 /** Role types for message participants */
 type ParticipantRole = 'FROM' | 'TO' | 'CC' | 'BCC'
@@ -28,6 +38,10 @@ interface ParticipantDisplayProps {
   className?: string
   /** Control whether to show the email/phone details */
   showDetails?: boolean
+  /** Channel integration ID — required to enable "Ignore from" on FROM participants */
+  integrationId?: string
+  /** Thread ID — used to flip the thread to IGNORED on successful sender exclusion */
+  threadId?: string
 }
 
 /**
@@ -40,6 +54,8 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
   role,
   className,
   showDetails = true,
+  integrationId,
+  threadId,
 }) => {
   // Fetch from store only if participant object not provided
   const { participant: fetchedParticipant, isLoading } = useParticipant({
@@ -50,16 +66,14 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
   const participant = providedParticipant ?? fetchedParticipant
   const isPrimary = role === 'FROM'
 
-  const [activeContactId, setContactId] = useQueryState('contactId', { defaultValue: '' })
+  const [, setContactId] = useQueryState('contactId', { defaultValue: '' })
+  const { update } = useThreadMutation()
 
-  /** Handle click to select/deselect contact */
-  function handleContactClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    const contactId = participant?.entityInstanceId
-    if (!contactId) return
-    const isAlreadySelected = contactId === activeContactId
-    setContactId(isAlreadySelected ? '' : contactId)
-  }
+  const addExcludedSender = api.channel.addExcludedSender.useMutation({
+    onSuccess: () => {
+      if (threadId) update(threadId, { status: 'IGNORED' })
+    },
+  })
 
   // Loading state
   if (isLoading && !participant) {
@@ -71,18 +85,73 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
     return null
   }
 
-  const { identifier, identifierType, name, displayName, entityInstanceId } = participant
+  const { identifier, identifierType, name, displayName, entityInstanceId, isInternal } =
+    participant
   const displayLabel = displayName || name || identifier
+
+  const senderDomain =
+    identifierType === 'EMAIL' ? (identifier.split('@')[1] ?? undefined) : undefined
+  const showIgnoreFrom =
+    role === 'FROM' &&
+    identifierType === 'EMAIL' &&
+    !!integrationId &&
+    !!senderDomain &&
+    !isInternal
+
+  function handleShowDetails() {
+    if (!entityInstanceId) return
+    void setContactId(entityInstanceId)
+  }
 
   return (
     <div className={cn('flex gap-2 truncate text-sm', isPrimary && 'font-medium', className)}>
-      <ContactHoverCard contactId={entityInstanceId ?? undefined}>
-        <button
-          onClick={handleContactClick}
-          className={cn('text-foreground cursor-pointer hover:text-blue-500')}>
-          {displayLabel}
-        </button>
-      </ContactHoverCard>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type='button'
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            className={cn('text-foreground cursor-pointer hover:text-blue-500')}>
+            {displayLabel}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='start' sideOffset={5}>
+          <DropdownMenuItem onSelect={() => navigator.clipboard.writeText(identifier)}>
+            <Copy />
+            Copy '{identifier}'
+          </DropdownMenuItem>
+          {name && (
+            <DropdownMenuItem onSelect={() => navigator.clipboard.writeText(name)}>
+              <Copy />
+              Copy '{name}'
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onSelect={handleShowDetails} disabled={!entityInstanceId}>
+            <User />
+            Show details
+          </DropdownMenuItem>
+          {showIgnoreFrom && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Ban />
+                Ignore from
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem
+                  onClick={() => addExcludedSender.mutate({ integrationId, entry: identifier })}
+                  disabled={addExcludedSender.isPending}>
+                  {identifier}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => addExcludedSender.mutate({ integrationId, entry: senderDomain })}
+                  disabled={addExcludedSender.isPending}>
+                  @{senderDomain}
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {showDetails &&
         (identifierType === 'EMAIL' ? (
@@ -143,12 +212,21 @@ interface ParticipantListProps {
   participants: ParticipantListEntry[]
   /** Additional CSS classes */
   className?: string
+  /** Channel integration ID — forwarded so the FROM participant can offer "Ignore from" */
+  integrationId?: string
+  /** Thread ID — forwarded so the FROM participant can flip thread status on ignore */
+  threadId?: string
 }
 
 /**
  * Displays a list of participants with their roles.
  */
-export const ParticipantList: React.FC<ParticipantListProps> = ({ participants, className }) => {
+export const ParticipantList: React.FC<ParticipantListProps> = ({
+  participants,
+  className,
+  integrationId,
+  threadId,
+}) => {
   const [showDetails, setShowDetails] = React.useState(false)
 
   // Group participants by role, preserving display order
@@ -185,6 +263,8 @@ export const ParticipantList: React.FC<ParticipantListProps> = ({ participants, 
                   participant={entry.participant}
                   role={entry.role}
                   showDetails={showDetails}
+                  integrationId={integrationId}
+                  threadId={threadId}
                 />
                 {i < entries.length - 1 && <span className='text-muted-foreground text-sm'>,</span>}
               </React.Fragment>

@@ -17,7 +17,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
     idempotent: true,
     outputBlock: 'entity-list',
     usageNotes:
-      'For field-value comparisons, follow up with `get_entity` per record — this tool only enriches fields when matches ≤5.',
+      'For field-value comparisons, follow up with `get_entity` per record — this tool only enriches fields when matches ≤5. When you reach `submit_final_answer`, embed the records you are referring to in an `auxx:entity-card` (1) or `auxx:entity-list` (2+) fence inside `content`. Records mentioned in prose without a fence will not be visible to the user.',
     description:
       'Search for records by name or text across all entity types, or within a specific entity type. Returns matching records with display names. If you know the entity type, pass entityDefinitionId for faster results.',
     parameters: {
@@ -26,7 +26,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
         entityDefinitionId: {
           type: 'string',
           description:
-            'Optional. Entity definition ID, apiSlug, or entityType. Omit to search across ALL entity types.',
+            'Optional. Entity type — pass the apiSlug from the entity catalog (e.g. "contact", "company"). Omit to search across ALL entity types.',
         },
         query: {
           type: 'string',
@@ -65,10 +65,11 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
         // Scoped search — single entity type
         const resource = await findCachedResource(agentDeps.organizationId, key)
         if (!resource) {
+          const validSlugs = allResources.map((r) => r.apiSlug).join(', ')
           return {
             success: false,
             output: null,
-            error: `Entity type "${key}" not found. Check the entity catalog in your system prompt for available types.`,
+            error: `Entity type "${key}" not found. Use one of these apiSlugs: ${validSlugs}.`,
           }
         }
         searchParams = {
