@@ -1,9 +1,19 @@
 // apps/web/src/components/mail/thread-messages.tsx
 'use client'
 
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Ban } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
-import { useMessages, useThread } from '~/components/threads/hooks'
+import { useChannel } from '~/components/channels/hooks/use-channels'
+import {
+  useMessage,
+  useMessageParticipants,
+  useMessages,
+  useThread,
+  useThreadMutation,
+} from '~/components/threads/hooks'
 import { useThreadStore } from '~/components/threads/store'
 import type { ScheduledMessageMeta } from '~/components/threads/store/thread-store'
 import { getThreadStoreState } from '~/components/threads/store/thread-store'
@@ -39,6 +49,43 @@ export function ThreadMessages() {
   }, [scheduledMessagesMap, threadId])
   const [confirm, ConfirmDialog] = useConfirm()
   const { openDraft } = useCompose()
+  const { update: updateThread } = useThreadMutation()
+  const removeExcludedSender = api.channel.removeExcludedSender.useMutation()
+
+  const channel = useChannel(thread?.integrationId)
+  const { message: latestMessage } = useMessage({
+    messageId: thread?.latestMessageId,
+    enabled: !!thread?.latestMessageId,
+  })
+  const { from: latestFrom } = useMessageParticipants(latestMessage?.participants ?? [])
+
+  /**
+   * Entries in the channel's excludeSenders list that match this thread's latest sender —
+   * either the exact email or its @domain. Used to keep "Restore" honest by also lifting
+   * the exclusion that caused the thread to be ignored in the first place.
+   */
+  const matchingExcludedEntries = useMemo(() => {
+    const excludeSenders = channel?.settings?.excludeSenders ?? []
+    if (excludeSenders.length === 0) return []
+    if (!latestFrom || latestFrom.identifierType !== 'EMAIL') return []
+    const email = latestFrom.identifier.toLowerCase()
+    const domain = email.split('@')[1]
+    const candidates = new Set<string>([email])
+    if (domain) candidates.add(`@${domain}`).add(domain)
+    return excludeSenders.filter((entry) => candidates.has(entry.toLowerCase()))
+  }, [channel?.settings?.excludeSenders, latestFrom])
+
+  const handleRestore = useCallback(async () => {
+    if (!thread) return
+    if (channel?.id && matchingExcludedEntries.length > 0) {
+      await Promise.all(
+        matchingExcludedEntries.map((entry) =>
+          removeExcludedSender.mutateAsync({ integrationId: channel.id, entry })
+        )
+      )
+    }
+    updateThread(thread.id, { status: 'OPEN' })
+  }, [thread, channel?.id, matchingExcludedEntries, removeExcludedSender, updateThread])
 
   const cancelMutation = api.thread.cancelScheduledMessage.useMutation({
     onSuccess: (_data, variables) => {
@@ -126,13 +173,39 @@ export function ThreadMessages() {
     )
   }
 
+  const isMuted = thread.status === 'TRASH' || thread.status === 'IGNORED'
+
   return (
     <div className='flex flex-col'>
       <ConfirmDialog />
       <div className='flex flex-1 flex-col space-y-4'>
+        {thread.status === 'IGNORED' && (
+          <div className='px-4 pt-2'>
+            <Alert variant='warning' className='flex items-center justify-between gap-3'>
+              <div className='flex items-center gap-2'>
+                <Ban className='size-4 shrink-0' />
+                <AlertDescription className='opacity-100'>
+                  This thread is being ignored.
+                  {matchingExcludedEntries.length > 0 && (
+                    <>
+                      {' '}
+                      Future emails matching {matchingExcludedEntries.join(', ')} will be ignored.
+                    </>
+                  )}
+                </AlertDescription>
+              </div>
+              <Button
+                variant='outline'
+                size='xs'
+                onClick={handleRestore}
+                loading={removeExcludedSender.isPending}>
+                Restore
+              </Button>
+            </Alert>
+          </div>
+        )}
         {/* Email messages */}
-        <div
-          className={`flex flex-col gap-4 px-4 py-2 ${thread.status === 'TRASH' ? 'opacity-50' : ''}`}>
+        <div className={`flex flex-col gap-4 px-4 py-2 ${isMuted ? 'opacity-50' : ''}`}>
           {messages.map((message, index) => {
             // Check if this is the last message in the array
             const isLastMessage = index === messages.length - 1 && scheduledMessages.length === 0
