@@ -94,6 +94,8 @@ export {
   setResourceVariables,
   sortFieldsForDisplay,
 } from './registry/field-utils'
+// Hover-card field defaults
+export { getHoverCardFieldKeys, HOVER_CARD_FIELDS } from './registry/hover-card-fields'
 export type {
   CustomResource,
   CustomResourceId,

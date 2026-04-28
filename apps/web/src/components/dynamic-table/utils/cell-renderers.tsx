@@ -57,7 +57,7 @@ function RelationshipCellContent({ value }: { value: unknown }) {
     <ItemsCellView
       items={items}
       isLoading={false} // RecordBadge handles individual loading states
-      renderItem={(item) => <RecordBadge recordId={item.recordId} link />}
+      renderItem={(item) => <RecordBadge recordId={item.recordId} link hoverCard />}
       maxDisplay={3}
     />
   )
