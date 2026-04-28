@@ -2,7 +2,6 @@
 
 'use client'
 
-import type { CurrencyDisplayOptions } from '@auxx/utils'
 import { memo } from 'react'
 import { useTableConfig } from '../context/table-config-context'
 import { useColumnFormatting } from '../stores/store-selectors'
@@ -11,21 +10,25 @@ import { renderCellValue } from '../utils/cell-renderers'
 
 /**
  * Config for field-specific data passed to renderers.
- * Display options (decimals, format, displayAs, etc.) are read from the
- * options object directly (flat structure) as fallback when no column
+ * Display options (decimals, format, displayAs, currencyCode, etc.) are read
+ * from the options object directly (flat structure) as fallback when no column
  * formatting is specified.
  */
 export interface CellConfig {
-  /** Field options - contains select options array OR flat display options (decimals, format, etc.) */
+  /** Field options - select options array OR flat display options (decimals, format, currencyCode, …) */
   options?: Record<string, unknown>
-  /** Currency display options (from field.options.currency) */
-  currency?: CurrencyDisplayOptions
   /** Items for ItemsCellView (groups, sources, etc.) */
   items?: Array<{ id: string; [key: string]: unknown }>
   /** Render function for ItemsCellView */
   renderItem?: (item: any, index: number) => React.ReactNode
   /** Empty content for ItemsCellView */
   emptyContent?: React.ReactNode
+  /**
+   * When true, RELATIONSHIP renderers render their record badges with
+   * `hoverCard={false}` to prevent nested hover cards. Set by callers that
+   * are themselves inside a hover card (e.g. `RecordHoverCardField`).
+   */
+  disableNestedHoverCard?: boolean
 }
 
 /**

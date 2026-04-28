@@ -150,7 +150,7 @@ export const columns: ColumnDef<Customer>[] = [
       // row.original.numberOfOrders
       return (
         <div className='flex space-x-2'>
-          {formatCurrency(row.original.amountSpent || 0, { decimalPlaces: 'no-decimal' })}
+          {formatCurrency(row.original.amountSpent || 0, { decimals: 0 })}
         </div>
       )
     },

@@ -29,13 +29,13 @@ export interface FileTypeOptions {
 }
 
 /**
- * Currency options for CURRENCY type
+ * Currency options for CURRENCY type (flat — matches CurrencyFieldOptions)
  */
 export interface CurrencyTypeOptions {
   currencyCode: string
-  decimalPlaces: 'two-places' | 'no-decimal'
-  displayType: 'symbol' | 'name' | 'code'
-  groups: 'default' | 'no-groups'
+  decimals: number
+  currencyDisplay: 'symbol' | 'code' | 'name' | 'compact'
+  useGrouping: boolean
 }
 
 /**

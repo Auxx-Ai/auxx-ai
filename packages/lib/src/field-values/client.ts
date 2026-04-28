@@ -30,6 +30,7 @@ export {
   areValuesEqual,
   type BooleanFieldOptions,
   type ConverterOptions,
+  type CurrencyFieldOptions,
   type DateFieldOptions,
   extractValues,
   type FieldOptions,

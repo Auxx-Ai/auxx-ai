@@ -77,33 +77,6 @@ export const selectOptionSchema = z.object({
 export type SelectOption = z.infer<typeof selectOptionSchema>
 
 // =============================================================================
-// CURRENCY OPTIONS
-// =============================================================================
-
-/** Decimal places options */
-export const decimalPlacesValues = ['two-places', 'no-decimal'] as const
-export type DecimalPlaces = (typeof decimalPlacesValues)[number]
-
-/** Display type options */
-export const currencyDisplayTypeValues = ['symbol', 'name', 'code'] as const
-export type CurrencyDisplayType = (typeof currencyDisplayTypeValues)[number]
-
-/** Grouping options */
-export const currencyGroupsValues = ['default', 'no-groups'] as const
-export type CurrencyGroups = (typeof currencyGroupsValues)[number]
-
-/** Zod schema for currency field options */
-export const currencyOptionsSchema = z.object({
-  currencyCode: z.string().length(3).default('USD'),
-  decimalPlaces: z.enum(decimalPlacesValues).default('two-places'),
-  displayType: z.enum(currencyDisplayTypeValues).default('symbol'),
-  groups: z.enum(currencyGroupsValues).default('default'),
-})
-
-/** Currency options type */
-export type CurrencyOptions = z.infer<typeof currencyOptionsSchema>
-
-// =============================================================================
 // FILE OPTIONS
 // =============================================================================
 
@@ -294,6 +267,9 @@ export const displayOptionsSchema = z.object({
   falseLabel: z.string().optional(),
   // PHONE display options
   phoneFormat: z.enum(['raw', 'national', 'international']).optional(),
+  // CURRENCY display options (decimals + useGrouping shared with NUMBER)
+  currencyCode: z.string().length(3).optional(),
+  currencyDisplay: z.enum(['symbol', 'code', 'name', 'compact']).optional(),
   // AI generation toggle — present only on AI-eligible types. Riding
   // piggyback on displayOptions keeps the union member count flat; the
   // service layer validates eligibility at save time.
@@ -318,6 +294,7 @@ export type DisplayOptions = z.infer<typeof displayOptionsSchema>
  */
 export const FIELD_TYPE_DISPLAY_OPTIONS: Partial<Record<string, (keyof DisplayOptions)[]>> = {
   [FieldTypeEnum.NUMBER]: ['decimals', 'useGrouping', 'displayAs', 'prefix', 'suffix'],
+  [FieldTypeEnum.CURRENCY]: ['currencyCode', 'decimals', 'useGrouping', 'currencyDisplay'],
   [FieldTypeEnum.DATE]: ['format'],
   [FieldTypeEnum.DATETIME]: ['format', 'timeFormat', 'includeTime'],
   [FieldTypeEnum.TIME]: ['format', 'timeFormat'],
@@ -340,13 +317,12 @@ export function getDisplayOptionKeys(fieldType: string): (keyof DisplayOptions)[
 }
 
 /**
- * Type guard to check if options object is a DisplayOptions (not SelectOption[], file, currency, calc, or actor)
+ * Type guard to check if options object is a DisplayOptions (not SelectOption[], file, calc, or actor)
  */
 export function isDisplayOptions(options: unknown): options is DisplayOptions {
   if (!options || typeof options !== 'object') return false
   if (Array.isArray(options)) return false
   if ('file' in options) return false
-  if ('currency' in options) return false
   if ('calc' in options) return false
   if ('actor' in options) return false
   return true
@@ -399,7 +375,6 @@ export const fieldOptionsUnionSchema = z.union([
     ai: aiOptionsSchema.optional(),
   }),
   z.object({ file: fileOptionsSchema }),
-  z.object({ currency: currencyOptionsSchema }),
   z.object({ calc: calcOptionsSchema }),
   z.object({ actor: actorOptionsSchema }),
   // Flat display options for NUMBER, DATE, DATETIME, TIME, CHECKBOX. Also

@@ -5,12 +5,6 @@ export {
   formatAddressComponents,
   parseAddressComponents,
 } from './address-component-editor'
-export {
-  type CurrencyOptions,
-  CurrencyOptionsEditor,
-  formatCurrencyOptions,
-  parseCurrencyOptions,
-} from './currency-options-editor'
 export { CustomFieldDialog } from './custom-field-dialog'
 export { CustomFieldsList } from './custom-fields-list'
 export { EntityDefinitionDialog } from './entity-definition-dialog'
@@ -27,6 +21,7 @@ export {
 } from './file-options-editor'
 export {
   BooleanFormattingEditor,
+  CurrencyFormattingEditor,
   DateFormattingEditor,
   DateTimeFormattingEditor,
   type DisplayOptions,

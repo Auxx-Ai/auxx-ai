@@ -3,6 +3,7 @@
 
 import type {
   BooleanFieldOptions,
+  CurrencyFieldOptions,
   DateFieldOptions,
   NumberFieldOptions,
   PhoneFieldOptions,
@@ -16,25 +17,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { useEffect, useState } from 'react'
 import {
   BooleanFormattingEditor,
+  CurrencyFormattingEditor,
   DateFormattingEditor,
   DateTimeFormattingEditor,
   NumberFormattingEditor,
   PhoneFormattingEditor,
   TimeFormattingEditor,
 } from '~/components/custom-fields/ui/formatting-editors'
-import { CurrencyPicker } from '~/components/pickers/currency-picker'
 import type {
   CheckboxColumnFormatting,
   ColumnFormatting,
@@ -71,6 +64,34 @@ function numberDisplayOptionsToColumn(opts: NumberFieldOptions): NumberColumnFor
     displayAs: opts.displayAs ?? 'number',
     prefix: opts.prefix ?? '',
     suffix: opts.suffix ?? '',
+  }
+}
+
+/**
+ * Convert CurrencyColumnFormatting to CurrencyFieldOptions
+ */
+function columnToCurrencyDisplayOptions(
+  formatting: CurrencyColumnFormatting | null,
+  defaults?: Partial<CurrencyColumnFormatting>
+): CurrencyFieldOptions {
+  return {
+    currencyCode: formatting?.currencyCode ?? defaults?.currencyCode ?? 'USD',
+    decimals: formatting?.decimals ?? defaults?.decimals ?? 2,
+    useGrouping: formatting?.useGrouping ?? defaults?.useGrouping ?? true,
+    currencyDisplay: formatting?.currencyDisplay ?? defaults?.currencyDisplay ?? 'symbol',
+  }
+}
+
+/**
+ * Convert CurrencyFieldOptions to CurrencyColumnFormatting
+ */
+function currencyDisplayOptionsToColumn(opts: CurrencyFieldOptions): CurrencyColumnFormatting {
+  return {
+    type: 'currency',
+    currencyCode: opts.currencyCode ?? 'USD',
+    decimals: opts.decimals ?? 2,
+    useGrouping: opts.useGrouping ?? true,
+    currencyDisplay: opts.currencyDisplay ?? 'symbol',
   }
 }
 
@@ -202,9 +223,11 @@ export function EditColumnFormattingDialog({
 
         {fieldType === 'CURRENCY' && (
           <CurrencyFormattingEditor
-            formatting={formatting as CurrencyColumnFormatting | null}
-            defaultFormatting={defaultFormatting as Partial<CurrencyColumnFormatting>}
-            onChange={(f) => setFormatting(f)}
+            options={columnToCurrencyDisplayOptions(
+              formatting as CurrencyColumnFormatting | null,
+              defaultFormatting as Partial<CurrencyColumnFormatting>
+            )}
+            onChange={(opts) => setFormatting(currencyDisplayOptionsToColumn(opts))}
           />
         )}
         {fieldType === 'DATE' && (
@@ -269,90 +292,5 @@ export function EditColumnFormattingDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
-
-/** Props for CurrencyFormattingEditor */
-interface CurrencyFormattingEditorProps {
-  formatting: CurrencyColumnFormatting | null
-  defaultFormatting?: Partial<CurrencyColumnFormatting>
-  onChange: (f: CurrencyColumnFormatting) => void
-}
-
-/**
- * Currency formatting sub-editor
- */
-function CurrencyFormattingEditor({
-  formatting,
-  defaultFormatting,
-  onChange,
-}: CurrencyFormattingEditorProps) {
-  const current: CurrencyColumnFormatting = {
-    type: 'currency',
-    currencyCode: formatting?.currencyCode ?? defaultFormatting?.currencyCode ?? 'USD',
-    decimalPlaces: formatting?.decimalPlaces ?? defaultFormatting?.decimalPlaces ?? 'two-places',
-    displayType: formatting?.displayType ?? defaultFormatting?.displayType ?? 'symbol',
-    groups: formatting?.groups ?? defaultFormatting?.groups ?? 'default',
-  }
-
-  /**
-   * Update a specific field in the formatting object
-   */
-  const update = (key: keyof CurrencyColumnFormatting, value: string) => {
-    onChange({ ...current, [key]: value })
-  }
-
-  return (
-    <div className=''>
-      <FieldGroup className='gap-3'>
-        <Field>
-          <FieldLabel>Currency</FieldLabel>
-          <CurrencyPicker
-            selected={current.currencyCode ?? 'USD'}
-            onChange={(code) => update('currencyCode', code)}
-          />
-        </Field>
-
-        <Field>
-          <FieldLabel>Decimal Places</FieldLabel>
-          <Select value={current.decimalPlaces} onValueChange={(v) => update('decimalPlaces', v)}>
-            <SelectTrigger>
-              <SelectValue placeholder='Select decimal format' />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='two-places'>Two decimal places (10.99)</SelectItem>
-              <SelectItem value='no-decimal'>No decimals (11)</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-
-        <Field>
-          <FieldLabel>Currency Display</FieldLabel>
-          <Select value={current.displayType} onValueChange={(v) => update('displayType', v)}>
-            <SelectTrigger>
-              <SelectValue placeholder='Select display format' />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='symbol'>Symbol ($10.99)</SelectItem>
-              <SelectItem value='code'>Code (USD 10.99)</SelectItem>
-              <SelectItem value='name'>Name (10.99 US dollars)</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-
-        <Field>
-          <FieldLabel>Thousand Separators</FieldLabel>
-          <Select value={current.groups} onValueChange={(v) => update('groups', v)}>
-            <SelectTrigger>
-              <SelectValue placeholder='Select grouping' />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='default'>With separators (1,000.00)</SelectItem>
-              <SelectItem value='no-groups'>No separators (1000.00)</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-      </FieldGroup>
-    </div>
   )
 }

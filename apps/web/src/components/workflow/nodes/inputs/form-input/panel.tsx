@@ -2,14 +2,12 @@
 
 'use client'
 
+import type { CurrencyFieldOptions } from '@auxx/lib/field-values/client'
 import { produce } from 'immer'
 import React, { useCallback } from 'react'
 import { AddressComponentsEditor } from '~/components/custom-fields/ui/address-component-editor'
-import {
-  type CurrencyOptions,
-  CurrencyOptionsEditor,
-} from '~/components/custom-fields/ui/currency-options-editor'
 import { FileOptionsEditor } from '~/components/custom-fields/ui/file-options-editor'
+import { CurrencyFormattingEditor } from '~/components/custom-fields/ui/formatting-editors'
 // Reuse existing editors from custom-fields for type configuration
 import { OptionsEditor } from '~/components/custom-fields/ui/options-editor'
 import {
@@ -63,9 +61,9 @@ function getDefaultTypeOptions(inputType: BaseType): TypeOptions {
       return {
         currency: {
           currencyCode: 'USD',
-          decimalPlaces: 'two-places',
-          displayType: 'symbol',
-          groups: 'default',
+          decimals: 2,
+          currencyDisplay: 'symbol',
+          useGrouping: true,
         },
       }
     case BaseType.ADDRESS:
@@ -198,16 +196,25 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
 
       case BaseType.CURRENCY:
         return (
-          <CurrencyOptionsEditor
+          <CurrencyFormattingEditor
             options={
-              (nodeData.typeOptions?.currency as CurrencyOptions) || {
+              (nodeData.typeOptions?.currency as CurrencyFieldOptions) || {
                 currencyCode: 'USD',
-                decimalPlaces: 'two-places',
-                displayType: 'symbol',
-                groups: 'default',
+                decimals: 2,
+                currencyDisplay: 'symbol',
+                useGrouping: true,
               }
             }
-            onChange={(options) => handleTypeOptionsChange({ currency: options })}
+            onChange={(options) =>
+              handleTypeOptionsChange({
+                currency: {
+                  currencyCode: options.currencyCode ?? 'USD',
+                  decimals: options.decimals ?? 2,
+                  currencyDisplay: options.currencyDisplay ?? 'symbol',
+                  useGrouping: options.useGrouping ?? true,
+                },
+              })
+            }
           />
         )
 

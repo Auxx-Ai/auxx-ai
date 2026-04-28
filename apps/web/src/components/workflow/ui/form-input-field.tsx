@@ -145,10 +145,9 @@ export const FormInputField = memo(function FormInputField({
         currency: typeOptions?.currency
           ? {
               currencyCode: typeOptions.currency.currencyCode,
-              decimalPlaces:
-                typeOptions.currency.decimalPlaces === 'no-decimal' ? 'no-decimal' : undefined,
-              displayType: typeOptions.currency.displayType,
-              groups: typeOptions.currency.groups,
+              decimals: typeOptions.currency.decimals,
+              currencyDisplay: typeOptions.currency.currencyDisplay,
+              useGrouping: typeOptions.currency.useGrouping,
             }
           : undefined,
         variant: typeOptions?.boolean?.variant,

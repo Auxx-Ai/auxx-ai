@@ -20,9 +20,9 @@ interface CurrencyInputProps extends NodeInputProps {
   /** ISO 4217 currency code (default: 'USD') */
   currencyCode?: string
   /** Number of decimal places (0 or 2) */
-  decimalPlaces?: number
-  /** How to display currency (symbol, code, or name) */
-  displayType?: 'symbol' | 'code' | 'name'
+  decimals?: number
+  /** How to display currency (symbol, code, name, or compact) */
+  currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
   /** Whether to use grouping separators */
   useGrouping?: boolean
 }
@@ -40,7 +40,8 @@ export const CurrencyInput = createNodeInput<CurrencyInputProps>(
     name,
     placeholder = '0.00',
     currencyCode = 'USD',
-    decimalPlaces = 2,
+    decimals = 2,
+    currencyDisplay = 'symbol',
   }) => {
     // Track if we should trigger onChange after blur parsing
     const shouldUpdateRef = useRef(false)
@@ -92,7 +93,8 @@ export const CurrencyInput = createNodeInput<CurrencyInputProps>(
         value={value}
         onValueChange={handleValueChange}
         currencyCode={currencyCode}
-        decimalPlaces={decimalPlaces === 0 ? 'no-decimal' : 'two-places'}
+        currencyDisplay={currencyDisplay === 'compact' ? 'symbol' : currencyDisplay}
+        decimalPlaces={decimals === 0 ? 'no-decimal' : 'two-places'}
         disabled={isLoading}>
         <InputGroup className='bg-transparent dark:bg-transparent h-[28px] shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]'>
           <CurrencyInputField

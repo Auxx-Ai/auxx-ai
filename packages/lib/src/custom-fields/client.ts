@@ -9,16 +9,7 @@ export {
   aiOptionsSchema,
   aiTriggerOnSchema,
   aiTriggerOnValues,
-  type CurrencyDisplayType,
-  type CurrencyGroups,
-  type CurrencyOptions,
-  currencyDisplayTypeValues,
-  currencyGroupsValues,
-  // Currency
-  currencyOptionsSchema,
   DEFAULT_SELECT_OPTION_COLOR,
-  type DecimalPlaces,
-  decimalPlacesValues,
   type FileOptions,
   // Union
   fieldOptionsUnionSchema,
@@ -39,7 +30,7 @@ export {
 export { getAiPrompt, isAiEligible, isAiField } from './ai'
 export { getCalcOptions, getEffectiveFieldType } from './calc'
 
-export type { CalcOptions, NameFieldOptions } from './field-options'
+export type { CalcOptions, CurrencyFieldOptions, NameFieldOptions } from './field-options'
 export {
   extractFieldIds,
   extractFieldIdsFromString,

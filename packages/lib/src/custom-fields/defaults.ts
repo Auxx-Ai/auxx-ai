@@ -2,6 +2,7 @@
 
 import type {
   BooleanFieldOptions,
+  CurrencyFieldOptions,
   DateFieldOptions,
   FieldOptions,
   NumberFieldOptions,
@@ -26,13 +27,11 @@ export const DEFAULT_NUMBER_OPTIONS: NumberFieldOptions = {
 }
 
 /** Default options for CURRENCY fields */
-export const DEFAULT_CURRENCY_OPTIONS = {
-  currency: {
-    currencyCode: 'USD',
-    decimalPlaces: 'two-places' as const,
-    displayType: 'symbol' as const,
-    groups: 'default' as const,
-  },
+export const DEFAULT_CURRENCY_OPTIONS: CurrencyFieldOptions = {
+  currencyCode: 'USD',
+  decimals: 2,
+  useGrouping: true,
+  currencyDisplay: 'symbol',
 }
 
 /** Default options for DATE fields */

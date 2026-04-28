@@ -3,7 +3,7 @@
 'use client'
 
 import { useContainerWidth } from '@auxx/ui/hooks/use-container-width'
-import { measureTextWidths, truncateText } from '@auxx/ui/lib/measure-text'
+import { measureTextWidths } from '@auxx/ui/lib/measure-text'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { ChevronRight, ChevronsRight, type LucideIcon, MoreHorizontal } from 'lucide-react'
@@ -17,7 +17,7 @@ import {
 
 /** CVA variants for the breadcrumb container */
 const smartBreadcrumbVariants = cva(
-  'flex items-center text-muted-foreground overflow-hidden min-w-0 ',
+  'flex items-center text-muted-foreground overflow-hidden min-w-0',
   {
     variants: {
       size: {
@@ -97,6 +97,33 @@ interface LayoutSegment {
   width: number
   displayLabel: string
   visible: boolean
+  /**
+   * When set, the rendered `<li>` slot is locked to this exact pixel width via
+   * inline `width` style. CSS handles visual truncation via `text-overflow:
+   * ellipsis` on the inner span. Only set when natural content exceeds the
+   * available container width — otherwise `<li>` sizes to content.
+   */
+  targetWidth?: number
+}
+
+/**
+ * Water-fill width distribution: walk segments smallest-to-largest, giving
+ * each its natural width capped at the fair share of the remaining budget.
+ * Smaller segments stay at natural size; larger segments absorb the deficit.
+ */
+function distributeWidths(widths: number[], available: number, minWidth: number): number[] {
+  const order = widths.map((_, i) => i).sort((a, b) => (widths[a] ?? 0) - (widths[b] ?? 0))
+  const targets = new Array<number>(widths.length).fill(0)
+  let budget = available
+  let remaining = widths.length
+  for (const i of order) {
+    const fair = Math.max(minWidth, budget / remaining)
+    const take = Math.min(widths[i] ?? 0, fair)
+    targets[i] = take
+    budget -= take
+    remaining -= 1
+  }
+  return targets
 }
 
 /** Constants for layout calculation */
@@ -110,7 +137,7 @@ const MIN_SEGMENT_WIDTH = 40 // Minimum width for a segment
 function useBreadcrumbLayout(
   segments: BreadcrumbSegment[],
   containerWidth: number,
-  font: string,
+  containerRef: React.RefObject<HTMLOListElement | null>,
   minSegmentWidth: number
 ): {
   visibleSegments: LayoutSegment[]
@@ -118,6 +145,24 @@ function useBreadcrumbLayout(
   useDoubleChevron: boolean
 } {
   return React.useMemo(() => {
+    // Read the actual computed font live from the DOM at measurement time.
+    // Storing in state via useEffect was unreliable here: TipTap remounts the
+    // badge on transactions, and the effect's mount-once timing meant the
+    // stale default `'14px sans-serif'` got used for measurement —
+    // measureText would then over-estimate widths (e.g., "Company Name" at
+    // 14px sans-serif = 101px vs actual 12px Inter = 92px), causing
+    // distribute() to chase a too-wide target on each ResizeObserver tick
+    // until something snapped it back.
+    let font = '14px sans-serif'
+    const el = containerRef.current
+    if (el) {
+      const cs = getComputedStyle(el)
+      const fontStyle = cs.getPropertyValue('font-style') || 'normal'
+      const fontWeight = cs.getPropertyValue('font-weight') || '400'
+      const fontSize = cs.getPropertyValue('font-size') || '14px'
+      const fontFamily = cs.getPropertyValue('font-family') || 'sans-serif'
+      font = `${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`
+    }
     if (segments.length === 0) {
       return { visibleSegments: [], collapsedSegments: [], useDoubleChevron: false }
     }
@@ -131,14 +176,17 @@ function useBreadcrumbLayout(
     const totalSeparatorWidth = (segments.length - 1) * SEPARATOR_WIDTH
     const totalNeeded = totalSegmentWidth + totalSeparatorWidth
 
-    // Render all segments unrestricted when:
-    //   - Container width hasn't been measured yet (`0` = initial mount or
-    //     `display: none` ancestor). Returning empty here would create a
-    //     chicken-and-egg: nothing rendered → `<ol>` has 0 content → measured
-    //     width stays 0 → never escape. Letting the full layout render lets
-    //     `ResizeObserver` see the *actual* content/parent width on the next
-    //     tick, after which truncation can kick in if the parent is constrained.
-    //   - Everything fits within the measured width.
+    // First paint (`containerWidth === 0`) and "fits naturally" both render
+    // at natural size with no slot-lock. The first-paint case lets the
+    // parent (content-sized badges with `max-w` caps, etc.) have actual
+    // content to size against. ResizeObserver then fires the real
+    // constrained width on the next tick and the truncation branch below
+    // kicks in.
+    //
+    // For ancestors that would otherwise inflate to the breadcrumb's
+    // min-content (anything using `min-width: min-content`), the caller
+    // must apply `contain: inline-size` to that ancestor — `min-w-0` on
+    // flex descendants does NOT cap min-content propagation.
     if (containerWidth === 0 || totalNeeded <= containerWidth) {
       return {
         visibleSegments: segments.map((segment, i) => ({
@@ -152,57 +200,71 @@ function useBreadcrumbLayout(
       }
     }
 
-    // Need to truncate - prioritize first and last segments
+    // Need to truncate. Compute fixed per-segment slot widths and let the
+    // browser's text-overflow:ellipsis render the visual cut at the slot edge.
+    //
+    // Why slot widths instead of string-level `truncateText`? When the parent
+    // is content-sized (Badge with `max-w`, or `inline-flex` capped below the
+    // cap), shrinking the rendered text shrinks the parent, which shrinks the
+    // measured container, which tightens the target, which shrinks the text
+    // again — a feedback loop we saw spiral 168 → 154 → 141 → … → 43.
+    //
+    // Locking each `<li>` to a JS-computed pixel width keeps the `<ol>`'s
+    // total layout width stable across re-measure cycles: slot sizes derive
+    // from `containerWidth`, not from rendered text. CSS truncation inside
+    // each slot doesn't feed back because the slot is fixed.
     const firstWidth = widths[0] ?? 0
     const lastWidth = widths[segments.length - 1] ?? 0
 
-    // Single segment - truncate if needed
+    // Single segment - constrain to container width
     if (segments.length === 1) {
       const firstSegment = segments[0]!
-      const displayLabel =
-        firstWidth > containerWidth
-          ? truncateText(firstSegment.label, containerWidth, font)
-          : firstSegment.label
       return {
         visibleSegments: [
-          { segment: firstSegment, width: firstWidth, displayLabel, visible: true },
+          {
+            segment: firstSegment,
+            width: firstWidth,
+            displayLabel: firstSegment.label,
+            visible: true,
+            targetWidth: Math.max(minSegmentWidth, containerWidth),
+          },
         ],
         collapsedSegments: [],
         useDoubleChevron: false,
       }
     }
 
-    // Two segments — render both with their full labels and let CSS handle
-    // visual truncation (each segment's `<span class='truncate'>` already has
-    // `overflow:hidden; text-overflow:ellipsis; white-space:nowrap`).
-    //
-    // Why not truncate the strings ourselves? The string-level approach feeds
-    // back: `truncateText` cuts at character boundaries so the rendered text
-    // is *narrower* than `availableForEach`. When the parent (Badge here) is
-    // content-sized — `inline-flex`/`flex` with `max-w`, which is content-
-    // driven below the cap — that narrower content shrinks the parent →
-    // ResizeObserver fires smaller → tighter target → smaller text → loop.
-    // We saw it spiral 168 → 154 → 141 → … → 43.
-    //
-    // CSS truncation doesn't loop because the box width that the browser
-    // truncates against is the layout-assigned width, not the text width
-    // post-truncation; once flexbox distributes shrinkage proportionally,
-    // the boxes are stable.
+    // Two segments - water-fill distribution
     if (segments.length === 2) {
+      const available = Math.max(2 * minSegmentWidth, containerWidth - SEPARATOR_WIDTH)
+      const [t0, t1] = distributeWidths([firstWidth, lastWidth], available, minSegmentWidth) as [
+        number,
+        number,
+      ]
       return {
-        visibleSegments: segments.map((segment, i) => ({
-          segment,
-          width: widths[i] ?? 0,
-          displayLabel: segment.label,
-          visible: true,
-        })),
+        visibleSegments: [
+          {
+            segment: segments[0]!,
+            width: firstWidth,
+            displayLabel: segments[0]!.label,
+            visible: true,
+            targetWidth: t0,
+          },
+          {
+            segment: segments[1]!,
+            width: lastWidth,
+            displayLabel: segments[1]!.label,
+            visible: true,
+            targetWidth: t1,
+          },
+        ],
         collapsedSegments: [],
         useDoubleChevron: false,
       }
     }
 
-    // 3+ segments - collapse middle segments
-    // Reserve space: first + ellipsis + last + separators
+    // 3+ segments - decide which middles to keep, then water-fill across
+    // visible segments.
     const reservedWidth =
       Math.min(firstWidth, Math.max(minSegmentWidth, containerWidth * 0.25)) +
       ELLIPSIS_BUTTON_WIDTH +
@@ -223,45 +285,43 @@ function useBreadcrumbLayout(
       }
     }
 
-    // Build collapsed segments list (those not visible)
     const collapsedIndices = new Set<number>()
     for (let i = 1; i < segments.length - 1; i++) {
-      if (!visibleMiddleIndices.includes(i)) {
-        collapsedIndices.add(i)
-      }
+      if (!visibleMiddleIndices.includes(i)) collapsedIndices.add(i)
     }
 
     const collapsedSegments = segments.filter((_, i) => collapsedIndices.has(i))
     const useDoubleChevron = collapsedSegments.length > 0
 
-    // Get first and last segments (safe because we've checked length >= 3)
     const firstSegment = segments[0]!
     const lastSegment = segments[segments.length - 1]!
 
-    // Calculate first segment display width
-    const firstAvailableWidth = Math.min(
+    // Distribute available width (minus separators and optional ellipsis)
+    // across visible segments using water-fill so smaller segments stay at
+    // natural size when there's room.
+    const visibleNaturalWidths = [
       firstWidth,
-      Math.max(minSegmentWidth, containerWidth * 0.3)
-    )
-    const firstDisplayLabel =
-      firstWidth > firstAvailableWidth
-        ? truncateText(firstSegment.label, firstAvailableWidth, font)
-        : firstSegment.label
-
-    // Calculate last segment display width
-    const lastAvailableWidth = Math.min(lastWidth, Math.max(minSegmentWidth, containerWidth * 0.3))
-    const lastDisplayLabel =
-      lastWidth > lastAvailableWidth
-        ? truncateText(lastSegment.label, lastAvailableWidth, font)
-        : lastSegment.label
-
-    // Build visible segments array
-    const visibleSegments: LayoutSegment[] = [
-      { segment: firstSegment, width: firstWidth, displayLabel: firstDisplayLabel, visible: true },
+      ...visibleMiddleIndices.map((i) => widths[i] ?? 0),
+      lastWidth,
     ]
+    const numSeparators = visibleNaturalWidths.length - 1 + (useDoubleChevron ? 1 : 0)
+    const ellipsisSpace = useDoubleChevron ? ELLIPSIS_BUTTON_WIDTH : 0
+    const distributable = Math.max(
+      visibleNaturalWidths.length * minSegmentWidth,
+      containerWidth - numSeparators * SEPARATOR_WIDTH - ellipsisSpace
+    )
+    const targets = distributeWidths(visibleNaturalWidths, distributable, minSegmentWidth)
 
-    // Add visible middle segments
-    for (const i of visibleMiddleIndices) {
+    const visibleSegments: LayoutSegment[] = [
+      {
+        segment: firstSegment,
+        width: firstWidth,
+        displayLabel: firstSegment.label,
+        visible: true,
+        targetWidth: targets[0],
+      },
+    ]
+    visibleMiddleIndices.forEach((i, k) => {
       const seg = segments[i]
       if (seg) {
         visibleSegments.push({
@@ -269,20 +329,23 @@ function useBreadcrumbLayout(
           width: widths[i] ?? 0,
           displayLabel: seg.label,
           visible: true,
+          targetWidth: targets[k + 1],
         })
       }
-    }
-
-    // Add last segment
+    })
     visibleSegments.push({
       segment: lastSegment,
       width: lastWidth,
-      displayLabel: lastDisplayLabel,
+      displayLabel: lastSegment.label,
       visible: true,
+      targetWidth: targets[targets.length - 1],
     })
 
     return { visibleSegments, collapsedSegments, useDoubleChevron }
-  }, [segments, containerWidth, font, minSegmentWidth])
+    // `containerRef` is a stable ref; the live `getComputedStyle` read above
+    // re-runs whenever any other dep changes (which covers ResizeObserver
+    // ticks via `containerWidth`).
+  }, [segments, containerWidth, containerRef, minSegmentWidth])
 }
 
 /**
@@ -307,7 +370,7 @@ function SmartBreadcrumbSegment({
   const content = (
     <>
       {Icon && <Icon className='size-3.5 shrink-0' />}
-      <span className='truncate'>{displayLabel}</span>
+      <span className='truncate min-w-0'>{displayLabel}</span>
     </>
   )
 
@@ -469,28 +532,11 @@ export function SmartBreadcrumb({
   ...props
 }: SmartBreadcrumbProps) {
   const [containerRef, containerWidth] = useContainerWidth<HTMLOListElement>()
-  const [font, setFont] = React.useState('14px sans-serif')
-
-  // Extract font from container element. The `font` shorthand returns `''`
-  // in most browsers, so always build from longhand properties to avoid
-  // silently falling through to the `'14px sans-serif'` default — which
-  // over-measures `text-xs` (12px) by ~17% and forces premature truncation.
-  React.useEffect(() => {
-    const element = containerRef.current
-    if (!element) return
-
-    const cs = getComputedStyle(element)
-    const fontStyle = cs.getPropertyValue('font-style') || 'normal'
-    const fontWeight = cs.getPropertyValue('font-weight') || '400'
-    const fontSize = cs.getPropertyValue('font-size') || '14px'
-    const fontFamily = cs.getPropertyValue('font-family') || 'sans-serif'
-    setFont(`${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`)
-  }, [containerRef])
 
   const { visibleSegments, collapsedSegments, useDoubleChevron } = useBreadcrumbLayout(
     segments,
     containerWidth,
-    font,
+    containerRef,
     minSegmentWidth
   )
 
@@ -513,7 +559,13 @@ export function SmartBreadcrumb({
           return (
             <React.Fragment key={item.segment.id}>
               {/* Segment */}
-              <li className='inline-flex items-center min-w-0'>
+              <li
+                className='inline-flex items-center min-w-0'
+                style={
+                  item.targetWidth != null
+                    ? { width: `${Math.floor(item.targetWidth)}px`, flexShrink: 0 }
+                    : undefined
+                }>
                 <SmartBreadcrumbSegment
                   segment={item.segment}
                   displayLabel={item.displayLabel}

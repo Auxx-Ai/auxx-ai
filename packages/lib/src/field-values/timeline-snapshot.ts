@@ -477,8 +477,7 @@ function buildSnapshotSingle(
     case 'CURRENCY': {
       if (value.type !== 'number') return null
       const formatted = currencyConverter.toDisplayValue(value, field.options ?? undefined)
-      const currency = (field.options as { currency?: { currency?: string } } | null)?.currency
-        ?.currency
+      const currency = (field.options as { currencyCode?: string } | null)?.currencyCode
       return {
         fieldType: 'CURRENCY',
         value: value.value,

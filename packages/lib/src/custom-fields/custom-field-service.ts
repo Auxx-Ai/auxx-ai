@@ -10,7 +10,7 @@ import {
   type RelationshipOptions,
   updateCustomField,
 } from '@auxx/services/custom-fields'
-import type { AiOptions, CurrencyOptions } from '@auxx/types/custom-field'
+import type { AiOptions } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { onCacheEvent } from '../cache/invalidate'
 
@@ -59,7 +59,6 @@ export class CustomFieldService {
     options?:
       | SelectOption[]
       | { file: FileOptions }
-      | { currency: CurrencyOptions }
       | { options: SelectOption[]; ai?: AiOptions }
       | (DisplayOptions & { ai?: AiOptions })
     addressComponents?: string[]
@@ -97,7 +96,6 @@ export class CustomFieldService {
     options?:
       | SelectOption[]
       | { file: FileOptions }
-      | { currency: CurrencyOptions }
       | { options: SelectOption[]; ai?: AiOptions }
       | (DisplayOptions & { ai?: AiOptions })
     addressComponents?: string[]

@@ -2,7 +2,6 @@ import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { CustomFieldEntity as CustomField, FieldType } from '@auxx/database/types'
 import {
   aiOptionsSchema,
-  currencyOptionsSchema,
   fileOptionsSchema,
   type ModelType,
   ModelTypeMeta,
@@ -361,13 +360,13 @@ export const relationshipFieldOptionsSchema = baseFieldOptionsSchema.extend({
   relationship: relationshipConfigSchema.optional(),
 })
 
-/** Currency display options schema */
+/** Currency display options schema (flat — `decimals`/`useGrouping` shared with NUMBER) */
 export const currencyFieldOptionsSchema = baseFieldOptionsSchema.extend({
-  currency: currencyOptionsSchema.optional(),
+  currencyCode: z.string().length(3).optional(),
+  decimals: z.number().int().min(0).max(10).optional(),
+  useGrouping: z.boolean().optional(),
+  currencyDisplay: z.enum(['symbol', 'code', 'name', 'compact']).optional(),
 })
-
-/** Currency field options type (includes base options + currency) */
-export type CurrencyFieldOptions = z.infer<typeof currencyFieldOptionsSchema>
 
 /** File field options schema */
 export const fileFieldOptionsSchema = baseFieldOptionsSchema.extend({

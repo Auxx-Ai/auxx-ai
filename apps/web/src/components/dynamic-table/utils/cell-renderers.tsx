@@ -2,6 +2,7 @@
 
 import {
   type BooleanFieldOptions,
+  type CurrencyFieldOptions,
   type DateFieldOptions,
   extractRelationshipRecordIds,
   formatToDisplayValue,
@@ -43,7 +44,13 @@ type SelectOption = { label: string; value: string }
  * - System resources: store model type string (e.g., "contact", "ticket")
  * - Custom entities: store UUID of EntityDefinition
  */
-function RelationshipCellContent({ value }: { value: unknown }) {
+function RelationshipCellContent({
+  value,
+  disableNestedHoverCard,
+}: {
+  value: unknown
+  disableNestedHoverCard?: boolean
+}) {
   // Extract RecordIds from value using centralized utility
   const recordIds = useMemo(() => extractRelationshipRecordIds(value), [value])
 
@@ -57,7 +64,9 @@ function RelationshipCellContent({ value }: { value: unknown }) {
     <ItemsCellView
       items={items}
       isLoading={false} // RecordBadge handles individual loading states
-      renderItem={(item) => <RecordBadge recordId={item.recordId} link hoverCard />}
+      renderItem={(item) => (
+        <RecordBadge recordId={item.recordId} link hoverCard={!disableNestedHoverCard} />
+      )}
       maxDisplay={3}
     />
   )
@@ -305,12 +314,12 @@ export function renderCurrencyValue(
   const cents = typeof value === 'number' ? value : parseInt(value as string, 10)
   if (Number.isNaN(cents)) return <EmptyCell />
 
-  const fieldOptions = config?.currency
+  const fieldOptions = config?.options as CurrencyFieldOptions | undefined
   const options: CurrencyDisplayOptions = {
     currencyCode: formatting?.currencyCode ?? fieldOptions?.currencyCode ?? 'USD',
-    decimalPlaces: formatting?.decimalPlaces ?? fieldOptions?.decimalPlaces ?? 'two-places',
-    displayType: formatting?.displayType ?? fieldOptions?.displayType ?? 'symbol',
-    groups: formatting?.groups ?? fieldOptions?.groups ?? 'default',
+    decimals: formatting?.decimals ?? fieldOptions?.decimals ?? 2,
+    useGrouping: formatting?.useGrouping ?? fieldOptions?.useGrouping ?? true,
+    currencyDisplay: formatting?.currencyDisplay ?? fieldOptions?.currencyDisplay ?? 'symbol',
   }
 
   const formatted = formatCurrency(cents, options)
@@ -606,8 +615,13 @@ const cellRenderers: Record<string, CellRenderer> = {
   },
 
   // Relationship - uses RelationshipCellContent which extracts recordId from TypedFieldValue
-  RELATIONSHIP: (value) => {
-    return <RelationshipCellContent value={value} />
+  RELATIONSHIP: (value, _, config) => {
+    return (
+      <RelationshipCellContent
+        value={value}
+        disableNestedHoverCard={config?.disableNestedHoverCard}
+      />
+    )
   },
 
   // Actor - uses ActorCellContent which extracts actorId from TypedFieldValue

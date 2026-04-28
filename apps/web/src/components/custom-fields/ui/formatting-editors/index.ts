@@ -3,6 +3,7 @@
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 
 export { BooleanFormattingEditor } from './boolean-formatting-editor'
+export { CurrencyFormattingEditor } from './currency-formatting-editor'
 export { DateFormattingEditor } from './date-formatting-editor'
 export { DateTimeFormattingEditor } from './datetime-formatting-editor'
 export { NumberFormattingEditor } from './number-formatting-editor'
@@ -14,12 +15,15 @@ export { TimeFormattingEditor } from './time-formatting-editor'
  * Flat structure containing all display-related options.
  */
 export interface DisplayOptions {
-  // NUMBER options
+  // NUMBER / CURRENCY options
   decimals?: number
   useGrouping?: boolean
   displayAs?: 'number' | 'percentage' | 'compact' | 'bytes'
   prefix?: string
   suffix?: string
+  // CURRENCY options
+  currencyCode?: string
+  currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
   // DATE/DATETIME/TIME options
   format?: 'short' | 'medium' | 'long' | 'relative' | 'iso' | 'time-only'
   timeFormat?: '12h' | '24h'
@@ -37,6 +41,8 @@ const DISPLAY_OPTION_KEYS: (keyof DisplayOptions)[] = [
   'displayAs',
   'prefix',
   'suffix',
+  'currencyCode',
+  'currencyDisplay',
   'format',
   'timeFormat',
   'trueLabel',

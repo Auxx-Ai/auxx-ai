@@ -13,7 +13,6 @@ import { and, desc, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import {
-  type CurrencyOptions,
   canFieldBeUnique,
   type DisplayOptions,
   type FileOptions,
@@ -66,12 +65,11 @@ export interface CreateCustomFieldInput {
   description?: string
   required?: boolean
   defaultValue?: string
-  /** Field options - select options, file config, currency config, flat
-   *  display options, or an `{ options, ai }` bag for AI-enabled selects. */
+  /** Field options - select options, file config, flat display options
+   *  (incl. CURRENCY), actor/calc bags, or `{ options, ai }` for AI-enabled selects. */
   options?:
     | SelectOption[]
     | { file: FileOptions }
-    | { currency: CurrencyOptions }
     | { actor: ActorOptions }
     | { calc: CalcOptions }
     | { options: SelectOption[]; ai?: AiOptions }
@@ -332,12 +330,6 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   if (type === FieldTypeEnum.ADDRESS_STRUCT) {
     if (addressComponents) {
       fieldOptions.addressComponents = addressComponents
-    }
-  }
-
-  if (type === FieldTypeEnum.CURRENCY) {
-    if (options && !Array.isArray(options) && 'currency' in options) {
-      fieldOptions.currency = (options as { currency: any }).currency
     }
   }
 

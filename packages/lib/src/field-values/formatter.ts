@@ -146,7 +146,7 @@ export function formatToRawValue(
  * formatToDisplayValue(
  *   { id: 'fv-1', type: 'number', value: 1234.5, ... },
  *   'CURRENCY',
- *   { currency: { currencyCode: 'USD', decimalPlaces: 'two-places' } }
+ *   { currencyCode: 'USD', decimals: 2 }
  * )
  * // → '$1,234.50'
  *
@@ -321,6 +321,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
 export type { ConverterOptions, FieldOptions, FieldValueConverter }
 export type {
   BooleanFieldOptions,
+  CurrencyFieldOptions,
   DateFieldOptions,
   EmailFieldOptions,
   NumberFieldOptions,

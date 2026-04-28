@@ -41,7 +41,13 @@ export function HeaderCellWrapper<TData>({ header }: HeaderCellWrapperProps<TDat
       }}
       className={cn('relative shrink-0', isDragging && 'opacity-30 z-50')}>
       <div
-        className='group min-w-min py-2 h-full font-inter font-medium w-full'
+        // `contain: inline-size` isolates this wrapper's inline-axis sizing
+        // from descendant min-content. Without it, unbreakable content like a
+        // SmartBreadcrumb path (whitespace-nowrap segments) would inflate the
+        // column past its CSS-var width via `min-w-min`. `min-w-0` on flex
+        // descendants only enables flex shrinking — it doesn't cap min-content
+        // contribution to ancestors.
+        className='group min-w-min py-2 h-full font-inter font-medium w-full [contain:inline-size]'
         {...(!isCheckboxColumn ? attributes : {})}
         {...(!isCheckboxColumn ? listeners : {})}
         aria-describedby='header-tooltip'>
