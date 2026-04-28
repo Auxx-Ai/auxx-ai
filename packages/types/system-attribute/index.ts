@@ -20,6 +20,7 @@ export const SYSTEM_ATTRIBUTES = [
   'contact_avatar',
   'primary_email',
   'phone',
+  'job_title',
   'contact_status',
   'customer_groups',
   'notes',

@@ -19,6 +19,7 @@ import { migration013ContactCompanyExternalIdFix } from './migrations/013-contac
 import { migration014BackfillSystemTags } from './migrations/014-backfill-system-tags'
 import { migration015BackfillFieldUpdatedEventData } from './migrations/015-backfill-field-updated-event-data'
 import { migration016StripLegacyContactIdFromFieldUpdated } from './migrations/016-strip-legacy-contact-id-from-field-updated'
+import { migration017ContactJobTitle } from './migrations/017-contact-job-title'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -43,6 +44,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration014BackfillSystemTags,
   migration015BackfillFieldUpdatedEventData,
   migration016StripLegacyContactIdFromFieldUpdated,
+  migration017ContactJobTitle,
 ]
 
 // ─── Public API ──────────────────────────────────────────────────────

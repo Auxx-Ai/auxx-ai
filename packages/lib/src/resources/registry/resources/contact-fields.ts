@@ -173,6 +173,26 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter phone number',
   },
 
+  jobTitle: {
+    id: toFieldId('jobTitle'),
+    key: 'jobTitle',
+    label: 'Job Title',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'job_title',
+    systemSortOrder: 'a3a',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Enter job title',
+  },
+
   status: {
     id: toFieldId('status'),
     key: 'status',
