@@ -78,7 +78,7 @@ Examples:
         entity: {
           type: 'string',
           description:
-            'Entity type to query — use the apiSlug (e.g. "contact", "ticket") or entity definition ID from the entity catalog.',
+            'Entity type to query — pass the apiSlug from the entity catalog (e.g. "contact", "ticket").',
         },
         filters: {
           type: 'array',

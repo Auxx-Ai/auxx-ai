@@ -112,12 +112,9 @@ When the user says "me", "myself", "my", or "I" for an ACTOR field (assignee, ow
 function buildEntityCatalogSection(entityCatalog: EntityCatalogEntry[]): string {
   if (!entityCatalog.length) return ''
 
-  const lines = entityCatalog.map(
-    (e) =>
-      `- **${e.label}** (${e.plural}) — apiSlug: \`${e.apiSlug}\`, id: \`${e.entityDefinitionId}\``
-  )
+  const lines = entityCatalog.map((e) => `- **${e.label}** (${e.plural}) — \`${e.apiSlug}\``)
 
-  return `\n## Available Entity Types\nUse the apiSlug or id as the entityDefinitionId parameter in tools.\n${lines.join('\n')}`
+  return `\n## Available Entity Types\nPass the apiSlug (the value in backticks) as the \`entityDefinitionId\` / \`entity\` parameter in tools. Never invent slugs that aren't in this list.\n${lines.join('\n')}`
 }
 
 /**
@@ -160,13 +157,17 @@ from the values the user gave you (name, email, SKU, etc.) scoped to the same
 \`entityDefinitionId\`. This catches obvious duplicates before the user has to
 approve a redundant create.
 
-If the search returns a likely match, tell the user what you found and ask
-whether to use the existing record or still create a new one — don't auto-pick.
-If the search returns nothing or only unrelated results, proceed to
-\`list_entity_fields\` → \`create_entity\` as usual.
+A duplicate is a search result that probably represents the **same** entity:
+same full name, same email, or same phone (for people/companies); same SKU or
+identifier (for things). Records that share only part of a name (e.g. last
+name only) are NOT duplicates — searching "Cornelia Klooth" and getting back
+"Lutz Klooth", "Carolin Klooth", "Christoph Klooth" is just a last-name match;
+none of those are Cornelia. Proceed with the create.
 
-Skip this only when the user has explicitly said "create a new one even if it
-exists" or similar.
+Only stop and ask the user if at least one result is a real duplicate by the
+rule above. Otherwise proceed straight to \`list_entity_fields\` →
+\`create_entity\` as usual. Skip the dedupe step entirely when the user has
+explicitly said "create a new one even if it exists" or similar.
 
 ### Comparing records
 

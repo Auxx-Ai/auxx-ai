@@ -1,6 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/create-entity.ts
 
-import { findCachedResource } from '../../../../../cache/org-cache-helpers'
+import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { UnprocessableEntityError } from '../../../../../errors'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -17,9 +17,18 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
 
 REQUIRED BEFORE CALLING: Call \`search_entities\` with the proposed values (name,
 email, SKU, etc.) scoped to this \`entityDefinitionId\` to check for duplicates.
-If a likely match exists, surface it to the user before proceeding instead of
-creating a new record. Skip only if the user explicitly asked to create a new
-one even if it exists.
+
+A search result is a duplicate only if it probably represents the SAME entity:
+same full name, same email, or same phone (for people/companies); same SKU or
+identifier (for things). Partial overlap is NOT a duplicate — searching
+"Cornelia Klooth" and getting back "Lutz Klooth" or "Carolin Klooth" is just a
+last-name match; proceed with creation.
+
+Only stop and ask the user if at least one search result has the same full name
+OR the same email/phone/identifier as the entity you're creating. Otherwise
+proceed straight to \`list_entity_fields\` → \`create_entity\`. Skip the dedupe
+prompt entirely if the user explicitly said "create a new one even if it
+exists" or similar.
 
 REQUIRED BEFORE CALLING: If you have NOT already called \`list_entity_fields\` for this
 entityDefinitionId in the current turn, call it first. Do NOT guess field ids from prior
@@ -42,7 +51,8 @@ Example (ids match list_entity_fields output):
       properties: {
         entityDefinitionId: {
           type: 'string',
-          description: 'Entity definition ID (from list_entities)',
+          description:
+            'Entity type — pass the apiSlug from the entity catalog (e.g. "contact", "company").',
         },
         values: {
           type: 'object',
@@ -76,10 +86,12 @@ Example (ids match list_entity_fields output):
 
       const resource = await findCachedResource(agentDeps.organizationId, key)
       if (!resource) {
+        const allResources = await getCachedResources(agentDeps.organizationId)
+        const validSlugs = allResources.map((r) => r.apiSlug).join(', ')
         return {
           success: false,
           output: null,
-          error: `Entity type "${key}" not found. Call list_entities to discover available entity types.`,
+          error: `Entity type "${key}" not found. Use one of these apiSlugs: ${validSlugs}.`,
         }
       }
 

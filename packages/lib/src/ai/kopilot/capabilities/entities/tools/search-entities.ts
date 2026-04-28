@@ -26,7 +26,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
         entityDefinitionId: {
           type: 'string',
           description:
-            'Optional. Entity definition ID, apiSlug, or entityType. Omit to search across ALL entity types.',
+            'Optional. Entity type — pass the apiSlug from the entity catalog (e.g. "contact", "company"). Omit to search across ALL entity types.',
         },
         query: {
           type: 'string',
@@ -65,10 +65,11 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
         // Scoped search — single entity type
         const resource = await findCachedResource(agentDeps.organizationId, key)
         if (!resource) {
+          const validSlugs = allResources.map((r) => r.apiSlug).join(', ')
           return {
             success: false,
             output: null,
-            error: `Entity type "${key}" not found. Check the entity catalog in your system prompt for available types.`,
+            error: `Entity type "${key}" not found. Use one of these apiSlugs: ${validSlugs}.`,
           }
         }
         searchParams = {
