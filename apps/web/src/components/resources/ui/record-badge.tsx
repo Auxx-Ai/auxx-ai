@@ -5,6 +5,7 @@
 import type { RecordId } from '@auxx/lib/resources/client'
 // Utility imports
 import { getDefinitionId } from '@auxx/lib/resources/client'
+import type { FieldReference } from '@auxx/types/field'
 // UI component imports
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
@@ -15,7 +16,20 @@ import Link from 'next/link'
 // Hook imports
 import { useRecord, useResource } from '~/components/resources'
 import { type GetRecordLinkOptions, useRecordLink } from '../utils/get-record-link'
+import { RecordHoverCard } from './record-hover-card'
 import { RecordIcon } from './record-icon'
+
+/** Configuration for `RecordBadge`'s optional hover-card preview. */
+export interface RecordBadgeHoverCardConfig {
+  fields?: FieldReference[]
+  onOpenInDrawer?: (recordId: RecordId) => void
+  /** Preferred side to render the hover card. Radix flips on collision. */
+  side?: 'top' | 'right' | 'bottom' | 'left'
+  /** Alignment along the chosen side. */
+  align?: 'start' | 'center' | 'end'
+  /** Pixel offset from the trigger along the side axis. */
+  sideOffset?: number
+}
 
 /**
  * Variants for the RecordBadge component
@@ -63,6 +77,8 @@ interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   className?: string
   /** Link configuration - if true uses default link, if object uses those options */
   link?: boolean | GetRecordLinkOptions
+  /** When set, wraps the badge in a `RecordHoverCard` for the same recordId. */
+  hoverCard?: boolean | RecordBadgeHoverCardConfig
 }
 
 /**
@@ -102,6 +118,7 @@ export function RecordBadge({
   variant,
   size,
   link,
+  hoverCard,
   ...props
 }: RecordBadgeProps) {
   // Fetch record data (displayName, avatarUrl)
@@ -133,7 +150,7 @@ export function RecordBadge({
   // Choose the component type based on link prop
   const Comp = link && href ? Link : 'div'
 
-  return (
+  const badge = (
     <Comp
       data-slot='record-badge'
       aria-busy={isLoading}
@@ -162,4 +179,21 @@ export function RecordBadge({
       )}
     </Comp>
   )
+
+  if (hoverCard && recordId) {
+    const hoverConfig = typeof hoverCard === 'object' ? hoverCard : undefined
+    return (
+      <RecordHoverCard
+        recordId={recordId}
+        fields={hoverConfig?.fields}
+        onOpenInDrawer={hoverConfig?.onOpenInDrawer}
+        side={hoverConfig?.side}
+        align={hoverConfig?.align}
+        sideOffset={hoverConfig?.sideOffset}>
+        {badge}
+      </RecordHoverCard>
+    )
+  }
+
+  return badge
 }
