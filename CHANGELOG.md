@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.142](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.141...auxx-v0.1.142) (2026-04-28)
+
+
+### Features
+
+* **datasets:** sync document drawer state to URL ?id= param ([#495](https://github.com/Auxx-Ai/auxx-ai/issues/495)) ([16dd975](https://github.com/Auxx-Ai/auxx-ai/commit/16dd97531bc99a440d6c31e7f0ef0c7c8f795efe))
+* **db:** use C collation for fractional sort columns ([#497](https://github.com/Auxx-Ai/auxx-ai/issues/497)) ([bf84eb1](https://github.com/Auxx-Ai/auxx-ai/commit/bf84eb11c1c00350fcde884f71b4c7e2909ce406))
+* **extension:** allow multiple extension IDs (Web Store + local unpacked) ([#499](https://github.com/Auxx-Ai/auxx-ai/issues/499)) ([52be1fe](https://github.com/Auxx-Ai/auxx-ai/commit/52be1fe182eb73c57773299cf9d4f7d4f7e87e64))
+* **favorites:** sidebar favorites with folders, drag-and-drop, inline rename ([#496](https://github.com/Auxx-Ai/auxx-ai/issues/496)) ([d6e4b4e](https://github.com/Auxx-Ai/auxx-ai/commit/d6e4b4ef78abd22ba5b58a56d1bd6fdf8b8a2d7d))
+* **files:** sync folder + drawer state to URL params ([#501](https://github.com/Auxx-Ai/auxx-ai/issues/501)) ([87abd46](https://github.com/Auxx-Ai/auxx-ai/commit/87abd46289db8b9e43c57fb622369022695d4d4a))
+* kopilot LLM-rendered blocks + mail Ignore-from + chat scroll pin ([#504](https://github.com/Auxx-Ai/auxx-ai/issues/504)) ([ed5fabd](https://github.com/Auxx-Ai/auxx-ai/commit/ed5fabdce6dca2d289c9e197437c625cfc19e93b))
+* **kopilot:** dedupe check before create_entity + approval model fix ([#502](https://github.com/Auxx-Ai/auxx-ai/issues/502)) ([5a8754f](https://github.com/Auxx-Ai/auxx-ai/commit/5a8754f9507a54fbde35d8b5d4720eb1352ea3c8))
+* **mail:** enable thread action shortcuts in split view ([#494](https://github.com/Auxx-Ai/auxx-ai/issues/494)) ([28e9409](https://github.com/Auxx-Ai/auxx-ai/commit/28e9409011c26ed0d6cbc849ae6fedac24680270))
+* **sidebar:** unify Mail group with animated collapse sections ([#493](https://github.com/Auxx-Ai/auxx-ai/issues/493)) ([1421887](https://github.com/Auxx-Ai/auxx-ai/commit/1421887918a0910869c063737816f890562cfdb9))
+* timeline canonical recordIds + actor names + FieldType snapshots ([#490](https://github.com/Auxx-Ai/auxx-ai/issues/490)) ([7cfb2de](https://github.com/Auxx-Ai/auxx-ai/commit/7cfb2defbc7e6a5176a01c42373162fd18ac8929))
+
+
+### Bug Fixes
+
+* **auth:** unify OAuth refresh-error handling and surface Workspace RAPT ([#498](https://github.com/Auxx-Ai/auxx-ai/issues/498)) ([2ee4156](https://github.com/Auxx-Ai/auxx-ai/commit/2ee415678882326214f40ab1fa7530ab35475183))
+* **kopilot:** never persist half-pair assistant tool_calls ([#505](https://github.com/Auxx-Ai/auxx-ai/issues/505)) ([7802535](https://github.com/Auxx-Ai/auxx-ai/commit/78025352a5d5fb49c2b7b27e7e7c0191f7c06c6a))
+* **posthog:** strip Cloudflare proxy headers before forwarding ([#492](https://github.com/Auxx-Ai/auxx-ai/issues/492)) ([b5a8861](https://github.com/Auxx-Ai/auxx-ai/commit/b5a8861f282b0b30242943520c7369630e46528a))
+
 ## [0.1.141](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.140...auxx-v0.1.141) (2026-04-26)
 
 
