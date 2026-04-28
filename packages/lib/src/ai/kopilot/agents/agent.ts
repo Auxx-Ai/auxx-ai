@@ -104,24 +104,7 @@ export function createKopilotAgent(
           return msg
         })
 
-      // Drop orphan tool messages: every tool message must follow an assistant
-      // message with a matching tool_calls entry (OpenAI requirement).
-      const validToolCallIds = new Set<string>()
-      const conversationMessages: Message[] = []
-      for (const msg of rawMessages) {
-        if (msg.role === 'assistant' && msg.tool_calls?.length) {
-          for (const tc of msg.tool_calls) validToolCallIds.add(tc.id)
-        }
-        if (msg.role === 'tool') {
-          if (!msg.tool_call_id || !validToolCallIds.has(msg.tool_call_id)) {
-            logger.debug('Dropping orphan tool message', { toolCallId: msg.tool_call_id })
-            continue
-          }
-        }
-        conversationMessages.push(msg)
-      }
-
-      return [{ role: 'system', content: systemPrompt }, ...conversationMessages]
+      return [{ role: 'system', content: systemPrompt }, ...rawMessages]
     },
 
     tools: agentTools,

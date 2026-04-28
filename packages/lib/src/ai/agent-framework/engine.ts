@@ -81,10 +81,14 @@ export class AgentEngine {
       content: userMessage,
       timestamp: Date.now(),
     }
+    // A fresh user message means the user is abandoning whatever was paused.
+    // Drop pendingToolCall (and its assistantMessage) — that branch never
+    // landed in state.messages, so there's nothing else to clean up.
     this.state = {
       ...this.state,
       messages: [...this.state.messages, userMsg],
       waitingForApproval: false,
+      pendingToolCall: undefined,
       approvalsThisTurn: 0,
       turnSnapshots: { records: {}, threads: {}, tasks: {} },
     }
@@ -321,6 +325,7 @@ export class AgentEngine {
         pendingToolCall: undefined,
         messages: [
           ...this.state.messages,
+          pending.assistantMessage,
           {
             role: 'tool' as const,
             content: JSON.stringify(rejectionResult),
@@ -385,6 +390,7 @@ export class AgentEngine {
           approvalsThisTurn: (this.state.approvalsThisTurn ?? 0) + 1,
           messages: [
             ...postHookState.messages,
+            pending.assistantMessage,
             {
               role: 'tool' as const,
               content: toolResultContent,
@@ -414,6 +420,7 @@ export class AgentEngine {
           pendingToolCall: undefined,
           messages: [
             ...this.state.messages,
+            pending.assistantMessage,
             {
               role: 'tool' as const,
               content: JSON.stringify({ error: errorMessage, output: null }),
