@@ -48,13 +48,15 @@ export type {
   LLMInvocationResponse,
   OrchestratorConfig,
   OrchestratorError,
+  Speech2TextInvocationRequest,
+  Speech2TextInvocationResponse,
   ToolExecutionError,
   ToolExecutionResult,
   ToolExecutor,
   UsageTrackingRequest,
 } from './orchestrator'
 // ===== MAIN ORCHESTRATOR =====
-export { LLMOrchestrator } from './orchestrator'
+export { LLMOrchestrator, Speech2TextOrchestrator } from './orchestrator'
 export { AnthropicClient } from './providers/anthropic/anthropic-client'
 // ===== PROVIDER SYSTEM (Existing) =====
 export { ProviderClient } from './providers/base/provider-client'

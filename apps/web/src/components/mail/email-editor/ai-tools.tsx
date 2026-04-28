@@ -12,6 +12,7 @@ import {
   UnfoldVertical,
 } from 'lucide-react'
 import EditorSelector from '~/components/editor/editor-selector'
+import { VoiceInputButton } from '~/components/voice-button'
 import {
   AI_LANG_TYPE_VALUES,
   AI_OPERATION,
@@ -44,6 +45,18 @@ export function AITools({
   onOperation,
   popoverClassName,
 }: AIToolsProps) {
+  const handleVoiceTranscribed = (text: string) => {
+    if (!editor) return
+    const trimmed = text.trim()
+    if (!trimmed) return
+    const needsLeadingSpace = editor.state.selection.$from.parentOffset > 0
+    editor
+      .chain()
+      .focus()
+      .insertContent(needsLeadingSpace ? ` ${trimmed}` : trimmed)
+      .run()
+  }
+
   // Compose button for empty editor
   if (!hasContent) {
     return (
@@ -57,10 +70,14 @@ export function AITools({
           <Sparkles className='text-comparison-500' />
           Compose
         </Button>
+        {/* <VoiceInputButton
+          source='compose'
+          disabled={state.isProcessing}
+          onTranscribed={handleVoiceTranscribed}
+          testMode
+        /> */}
         {!hasPreviousMessages && (
-          <span className='text-xs text-muted-foreground'>
-            No previous messages to base composition on
-          </span>
+          <span className='text-xs text-muted-foreground/50'>No previous msg</span>
         )}
       </div>
     )
@@ -130,6 +147,14 @@ export function AITools({
         <FoldVertical />
         Shorten
       </Button>
+
+      {/* Voice dictation */}
+      {/* <VoiceInputButton
+        source='compose'
+        testMode
+        disabled={state.isProcessing}
+        onTranscribed={handleVoiceTranscribed}
+      /> */}
     </div>
   )
 }

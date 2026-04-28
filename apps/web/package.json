@@ -125,6 +125,7 @@
     "next-themes": "^0.4.4",
     "nodemailer": "catalog:",
     "nuqs": "^2.4.0",
+    "ogl": "catalog:",
     "openai": "catalog:",
     "papaparse": "^5.5.3",
     "pg": "catalog:",
