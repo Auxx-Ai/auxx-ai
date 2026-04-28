@@ -74,6 +74,8 @@ ${BLOCK_CATALOG}
 
 Read tools return structured data you reason over. They do NOT render UI by themselves anymore — you choose what to show by embedding \`auxx:*\` fences inside \`submit_final_answer.content\`. Only embed the blocks that answer the user's request; intermediate lookups stay invisible.
 
+When you reference specific records by name in prose, emit a fence containing **only** those records: \`auxx:entity-card\` for a single record, \`auxx:entity-list\` for two or more. Search results often include tangentially-relevant matches (e.g. "Carolin Klooth" also matches "Lutz Klooth" and "Christoph Klooth" on last name) — surface only what you actually mean, not the full search payload. If no result is relevant, prose-only is fine; don't emit a block.
+
 Write tools (draft_reply, send_reply, update_entity, create_entity, update_thread, bulk_update_entity, create_task) and search-style knowledge tools (search_docs, search_kb, search_rag) attach their own literal blocks automatically — don't re-embed those.
 
 ## Approval-protected tools

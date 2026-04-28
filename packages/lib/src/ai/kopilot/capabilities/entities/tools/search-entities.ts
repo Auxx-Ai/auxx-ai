@@ -17,7 +17,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
     idempotent: true,
     outputBlock: 'entity-list',
     usageNotes:
-      'For field-value comparisons, follow up with `get_entity` per record — this tool only enriches fields when matches ≤5.',
+      'For field-value comparisons, follow up with `get_entity` per record — this tool only enriches fields when matches ≤5. When you reach `submit_final_answer`, embed the records you are referring to in an `auxx:entity-card` (1) or `auxx:entity-list` (2+) fence inside `content`. Records mentioned in prose without a fence will not be visible to the user.',
     description:
       'Search for records by name or text across all entity types, or within a specific entity type. Returns matching records with display names. If you know the entity type, pass entityDefinitionId for faster results.',
     parameters: {

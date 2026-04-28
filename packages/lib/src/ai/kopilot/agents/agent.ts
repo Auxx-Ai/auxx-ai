@@ -10,6 +10,7 @@ import type {
   AgentToolDefinition,
 } from '../../agent-framework/types'
 import type { Message, ToolCall } from '../../clients/base/types'
+import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
 import { createSubmitFinalAnswerTool } from '../meta-tools/submit-final-answer'
 import { buildAgentSystemPrompt, type CurrentUserInfo } from '../prompts/agent-prompt'
 import type { KopilotDomainState } from '../types'
@@ -73,13 +74,23 @@ export function createKopilotAgent(
       )
 
       // Full conversation for tool-loop continuity.
+      // Final-prose assistant messages run through transformAssistantContentForLLM
+      // so `auxx:*` reference fences become numbered text the model can index by
+      // ordinal (e.g. "delete the second one"). Persisted content is unchanged —
+      // this is a per-call view transform.
       const rawMessages: Message[] = state.messages
         .filter((m) => m.role !== 'system')
         .map((m) => {
+          const isAssistantWithTools = m.role === 'assistant' && m.toolCalls?.length
+          const isAssistantFinal = m.role === 'assistant' && !m.toolCalls?.length
+          const content = isAssistantWithTools
+            ? m.content || null
+            : isAssistantFinal
+              ? transformAssistantContentForLLM(m.content || '')
+              : m.content || ''
           const msg: Message = {
             role: m.role as 'user' | 'assistant' | 'tool',
-            content:
-              m.role === 'assistant' && m.toolCalls?.length ? m.content || null : m.content || '',
+            content,
             tool_call_id: m.toolCallId,
             reasoning_content: m.reasoning_content,
           }

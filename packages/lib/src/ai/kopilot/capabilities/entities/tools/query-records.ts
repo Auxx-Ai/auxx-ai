@@ -49,7 +49,7 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
     idempotent: true,
     outputBlock: 'entity-list',
     usageNotes:
-      'Inspect `warnings[]` before trusting the result — each entry means a filter was rejected and dropped. `returned_count` is items in this page, `total_matching` is the full count for the query.',
+      'Inspect `warnings[]` before trusting the result — each entry means a filter was rejected and dropped. `returned_count` is items in this page, `total_matching` is the full count for the query. When you reach `submit_final_answer`, embed the records you are referring to in an `auxx:entity-card` (1) or `auxx:entity-list` (2+) fence inside `content`. Records mentioned in prose without a fence will not be visible to the user.',
     description: `Query entity records with field-level filters, sorting, and pagination.
 Use list_entity_fields first to discover available fields and their valid option values.
 

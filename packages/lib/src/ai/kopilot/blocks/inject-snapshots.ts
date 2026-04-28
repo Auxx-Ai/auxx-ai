@@ -154,13 +154,14 @@ export function buildFallbackFence(
 function buildFenceForBlock(block: ToolOutputBlock, snapshots: TurnSnapshots): string | null {
   switch (block) {
     case 'entity-card':
-    case 'entity-list': {
-      const ids = Object.keys(snapshots.records)
-      if (ids.length === 0) return null
-      const snap: Record<string, unknown> = {}
-      for (const id of ids) snap[id] = snapshots.records[id]
-      return `\`\`\`auxx:entity-list\n${JSON.stringify({ recordIds: ids, snapshot: snap })}\n\`\`\``
-    }
+    case 'entity-list':
+      // Opt-in: the LLM must emit `auxx:entity-card` (single) or
+      // `auxx:entity-list` (multiple) explicitly with the recordIds it
+      // actually wants surfaced. The shared `snapshots.records` pool
+      // accumulates across every record-returning tool in the turn, so
+      // auto-emitting from it re-surfaces tangentially-relevant matches
+      // the LLM filtered out in prose.
+      return null
     case 'thread-list': {
       const ids = Object.keys(snapshots.threads)
       if (ids.length === 0) return null
