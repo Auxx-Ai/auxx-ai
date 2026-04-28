@@ -29,19 +29,10 @@ export type { RelationshipConfig, RelationshipOptions } from './types'
 // Types - unified types from @auxx/database
 // Consolidated field option types (single source of truth)
 export {
-  type CurrencyDisplayType,
-  type CurrencyGroups,
-  type CurrencyOptions,
   canFieldBeUnique,
-  currencyDisplayTypeValues,
-  currencyGroupsValues,
-  // Currency options
-  currencyOptionsSchema,
   DEFAULT_SELECT_OPTION_COLOR,
-  type DecimalPlaces,
   type DisplayOptions,
-  decimalPlacesValues,
-  // Display options (flat structure for NUMBER, DATE, CHECKBOX, etc.)
+  // Display options (flat structure for NUMBER, CURRENCY, DATE, CHECKBOX, etc.)
   displayOptionsSchema,
   type FileOptions,
   // Field options union

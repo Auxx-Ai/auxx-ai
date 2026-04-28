@@ -412,15 +412,18 @@ export function FieldInputAdapter({
     // CURRENCY - uses CurrencyInput with focus wrapper
     // ─────────────────────────────────────────────────────────────────
     case FieldType.CURRENCY: {
-      const currency = fieldOptions?.currency
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
           <CurrencyInput
             {...nodeInputProps}
-            currencyCode={currency?.currencyCode ?? 'USD'}
-            decimalPlaces={currency?.decimalPlaces === 'no-decimal' ? 0 : 2}
-            displayType={currency?.displayType ?? 'symbol'}
-            useGrouping={currency?.groups !== 'no-groups'}
+            currencyCode={fieldOptions?.currencyCode ?? 'USD'}
+            decimals={fieldOptions?.decimals ?? 2}
+            currencyDisplay={
+              fieldOptions?.currencyDisplay === 'compact'
+                ? 'symbol'
+                : (fieldOptions?.currencyDisplay ?? 'symbol')
+            }
+            useGrouping={fieldOptions?.useGrouping ?? true}
           />
         </FocusableInputWrapper>
       )

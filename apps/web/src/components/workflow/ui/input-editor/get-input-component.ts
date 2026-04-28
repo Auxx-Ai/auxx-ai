@@ -73,12 +73,12 @@ export function getInputComponent(type: BaseType, fieldOptions?: FieldOptions) {
 export interface FieldOptions {
   /** For ENUM/SELECT types */
   enum?: Array<{ label: string; value: string }>
-  /** For CURRENCY type */
+  /** For CURRENCY type — flat keys mirror CurrencyFieldOptions */
   currency?: {
     currencyCode?: string
-    decimalPlaces?: number | 'no-decimal'
-    displayType?: string
-    groups?: 'no-groups' | string
+    decimals?: number
+    currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
+    useGrouping?: boolean
   }
   /** For BOOLEAN type - variant */
   variant?: 'button-group' | 'switch'
@@ -194,9 +194,9 @@ export function getSpecificPropsForType(
       const currency = fieldOptions?.currency
       return {
         currencyCode: currency?.currencyCode ?? 'USD',
-        decimalPlaces: currency?.decimalPlaces === 'no-decimal' ? 0 : 2,
-        displayType: currency?.displayType ?? 'symbol',
-        useGrouping: currency?.groups !== 'no-groups',
+        decimals: currency?.decimals ?? 2,
+        currencyDisplay: currency?.currencyDisplay ?? 'symbol',
+        useGrouping: currency?.useGrouping ?? true,
       }
     }
 

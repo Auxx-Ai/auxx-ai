@@ -1,12 +1,7 @@
 // packages/lib/src/custom-fields/field-options.ts
 
 import type { FieldType } from '@auxx/database/types'
-import type {
-  ActorOptions,
-  CurrencyOptions,
-  RelationshipConfig,
-  SelectOptionColor,
-} from '@auxx/types/custom-field'
+import type { ActorOptions, RelationshipConfig, SelectOptionColor } from '@auxx/types/custom-field'
 
 /**
  * Unified field options interface.
@@ -56,9 +51,10 @@ export interface FieldOptions {
   truncateLabel?: boolean
 
   // ─────────────────────────────────────────────────────────────
-  // CURRENCY (nested - existing structure)
+  // CURRENCY (flat — `decimals` and `useGrouping` are shared with NUMBER)
   // ─────────────────────────────────────────────────────────────
-  currency?: CurrencyOptions
+  currencyCode?: string
+  currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
 
   // ─────────────────────────────────────────────────────────────
   // SELECT OPTIONS (nested - normalized with 'value' key for UI)
@@ -192,6 +188,12 @@ export type CalcFieldOptions = Pick<FieldOptions, 'calc'>
 export type NumberFieldOptions = Pick<
   FieldOptions,
   'decimals' | 'useGrouping' | 'displayAs' | 'prefix' | 'suffix'
+>
+
+/** Options for CURRENCY fields */
+export type CurrencyFieldOptions = Pick<
+  FieldOptions,
+  'currencyCode' | 'decimals' | 'useGrouping' | 'currencyDisplay'
 >
 
 /** Options for DATE/DATETIME/TIME fields */

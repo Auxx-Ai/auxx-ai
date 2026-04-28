@@ -353,19 +353,11 @@ export function RecordsView({
       const resourceFieldId = toResourceFieldId(entityDefinitionId!, toFieldId(field.id))
       const columnId = resourceFieldId // Use ResourceFieldId as column ID directly
 
-      // Build default formatting from field options for CURRENCY type
-      const fieldOptions = field.options as { currency?: Record<string, unknown> } | undefined
-      const defaultFormatting =
-        field.fieldType === 'CURRENCY' && fieldOptions?.currency
-          ? { type: 'currency' as const, ...fieldOptions.currency }
-          : undefined
-
       return {
         id: columnId,
         accessorFn: () => undefined, // Not used for display - cells read from store
         header: field.name ?? field.label,
         fieldType: field.fieldType as FieldType,
-        defaultFormatting,
         defaultVisible: field.showInPanel !== false,
         icon: getIconForFieldType(field.fieldType!),
         enableSorting: field.fieldType !== 'RELATIONSHIP' && field.capabilities.sortable !== false,

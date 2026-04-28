@@ -12,7 +12,6 @@ import { checkExistingDuplicates } from './check-unique-value'
 import type { CustomFieldNotFoundError } from './errors'
 import {
   type ActorOptions,
-  type CurrencyOptions,
   canFieldBeUnique,
   type DisplayOptions,
   type FileOptions,
@@ -51,12 +50,11 @@ export interface UpdateCustomFieldInput {
   description?: string
   required?: boolean
   defaultValue?: string
-  /** Field options - select options, file config, currency config, flat
-   *  display options, or an `{ options, ai }` bag for AI-enabled selects. */
+  /** Field options - select options, file config, flat display options
+   *  (incl. CURRENCY), or `{ options, ai }` for AI-enabled selects. */
   options?:
     | SelectOption[]
     | { file: FileOptions }
-    | { currency: CurrencyOptions }
     | { options: SelectOption[]; ai?: AiOptions }
     | (DisplayOptions & { ai?: AiOptions })
   addressComponents?: string[]
@@ -201,12 +199,6 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     if (fieldType === FieldTypeEnum.FILE) {
       if (options !== undefined && !Array.isArray(options) && 'file' in options) {
         fieldOptions.file = options.file
-      }
-    }
-
-    if (fieldType === FieldTypeEnum.CURRENCY) {
-      if (options !== undefined && !Array.isArray(options) && 'currency' in options) {
-        fieldOptions.currency = options.currency
       }
     }
 

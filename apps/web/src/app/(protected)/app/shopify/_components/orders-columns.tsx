@@ -162,7 +162,7 @@ export const columns: ColumnDef<Order>[] = [
       // const label = labels.find((label) => label.value === row.original.label)
       return (
         <div className='flex space-x-2 text-sm'>
-          {formatCurrency(row.original.totalPrice || 0, { decimalPlaces: 'no-decimal' })}
+          {formatCurrency(row.original.totalPrice || 0, { decimals: 0 })}
         </div>
       )
     },

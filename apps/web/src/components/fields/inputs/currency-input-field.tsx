@@ -1,13 +1,13 @@
 // apps/web/src/components/fields/inputs/currency-input-field.tsx
 'use client'
 
+import type { CurrencyFieldOptions } from '@auxx/lib/field-values/client'
 import {
   CurrencyInputField as BaseCurrencyInputField,
   CurrencyInput,
 } from '@auxx/ui/components/input-currency'
 import { InputGroup } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
-import type { CurrencyDisplayOptions } from '@auxx/utils'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useFieldNavigationOptional } from '../field-navigation-context'
 import { usePropertyContext } from '../property-provider'
@@ -40,15 +40,14 @@ export function CurrencyInputField() {
   // Track if we should save on the next value change (set true on blur)
   const shouldSaveRef = useRef(false)
 
-  const options: CurrencyDisplayOptions = useMemo(() => {
-    return (
-      field.options?.currency || {
-        currencyCode: 'USD',
-        decimalPlaces: 'two-places',
-        displayType: 'symbol',
-        groups: 'default',
-      }
-    )
+  const options: Required<CurrencyFieldOptions> = useMemo(() => {
+    const opts = field.options as CurrencyFieldOptions | undefined
+    return {
+      currencyCode: opts?.currencyCode ?? 'USD',
+      decimals: opts?.decimals ?? 2,
+      useGrouping: opts?.useGrouping ?? true,
+      currencyDisplay: opts?.currencyDisplay ?? 'symbol',
+    }
   }, [field.options])
 
   /**
@@ -101,7 +100,8 @@ export function CurrencyInputField() {
       value={value ?? undefined}
       onValueChange={handleValueChange}
       currencyCode={options.currencyCode}
-      decimalPlaces={options.decimalPlaces}
+      currencyDisplay={options.currencyDisplay === 'compact' ? 'symbol' : options.currencyDisplay}
+      decimalPlaces={options.decimals === 0 ? 'no-decimal' : 'two-places'}
       disabled={isSaving}>
       <InputGroup className={cn('h-[27px] ring-0! border-0', isSaving ? 'opacity-70' : '')}>
         {/* <InputGroup> */}

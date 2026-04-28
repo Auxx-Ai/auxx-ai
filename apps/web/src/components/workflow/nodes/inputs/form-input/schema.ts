@@ -39,9 +39,9 @@ const typeOptionsSchema = z
     currency: z
       .object({
         currencyCode: z.string(),
-        decimalPlaces: z.enum(['two-places', 'no-decimal']),
-        displayType: z.enum(['symbol', 'name', 'code']),
-        groups: z.enum(['default', 'no-groups']),
+        decimals: z.number().int().min(0).max(10),
+        currencyDisplay: z.enum(['symbol', 'code', 'name', 'compact']),
+        useGrouping: z.boolean(),
       })
       .optional(),
     address: z

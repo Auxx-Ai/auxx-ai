@@ -77,12 +77,6 @@ import {
   parseCalcOptions,
 } from './calc-editor'
 import {
-  type CurrencyOptions,
-  CurrencyOptionsEditor,
-  formatCurrencyOptions,
-  parseCurrencyOptions,
-} from './currency-options-editor'
-import {
   type FileOptions,
   FileOptionsEditor,
   formatFileOptions,
@@ -90,6 +84,7 @@ import {
 } from './file-options-editor'
 import {
   BooleanFormattingEditor,
+  CurrencyFormattingEditor,
   DateFormattingEditor,
   DateTimeFormattingEditor,
   type DisplayOptions,
@@ -193,7 +188,6 @@ export function CustomFieldDialog({
     relationshipType: 'belongs_to',
     inverseName: '',
   })
-  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOptions>(parseCurrencyOptions())
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({})
   const [showDisplayOptions, setShowDisplayOptions] = useState(false)
   const [showDescription, setShowDescription] = useState(false)
@@ -251,7 +245,6 @@ export function CustomFieldDialog({
     addressComponents: string[]
     fileOptions: FileOptions
     relationshipOptions: RelationshipOptions
-    currencyOptions: CurrencyOptions
     displayOptions: DisplayOptions
     calcOptions: CalcEditorOptions
     actorOptions: ActorFieldOptions
@@ -270,8 +263,6 @@ export function CustomFieldDialog({
       JSON.stringify(fileOptions) !== JSON.stringify(initialExtraState.fileOptions)
     const relationshipChanged =
       JSON.stringify(relationshipOptions) !== JSON.stringify(initialExtraState.relationshipOptions)
-    const currencyChanged =
-      JSON.stringify(currencyOptions) !== JSON.stringify(initialExtraState.currencyOptions)
     const displayOptionsChanged =
       JSON.stringify(displayOptions) !== JSON.stringify(initialExtraState.displayOptions)
     const calcOptionsChanged =
@@ -285,7 +276,6 @@ export function CustomFieldDialog({
       addressChanged ||
       fileChanged ||
       relationshipChanged ||
-      currencyChanged ||
       displayOptionsChanged ||
       calcOptionsChanged ||
       actorOptionsChanged ||
@@ -297,7 +287,6 @@ export function CustomFieldDialog({
     addressComponents,
     fileOptions,
     relationshipOptions,
-    currencyOptions,
     displayOptions,
     calcOptions,
     actorOptions,
@@ -333,7 +322,6 @@ export function CustomFieldDialog({
         relationshipType: 'belongs_to',
         inverseName: '',
       }
-      let initCurrencyOptions: CurrencyOptions = parseCurrencyOptions()
       let initDisplayOptions: DisplayOptions = {}
       let initCalcOptions: CalcEditorOptions = parseCalcOptions()
       let initActorOptions: ActorFieldOptions = getDefaultActorOptions()
@@ -368,9 +356,6 @@ export function CustomFieldDialog({
         // Relationship options: keep create options for create mode only
         // In edit mode, we don't populate relationshipOptions since the editor uses storedConfig
         setRelationshipOptions(initRelationshipOptions)
-
-        initCurrencyOptions = parseCurrencyOptions(editingField.options as FieldOptions)
-        setCurrencyOptions(initCurrencyOptions)
 
         initDisplayOptions = parseDisplayOptions(editingField.options as FieldOptions)
         setDisplayOptions(initDisplayOptions)
@@ -408,7 +393,6 @@ export function CustomFieldDialog({
         setAddressComponents(initAddressComponents)
         setFileOptions(initFileOptions)
         setRelationshipOptions(initRelationshipOptions)
-        setCurrencyOptions(initCurrencyOptions)
         setDisplayOptions(initDisplayOptions)
         setShowDisplayOptions(false)
         setCalcOptions(initCalcOptions)
@@ -424,7 +408,6 @@ export function CustomFieldDialog({
         addressComponents: initAddressComponents,
         fileOptions: initFileOptions,
         relationshipOptions: initRelationshipOptions,
-        currencyOptions: initCurrencyOptions,
         displayOptions: initDisplayOptions,
         calcOptions: initCalcOptions,
         actorOptions: initActorOptions,
@@ -477,9 +460,15 @@ export function CustomFieldDialog({
       if (!canFieldBeUnique(selectedType, relationshipOptions.relationshipType)) {
         form.setValue('isUnique', false)
       }
-      // Reset displayOptions and close panel when type changes
-      setDisplayOptions({})
-      setShowDisplayOptions(false)
+      // Reset displayOptions and close panel when type changes.
+      // CURRENCY seeds with USD/2-decimal defaults so the field saves with a
+      // currencyCode even if the user never opens the Display Options panel.
+      setDisplayOptions(
+        selectedType === FieldType.CURRENCY
+          ? { currencyCode: 'USD', decimals: 2, useGrouping: true, currencyDisplay: 'symbol' }
+          : {}
+      )
+      setShowDisplayOptions(selectedType === FieldType.CURRENCY)
     }
     // Drop AI options if the new type isn't AI-eligible — applies in both
     // create and edit modes so a TEXT→CALC switch can't leave a stranded
@@ -519,10 +508,6 @@ export function CustomFieldDialog({
         // Edit mode: include inverse name for updating the inverse field
         submitObj.inverseName = inverseName
       }
-    }
-
-    if (values.type === FieldType.CURRENCY) {
-      submitObj.options = formatCurrencyOptions(currencyOptions)
     }
 
     if (values.type === FieldType.CALC) {
@@ -599,7 +584,6 @@ export function CustomFieldDialog({
           relationshipType: 'belongs_to',
           inverseName: '',
         })
-        setCurrencyOptions(parseCurrencyOptions())
         setDisplayOptions({})
         setShowDisplayOptions(false)
         setCalcOptions(parseCalcOptions())
@@ -652,8 +636,6 @@ export function CustomFieldDialog({
             onNameChange={(v) => form.setValue('name', v)}
           />
         )
-      case FieldType.CURRENCY:
-        return <CurrencyOptionsEditor options={currencyOptions} onChange={setCurrencyOptions} />
       case FieldType.CALC:
         return (
           <CalcFieldEditor
@@ -681,6 +663,7 @@ export function CustomFieldDialog({
   const supportsDisplayOptions = (type: FieldTypeType): boolean => {
     return [
       FieldType.NUMBER,
+      FieldType.CURRENCY,
       FieldType.DATE,
       FieldType.DATETIME,
       FieldType.TIME,
@@ -694,6 +677,13 @@ export function CustomFieldDialog({
     switch (selectedType) {
       case FieldType.NUMBER:
         return <NumberFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
+      case FieldType.CURRENCY:
+        return (
+          <CurrencyFormattingEditor
+            options={displayOptions}
+            onChange={(opts) => setDisplayOptions((prev) => ({ ...prev, ...opts }))}
+          />
+        )
       case FieldType.DATE:
         return <DateFormattingEditor options={displayOptions} onChange={setDisplayOptions} />
       case FieldType.DATETIME:

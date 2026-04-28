@@ -17,10 +17,6 @@ import { memo, useMemo } from 'react'
 import { type CellConfig, renderCellValue } from '~/components/dynamic-table'
 import { useField } from '~/components/resources/hooks/use-field'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
-import { ItemsCellView } from '~/components/ui/items-list-view'
-
-/** Field types that already handle array values internally */
-const MULTI_VALUE_FIELD_TYPES = new Set(['TAGS', 'MULTI_SELECT', 'RELATIONSHIP', 'ITEMS'])
 
 interface RecordHoverCardFieldProps {
   recordId: RecordId
@@ -61,10 +57,7 @@ export const RecordHoverCardField = memo(function RecordHoverCardField({
     ? (fieldTypeOptions[fieldType as FieldType]?.iconId ?? 'circle')
     : 'circle'
   const type = fieldType ?? 'TEXT'
-  const config: CellConfig = { options: field?.options }
-
-  const isArrayValue = Array.isArray(value)
-  const fieldHandlesArrays = MULTI_VALUE_FIELD_TYPES.has(type)
+  const config: CellConfig = { options: field?.options, disableNestedHoverCard: true }
 
   return (
     <div className={cn('flex items-center gap-2 text-xs', className)}>
@@ -72,15 +65,8 @@ export const RecordHoverCardField = memo(function RecordHoverCardField({
         <EntityIcon iconId={iconId} variant='default' size='xs' />
         <span className='truncate'>{field?.label ?? ''}</span>
       </div>
-      <div className='min-w-0 flex-1 truncate [&_[data-slot=expandable-cell]]:min-h-0'>
-        {isArrayValue && !fieldHandlesArrays && value.length > 0 ? (
-          <ItemsCellView
-            items={value.map((v: unknown, i: number) => ({ id: String(i), value: v }))}
-            renderItem={(item) => renderCellValue(item.value, type, undefined, config)}
-          />
-        ) : (
-          renderCellValue(value, type, undefined, config)
-        )}
+      <div className='min-w-0 flex flex-1 truncate [&_[data-slot=expandable-cell]]:min-h-7'>
+        {renderCellValue(value, type, undefined, config)}
       </div>
     </div>
   )

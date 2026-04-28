@@ -5,19 +5,10 @@ export {
   type ActorOptions,
   // Actor options
   actorOptionsSchema,
-  type CurrencyDisplayType,
-  type CurrencyGroups,
-  type CurrencyOptions,
   canFieldBeUnique,
-  currencyDisplayTypeValues,
-  currencyGroupsValues,
-  // Currency options
-  currencyOptionsSchema,
   DEFAULT_SELECT_OPTION_COLOR,
-  type DecimalPlaces,
   type DisplayOptions,
-  decimalPlacesValues,
-  // Display options (flat structure for NUMBER, DATE, CHECKBOX, etc.)
+  // Display options (flat structure for NUMBER, CURRENCY, DATE, CHECKBOX, etc.)
   displayOptionsSchema,
   FIELD_TYPE_DISPLAY_OPTIONS,
   type FileOptions,

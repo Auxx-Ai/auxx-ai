@@ -211,12 +211,10 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a6',
     nullable: true,
     options: {
-      currency: {
-        currencyCode: 'USD',
-        decimalPlaces: 'two-places',
-        displayType: 'symbol',
-        groups: 'default',
-      },
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
     },
     capabilities: {
       filterable: true,
@@ -239,12 +237,10 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a6a',
     nullable: true,
     options: {
-      currency: {
-        currencyCode: 'USD',
-        decimalPlaces: 'two-places',
-        displayType: 'symbol',
-        groups: 'default',
-      },
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
     },
     capabilities: {
       filterable: true,

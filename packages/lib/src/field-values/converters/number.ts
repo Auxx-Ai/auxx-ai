@@ -167,15 +167,17 @@ export const currencyConverter: FieldValueConverter = {
       return ''
     }
 
-    // Merge defaults with provided options (nested currency object)
+    // Merge defaults with provided options (flat keys on field.options)
     const opts = {
-      ...DEFAULT_CURRENCY_OPTIONS,
-      currency: { ...DEFAULT_CURRENCY_OPTIONS.currency, ...options?.currency },
+      currencyCode: options?.currencyCode ?? DEFAULT_CURRENCY_OPTIONS.currencyCode,
+      decimals: options?.decimals ?? DEFAULT_CURRENCY_OPTIONS.decimals,
+      useGrouping: options?.useGrouping ?? DEFAULT_CURRENCY_OPTIONS.useGrouping,
+      currencyDisplay: options?.currencyDisplay ?? DEFAULT_CURRENCY_OPTIONS.currencyDisplay,
     }
 
     // formatCurrency expects cents, so convert dollars to cents
     const cents = Math.round(num * 100)
 
-    return formatCurrency(cents, opts.currency)
+    return formatCurrency(cents, opts)
   },
 }

@@ -11,9 +11,9 @@ import { conditionGroupSchema } from './schema'
 export const currencyFormattingSchema = z.object({
   type: z.literal('currency'),
   currencyCode: z.string().optional(),
-  decimalPlaces: z.enum(['two-places', 'no-decimal']).optional(),
-  displayType: z.enum(['symbol', 'name', 'code']).optional(),
-  groups: z.enum(['default', 'no-groups']).optional(),
+  decimals: z.number().int().min(0).max(10).optional(),
+  useGrouping: z.boolean().optional(),
+  currencyDisplay: z.enum(['symbol', 'code', 'name', 'compact']).optional(),
 })
 
 /** Date formatting schema */
