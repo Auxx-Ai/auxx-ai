@@ -107,6 +107,10 @@ export function KopilotMessageList({
   const [inflateLast, setInflateLast] = useState(() => messages.length <= 1)
   const [pinTick, setPinTick] = useState(0)
   const pinBehaviorRef = useRef<ScrollBehavior>('smooth')
+  // Sentinel placed after the last meaningful child of the last turn group.
+  // Used to compute "at bottom" relative to the actual content end, not the
+  // bottom of the inflated empty space.
+  const contentEndRef = useRef<HTMLDivElement | null>(null)
   const lastUserIdRef = useRef<string | null>(null)
   const prevLenRef = useRef(0)
   const sessionMountedRef = useRef(false)
@@ -127,6 +131,31 @@ export function KopilotMessageList({
 
   const groups = useMemo(() => groupTurns(visibleMessages), [visibleMessages])
   const showEmptyState = messages.length === 0 && !isStreaming
+
+  /**
+   * Distance from the viewport bottom to the sentinel placed at the end of
+   * meaningful content. Positive = sentinel is below the viewport (more
+   * content to scroll down to). Negative or near-zero = caught up.
+   * Returns null when sentinel/viewport refs aren't ready yet.
+   */
+  const measureContentEndDistance = useCallback((): number | null => {
+    const sentinel = contentEndRef.current
+    if (!sentinel || !viewportEl) return null
+    const sentinelRect = sentinel.getBoundingClientRect()
+    const viewportRect = viewportEl.getBoundingClientRect()
+    return sentinelRect.bottom - viewportRect.bottom
+  }, [viewportEl])
+
+  const updateBottomState = useCallback(() => {
+    const distance = measureContentEndDistance()
+    if (distance === null) {
+      isAtBottom.current = true
+      setShowScrollDown(false)
+      return
+    }
+    isAtBottom.current = distance <= 20
+    setShowScrollDown(distance > 20)
+  }, [measureContentEndDistance])
 
   // Track scroll position + observe viewport size; keyed on the actual node.
   useEffect(() => {
@@ -151,9 +180,7 @@ export function KopilotMessageList({
     ro.observe(viewportEl)
 
     const onScroll = () => {
-      const distance = viewportEl.scrollHeight - viewportEl.scrollTop - viewportEl.clientHeight
-      isAtBottom.current = distance < 20
-      setShowScrollDown(distance >= 20)
+      updateBottomState()
     }
     viewportEl.addEventListener('scroll', onScroll, { passive: true })
 
@@ -165,7 +192,7 @@ export function KopilotMessageList({
       ro.disconnect()
       viewportEl.removeEventListener('scroll', onScroll)
     }
-  }, [viewportEl])
+  }, [viewportEl, updateBottomState])
 
   // Follow the stream: stay pinned to bottom while content grows, if user was at bottom.
   // messages/streamingContent are trigger-only deps — we don't read them inside.
@@ -175,9 +202,8 @@ export function KopilotMessageList({
     if (isAtBottom.current) {
       viewportEl.scrollTop = viewportEl.scrollHeight
     }
-    const distance = viewportEl.scrollHeight - viewportEl.scrollTop - viewportEl.clientHeight
-    setShowScrollDown(distance >= 20)
-  }, [messages, streamingContent, viewportEl])
+    updateBottomState()
+  }, [messages, streamingContent, viewportEl, updateBottomState])
 
   // Deflate when switching sessions (not on initial mount). activeSessionId
   // is intentionally a trigger-only dep — we don't read it inside the effect.
@@ -371,6 +397,7 @@ export function KopilotMessageList({
                 {isLast && isStreaming && streamingContent && (
                   <AssistantMessage streamingContent={streamingContent} />
                 )}
+                {isLast && <div ref={contentEndRef} aria-hidden className='h-0 w-0' />}
               </div>
             )
           })}
@@ -391,6 +418,7 @@ export function KopilotMessageList({
                 </div>
               )}
               {streamingContent && <AssistantMessage streamingContent={streamingContent} />}
+              <div ref={contentEndRef} aria-hidden className='h-0 w-0' />
             </div>
           )}
         </div>

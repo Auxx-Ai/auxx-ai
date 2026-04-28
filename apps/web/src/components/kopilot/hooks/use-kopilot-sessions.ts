@@ -152,9 +152,11 @@ export function useLoadSession() {
       // stays contiguous — each visible message's parent is the previous visible message.
       const visibleMessages = messages.filter((m) => !isExecutorAssistant(m))
 
-      // Reconstruct approval card from persisted domainState when session is
-      // still waiting for user approval (the approval message is frontend-only
-      // and not stored in engine messages).
+      // Reconstruct the pending-approval state from persisted domainState. The
+      // engine no longer stores the assistant-with-tool_calls message in
+      // messages[] while paused (kept on _pendingToolCall.assistantMessage so
+      // the persisted array is always provider-valid), so we re-emit the
+      // assistant bubble here, followed by the approval card.
       const domainState = (data as any).domainState as Record<string, unknown> | undefined
       if (domainState?._waitingForApproval && domainState?._pendingToolCall) {
         const ptc = domainState._pendingToolCall as {
@@ -162,7 +164,32 @@ export function useLoadSession() {
           toolName: string
           agentName: string
           args: Record<string, unknown>
+          assistantMessage?: {
+            content?: string
+            toolCalls?: unknown[]
+            reasoning_content?: string
+            timestamp?: number
+            metadata?: Record<string, unknown>
+          }
         }
+
+        if (ptc.assistantMessage) {
+          const am = ptc.assistantMessage
+          const assistantBubble: KopilotMessage = {
+            id: generateId(),
+            role: 'assistant',
+            content: am.content ?? '',
+            timestamp: am.timestamp ?? Date.now(),
+            parentId:
+              visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1]!.id : null,
+            metadata: am.metadata,
+            toolCalls: am.toolCalls as KopilotMessage['toolCalls'],
+          }
+          if (!isExecutorAssistant(assistantBubble)) {
+            visibleMessages.push(assistantBubble)
+          }
+        }
+
         visibleMessages.push({
           id: generateId(),
           role: 'system',

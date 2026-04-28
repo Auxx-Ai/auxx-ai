@@ -182,6 +182,13 @@ export interface PendingToolCall {
   toolName: string
   agentName: string
   args: Record<string, unknown>
+  /**
+   * The assistant message that emitted this tool_call. Held here (NOT in
+   * state.messages) until the approval resolves, so the persisted messages
+   * array can never contain a dangling assistant tool_call. On resume, the
+   * engine appends this together with the tool result as one atomic pair.
+   */
+  assistantMessage: SessionMessage
 }
 
 /** Runtime state passed through the agent pipeline */

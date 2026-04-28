@@ -261,7 +261,9 @@ export async function* agentQueryLoop(
           missingParams,
         })
         // Persist the assistant message + synthetic error tool result so the LLM
-        // can retry with complete args on the next iteration.
+        // can retry with complete args on the next iteration. toolCalls is
+        // rewritten to [approvalTool] so sibling auto-tool calls in the same
+        // response can't dangle (we only synthesize a result for approvalTool).
         const errorContent = JSON.stringify({
           error: `Missing required parameters: ${missingParams.join(', ')}. Please provide all required parameters.`,
           output: null,
@@ -273,7 +275,7 @@ export async function* agentQueryLoop(
             {
               role: 'assistant' as const,
               content,
-              toolCalls,
+              toolCalls: [approvalTool],
               reasoning_content: reasoningContent || undefined,
               timestamp: Date.now(),
               metadata: {
@@ -299,23 +301,22 @@ export async function* agentQueryLoop(
         tool: approvalTool.function.name,
       })
 
-      // Persist the assistant message carrying the tool_call so session restore
-      // has the correct conversation shape. No fake tool result — state.pendingToolCall
-      // is the single source of truth for pending approvals.
+      // Hold the assistant message on pendingToolCall instead of pushing it
+      // into state.messages. The engine re-appends it atomically with the
+      // tool result on resume, so state.messages is always provider-valid.
+      // toolCalls is rewritten to [approvalTool] because the loop never
+      // executes sibling auto-tool calls in the same response — including
+      // them would create dangling tool_call_ids on resume.
       const assistantMessage = {
         role: 'assistant' as const,
         content,
-        toolCalls,
+        toolCalls: [approvalTool],
         reasoning_content: reasoningContent || undefined,
         timestamp: Date.now(),
         metadata: {
           agent: agent.name,
           modelId: `${callParams.provider}:${callParams.model}`,
         },
-      }
-      currentState = {
-        ...currentState,
-        messages: [...currentState.messages, assistantMessage],
       }
 
       yield {
@@ -335,6 +336,7 @@ export async function* agentQueryLoop(
           toolName: approvalTool.function.name,
           agentName: agent.name,
           args: approvalArgs,
+          assistantMessage,
         },
       }
       break
