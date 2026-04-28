@@ -21,11 +21,15 @@ export interface UpdateEntityInstanceParams {
 export async function updateEntityInstance(params: UpdateEntityInstanceParams) {
   const { id, organizationId, data } = params
 
+  const now = new Date()
   const updateData: Record<string, unknown> = {
-    updatedAt: new Date(),
+    updatedAt: now,
   }
   if ('archivedAt' in data) {
     updateData.archivedAt = data.archivedAt
+    // Archive/restore is meaningful activity — advance lastActivityAt so the
+    // staleness scanner doesn't flag a freshly-restored entity as stale.
+    updateData.lastActivityAt = now
   }
 
   const dbResult = await fromDatabase(

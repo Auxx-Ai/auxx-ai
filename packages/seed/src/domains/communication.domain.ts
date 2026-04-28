@@ -140,9 +140,14 @@ export class CommunicationDomain {
       `  📊 Participants: ${customerParticipants.length} customers, ${supportParticipants.length} support agents`
     )
 
-    // Get ticket entity instances for thread-ticket linking
+    // Get ticket entity instances for thread-ticket linking. Returns the
+    // EntityDefinition.id alongside the instance id so we can populate the
+    // new (definitionId, instanceId) pair on Thread.
     const ticketInstances = await db
-      .select({ id: schema.EntityInstance.id })
+      .select({
+        id: schema.EntityInstance.id,
+        entityDefinitionId: schema.EntityInstance.entityDefinitionId,
+      })
       .from(schema.EntityInstance)
       .innerJoin(
         schema.EntityDefinition,
@@ -187,9 +192,9 @@ export class CommunicationDomain {
       }
 
       // Link ~60% of threads to tickets (round-robin across available tickets)
-      const ticketId =
+      const ticketLink =
         ticketInstances.length > 0 && i % 5 < 3
-          ? ticketInstances[i % ticketInstances.length]!.id
+          ? ticketInstances[i % ticketInstances.length]!
           : undefined
 
       threadRows.push({
@@ -206,7 +211,12 @@ export class CommunicationDomain {
         lastMessageAt: lastMessageAt[i],
         inboxId: inboxIds[i],
         metadata: metadata[i],
-        ...(ticketId ? { ticketId } : {}),
+        ...(ticketLink
+          ? {
+              primaryEntityInstanceId: ticketLink.id,
+              primaryEntityDefinitionId: ticketLink.entityDefinitionId,
+            }
+          : {}),
       })
     }
 
@@ -224,9 +234,11 @@ export class CommunicationDomain {
             messageCount: sql`excluded."messageCount"`,
           },
         })
-      const linkedCount = threadRows.filter((r: any) => r.ticketId).length
+      const linkedCount = threadRows.filter((r: any) => r.primaryEntityInstanceId).length
       const uniqueTickets = new Set(
-        threadRows.filter((r: any) => r.ticketId).map((r: any) => r.ticketId)
+        threadRows
+          .filter((r: any) => r.primaryEntityInstanceId)
+          .map((r: any) => r.primaryEntityInstanceId)
       ).size
       console.log(
         `✅ Upserted ${threadRows.length} threads (${linkedCount} linked to ${uniqueTickets} tickets)`

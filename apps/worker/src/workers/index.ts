@@ -139,6 +139,22 @@ export async function setupSchedules() {
     }
   )
 
+  // Task deadline scanner — every minute (catches up automatically on the
+  // first tick after a worker outage; idempotent via Task.firedAt).
+  await maintenanceQueue.upsertJobScheduler(
+    'taskDeadlineScannerJob',
+    { pattern: '* * * * *' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 30000 },
+        priority: 5,
+        removeOnComplete: { count: 60 },
+        removeOnFail: { count: 100 },
+      },
+    }
+  )
+
   // Every day at 8 AM
   await maintenanceQueue.upsertJobScheduler(
     'requestDocumentSuggestionsJob',

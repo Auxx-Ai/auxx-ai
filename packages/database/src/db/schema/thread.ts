@@ -14,6 +14,7 @@ import {
   uniqueIndex,
 } from './_shared'
 import { Comment } from './comment'
+import { EntityDefinition } from './entity-definition'
 import { EntityInstance } from './entity-instance'
 import { Integration } from './integration'
 import { Message } from './message'
@@ -60,8 +61,19 @@ export const Thread = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
-    /** Ticket EntityInstance this thread is linked to (one ticket per thread) */
-    ticketId: text().references((): AnyPgColumn => EntityInstance.id, {
+    /**
+     * Primary EntityInstance this thread is linked to (deal, ticket, lead, etc.).
+     * Replaces the legacy ticket-only `ticketId` column.
+     */
+    primaryEntityInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    /**
+     * Denormalized definition of {@link primaryEntityInstanceId} (always read from
+     * the EntityInstance, never trusted from caller input — see links.service.ts).
+     */
+    primaryEntityDefinitionId: text().references((): AnyPgColumn => EntityDefinition.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
@@ -104,7 +116,17 @@ export const Thread = pgTable(
       table.id.desc().nullsFirst()
     ),
     index('Thread_inboxId_idx').using('btree', table.inboxId.asc().nullsLast()),
-    index('Thread_ticketId_idx').using('btree', table.ticketId.asc().nullsLast()),
+    index('Thread_organizationId_primaryEntityInstanceId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.primaryEntityInstanceId.asc().nullsLast()
+    ),
+    index('Thread_organizationId_primaryEntityDefinitionId_lastMessageAt_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.primaryEntityDefinitionId.asc().nullsLast(),
+      table.lastMessageAt.desc().nullsFirst()
+    ),
   ]
 )
 

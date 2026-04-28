@@ -152,6 +152,11 @@ export { productWebhookJob } from './shopify/product-webhook-job'
 export { type SyncCustomersJobProps, syncCustomersJob } from './shopify/sync-customers-job'
 export { type SyncOrdersJobProps, syncOrdersJob } from './shopify/sync-orders-job'
 export { type SyncProductsJobProps, syncProductsJob } from './shopify/sync-products-job'
+// Tasks
+export {
+  type TaskDeadlineScannerJobData,
+  taskDeadlineScannerJob,
+} from './tasks/task-deadline-scanner-job'
 // Job context types
 export type { JobContext, JobHandler, LegacyJobHandler } from './types'
 // Webhooks

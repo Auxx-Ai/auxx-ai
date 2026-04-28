@@ -109,8 +109,17 @@ export interface ThreadMeta {
   /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null if unassigned */
   inboxId: RecordId | null
 
-  /** Ticket EntityInstance ID this thread is linked to, or null */
+  /**
+   * @deprecated Use `primaryEntity` instead. Surfaced for backwards compat:
+   * non-null only when the thread's primary entity happens to be a Ticket.
+   */
   ticketId: RecordId | null
+
+  /**
+   * Primary EntityInstance linked to this thread (deal, ticket, lead, …) or
+   * null. Replaces the legacy ticket-only `ticketId` on the storage side.
+   */
+  primaryEntity: RecordId | null
 
   // External ID for chat threads (e.g., Facebook conversation ID)
   externalId: string | null

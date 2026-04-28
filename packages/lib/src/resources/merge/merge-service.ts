@@ -5,6 +5,7 @@ import type { FieldType } from '@auxx/database/types'
 import { getFieldId, isFieldPath, toResourceFieldIds } from '@auxx/types/field'
 import { TRPCError } from '@trpc/server'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { touchEntityActivity } from '../../entity-instances/activity'
 import { formatToRawValue } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { invalidateSnapshots } from '../../snapshot'
@@ -112,6 +113,9 @@ export class EntityMergeService {
 
       // 7. Archive sources
       await this.archiveSourceInstances(tx, sourceIds)
+
+      // Merge is meaningful activity on the target — surface it for staleness scanners.
+      await touchEntityActivity([targetId], this.organizationId, new Date(), tx)
 
       return {
         mergedRecordId: targetRecordId,

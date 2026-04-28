@@ -39,7 +39,10 @@ export async function buildPlaceholderContextForThread(
   const [thread, participant, entityDefs] = await Promise.all([
     threadId
       ? db
-          .select({ ticketId: schema.Thread.ticketId })
+          .select({
+            primaryEntityInstanceId: schema.Thread.primaryEntityInstanceId,
+            primaryEntityDefinitionId: schema.Thread.primaryEntityDefinitionId,
+          })
           .from(schema.Thread)
           .where(
             and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId))
@@ -64,7 +67,8 @@ export async function buildPlaceholderContextForThread(
     getOrgCache().get(organizationId, 'entityDefs'),
   ])
 
-  const ticketId = thread?.ticketId ?? undefined
+  const primaryInstanceId = thread?.primaryEntityInstanceId ?? undefined
+  const primaryDefinitionId = thread?.primaryEntityDefinitionId ?? undefined
   const contactEntityInstanceId = participant?.entityInstanceId ?? undefined
 
   const recordIdsByRoot = new Map<string, RecordId>()
@@ -78,9 +82,13 @@ export async function buildPlaceholderContextForThread(
   }
 
   // Cuid-rooted EntityDefinitions — the picker emits tokens keyed by
-  // `EntityDefinition.id`, not by entityType slug.
-  if (ticketId && entityDefs.ticket) {
-    recordIdsByRoot.set(entityDefs.ticket, toRecordId('ticket', ticketId))
+  // `EntityDefinition.id`, not by entityType slug. The legacy ticket-only
+  // shim continues to work whenever the primary entity happens to be a Ticket.
+  if (primaryInstanceId && primaryDefinitionId) {
+    recordIdsByRoot.set(primaryDefinitionId, toRecordId(primaryDefinitionId, primaryInstanceId))
+    if (entityDefs.ticket && primaryDefinitionId === entityDefs.ticket) {
+      recordIdsByRoot.set(entityDefs.ticket, toRecordId('ticket', primaryInstanceId))
+    }
   }
   if (contactEntityInstanceId && entityDefs.contact) {
     recordIdsByRoot.set(entityDefs.contact, toRecordId('contact', contactEntityInstanceId))

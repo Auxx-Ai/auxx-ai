@@ -282,6 +282,7 @@ export const notificationType = pgEnum('NotificationType', [
   'WORKFLOW_APPROVAL_REQUIRED',
   'WORKFLOW_APPROVAL_REMINDER',
   'WORKFLOW_APPROVAL_COMPLETED',
+  'TASK_DEADLINE',
 ])
 export const orderAddressType = pgEnum('ORDER_ADDRESS_TYPE', ['SHIPPING', 'BILLING'])
 export const orderCancelReason = pgEnum('ORDER_CANCEL_REASON', [

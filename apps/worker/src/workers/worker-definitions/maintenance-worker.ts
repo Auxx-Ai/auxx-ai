@@ -24,6 +24,7 @@ import {
   sendTrialConversionEmailsJob,
   storageCleanupJob,
   stripeSubscriptionSyncJob,
+  taskDeadlineScannerJob,
   thumbnailCleanupJob,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
@@ -131,6 +132,9 @@ const jobMappings = {
 
   // Storage cleanup (on-demand, enqueued by disconnect/delete flows)
   storageCleanupJob,
+
+  // Task deadline scanner (every minute via upsertJobScheduler)
+  taskDeadlineScannerJob,
 }
 
 export function startMaintenanceWorker() {
