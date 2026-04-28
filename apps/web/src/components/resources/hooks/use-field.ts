@@ -1,6 +1,7 @@
 // apps/web/src/components/resources/hooks/use-field.ts
 
 import type { FieldType } from '@auxx/database/types'
+import { getEffectiveFieldType } from '@auxx/lib/custom-fields/client'
 import type { Resource, ResourceField } from '@auxx/lib/resources/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { type ResourceFieldId, toFieldId, toResourceFieldId } from '@auxx/types/field'
@@ -74,15 +75,9 @@ export function useField(
   // Add effectiveFieldType for CALC fields
   return useMemo(() => {
     if (!field) return undefined
-
-    const effectiveFieldType =
-      field.fieldType === 'CALC'
-        ? ((field.options?.calc?.resultFieldType as FieldType) ?? 'TEXT')
-        : field.fieldType
-
     return {
       ...field,
-      effectiveFieldType,
+      effectiveFieldType: getEffectiveFieldType(field),
     }
   }, [field])
 }

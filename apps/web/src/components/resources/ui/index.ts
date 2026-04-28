@@ -2,6 +2,7 @@
 
 export { ActorBadge, actorBadgeVariants } from './actor-badge'
 export { AvatarUploadIcon } from './avatar-upload-icon'
+export { FieldBadge } from './field-badge'
 export {
   RecordBadge,
   type RecordBadgeHoverCardConfig,

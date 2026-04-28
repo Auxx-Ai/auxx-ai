@@ -72,7 +72,7 @@ export const RecordHoverCardField = memo(function RecordHoverCardField({
         <EntityIcon iconId={iconId} variant='default' size='xs' />
         <span className='truncate'>{field?.label ?? ''}</span>
       </div>
-      <div className='min-w-0 flex-1 truncate'>
+      <div className='min-w-0 flex-1 truncate [&_[data-slot=expandable-cell]]:min-h-0'>
         {isArrayValue && !fieldHandlesArrays && value.length > 0 ? (
           <ItemsCellView
             items={value.map((v: unknown, i: number) => ({ id: String(i), value: v }))}

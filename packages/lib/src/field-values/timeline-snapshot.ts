@@ -14,6 +14,7 @@ import {
   getCachedResources,
   type OrgMemberInfo,
 } from '../cache'
+import { getEffectiveFieldType } from '../custom-fields/calc'
 import type { Resource as CachedResource } from '../resources/registry/types'
 import {
   TIMELINE_SNAPSHOT_ARRAY_LIMIT,
@@ -429,12 +430,7 @@ function buildSnapshotSingle(
 ): TimelineFieldChangeSnapshot | null {
   // CALC fields are persisted under the resolved sub-type so the renderer
   // never branches on `'CALC'`. Resolve once up front.
-  const rawType = field.type as FieldType
-  const fieldType: FieldType =
-    rawType === 'CALC'
-      ? (((field.options as { calc?: { resultFieldType?: string } } | null)?.calc
-          ?.resultFieldType as FieldType | undefined) ?? 'TEXT')
-      : rawType
+  const fieldType: FieldType = getEffectiveFieldType(field)
 
   switch (fieldType) {
     case 'TEXT':

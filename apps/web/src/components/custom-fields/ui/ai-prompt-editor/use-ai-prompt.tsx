@@ -12,7 +12,7 @@ import {
   createInlinePickerExtension,
   type InlinePickerState,
 } from '~/components/editor/inline-picker'
-import { FieldBadge } from '../calc-editor/field-badge'
+import { FieldBadge } from '~/components/resources/ui'
 
 /**
  * An empty TipTap document. Used as the default when no prompt is set so
@@ -28,8 +28,8 @@ export interface UseAiPromptOptions {
   initialPrompt?: RichReferencePrompt | null
   /** Fires on every content change with the canonical TipTap doc. */
   onChange?: (prompt: RichReferencePrompt, referencedFieldIds: string[]) => void
-  /** Used by `FieldBadge` to resolve field labels inside the editor. */
-  availableFields: Array<{ key: string; label: string; type: string }>
+  /** Entity context — used by `FieldBadge` to resolve plain-FieldId references. */
+  entityDefinitionId: string
   /** Placeholder text for empty editor. */
   placeholder?: string
 }
@@ -49,21 +49,16 @@ const closedSuggestionState: InlinePickerState = {
 export function useAiPrompt({
   initialPrompt,
   onChange,
-  availableFields,
+  entityDefinitionId,
   placeholder = 'Type { to insert a field, e.g., "Write a one-line intro for {fullName} who works at {company}."',
 }: UseAiPromptOptions) {
   const [suggestionState, setSuggestionState] = useState<InlinePickerState>(closedSuggestionState)
   const onChangeRef = useRef(onChange)
   const suggestionRangeRef = useRef<{ from: number; to: number } | null>(null)
-  const availableFieldsRef = useRef(availableFields)
 
   useEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
-
-  useEffect(() => {
-    availableFieldsRef.current = availableFields
-  }, [availableFields])
 
   useEffect(() => {
     suggestionRangeRef.current = suggestionState.range
@@ -98,10 +93,10 @@ export function useAiPrompt({
           inputRules: [{ find: /\{([\w-]+)\}$/, getId: (match) => match[1]! }],
         },
         ({ id, selected }) => (
-          <FieldBadge id={id} selected={selected} availableFields={availableFieldsRef.current} />
+          <FieldBadge id={id} entityDefinitionId={entityDefinitionId} selected={selected} />
         )
       ),
-    []
+    [entityDefinitionId]
   )
 
   const editorConfig = useMemo(

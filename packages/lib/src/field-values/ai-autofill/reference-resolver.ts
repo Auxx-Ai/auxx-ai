@@ -1,13 +1,27 @@
 // packages/lib/src/field-values/ai-autofill/reference-resolver.ts
 
 import type { FieldType } from '@auxx/database/types'
-import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
-import { toResourceFieldId } from '@auxx/types/field'
-import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import {
+  type FieldPath,
+  fieldRefToKey,
+  getFieldId,
+  isFieldPath,
+  isPlainFieldId,
+  isResourceFieldId,
+  keyToFieldRef,
+  type ResourceFieldId,
+  toFieldId,
+  toResourceFieldId,
+} from '@auxx/types/field'
+import { isRecordId, parseRecordId, type RecordId } from '@auxx/types/resource'
 import { isAiField } from '../../custom-fields/ai'
 import { BadRequestError } from '../../errors'
-import type { FieldValueContext } from '../field-value-helpers'
-import { getField } from '../field-value-helpers'
+import { resolveCalcForRecord } from '../calc-resolver'
+import {
+  batchGetRelatedDisplayNames,
+  type FieldValueContext,
+  getField,
+} from '../field-value-helpers'
 import * as queries from '../field-value-queries'
 import { formatToDisplayValue } from '../formatter'
 
@@ -16,7 +30,7 @@ import { formatToDisplayValue } from '../formatter'
  * into the prompt.
  */
 export interface ResolvedReference {
-  /** Raw badge id as it appeared in the prompt (e.g. "email", "company.industry") */
+  /** Raw badge id as it appeared in the prompt. */
   fieldKey: string
   /** Stringified display value (e.g. "Apr 22, 2026", "Manufacturing", ""). */
   displayValue: string
@@ -29,16 +43,19 @@ export interface ResolvedReference {
 /**
  * Resolve every `{fieldKey}` token in a prompt for a given record.
  *
- * Each key is one of:
- *   - Plain fieldId (custom UUID or system field key) → sibling/system field
- *   - Dotted `"relFieldId.terminalFieldId"` → one-hop relationship traversal
+ * Each key is one of (decoded via `keyToFieldRef` / `isPlainFieldId`):
+ *   - Plain `FieldId` (no `:`)             → scoped to record's entity
+ *   - `ResourceFieldId` (`"entity:fieldId"`) → direct field
+ *   - FieldPath key (`"a:b::c:d"` ...)     → multi-hop traversal
  *
  * Returns a `Map<fieldKey, ResolvedReference>` that the prompt builder then
  * interpolates into the user message.
  *
  * Blank / null / unresolvable references pass through as empty string
- * (decision T4.3). Truly malformed prompts (malformed dotted refs, refs
- * pointing at other AI-enabled fields) throw `BadRequestError`.
+ * (decision T4.3). Refs pointing at other AI-enabled fields throw
+ * `BadRequestError` (decision T4.2). Path depth is capped by
+ * `validateFieldReferences` (`MAX_PATH_DEPTH = 5`) inside
+ * `batchGetValues`.
  */
 export async function resolveReferences(
   ctx: FieldValueContext,
@@ -55,44 +72,29 @@ export async function resolveReferences(
 
   // Build one FieldReference per fieldKey, kept aligned with `fieldKeys` by
   // index so the batchGetValues result can be mapped back.
-  const refs: Array<{ fieldKey: string; ref: FieldReference | null; terminalFieldId: string }> = []
+  const refs: Array<{
+    fieldKey: string
+    ref: ResourceFieldId | FieldPath | null
+    terminalFieldId: string
+  }> = []
 
   for (const fieldKey of fieldKeys) {
-    if (fieldKey.includes('.')) {
-      const parts = fieldKey.split('.')
-      if (parts.length !== 2) {
-        throw new BadRequestError(
-          `Unsupported reference "{${fieldKey}}": only one-hop relationships are allowed in v1`
-        )
-      }
-      const [relFieldId, terminalFieldId] = parts
-      if (!relFieldId || !terminalFieldId) {
-        throw new BadRequestError(`Malformed reference "{${fieldKey}}"`)
-      }
-
-      const relatedEntityDefinitionId = await resolveRelatedEntityDefinitionId(ctx, relFieldId)
-      if (!relatedEntityDefinitionId) {
-        // Relation field not found or not configured — leave unresolved; becomes ''.
-        refs.push({ fieldKey, ref: null, terminalFieldId })
-        continue
-      }
-
-      const path: FieldPath = [
-        toResourceFieldId(entityDefinitionId, relFieldId),
-        toResourceFieldId(relatedEntityDefinitionId, terminalFieldId),
-      ]
-      refs.push({ fieldKey, ref: path, terminalFieldId })
-    } else {
-      if (!fieldKey.trim()) {
-        refs.push({ fieldKey, ref: null, terminalFieldId: fieldKey })
-        continue
-      }
-      refs.push({
-        fieldKey,
-        ref: toResourceFieldId(entityDefinitionId, fieldKey),
-        terminalFieldId: fieldKey,
-      })
+    if (!fieldKey.trim()) {
+      refs.push({ fieldKey, ref: null, terminalFieldId: fieldKey })
+      continue
     }
+
+    // Plain FieldId (no colon) → scope to the record's entity.
+    // Anything else → keyToFieldRef discriminates ResourceFieldId vs FieldPath.
+    const ref: ResourceFieldId | FieldPath = isPlainFieldId(fieldKey)
+      ? toResourceFieldId(entityDefinitionId, toFieldId(fieldKey))
+      : (keyToFieldRef(fieldKey) as ResourceFieldId | FieldPath)
+
+    // Terminal id (last hop) — used by the AI-to-AI guard below.
+    const terminalRfId = isFieldPath(ref) ? ref[ref.length - 1]! : ref
+    const terminalFieldId = getFieldId(terminalRfId)
+
+    refs.push({ fieldKey, ref, terminalFieldId })
   }
 
   // Runtime AI-to-AI guard (decision T4.2). Save-time validation in phase 04
@@ -103,10 +105,9 @@ export async function resolveReferences(
 
   const fieldReferences = refs
     .map((r) => r.ref)
-    .filter((ref): ref is FieldReference => ref !== null)
+    .filter((ref): ref is ResourceFieldId | FieldPath => ref !== null)
 
   if (fieldReferences.length === 0) {
-    // All refs unresolvable — emit empty entries for each key.
     for (const { fieldKey } of refs) {
       out.set(fieldKey, { fieldKey, displayValue: '', fieldType: null, resourceFieldId: null })
     }
@@ -118,10 +119,10 @@ export async function resolveReferences(
     fieldReferences,
   })
 
-  // Index results by serialized fieldRef for lookup.
+  // Index results by fieldRef key for lookup.
   const resultIndex = new Map<string, (typeof values)[number]>()
   for (const v of values) {
-    resultIndex.set(serializeFieldRef(v.fieldRef), v)
+    resultIndex.set(fieldRefToKey(v.fieldRef), v)
   }
 
   for (const { fieldKey, ref } of refs) {
@@ -130,21 +131,14 @@ export async function resolveReferences(
       continue
     }
 
-    const hit = resultIndex.get(serializeFieldRef(ref))
+    const hit = resultIndex.get(fieldRefToKey(ref))
     if (!hit) {
       out.set(fieldKey, { fieldKey, displayValue: '', fieldType: null, resourceFieldId: null })
       continue
     }
 
     const displayRaw = formatToDisplayValue(hit.value, hit.fieldType, hit.fieldOptions)
-    const displayValue =
-      displayRaw === null || displayRaw === undefined
-        ? ''
-        : typeof displayRaw === 'string'
-          ? displayRaw
-          : Array.isArray(displayRaw)
-            ? displayRaw.filter((v) => v !== null && v !== undefined).join(', ')
-            : JSON.stringify(displayRaw)
+    const displayValue = stringifyDisplay(displayRaw)
 
     out.set(fieldKey, {
       fieldKey,
@@ -154,32 +148,44 @@ export async function resolveReferences(
     })
   }
 
-  return out
-}
-
-/**
- * Look up the related entity's entityDefinitionId for a relationship field.
- * Returns null when the field is missing, not a RELATIONSHIP, or has no
- * inverse configured.
- */
-async function resolveRelatedEntityDefinitionId(
-  ctx: FieldValueContext,
-  relFieldId: string
-): Promise<string | null> {
-  try {
-    const field = await getField(ctx, relFieldId)
-    if (field.type !== 'RELATIONSHIP') return null
-    const relationship = (field.options as Record<string, unknown> | null)?.relationship as
-      | { inverseResourceFieldId?: string | null }
-      | undefined
-    const inverse = relationship?.inverseResourceFieldId
-    if (!inverse) return null
-    // `inverseResourceFieldId` format: "<relatedEntityDefinitionId>:<fieldId>"
-    const idx = inverse.indexOf(':')
-    return idx === -1 ? inverse : inverse.slice(0, idx)
-  } catch {
-    return null
+  // Post-process CALC terminals: substitute the computed display value.
+  for (const [fieldKey, resolved] of out) {
+    if (resolved.fieldType !== 'CALC' || !resolved.resourceFieldId) continue
+    const calcFieldId = getFieldId(resolved.resourceFieldId)
+    const calc = await resolveCalcForRecord(ctx, { recordId, calcFieldId })
+    out.set(fieldKey, {
+      ...resolved,
+      displayValue: calc.display,
+      fieldType: calc.resultFieldType ?? resolved.fieldType,
+    })
   }
+
+  // Post-process RELATIONSHIP terminals: swap RecordId(s) → displayName(s).
+  const relMap = new Map<string, RecordId[]>()
+  const allRelIds: RecordId[] = []
+  for (const [fieldKey, resolved] of out) {
+    if (resolved.fieldType !== 'RELATIONSHIP') continue
+    const ids = resolved.displayValue
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s): s is RecordId => isRecordId(s))
+    relMap.set(fieldKey, ids)
+    allRelIds.push(...ids)
+  }
+
+  if (allRelIds.length > 0) {
+    const names = await batchGetRelatedDisplayNames(ctx.db, ctx.organizationId, allRelIds)
+    for (const [fieldKey, ids] of relMap) {
+      const display = ids
+        .map((rid) => names.get(parseRecordId(rid).entityInstanceId) ?? '')
+        .filter(Boolean)
+        .join(', ')
+      const prev = out.get(fieldKey)!
+      out.set(fieldKey, { ...prev, displayValue: display })
+    }
+  }
+
+  return out
 }
 
 async function assertTerminalIsNotAiField(
@@ -200,14 +206,18 @@ async function assertTerminalIsNotAiField(
   }
 }
 
-function serializeFieldRef(ref: FieldReference): string {
-  return Array.isArray(ref) ? ref.join('->') : String(ref)
+function stringifyDisplay(displayRaw: unknown): string {
+  if (displayRaw === null || displayRaw === undefined) return ''
+  if (typeof displayRaw === 'string') return displayRaw
+  if (Array.isArray(displayRaw)) {
+    return displayRaw.filter((v) => v !== null && v !== undefined).join(', ')
+  }
+  return JSON.stringify(displayRaw)
 }
 
-function terminalResourceFieldId(ref: FieldReference): ResourceFieldId | null {
-  if (Array.isArray(ref)) {
+function terminalResourceFieldId(ref: ResourceFieldId | FieldPath): ResourceFieldId | null {
+  if (isFieldPath(ref)) {
     return (ref[ref.length - 1] ?? null) as ResourceFieldId | null
   }
-  if (typeof ref === 'string' && ref.includes(':')) return ref as ResourceFieldId
-  return null
+  return isResourceFieldId(ref) ? ref : null
 }

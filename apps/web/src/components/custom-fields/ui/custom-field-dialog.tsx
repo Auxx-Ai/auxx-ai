@@ -1012,7 +1012,6 @@ export function CustomFieldDialog({
                     entityDefinitionId={effectiveEntityDefId}
                     currentFieldId={editingField?.id}
                     aiSiblingFieldIds={aiSiblingFieldIds}
-                    availableFields={calcAvailableFields}
                     fieldType={selectedType}
                     fieldOptions={
                       selectedType === FieldType.SINGLE_SELECT ||

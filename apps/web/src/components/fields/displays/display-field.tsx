@@ -1,6 +1,7 @@
 // apps/web/src/components/fields/displays/display-field.tsx
 
 import { FieldType } from '@auxx/database/enums'
+import { getEffectiveFieldType } from '@auxx/lib/custom-fields/client'
 import { useDisplayOnlyContext } from '../display-only-provider'
 import { usePropertyContext } from '../property-provider'
 import { DisplayActor } from './display-actor'
@@ -32,20 +33,6 @@ export function useFieldContext() {
   } catch {
     return useDisplayOnlyContext()
   }
-}
-
-/**
- * Get the effective field type for rendering.
- * For CALC fields, returns the resultFieldType; otherwise returns the field's type.
- */
-function getEffectiveFieldType(field: {
-  fieldType: string
-  options?: { calc?: { resultFieldType?: string } }
-}): string {
-  if (field.fieldType === FieldType.CALC) {
-    return field.options?.calc?.resultFieldType ?? FieldType.TEXT
-  }
-  return field.fieldType
 }
 
 /**

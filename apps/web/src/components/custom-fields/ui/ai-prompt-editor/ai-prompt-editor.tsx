@@ -2,15 +2,15 @@
 
 'use client'
 
-import { FieldType } from '@auxx/database/enums'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import type { RichReferencePrompt } from '@auxx/types/custom-field'
-import type { FieldReference } from '@auxx/types/field'
+import { type FieldReference, fieldRefToKey } from '@auxx/types/field'
 import { CommandNavigation } from '@auxx/ui/components/command'
 import { Field, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
 import { EditorContent } from '@tiptap/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  type ExcludeFilter,
   FieldPickerInnerContent,
   type FieldPickerNavigationItem,
 } from '~/components/pickers/field-picker'
@@ -30,8 +30,6 @@ interface AiPromptEditorProps {
    * with other AI-enabled siblings to prevent AI→AI chains (decision T4.2).
    */
   excludeFieldIds?: string[]
-  /** Fields available in this entity; drives badge labels. */
-  availableFields: Array<{ key: string; label: string; type: string; id: string }>
 }
 
 /**
@@ -45,7 +43,6 @@ export function AiPromptEditor({
   entityDefinitionId,
   currentFieldId,
   excludeFieldIds,
-  availableFields,
 }: AiPromptEditorProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -54,26 +51,30 @@ export function AiPromptEditor({
   const { editor, suggestionState, insertField, closeSuggestion } = useAiPrompt({
     initialPrompt: prompt,
     onChange,
-    // Badge lookup and stored id are both `field.id` (the CustomField UUID).
-    // That's what `FieldValue.fieldId` references and what `getField`'s
-    // cache is keyed by, so the server can resolve the ref without a
-    // key→id translation step.
-    availableFields: availableFields.map((f) => ({ key: f.id, label: f.label, type: f.type })),
+    entityDefinitionId,
   })
 
+  // Encode the picker's FieldReference (ResourceFieldId or FieldPath) as a
+  // single string key via `fieldRefToKey`. The server's reference-resolver
+  // decodes via `keyToFieldRef`, so direct fields and multi-hop paths
+  // round-trip through the same canonical format — no string surgery.
   const handleSelectField = useCallback(
-    (_fieldReference: FieldReference, field: ResourceField) => {
-      insertField(field.id)
+    (fieldReference: FieldReference, _field: ResourceField) => {
+      insertField(fieldRefToKey(fieldReference))
     },
     [insertField]
   )
 
-  const excludeFilters = [
-    FieldType.RELATIONSHIP,
-    FieldType.CALC,
-    ...(currentFieldId ? [`${entityDefinitionId}:${currentFieldId}`] : []),
-    ...(excludeFieldIds ?? []).map((id) => `${entityDefinitionId}:${id}`),
-  ]
+  // Self + AI-sibling excludes only. RELATIONSHIP and CALC are now
+  // referenceable; the picker can drill into relationships and the
+  // resolver handles the resulting FieldPath.
+  const excludeFilters = useMemo<ExcludeFilter[]>(
+    () => [
+      ...(currentFieldId ? [`${entityDefinitionId}:${currentFieldId}`] : []),
+      ...(excludeFieldIds ?? []).map((id) => `${entityDefinitionId}:${id}`),
+    ],
+    [entityDefinitionId, currentFieldId, excludeFieldIds]
+  )
 
   useEffect(() => {
     if (suggestionState.isOpen && suggestionState.clientRect && editorContainerRef.current) {

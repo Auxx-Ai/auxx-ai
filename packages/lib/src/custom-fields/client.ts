@@ -37,6 +37,7 @@ export {
   targetTimeInStatusSchema,
 } from '@auxx/types/custom-field'
 export { getAiPrompt, isAiEligible, isAiField } from './ai'
+export { getCalcOptions, getEffectiveFieldType } from './calc'
 
 export type { CalcOptions, NameFieldOptions } from './field-options'
 export {

@@ -56,7 +56,6 @@ interface AiOptionsSectionProps {
    * picker to prevent AI→AI chains (decision T4.2).
    */
   aiSiblingFieldIds?: string[]
-  availableFields: Array<{ key: string; label: string; type: string; id: string }>
   /** Selected field type — forwarded to the preview panel for json-schema generation. */
   fieldType: FieldType
   /** Native options for the selected type (e.g. SELECT option list). */
@@ -76,7 +75,6 @@ export function AiOptionsSection({
   entityDefinitionId,
   currentFieldId,
   aiSiblingFieldIds,
-  availableFields,
   fieldType,
   fieldOptions,
   fieldName,
@@ -118,7 +116,6 @@ export function AiOptionsSection({
             entityDefinitionId={entityDefinitionId}
             currentFieldId={currentFieldId}
             excludeFieldIds={aiSiblingFieldIds}
-            availableFields={availableFields}
           />
 
           <div className='space-y-2 hidden'>
