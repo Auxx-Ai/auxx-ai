@@ -6,7 +6,8 @@ import type { NodeProcessorRegistry } from '../../workflow-engine/core/node-proc
 import { executeSingleNode } from '../../workflow-engine/core/single-node-executor'
 import type { ToolDefinition } from '../../workflow-engine/core/tool-registry'
 import { ToolRegistry } from '../../workflow-engine/core/tool-registry'
-import type { AgentDeps, AgentToolDefinition, AgentToolResult } from './types'
+import type { ToolContext } from './tool-context'
+import type { AgentToolDefinition, AgentToolResult } from './types'
 
 export interface ToolBridgeConfig {
   /** Node processor registry for workflow node execution */
@@ -43,13 +44,13 @@ export async function executeToolCall(
   toolName: string,
   args: Record<string, unknown>,
   tools: AgentToolDefinition[],
-  deps: AgentDeps
+  ctx: ToolContext
 ): Promise<AgentToolResult> {
   const tool = tools.find((t) => t.name === toolName)
   if (!tool) {
     return { success: false, output: null, error: `Unknown tool: ${toolName}` }
   }
-  return tool.execute(args, deps)
+  return tool.execute(args, ctx)
 }
 
 // ===== INTERNAL =====
@@ -62,7 +63,7 @@ function toolDefinitionToAgentTool(
     name: def.name,
     description: def.description,
     parameters: def.inputSchema as Record<string, unknown>,
-    execute: async (args: Record<string, unknown>, deps: AgentDeps): Promise<AgentToolResult> => {
+    execute: async (args: Record<string, unknown>, ctx: ToolContext): Promise<AgentToolResult> => {
       try {
         const node = {
           id: def.sourceNodeId ?? generateId(),
@@ -72,10 +73,10 @@ function toolDefinitionToAgentTool(
         }
 
         const context = {
-          workflowId: `agent-${deps.sessionId}`,
+          workflowId: `agent-${ctx.sessionId ?? ctx.traceId ?? 'unknown'}`,
           executionId: generateId(),
-          organizationId: deps.organizationId,
-          userId: deps.userId,
+          organizationId: ctx.organizationId,
+          userId: ctx.userId,
         }
 
         const result = await executeSingleNode(

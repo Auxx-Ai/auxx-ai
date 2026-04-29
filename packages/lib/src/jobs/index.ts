@@ -10,6 +10,11 @@ export {
 export { type RecordUsageEventJobData, recordUsageEventJob } from '../usage'
 // AI autofill
 export { type AiAutofillJobData, aiAutofillJob } from './ai-autofill/ai-autofill-job'
+// AI suggestion scanner
+export {
+  type NextActionStaleScannerJobData,
+  nextActionStaleScannerJob,
+} from './approvals'
 export {
   type ApplyScheduledChangesJobData,
   type ApplyScheduledChangesResult,

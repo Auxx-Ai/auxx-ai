@@ -576,12 +576,11 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
 
           {/* SmartBreadcrumb for paths, text for direct fields */}
           {showBreadcrumb ? (
-            <SmartBreadcrumb
-              segments={breadcrumbSegments}
-              mode='display'
-              size='sm'
-              className='flex-1 min-w-0'
-            />
+            <Tooltip content={breadcrumbSegments.map((s) => s.label).join(' › ')} side='top'>
+              <span className='flex-1 min-w-0 flex items-center'>
+                <SmartBreadcrumb segments={breadcrumbSegments} mode='display' size='sm' />
+              </span>
+            </Tooltip>
           ) : (
             <span className='font-medium text-xs'>{headerContent}</span>
           )}

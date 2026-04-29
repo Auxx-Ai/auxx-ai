@@ -82,6 +82,12 @@
       "import": "./dist/ai/quota/index.mjs",
       "default": "./src/ai/quota/index.ts"
     },
+    "./approvals": {
+      "types": "./src/approvals/index.ts",
+      "source": "./src/approvals/index.ts",
+      "import": "./dist/approvals/index.mjs",
+      "default": "./src/approvals/index.ts"
+    },
     "./apps": {
       "types": "./src/apps/index.ts",
       "source": "./src/apps/index.ts",

@@ -86,6 +86,8 @@ describe('query-loop validation-error branch — sibling tool_call orphan regres
       organizationId: 'org-1',
       userId: 'user-1',
       sessionId: 'sess-1',
+      // biome-ignore lint/suspicious/noExplicitAny: tests don't touch the db handle
+      db: {} as any,
       domainConfig,
       callModel,
     }

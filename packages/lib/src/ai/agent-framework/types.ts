@@ -1,7 +1,9 @@
 // packages/lib/src/ai/agent-framework/types.ts
 
+import type { Database } from '@auxx/database'
 import type { z } from 'zod'
 import type { Message, ModelParameters, Tool, ToolCall, UsageMetrics } from '../clients/base/types'
+import type { ToolContext } from './tool-context'
 
 // ===== SESSION & MESSAGE TYPES =====
 
@@ -91,8 +93,12 @@ export interface AgentToolDefinition {
   description: string
   /** JSON Schema for the tool's parameters */
   parameters: Record<string, unknown>
-  /** Execute the tool and return a result string */
-  execute: (args: Record<string, unknown>, deps: AgentDeps) => Promise<AgentToolResult>
+  /**
+   * Execute the tool and return a result. The second argument is a caller-
+   * agnostic `ToolContext` (see ./tool-context.ts) — same shape whether the
+   * tool was invoked from chat, the headless runner, or apply-time.
+   */
+  execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<AgentToolResult>
   /** Whether this tool requires human approval before execution */
   requiresApproval?: boolean
   /**
@@ -119,6 +125,30 @@ export interface AgentToolDefinition {
    * auto-generated entry in the system prompt. Keep to ≤3 sentences.
    */
   usageNotes?: string
+  /**
+   * Capture-mode hook: predict the tool's output without executing.
+   *
+   * When the engine runs in `approvalMode: 'capture'`, approval-required tools
+   * are not executed — instead, the engine calls `captureMint(args, ctx)` (if
+   * defined) and synthesizes a tool-result message from the return value. This
+   * lets the model chain captured calls naturally — e.g. a `create_task` whose
+   * `captureMint` returns `{ id: 'temp_<localIndex>', ... }` produces a result
+   * the model can reference in a downstream `update_task` invocation. Apply-time
+   * (Phase 3e) substitutes the temp IDs with real IDs.
+   *
+   * Tools without `captureMint` fall back to a `{ status: 'queued_for_approval' }`
+   * placeholder. The engine wraps the return value with `_captured: true` so
+   * downstream code can detect that the output is synthetic. Treated as
+   * best-effort: if `captureMint` throws, the engine logs and uses the
+   * placeholder. Implementations must be pure / cheap — no DB or network IO.
+   */
+  captureMint?: (args: Record<string, unknown>, ctx: { localIndex: number }) => unknown
+  /**
+   * Optional human-readable summary of an invocation. Used when the engine
+   * needs to describe a captured action (Today UI, transcripts, telemetry).
+   * When absent, the engine falls back to `${toolName}(${truncatedArgs})`.
+   */
+  summary?: (args: Record<string, unknown>) => string
 }
 
 /** Result from executing a tool */
@@ -176,6 +206,24 @@ export interface TurnSnapshots {
 
 // ===== AGENT STATE =====
 
+/**
+ * A tool call captured for later approval, produced by `approvalMode: 'capture'`.
+ * Phase 3b/3e consume `state.capturedActions` to build a bundle and apply it
+ * topologically (substituting `temp_<localIndex>` references with real IDs as
+ * each captured call executes).
+ */
+export interface CapturedAction {
+  toolCallId: string
+  toolName: string
+  args: Record<string, unknown>
+  /** Display string — `tool.summary?.(args)` or `${name}(${truncatedArgs})` fallback. */
+  summary: string
+  /** Monotonic across the entire engine run. Drives `temp_<localIndex>` IDs. */
+  localIndex: number
+  /** Synthetic output the model saw for this call (always carries `_captured: true`). */
+  predictedOutput: unknown
+}
+
 /** Stored tool call awaiting human approval — executed directly on resume */
 export interface PendingToolCall {
   toolCallId: string
@@ -211,6 +259,12 @@ export interface AgentState<TDomainState = Record<string, unknown>> {
    * not persisted between turns.
    */
   turnSnapshots?: TurnSnapshots
+  /**
+   * Tool calls captured during the current turn under `approvalMode: 'capture'`.
+   * Empty in pause mode (chat). Reset at turn start. Phase 3b's headless runner
+   * reads this after the engine drains to build a bundle for approval.
+   */
+  capturedActions?: CapturedAction[]
 }
 
 /** Options passed to engine.resume() for approval actions */
@@ -321,6 +375,11 @@ export interface AgentEngineConfig {
   userId: string
   /** Session ID (for persistence) */
   sessionId: string
+  /**
+   * Database handle threaded into every tool's `ToolContext` at execution
+   * time. Required so tools have a uniform db source regardless of caller.
+   */
+  db: Database
   /** The domain config to use */
   domainConfig: AgentDomainConfig
   /** LLM call function (injected, wraps LLMOrchestrator) */
@@ -335,6 +394,17 @@ export interface AgentEngineConfig {
   maxTokensPerTurn?: number
   /** Max chained approvals allowed within a single turn before forcing termination (default: 5) */
   maxApprovalsPerTurn?: number
+  /**
+   * How approval-required tool calls are handled mid-turn.
+   * - `'pause'` (default): the loop emits `approval-required` and stops at the
+   *   first approval tool, waiting for `engine.resume()`. This is chat behavior.
+   * - `'capture'`: the loop never pauses. Approval tools are recorded into
+   *   `state.capturedActions` with a synthetic `_captured: true` result (driven
+   *   by the tool's `captureMint`), and the loop continues until the model emits
+   *   `submit_final_answer` or runs out of tool calls. Read-only tools execute
+   *   normally in either mode. Used by the headless kopilot runner.
+   */
+  approvalMode?: 'pause' | 'capture'
 }
 
 // ===== AGENT DEPENDENCIES =====

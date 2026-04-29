@@ -6,6 +6,7 @@ import { aiFeatureRouter } from './routers/aiFeature'
 import { aiIntegrationRouter } from './routers/aiIntegration'
 import { apiKeyRouter } from './routers/apiKey'
 import { approvalRouter } from './routers/approval'
+import { approvalsRouter } from './routers/approvals'
 import { appsRouter } from './routers/apps'
 import { articleRouter } from './routers/article'
 import { attachmentRouter } from './routers/attachment'
@@ -89,6 +90,7 @@ export const appRouter = createTRPCRouter({
   apiKey: apiKeyRouter,
   apps: appsRouter,
   approval: approvalRouter,
+  approvals: approvalsRouter,
   article: articleRouter,
   attachment: attachmentRouter,
   auth: authRouter,

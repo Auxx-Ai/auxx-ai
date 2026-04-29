@@ -14,6 +14,7 @@ import {
   demoCleanupJob,
   expiredTrialAccountCleanupJob,
   type JobHandler,
+  nextActionStaleScannerJob,
   type OrgSeedJobData,
   oauth2TokenRefreshScannerJob,
   orphanedAppBundleCleanupJob,
@@ -135,6 +136,10 @@ const jobMappings = {
 
   // Task deadline scanner (every minute via upsertJobScheduler)
   taskDeadlineScannerJob,
+
+  // AI suggestion stale scanner (every 5 minutes via upsertJobScheduler;
+  // sweeps deals/leads/tickets and produces FRESH bundles for Today UI)
+  nextActionStaleScannerJob,
 }
 
 export function startMaintenanceWorker() {

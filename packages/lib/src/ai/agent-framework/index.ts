@@ -18,6 +18,7 @@ export { processAgentMessage } from './process-agent-job'
 export { agentQueryLoop } from './query-loop'
 export type { ToolBridgeConfig } from './tool-bridge'
 export { buildToolsFromDefinitions, executeToolCall, getBuiltInTools } from './tool-bridge'
+export type { ToolContext } from './tool-context'
 
 export type {
   AgentBlock,
@@ -30,6 +31,7 @@ export type {
   AgentState,
   AgentToolDefinition,
   AgentToolResult,
+  CapturedAction,
   LLMCallParams,
   LLMStreamEvent,
   PendingToolCall,

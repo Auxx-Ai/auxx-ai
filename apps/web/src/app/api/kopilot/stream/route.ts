@@ -420,6 +420,7 @@ async function runInProcessPath(params: {
     organizationId,
     userId,
     sessionId,
+    db,
     domainConfig,
     callModel,
     signal: request.signal,

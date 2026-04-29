@@ -352,6 +352,18 @@ export const scheduledMessageStatus = pgEnum('ScheduledMessageStatus', [
   'FAILED',
   'CANCELLED',
 ])
+/**
+ * Origin of a ScheduledMessage. Drives the pending-send list filter on Today
+ * (`AI_SUGGESTED` rows show up in the pending pill; `USER_SCHEDULED` does not),
+ * and lets us join AI-originated sends back to their bundle for audit trails.
+ *
+ * `AUTO_REPLY` is reserved for future autopilot mode and unused in v1.
+ */
+export const scheduledMessageSource = pgEnum('ScheduledMessageSource', [
+  'USER_SCHEDULED',
+  'AI_SUGGESTED',
+  'AUTO_REPLY',
+])
 export const responseStatus = pgEnum('ResponseStatus', [
   'DRAFT',
   'PENDING_APPROVAL',

@@ -24,6 +24,7 @@ import {
   Rows3,
   Settings,
   ShoppingBag,
+  Sun,
   Tag,
   Trash2,
   Users,
@@ -70,6 +71,13 @@ export const SHOPIFY_MENU: SidebarProps[] = [
 export const MAIL_MENU: SidebarProps[] = []
 
 export const SIDEBAR_MENU: SidebarProps[] = [
+  {
+    id: 'today',
+    label: 'Today',
+    slug: 'today',
+    icon: <Sun />,
+    featureKey: 'todayInbox',
+  },
   {
     id: 'chats',
     label: 'Chats',
