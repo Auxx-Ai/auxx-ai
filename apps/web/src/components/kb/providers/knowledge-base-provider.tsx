@@ -1,0 +1,73 @@
+// apps/web/src/components/kb/providers/knowledge-base-provider.tsx
+'use client'
+
+import type React from 'react'
+import { useEffect } from 'react'
+import { api } from '~/trpc/react'
+import { type ArticleMeta, getArticleStoreState } from '../store/article-store'
+import { getKnowledgeBaseStoreState, type KnowledgeBase } from '../store/knowledge-base-store'
+
+interface KnowledgeBaseProviderProps {
+  knowledgeBaseId: string
+  children: React.ReactNode
+}
+
+/** Normalize a server article (from tRPC) into ArticleMeta. */
+function normalize(server: any): ArticleMeta {
+  return {
+    id: server.id,
+    knowledgeBaseId: server.knowledgeBaseId,
+    title: server.title ?? '',
+    slug: server.slug ?? '',
+    emoji: server.emoji ?? null,
+    parentId: server.parentId ?? null,
+    isCategory: !!server.isCategory,
+    order: server.order ?? 0,
+    isPublished: !!server.isPublished,
+    status: server.status,
+    description: server.description ?? null,
+    excerpt: server.excerpt ?? null,
+  }
+}
+
+/**
+ * Hydrates the article store + knowledge-base store for the active KB.
+ * Mount once per route. Articles for the previous KB are cleared on unmount.
+ */
+export function KnowledgeBaseProvider({ knowledgeBaseId, children }: KnowledgeBaseProviderProps) {
+  // Hydrate the KB list (used by the switcher).
+  const kbList = api.kb.list.useQuery(undefined, { staleTime: 5 * 60 * 1000 })
+  useEffect(() => {
+    if (kbList.data) {
+      getKnowledgeBaseStoreState().setKnowledgeBases(kbList.data as KnowledgeBase[])
+    }
+  }, [kbList.data])
+
+  // Track active KB id.
+  useEffect(() => {
+    getKnowledgeBaseStoreState().setActiveKnowledgeBaseId(knowledgeBaseId)
+  }, [knowledgeBaseId])
+
+  // Hydrate articles for the active KB.
+  const articlesQuery = api.kb.getArticles.useQuery(
+    { knowledgeBaseId, includeUnpublished: true },
+    { enabled: !!knowledgeBaseId }
+  )
+  useEffect(() => {
+    if (articlesQuery.data) {
+      getArticleStoreState().setArticles(
+        knowledgeBaseId,
+        (articlesQuery.data as any[]).map(normalize)
+      )
+    }
+  }, [articlesQuery.data, knowledgeBaseId])
+
+  // Clear on unmount / KB switch.
+  useEffect(() => {
+    return () => {
+      getArticleStoreState().clearKb(knowledgeBaseId)
+    }
+  }, [knowledgeBaseId])
+
+  return <>{children}</>
+}

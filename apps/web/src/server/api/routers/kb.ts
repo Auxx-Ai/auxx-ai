@@ -66,7 +66,6 @@ const articleFieldsSchema = z.object({
   parentId: z.string().nullish(),
   isPublished: z.boolean().optional(),
   status: z.enum([ArticleStatus.DRAFT, ArticleStatus.PUBLISHED, ArticleStatus.ARCHIVED]).optional(),
-  tags: z.array(z.string()).optional(),
 })
 // Create schema requires title and slug
 const articleCreateSchema = articleFieldsSchema.extend({

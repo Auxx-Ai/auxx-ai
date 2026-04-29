@@ -32,6 +32,8 @@ export interface FieldOptions {
   checkboxStyle?: 'icon' | 'text' | 'icon-text'
   trueLabel?: string
   falseLabel?: string
+  /** Input variant for boolean editors: 'button-group' (default) or 'switch'. */
+  variant?: 'button-group' | 'switch'
 
   // ─────────────────────────────────────────────────────────────
   // TEXT (flat)

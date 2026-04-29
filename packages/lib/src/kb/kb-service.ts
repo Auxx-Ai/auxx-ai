@@ -81,7 +81,6 @@ export interface ArticleBaseFields {
   parentId?: string | null
   isPublished?: boolean
   status?: ArticleStatusType
-  tags?: string[]
 }
 // export interface ArticleCreateInput
 //   extends Required<Pick<ArticleBaseFields, 'title' | 'slug'>>,
@@ -98,7 +97,6 @@ export interface ArticleListOptions {
   includeUnpublished?: boolean
 }
 export interface ArticleIncludeOptions {
-  tags?: boolean
   children?: boolean
   revisions?: boolean
 }
@@ -223,6 +221,7 @@ export class KBService {
         ],
         columns: {
           id: true,
+          knowledgeBaseId: true,
           title: true,
           slug: true,
           emoji: true,
@@ -230,8 +229,9 @@ export class KBService {
           isCategory: true,
           order: true,
           isPublished: true,
+          status: true,
           description: true,
-          content: true,
+          excerpt: true,
         },
       })
     } catch (error) {
@@ -383,36 +383,28 @@ export class KBService {
         // Default ordering at the end
         newOrder = await this.getNextArticleOrder(knowledgeBaseId, articleInput.parentId)
       }
-      // Create the article in a transaction to handle tag creation
-      return await this.db.transaction(async (tx) => {
-        // Create the article
-        const [newArticle] = await tx
-          .insert(schema.Article)
-          .values({
-            title: articleInput.title || '',
-            slug: articleInput.slug || '',
-            content: articleInput.content || '',
-            contentJson: articleInput.contentJson || null,
-            excerpt: articleInput.excerpt,
-            emoji: articleInput.emoji,
-            isCategory: articleInput.isCategory || false,
-            parentId: articleInput.parentId ?? null,
-            isPublished: articleInput.isPublished || false,
-            status: articleInput.isPublished ? ArticleStatus.PUBLISHED : ArticleStatus.DRAFT,
-            order: newOrder,
-            knowledgeBaseId,
-            organizationId: this.organizationId,
-            authorId,
-            updatedAt: new Date(),
-          })
-          .returning()
-        logger.info('Created article', { newArticle })
-        // Handle tags if provided
-        if (articleInput.tags?.length) {
-          await this.setArticleTags(tx, newArticle.id, articleInput.tags)
-        }
-        return newArticle
-      })
+      const [newArticle] = await this.db
+        .insert(schema.Article)
+        .values({
+          title: articleInput.title || '',
+          slug: articleInput.slug || '',
+          content: articleInput.content || '',
+          contentJson: articleInput.contentJson || null,
+          excerpt: articleInput.excerpt,
+          emoji: articleInput.emoji,
+          isCategory: articleInput.isCategory || false,
+          parentId: articleInput.parentId ?? null,
+          isPublished: articleInput.isPublished || false,
+          status: articleInput.isPublished ? ArticleStatus.PUBLISHED : ArticleStatus.DRAFT,
+          order: newOrder,
+          knowledgeBaseId,
+          organizationId: this.organizationId,
+          authorId,
+          updatedAt: new Date(),
+        })
+        .returning()
+      logger.info('Created article', { newArticle })
+      return newArticle
     } catch (error) {
       return this.handleError(error, 'Error creating article', { input, knowledgeBaseId })
     }
@@ -433,7 +425,6 @@ export class KBService {
           eq(schema.Article.id, id),
           eq(schema.Article.organizationId, this.organizationId)
         ),
-        with: { tags: true },
       })
       if (!article) {
         throw this.createNotFoundError(`Article with ID '${id}' not found`)
@@ -453,22 +444,12 @@ export class KBService {
       await this.createArticleRevision(article, editorId)
       // Prepare update data with status/isPublished sync
       const updateData = this.syncPublishedStatus(data)
-      // Update article and handle tags in a transaction
-      const result = await this.db.transaction(async (tx) => {
-        // Update the article
-        const [updatedArticle] = await tx
-          .update(schema.Article)
-          .set(updateData)
-          .where(eq(schema.Article.id, id))
-          .returning()
-        // Handle tags if provided
-        if (data.tags) {
-          await this.setArticleTags(tx, id, data.tags, true)
-        }
-        return updatedArticle
-      })
-      // logger.info('Updated article', { result })
-      return result
+      const [updatedArticle] = await this.db
+        .update(schema.Article)
+        .set(updateData)
+        .where(eq(schema.Article.id, id))
+        .returning()
+      return updatedArticle
     } catch (error) {
       return this.handleError(error, 'Error updating article', { articleId: id })
     }
@@ -598,18 +579,14 @@ export class KBService {
    */
   private buildArticleIncludeOptions(include: ArticleIncludeOptions): any {
     const withOptions: any = {}
-    // Tags via join table -> ArticleTag
-    if (include.tags !== false) {
-      withOptions.tagsOnArticles = { with: { tag: true } }
-    }
-    // Children (self-relation)
+    // Children (self-relation: parentId → id)
     if (include.children !== false) {
-      withOptions.articles = { orderBy: asc(schema.Article.order) }
+      withOptions.children = { orderBy: asc(schema.Article.order) }
     }
     if (include.revisions) {
       withOptions.revisions = {
         orderBy: desc(schema.ArticleRevision.updatedAt),
-        with: { createdBy: { columns: { id: true, name: true, image: true } } },
+        with: { editor: { columns: { id: true, name: true, image: true } } },
       }
     }
     return withOptions
@@ -811,39 +788,6 @@ export class KBService {
     return slug
   }
   /**
-   * Set article tags, optionally clearing existing ones first
-   */
-  private async setArticleTags(
-    tx: any,
-    articleId: string,
-    tagNames: string[],
-    clearExisting: boolean = false
-  ): Promise<void> {
-    // Delete existing tag relationships if needed
-    if (clearExisting) {
-      await tx.delete(schema.TagsOnArticle).where(eq(schema.TagsOnArticle.articleId, articleId))
-    }
-    // Create new tag relationships
-    for (const tagName of tagNames) {
-      // Find or create the tag
-      let tag = await tx.query.ArticleTag.findFirst({
-        where: and(
-          eq(schema.ArticleTag.name, tagName),
-          eq(schema.ArticleTag.organizationId, this.organizationId)
-        ),
-      })
-      if (!tag) {
-        const [created] = await tx
-          .insert(schema.ArticleTag)
-          .values({ name: tagName, organizationId: this.organizationId })
-          .returning()
-        tag = created
-      }
-      // Create the relationship
-      await tx.insert(schema.TagsOnArticle).values({ articleId, tagId: (tag as any).id })
-    }
-  }
-  /**
    * Create a revision of an article
    */
   private async createArticleRevision(article: Article, editorId: string): Promise<void> {
@@ -863,7 +807,6 @@ export class KBService {
           eq(schema.Article.id, id),
           eq(schema.Article.organizationId, this.organizationId)
         ),
-        with: { tags: true },
       })
       if (!article) {
         throw this.createNotFoundError(`Article with ID '${id}' not found`)

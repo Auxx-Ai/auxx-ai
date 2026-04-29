@@ -7,9 +7,7 @@ import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api/article')
-// Helper function to get article with tags and author
 const getArticleWithRelations = async (whereCondition: any) => {
-  // Get the article first
   const [article] = await db
     .select({
       id: schema.Article.id,
@@ -26,16 +24,6 @@ const getArticleWithRelations = async (whereCondition: any) => {
     .where(whereCondition)
     .limit(1)
   if (!article) return null
-  // Get tags for this article
-  const tags = await db
-    .select({
-      id: schema.ArticleTag.id,
-      name: schema.ArticleTag.name,
-    })
-    .from(schema.TagsOnArticle)
-    .leftJoin(schema.ArticleTag, eq(schema.TagsOnArticle.tagId, schema.ArticleTag.id))
-    .where(eq(schema.TagsOnArticle.articleId, article.id))
-  // Get author
   const [author] = await db
     .select({
       id: schema.User.id,
@@ -44,7 +32,6 @@ const getArticleWithRelations = async (whereCondition: any) => {
     .from(schema.User)
     .where(eq(schema.User.id, article.authorId!))
     .limit(1)
-  // Get files
   const files = await db
     .select({
       id: schema.File.id,
@@ -56,7 +43,6 @@ const getArticleWithRelations = async (whereCondition: any) => {
     .where(and(eq(schema.File.entityId, article.id), eq(schema.File.entityType, 'Article')))
   return {
     ...article,
-    tags: tags.map((t) => ({ tag: { name: t.name, id: t.id } })),
     author,
     files,
   }
@@ -70,7 +56,6 @@ export const articleRouter = createTRPCRouter({
         content: z.string().min(1, 'Content is required'),
         categoryId: z.string().min(1, 'Category is required'),
         productId: z.string().optional(),
-        tags: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -81,54 +66,22 @@ export const articleRouter = createTRPCRouter({
         logger.error('Organization ID or User ID is required')
         return { error: 'Organization ID or User ID is required' }
       }
-      const tags = input.tags ? input.tags.split(',').map((tag) => tag.toLowerCase().trim()) : []
-      const result = await db.transaction(async (tx) => {
-        // Create the article first
-        const [createdArticle] = await tx
-          .insert(schema.Article)
-          .values({
-            title,
-            content,
-            authorId: userId,
-            organizationId,
-            slug: title
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, '-')
-              .replace(/(^-|-$)/g, ''),
-            knowledgeBaseId: 'default', // TODO: This should come from input or default KB
-          })
-          .returning({ id: schema.Article.id })
-        // Handle tags
-        for (const tagName of tags) {
-          // Find or create the tag
-          let [tag] = await tx
-            .select()
-            .from(schema.ArticleTag)
-            .where(
-              and(
-                eq(schema.ArticleTag.name, tagName),
-                eq(schema.ArticleTag.organizationId, organizationId)
-              )
-            )
-            .limit(1)
-          if (!tag) {
-            const [newTag] = await tx
-              .insert(schema.ArticleTag)
-              .values({ name: tagName, organizationId })
-              .returning()
-            tag = newTag
-          }
-          // Link tag to article
-          await tx
-            .insert(schema.TagsOnArticle)
-            .values({ articleId: createdArticle.id, tagId: tag.id })
-        }
-        return createdArticle
-      })
-      const article = result
+      const [article] = await db
+        .insert(schema.Article)
+        .values({
+          title,
+          content,
+          authorId: userId,
+          organizationId,
+          slug: title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, ''),
+          knowledgeBaseId: 'default', // TODO: This should come from input or default KB
+        })
+        .returning({ id: schema.Article.id })
       return { article }
     }),
-  // Update this method too
   update: protectedProcedure
     .input(
       z.object({
@@ -136,54 +89,19 @@ export const articleRouter = createTRPCRouter({
         title: z.string().min(1, 'Title is required'),
         content: z.string().min(1, 'Content is required'),
         categoryId: z.string().min(1, 'Category is required'),
-        tags: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, title, content, categoryId, tags } = input
+      const { id, title, content } = input
       const { userId, organizationId } = ctx.session
       if (!organizationId || !userId) {
         return { error: 'Organization ID or User ID is required' }
       }
-      const result = await db.transaction(async (tx) => {
-        // Update article
-        const [updatedArticle] = await tx
-          .update(schema.Article)
-          .set({ title, content })
-          .where(and(eq(schema.Article.id, id), eq(schema.Article.organizationId, organizationId)))
-          .returning()
-        // Update tags if provided
-        if (tags) {
-          // First delete all existing tags for this article
-          await tx.delete(schema.TagsOnArticle).where(eq(schema.TagsOnArticle.articleId, id))
-          // Then create new tags
-          const tagArray = tags.split(',').map((tag) => tag.toLowerCase().trim())
-          for (const tagName of tagArray) {
-            // Find or create the tag
-            let [tag] = await tx
-              .select()
-              .from(schema.ArticleTag)
-              .where(
-                and(
-                  eq(schema.ArticleTag.name, tagName),
-                  eq(schema.ArticleTag.organizationId, organizationId)
-                )
-              )
-              .limit(1)
-            if (!tag) {
-              const [newTag] = await tx
-                .insert(schema.ArticleTag)
-                .values({ name: tagName, organizationId })
-                .returning()
-              tag = newTag
-            }
-            // Connect tag to article
-            await tx.insert(schema.TagsOnArticle).values({ articleId: id, tagId: tag.id })
-          }
-        }
-        return updatedArticle
-      })
-      const article = result
+      const [article] = await db
+        .update(schema.Article)
+        .set({ title, content })
+        .where(and(eq(schema.Article.id, id), eq(schema.Article.organizationId, organizationId)))
+        .returning()
       return { article }
     }),
   withCategories: protectedProcedure
@@ -200,15 +118,6 @@ export const articleRouter = createTRPCRouter({
       if (!userId || !organizationId) {
         return { error: 'User not found' }
       }
-      // const categories = await ctx.db.articleCategory.findMany({
-      //   where: { organizationId },
-      //   select: { id: true, name: true, parentId: true, organizationId: true, createdAt: true },
-      // })
-      const tags = await db
-        .select({ id: schema.ArticleTag.id, name: schema.ArticleTag.name })
-        .from(schema.ArticleTag)
-        .where(eq(schema.ArticleTag.organizationId, organizationId))
-      // Get all articles for this organization
       const articles = await db
         .select({
           id: schema.Article.id,
@@ -222,14 +131,8 @@ export const articleRouter = createTRPCRouter({
         })
         .from(schema.Article)
         .where(eq(schema.Article.organizationId, organizationId))
-      // Get tags for each article
-      const articlesWithTags = await Promise.all(
+      const articlesWithRelations = await Promise.all(
         articles.map(async (article) => {
-          const articleTags = await db
-            .select({ name: schema.ArticleTag.name, id: schema.ArticleTag.id })
-            .from(schema.TagsOnArticle)
-            .leftJoin(schema.ArticleTag, eq(schema.TagsOnArticle.tagId, schema.ArticleTag.id))
-            .where(eq(schema.TagsOnArticle.articleId, article.id))
           const [author] = await db
             .select({ id: schema.User.id, name: schema.User.name })
             .from(schema.User)
@@ -244,15 +147,10 @@ export const articleRouter = createTRPCRouter({
             })
             .from(schema.File)
             .where(and(eq(schema.File.entityId, article.id), eq(schema.File.entityType, 'Article')))
-          return {
-            ...article,
-            tags: articleTags.map((t) => t.name),
-            author,
-            files,
-          }
+          return { ...article, author, files }
         })
       )
-      return { articles: articlesWithTags, tags }
+      return { articles: articlesWithRelations }
     }),
   all: protectedProcedure
     .input(
@@ -294,14 +192,8 @@ export const articleRouter = createTRPCRouter({
       // Handle pagination
       const hasMore = articles.length > take
       const resultArticles = hasMore ? articles.slice(0, take) : articles
-      // Get tags for each article
-      const articlesWithTags = await Promise.all(
+      const articlesWithRelations = await Promise.all(
         resultArticles.map(async (article) => {
-          const articleTags = await db
-            .select({ name: schema.ArticleTag.name, id: schema.ArticleTag.id })
-            .from(schema.TagsOnArticle)
-            .leftJoin(schema.ArticleTag, eq(schema.TagsOnArticle.tagId, schema.ArticleTag.id))
-            .where(eq(schema.TagsOnArticle.articleId, article.id))
           const [author] = await db
             .select({ id: schema.User.id, name: schema.User.name })
             .from(schema.User)
@@ -316,18 +208,13 @@ export const articleRouter = createTRPCRouter({
             })
             .from(schema.File)
             .where(and(eq(schema.File.entityId, article.id), eq(schema.File.entityType, 'Article')))
-          return {
-            ...article,
-            tags: articleTags.map((t) => t.name),
-            author,
-            files,
-          }
+          return { ...article, author, files }
         })
       )
       const nextCursor: number | null = hasMore
         ? (resultArticles[resultArticles.length - 1].id as unknown as number)
         : null
-      return { articles: articlesWithTags, nextCursor }
+      return { articles: articlesWithRelations, nextCursor }
     }),
   byId: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     const userId = ctx.session.user.id
@@ -344,12 +231,7 @@ export const articleRouter = createTRPCRouter({
       logger.error('Article not found', { articleId: id })
       return { error: 'Article not found' }
     }
-    // Transform tags to match expected format
-    const formattedArticle = {
-      ...article,
-      tags: article.tags.map((tag) => tag.tag.name),
-    }
-    return { article: formattedArticle }
+    return { article }
   }),
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
