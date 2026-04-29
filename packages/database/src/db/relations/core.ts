@@ -13,7 +13,6 @@ import {
   ApprovalResponse,
   Article,
   ArticleRevision,
-  ArticleTag,
   Attachment,
   account,
   ChatMessage,
@@ -84,7 +83,6 @@ import {
   shopify_customers,
   TableView,
   Tag,
-  TagsOnArticle,
   // TagsOnThread, // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
   Thread,
   ThreadReadStatus,
@@ -230,7 +228,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   events: many(Event),
   webhooks: many(Webhook),
   apiKeys: many(ApiKey),
-  articleTags: many(ArticleTag),
   articleRevisions: many(ArticleRevision),
   ticketSequences: many(TicketSequence),
   knowledgeBases: many(KnowledgeBase),
@@ -621,17 +618,6 @@ export const providerConfigurationRelations = relations(ProviderConfiguration, (
   organization: one(Organization, {
     fields: [ProviderConfiguration.organizationId],
     references: [Organization.id],
-  }),
-}))
-
-export const tagsOnArticleRelations = relations(TagsOnArticle, ({ one }) => ({
-  article: one(Article, {
-    fields: [TagsOnArticle.articleId],
-    references: [Article.id],
-  }),
-  tag: one(ArticleTag, {
-    fields: [TagsOnArticle.tagId],
-    references: [ArticleTag.id],
   }),
 }))
 

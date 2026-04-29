@@ -939,6 +939,13 @@
       "when": 1777418445320,
       "tag": "0133_extend_scheduled_message_for_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1777435601406,
+      "tag": "0134_drop_article_tags",
+      "breakpoints": true
     }
   ]
 }

@@ -5,7 +5,6 @@ import { relations } from 'drizzle-orm/relations'
 import {
   Article,
   ArticleRevision,
-  ArticleTag,
   Comment,
   CommentMention,
   CommentReaction,
@@ -16,7 +15,6 @@ import {
   PromptTemplate,
   Snippet,
   SnippetFolder,
-  TagsOnArticle,
   User,
 } from '../schema'
 
@@ -43,7 +41,6 @@ export const articleRelations = relations(Article, ({ one, many }) => ({
   }),
   revisions: many(ArticleRevision),
   files: many(File),
-  tags: many(TagsOnArticle),
 }))
 
 export const knowledgeBaseRelations = relations(KnowledgeBase, ({ one, many }) => ({
@@ -63,14 +60,6 @@ export const knowledgeBaseRelations = relations(KnowledgeBase, ({ one, many }) =
     references: [Organization.id],
   }),
   files: many(File),
-}))
-
-export const articleTagRelations = relations(ArticleTag, ({ one, many }) => ({
-  organization: one(Organization, {
-    fields: [ArticleTag.organizationId],
-    references: [Organization.id],
-  }),
-  articles: many(TagsOnArticle),
 }))
 
 export const articleRevisionRelations = relations(ArticleRevision, ({ one }) => ({

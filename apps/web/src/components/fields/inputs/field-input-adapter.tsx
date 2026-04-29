@@ -433,7 +433,14 @@ export function FieldInputAdapter({
     // BOOLEAN - uses BooleanInput
     // ─────────────────────────────────────────────────────────────────
     case FieldType.CHECKBOX:
-      return <BooleanInput {...nodeInputProps} />
+      return (
+        <BooleanInput
+          {...nodeInputProps}
+          variant={fieldOptions?.variant}
+          trueLabel={fieldOptions?.trueLabel}
+          falseLabel={fieldOptions?.falseLabel}
+        />
+      )
 
     // ─────────────────────────────────────────────────────────────────
     // DATE/TIME - uses DateTimeInput with controlled open state
