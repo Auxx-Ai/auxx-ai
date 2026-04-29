@@ -1,6 +1,13 @@
 // packages/lib/src/dehydration/service.ts
 
-import { API_URL, DEV_PORTAL_URL, DOCS_URL, HOMEPAGE_URL, WEBAPP_URL } from '@auxx/config/client'
+import {
+  API_URL,
+  DEV_PORTAL_URL,
+  DOCS_URL,
+  HOMEPAGE_URL,
+  KB_URL,
+  WEBAPP_URL,
+} from '@auxx/config/client'
 import { configService } from '@auxx/credentials'
 import { getDeploymentMode } from '@auxx/deployment'
 import { createScopedLogger } from '@auxx/logger'
@@ -41,6 +48,7 @@ export function buildEnvironment(): DehydratedEnvironment {
     homepageUrl: HOMEPAGE_URL || '',
     docsUrl: DOCS_URL || '',
     devPortalUrl: DEV_PORTAL_URL || '',
+    kbUrl: KB_URL || '',
     cdnUrl: configService.get<string>('CDN_URL') || '',
     turnstileSiteKey: configService.get<string>('TURNSTILE_SITE_KEY') || '',
     stripe: {

@@ -26,9 +26,24 @@ const CORNER_OPTIONS = [
 ]
 
 const sidebarStyles = [
-  { value: 'default' as const, label: 'Default', icon: <List />, description: 'Plain list rows' },
-  { value: 'pill' as const, label: 'Pill', icon: <Pill />, description: 'Selected item rounded' },
-  { value: 'line' as const, label: 'Line', icon: <Minus />, description: 'Underline indicator' },
+  {
+    value: 'default' as const,
+    label: 'Default',
+    icon: <List />,
+    description: 'Rounded items with collapse rail',
+  },
+  {
+    value: 'pill' as const,
+    label: 'Pill',
+    icon: <Pill />,
+    description: 'Pill-shaped active indicator, no rail',
+  },
+  {
+    value: 'line' as const,
+    label: 'Line',
+    icon: <Minus />,
+    description: 'Continuous left line',
+  },
 ]
 
 interface StylingSectionProps {
@@ -95,7 +110,7 @@ export function StylingSection({ form, isPending }: StylingSectionProps) {
               value={field.value}
               onValueChange={field.onChange}
               disabled={isPending}
-              className='grid gap-2 sm:grid-cols-3'>
+              className='grid gap-2'>
               {sidebarStyles.map((s) => (
                 <RadioGroupItemCard
                   key={s.value}

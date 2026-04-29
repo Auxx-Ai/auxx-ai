@@ -32,6 +32,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: kb.name,
     description: kb.description ?? undefined,
     openGraph: { title: kb.name, description: kb.description ?? undefined },
+    robots: kb.publishStatus === 'UNLISTED' ? { index: false, follow: false } : undefined,
   }
 }
 
@@ -44,7 +45,9 @@ export default async function KBLandingPage({ params }: PageProps) {
   if (!kb) notFound()
 
   const basePath = `/${orgSlug}/${kbSlug}`
-  const homeArticle = articles.find((a) => a.isPublished && !a.isCategory)
+  const homeArticle =
+    articles.find((a) => a.isHomePage && a.isPublished && !a.isCategory) ??
+    articles.find((a) => a.isPublished && !a.isCategory)
   const doc = homeArticle?.contentJson ?? null
   const headings = doc ? extractKBHeadings(doc) : []
   const { prev, next } = homeArticle

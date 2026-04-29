@@ -24,6 +24,11 @@ function normalizeServerArticle(server: any): ArticleMeta {
     status: (server.status ?? ArticleStatus.DRAFT) as ArticleMeta['status'],
     description: server.description ?? null,
     excerpt: server.excerpt ?? null,
+    isHomePage: !!server.isHomePage,
+    hasUnpublishedChanges: !!server.hasUnpublishedChanges,
+    publishedAt: server.publishedAt ? new Date(server.publishedAt) : null,
+    publishedRevisionId: server.publishedRevisionId ?? null,
+    draftRevisionId: server.draftRevisionId ?? null,
   }
 }
 
@@ -39,24 +44,43 @@ interface CreateArticleInput {
   contentJson?: unknown
   excerpt?: string | null
   description?: string | null
-  isPublished?: boolean
-  status?: ArticleMeta['status']
 }
 
 export interface UseArticleMutationsResult {
   createArticle: (input?: CreateArticleInput) => Promise<ArticleMeta | undefined>
-  updateArticle: (id: string, updates: Partial<ArticleMeta>) => Promise<void>
-  /** Used by the editor for content saves (no optimistic store update). */
+  /** Update title/description/excerpt/emoji on the draft revision. */
+  updateArticleDraft: (
+    id: string,
+    fields: {
+      title?: string
+      description?: string | null
+      excerpt?: string | null
+      emoji?: string | null
+    }
+  ) => Promise<void>
+  /** Update structural fields (slug, parentId, order, isCategory). */
+  updateArticleStructure: (
+    id: string,
+    fields: { slug?: string; parentId?: string | null; order?: number; isCategory?: boolean }
+  ) => Promise<void>
+  /** Save heavy content to the draft revision (no optimistic store update). */
   updateArticleContent: (
     id: string,
     data: { content?: string; contentJson?: unknown }
   ) => Promise<void>
   deleteArticle: (id: string) => Promise<void>
-  publishArticle: (id: string, isPublished: boolean) => Promise<void>
+  publishArticle: (id: string) => Promise<void>
+  unpublishArticle: (id: string) => Promise<void>
+  archiveArticle: (id: string) => Promise<void>
+  unarchiveArticle: (id: string) => Promise<void>
+  discardArticleDraft: (id: string) => Promise<void>
+  restoreArticleVersion: (versionId: string) => Promise<void>
+  setHomeArticle: (id: string) => Promise<void>
   duplicateArticle: (article: ArticleMeta) => Promise<ArticleMeta | undefined>
+  /** Convenience: rename via the draft (title/emoji) + structure (slug). */
   renameArticle: (
     id: string,
-    fields: { title: string; emoji?: string | null; slug?: string }
+    fields: { title?: string; emoji?: string | null; slug?: string }
   ) => Promise<void>
   isCreating: boolean
 }
@@ -66,16 +90,21 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
   const posthog = useAnalytics()
 
   const createMutation = api.kb.createArticle.useMutation()
-  const updateMutation = api.kb.updateArticle.useMutation()
+  const updateDraftMutation = api.kb.updateArticleDraft.useMutation()
+  const updateStructureMutation = api.kb.updateArticleStructure.useMutation()
   const deleteMutation = api.kb.deleteArticle.useMutation()
   const publishMutation = api.kb.publishArticle.useMutation()
+  const unpublishMutation = api.kb.unpublishArticle.useMutation()
+  const archiveMutation = api.kb.archiveArticle.useMutation()
+  const unarchiveMutation = api.kb.unarchiveArticle.useMutation()
+  const discardDraftMutation = api.kb.discardArticleDraft.useMutation()
+  const restoreVersionMutation = api.kb.restoreArticleVersion.useMutation()
+  const setHomeMutation = api.kb.setHomeArticle.useMutation()
 
   const createArticle = useCallback<UseArticleMutationsResult['createArticle']>(
     async (input = {}) => {
       const tempId = `temp_${generateId()}`
       const store = getArticleStoreState()
-
-      // Build optimistic metadata. Title/slug fall back to "Untitled".
       const optimisticArticle: ArticleMeta = {
         id: tempId,
         knowledgeBaseId,
@@ -84,14 +113,18 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         emoji: input.emoji ?? null,
         parentId: input.parentId ?? null,
         isCategory: input.isCategory ?? false,
-        order: 9999, // Will be reconciled when the server returns
-        isPublished: input.isPublished ?? false,
-        status: input.status ?? ArticleStatus.DRAFT,
+        order: 9999,
+        isPublished: false,
+        status: ArticleStatus.DRAFT,
         description: input.description ?? null,
         excerpt: input.excerpt ?? null,
+        isHomePage: false,
+        hasUnpublishedChanges: false,
+        publishedAt: null,
+        publishedRevisionId: null,
+        draftRevisionId: null,
       }
       store.addOptimisticArticle(tempId, optimisticArticle)
-
       try {
         const server = await createMutation.mutateAsync({
           knowledgeBaseId,
@@ -103,8 +136,6 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
           contentJson: input.contentJson,
           excerpt: input.excerpt ?? undefined,
           description: input.description ?? undefined,
-          isPublished: input.isPublished,
-          status: input.status,
           parentId: input.parentId ?? undefined,
           adjacentTo: input.adjacentTo,
           position: input.position as any,
@@ -126,12 +157,40 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
     [knowledgeBaseId, createMutation, utils.kb.getArticles, posthog]
   )
 
-  const updateArticle = useCallback<UseArticleMutationsResult['updateArticle']>(
-    async (id, updates) => {
+  const updateArticleDraft = useCallback<UseArticleMutationsResult['updateArticleDraft']>(
+    async (id, fields) => {
       const store = getArticleStoreState()
-      store.setArticleOptimistic(id, updates)
+      // Sidebar shows draft fields when the article isn't yet published.
+      // For published articles we leave the sidebar showing the live title.
+      const current = store.articles.get(id)
+      const showInSidebar = current && !current.isPublished
+      if (showInSidebar) store.setArticleOptimistic(id, fields)
       try {
-        const server = await updateMutation.mutateAsync({ id, data: updates, knowledgeBaseId })
+        const server = await updateDraftMutation.mutateAsync({ id, data: fields, knowledgeBaseId })
+        const normalized = normalizeServerArticle(server)
+        if (showInSidebar) store.confirmUpdate(id, normalized)
+        else store.applyArticleMetadataFromServer(id, normalized)
+      } catch (error) {
+        if (showInSidebar) store.rollbackUpdate(id)
+        toastError({
+          title: "Couldn't update article",
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+      }
+    },
+    [knowledgeBaseId, updateDraftMutation]
+  )
+
+  const updateArticleStructure = useCallback<UseArticleMutationsResult['updateArticleStructure']>(
+    async (id, fields) => {
+      const store = getArticleStoreState()
+      store.setArticleOptimistic(id, fields)
+      try {
+        const server = await updateStructureMutation.mutateAsync({
+          id,
+          data: fields,
+          knowledgeBaseId,
+        })
         store.confirmUpdate(id, normalizeServerArticle(server))
       } catch (error) {
         store.rollbackUpdate(id)
@@ -141,32 +200,24 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         })
       }
     },
-    [knowledgeBaseId, updateMutation]
+    [knowledgeBaseId, updateStructureMutation]
   )
 
   /**
-   * Save heavy content (HTML/JSON) to the server.
-   * Bypasses store optimistic state — content isn't mirrored in the store.
-   * Metadata (title/description/etc.) returned in the response is reconciled.
+   * Save the editor's content to the draft revision. Bypasses optimistic store
+   * state — heavy content isn't mirrored in the store.
    */
   const updateArticleContent = useCallback<UseArticleMutationsResult['updateArticleContent']>(
     async (id, data) => {
       try {
-        const server = await updateMutation.mutateAsync({
+        const server = await updateDraftMutation.mutateAsync({
           id,
-          data: data as any,
+          data: data as { content?: string; contentJson?: unknown },
           knowledgeBaseId,
         })
-        const normalized = normalizeServerArticle(server)
-        getArticleStoreState().applyArticleMetadataFromServer(id, {
-          title: normalized.title,
-          slug: normalized.slug,
-          emoji: normalized.emoji,
-          isPublished: normalized.isPublished,
-          status: normalized.status,
-          description: normalized.description,
-          excerpt: normalized.excerpt,
-        })
+        // Reflect the server's authoritative metadata (e.g. hasUnpublishedChanges)
+        // so the sidebar/status pills don't fight a concurrent publish.
+        getArticleStoreState().applyArticleMetadataFromServer(id, normalizeServerArticle(server))
       } catch (error) {
         toastError({
           title: 'Failed to save article',
@@ -174,7 +225,7 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         })
       }
     },
-    [knowledgeBaseId, updateMutation]
+    [knowledgeBaseId, updateDraftMutation]
   )
 
   const deleteArticle = useCallback<UseArticleMutationsResult['deleteArticle']>(
@@ -201,27 +252,158 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
   )
 
   const publishArticle = useCallback<UseArticleMutationsResult['publishArticle']>(
-    async (id, isPublished) => {
+    async (id) => {
       const store = getArticleStoreState()
-      store.setArticleOptimistic(id, { isPublished })
+      store.setArticleOptimistic(id, {
+        isPublished: true,
+        status: ArticleStatus.PUBLISHED,
+        hasUnpublishedChanges: false,
+      })
       try {
-        await publishMutation.mutateAsync({ id, knowledgeBaseId, isPublished })
-        store.confirmUpdate(id)
+        const result = await publishMutation.mutateAsync({ id, knowledgeBaseId })
+        store.confirmUpdate(id, normalizeServerArticle(result.article))
         toastSuccess({
-          title: isPublished ? 'Article published' : 'Article unpublished',
-          description: isPublished
-            ? 'The article is now visible to readers'
-            : 'The article is now hidden from readers',
+          title: 'Article published',
+          description: 'The article is now visible to readers',
         })
       } catch (error) {
         store.rollbackUpdate(id)
         toastError({
-          title: isPublished ? "Couldn't publish article" : "Couldn't unpublish article",
+          title: "Couldn't publish article",
           description: error instanceof Error ? error.message : 'Unknown error occurred',
         })
       }
     },
     [knowledgeBaseId, publishMutation]
+  )
+
+  const unpublishArticle = useCallback<UseArticleMutationsResult['unpublishArticle']>(
+    async (id) => {
+      const store = getArticleStoreState()
+      store.setArticleOptimistic(id, {
+        isPublished: false,
+        status: ArticleStatus.DRAFT,
+      })
+      try {
+        const server = await unpublishMutation.mutateAsync({ id, knowledgeBaseId })
+        store.confirmUpdate(id, normalizeServerArticle(server))
+      } catch (error) {
+        store.rollbackUpdate(id)
+        toastError({
+          title: "Couldn't unpublish article",
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+      }
+    },
+    [knowledgeBaseId, unpublishMutation]
+  )
+
+  const archiveArticle = useCallback<UseArticleMutationsResult['archiveArticle']>(
+    async (id) => {
+      const store = getArticleStoreState()
+      store.setArticleOptimistic(id, {
+        status: ArticleStatus.ARCHIVED,
+        isPublished: false,
+      })
+      try {
+        const server = await archiveMutation.mutateAsync({ id, knowledgeBaseId })
+        store.confirmUpdate(id, normalizeServerArticle(server))
+      } catch (error) {
+        store.rollbackUpdate(id)
+        toastError({
+          title: "Couldn't archive article",
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+      }
+    },
+    [knowledgeBaseId, archiveMutation]
+  )
+
+  const unarchiveArticle = useCallback<UseArticleMutationsResult['unarchiveArticle']>(
+    async (id) => {
+      const store = getArticleStoreState()
+      store.setArticleOptimistic(id, {
+        status: ArticleStatus.DRAFT,
+        isPublished: false,
+      })
+      try {
+        const server = await unarchiveMutation.mutateAsync({ id, knowledgeBaseId })
+        store.confirmUpdate(id, normalizeServerArticle(server))
+      } catch (error) {
+        store.rollbackUpdate(id)
+        toastError({
+          title: "Couldn't unarchive article",
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+      }
+    },
+    [knowledgeBaseId, unarchiveMutation]
+  )
+
+  const discardArticleDraft = useCallback<UseArticleMutationsResult['discardArticleDraft']>(
+    async (id) => {
+      try {
+        const server = await discardDraftMutation.mutateAsync({ id, knowledgeBaseId })
+        getArticleStoreState().applyArticleFromServer(normalizeServerArticle(server))
+        utils.kb.getArticleById.invalidate({ id, knowledgeBaseId })
+      } catch (error) {
+        toastError({
+          title: "Couldn't discard draft",
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+      }
+    },
+    [knowledgeBaseId, discardDraftMutation, utils.kb.getArticleById]
+  )
+
+  const restoreArticleVersion = useCallback<UseArticleMutationsResult['restoreArticleVersion']>(
+    async (versionId) => {
+      try {
+        const server = await restoreVersionMutation.mutateAsync({ versionId })
+        const normalized = normalizeServerArticle(server)
+        getArticleStoreState().applyArticleFromServer(normalized)
+        utils.kb.getArticleById.invalidate({ id: normalized.id, knowledgeBaseId })
+        toastSuccess({
+          title: 'Version restored',
+          description: 'The version has been loaded into your draft.',
+        })
+      } catch (error) {
+        toastError({
+          title: "Couldn't restore version",
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+      }
+    },
+    [knowledgeBaseId, restoreVersionMutation, utils.kb.getArticleById]
+  )
+
+  const setHomeArticle = useCallback<UseArticleMutationsResult['setHomeArticle']>(
+    async (id) => {
+      const store = getArticleStoreState()
+      // Optimistically clear isHomePage on every other article in this KB.
+      for (const article of store.articles.values()) {
+        if (
+          article.knowledgeBaseId === knowledgeBaseId &&
+          article.isHomePage &&
+          article.id !== id
+        ) {
+          store.setArticleOptimistic(article.id, { isHomePage: false })
+        }
+      }
+      store.setArticleOptimistic(id, { isHomePage: true })
+      try {
+        const server = await setHomeMutation.mutateAsync({ id, knowledgeBaseId })
+        store.confirmUpdate(id, normalizeServerArticle(server))
+        utils.kb.getArticles.invalidate({ knowledgeBaseId })
+      } catch (error) {
+        store.rollbackUpdate(id)
+        toastError({
+          title: "Couldn't set home page",
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+      }
+    },
+    [knowledgeBaseId, setHomeMutation, utils.kb.getArticles]
   )
 
   const duplicateArticle = useCallback<UseArticleMutationsResult['duplicateArticle']>(
@@ -231,8 +413,6 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         emoji: article.emoji,
         isCategory: article.isCategory,
         parentId: article.parentId,
-        isPublished: article.isPublished,
-        status: article.status,
         excerpt: article.excerpt,
         description: article.description,
         adjacentTo: article.id,
@@ -244,17 +424,35 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
 
   const renameArticle = useCallback<UseArticleMutationsResult['renameArticle']>(
     async (id, fields) => {
-      await updateArticle(id, fields)
+      const draftFields: {
+        title?: string
+        emoji?: string | null
+      } = {}
+      if (fields.title !== undefined) draftFields.title = fields.title
+      if (fields.emoji !== undefined) draftFields.emoji = fields.emoji
+      if (Object.keys(draftFields).length > 0) {
+        await updateArticleDraft(id, draftFields)
+      }
+      if (fields.slug !== undefined) {
+        await updateArticleStructure(id, { slug: fields.slug })
+      }
     },
-    [updateArticle]
+    [updateArticleDraft, updateArticleStructure]
   )
 
   return {
     createArticle,
-    updateArticle,
+    updateArticleDraft,
+    updateArticleStructure,
     updateArticleContent,
     deleteArticle,
     publishArticle,
+    unpublishArticle,
+    archiveArticle,
+    unarchiveArticle,
+    discardArticleDraft,
+    restoreArticleVersion,
+    setHomeArticle,
     duplicateArticle,
     renameArticle,
     isCreating: createMutation.isPending,

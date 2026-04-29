@@ -5,16 +5,28 @@ import type { JSONContent } from '@tiptap/core'
 import { api } from '~/trpc/react'
 
 interface UseArticleContentResult {
-  content: string | null
-  contentJson: JSONContent | null
-  excerpt: string | null
-  description: string | null
+  /** Draft revision content (what the editor writes to). */
+  draftContent: string | null
+  draftContentJson: JSONContent | null
+  draftTitle: string | null
+  draftDescription: string | null
+  draftExcerpt: string | null
+  draftEmoji: string | null
+  /** Last published version (null if never published). */
+  publishedTitle: string | null
+  publishedContent: string | null
+  publishedContentJson: JSONContent | null
+  hasPublishedVersion: boolean
+  hasUnpublishedChanges: boolean
   isLoading: boolean
 }
 
 /**
  * Fetch an article's heavy content (HTML + JSON) directly from the server.
  * Content is intentionally not stored in the article store — only metadata is.
+ *
+ * Returns both the draft (what the editor mutates) and the published revision
+ * (used to power "discard draft" preview comparisons in the settings dialog).
  */
 export function useArticleContent(
   id: string | null | undefined,
@@ -26,10 +38,18 @@ export function useArticleContent(
   )
 
   return {
-    content: query.data?.content ?? null,
-    contentJson: (query.data?.contentJson as JSONContent | null | undefined) ?? null,
-    excerpt: query.data?.excerpt ?? null,
-    description: query.data?.description ?? null,
+    draftContent: query.data?.content ?? null,
+    draftContentJson: (query.data?.contentJson as JSONContent | null | undefined) ?? null,
+    draftTitle: query.data?.title ?? null,
+    draftDescription: query.data?.description ?? null,
+    draftExcerpt: query.data?.excerpt ?? null,
+    draftEmoji: query.data?.emoji ?? null,
+    publishedTitle: query.data?.publishedTitle ?? null,
+    publishedContent: query.data?.publishedContent ?? null,
+    publishedContentJson:
+      (query.data?.publishedContentJson as JSONContent | null | undefined) ?? null,
+    hasPublishedVersion: !!query.data?.hasPublishedVersion,
+    hasUnpublishedChanges: !!query.data?.hasUnpublishedChanges,
     isLoading: query.isLoading,
   }
 }

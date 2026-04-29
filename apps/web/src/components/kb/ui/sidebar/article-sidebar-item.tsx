@@ -15,26 +15,28 @@ import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
+  Archive,
+  ArchiveRestore,
   BookCopy,
   ChevronRight,
+  Cog,
   EyeOff,
   Files,
   FileText,
   FolderClosed,
   FolderOpen,
   GripVertical,
+  House,
   MoreVertical,
-  Pencil,
+  Send,
   Trash2,
-  TypeOutline,
 } from 'lucide-react'
-import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleTreeNode } from '../../store/article-store'
-import { ArticleRenameDialog } from '../editor/article-rename-dialog'
+import { ArticleSettingsDialog } from '../editor/article-settings-dialog'
 
 interface ArticleSidebarItemProps {
   article: ArticleTreeNode
@@ -49,14 +51,23 @@ export function ArticleSidebarItem({
   isOpen = false,
   onToggleOpen,
 }: ArticleSidebarItemProps) {
-  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const isCategory = article.isCategory || (article.children && article.children.length > 0)
+  const isArchived = article.status === 'ARCHIVED'
 
   const articles = useArticleList(knowledgeBaseId)
-  const { createArticle, deleteArticle, publishArticle, duplicateArticle, renameArticle } =
-    useArticleMutations(knowledgeBaseId)
+  const {
+    createArticle,
+    deleteArticle,
+    publishArticle,
+    unpublishArticle,
+    archiveArticle,
+    unarchiveArticle,
+    setHomeArticle,
+    duplicateArticle,
+  } = useArticleMutations(knowledgeBaseId)
 
   const basePath = `/app/kb/${knowledgeBaseId}`
   const slugPaths = useMemo(() => getArticleSlugPaths(articles), [articles])
@@ -105,18 +116,6 @@ export function ArticleSidebarItem({
   )
 
   const displayName = article.emoji ? `${article.emoji} ${article.title}` : article.title
-
-  const handleRenameSubmit = async (values: {
-    title: string
-    emoji: string | null
-    slug?: string
-  }) => {
-    await renameArticle(article.id, {
-      title: values.title,
-      emoji: values.emoji,
-      slug: values.slug,
-    })
-  }
 
   const handleAddSubItem = async () => {
     const created = await createArticle({ parentId: article.id })
@@ -178,6 +177,7 @@ export function ArticleSidebarItem({
               'bg-background text-accent-foreground': isActive,
               'cursor-grab': !isDragging,
               'cursor-grabbing': isDragging,
+              'opacity-60': isArchived,
             }
           )}
           data-is-category={isCategory ? 'true' : 'false'}>
@@ -202,7 +202,19 @@ export function ArticleSidebarItem({
             )}>
             <span className='mr-2 flex items-center'>{icon}</span>
             <div className='flex flex-1 items-center'>
-              <span>{displayName}</span>
+              <span className='truncate'>{displayName}</span>
+              {article.hasUnpublishedChanges && article.isPublished && (
+                <span
+                  className='ml-1.5 inline-block size-1.5 shrink-0 rounded-full bg-amber-500'
+                  title='Unsaved changes'
+                />
+              )}
+              {article.isHomePage && (
+                <House
+                  className='ml-1.5 size-3 shrink-0 text-muted-foreground'
+                  aria-label='Home page'
+                />
+              )}
               {isCategory && (
                 <button
                   onClick={(e) => {
@@ -223,11 +235,15 @@ export function ArticleSidebarItem({
             </div>
           </div>
 
-          {!article.isPublished && (
-            <div className='pointer-events-none ml-1'>
+          {isArchived ? (
+            <div className='pointer-events-none ml-1' title='Archived'>
+              <Archive size={16} />
+            </div>
+          ) : !article.isPublished ? (
+            <div className='pointer-events-none ml-1' title='Unpublished'>
               <EyeOff size={16} />
             </div>
-          )}
+          ) : null}
 
           <div className='ml-1 mr-2 opacity-0 transition-opacity group-hover:opacity-100'>
             <DropdownMenu>
@@ -242,38 +258,58 @@ export function ArticleSidebarItem({
               <DropdownMenuContent align='end' className='w-56'>
                 <DropdownMenuGroup>
                   <DropdownMenuItem onClick={handleAddSubItem}>
-                    <Files /> Add Sub-item
+                    <Files /> Add sub-item
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setIsRenameDialogOpen(true)}>
-                    <TypeOutline /> Rename
+                  <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
+                    <Cog /> Page settings
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => duplicateArticle(article)}>
                     <BookCopy /> Duplicate
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href='#'>
-                      <Pencil /> Edit Article
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => publishArticle(article.id, !article.isPublished)}>
-                    <EyeOff />
-                    {article.isPublished ? 'Unpublish' : 'Publish'}
-                  </DropdownMenuItem>
                 </DropdownMenuGroup>
+                <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => deleteArticle(article.id)} variant='destructive'>
-                    <Trash2 /> Delete
-                  </DropdownMenuItem>
+                  {isArchived ? (
+                    <DropdownMenuItem onClick={() => unarchiveArticle(article.id)}>
+                      <ArchiveRestore /> Unarchive
+                    </DropdownMenuItem>
+                  ) : article.isPublished ? (
+                    <>
+                      <DropdownMenuItem onClick={() => unpublishArticle(article.id)}>
+                        <EyeOff /> Unpublish
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setHomeArticle(article.id)}
+                        disabled={article.isHomePage || article.isCategory}>
+                        <House />
+                        {article.isHomePage ? 'Home page' : 'Set as home page'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
+                        <Archive /> Archive
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuItem onClick={() => publishArticle(article.id)}>
+                        <Send /> Publish
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
+                        <Archive /> Archive
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => deleteArticle(article.id)} variant='destructive'>
+                  <Trash2 /> Delete
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <ArticleRenameDialog
-              open={isRenameDialogOpen}
-              onOpenChange={setIsRenameDialogOpen}
+            <ArticleSettingsDialog
+              open={isSettingsOpen}
+              onOpenChange={setIsSettingsOpen}
               article={article}
-              onSubmit={handleRenameSubmit}
+              knowledgeBaseId={knowledgeBaseId}
             />
           </div>
         </div>

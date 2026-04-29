@@ -2,6 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, ilike, or } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { KBService } from '../../../../../kb'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -15,8 +16,8 @@ function truncate(text: string | null | undefined, maxLen: number): string {
 }
 
 /**
- * Search articles by title/content using ILIKE.
- * KBService doesn't have a search method, so we query directly.
+ * Search published articles by title/content using ILIKE on the joined
+ * published revision row. Drafts are skipped.
  */
 async function searchArticles(
   db: Database,
@@ -25,35 +26,35 @@ async function searchArticles(
   query: string,
   limit: number
 ) {
+  const pub = alias(schema.ArticleRevision, 'pub')
   const conditions = [
     eq(schema.Article.organizationId, organizationId),
     eq(schema.Article.isPublished, true),
     or(
-      ilike(schema.Article.title, `%${query}%`),
-      ilike(schema.Article.description, `%${query}%`),
-      ilike(schema.Article.content, `%${query}%`)
+      ilike(pub.title, `%${query}%`),
+      ilike(pub.description, `%${query}%`),
+      ilike(pub.content, `%${query}%`)
     ),
   ]
-
   if (knowledgeBaseId) {
     conditions.push(eq(schema.Article.knowledgeBaseId, knowledgeBaseId))
   }
-
-  return db.query.Article.findMany({
-    where: and(...conditions),
-    limit,
-    orderBy: (article, { desc }) => [desc(article.updatedAt)],
-    columns: {
-      id: true,
-      title: true,
-      description: true,
-      excerpt: true,
-      content: true,
-      knowledgeBaseId: true,
-      slug: true,
-      updatedAt: true,
-    },
-  })
+  return db
+    .select({
+      id: schema.Article.id,
+      title: pub.title,
+      description: pub.description,
+      excerpt: pub.excerpt,
+      content: pub.content,
+      knowledgeBaseId: schema.Article.knowledgeBaseId,
+      slug: schema.Article.slug,
+      updatedAt: schema.Article.updatedAt,
+    })
+    .from(schema.Article)
+    .innerJoin(pub, eq(pub.id, schema.Article.publishedRevisionId))
+    .where(and(...conditions))
+    .orderBy(schema.Article.updatedAt)
+    .limit(limit)
 }
 
 export function createSearchKBTool(getDeps: GetToolDeps): AgentToolDefinition {
@@ -90,7 +91,6 @@ export function createSearchKBTool(getDeps: GetToolDeps): AgentToolDefinition {
 
       let kbId = knowledgeBaseId
 
-      // If no KB specified, find the first available KB
       if (!kbId) {
         const kbService = new KBService(db, agentDeps.organizationId)
         const knowledgeBases = await kbService.listKnowledgeBases()

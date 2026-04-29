@@ -37,7 +37,7 @@ export default async function KnowledgeBasePreviewPage({ params }: KBPreviewPara
   })
 
   function handlePublish() {
-    publishMutation.mutate({ id: knowledgeBaseId, data: { isPublic: true } })
+    publishMutation.mutate({ id: knowledgeBaseId, data: { publishStatus: 'PUBLISHED' } })
   }
 
   // Construct the preview URL
@@ -75,8 +75,8 @@ export default async function KnowledgeBasePreviewPage({ params }: KBPreviewPara
           {/* Publish button */}
           <Button
             onClick={handlePublish}
-            disabled={publishMutation.isLoading || knowledgeBase?.isPublic}>
-            {knowledgeBase?.isPublic ? 'Published' : 'Publish'}
+            disabled={publishMutation.isLoading || knowledgeBase?.publishStatus === 'PUBLISHED'}>
+            {knowledgeBase?.publishStatus === 'PUBLISHED' ? 'Published' : 'Publish'}
           </Button>
         </div>
       </div>

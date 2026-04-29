@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Table, TableCell, TableHeader, TableRow } from '../extensions/table'
 import { createPlaceholderNode, PlaceholderBadge, useSlashCommand } from '../inline-picker'
 import { Block } from './block-node'
+import { migrateLegacyContent } from './migrate-legacy-content'
 
 const Doc = Node.create({
   name: 'doc',
@@ -56,6 +57,11 @@ interface UseKBArticleEditorOptions {
 
 export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEditorOptions) {
   const slashCommand = useSlashCommand()
+
+  const normalizedInitialContent = useMemo(
+    () => migrateLegacyContent(initialContent) ?? emptyDoc,
+    [initialContent]
+  )
 
   const placeholderNodeExtension = useMemo(
     () => createPlaceholderNode((p) => <PlaceholderBadge {...p} />),
@@ -100,7 +106,7 @@ export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEdi
         slashCommand.slashCommandExtension,
         placeholderNodeExtension,
       ],
-      content: initialContent ?? emptyDoc,
+      content: normalizedInitialContent,
       shouldRerenderOnTransaction: false,
       onCreate: ({ editor }) => slashCommand.setEditor(editor),
       onDestroy: () => slashCommand.setEditor(null),
@@ -127,18 +133,19 @@ export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEdi
 
   // Sync external content changes (e.g. autosave response landing while user is idle).
   useEffect(() => {
-    if (!editor || editor.isDestroyed || !initialContent) return
+    if (!editor || editor.isDestroyed) return
+    const incomingContent = normalizedInitialContent
     const current = JSON.stringify(editor.getJSON())
-    const incoming = JSON.stringify(initialContent)
+    const incoming = JSON.stringify(incomingContent)
     if (current === incoming) return
     const { from, to } = editor.state.selection
-    editor.commands.setContent(initialContent, false)
+    editor.commands.setContent(incomingContent, false)
     try {
       editor.commands.setTextSelection({ from, to })
     } catch {
       editor.commands.focus('end')
     }
-  }, [initialContent, editor])
+  }, [normalizedInitialContent, editor])
 
   // Flush deferred onChange when slash picker closes.
   const prevOpen = useRef(false)

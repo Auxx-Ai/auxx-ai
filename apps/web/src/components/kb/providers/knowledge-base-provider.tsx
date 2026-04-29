@@ -27,6 +27,11 @@ function normalize(server: any): ArticleMeta {
     status: server.status,
     description: server.description ?? null,
     excerpt: server.excerpt ?? null,
+    isHomePage: !!server.isHomePage,
+    hasUnpublishedChanges: !!server.hasUnpublishedChanges,
+    publishedAt: server.publishedAt ? new Date(server.publishedAt) : null,
+    publishedRevisionId: server.publishedRevisionId ?? null,
+    draftRevisionId: server.draftRevisionId ?? null,
   }
 }
 

@@ -29,7 +29,6 @@ function buildDefaults(kb: KnowledgeBase): GeneralFormValues {
     name: kb.name,
     slug: kb.slug,
     description: kb.description || '',
-    isPublic: kb.isPublic,
     customDomain: kb.customDomain || '',
     logoDark: kb.logoDark || '',
     logoLight: kb.logoLight || '',

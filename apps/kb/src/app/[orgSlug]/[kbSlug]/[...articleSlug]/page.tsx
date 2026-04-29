@@ -39,13 +39,14 @@ async function getCachedMetadata(
   'use cache'
   cacheTag(kbTag(orgSlug, kbSlug))
   cacheLife('max')
-  const { articles } = await getKBPayloadWithContent(orgSlug, kbSlug)
+  const { kb, articles } = await getKBPayloadWithContent(orgSlug, kbSlug)
   const article = findArticleBySlugPath(articles, articleSlug)
   if (!article) return { title: 'Not found' }
   return {
     title: article.title,
     description: article.description ?? undefined,
     openGraph: { title: article.title, description: article.description ?? undefined },
+    robots: kb?.publishStatus === 'UNLISTED' ? { index: false, follow: false } : undefined,
   }
 }
 

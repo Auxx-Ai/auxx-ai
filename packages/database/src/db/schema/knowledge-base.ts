@@ -7,6 +7,7 @@ import {
   boolean,
   index,
   jsonb,
+  kbPublishStatus,
   pgTable,
   text,
   timestamp,
@@ -27,7 +28,9 @@ export const KnowledgeBase = pgTable(
     name: text().notNull(),
     slug: text().notNull(),
     description: text(),
-    isPublic: boolean().default(false).notNull(),
+    publishStatus: kbPublishStatus().default('DRAFT').notNull(),
+    publishedAt: timestamp({ precision: 3 }),
+    lastPublishedAt: timestamp({ precision: 3 }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     organizationId: text()

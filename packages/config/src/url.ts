@@ -267,6 +267,7 @@ export const DOCS_URL = resolveAppUrl('docs')
 export const DEV_PORTAL_URL = resolveAppUrl('build')
 export const API_URL = resolveAppUrl('api')
 export const LAMBDA_URL = resolveAppUrl('lambda')
+export const KB_URL = resolveAppUrl('kb')
 
 // ─── Internal URL exports (service-to-service) ──────────
 

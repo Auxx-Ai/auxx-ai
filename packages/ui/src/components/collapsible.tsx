@@ -17,6 +17,8 @@ const CollapsibleContent = CollapsiblePrimitive.CollapsibleContent
 export interface AnimatedCollapsibleContentProps {
   /** Controls whether the content is visible. */
   open: boolean
+  /** When false, open/close changes apply instantly without animation. */
+  animate?: boolean
   className?: string
   children?: React.ReactNode
 }
@@ -28,9 +30,13 @@ export interface AnimatedCollapsibleContentProps {
  */
 function AnimatedCollapsibleContent({
   open,
+  animate = true,
   className,
   children,
 }: AnimatedCollapsibleContentProps) {
+  if (!animate) {
+    return open ? <div className={className}>{children}</div> : null
+  }
   return (
     <AnimatePresence initial={false}>
       {open && (

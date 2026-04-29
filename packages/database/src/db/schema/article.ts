@@ -8,14 +8,13 @@ import {
   boolean,
   index,
   integer,
-  jsonb,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
-  varchar,
   vector,
 } from './_shared'
+import { ArticleRevision } from './article-revision'
 import { KnowledgeBase } from './knowledge-base'
 import { Organization } from './organization'
 import { User } from './user'
@@ -28,13 +27,7 @@ export const Article = pgTable(
       .$defaultFn(() => createId())
       .primaryKey()
       .notNull(),
-    title: varchar({ length: 255 }).notNull(),
-    description: text(),
-    emoji: text(),
     slug: text().notNull(),
-    content: text().notNull(),
-    contentJson: jsonb(),
-    excerpt: text(),
     isCategory: boolean().default(false).notNull(),
     authorId: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
@@ -60,6 +53,17 @@ export const Article = pgTable(
     publishedAt: timestamp({ precision: 3 }),
     isHomePage: boolean().default(false).notNull(),
     embedding: vector({ dimensions: 1536 }),
+    publishedRevisionId: text().references((): AnyPgColumn => ArticleRevision.id, {
+      onUpdate: 'cascade',
+    }),
+    draftRevisionId: text().references((): AnyPgColumn => ArticleRevision.id, {
+      onUpdate: 'cascade',
+    }),
+    publishedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    hasUnpublishedChanges: boolean().default(false).notNull(),
   },
   (table) => [
     index('Article_isCategory_idx').using('btree', table.isCategory.asc().nullsLast()),

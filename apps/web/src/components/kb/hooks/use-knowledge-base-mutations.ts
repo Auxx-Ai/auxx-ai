@@ -9,7 +9,6 @@ import { getKnowledgeBaseStoreState, type KnowledgeBase } from '../store/knowled
 interface CreateKBInput {
   name: string
   slug: string
-  isPublic?: boolean
 }
 
 interface UseKBMutationsResult {

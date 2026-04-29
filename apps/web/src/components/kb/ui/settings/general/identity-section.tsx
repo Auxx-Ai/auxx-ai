@@ -86,27 +86,6 @@ export function IdentitySection({ form, isPending }: IdentitySectionProps) {
 
         <FormField
           control={form.control}
-          name='isPublic'
-          render={({ field, fieldState }) => (
-            <VarEditorFieldRow
-              title='Public access'
-              description='Allow anyone to access your knowledge base without authentication.'
-              type={BaseType.BOOLEAN}
-              showIcon
-              validationError={fieldState.error?.message}>
-              <FieldInputAdapter
-                fieldType={FieldType.CHECKBOX}
-                fieldOptions={{ variant: 'switch' }}
-                value={field.value}
-                onChange={(v) => field.onChange(v)}
-                disabled={isPending}
-              />
-            </VarEditorFieldRow>
-          )}
-        />
-
-        <FormField
-          control={form.control}
           name='customDomain'
           render={({ field, fieldState }) => (
             <VarEditorFieldRow
