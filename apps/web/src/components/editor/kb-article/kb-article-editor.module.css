@@ -1,0 +1,134 @@
+/* apps/web/src/components/editor/kb-article/kb-article-editor.module.css */
+
+.editorWrapper {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex: 1 1 0%;
+  min-height: 0;
+  /* Pull left by the gutter min-width so it sits in the page wrapper's left
+     padding. We intentionally leave the gutter's margin-right (0.75rem) in
+     positive space — that becomes the visual breathing room between the
+     numbers and the content column, and lines the content up with the title
+     above. */
+  margin-left: calc(var(--gutter-min-width, 24px) * -1);
+}
+
+.editorContainer {
+  flex: 1 1 0%;
+  min-width: 0;
+  padding: 0.375rem 0;
+  min-height: 0;
+}
+
+.editorContent {
+  flex: 1 1 0%;
+  min-width: 0;
+  width: 100%;
+}
+
+/* ============================================
+   ProseMirror base — scoped to this editor only
+   ============================================ */
+
+.editorContent :global(.ProseMirror) {
+  outline: none;
+  min-height: 100%;
+  width: 100%;
+  color: var(--color-foreground);
+  overflow-wrap: break-word;
+}
+
+.editorContent :global(.ProseMirror):focus {
+  outline: none;
+}
+
+/* ============================================
+   Slash command decoration — the inline `/` chip
+   ============================================ */
+
+.editorContent :global(.slash-command-decoration) {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--color-muted);
+  border-radius: 0.375rem;
+  padding: 0 0.25rem;
+  color: var(--color-foreground);
+}
+
+.editorContent :global(.slash-command-decoration)::after {
+  content: 'Type to filter';
+  position: static;
+  color: var(--color-muted-foreground);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.editorContent
+  :global(.ProseMirror[data-slash-query-state='typing'])
+  :global(.slash-command-decoration)::after {
+  display: none;
+}
+
+/* ============================================
+   Tables — kept top-level alongside `block`.
+   Tables don't render a gutter; styled minimally.
+   ============================================ */
+
+.editorContent :global(.ProseMirror) :global(table) {
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.editorContent :global(.ProseMirror) :global(table) :global(td),
+.editorContent :global(.ProseMirror) :global(table) :global(th) {
+  border: 1px solid var(--color-border);
+  box-sizing: border-box;
+  min-width: 1em;
+  padding: 6px 8px;
+  position: relative;
+  vertical-align: top;
+}
+
+.editorContent :global(.ProseMirror) :global(table) :global(th) {
+  background-color: var(--color-muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+.editorContent :global(.ProseMirror) :global(table) :global(.selectedCell)::after {
+  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  content: '';
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+.editorContent :global(.ProseMirror) :global(table) :global(.column-resize-handle) {
+  background-color: var(--color-primary);
+  bottom: -2px;
+  pointer-events: none;
+  position: absolute;
+  right: -2px;
+  top: 0;
+  width: 4px;
+}
+
+.editorContent :global(.ProseMirror.resize-cursor) {
+  cursor: col-resize;
+}
+
+/* ============================================
+   Drag state — global body class set by the
+   block-drag plugin
+   ============================================ */
+
+:global(body.is-block-dragging) .editorContent :global(.ProseMirror) {
+  cursor: grabbing;
+}

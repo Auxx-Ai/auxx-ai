@@ -21,6 +21,9 @@ interface GeneralTabProps {
   knowledgeBase: KnowledgeBase
 }
 
+// Older rows may have capitalized values (e.g. 'Regular'); the zod enums are lowercase.
+const lower = (v: string | null | undefined) => (v ? v.toLowerCase() : v)
+
 function buildDefaults(kb: KnowledgeBase): GeneralFormValues {
   return {
     name: kb.name,
@@ -30,9 +33,9 @@ function buildDefaults(kb: KnowledgeBase): GeneralFormValues {
     customDomain: kb.customDomain || '',
     logoDark: kb.logoDark || '',
     logoLight: kb.logoLight || '',
-    theme: (kb.theme as GeneralFormValues['theme']) || 'clean',
+    theme: (lower(kb.theme) as GeneralFormValues['theme']) || 'clean',
     showMode: kb.showMode,
-    defaultMode: (kb.defaultMode as GeneralFormValues['defaultMode']) || 'light',
+    defaultMode: (lower(kb.defaultMode) as GeneralFormValues['defaultMode']) || 'light',
     primaryColorLight: kb.primaryColorLight || '#346DDB',
     primaryColorDark: kb.primaryColorDark || '#346DDB',
     tintColorLight: kb.tintColorLight || '#D7DEEC',
@@ -46,10 +49,12 @@ function buildDefaults(kb: KnowledgeBase): GeneralFormValues {
     dangerColorLight: kb.dangerColorLight || '#FB2C36',
     dangerColorDark: kb.dangerColorDark || '#FB2C36',
     fontFamily: kb.fontFamily || 'inter',
-    iconsFamily: (kb.iconsFamily as GeneralFormValues['iconsFamily']) || 'regular',
-    cornerStyle: (kb.cornerStyle as GeneralFormValues['cornerStyle']) || 'rounded',
-    sidebarListStyle: (kb.sidebarListStyle as GeneralFormValues['sidebarListStyle']) || 'default',
-    searchbarPosition: (kb.searchbarPosition as GeneralFormValues['searchbarPosition']) || 'center',
+    iconsFamily: (lower(kb.iconsFamily) as GeneralFormValues['iconsFamily']) || 'regular',
+    cornerStyle: (lower(kb.cornerStyle) as GeneralFormValues['cornerStyle']) || 'rounded',
+    sidebarListStyle:
+      (lower(kb.sidebarListStyle) as GeneralFormValues['sidebarListStyle']) || 'default',
+    searchbarPosition:
+      (lower(kb.searchbarPosition) as GeneralFormValues['searchbarPosition']) || 'center',
   }
 }
 
@@ -71,10 +76,14 @@ export function GeneralTab({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) 
     await updateKnowledgeBase(knowledgeBaseId, data as Partial<KnowledgeBase>)
   }
 
+  const onInvalid = (errors: unknown) => {
+    console.warn('[GeneralTab] form validation failed', errors)
+  }
+
   // Register with the global "Save Changes" button.
   useEffect(() => {
     return registerSettingsSubmit('general', async () => {
-      await form.handleSubmit(onSubmit)()
+      await form.handleSubmit(onSubmit, onInvalid)()
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, knowledgeBaseId])

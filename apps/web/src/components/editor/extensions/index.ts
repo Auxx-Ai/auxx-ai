@@ -61,7 +61,6 @@ const Horizontal = HorizontalRule.extend({
 
 export * from './ai-highlight'
 export * from './mention-extension'
-export * from './slash-command'
 // export * from './variable-picker-extension'
 export * from './variable-node'
 export {

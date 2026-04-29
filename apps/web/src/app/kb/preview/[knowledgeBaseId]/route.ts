@@ -7,8 +7,10 @@ import { type NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { knowledgeBaseId: string } }
+  { params }: { params: Promise<{ knowledgeBaseId: string }> }
 ) {
+  const { knowledgeBaseId } = await params
+
   // Extract query parameters
   const { searchParams } = new URL(request.url)
   const theme = searchParams.get('theme') || 'light'
@@ -19,7 +21,7 @@ export async function GET(
     const [knowledgeBase] = await db
       .select()
       .from(schema.KnowledgeBase)
-      .where(eq(schema.KnowledgeBase.id, params.knowledgeBaseId))
+      .where(eq(schema.KnowledgeBase.id, knowledgeBaseId))
       .limit(1)
 
     if (!knowledgeBase) {
@@ -33,7 +35,7 @@ export async function GET(
     const kbService = new KBService(db, organizationId)
 
     // Get all articles
-    const articles = await kbService.getArticles(params.knowledgeBaseId, {
+    const articles = await kbService.getArticles(knowledgeBaseId, {
       includeUnpublished: true, // Include unpublished since this is a preview
     })
 
