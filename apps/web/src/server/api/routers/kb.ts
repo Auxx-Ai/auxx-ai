@@ -10,6 +10,7 @@ import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import { fireKBRevalidate } from '~/server/lib/kb-revalidate'
 
 // Base knowledge base fields schema
 const kbFieldsSchema = z.object({
@@ -132,7 +133,9 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .input(z.object({ id: z.string(), data: kbFieldsSchema }))
     .mutation(async ({ ctx, input }) => {
       const kbService = getKBService(ctx)
-      return await kbService.updateKnowledgeBase(input.id, input.data)
+      const result = await kbService.updateKnowledgeBase(input.id, input.data)
+      void fireKBRevalidate(input.id)
+      return result
     }),
   /**
    * Delete a knowledge base
@@ -189,12 +192,14 @@ export const knowledgeBaseRouter = createTRPCRouter({
       // const { knowledgeBaseId, ...articleData } = input
       const { knowledgeBaseId, adjacentTo, position, ...articleData } = input
       const kbService = getKBService(ctx)
-      return await kbService.createArticle(
+      const result = await kbService.createArticle(
         knowledgeBaseId,
         articleData,
         ctx.session.user.id,
         adjacentTo && position ? { adjacentId: adjacentTo, position } : undefined
       )
+      void fireKBRevalidate(knowledgeBaseId)
+      return result
     }),
   /**
    * Update an article
@@ -209,12 +214,14 @@ export const knowledgeBaseRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const kbService = getKBService(ctx)
-      return await kbService.updateArticle(
+      const result = await kbService.updateArticle(
         input.id,
         input.data,
         ctx.session.user.id,
         input.knowledgeBaseId
       )
+      if (input.knowledgeBaseId) void fireKBRevalidate(input.knowledgeBaseId)
+      return result
     }),
   publishArticle: protectedProcedure
     .input(
@@ -253,6 +260,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
       await onCacheEvent(input.isPublished ? 'article.published' : 'article.unpublished', {
         orgId: organizationId,
       })
+      if (input.knowledgeBaseId) void fireKBRevalidate(input.knowledgeBaseId)
       return result
     }),
   /**
@@ -305,6 +313,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
       const result = await kbService.deleteArticle(input.id, input.knowledgeBaseId)
       const organizationId = getUserOrganizationId(ctx.session)
       await onCacheEvent('article.deleted', { orgId: organizationId })
+      if (input.knowledgeBaseId) void fireKBRevalidate(input.knowledgeBaseId)
       return result
     }),
   /**

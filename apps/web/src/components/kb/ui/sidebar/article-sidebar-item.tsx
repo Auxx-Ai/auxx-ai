@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { getArticleSlugPaths, getFullSlugPath, isArticleActive } from '@auxx/ui/components/kb/utils'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
@@ -33,7 +34,6 @@ import { useMemo, useState } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleTreeNode } from '../../store/article-store'
-import { getArticleSlugPaths, getFullSlugPath, isArticleActive } from '../../utils/article-paths'
 import { ArticleRenameDialog } from '../editor/article-rename-dialog'
 
 interface ArticleSidebarItemProps {

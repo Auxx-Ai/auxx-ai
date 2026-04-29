@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { closestCorners, DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
 import { Loader2, Plus, Settings } from 'lucide-react'
@@ -18,7 +19,6 @@ import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-
 import { useArticleMove } from '../../hooks/use-article-move'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
-import { getFullSlugPath } from '../../utils/article-paths'
 import { ArticleTreeSection } from './article-tree-section'
 
 interface KBArticlesPanelProps {

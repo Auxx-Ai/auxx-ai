@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/editor/kb-editor-shell.tsx
 'use client'
 
+import { findArticleBySlugPath } from '@auxx/ui/components/kb/utils'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -13,7 +14,6 @@ import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
 import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-list'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
-import { findArticleBySlugPath } from '../../utils/article-paths'
 import { KBPreview } from '../preview/kb-preview'
 import { KBSidebar } from '../sidebar/kb-sidebar'
 import { ArticleEditor } from './article-editor'
@@ -67,7 +67,7 @@ export function KBEditorShell({ knowledgeBaseId, slug }: KBEditorShellProps) {
                 hasArticlesLoaded={hasArticlesLoaded}
               />
             ) : (
-              <KBPreview knowledgeBase={knowledgeBase} />
+              <KBPreview knowledgeBase={knowledgeBase} activeSlugPath={slug} />
             )}
           </div>
         </div>

@@ -64,7 +64,11 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
             <div className='flex h-full flex-1'>
               <div className='relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col px-7'>
                 <div className='flex min-h-0 flex-1 flex-col pb-10'>
-                  <ArticleEditorTop article={article} onUpdateMetadata={handleMetadataUpdate} />
+                  <ArticleEditorTop
+                    article={article}
+                    knowledgeBaseId={knowledgeBaseId}
+                    onUpdateMetadata={handleMetadataUpdate}
+                  />
                   <div className='relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch'>
                     {!isContentLoading && (
                       <KBArticleEditor

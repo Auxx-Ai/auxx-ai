@@ -4,13 +4,21 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@auxx/utils": "workspace:*"
+    "@auxx/utils": "workspace:*",
+    "minisearch": "catalog:"
   },
   "exports": {
     "./global.css": "./src/styles/global.css",
     "./styles/random-gradient.css": "./src/styles/random-gradient.css",
     "./postcss.config": "./postcss.config.mjs",
     "./lib/*": "./src/lib/*.ts",
+    "./components/kb": "./src/components/kb/index.ts",
+    "./components/kb/article": "./src/components/kb/article/index.ts",
+    "./components/kb/layout": "./src/components/kb/layout/index.ts",
+    "./components/kb/search": "./src/components/kb/search/index.ts",
+    "./components/kb/search/build-index": "./src/components/kb/search/build-search-index.ts",
+    "./components/kb/theme": "./src/components/kb/theme/index.ts",
+    "./components/kb/utils": "./src/components/kb/utils/index.ts",
     "./components/*": "./src/components/*.tsx",
     "./components/icons/*": "./src/components/icons/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
