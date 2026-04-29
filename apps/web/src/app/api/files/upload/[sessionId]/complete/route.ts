@@ -130,11 +130,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     try {
       await db.transaction(
         async (tx) => {
-          // 2.1 Build external URL for public assets (especially avatars)
+          // 2.1 Build external URL for public assets (avatars, KB logos, etc.)
           let externalUrl = ''
           try {
-            // For public uploads (like user avatars), build durable external URL
-            if (session.entityType === 'USER_PROFILE') {
+            if (session.visibility === 'PUBLIC') {
               externalUrl = await storageManager.buildExternalUrl(
                 session.provider,
                 session.storageKey,

@@ -1,0 +1,488 @@
+/* apps/web/src/components/editor/kb-article/block-node-view.module.css */
+
+.blockWrapper {
+  position: relative;
+  overflow: visible;
+  max-width: 100%;
+}
+
+.blockContainer {
+  display: flex;
+  flex-direction: row;
+  overflow: visible;
+  max-width: 100%;
+}
+
+/* ============================================
+   Line gutter — left column with line number
+   Also acts as drag handle for block reordering
+   ============================================ */
+
+.lineGutter {
+  flex-shrink: 0;
+  min-width: var(--gutter-min-width, 24px);
+  padding: 0 0.25rem;
+  margin-right: 0.75rem;
+  user-select: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  cursor: grab;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+  contain: layout style;
+}
+
+.lineGutter ::selection,
+.lineGutter::selection {
+  background: transparent;
+  color: inherit;
+}
+
+.lineGutter:active {
+  cursor: grabbing;
+  background-color: transparent;
+}
+
+/* ============================================
+   Line number — subtle, appears on hover/focus
+   ============================================ */
+
+.lineNumber {
+  text-align: right;
+  color: var(--color-muted-foreground);
+  line-height: 24px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  position: relative;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (hover: hover) {
+  .blockContainer:hover .lineNumber,
+  .blockWrapper:hover .lineNumber {
+    opacity: 0.6;
+  }
+}
+
+.blockWrapper.focused .lineNumber {
+  opacity: 0.9;
+}
+
+/* Drag handle dots — 6-dot grid that replaces line number on gutter hover */
+.lineNumber::before {
+  --dot-size: 2px;
+  --dot-gap: 4px;
+  content: '';
+  position: absolute;
+  left: 20%;
+  top: 33%;
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: 50%;
+  background-color: var(--color-muted-foreground);
+  box-shadow:
+    0 var(--dot-gap) 0 var(--color-muted-foreground),
+    0 calc(var(--dot-gap) * 2) 0 var(--color-muted-foreground),
+    var(--dot-gap) 0 0 var(--color-muted-foreground),
+    var(--dot-gap) var(--dot-gap) 0 var(--color-muted-foreground),
+    var(--dot-gap) calc(var(--dot-gap) * 2) 0 var(--color-muted-foreground);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+@media (hover: hover) {
+  .lineGutter:hover .lineNumber {
+    opacity: 1;
+    color: transparent;
+  }
+
+  .lineGutter:hover .lineNumber::before {
+    opacity: 0.7;
+  }
+}
+
+:global(body.is-block-dragging) .lineNumber,
+:global(body.is-block-dragging) .lineNumber::before {
+  opacity: 0 !important;
+}
+
+/* ============================================
+   Block content wrapper
+   ============================================ */
+
+.blockContentWrapper {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 100%;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  overflow: visible;
+}
+
+.blockContentWrapper--divider {
+  align-items: center;
+  padding: 0.5rem 0;
+}
+
+.blockContentWrapper--codeBlock {
+  width: 100%;
+}
+
+/* ============================================
+   Block content (text area)
+   ============================================ */
+
+.blockContent {
+  flex: 1 1 0%;
+  min-width: 0;
+  line-height: 24px;
+  font-size: 0.875rem;
+  letter-spacing: -0.01em;
+  color: var(--color-foreground);
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.blockContentHidden {
+  display: none;
+}
+
+.blockContent :global(strong),
+.blockContent :global(b) {
+  font-weight: 600;
+}
+
+.blockContent :global(em) {
+  font-style: italic;
+}
+
+.blockContent :global(s) {
+  text-decoration: line-through;
+}
+
+.blockContent :global(u) {
+  text-decoration: underline;
+}
+
+.blockContent :global(a) {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.blockContent :global(code) {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  background-color: var(--color-muted);
+  border: 1px solid var(--color-border);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
+}
+
+.blockContent :global(mark) {
+  border-radius: 0.125rem;
+  padding: 0.0625rem 0.125rem;
+}
+
+.blockContent :global(mark[style]) > :global(strong) {
+  color: inherit;
+}
+
+/* ============================================
+   Divider
+   ============================================ */
+
+.blockContainer--divider {
+  padding: 0.25rem 0;
+}
+
+.dividerLine {
+  flex: 1 1 0%;
+  height: 1px;
+  min-height: 1px;
+  width: 100%;
+  background-color: var(--color-border);
+  border-radius: 999px;
+  display: block;
+}
+
+/* ============================================
+   Headings
+   ============================================ */
+
+.blockContainer--heading1 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.blockContainer--heading1:first-child {
+  margin-top: 0;
+}
+
+.blockContent--heading1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-foreground);
+  line-height: 28px;
+  letter-spacing: -0.01em;
+}
+
+.blockContainer--heading2 {
+  margin-top: 1.25rem;
+  margin-bottom: 0.375rem;
+}
+
+.blockContainer--heading2:first-child {
+  margin-top: 0;
+}
+
+.blockContent--heading2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-foreground);
+  line-height: 24px;
+  letter-spacing: -0.015em;
+}
+
+.blockContainer--heading3 {
+  margin-top: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.blockContainer--heading3:first-child {
+  margin-top: 0;
+}
+
+.blockContent--heading3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-foreground);
+  line-height: 24px;
+  letter-spacing: -0.015em;
+}
+
+/* ============================================
+   List item indent
+   ============================================ */
+
+.blockWrapper[data-indent-level='1'] .blockContent,
+.blockWrapper[data-indent-level='1'] .bulletIndicator,
+.blockWrapper[data-indent-level='1'] .numberIndicator,
+.blockWrapper[data-indent-level='1'] .todoCheckbox {
+  margin-left: 0;
+}
+
+.blockWrapper[data-indent-level='2'] .blockContentWrapper {
+  padding-left: 1.5rem;
+}
+
+.blockWrapper[data-indent-level='3'] .blockContentWrapper {
+  padding-left: 3rem;
+}
+
+.blockWrapper[data-indent-level='4'] .blockContentWrapper {
+  padding-left: 4.5rem;
+}
+
+.blockWrapper[data-indent-level='5'] .blockContentWrapper {
+  padding-left: 6rem;
+}
+
+/* Bullet & number indicators */
+.bulletIndicator,
+.numberIndicator {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  line-height: 24px;
+  font-size: 0.875rem;
+  color: var(--color-muted-foreground);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ============================================
+   Todo checkbox
+   ============================================ */
+
+.todoCheckbox {
+  padding: 0.3125rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  cursor: pointer;
+  position: relative;
+}
+
+.todoCheckbox input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  appearance: none;
+  border: 1px solid var(--color-border);
+  background-color: transparent;
+  position: relative;
+  transition:
+    background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (hover: hover) {
+  .todoCheckbox input[type='checkbox']:hover:not(:checked) {
+    background-color: var(--color-muted);
+    border-color: var(--color-muted-foreground);
+  }
+}
+
+.todoCheckbox input[type='checkbox']:checked {
+  background-color: var(--color-foreground);
+  border-color: var(--color-foreground);
+}
+
+.checkmarkIcon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(calc(-50% - 1.5px), calc(-50% - 1.5px));
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-background);
+  opacity: 0;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.todoCheckbox input[type='checkbox']:checked ~ .checkmarkIcon {
+  opacity: 1;
+}
+
+/* ============================================
+   Quote
+   ============================================ */
+
+.blockContainer--quote {
+  position: relative;
+}
+
+.quoteBar {
+  flex-shrink: 0;
+  margin: 0 11px;
+  width: 2px;
+  background-color: var(--color-border);
+  align-self: stretch;
+  border-radius: 2px;
+}
+
+.blockContent--quote {
+  font-size: 0.875rem;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  color: var(--color-muted-foreground);
+  font-style: normal;
+}
+
+/* ============================================
+   Code block
+   ============================================ */
+
+.blockContainer--codeBlock {
+  padding: 0;
+}
+
+.blockContent--codeBlock {
+  width: 100%;
+  background-color: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ============================================
+   Placeholder — rendered as sibling span by BlockNodeView
+   when the block is empty AND (first in doc OR currently focused).
+   Positioned to overlay the contenteditable's start so it reads as
+   inline ghost text without inheriting the gutter offset.
+   ============================================ */
+
+.placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  user-select: none;
+  color: var(--color-muted-foreground);
+  line-height: 24px;
+  font-size: 0.875rem;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.5;
+}
+
+/* When a list/todo/quote indicator sits to the left of the content,
+   shift the placeholder past it. */
+.bulletIndicator + .placeholder,
+.numberIndicator + .placeholder,
+.todoCheckbox + .placeholder,
+.quoteBar + .placeholder {
+  left: 1.75rem;
+}
+
+/* Hide placeholder while dragging blocks. */
+:global(body.is-block-dragging) .placeholder {
+  display: none;
+}
+
+/* ============================================
+   Image alignment
+   ============================================ */
+
+.imageAlign--left {
+  margin-right: auto;
+  border-radius: 0.5rem;
+  max-width: 100%;
+}
+
+.imageAlign--center {
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 0.5rem;
+  max-width: 100%;
+}
+
+.imageAlign--right {
+  margin-left: auto;
+  border-radius: 0.5rem;
+  max-width: 100%;
+}
+
+/* ============================================
+   Reduced motion
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .lineGutter,
+  .lineNumber,
+  .lineNumber::before,
+  .todoCheckbox input[type='checkbox'],
+  .checkmarkIcon {
+    transition: none;
+  }
+}

@@ -1,8 +1,7 @@
 // apps/web/src/components/kb/ui/editor/article-editor-footer.tsx
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import { ArrowLeft, ArrowRight, Loader2, Save } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
@@ -13,16 +12,9 @@ import { buildArticleTree, flattenArticleTreePreservingChildren } from '../../ut
 interface ArticleEditorFooterProps {
   article: ArticleMeta
   knowledgeBaseId: string
-  isSaving?: boolean
-  onSave?: () => void
 }
 
-export function ArticleEditorFooter({
-  article,
-  knowledgeBaseId,
-  isSaving = false,
-  onSave,
-}: ArticleEditorFooterProps) {
+export function ArticleEditorFooter({ article, knowledgeBaseId }: ArticleEditorFooterProps) {
   const articles = useArticleList(knowledgeBaseId)
 
   const { prevArticle, nextArticle } = useMemo(() => {
@@ -44,27 +36,10 @@ export function ArticleEditorFooter({
     : '#'
 
   return (
-    <div className='page-block-openapi:ml-0 relative mx-auto mt-6 flex w-full max-w-(--block-wrapper-max-width)'>
+    <div className='relative mx-auto mt-6 flex w-full max-w-3xl'>
       <div className='flex flex-1'>
         <div className='flex-1'>
           <div>
-            <div className='mb-2 flex justify-end'>
-              {onSave && (
-                <Button onClick={onSave} disabled={isSaving} className='gap-2'>
-                  {isSaving ? (
-                    <>
-                      <Loader2 size={16} className='animate-spin' />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save size={16} />
-                      Save
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
             <div className='mb-6 flex gap-4 max-xl:flex-col'>
               {prevArticle && (
                 <Link

@@ -946,6 +946,13 @@
       "when": 1777435601406,
       "tag": "0134_drop_article_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1777440205134,
+      "tag": "0135_lowercase_kb_defaults",
+      "breakpoints": true
     }
   ]
 }
