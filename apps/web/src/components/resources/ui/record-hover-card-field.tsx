@@ -46,7 +46,11 @@ export const RecordHoverCardField = memo(function RecordHoverCardField({
   const field = useField(targetResourceFieldId)
 
   if (isLoading && value === undefined) {
-    return <Skeleton className='h-4 w-24' />
+    return (
+      <div className='min-h-7 flex items-center'>
+        <Skeleton className='h-4 w-24' />
+      </div>
+    )
   }
 
   const isEmpty = value === null || value === undefined

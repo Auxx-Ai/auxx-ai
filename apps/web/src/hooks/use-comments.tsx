@@ -5,22 +5,6 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
 
-// System entity types
-export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const
-export type SystemEntityType = (typeof SYSTEM_ENTITY_TYPES)[number]
-
-// Can be system type or entityDefinitionId for custom entities
-export type CommentableEntityType = string
-
-/**
- * Check if entityType is a system type or a custom entity definition ID
- * Handles both lowercase ('ticket', 'contact', 'thread') and capital case
- */
-export function isSystemEntityType(entityType: string): entityType is SystemEntityType {
-  const normalized = entityType.toLowerCase()
-  return normalized === 'ticket' || normalized === 'thread' || normalized === 'contact'
-}
-
 export type ReactionType = 'like' | 'emoji'
 
 // Frontend file type distinction

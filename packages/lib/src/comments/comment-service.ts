@@ -1,10 +1,11 @@
-// lib/comments/enhanced-comment-service.ts
+// packages/lib/src/comments/comment-service.ts
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import type {
   CommentEntity as Comment,
   CommentReactionEntity as CommentReaction,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { touchActivityForThreadLinks, touchEntityActivity } from '../entity-instances/activity'
 import { publisher } from '../events'
@@ -16,37 +17,10 @@ import type {
 } from '../events/types'
 import { AttachmentService, type GroupedAttachmentInfo } from '../files/core/attachment-service'
 import { MediaAssetService } from '../files/core/media-asset-service'
+import { isAdminOrOwner } from '../members/member-queries'
 import { NotificationService } from '../notifications/notification-service'
-import { PermissionService } from '../permissions/permission-service'
 import { parseRecordId, type RecordId, toRecordId } from '../resources/resource-id'
 
-// System entity types (hardcoded)
-export const SYSTEM_ENTITY_TYPES = ['Ticket', 'Thread', 'Contact'] as const
-export type SystemEntityType = (typeof SYSTEM_ENTITY_TYPES)[number]
-
-// CommentableEntityType can be a system type OR an entityDefinitionId (for custom entities)
-export type CommentableEntityType = SystemEntityType | string
-
-/**
- * Check if entityType is a system type or a custom entity definition ID
- * Handles both lowercase ('ticket', 'contact', 'thread') and capital case
- */
-export function isSystemEntityType(entityType: string): entityType is SystemEntityType {
-  const normalized = entityType.toLowerCase()
-  return normalized === 'ticket' || normalized === 'thread' || normalized === 'contact'
-}
-
-/**
- * Normalize entity type to capitalized format for permission checks
- * Permission service expects 'Contact', 'Ticket', 'Thread' but resource IDs use lowercase
- */
-function normalizeEntityTypeForPermissions(entityType: string): SystemEntityType {
-  const normalized = entityType.toLowerCase()
-  if (normalized === 'contact') return 'Contact'
-  if (normalized === 'ticket') return 'Ticket'
-  if (normalized === 'thread') return 'Thread'
-  return entityType as SystemEntityType
-}
 // Define reaction types
 export type ReactionType = 'like' | 'emoji'
 // Define file attachment types
@@ -108,7 +82,6 @@ export class CommentService {
   private db: Database
   private userId: string
   private organizationId: string
-  private permissionService: PermissionService
   private notificationService: NotificationService
   private mediaAssetService: MediaAssetService
   private attachmentService: AttachmentService
@@ -117,10 +90,61 @@ export class CommentService {
     this.userId = userId
     this.db = db
 
-    this.permissionService = new PermissionService(organizationId, userId, db)
     this.notificationService = new NotificationService(db)
     this.mediaAssetService = new MediaAssetService(organizationId, userId, db)
     this.attachmentService = new AttachmentService(organizationId, userId, db)
+  }
+
+  /**
+   * Verify the host record (Thread or EntityInstance) belongs to this user's org.
+   * `protectedProcedure` already binds the user to one org per session, so this is the
+   * only access check needed for now. When ResourceAccess grants are wired across all
+   * commentable entity types, swap for `hasPermission(ctx, recordId, view)`.
+   */
+  private async assertCanAccessRecord(recordId: RecordId, message: string): Promise<void> {
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+
+    let recordOrgId: string | undefined
+    if (entityDefinitionId === 'thread') {
+      const t = await this.db.query.Thread.findFirst({
+        where: eq(schema.Thread.id, entityInstanceId),
+        columns: { organizationId: true },
+      })
+      recordOrgId = t?.organizationId
+    } else {
+      const i = await this.db.query.EntityInstance.findFirst({
+        where: eq(schema.EntityInstance.id, entityInstanceId),
+        columns: { organizationId: true },
+      })
+      recordOrgId = i?.organizationId
+    }
+
+    if (!recordOrgId) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Record not found' })
+    }
+    if (recordOrgId !== this.organizationId) {
+      throw new TRPCError({ code: 'FORBIDDEN', message })
+    }
+  }
+
+  /**
+   * Verify the user can modify (update / delete) a comment: they're either the author
+   * or an org OWNER/ADMIN.
+   */
+  private async assertCanModifyComment(commentId: string, message: string): Promise<void> {
+    const comment = await this.db.query.Comment.findFirst({
+      where: eq(schema.Comment.id, commentId),
+      columns: { createdById: true, organizationId: true },
+    })
+    if (!comment) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
+    }
+    if (comment.organizationId !== this.organizationId) {
+      throw new TRPCError({ code: 'FORBIDDEN', message })
+    }
+    if (comment.createdById === this.userId) return
+    if (await isAdminOrOwner(this.organizationId, this.userId, this.db)) return
+    throw new TRPCError({ code: 'FORBIDDEN', message })
   }
 
   /**
@@ -135,22 +159,7 @@ export class CommentService {
       const entityId = entityInstanceId
       const entityType = entityDefinitionId
 
-      // Verify entity access based on type
-      if (isSystemEntityType(entityType)) {
-        // System entity (Ticket, Thread, Contact)
-        // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(entityType)
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(entityId, normalizedType),
-          `You don't have access to this ${entityType.toLowerCase()}`
-        )
-      } else {
-        // Custom entity - entityType IS the entityDefinitionId
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(entityId, entityType),
-          `You don't have access to this entity`
-        )
-      }
+      await this.assertCanAccessRecord(data.recordId, `You don't have access to this record`)
 
       // Verify file access if provided
       if (data.fileAttachments && data.fileAttachments.length > 0) {
@@ -277,11 +286,7 @@ export class CommentService {
   async updateComment(data: UpdateCommentInput): Promise<Comment> {
     try {
       const { id, content, fileAttachments, mentions } = data
-      // Verify comment modification permission
-      await this.permissionService.verifyAccess(
-        this.permissionService.canModifyComment(id),
-        `You don't have permission to update this comment`
-      )
+      await this.assertCanModifyComment(id, `You don't have permission to update this comment`)
       // Verify file access if provided
       if (fileAttachments && fileAttachments.length > 0) {
         await this.verifyFileAttachments(fileAttachments)
@@ -415,16 +420,13 @@ export class CommentService {
    */
   async deleteComment(id: string): Promise<void> {
     try {
-      // Get the comment to find contactId before deleting
+      await this.assertCanModifyComment(id, `You don't have permission to delete this comment`)
+
+      // Get the comment to recalculate Thread.latestCommentId if needed.
       const comment = await this.db.query.Comment.findFirst({
         where: eq(schema.Comment.id, id),
       })
 
-      // Verify comment modification permission
-      await this.permissionService.verifyAccess(
-        this.permissionService.canModifyComment(id),
-        `You don't have permission to delete this comment`
-      )
       // Soft delete by setting deletedAt
       await this.db
         .update(schema.Comment)
@@ -464,26 +466,12 @@ export class CommentService {
     } = {}
   ): Promise<Comment[]> {
     try {
-      // Parse recordId to get components
+      await this.assertCanAccessRecord(recordId, `You don't have access to this record`)
+
       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       const entityId = entityInstanceId
       const entityType = entityDefinitionId
 
-      // Verify entity access based on type
-      if (isSystemEntityType(entityType)) {
-        // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(entityType)
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(entityId, normalizedType),
-          `You don't have access to this ${entityType.toLowerCase()}`
-        )
-      } else {
-        // Custom entity - entityType IS the entityDefinitionId
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(entityId, entityType),
-          `You don't have access to this entity`
-        )
-      }
       const { includeReplies = true, page = 1, limit = 20 } = options
       // Calculate skip value for pagination
       const skip = (page - 1) * limit
@@ -591,26 +579,12 @@ export class CommentService {
         },
       })
       if (!comment) {
-        throw new Error('Comment not found')
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
       }
-      // Check access to the entity this comment belongs to based on type
-      if (isSystemEntityType(comment.entityDefinitionId)) {
-        // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(comment.entityDefinitionId)
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(comment.entityId, normalizedType),
-          `You don't have access to this comment`
-        )
-      } else {
-        // Custom entity - entityType IS the entityDefinitionId
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(
-            comment.entityId,
-            comment.entityDefinitionId
-          ),
-          `You don't have access to this comment`
-        )
-      }
+      await this.assertCanAccessRecord(
+        toRecordId(comment.entityDefinitionId, comment.entityId),
+        `You don't have access to this comment`
+      )
       // Collect comment IDs (main comment + replies)
       const commentIds = [comment.id, ...(comment.replies || []).map((r) => r.id)]
       // Fetch attachments
@@ -646,18 +620,16 @@ export class CommentService {
    */
   async pinComment(commentId: string, userId: string, pin: boolean) {
     try {
-      // Get the comment first to check its organization
       const comment = await this.db.query.Comment.findFirst({
         where: eq(schema.Comment.id, commentId),
-        columns: { organizationId: true },
+        columns: { entityId: true, entityDefinitionId: true, organizationId: true },
       })
       if (!comment) {
-        throw new Error('Comment not found')
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
       }
-      // Verify pin permission
-      await this.permissionService.verifyAccess(
-        this.permissionService.canPinComments(comment.organizationId),
-        `You don't have permission to pin comments`
+      await this.assertCanAccessRecord(
+        toRecordId(comment.entityDefinitionId, comment.entityId),
+        `You don't have permission to pin this comment`
       )
       const [updatedComment] = await this.db
         .update(schema.Comment)
@@ -682,32 +654,17 @@ export class CommentService {
   async addReaction(data: AddReactionInput) {
     try {
       const { commentId, userId, type, emoji } = data
-      // Get the comment first to check permissions
       const comment = await this.db.query.Comment.findFirst({
         where: eq(schema.Comment.id, commentId),
         columns: { entityId: true, entityDefinitionId: true, createdById: true },
       })
       if (!comment) {
-        throw new Error('Comment not found')
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
       }
-      // Verify entity access based on type
-      if (isSystemEntityType(comment.entityDefinitionId)) {
-        // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(comment.entityDefinitionId)
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(comment.entityId, normalizedType),
-          `You don't have access to this comment`
-        )
-      } else {
-        // Custom entity - entityType IS the entityDefinitionId
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(
-            comment.entityId,
-            comment.entityDefinitionId
-          ),
-          `You don't have access to this comment`
-        )
-      }
+      await this.assertCanAccessRecord(
+        toRecordId(comment.entityDefinitionId, comment.entityId),
+        `You don't have access to this comment`
+      )
       // Upsert to handle both adding new reactions and updating existing ones
       const [reaction] = await this.db
         .insert(schema.CommentReaction)
@@ -754,32 +711,17 @@ export class CommentService {
     emoji?: string | null
   ): Promise<void> {
     try {
-      // Verify access to the comment
       const comment = await this.db.query.Comment.findFirst({
         where: eq(schema.Comment.id, commentId),
-        columns: { entityId: true, entityType: true },
+        columns: { entityId: true, entityDefinitionId: true },
       })
       if (!comment) {
-        throw new Error('Comment not found')
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found' })
       }
-      // Verify entity access based on type
-      if (isSystemEntityType(comment.entityDefinitionId)) {
-        // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(comment.entityDefinitionId)
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(comment.entityId, normalizedType),
-          `You don't have access to this comment`
-        )
-      } else {
-        // Custom entity - entityType IS the entityDefinitionId
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(
-            comment.entityId,
-            comment.entityDefinitionId
-          ),
-          `You don't have access to this comment`
-        )
-      }
+      await this.assertCanAccessRecord(
+        toRecordId(comment.entityDefinitionId, comment.entityId),
+        `You don't have access to this comment`
+      )
       await this.db
         .delete(schema.CommentReaction)
         .where(
@@ -964,24 +906,10 @@ export class CommentService {
       if (!comment) {
         return null
       }
-      // Check access to the entity this comment belongs to based on type
-      if (isSystemEntityType(comment.entityDefinitionId)) {
-        // Normalize to capitalized format for permission checks
-        const normalizedType = normalizeEntityTypeForPermissions(comment.entityDefinitionId)
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntity(comment.entityId, normalizedType),
-          `You don't have access to this comment`
-        )
-      } else {
-        // Custom entity - entityType IS the entityDefinitionId
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessEntityInstance(
-            comment.entityId,
-            comment.entityDefinitionId
-          ),
-          `You don't have access to this comment`
-        )
-      }
+      await this.assertCanAccessRecord(
+        toRecordId(comment.entityDefinitionId, comment.entityId),
+        `You don't have access to this comment`
+      )
       // Fetch attachments for this single comment
       const attachmentMap = await this.fetchAttachmentsForComments([commentId])
       // Process and optimize the reaction data
@@ -1003,20 +931,32 @@ export class CommentService {
   private async verifyFileAttachments(fileAttachments: FileAttachment[]): Promise<void> {
     for (const attachment of fileAttachments) {
       if (attachment.type === 'asset') {
-        await this.permissionService.verifyAccess(
-          this.permissionService.canAccessFile(attachment.id),
-          `MediaAsset not found or you don't have access to it`
-        )
+        const asset = await this.db.query.MediaAsset.findFirst({
+          where: and(
+            eq(schema.MediaAsset.id, attachment.id),
+            eq(schema.MediaAsset.organizationId, this.organizationId)
+          ),
+          columns: { id: true },
+        })
+        if (!asset) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: `MediaAsset not found or you don't have access to it`,
+          })
+        }
       } else if (attachment.type === 'file') {
-        // Check FolderFile access
         const folderFile = await this.db.query.FolderFile.findFirst({
           where: and(
             eq(schema.FolderFile.id, attachment.id),
             eq(schema.FolderFile.organizationId, this.organizationId)
           ),
+          columns: { id: true },
         })
         if (!folderFile) {
-          throw new Error(`FolderFile not found or access denied: ${attachment.id}`)
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: `FolderFile not found or access denied: ${attachment.id}`,
+          })
         }
       }
     }

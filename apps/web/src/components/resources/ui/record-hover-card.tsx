@@ -183,7 +183,7 @@ function RecordHoverCardBody({ recordId, fields, onOpenInDrawer }: BodyProps) {
       {hasFooter && (
         <div
           className={cn(
-            'flex items-center justify-end gap-1 pt-2',
+            'flex items-center justify-end gap-1',
             // Only render the divider once — fields section already has its own.
             !resolvedFields.length && showDivider && 'border-t'
           )}>
