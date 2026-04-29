@@ -1,18 +1,30 @@
-// apps/web/src/components/kb/utils/article-tree.ts
+// packages/ui/src/components/kb/utils/article-tree.ts
 
-import type { ArticleMeta, ArticleTreeNode } from '../store/article-store'
+/**
+ * Minimal fields required to compute article ordering and parent relationships.
+ * Both admin and public KB consumers extend this shape.
+ */
+export interface ArticleTreeFields {
+  id: string
+  parentId: string | null
+  order: number
+}
 
-export function buildArticleTree<T extends ArticleMeta>(
+export type ArticleTreeNode<T extends ArticleTreeFields> = T & {
+  children: Array<ArticleTreeNode<T>>
+}
+
+export function buildArticleTree<T extends ArticleTreeFields>(
   articles: T[],
   parentId: string | null = null
-): Array<T & { children: Array<T & { children: T[] }> }> {
+): Array<ArticleTreeNode<T>> {
   return articles
     .filter((article) => article.parentId === parentId)
     .sort((a, b) => a.order - b.order)
     .map((article) => ({
       ...article,
       children: buildArticleTree(articles, article.id),
-    })) as Array<T & { children: Array<T & { children: T[] }> }>
+    })) as Array<ArticleTreeNode<T>>
 }
 
 export function flattenArticleTreePreservingChildren<T extends { children?: T[] }>(tree: T[]): T[] {
@@ -48,8 +60,8 @@ export function findArticleById<T extends { id: string }>(
   return articles.find((article) => article.id === id)
 }
 
-export function findAncestorIds(
-  items: ArticleTreeNode[],
+export function findAncestorIds<T extends { id: string; children?: T[] }>(
+  items: T[],
   targetId: string,
   current: string[] = []
 ): string[] | null {

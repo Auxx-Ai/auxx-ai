@@ -1,6 +1,10 @@
 // apps/web/src/components/kb/hooks/use-article-move.tsx
 'use client'
 
+import {
+  buildArticleTree,
+  flattenArticleTreePreservingChildren,
+} from '@auxx/ui/components/kb/utils'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import {
   type DragEndEvent,
@@ -20,7 +24,6 @@ import {
   type ArticleTreeNode,
   getArticleStoreState,
 } from '../store/article-store'
-import { buildArticleTree, flattenArticleTreePreservingChildren } from '../utils/article-tree'
 import { useArticleList } from './use-article-list'
 import { useArticleTree } from './use-article-tree'
 

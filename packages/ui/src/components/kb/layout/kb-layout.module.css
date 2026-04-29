@@ -1,0 +1,176 @@
+/* packages/ui/src/components/kb/layout/kb-layout.module.css */
+
+.shell {
+  min-height: 100vh;
+  background: var(--kb-bg);
+  color: var(--kb-fg);
+  font-family: var(--kb-font, system-ui);
+  display: flex;
+  flex-direction: column;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--kb-border);
+  padding: 1.5rem 1rem;
+  overflow-y: auto;
+}
+
+.content {
+  flex: 1;
+  padding: 2rem 0;
+  min-width: 0;
+}
+
+.header {
+  border-bottom: 1px solid var(--kb-border);
+  background: var(--kb-bg);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.logo {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--kb-fg);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logo img {
+  max-height: 28px;
+  width: auto;
+}
+
+.headerSearch {
+  flex: 1;
+  max-width: 480px;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-left: auto;
+}
+
+.navLink {
+  color: var(--kb-fg);
+  text-decoration: none;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+.navLink:hover {
+  opacity: 1;
+  color: var(--kb-primary);
+}
+
+.footer {
+  border-top: 1px solid var(--kb-border);
+  padding: 1.5rem;
+  font-size: 0.85rem;
+  color: var(--kb-fg);
+  opacity: 0.75;
+}
+
+.footerInner {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footerNav {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sidebarHeading {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--kb-fg);
+  opacity: 0.55;
+  margin-bottom: 0.5rem;
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.treeBranch {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 1px dashed var(--kb-border);
+  margin-left: 0.5rem;
+  padding-left: 0.5rem;
+}
+
+.treeItem {
+  margin: 0.1rem 0;
+}
+
+.treeLink {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--kb-radius);
+  color: var(--kb-fg);
+  text-decoration: none;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.treeLink:hover {
+  background: var(--kb-muted);
+  color: var(--kb-primary);
+}
+
+.treeLink[data-active='true'] {
+  background: var(--kb-tint);
+  color: var(--kb-primary);
+  font-weight: 500;
+}
+
+.treeToggle {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  width: 1rem;
+  height: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}

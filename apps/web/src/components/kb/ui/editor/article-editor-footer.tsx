@@ -1,13 +1,16 @@
 // apps/web/src/components/kb/ui/editor/article-editor-footer.tsx
 'use client'
 
+import {
+  buildArticleTree,
+  flattenArticleTreePreservingChildren,
+  getFullSlugPath,
+} from '@auxx/ui/components/kb/utils'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import type { ArticleMeta } from '../../store/article-store'
-import { getFullSlugPath } from '../../utils/article-paths'
-import { buildArticleTree, flattenArticleTreePreservingChildren } from '../../utils/article-tree'
 
 interface ArticleEditorFooterProps {
   article: ArticleMeta

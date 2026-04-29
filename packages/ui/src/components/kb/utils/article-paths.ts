@@ -1,9 +1,12 @@
-// apps/web/src/components/kb/utils/article-paths.ts
+// packages/ui/src/components/kb/utils/article-paths.ts
 
-import type { ArticleMeta } from '../store/article-store'
-import { buildArticleTree } from './article-tree'
+import { type ArticleTreeFields, buildArticleTree } from './article-tree'
 
-export function getFullSlugPath<T extends ArticleMeta>(article: T, allArticles: T[]): string {
+export interface ArticleSlugFields extends ArticleTreeFields {
+  slug: string
+}
+
+export function getFullSlugPath<T extends ArticleSlugFields>(article: T, allArticles: T[]): string {
   if (!article) return ''
   const slugs: string[] = [article.slug]
   let currentId = article.parentId
@@ -16,7 +19,7 @@ export function getFullSlugPath<T extends ArticleMeta>(article: T, allArticles: 
   return slugs.join('/')
 }
 
-export function findArticleBySlugPath<T extends ArticleMeta>(
+export function findArticleBySlugPath<T extends ArticleSlugFields>(
   allArticles: T[],
   slugPath: string[]
 ): T | undefined {
@@ -69,7 +72,7 @@ export function findArticleBySlugPath<T extends ArticleMeta>(
   return undefined
 }
 
-export function isArticleActive<T extends ArticleMeta>(
+export function isArticleActive<T extends ArticleSlugFields>(
   article: T,
   pathname: string,
   basePath: string,
@@ -89,7 +92,9 @@ export function isArticleActive<T extends ArticleMeta>(
   return false
 }
 
-export function getArticleSlugPaths<T extends ArticleMeta>(articles: T[]): Record<string, string> {
+export function getArticleSlugPaths<T extends ArticleSlugFields>(
+  articles: T[]
+): Record<string, string> {
   const paths: Record<string, string> = {}
   for (const article of articles) {
     paths[article.id] = getFullSlugPath(article, articles)
