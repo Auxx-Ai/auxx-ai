@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.143](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.142...auxx-v0.1.143) (2026-04-29)
+
+
+### Features
+
+* **ai:** speech-to-text voice input for email composer ([#506](https://github.com/Auxx-Ai/auxx-ai/issues/506)) ([6d0a638](https://github.com/Auxx-Ai/auxx-ai/commit/6d0a63805ec2718ea5ebff35c48e0f5e479e8427))
+* **custom-fields:** flatten currency options + smart-breadcrumb width fix ([#512](https://github.com/Auxx-Ai/auxx-ai/issues/512)) ([245b276](https://github.com/Auxx-Ai/auxx-ai/commit/245b276cb478c1000697dedb332478708af89255))
+* **custom-fields:** server-side CALC resolver + AI prompt path refs ([#511](https://github.com/Auxx-Ai/auxx-ai/issues/511)) ([e925809](https://github.com/Auxx-Ai/auxx-ai/commit/e92580960aabe556a5d24412cba828f0b11f2e9d))
+* **kb:** public site at /&lt;orgSlug&gt;/&lt;kbSlug&gt;/ + shared @auxx/ui/kb ([#517](https://github.com/Auxx-Ai/auxx-ai/issues/517)) ([da82289](https://github.com/Auxx-Ai/auxx-ai/commit/da82289f2aad6b1d3481920151cba6261a5471d7))
+* **kopilot:** entity history/transcript tools + contact jobTitle ([#510](https://github.com/Auxx-Ai/auxx-ai/issues/510)) ([5c951dd](https://github.com/Auxx-Ai/auxx-ai/commit/5c951dd3e7cde359b457aefbd70cd5c801a88944))
+* **kopilot:** list_notes + create_note tools; simplify comment access checks ([#514](https://github.com/Auxx-Ai/auxx-ai/issues/514)) ([cf790a4](https://github.com/Auxx-Ai/auxx-ai/commit/cf790a483215bef5538166f05d9aa4e055e00349))
+* **records:** record hover card preview on badges ([#508](https://github.com/Auxx-Ai/auxx-ai/issues/508)) ([b0f29b6](https://github.com/Auxx-Ai/auxx-ai/commit/b0f29b6e5561836bfc45528cb172658d312dc342))
+* **threads:** phase 1 — multi-entity links, activity, deadline scanner ([#509](https://github.com/Auxx-Ai/auxx-ai/issues/509)) ([ec2fccd](https://github.com/Auxx-Ai/auxx-ai/commit/ec2fccdcac49aaea012298416806946957aed947))
+* **today:** ai suggestion bundles + capture-mode kopilot + approvals ([#513](https://github.com/Auxx-Ai/auxx-ai/issues/513)) ([2c7400d](https://github.com/Auxx-Ai/auxx-ai/commit/2c7400d547913ec7fb5bd88e1acd0ee7a3128e83))
+
+
+### Bug Fixes
+
+* **kb:** make apps/kb build under Next 16 cacheComponents ([#518](https://github.com/Auxx-Ai/auxx-ai/issues/518)) ([a10bb68](https://github.com/Auxx-Ai/auxx-ai/commit/a10bb686dfed6bad82c72e43433324b2482e18c1))
+
 ## [0.1.142](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.141...auxx-v0.1.142) (2026-04-28)
 
 
