@@ -92,13 +92,24 @@ export function KBSidebar<T extends KBSidebarArticle>({
   return (
     <>
       {/* Desktop persistent sidebar */}
-      <aside
-        data-collapsed={collapsed}
-        className={cn(
-          'relative hidden shrink-0 overflow-visible border-r border-[var(--kb-border)] bg-[var(--kb-sidebar-bg)] transition-[width] duration-200 ease-out @kb-md:block',
-          collapsed ? 'w-0 border-r-0' : 'w-72'
-        )}>
-        <div className='w-72 overflow-hidden'>{inner}</div>
+      <div className='relative hidden shrink-0 @kb-md:block'>
+        <aside
+          data-collapsed={collapsed}
+          className={cn(
+            'overflow-hidden border-r border-[var(--kb-border)] bg-[var(--kb-sidebar-bg)]',
+            'transition-[width,border-color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+            collapsed ? 'w-0 border-transparent' : 'w-72'
+          )}>
+          <div
+            className={cn(
+              'w-72 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+              collapsed
+                ? 'pointer-events-none -translate-x-4 opacity-0'
+                : 'translate-x-0 opacity-100'
+            )}>
+            {inner}
+          </div>
+        </aside>
         {listStyle === 'default' && !collapsed ? (
           <button
             type='button'
@@ -106,11 +117,11 @@ export function KBSidebar<T extends KBSidebarArticle>({
             title='Toggle sidebar'
             tabIndex={-1}
             onClick={() => setCollapsed((v) => !v)}
-            className='group absolute inset-y-0 -right-2 z-20 hidden w-4 cursor-ew-resize border-0 bg-transparent p-0 @kb-md:flex'>
+            className='group absolute inset-y-0 -right-2 z-20 flex w-4 cursor-ew-resize border-0 bg-transparent p-0'>
             <span className='pointer-events-none mx-auto h-full w-[2px] bg-transparent transition-colors group-hover:bg-[var(--kb-border)]' />
           </button>
         ) : null}
-      </aside>
+      </div>
 
       {/* Mobile in-place drawer (constrained to KB layout root, not document.body) */}
       <div

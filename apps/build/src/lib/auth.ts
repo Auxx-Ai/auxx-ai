@@ -2,69 +2,26 @@
 // Authentication utilities for developer portal
 
 import { WEBAPP_URL } from '@auxx/config/urls'
-import { configService } from '@auxx/credentials'
+import { createLocalSessionHelpers } from '@auxx/credentials/local-session'
 import { DeveloperAccountMember, database } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import { and, eq } from 'drizzle-orm'
-import { jwtVerify, SignJWT } from 'jose'
 import { cookies } from 'next/headers'
 
-const SESSION_COOKIE_NAME = 'auxx-build.session'
-const SESSION_DURATION = 60 * 60 // 1 hour in seconds
+const helpers = createLocalSessionHelpers({
+  cookieName: 'auxx-build.session',
+  secretEnv: 'BUILD_SESSION_SECRET',
+  ttlSeconds: 60 * 60, // 1 hour
+  getCookieStore: () => cookies(),
+  getRedis: () => getRedisClient(),
+})
 
-/** Session type */
-export interface Session {
-  userId: string
-  email: string
-}
+export type Session = { userId: string; email: string }
 
-/** Get the session signing secret — fails fast if not configured */
-function getSessionSecret(): Uint8Array {
-  const secret = configService.get<string>('BUILD_SESSION_SECRET')
-  if (!secret) throw new Error('BUILD_SESSION_SECRET not configured')
-  return new TextEncoder().encode(secret)
-}
-
-/** Create a signed local session JWT */
-export async function createLocalSession(user: { userId: string; email: string }): Promise<string> {
-  return new SignJWT({ email: user.email })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setSubject(user.userId)
-    .setIssuedAt()
-    .setExpirationTime(`${SESSION_DURATION}s`)
-    .sign(getSessionSecret())
-}
-
-/** Verify a local session cookie, return user info or null */
-export async function verifyLocalSession(
-  token: string
-): Promise<{ userId: string; email: string } | null> {
-  try {
-    const { payload } = await jwtVerify(token, getSessionSecret())
-
-    if (!payload.sub || !payload.email) return null
-    return { userId: payload.sub, email: payload.email as string }
-  } catch {
-    return null
-  }
-}
-
-/** Consume a login token jti (single-use). Returns true if consumed, false if already used. */
-export async function consumeLoginTokenJti(jti: string): Promise<boolean> {
-  const redis = await getRedisClient()
-  if (!redis) return false
-  // SET NX EX: only set if not exists, expire after 10 minutes
-  const result = await redis.set(`login-token:${jti}`, 'consumed', 'EX', 600, 'NX')
-  return result === 'OK'
-}
-
-/** Get local session from cookie */
-export async function getLocalSession(): Promise<Session | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)
-  if (!sessionCookie?.value) return null
-  return verifyLocalSession(sessionCookie.value)
-}
+export const createLocalSession = helpers.createSession
+export const verifyLocalSession = helpers.verifySession
+export const getLocalSession = helpers.getSession
+export const consumeLoginTokenJti = helpers.consumeLoginTokenJti
 
 /**
  * Get login URL with return path

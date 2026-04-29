@@ -154,6 +154,7 @@
     "remark-gfm": "^4.0.1",
     "server-only": "catalog:",
     "sharp": "catalog:",
+    "shiki": "catalog:",
     "sonner": "^2.0.7",
     "stripe": "catalog:",
     "superjson": "^2.2.1",

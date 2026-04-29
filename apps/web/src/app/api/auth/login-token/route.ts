@@ -1,12 +1,15 @@
 // apps/web/src/app/api/auth/login-token/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
-import { issueLoginToken } from '@auxx/credentials/login-token'
+import { issueLoginToken, sanitizeReturnTo } from '@auxx/credentials/login-token'
+import { database, schema } from '@auxx/database'
+import { isOrgMember } from '@auxx/lib/cache'
 import { getDemoEmailDomain } from '@auxx/lib/demo'
+import { eq } from 'drizzle-orm'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
-import { getTrustedAppOrigin } from '~/auth/trusted-apps'
+import { resolveTrustedAppOrigin } from '~/auth/trusted-apps'
 
 export async function POST(request: NextRequest) {
   // 1. Verify the user has a valid session
@@ -15,32 +18,75 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // 2. Parse and validate request body
+  // 2. Parse request body
   const body = await request.json()
-  const { callbackApp, returnTo } = body
+  const { callbackApp, returnTo, kbId } = body as {
+    callbackApp?: unknown
+    returnTo?: unknown
+    kbId?: unknown
+  }
 
   if (!callbackApp || typeof callbackApp !== 'string') {
     return NextResponse.json({ error: 'Missing callbackApp' }, { status: 400 })
   }
 
-  // Block demo users from accessing the developer portal
-  if (callbackApp === 'build' && session.user.email.endsWith(`@${getDemoEmailDomain()}`)) {
-    return NextResponse.json(
-      { error: 'Demo accounts cannot access the developer portal' },
-      { status: 403 }
-    )
+  // 3. Per-app gates
+  const isDemoUser = session.user.email.endsWith(`@${getDemoEmailDomain()}`)
+
+  if (callbackApp === 'build') {
+    if (isDemoUser) {
+      return NextResponse.json(
+        { error: 'Demo accounts cannot access the developer portal' },
+        { status: 403 }
+      )
+    }
+  } else if (callbackApp === 'kb') {
+    if (isDemoUser) {
+      return NextResponse.json(
+        { error: 'Demo accounts cannot access knowledge bases' },
+        { status: 403 }
+      )
+    }
+    if (!kbId || typeof kbId !== 'string') {
+      return NextResponse.json({ error: 'Missing kbId' }, { status: 400 })
+    }
+    const [kb] = await database
+      .select({
+        id: schema.KnowledgeBase.id,
+        organizationId: schema.KnowledgeBase.organizationId,
+        visibility: schema.KnowledgeBase.visibility,
+      })
+      .from(schema.KnowledgeBase)
+      .where(eq(schema.KnowledgeBase.id, kbId))
+      .limit(1)
+
+    if (!kb) {
+      return NextResponse.json({ error: 'Knowledge base not found' }, { status: 404 })
+    }
+    if (kb.visibility !== 'INTERNAL') {
+      return NextResponse.json(
+        { error: 'Login tokens are only issued for internal knowledge bases' },
+        { status: 400 }
+      )
+    }
+    const member = await isOrgMember(kb.organizationId, session.user.id)
+    if (!member) {
+      return NextResponse.json({ error: 'Not a member of this knowledge base' }, { status: 403 })
+    }
   }
 
-  // 3. Resolve app ID to origin
-  const targetOrigin = getTrustedAppOrigin(callbackApp)
+  // 4. Resolve target origin (custom domain for KB)
+  const targetOrigin = await resolveTrustedAppOrigin(callbackApp, {
+    kbId: typeof kbId === 'string' ? kbId : undefined,
+  })
   if (!targetOrigin) {
     return NextResponse.json({ error: 'Unknown app' }, { status: 400 })
   }
 
-  // 4. Validate returnTo is a safe relative path
+  // 5. Validate returnTo is a safe relative path
   const safePath = sanitizeReturnTo(returnTo)
 
-  // 5. Issue login token
+  // 6. Issue login token
   const result = await issueLoginToken({
     userId: session.user.id,
     email: session.user.email,
@@ -57,13 +103,4 @@ export async function POST(request: NextRequest) {
     loginToken: result.value.token,
     redirectUrl: `${targetOrigin}/auth/verify?loginToken=${result.value.token}`,
   })
-}
-
-function sanitizeReturnTo(returnTo: unknown): string {
-  if (typeof returnTo !== 'string') return '/'
-  // Must start with /, no protocol, no //, no ..
-  if (!returnTo.startsWith('/') || returnTo.startsWith('//') || returnTo.includes('..')) {
-    return '/'
-  }
-  return returnTo
 }

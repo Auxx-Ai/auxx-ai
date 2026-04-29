@@ -1,9 +1,12 @@
 // packages/ui/src/components/kb/article/block-renderer.tsx
 
+import { parseEmbedUrl } from '../utils/embed'
 import { walkInlineToText } from '../utils/inline-text'
+import { CalloutIcon } from './callout-icon'
+import { ImageZoomable } from './image-zoomable'
 import { InlineRenderer } from './inline-renderer'
 import styles from './kb-article-renderer.module.css'
-import type { BlockJSON, DocJSON } from './types'
+import type { BlockJSON, CalloutVariant, DocJSON } from './types'
 
 interface BlockRendererProps {
   node: BlockJSON
@@ -84,12 +87,64 @@ export function BlockRenderer({ node, idx, doc, headingIds }: BlockRendererProps
     case 'quote':
       return <blockquote className={styles.quote}>{inline}</blockquote>
 
-    case 'codeBlock':
+    case 'callout': {
+      const variant: CalloutVariant = node.attrs?.calloutVariant ?? 'info'
       return (
-        <pre className={styles.code}>
+        <aside role='note' data-variant={variant} className={styles.callout}>
+          <span className={styles.calloutIcon} aria-hidden='true'>
+            <CalloutIcon variant={variant} />
+          </span>
+          <div className={styles.calloutBody}>{inline}</div>
+        </aside>
+      )
+    }
+
+    case 'codeBlock': {
+      const language = node.attrs?.codeLanguage
+      const html = node.attrs?.codeHighlightedHtml
+      if (html) {
+        return (
+          <pre
+            className={styles.code}
+            data-language={language ?? 'plaintext'}
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki output is server-generated and trusted
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )
+      }
+      return (
+        <pre className={styles.code} data-language={language ?? 'plaintext'}>
           <code>{walkInlineToText(node.content)}</code>
         </pre>
       )
+    }
+
+    case 'embed': {
+      const url = node.attrs?.embedUrl
+      if (!url) return null
+      const parsed = parseEmbedUrl(url)
+      const aspect = node.attrs?.embedAspect ?? '16:9'
+      if (!parsed) {
+        return (
+          <p className={styles.text}>
+            <a href={url} target='_blank' rel='noopener noreferrer' className='kb-link'>
+              {url}
+            </a>
+          </p>
+        )
+      }
+      return (
+        <div className={styles.embedAspect} data-aspect={aspect}>
+          <iframe
+            src={parsed.embedSrc}
+            allowFullScreen
+            sandbox='allow-scripts allow-same-origin allow-presentation'
+            title={`${parsed.provider} embed`}
+            loading='lazy'
+          />
+        </div>
+      )
+    }
 
     case 'divider':
       return <hr className={styles.divider} />
@@ -101,8 +156,7 @@ export function BlockRenderer({ node, idx, doc, headingIds }: BlockRendererProps
       const width = node.attrs?.imageWidth ?? 400
       return (
         <div className={`${styles.imageWrapper} ${styles[`imageAlign_${align}`] ?? ''}`}>
-          {/** biome-ignore lint/performance/noImgElement: Next/Image not used cross-package; consumers can override */}
-          <img src={url} width={width} alt='' />
+          <ImageZoomable src={url} width={width} />
         </div>
       )
     }

@@ -1,10 +1,12 @@
 // packages/ui/src/components/kb/layout/kb-layout-shell.tsx
 'use client'
 
+import { useSelectedLayoutSegments } from 'next/navigation'
 import type { ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { KBSearchDialog } from '../search/kb-search-dialog'
 import type { KBMode } from '../theme/kb-theme-tokens'
+import { findArticleBySlugPath } from '../utils'
 import { KBFooter } from './kb-footer'
 import { KBHeader, type KBNavLink } from './kb-header'
 import { KBLayoutContextProvider } from './kb-layout-context'
@@ -58,6 +60,13 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+
+  const segments = useSelectedLayoutSegments()
+  const derivedActiveId = useMemo(() => {
+    if (segments.length === 0) return undefined
+    return findArticleBySlugPath(articles, segments)?.id
+  }, [articles, segments])
+  const effectiveActiveId = activeArticleId ?? derivedActiveId
 
   useEffect(() => {
     setCollapsed(readCollapsedFromStorage())
@@ -117,13 +126,13 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
         <KBSidebar
           articles={articles}
           basePath={basePath}
-          activeArticleId={activeArticleId}
+          activeArticleId={effectiveActiveId}
           searchOrigin={searchOrigin}
           showSearch={searchbarPosition === 'corner'}
           listStyle={listStyle}
           onArticleClick={onArticleClick}
         />
-        <main className='min-w-0 flex-1 px-4 py-8 @kb-md:px-8'>{children}</main>
+        <main className='flex min-w-0 flex-1 flex-col px-4 py-8 @kb-md:px-8'>{children}</main>
       </div>
       <KBFooter title={kbName} navigation={footerNav} navigationEnabled={footerEnabled} />
       {searchOrigin ? (

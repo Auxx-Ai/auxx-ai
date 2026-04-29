@@ -12,8 +12,10 @@
   "dependencies": {
     "@aws-sdk/s3-presigned-post": "catalog:",
     "@auxx/config": "workspace:*",
+    "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
     "@auxx/lib": "workspace:*",
+    "@auxx/redis": "workspace:*",
     "@auxx/ui": "workspace:*",
     "drizzle-orm": "catalog:",
     "lucide-react": "catalog:",

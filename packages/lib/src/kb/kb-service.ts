@@ -5,6 +5,7 @@ import type { ArticleStatus as ArticleStatusType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, asc, desc, eq, gt, gte, isNull, ne, or, sql } from 'drizzle-orm'
+import { enrichDocWithHighlighting } from './highlight-code'
 
 // Local model types inferred from Drizzle schema
 type KnowledgeBase = typeof schema.KnowledgeBase.$inferSelect
@@ -55,6 +56,7 @@ export interface KBFields {
   slug?: string
   description?: string
   publishStatus?: KBPublishStatus
+  visibility?: 'PUBLIC' | 'INTERNAL'
   customDomain?: string
   logoDark?: string
   logoLight?: string
@@ -514,8 +516,14 @@ export class KBService {
       if (fields.excerpt !== undefined) draftUpdate.excerpt = fields.excerpt
       if (fields.emoji !== undefined) draftUpdate.emoji = fields.emoji
       if (fields.content !== undefined) draftUpdate.content = fields.content
-      if (fields.contentJson !== undefined)
-        draftUpdate.contentJson = fields.contentJson as ArticleRevision['contentJson']
+      if (fields.contentJson !== undefined) {
+        const enriched = fields.contentJson
+          ? await enrichDocWithHighlighting(
+              fields.contentJson as Parameters<typeof enrichDocWithHighlighting>[0]
+            )
+          : fields.contentJson
+        draftUpdate.contentJson = enriched as ArticleRevision['contentJson']
+      }
 
       const updated = await this.db.transaction(async (tx) => {
         await tx

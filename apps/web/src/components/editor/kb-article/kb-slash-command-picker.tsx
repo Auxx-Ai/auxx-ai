@@ -37,8 +37,11 @@ interface BlockCommandSpec {
     | 'quote'
     | 'codeBlock'
     | 'divider'
+    | 'callout'
+    | 'embed'
   level?: number | null
   checked?: boolean
+  calloutVariant?: 'info' | 'tip' | 'warn' | 'error' | 'success'
 }
 
 interface CommandItemDef {
@@ -188,19 +191,52 @@ const BASE_COMMANDS: CommandItemDef[] = [
     },
   },
   {
-    id: 'table',
-    title: 'Table',
-    description: 'Insert a table',
-    keywords: ['grid', 'rows', 'columns'],
-    iconId: 'table',
-    custom: (editor, range) => {
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-        .run()
-    },
+    id: 'callout-info',
+    title: 'Info callout',
+    description: 'Highlight a note with an info tone',
+    keywords: ['callout', 'note', 'aside', 'info', 'admonition'],
+    iconId: 'info',
+    spec: { blockType: 'callout', calloutVariant: 'info' },
+  },
+  {
+    id: 'callout-tip',
+    title: 'Tip callout',
+    description: 'Share a helpful tip',
+    keywords: ['callout', 'tip', 'hint', 'lightbulb', 'idea'],
+    iconId: 'lightbulb',
+    spec: { blockType: 'callout', calloutVariant: 'tip' },
+  },
+  {
+    id: 'callout-warn',
+    title: 'Warning callout',
+    description: 'Warn the reader about something',
+    keywords: ['callout', 'warning', 'caution', 'alert'],
+    iconId: 'alert-triangle',
+    spec: { blockType: 'callout', calloutVariant: 'warn' },
+  },
+  {
+    id: 'callout-error',
+    title: 'Error callout',
+    description: 'Flag an error or breaking note',
+    keywords: ['callout', 'error', 'danger', 'stop', 'critical'],
+    iconId: 'x-circle',
+    spec: { blockType: 'callout', calloutVariant: 'error' },
+  },
+  {
+    id: 'callout-success',
+    title: 'Success callout',
+    description: 'Confirm a successful outcome',
+    keywords: ['callout', 'success', 'done', 'check', 'ok'],
+    iconId: 'check-circle',
+    spec: { blockType: 'callout', calloutVariant: 'success' },
+  },
+  {
+    id: 'embed',
+    title: 'Video / embed',
+    description: 'Embed a YouTube, Loom, or Vimeo video',
+    keywords: ['video', 'youtube', 'loom', 'vimeo', 'embed', 'iframe'],
+    iconId: 'video',
+    spec: { blockType: 'embed' },
   },
 ]
 
@@ -331,6 +367,7 @@ function KBSlashCommandPickerContent({
           level: spec.level ?? null,
         }
         if (spec.blockType === 'todoListItem') attrs.checked = spec.checked ?? false
+        if (spec.blockType === 'callout') attrs.calloutVariant = spec.calloutVariant ?? 'info'
         editor.chain().focus().deleteRange(range).updateAttributes('block', attrs).run()
       })
     },

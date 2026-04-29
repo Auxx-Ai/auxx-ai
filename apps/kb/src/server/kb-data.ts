@@ -1,6 +1,7 @@
 // apps/kb/src/server/kb-data.ts
 
 import { Article, ArticleRevision, database, KnowledgeBase, Organization } from '@auxx/database'
+import { isOrgMember } from '@auxx/lib/cache'
 import type { DocJSON, KBLayoutKB } from '@auxx/ui/components/kb'
 import { and, eq } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
@@ -32,7 +33,41 @@ export type PublicKB = KBLayoutKB & {
   slug: string
   description: string | null
   publishStatus: 'DRAFT' | 'PUBLISHED' | 'UNLISTED'
+  visibility: 'PUBLIC' | 'INTERNAL'
   defaultMode: string | null
+}
+
+export type AccessDenied = 'unauthenticated' | 'forbidden'
+
+export interface KBVisibilityInfo {
+  id: string
+  organizationId: string
+  visibility: 'PUBLIC' | 'INTERNAL'
+  publishStatus: 'DRAFT' | 'PUBLISHED' | 'UNLISTED'
+}
+
+/**
+ * Lightweight metadata-only lookup for the layout to decide between the
+ * cached public path and the auth-gated internal path before doing full
+ * payload work. Cheaper than `loadKBPayload` and safe to short-cache when
+ * needed by the caller.
+ */
+export async function getKBVisibility(
+  orgSlug: string,
+  kbSlug: string
+): Promise<KBVisibilityInfo | null> {
+  const [row] = await database
+    .select({
+      id: KnowledgeBase.id,
+      organizationId: KnowledgeBase.organizationId,
+      visibility: KnowledgeBase.visibility,
+      publishStatus: KnowledgeBase.publishStatus,
+    })
+    .from(KnowledgeBase)
+    .innerJoin(Organization, eq(Organization.id, KnowledgeBase.organizationId))
+    .where(and(eq(Organization.handle, orgSlug), eq(KnowledgeBase.slug, kbSlug)))
+    .limit(1)
+  return row ?? null
 }
 
 /**
@@ -59,10 +94,12 @@ function filterVisibleSubtree<
 
 export async function loadKBPayload(
   orgSlug: string,
-  kbSlug: string
+  kbSlug: string,
+  opts?: { session?: { userId: string } | null }
 ): Promise<{
   kb: PublicKB | null
   articles: PublicArticleListItem[]
+  accessDenied?: AccessDenied
 }> {
   const rows = await database
     .select({
@@ -79,6 +116,12 @@ export async function loadKBPayload(
 
   const kb = row.kb
   if (kb.publishStatus === 'DRAFT') return { kb: null, articles: [] }
+
+  if (kb.visibility === 'INTERNAL') {
+    if (!opts?.session) return { kb: null, articles: [], accessDenied: 'unauthenticated' }
+    const member = await isOrgMember(kb.organizationId, opts.session.userId)
+    if (!member) return { kb: null, articles: [], accessDenied: 'forbidden' }
+  }
 
   const pub = alias(ArticleRevision, 'pub')
   const rawArticles = await database
@@ -109,6 +152,7 @@ export async function loadKBPayload(
     organizationId: kb.organizationId,
     description: kb.description,
     publishStatus: kb.publishStatus,
+    visibility: kb.visibility,
     defaultMode: kb.defaultMode,
     showMode: kb.showMode,
     primaryColorLight: kb.primaryColorLight,
@@ -141,10 +185,15 @@ export async function loadKBPayload(
 
 export async function loadKBPayloadWithContent(
   orgSlug: string,
-  kbSlug: string
-): Promise<{ kb: PublicKB | null; articles: PublicArticleFull[] }> {
-  const { kb } = await loadKBPayload(orgSlug, kbSlug)
-  if (!kb) return { kb: null, articles: [] }
+  kbSlug: string,
+  opts?: { session?: { userId: string } | null }
+): Promise<{
+  kb: PublicKB | null
+  articles: PublicArticleFull[]
+  accessDenied?: AccessDenied
+}> {
+  const { kb, accessDenied } = await loadKBPayload(orgSlug, kbSlug, opts)
+  if (!kb) return { kb: null, articles: [], accessDenied }
 
   const pub = alias(ArticleRevision, 'pub')
   const rows = await database

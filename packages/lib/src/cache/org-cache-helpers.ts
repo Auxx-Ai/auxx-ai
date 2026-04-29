@@ -146,6 +146,14 @@ export async function getCachedMembersByUserIds(
   return members.filter((m) => idSet.has(m.userId))
 }
 
+/**
+ * Check whether a user is a member of an organization (cached).
+ */
+export async function isOrgMember(orgId: string, userId: string): Promise<boolean> {
+  const members = await getOrgCache().get(orgId, 'members')
+  return members.some((m) => m.userId === userId)
+}
+
 // ── Group cache helpers ──
 
 /**

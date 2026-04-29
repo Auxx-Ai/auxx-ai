@@ -77,16 +77,25 @@ async function Login({ searchParams }: LoginPageProps) {
     // Cross-app flow: user is already logged in, issue token and redirect to satellite
     const callbackApp = q?.callbackApp as string | undefined
     if (callbackApp) {
+      const returnTo = (q?.returnTo as string) || '/'
+      const safePath =
+        typeof returnTo === 'string' &&
+        returnTo.startsWith('/') &&
+        !returnTo.startsWith('//') &&
+        !returnTo.includes('..')
+          ? returnTo
+          : '/'
+
+      // KB needs the kbId to resolve a (possibly custom-domain) origin —
+      // delegate to /kb-auth which knows how to look it up.
+      if (callbackApp === 'kb') {
+        const kbId = (q?.kbId as string) || ''
+        const params = new URLSearchParams({ kbId, returnTo: safePath })
+        redirect(`/kb-auth?${params.toString()}`)
+      }
+
       const targetOrigin = getTrustedAppOrigin(callbackApp)
       if (targetOrigin) {
-        const returnTo = (q?.returnTo as string) || '/'
-        const safePath =
-          typeof returnTo === 'string' &&
-          returnTo.startsWith('/') &&
-          !returnTo.startsWith('//') &&
-          !returnTo.includes('..')
-            ? returnTo
-            : '/'
         const result = await issueLoginToken({
           userId: session.user.id,
           email: session.user.email,

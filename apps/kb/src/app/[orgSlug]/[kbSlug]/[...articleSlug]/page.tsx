@@ -1,5 +1,7 @@
 // apps/kb/src/app/[orgSlug]/[kbSlug]/[...articleSlug]/page.tsx
 
+import { WEBAPP_URL } from '@auxx/config/urls'
+import { isOrgMember } from '@auxx/lib/cache'
 import {
   extractKBHeadings,
   findArticleBySlugPath,
@@ -10,9 +12,16 @@ import {
 } from '@auxx/ui/components/kb'
 import type { Metadata } from 'next'
 import { cacheLife, cacheTag } from 'next/cache'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import { getKBPayloadWithContent, kbArticleTag, kbTag } from '../../../../server/kb-cache'
+import { getLocalSession, getLoginUrl } from '~/lib/auth'
+import {
+  getCachedKBVisibility,
+  getPublicKBPayloadWithContent,
+  kbArticleTag,
+  kbTag,
+} from '../../../../server/kb-cache'
+import { loadKBPayloadWithContent, type PublicArticleFull } from '../../../../server/kb-data'
 
 interface PageProps {
   params: Promise<{ orgSlug: string; kbSlug: string; articleSlug: string[] }>
@@ -28,6 +37,13 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { orgSlug, kbSlug, articleSlug } = await params
+
+  const visibility = await getCachedKBVisibility(orgSlug, kbSlug)
+  if (!visibility || visibility.publishStatus === 'DRAFT') return { title: 'Not found' }
+
+  if (visibility.visibility === 'INTERNAL') {
+    return { title: 'Knowledge base', robots: { index: false, follow: false } }
+  }
   return getCachedMetadata(orgSlug, kbSlug, articleSlug)
 }
 
@@ -39,7 +55,7 @@ async function getCachedMetadata(
   'use cache'
   cacheTag(kbTag(orgSlug, kbSlug))
   cacheLife('max')
-  const { kb, articles } = await getKBPayloadWithContent(orgSlug, kbSlug)
+  const { kb, articles } = await getPublicKBPayloadWithContent(orgSlug, kbSlug)
   const article = findArticleBySlugPath(articles, articleSlug)
   if (!article) return { title: 'Not found' }
   return {
@@ -51,25 +67,103 @@ async function getCachedMetadata(
 }
 
 export default async function ArticlePage({ params }: PageProps) {
+  const { orgSlug, kbSlug, articleSlug } = await params
+
+  const visibility = await getCachedKBVisibility(orgSlug, kbSlug)
+  if (!visibility || visibility.publishStatus === 'DRAFT') notFound()
+
+  if (visibility.visibility === 'PUBLIC') {
+    return (
+      <Suspense fallback={null}>
+        <PublicArticleBody orgSlug={orgSlug} kbSlug={kbSlug} articleSlug={articleSlug} />
+      </Suspense>
+    )
+  }
+
   return (
     <Suspense fallback={null}>
-      <ArticleBody params={params} />
+      <InternalArticleGate
+        orgSlug={orgSlug}
+        kbSlug={kbSlug}
+        articleSlug={articleSlug}
+        kbId={visibility.id}
+        organizationId={visibility.organizationId}
+      />
     </Suspense>
   )
 }
 
-async function ArticleBody({
-  params,
+async function PublicArticleBody({
+  orgSlug,
+  kbSlug,
+  articleSlug,
 }: {
-  params: Promise<{ orgSlug: string; kbSlug: string; articleSlug: string[] }>
+  orgSlug: string
+  kbSlug: string
+  articleSlug: string[]
 }) {
   'use cache'
-  const { orgSlug, kbSlug, articleSlug } = await params
   const slugPath = articleSlug.join('/')
   cacheTag(kbTag(orgSlug, kbSlug), kbArticleTag(orgSlug, kbSlug, slugPath))
   cacheLife('max')
 
-  const { articles } = await getKBPayloadWithContent(orgSlug, kbSlug)
+  const { articles } = await getPublicKBPayloadWithContent(orgSlug, kbSlug)
+  return (
+    <ArticleBodyContent
+      articles={articles}
+      orgSlug={orgSlug}
+      kbSlug={kbSlug}
+      articleSlug={articleSlug}
+    />
+  )
+}
+
+async function InternalArticleGate({
+  orgSlug,
+  kbSlug,
+  articleSlug,
+  kbId,
+  organizationId,
+}: {
+  orgSlug: string
+  kbSlug: string
+  articleSlug: string[]
+  kbId: string
+  organizationId: string
+}) {
+  const session = await getLocalSession()
+  if (!session) {
+    redirect(getLoginUrl(kbId, `/${orgSlug}/${kbSlug}/${articleSlug.join('/')}`))
+  }
+  const member = await isOrgMember(organizationId, session.userId)
+  if (!member) {
+    redirect(`${WEBAPP_URL}/kb-auth/no-access`)
+  }
+
+  const { articles } = await loadKBPayloadWithContent(orgSlug, kbSlug, {
+    session: { userId: session.userId },
+  })
+  return (
+    <ArticleBodyContent
+      articles={articles}
+      orgSlug={orgSlug}
+      kbSlug={kbSlug}
+      articleSlug={articleSlug}
+    />
+  )
+}
+
+function ArticleBodyContent({
+  articles,
+  orgSlug,
+  kbSlug,
+  articleSlug,
+}: {
+  articles: PublicArticleFull[]
+  orgSlug: string
+  kbSlug: string
+  articleSlug: string[]
+}) {
   const basePath = `/${orgSlug}/${kbSlug}`
   const article = findArticleBySlugPath(articles, articleSlug)
   if (!article || article.isCategory) notFound()
@@ -78,8 +172,8 @@ async function ArticleBody({
   const { prev, next } = getArticleNeighbours(articles, article.id)
 
   return (
-    <div className='min-w-0 flex-1'>
-      <div className='mx-auto max-w-3xl px-6 pt-4'>
+    <div className='flex min-w-0 flex-1 flex-col'>
+      <div className='w-full max-w-3xl px-6 pt-4'>
         <KBTableOfContents headings={headings} />
       </div>
       <KBArticleRenderer
@@ -88,7 +182,7 @@ async function ArticleBody({
         description={article.description}
         updatedAt={article.updatedAt}
       />
-      <div className='mx-auto max-w-3xl px-6'>
+      <div className='mt-auto w-full max-w-3xl px-6'>
         <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
       </div>
     </div>

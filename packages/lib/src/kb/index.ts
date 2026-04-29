@@ -1,4 +1,10 @@
 // export * from './kb-service'
+
+export {
+  enrichDocWithHighlighting,
+  SHIKI_LANGUAGES,
+  type ShikiLanguage,
+} from './highlight-code'
 export {
   type ArticleBaseFields,
   type ArticleBatchUpdateItem,
