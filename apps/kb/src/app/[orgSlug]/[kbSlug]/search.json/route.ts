@@ -1,4 +1,4 @@
-// apps/kb/src/app/[orgSlug]/[kbSlug]/_search.json/route.ts
+// apps/kb/src/app/[orgSlug]/[kbSlug]/search.json/route.ts
 
 import { buildKBSearchIndex, getArticleSlugPaths } from '@auxx/ui/components/kb'
 import { cacheLife, cacheTag } from 'next/cache'

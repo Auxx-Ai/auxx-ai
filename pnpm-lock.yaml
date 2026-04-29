@@ -748,6 +748,9 @@ importers:
       '@aws-sdk/s3-presigned-post':
         specifier: 'catalog:'
         version: 3.999.0
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.44.5(@opentelemetry/api@1.9.0)(@types/pg@8.16.0)(@upstash/redis@1.36.2)(kysely@0.28.11)(pg@8.19.0)(postgres@3.4.8)
       lucide-react:
         specifier: 'catalog:'
         version: 0.575.0(react@19.2.3)
@@ -757,6 +760,9 @@ importers:
       next:
         specifier: 'catalog:'
         version: 16.0.10(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      pg:
+        specifier: 'catalog:'
+        version: 8.19.0
       react:
         specifier: 'catalog:'
         version: 19.2.3
