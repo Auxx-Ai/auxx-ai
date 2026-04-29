@@ -15,6 +15,8 @@ export type BlockType =
   | 'image'
   | 'divider'
   | 'codeBlock'
+  | 'callout'
+  | 'embed'
 
 const LIST_TYPES: BlockType[] = ['bulletListItem', 'numberedListItem', 'todoListItem']
 
@@ -75,6 +77,44 @@ export const Block = Node.create({
         renderHTML: (attrs) =>
           attrs.blockType === 'image' && attrs.imageAlign
             ? { 'data-image-align': attrs.imageAlign }
+            : {},
+      },
+      calloutVariant: {
+        default: 'info',
+        parseHTML: (el) => el.getAttribute('data-callout-variant') || 'info',
+        renderHTML: (attrs) =>
+          attrs.blockType === 'callout' && attrs.calloutVariant
+            ? { 'data-callout-variant': attrs.calloutVariant }
+            : {},
+      },
+      codeLanguage: {
+        default: 'plaintext',
+        parseHTML: (el) => el.getAttribute('data-code-language') || 'plaintext',
+        renderHTML: (attrs) =>
+          attrs.blockType === 'codeBlock' && attrs.codeLanguage
+            ? { 'data-code-language': attrs.codeLanguage }
+            : {},
+      },
+      embedUrl: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-embed-url'),
+        renderHTML: (attrs) =>
+          attrs.blockType === 'embed' && attrs.embedUrl ? { 'data-embed-url': attrs.embedUrl } : {},
+      },
+      embedProvider: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-embed-provider'),
+        renderHTML: (attrs) =>
+          attrs.blockType === 'embed' && attrs.embedProvider
+            ? { 'data-embed-provider': attrs.embedProvider }
+            : {},
+      },
+      embedAspect: {
+        default: '16:9',
+        parseHTML: (el) => el.getAttribute('data-embed-aspect') || '16:9',
+        renderHTML: (attrs) =>
+          attrs.blockType === 'embed' && attrs.embedAspect
+            ? { 'data-embed-aspect': attrs.embedAspect }
             : {},
       },
     }
@@ -149,6 +189,16 @@ export const Block = Node.create({
 
           // Divider stays as divider — split and convert the new sibling to text.
           if (blockType === 'divider') {
+            return editor
+              .chain()
+              .splitBlock()
+              .updateAttributes('block', { blockType: 'text', level: null, checked: false })
+              .run()
+          }
+
+          // Filled embed (URL set): split off a new text block below instead of
+          // converting the embed back to text.
+          if (blockType === 'embed' && node.attrs.embedUrl) {
             return editor
               .chain()
               .splitBlock()

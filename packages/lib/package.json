@@ -838,6 +838,7 @@
     "pusher": "catalog:",
     "pusher-js": "catalog:",
     "sharp": "catalog:",
+    "shiki": "catalog:",
     "stripe": "catalog:",
     "tldts": "^7.0.28",
     "turndown": "catalog:",

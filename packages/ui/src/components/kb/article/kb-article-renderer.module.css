@@ -6,7 +6,7 @@
   line-height: 1.6;
   font-size: 16px;
   max-width: 768px;
-  margin: 0 auto;
+  margin: 0;
   padding: 0 1.5rem;
 }
 
@@ -88,10 +88,34 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.9em;
   line-height: 1.5;
+  position: relative;
 }
 
 .code code {
   font-family: inherit;
+}
+
+/* Shiki highlighter wraps the highlighted code in a <pre>/<code>; we keep the
+   provided inline styles but neutralize Shiki's outer background so our token
+   wins for both light and dark themes. */
+.code :global(.shiki) {
+  background: transparent !important;
+  padding: 0;
+  margin: 0;
+}
+
+.code[data-language]:not([data-language='plaintext'])::before {
+  content: attr(data-language);
+  position: absolute;
+  top: 0.5em;
+  right: 0.75em;
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--kb-fg);
+  opacity: 0.4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
 }
 
 .divider {
@@ -180,4 +204,146 @@
   max-width: 100%;
   height: auto;
   border-radius: var(--kb-radius);
+}
+
+/* ============================================
+   Callout
+   ============================================ */
+
+.callout {
+  display: flex;
+  gap: 0.75em;
+  align-items: flex-start;
+  margin: 1em 0;
+  padding: 0.875em 1em;
+  border-radius: var(--kb-radius);
+  border-left: 3px solid var(--callout-accent, var(--kb-primary));
+  background: var(--callout-bg, var(--kb-tint));
+  color: var(--kb-fg);
+}
+
+.callout[data-variant='info'] {
+  --callout-accent: var(--kb-info, var(--kb-primary));
+  --callout-bg: color-mix(in srgb, var(--kb-info, var(--kb-primary)) 10%, transparent);
+}
+
+.callout[data-variant='tip'] {
+  --callout-accent: var(--kb-primary);
+  --callout-bg: var(--kb-tint);
+}
+
+.callout[data-variant='warn'] {
+  --callout-accent: var(--kb-warning, #d97706);
+  --callout-bg: color-mix(in srgb, var(--kb-warning, #d97706) 12%, transparent);
+}
+
+.callout[data-variant='error'] {
+  --callout-accent: var(--kb-danger, #dc2626);
+  --callout-bg: color-mix(in srgb, var(--kb-danger, #dc2626) 12%, transparent);
+}
+
+.callout[data-variant='success'] {
+  --callout-accent: var(--kb-success, #16a34a);
+  --callout-bg: color-mix(in srgb, var(--kb-success, #16a34a) 12%, transparent);
+}
+
+.calloutIcon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--callout-accent, var(--kb-primary));
+  margin-top: 0.15em;
+}
+
+.calloutBody {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+.calloutBody > p:first-child {
+  margin-top: 0;
+}
+
+.calloutBody > p:last-child {
+  margin-bottom: 0;
+}
+
+/* ============================================
+   Embed (YouTube / Loom / Vimeo)
+   ============================================ */
+
+.embedAspect {
+  margin: 1em 0;
+  width: 100%;
+  border-radius: var(--kb-radius);
+  overflow: hidden;
+  background: var(--kb-muted);
+  aspect-ratio: 16 / 9;
+}
+
+.embedAspect[data-aspect='4:3'] {
+  aspect-ratio: 4 / 3;
+}
+
+.embedAspect[data-aspect='1:1'] {
+  aspect-ratio: 1 / 1;
+}
+
+.embedAspect iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+/* ============================================
+   Image zoom
+   ============================================ */
+
+.imageZoomTrigger {
+  display: inline-block;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  cursor: zoom-in;
+  max-width: 100%;
+  border-radius: var(--kb-radius);
+}
+
+.imageZoomTrigger img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--kb-radius);
+  display: block;
+}
+
+.imageZoomOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  cursor: zoom-out;
+  animation: kb-image-zoom-fade 0.15s ease-out;
+}
+
+.imageZoomFull {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--kb-radius);
+}
+
+@keyframes kb-image-zoom-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

@@ -18,4 +18,5 @@ export {
   flattenArticleTree,
   flattenArticleTreePreservingChildren,
 } from './article-tree'
+export { type EmbedProvider, type ParsedEmbed, parseEmbedUrl } from './embed'
 export { extractHeadings, extractPlainText, walkInlineToText } from './inline-text'

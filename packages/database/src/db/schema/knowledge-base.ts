@@ -8,6 +8,7 @@ import {
   index,
   jsonb,
   kbPublishStatus,
+  kbVisibility,
   pgTable,
   text,
   timestamp,
@@ -31,6 +32,8 @@ export const KnowledgeBase = pgTable(
     publishStatus: kbPublishStatus().default('DRAFT').notNull(),
     publishedAt: timestamp({ precision: 3 }),
     lastPublishedAt: timestamp({ precision: 3 }),
+    visibility: kbVisibility().default('PUBLIC').notNull(),
+    customDomainVerifiedAt: timestamp({ precision: 3 }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     organizationId: text()

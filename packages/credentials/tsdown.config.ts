@@ -10,6 +10,7 @@ export default defineConfig({
     'src/service/index.ts',
     'src/types/index.ts',
     'src/login-token/index.ts',
+    'src/local-session/index.ts',
     'src/config/index.ts',
     'src/config/client.ts',
     'src/lambda-auth/index.ts',

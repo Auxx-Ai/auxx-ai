@@ -93,11 +93,13 @@ export function KBSwitcher() {
                 {isLoading ? 'Loading...' : activeKB?.name || 'Knowledge Base'}
               </span>
               <span className='truncate text-xs'>
-                {activeKB?.publishStatus === 'PUBLISHED'
-                  ? 'Public'
+                {activeKB?.publishStatus === 'DRAFT'
+                  ? 'Draft'
                   : activeKB?.publishStatus === 'UNLISTED'
                     ? 'Unlisted'
-                    : 'Private'}
+                    : activeKB?.visibility === 'INTERNAL'
+                      ? 'Internal'
+                      : 'Public'}
               </span>
             </div>
             <ChevronsUpDown className='ml-auto size-4' />

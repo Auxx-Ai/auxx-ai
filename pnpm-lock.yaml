@@ -180,6 +180,9 @@ catalogs:
     sharp:
       specifier: 0.34.3
       version: 0.34.3
+    shiki:
+      specifier: ^4.0.2
+      version: 4.0.2
     stripe:
       specifier: ^19.0.0
       version: 19.3.0
@@ -697,7 +700,7 @@ importers:
         specifier: ^4.0.1
         version: 4.0.1
       shiki:
-        specifier: ^4.0.2
+        specifier: 'catalog:'
         version: 4.0.2
       tailwind-merge:
         specifier: ^3.3.1
@@ -736,12 +739,18 @@ importers:
       '@auxx/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@auxx/credentials':
+        specifier: workspace:*
+        version: link:../../packages/credentials
       '@auxx/database':
         specifier: workspace:*
         version: link:../../packages/database
       '@auxx/lib':
         specifier: workspace:*
         version: link:../../packages/lib
+      '@auxx/redis':
+        specifier: workspace:*
+        version: link:../../packages/redis
       '@auxx/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -1213,6 +1222,9 @@ importers:
       sharp:
         specifier: 'catalog:'
         version: 0.34.3
+      shiki:
+        specifier: 'catalog:'
+        version: 4.0.2
       sonner:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1907,6 +1919,9 @@ importers:
       sharp:
         specifier: 'catalog:'
         version: 0.34.3
+      shiki:
+        specifier: 'catalog:'
+        version: 4.0.2
       stripe:
         specifier: 'catalog:'
         version: 19.3.0(@types/node@22.19.13)

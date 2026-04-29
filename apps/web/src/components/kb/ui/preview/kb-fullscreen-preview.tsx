@@ -52,8 +52,8 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
       basePath={basePath}
       activeArticleId={activeArticle?.id}>
       {articleId ? (
-        <div className='min-w-0 flex-1'>
-          <div className='mx-auto max-w-3xl px-6 pt-4'>
+        <div className='flex min-w-0 flex-1 flex-col'>
+          <div className='w-full max-w-3xl px-6 pt-4'>
             <KBTableOfContents headings={headings} />
           </div>
           <KBArticleRenderer
@@ -61,7 +61,7 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
             title={activeArticle?.title}
             description={description ?? activeArticle?.description}
           />
-          <div className='mx-auto max-w-3xl px-6'>
+          <div className='mt-auto w-full max-w-3xl px-6'>
             <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
           </div>
         </div>

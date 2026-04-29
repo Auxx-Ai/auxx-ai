@@ -58,6 +58,7 @@ export {
   getCachedResource,
   getCachedResourceFields,
   getCachedResources,
+  isOrgMember,
   requireCachedEntityDefId,
 } from './org-cache-helpers'
 export type {

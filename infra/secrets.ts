@@ -47,6 +47,10 @@ export const secretsConfig = {
     secret: new sst.Secret('BUILD_SESSION_SECRET'),
     description: 'HMAC secret for apps/build local session cookies',
   },
+  KB_SESSION_SECRET: {
+    secret: new sst.Secret('KB_SESSION_SECRET'),
+    description: 'HMAC secret for apps/kb local session cookies',
+  },
 
   // OAuth - GitHub
   AUTH_GITHUB_ID: {

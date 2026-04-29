@@ -15,6 +15,11 @@ interface IdentitySectionProps {
   isPending: boolean
 }
 
+const VISIBILITY_OPTIONS = [
+  { label: 'Public', value: 'PUBLIC' },
+  { label: 'Internal — sign-in required', value: 'INTERNAL' },
+]
+
 export function IdentitySection({ form, isPending }: IdentitySectionProps) {
   return (
     <Section title='Basic' description='Public identity of your knowledge base'>
@@ -100,6 +105,29 @@ export function IdentitySection({ form, isPending }: IdentitySectionProps) {
                 onChange={(v) => field.onChange(v ?? '')}
                 placeholder='docs.example.com'
                 disabled={isPending}
+              />
+            </VarEditorFieldRow>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name='visibility'
+          render={({ field, fieldState }) => (
+            <VarEditorFieldRow
+              title='Visibility'
+              description='Public knowledge bases are accessible to anyone with the link. Internal knowledge bases require visitors to sign in and be a member of your organization.'
+              type={BaseType.ENUM}
+              showIcon
+              validationError={fieldState.error?.message}>
+              <FieldInputAdapter
+                fieldType={FieldType.SINGLE_SELECT}
+                fieldOptions={{ options: VISIBILITY_OPTIONS }}
+                value={field.value ?? 'PUBLIC'}
+                onChange={(v) => field.onChange((v as string[])[0] ?? 'PUBLIC')}
+                placeholder='Public'
+                disabled={isPending}
+                triggerProps={{ className: 'w-full' }}
               />
             </VarEditorFieldRow>
           )}

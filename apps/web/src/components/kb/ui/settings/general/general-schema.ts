@@ -10,6 +10,7 @@ export const generalSchema = z.object({
     .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
   description: z.string().optional().nullable(),
   customDomain: z.string().optional().nullable(),
+  visibility: z.enum(['PUBLIC', 'INTERNAL']).default('PUBLIC'),
 
   logoDark: z.string().optional().nullable(),
   logoLight: z.string().optional().nullable(),

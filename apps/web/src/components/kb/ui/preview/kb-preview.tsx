@@ -73,8 +73,8 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
             mode={isDark ? 'dark' : 'light'}
             onArticleClick={(id) => setOverrideId(id)}>
             {articleId ? (
-              <div className='min-w-0 flex-1'>
-                <div className='mx-auto max-w-3xl px-6 pt-4'>
+              <div className='flex min-w-0 flex-1 flex-col'>
+                <div className='w-full max-w-3xl px-6 pt-4'>
                   <KBTableOfContents headings={headings} />
                 </div>
                 <KBArticleRenderer
@@ -82,7 +82,7 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
                   title={activeArticle?.title ?? articles.find((a) => a.id === articleId)?.title}
                   description={description ?? activeArticle?.description}
                 />
-                <div className='mx-auto max-w-3xl px-6'>
+                <div className='mt-auto w-full max-w-3xl px-6'>
                   <KBArticlePager articles={articles} prev={prev} next={next} basePath='#preview' />
                 </div>
               </div>

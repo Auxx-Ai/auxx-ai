@@ -30,6 +30,7 @@ function buildDefaults(kb: KnowledgeBase): GeneralFormValues {
     slug: kb.slug,
     description: kb.description || '',
     customDomain: kb.customDomain || '',
+    visibility: (kb.visibility as GeneralFormValues['visibility']) ?? 'PUBLIC',
     logoDark: kb.logoDark || '',
     logoLight: kb.logoLight || '',
     theme: (lower(kb.theme) as GeneralFormValues['theme']) || 'clean',

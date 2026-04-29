@@ -26,6 +26,7 @@ const KNOWN_ROUTE_PREFIXES = new Set([
   'demo',
   'demo-expired',
   'forgot-password',
+  'kb-auth',
   'login',
   'reset-password',
   'signup',

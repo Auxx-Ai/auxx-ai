@@ -18,6 +18,7 @@ const kbFieldsSchema = z.object({
   slug: z.string().min(1).optional(),
   description: z.string().optional(),
   publishStatus: z.enum(['DRAFT', 'PUBLISHED', 'UNLISTED']).optional(),
+  visibility: z.enum(['PUBLIC', 'INTERNAL']).optional(),
   customDomain: z.string().optional(),
   logoDark: z.string().optional(),
   logoLight: z.string().optional(),

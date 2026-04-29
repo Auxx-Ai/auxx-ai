@@ -974,6 +974,13 @@
       "when": 1777494568536,
       "tag": "0138_kb_drop_legacy_article_content",
       "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1777500228956,
+      "tag": "0139_kb_visibility_and_custom_domain_verification",
+      "breakpoints": true
     }
   ]
 }
