@@ -2,12 +2,11 @@
 
 // apps/web/src/components/global/comments/drawer-comments.tsx
 
-import { getDefinitionId, type RecordId } from '@auxx/lib/field-values/client'
+import type { RecordId } from '@auxx/lib/field-values/client'
 import { MessagesSquare } from 'lucide-react'
 import CommentComposer from '~/components/global/comments/comment-composer'
 import { CommentList } from '~/components/global/comments/comment-list'
 import { EmptyState } from '~/components/global/empty-state'
-import { isSystemEntityType } from '~/hooks/use-comments'
 import { api } from '~/trpc/react'
 
 /**
@@ -36,16 +35,8 @@ const DrawerComments = ({
   composerPlaceholder,
   focusComposerTrigger,
 }: DrawerCommentsProps) => {
-  // Parse recordId once for display logic
-  const entityDefinitionId = getDefinitionId(recordId)
-
-  // Smart default description based on entity type
   const defaultEmptyTitle = emptyTitle || 'No comments yet'
-  const defaultEmptyDescription =
-    emptyDescription ||
-    (isSystemEntityType(entityDefinitionId)
-      ? `Start a conversation about this ${entityDefinitionId.toLowerCase()}`
-      : 'Start a conversation about this record')
+  const defaultEmptyDescription = emptyDescription || 'Start a conversation about this record'
   const defaultHeaderTitle = headerTitle || 'Comments'
   const defaultPlaceholder = composerPlaceholder || 'Add comment...'
 
