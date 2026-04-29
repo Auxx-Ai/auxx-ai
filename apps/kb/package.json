@@ -15,9 +15,11 @@
     "@auxx/database": "workspace:*",
     "@auxx/lib": "workspace:*",
     "@auxx/ui": "workspace:*",
+    "drizzle-orm": "catalog:",
     "lucide-react": "catalog:",
     "minisearch": "catalog:",
     "next": "catalog:",
+    "pg": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "sharp": "catalog:"
