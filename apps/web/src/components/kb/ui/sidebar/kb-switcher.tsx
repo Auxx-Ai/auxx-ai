@@ -63,7 +63,6 @@ export function KBSwitcher() {
     const created = await createKnowledgeBase({
       name: values.name,
       slug: values.slug,
-      isPublic: values.isPublic ?? false,
     })
     if (created) {
       setShowCreateDialog(false)
@@ -93,7 +92,13 @@ export function KBSwitcher() {
               <span className='truncate font-semibold'>
                 {isLoading ? 'Loading...' : activeKB?.name || 'Knowledge Base'}
               </span>
-              <span className='truncate text-xs'>{activeKB?.isPublic ? 'Public' : 'Private'}</span>
+              <span className='truncate text-xs'>
+                {activeKB?.publishStatus === 'PUBLISHED'
+                  ? 'Public'
+                  : activeKB?.publishStatus === 'UNLISTED'
+                    ? 'Unlisted'
+                    : 'Private'}
+              </span>
             </div>
             <ChevronsUpDown className='ml-auto size-4' />
           </div>
@@ -115,7 +120,11 @@ export function KBSwitcher() {
                   {isLoading ? 'Loading...' : activeKB?.name || 'Knowledge Base'}
                 </span>
                 <span className='truncate text-xs'>
-                  {activeKB?.isPublic ? 'Public' : 'Private'}
+                  {activeKB?.publishStatus === 'PUBLISHED'
+                    ? 'Public'
+                    : activeKB?.publishStatus === 'UNLISTED'
+                      ? 'Unlisted'
+                      : 'Private'}
                 </span>
               </div>
             </div>

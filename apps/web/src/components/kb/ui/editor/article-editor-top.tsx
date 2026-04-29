@@ -8,7 +8,9 @@ import { useState } from 'react'
 import { EditableText } from '~/components/editor/editable-text'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
-import { ArticleRenameDialog } from './article-rename-dialog'
+import { ArticleSettingsDialog } from './article-settings-dialog'
+import { ArticleStatusPill } from './article-status-pill'
+import { HiddenParentBadge } from './hidden-parent-badge'
 
 interface ArticleEditorTopProps {
   article: ArticleMeta
@@ -21,23 +23,11 @@ export function ArticleEditorTop({
   knowledgeBaseId,
   onUpdateMetadata,
 }: ArticleEditorTopProps) {
-  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
-  const { updateArticle, renameArticle } = useArticleMutations(knowledgeBaseId)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const { updateArticleDraft } = useArticleMutations(knowledgeBaseId)
 
   const handleEmojiChange = (emoji: string) => {
-    void updateArticle(article.id, { emoji })
-  }
-
-  const handleRenameSubmit = async (values: {
-    title: string
-    emoji: string | null
-    slug?: string
-  }) => {
-    await renameArticle(article.id, {
-      title: values.title,
-      emoji: values.emoji,
-      slug: values.slug,
-    })
+    void updateArticleDraft(article.id, { emoji })
   }
 
   return (
@@ -45,10 +35,18 @@ export function ArticleEditorTop({
       <div className='flex flex-1'>
         <div className='flex flex-1'>
           <div className='group/page-header relative mb-6 flex flex-1 flex-col pt-8'>
-            <div className='absolute top-0 my-2 flex gap-x-1 opacity-0 transition group-hover/page-header:opacity-100'>
-              <Button variant='outline' size='xs' onClick={() => setIsRenameDialogOpen(true)}>
+            <div className='absolute top-0 my-2 flex items-center gap-x-2 opacity-0 transition group-hover/page-header:opacity-100'>
+              <Button variant='outline' size='xs' onClick={() => setIsSettingsOpen(true)}>
                 <Cog /> Page settings
               </Button>
+              <button
+                type='button'
+                onClick={() => setIsSettingsOpen(true)}
+                className='cursor-pointer'
+                aria-label='View status'>
+                <ArticleStatusPill article={article} />
+              </button>
+              <HiddenParentBadge article={article} knowledgeBaseId={knowledgeBaseId} />
             </div>
             <div className='flex items-start justify-between'>
               <div className='flex h-full flex-1 self-stretch'>
@@ -80,11 +78,6 @@ export function ArticleEditorTop({
                   />
                 </div>
               </div>
-              <div className='mt-1.5'>
-                {/* <Button variant='ghost' size='icon' className='rounded-full'>
-                  <MoreVertical />
-                </Button> */}
-              </div>
             </div>
             <div className='flex items-center justify-between'>
               <div className='flex flex-1 items-center justify-start'>
@@ -106,11 +99,11 @@ export function ArticleEditorTop({
           </div>
         </div>
       </div>
-      <ArticleRenameDialog
-        open={isRenameDialogOpen}
-        onOpenChange={setIsRenameDialogOpen}
+      <ArticleSettingsDialog
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
         article={article}
-        onSubmit={handleRenameSubmit}
+        knowledgeBaseId={knowledgeBaseId}
       />
     </div>
   )

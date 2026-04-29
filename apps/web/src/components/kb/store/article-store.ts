@@ -10,6 +10,10 @@ import { immer } from 'zustand/middleware/immer'
 /**
  * ArticleMeta — flat metadata for an article. Content/contentJson are NOT stored
  * here; the editor fetches them directly per-article via tRPC.
+ *
+ * title/emoji/description/excerpt come from the joined revision row:
+ *   - published revision when the article has been published at least once
+ *   - draft revision otherwise
  */
 export interface ArticleMeta {
   id: string
@@ -24,6 +28,11 @@ export interface ArticleMeta {
   status: ArticleStatus
   description: string | null
   excerpt: string | null
+  isHomePage: boolean
+  hasUnpublishedChanges: boolean
+  publishedAt: Date | null
+  publishedRevisionId: string | null
+  draftRevisionId: string | null
 }
 
 /** A tree-shaped article node (built lazily from the flat list). */

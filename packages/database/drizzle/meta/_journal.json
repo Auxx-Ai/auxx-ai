@@ -960,6 +960,20 @@
       "when": 1777482051229,
       "tag": "0136_kb_header_footer_enabled",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1777493806273,
+      "tag": "0137_kb_publishing_and_versioning_phase1",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1777494568536,
+      "tag": "0138_kb_drop_legacy_article_content",
+      "breakpoints": true
     }
   ]
 }

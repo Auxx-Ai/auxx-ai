@@ -34,6 +34,7 @@ export interface DehydratedEnvironment {
   homepageUrl: string
   docsUrl: string
   devPortalUrl: string
+  kbUrl: string
   cdnUrl: string
   // Captcha
   turnstileSiteKey: string

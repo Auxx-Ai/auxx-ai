@@ -30,6 +30,8 @@ interface KBSidebarTreeProps<T extends KBSidebarArticle> {
   onToggle?: (articleId: string, next: boolean) => void
   /** Intercept article-link clicks (admin preview uses this to swap article without navigation). */
   onArticleClick?: (articleId: string) => void
+  /** When false, branch open/close changes apply instantly (used to skip the post-hydration flash). */
+  animate?: boolean
 }
 
 export function KBSidebarTree<T extends KBSidebarArticle>({
@@ -40,10 +42,16 @@ export function KBSidebarTree<T extends KBSidebarArticle>({
   openIds,
   onToggle,
   onArticleClick,
+  animate = true,
 }: KBSidebarTreeProps<T>) {
   const tree = buildArticleTree(articles)
   return (
-    <ul className='m-0 list-none p-0'>
+    <ul
+      className={cn(
+        'm-0 flex-1 list-none p-0',
+        listStyle === 'line' &&
+          'relative before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-[var(--kb-border)]'
+      )}>
       {tree.map((node) => (
         <TreeBranch
           key={node.id}
@@ -55,6 +63,7 @@ export function KBSidebarTree<T extends KBSidebarArticle>({
           openIds={openIds}
           onToggle={onToggle}
           onArticleClick={onArticleClick}
+          animate={animate}
         />
       ))}
     </ul>
@@ -71,6 +80,7 @@ interface TreeBranchProps<T extends KBSidebarArticle> {
   openIds?: Record<string, boolean>
   onToggle?: (articleId: string, next: boolean) => void
   onArticleClick?: (articleId: string) => void
+  animate?: boolean
 }
 
 function TreeBranch<T extends KBSidebarArticle>({
@@ -83,6 +93,7 @@ function TreeBranch<T extends KBSidebarArticle>({
   openIds,
   onToggle,
   onArticleClick,
+  animate = true,
 }: TreeBranchProps<T>) {
   const hasChildren = node.children.length > 0
   const containsActive = activeArticleId ? subtreeContainsId(node, activeArticleId) : false
@@ -93,59 +104,81 @@ function TreeBranch<T extends KBSidebarArticle>({
   const href = `${basePath}/${slugPath}`
   const active = activeArticleId === node.id
 
+  // For 'line' style we keep all items at the same horizontal anchor so the
+  // ::before track stays put across depths; depth is conveyed via padding
+  // inside the item instead.
+  const lineIndent = listStyle === 'line' ? { paddingLeft: `${depth * 0.75 + 0.5}rem` } : undefined
+
+  const itemContent = (
+    <>
+      {node.emoji ? (
+        <span aria-hidden className='shrink-0'>
+          {node.emoji}
+        </span>
+      ) : null}
+      <span className='min-w-0 truncate'>{node.title}</span>
+      {hasChildren ? (
+        <button
+          type='button'
+          className='-mr-1 inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-current'
+          aria-label={open ? 'Collapse' : 'Expand'}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onToggle?.(node.id, !open)
+          }}>
+          <CollapsibleChevron open={open} className='size-3' />
+        </button>
+      ) : null}
+    </>
+  )
+
   return (
-    <li className='my-0.5'>
+    <li className={cn(listStyle === 'line' ? 'my-0' : 'my-0.5')}>
       <div className='flex items-center'>
-        {hasChildren ? (
-          <button
-            type='button'
-            className='inline-flex h-5 w-5 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-current'
-            aria-label={open ? 'Collapse' : 'Expand'}
-            onClick={() => onToggle?.(node.id, !open)}>
-            <CollapsibleChevron open={open} className='size-3' />
-          </button>
-        ) : null}
         {node.isCategory ? (
           <button
             type='button'
             className={cn(itemClass(listStyle), 'cursor-pointer text-left')}
             data-active={active}
+            style={lineIndent}
             onClick={() => onToggle?.(node.id, !open)}>
-            {node.emoji ? (
-              <span aria-hidden className='shrink-0'>
-                {node.emoji}
-              </span>
-            ) : null}
-            <span className='truncate'>{node.title}</span>
+            {itemContent}
           </button>
         ) : onArticleClick ? (
           <button
             type='button'
             className={cn(itemClass(listStyle), 'cursor-pointer text-left')}
             data-active={active}
-            onClick={() => onArticleClick(node.id)}>
-            {node.emoji ? (
-              <span aria-hidden className='shrink-0'>
-                {node.emoji}
-              </span>
-            ) : null}
-            <span className='truncate'>{node.title}</span>
+            style={lineIndent}
+            onClick={() => {
+              onArticleClick(node.id)
+              if (hasChildren) onToggle?.(node.id, true)
+            }}>
+            {itemContent}
           </button>
         ) : (
-          <Link href={href} className={itemClass(listStyle)} data-active={active} prefetch={false}>
-            {node.emoji ? (
-              <span aria-hidden className='shrink-0'>
-                {node.emoji}
-              </span>
-            ) : null}
-            <span className='truncate'>{node.title}</span>
+          <Link
+            href={href}
+            className={itemClass(listStyle)}
+            data-active={active}
+            style={lineIndent}
+            prefetch={false}
+            onClick={() => {
+              if (hasChildren) onToggle?.(node.id, true)
+            }}>
+            {itemContent}
           </Link>
         )}
       </div>
       {hasChildren ? (
         <AnimatedCollapsibleContent
           open={open}
-          className='ml-2.5 border-l border-[var(--kb-border)] pl-2'>
+          animate={animate}
+          className={cn(
+            'flex flex-col',
+            listStyle !== 'line' && 'ml-2.5 border-l border-[var(--kb-border)] pl-2'
+          )}>
           <ul className='m-0 list-none p-0'>
             {node.children.map((child) => (
               <TreeBranch
@@ -159,6 +192,7 @@ function TreeBranch<T extends KBSidebarArticle>({
                 openIds={openIds}
                 onToggle={onToggle}
                 onArticleClick={onArticleClick}
+                animate={animate}
               />
             ))}
           </ul>
@@ -170,14 +204,18 @@ function TreeBranch<T extends KBSidebarArticle>({
 
 function itemClass(listStyle: KBSidebarListStyle): string {
   return cn(
-    'flex flex-1 items-center gap-2 px-2 py-1.5 text-sm leading-tight text-[var(--kb-fg)] no-underline transition-colors',
+    'group/item relative flex min-h-9 flex-1 items-center gap-2 px-2 py-1.5 text-sm leading-tight text-[var(--kb-fg)] no-underline transition-colors',
     'hover:bg-[var(--kb-muted)] hover:text-[var(--kb-primary)]',
     listStyle === 'default' &&
-      'rounded-[var(--kb-radius)] data-[active=true]:bg-[var(--kb-tint)] data-[active=true]:text-[var(--kb-primary)] data-[active=true]:font-medium',
+      'rounded-[var(--kb-radius)] data-[active=true]:bg-[var(--kb-muted)] data-[active=true]:text-[var(--kb-primary)] data-[active=true]:font-medium',
     listStyle === 'pill' &&
-      'rounded-full data-[active=true]:bg-[var(--kb-primary)] data-[active=true]:text-[var(--kb-bg)] data-[active=true]:font-medium data-[active=true]:hover:bg-[var(--kb-primary)] data-[active=true]:hover:text-[var(--kb-bg)]',
-    listStyle === 'line' &&
-      'rounded-none border-l-2 border-transparent data-[active=true]:border-[var(--kb-primary)] data-[active=true]:bg-transparent data-[active=true]:font-medium data-[active=true]:text-[var(--kb-primary)]'
+      'rounded-full data-[active=true]:bg-[var(--kb-muted)] data-[active=true]:text-[var(--kb-primary)] data-[active=true]:font-medium',
+    listStyle === 'line' && [
+      'rounded-none hover:bg-transparent',
+      'before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-[var(--kb-border)] before:transition-colors',
+      'hover:before:bg-[var(--kb-fg)]/30',
+      'data-[active=true]:bg-transparent data-[active=true]:font-medium data-[active=true]:text-[var(--kb-primary)] data-[active=true]:before:bg-[var(--kb-primary)]',
+    ]
   )
 }
 

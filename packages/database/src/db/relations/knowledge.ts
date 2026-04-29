@@ -22,6 +22,12 @@ export const articleRelations = relations(Article, ({ one, many }) => ({
   author: one(User, {
     fields: [Article.authorId],
     references: [User.id],
+    relationName: 'article_authorId_user_id',
+  }),
+  publishedBy: one(User, {
+    fields: [Article.publishedById],
+    references: [User.id],
+    relationName: 'article_publishedById_user_id',
   }),
   knowledgeBase: one(KnowledgeBase, {
     fields: [Article.knowledgeBaseId],
@@ -39,7 +45,19 @@ export const articleRelations = relations(Article, ({ one, many }) => ({
   children: many(Article, {
     relationName: 'article_parentId_article_id',
   }),
-  revisions: many(ArticleRevision),
+  publishedRevision: one(ArticleRevision, {
+    fields: [Article.publishedRevisionId],
+    references: [ArticleRevision.id],
+    relationName: 'article_publishedRevisionId_articleRevision_id',
+  }),
+  draftRevision: one(ArticleRevision, {
+    fields: [Article.draftRevisionId],
+    references: [ArticleRevision.id],
+    relationName: 'article_draftRevisionId_articleRevision_id',
+  }),
+  revisions: many(ArticleRevision, {
+    relationName: 'articleRevision_articleId_article_id',
+  }),
   files: many(File),
 }))
 
@@ -66,6 +84,7 @@ export const articleRevisionRelations = relations(ArticleRevision, ({ one }) => 
   article: one(Article, {
     fields: [ArticleRevision.articleId],
     references: [Article.id],
+    relationName: 'articleRevision_articleId_article_id',
   }),
   editor: one(User, {
     fields: [ArticleRevision.editorId],

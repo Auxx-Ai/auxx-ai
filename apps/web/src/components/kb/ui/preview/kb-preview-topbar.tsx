@@ -2,8 +2,32 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { ToggleGroup, ToggleGroupItem } from '@auxx/ui/components/toggle-group'
-import { ExternalLink, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
+import {
+  ChevronDown,
+  ExternalLink,
+  Globe,
+  Lock,
+  Monitor,
+  Moon,
+  Settings,
+  Smartphone,
+  Sun,
+  Trash2,
+} from 'lucide-react'
+import { useState } from 'react'
+import { useKbPublicUrl } from '~/components/kb/hooks/use-kb-public-url'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
+import { KBSitePublishDialog } from './kb-site-publish-dialog'
 import { type Device, type Theme, usePreview } from './preview-context'
 
 interface KBPreviewTopBarProps {
@@ -14,6 +38,13 @@ interface KBPreviewTopBarProps {
 
 export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) {
   const { isDark, isMobile, setTheme, setDevice } = usePreview()
+  const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false)
+  const [confirm, ConfirmDialog] = useConfirm()
+  const utils = api.useUtils()
+
+  const { data: kb } = api.kb.byId.useQuery({ id: kbId })
+  const publishMutation = api.kb.publishSite.useMutation()
+  const unpublishMutation = api.kb.unpublishSite.useMutation()
 
   const handleThemeChange = (value?: string) => {
     if (!value) return
@@ -30,13 +61,94 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
       ? `/${activeSlugPath.map(encodeURIComponent).join('/')}`
       : ''
   const previewHref = `/preview/kb/${kbId}${slugSegment}`
+  const publicUrl = useKbPublicUrl(kb?.slug)
+
+  const handleSwitchVisibility = async (status: 'PUBLISHED' | 'UNLISTED') => {
+    try {
+      await publishMutation.mutateAsync({ id: kbId, status })
+      utils.kb.byId.invalidate({ id: kbId })
+      utils.kb.list.invalidate()
+      toastSuccess({
+        title: status === 'PUBLISHED' ? 'Knowledge base is public' : 'Knowledge base is unlisted',
+      })
+    } catch (error) {
+      toastError({
+        title: 'Failed to update visibility',
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      })
+    }
+  }
+
+  const handleUnpublish = async () => {
+    const ok = await confirm({
+      title: 'Unpublish site?',
+      description:
+        'The knowledge base will no longer be accessible at its public URL. You can republish at any time.',
+      confirmText: 'Unpublish',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      await unpublishMutation.mutateAsync({ id: kbId })
+      utils.kb.byId.invalidate({ id: kbId })
+      utils.kb.list.invalidate()
+      toastSuccess({ title: 'Knowledge base unpublished' })
+    } catch (error) {
+      toastError({
+        title: 'Failed to unpublish',
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      })
+    }
+  }
+
+  const isPublished = kb?.publishStatus === 'PUBLISHED'
+  const isUnlisted = kb?.publishStatus === 'UNLISTED'
+  const isLive = isPublished || isUnlisted
+  const externalHref = isLive && publicUrl ? `${publicUrl}${slugSegment}` : previewHref
+  const externalLabel =
+    isLive && publicUrl ? 'Open public site in new tab' : 'Open preview in new tab'
 
   return (
     <div className='flex items-center border-b bg-background px-3 py-1'>
       <div className='flex flex-1 items-center gap-2'>
-        <Button className='rounded-md' size='sm' variant='outline'>
-          <span className='w-max-full text-ui-action truncate'>Publish site</span>
-        </Button>
+        {!isLive ? (
+          <Button
+            className='rounded-md'
+            size='sm'
+            variant='info'
+            onClick={() => setIsPublishDialogOpen(true)}>
+            Publish site
+          </Button>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size='sm' variant='outline' className='gap-2 rounded-md'>
+                <span className='inline-block size-2 rounded-full bg-emerald-500' />
+                {isUnlisted ? 'Live · Unlisted' : 'Live'}
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='start' className='w-56'>
+              <DropdownMenuItem onClick={() => setIsPublishDialogOpen(true)}>
+                <Settings /> Publish settings
+              </DropdownMenuItem>
+              {isPublished ? (
+                <DropdownMenuItem onClick={() => handleSwitchVisibility('UNLISTED')}>
+                  <Lock /> Make unlisted
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => handleSwitchVisibility('PUBLISHED')}>
+                  <Globe /> Make public
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleUnpublish} variant='destructive'>
+                <Trash2 /> Unpublish site
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       <div className='flex items-center gap-2'>
@@ -44,13 +156,13 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
           <span className='w-max-full text-ui-small truncate'>Share feedback</span>
         </Button>
 
-        <Button size='icon-sm' variant='outline' asChild>
+        <Button size='icon-sm' variant='ghost' asChild>
           <a
-            href={previewHref}
+            href={externalHref}
             target='_blank'
             rel='noopener'
-            aria-label='Open preview in new tab'
-            title='Open preview in new tab'>
+            aria-label={externalLabel}
+            title={externalLabel}>
             <ExternalLink />
           </a>
         </Button>
@@ -83,6 +195,13 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+
+      <KBSitePublishDialog
+        open={isPublishDialogOpen}
+        onOpenChange={setIsPublishDialogOpen}
+        kbId={kbId}
+      />
+      {ConfirmDialog}
     </div>
   )
 }

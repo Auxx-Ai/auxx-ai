@@ -22,20 +22,20 @@ interface ArticleEditorProps {
 }
 
 export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) {
-  const { contentJson, isLoading: isContentLoading } = useArticleContent(
+  const { draftContentJson, isLoading: isContentLoading } = useArticleContent(
     article.id,
     knowledgeBaseId
   )
-  const { updateArticle, updateArticleContent } = useArticleMutations(knowledgeBaseId)
+  const { updateArticleDraft, updateArticleContent } = useArticleMutations(knowledgeBaseId)
 
   const lastSavedHash = useRef<string | null>(null)
 
   // Seed the saved hash on first content load so we don't immediately re-save.
   useEffect(() => {
-    if (lastSavedHash.current === null && contentJson != null) {
-      lastSavedHash.current = JSON.stringify(contentJson)
+    if (lastSavedHash.current === null && draftContentJson != null) {
+      lastSavedHash.current = JSON.stringify(draftContentJson)
     }
-  }, [contentJson])
+  }, [draftContentJson])
 
   const persist = useCallback(
     async (payload: { json: JSONContent; html: string }) => {
@@ -53,7 +53,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
   const debouncedPersist = useDebounceCallback(persist, 1500)
 
   const handleMetadataUpdate = async (changes: { title?: string; description?: string }) => {
-    await updateArticle(article.id, changes)
+    await updateArticleDraft(article.id, changes)
   }
 
   return (
@@ -72,7 +72,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                   <div className='relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch'>
                     {!isContentLoading && (
                       <KBArticleEditor
-                        initialContent={contentJson ?? emptyContent}
+                        initialContent={draftContentJson ?? emptyContent}
                         onChange={debouncedPersist}
                       />
                     )}

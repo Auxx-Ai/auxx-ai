@@ -1,8 +1,9 @@
 // apps/kb/src/server/kb-data.ts
 
-import { Article, database, KnowledgeBase, Organization } from '@auxx/database'
+import { Article, ArticleRevision, database, KnowledgeBase, Organization } from '@auxx/database'
 import type { DocJSON, KBLayoutKB } from '@auxx/ui/components/kb'
 import { and, eq } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 
 export interface PublicArticleListItem {
   id: string
@@ -14,6 +15,7 @@ export interface PublicArticleListItem {
   isCategory: boolean
   order: number
   isPublished: boolean
+  isHomePage: boolean
   description: string | null
   excerpt: string | null
 }
@@ -29,8 +31,30 @@ export type PublicKB = KBLayoutKB & {
   organizationId: string
   slug: string
   description: string | null
-  isPublic: boolean
+  publishStatus: 'DRAFT' | 'PUBLISHED' | 'UNLISTED'
   defaultMode: string | null
+}
+
+/**
+ * Hide subtrees whose ancestor is unpublished/archived: filter the loaded set
+ * to articles whose entire parentId chain is published. Implemented in JS
+ * since per-KB article counts are small.
+ */
+function filterVisibleSubtree<
+  A extends { id: string; parentId: string | null; isPublished: boolean },
+>(articles: A[]): A[] {
+  const byId = new Map(articles.map((a) => [a.id, a]))
+  return articles.filter((a) => {
+    let cursor: A | undefined = a
+    while (cursor) {
+      if (!cursor.isPublished) return false
+      if (!cursor.parentId) return true
+      cursor = byId.get(cursor.parentId)
+      // If the parent isn't in the published set, the chain is broken — exclude.
+      if (!cursor) return false
+    }
+    return true
+  })
 }
 
 export async function loadKBPayload(
@@ -54,24 +78,29 @@ export async function loadKBPayload(
   if (!row) return { kb: null, articles: [] }
 
   const kb = row.kb
-  if (!kb.isPublic) return { kb: null, articles: [] }
+  if (kb.publishStatus === 'DRAFT') return { kb: null, articles: [] }
 
-  const articles = await database
+  const pub = alias(ArticleRevision, 'pub')
+  const rawArticles = await database
     .select({
       id: Article.id,
       knowledgeBaseId: Article.knowledgeBaseId,
-      title: Article.title,
       slug: Article.slug,
-      emoji: Article.emoji,
       parentId: Article.parentId,
       isCategory: Article.isCategory,
       order: Article.order,
       isPublished: Article.isPublished,
-      description: Article.description,
-      excerpt: Article.excerpt,
+      isHomePage: Article.isHomePage,
+      title: pub.title,
+      emoji: pub.emoji,
+      description: pub.description,
+      excerpt: pub.excerpt,
     })
     .from(Article)
+    .innerJoin(pub, eq(pub.id, Article.publishedRevisionId))
     .where(and(eq(Article.knowledgeBaseId, kb.id), eq(Article.isPublished, true)))
+
+  const articles = filterVisibleSubtree(rawArticles)
 
   const publicKB: PublicKB = {
     id: kb.id,
@@ -79,7 +108,7 @@ export async function loadKBPayload(
     slug: kb.slug,
     organizationId: kb.organizationId,
     description: kb.description,
-    isPublic: kb.isPublic,
+    publishStatus: kb.publishStatus,
     defaultMode: kb.defaultMode,
     showMode: kb.showMode,
     primaryColorLight: kb.primaryColorLight,
@@ -117,28 +146,39 @@ export async function loadKBPayloadWithContent(
   const { kb } = await loadKBPayload(orgSlug, kbSlug)
   if (!kb) return { kb: null, articles: [] }
 
+  const pub = alias(ArticleRevision, 'pub')
   const rows = await database
-    .select()
+    .select({
+      article: Article,
+      pubTitle: pub.title,
+      pubEmoji: pub.emoji,
+      pubDescription: pub.description,
+      pubExcerpt: pub.excerpt,
+      pubContent: pub.content,
+      pubContentJson: pub.contentJson,
+    })
     .from(Article)
+    .innerJoin(pub, eq(pub.id, Article.publishedRevisionId))
     .where(and(eq(Article.knowledgeBaseId, kb.id), eq(Article.isPublished, true)))
 
-  const articles: PublicArticleFull[] = rows.map((a) => ({
-    id: a.id,
-    knowledgeBaseId: a.knowledgeBaseId,
-    title: a.title,
-    slug: a.slug,
-    emoji: a.emoji,
-    parentId: a.parentId,
-    isCategory: a.isCategory,
-    order: a.order,
-    isPublished: a.isPublished,
-    description: a.description,
-    excerpt: a.excerpt,
-    content: a.content,
-    contentJson: (a.contentJson as DocJSON | null) ?? null,
-    publishedAt: a.publishedAt,
-    updatedAt: a.updatedAt,
+  const fullArticles: PublicArticleFull[] = rows.map((r) => ({
+    id: r.article.id,
+    knowledgeBaseId: r.article.knowledgeBaseId,
+    title: r.pubTitle,
+    slug: r.article.slug,
+    emoji: r.pubEmoji,
+    parentId: r.article.parentId,
+    isCategory: r.article.isCategory,
+    order: r.article.order,
+    isPublished: r.article.isPublished,
+    isHomePage: r.article.isHomePage,
+    description: r.pubDescription,
+    excerpt: r.pubExcerpt,
+    content: r.pubContent,
+    contentJson: (r.pubContentJson as DocJSON | null) ?? null,
+    publishedAt: r.article.publishedAt,
+    updatedAt: r.article.updatedAt,
   }))
 
-  return { kb, articles }
+  return { kb, articles: filterVisibleSubtree(fullArticles) }
 }

@@ -24,7 +24,6 @@ export function KBEmptyState() {
     const created = await createKnowledgeBase({
       name: values.name,
       slug: values.slug,
-      isPublic: values.isPublic ?? false,
     })
     if (created) {
       setShowDialog(false)

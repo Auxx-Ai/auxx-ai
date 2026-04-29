@@ -36,6 +36,7 @@ export const aiIntegrationStatus = pgEnum('AiIntegrationStatus', ['PENDING', 'VA
 export const approvalAction = pgEnum('ApprovalAction', ['approve', 'deny'])
 export const approvalStatus = pgEnum('ApprovalStatus', ['pending', 'approved', 'denied', 'timeout'])
 export const articleStatus = pgEnum('ArticleStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED'])
+export const kbPublishStatus = pgEnum('KBPublishStatus', ['DRAFT', 'PUBLISHED', 'UNLISTED'])
 export const assetVersionStatus = pgEnum('AssetVersionStatus', [
   'PENDING',
   'PROCESSING',

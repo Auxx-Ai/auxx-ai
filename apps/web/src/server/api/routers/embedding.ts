@@ -21,13 +21,8 @@ export const embeddingRouter = createTRPCRouter({
         throw new Error('Organization ID is required')
       }
 
-      // First check if the article exists and belongs to the organization
       const [article] = await ctx.db
-        .select({
-          id: schema.Article.id,
-          content: schema.Article.content,
-          title: schema.Article.title,
-        })
+        .select({ id: schema.Article.id })
         .from(schema.Article)
         .where(
           and(
@@ -95,16 +90,19 @@ export const embeddingRouter = createTRPCRouter({
         throw new Error('Organization ID is required')
       }
 
-      // Handle article content embedding
+      // Handle article content embedding — pulls from the published revision
       if (input.articleId) {
-        // First check if the article exists and belongs to the organization
-        const [article] = await ctx.db
+        const [row] = await ctx.db
           .select({
             id: schema.Article.id,
-            content: schema.Article.content,
-            title: schema.Article.title,
+            content: schema.ArticleRevision.content,
+            title: schema.ArticleRevision.title,
           })
           .from(schema.Article)
+          .innerJoin(
+            schema.ArticleRevision,
+            eq(schema.ArticleRevision.id, schema.Article.publishedRevisionId)
+          )
           .where(
             and(
               eq(schema.Article.id, input.articleId),
@@ -113,18 +111,17 @@ export const embeddingRouter = createTRPCRouter({
           )
           .limit(1)
 
-        if (!article) {
-          throw new Error('Article not found')
+        if (!row) {
+          throw new Error('Article not found or has no published revision')
         }
 
-        // Create a new embedding job and queue it for processing
         const [job] = await ctx.db
           .insert(schema.embedding_jobs)
           .values({
             organizationId,
             status: 'pending',
             collection: 'article_content',
-            documents: [{ id: article.id, content: article.content, title: article.title }] as any,
+            documents: [{ id: row.id, content: row.content, title: row.title }] as any,
             documentCount: 1,
             processedCount: 0,
             errorCount: 0,

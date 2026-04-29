@@ -8,7 +8,6 @@ import { apiKeyRouter } from './routers/apiKey'
 import { approvalRouter } from './routers/approval'
 import { approvalsRouter } from './routers/approvals'
 import { appsRouter } from './routers/apps'
-import { articleRouter } from './routers/article'
 import { attachmentRouter } from './routers/attachment'
 import { authRouter } from './routers/auth'
 import { billingRouter } from './routers/billing'
@@ -91,7 +90,6 @@ export const appRouter = createTRPCRouter({
   apps: appsRouter,
   approval: approvalRouter,
   approvals: approvalsRouter,
-  article: articleRouter,
   attachment: attachmentRouter,
   auth: authRouter,
   billing: billingRouter,

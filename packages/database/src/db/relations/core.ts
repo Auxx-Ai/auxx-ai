@@ -128,7 +128,12 @@ export const userRelations = relations(User, ({ one, many }) => ({
   inboxUnreadCounts: many(UserInboxUnreadCount),
   messages: many(Message),
   threads: many(Thread),
-  articles: many(Article),
+  articles: many(Article, {
+    relationName: 'article_authorId_user_id',
+  }),
+  publishedArticles: many(Article, {
+    relationName: 'article_publishedById_user_id',
+  }),
   aiAgentSessions: many(AiAgentSession),
   aiUsages: many(AiUsage),
   aiIntegrations: many(AiIntegration),

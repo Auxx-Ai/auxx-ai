@@ -30,7 +30,6 @@ const knowledgeBaseSchema = z.object({
     .string()
     .min(1, 'Slug is required')
     .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
-  isPublic: z.boolean().optional(),
 })
 
 export type KnowledgeBaseFormValues = z.infer<typeof knowledgeBaseSchema>
@@ -48,7 +47,7 @@ export function KnowledgeBaseDialog({
   open,
   onOpenChange,
   onSubmit,
-  initialValues = { name: '', slug: '', isPublic: false },
+  initialValues = { name: '', slug: '' },
   isSubmitting = false,
   mode = 'create',
 }: KnowledgeBaseDialogProps) {

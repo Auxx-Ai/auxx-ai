@@ -28,7 +28,7 @@ export function KBSidebar<T extends KBSidebarArticle>({
   listStyle = 'default',
   onArticleClick,
 }: KBSidebarProps<T>) {
-  const { kbId, collapsed, mobileOpen, setMobileOpen } = useKBLayoutContext()
+  const { kbId, collapsed, setCollapsed, mobileOpen, setMobileOpen } = useKBLayoutContext()
 
   const tabs = getTopLevelTabs(articles)
   const initialTab = findTabForArticle(tabs, articles, activeArticleId)
@@ -39,8 +39,11 @@ export function KBSidebar<T extends KBSidebarArticle>({
   }, [activeArticleId, articles.length])
 
   const [openIds, setOpenIds] = useState<Record<string, boolean>>({})
+  const [animateTree, setAnimateTree] = useState(false)
   useEffect(() => {
     setOpenIds(readOpenIds(kbId))
+    const id = requestAnimationFrame(() => setAnimateTree(true))
+    return () => cancelAnimationFrame(id)
   }, [kbId])
 
   // Close drawer on Escape.
@@ -80,14 +83,8 @@ export function KBSidebar<T extends KBSidebarArticle>({
         listStyle={listStyle}
         openIds={openIds}
         onToggle={handleToggle}
-        onArticleClick={
-          onArticleClick
-            ? (id) => {
-                onArticleClick(id)
-                setMobileOpen(false)
-              }
-            : undefined
-        }
+        onArticleClick={onArticleClick}
+        animate={animateTree}
       />
     </div>
   )
@@ -98,10 +95,21 @@ export function KBSidebar<T extends KBSidebarArticle>({
       <aside
         data-collapsed={collapsed}
         className={cn(
-          'hidden shrink-0 overflow-hidden border-r border-[var(--kb-border)] bg-[var(--kb-sidebar-bg)] transition-[width] duration-200 ease-out @kb-md:block',
+          'relative hidden shrink-0 overflow-visible border-r border-[var(--kb-border)] bg-[var(--kb-sidebar-bg)] transition-[width] duration-200 ease-out @kb-md:block',
           collapsed ? 'w-0 border-r-0' : 'w-72'
         )}>
-        <div className='w-72'>{inner}</div>
+        <div className='w-72 overflow-hidden'>{inner}</div>
+        {listStyle === 'default' && !collapsed ? (
+          <button
+            type='button'
+            aria-label='Toggle sidebar'
+            title='Toggle sidebar'
+            tabIndex={-1}
+            onClick={() => setCollapsed((v) => !v)}
+            className='group absolute inset-y-0 -right-2 z-20 hidden w-4 cursor-ew-resize border-0 bg-transparent p-0 @kb-md:flex'>
+            <span className='pointer-events-none mx-auto h-full w-[2px] bg-transparent transition-colors group-hover:bg-[var(--kb-border)]' />
+          </button>
+        ) : null}
       </aside>
 
       {/* Mobile in-place drawer (constrained to KB layout root, not document.body) */}

@@ -11,14 +11,14 @@ import {
 import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { closestCorners, DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
-import { Loader2, Plus, Settings } from 'lucide-react'
+import { Archive, Loader2, Plus, Settings } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-list'
 import { useArticleMove } from '../../hooks/use-article-move'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
-import type { ArticleMeta } from '../../store/article-store'
+import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
 import { ArticleTreeSection } from './article-tree-section'
 
 interface KBArticlesPanelProps {
@@ -32,6 +32,16 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   const articles = useArticleList(knowledgeBaseId)
   const hasLoaded = useIsArticleListLoaded(knowledgeBaseId)
   const { createArticle, isCreating } = useArticleMutations(knowledgeBaseId)
+
+  const archivedKey = `kb-${knowledgeBaseId}-show-archived`
+  const [showArchived, setShowArchived] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(archivedKey) === 'true'
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem(archivedKey, showArchived ? 'true' : 'false')
+  }, [showArchived, archivedKey])
 
   const storageKey = `kb-${knowledgeBaseId}-openStates`
   const [articleOpenStates, setArticleOpenStates] = useState<Record<string, boolean>>(() => {
@@ -58,6 +68,20 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
 
   const { handleDragStart, handleDragOver, handleDragEnd, activeArticle, sensors, articleTree } =
     useArticleMove({ knowledgeBaseId, articleOpenStates, setArticleOpenStates })
+
+  const archivedCount = useMemo(
+    () => articles.filter((a) => a.status === 'ARCHIVED').length,
+    [articles]
+  )
+
+  const visibleTree = useMemo(() => {
+    if (showArchived) return articleTree
+    const stripArchived = (nodes: ArticleTreeNode[]): ArticleTreeNode[] =>
+      nodes
+        .filter((n) => n.status !== 'ARCHIVED')
+        .map((n) => ({ ...n, children: stripArchived(n.children ?? []) }))
+    return stripArchived(articleTree)
+  }, [articleTree, showArchived])
 
   // Find the article matching the current pathname so we can expand its parents.
   const findActiveArticle = useCallback((): ArticleMeta | undefined => {
@@ -186,7 +210,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
         onDragEnd={handleDragEnd}
         modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}>
         <ArticleTreeSection
-          articles={articleTree}
+          articles={visibleTree}
           knowledgeBaseId={knowledgeBaseId}
           articleOpenStates={articleOpenStates}
           toggleArticleOpen={toggleArticleOpen}
@@ -232,6 +256,16 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
             </>
           )}
         </Button>
+        {archivedCount > 0 && (
+          <Button
+            className='mt-1 w-full justify-start text-muted-foreground'
+            variant='ghost'
+            size='sm'
+            onClick={() => setShowArchived((v) => !v)}>
+            <Archive className='mr-2 h-4 w-4' />
+            {showArchived ? `Hide archived (${archivedCount})` : `Show archived (${archivedCount})`}
+          </Button>
+        )}
       </div>
     </div>
   )
