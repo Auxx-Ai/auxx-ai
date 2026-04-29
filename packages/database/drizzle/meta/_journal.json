@@ -925,6 +925,20 @@
       "when": 1777355092521,
       "tag": "0131_phase_1_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1777417885113,
+      "tag": "0132_add_ai_suggestion_and_dismissal",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1777418445320,
+      "tag": "0133_extend_scheduled_message_for_ai",
+      "breakpoints": true
     }
   ]
 }

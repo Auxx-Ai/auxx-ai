@@ -16,6 +16,17 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
       'Create a new task. Resolving names: try list_members first for the assignee. If the name does not match any workspace member, fall back to search_entities — they are likely a contact (or the subject is a company/record). Pass the matched recordId to linkedRecordIds and leave assigneeIds empty so the task is assigned to the current user. Use search_entities for any other referenced records (products, orders, etc.). Supports natural language deadlines like "next Friday", "in 3 days", "end of week".',
     requiresApproval: true,
     usageNotes: "Emits an `action-result` block automatically. Don't re-embed anything for it.",
+    summary: (args) => {
+      const title = typeof args.title === 'string' ? args.title : 'task'
+      return `Create task: "${title.slice(0, 60)}"`
+    },
+    captureMint: (args, ctx) => ({
+      taskId: `temp_${ctx.localIndex}`,
+      title: typeof args.title === 'string' ? args.title : '',
+      deadline: typeof args.deadline === 'string' ? args.deadline : null,
+      priority: (args.priority as string | undefined) ?? null,
+      assignees: (args.assigneeIds as string[] | undefined) ?? [],
+    }),
     parameters: {
       type: 'object',
       properties: {

@@ -6,7 +6,6 @@ import { manageContext } from './context-manager'
 import { agentQueryLoop } from './query-loop'
 import type {
   AgentDefinition,
-  AgentDeps,
   AgentEngineConfig,
   AgentEvent,
   AgentState,
@@ -91,6 +90,7 @@ export class AgentEngine {
       pendingToolCall: undefined,
       approvalsThisTurn: 0,
       turnSnapshots: { records: {}, threads: {}, tasks: {} },
+      capturedActions: [],
     }
 
     logger.info('Turn submitted', {
@@ -350,12 +350,14 @@ export class AgentEngine {
       const finalArgs = opts.inputAmendment
         ? { ...pending.args, ...opts.inputAmendment }
         : pending.args
-      const deps: AgentDeps = {
+      const ctx = {
+        db: config.db,
         organizationId: config.organizationId,
         userId: config.userId,
         sessionId: config.sessionId,
         signal: config.signal,
         turnId: this.turnId ?? undefined,
+        traceId: this.turnId ?? undefined,
       }
 
       yield this.tagEvent({
@@ -366,7 +368,7 @@ export class AgentEngine {
       })
 
       try {
-        const result = await tool.execute(finalArgs, deps)
+        const result = await tool.execute(finalArgs, ctx)
         yield this.tagEvent({
           type: 'tool-completed',
           agent: pending.agentName,

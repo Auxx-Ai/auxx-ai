@@ -2,10 +2,10 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { ToolCall } from '../clients/base/types'
+import { processCaptureToolCalls } from './capture-mode'
+import type { ToolContext } from './tool-context'
 import type {
-  AgentBlock,
   AgentDefinition,
-  AgentDeps,
   AgentEngineConfig,
   AgentEvent,
   AgentState,
@@ -13,6 +13,12 @@ import type {
   AgentToolResult,
   LLMCallParams,
 } from './types'
+import {
+  parseToolArgs,
+  stableStringify,
+  type ToolExecResult,
+  validateRequiredParams,
+} from './utils'
 
 const logger = createScopedLogger('agent-query-loop')
 const DEFAULT_MAX_ITERATIONS = 10
@@ -38,12 +44,14 @@ export async function* agentQueryLoop(
   turnId?: string
 ): AsyncGenerator<AgentEvent, AgentState> {
   const maxIterations = agent.maxIterations ?? DEFAULT_MAX_ITERATIONS
-  const deps: AgentDeps = {
+  const ctx: ToolContext = {
+    db: config.db,
     organizationId: config.organizationId,
     userId: config.userId,
     sessionId: config.sessionId,
     signal: config.signal,
     turnId,
+    traceId: turnId,
   }
 
   const minToolCalls = agent.minToolCalls ?? 0
@@ -77,7 +85,7 @@ export async function* agentQueryLoop(
     iteration++
 
     // Build messages from current state
-    const messages = await agent.buildMessages(currentState, deps)
+    const messages = await agent.buildMessages(currentState, ctx)
     logger.debug('LLM call', {
       turnId,
       agent: agent.name,
@@ -229,9 +237,9 @@ export async function* agentQueryLoop(
             },
           ],
         }
-        currentState = await agent.processResult(finalContent, toolCalls, currentState, deps)
+        currentState = await agent.processResult(finalContent, toolCalls, currentState, ctx)
       } else {
-        currentState = await agent.processResult(content, toolCalls, currentState, deps)
+        currentState = await agent.processResult(content, toolCalls, currentState, ctx)
       }
       break
     }
@@ -242,6 +250,99 @@ export async function* agentQueryLoop(
       agent: agent.name,
       tools: toolCalls.map((tc) => tc.function.name),
     })
+
+    // Capture mode (headless kopilot): never pause. Approval-required tools
+    // are recorded into state.capturedActions with a synthetic `_captured: true`
+    // result, and the loop continues until the model emits submit_final_answer
+    // or runs out of tool calls. Read-only tools execute normally.
+    if (config.approvalMode === 'capture') {
+      const captureRun = await processCaptureToolCalls(
+        toolCalls,
+        agent.tools,
+        agent.name,
+        ctx,
+        idempotentCache,
+        currentState.capturedActions ?? []
+      )
+      for (const event of captureRun.events) yield event
+
+      if (config.domainConfig.onToolResult) {
+        for (const r of captureRun.results) {
+          if (!r.success || r.captured) continue
+          const toolResult: AgentToolResult = {
+            success: r.success,
+            output: r.output,
+            error: r.error,
+            blocks: r.blocks,
+          }
+          currentState = config.domainConfig.onToolResult(r.toolName, toolResult, currentState)
+        }
+      }
+
+      const toolResultMessages = captureRun.results.map((r) => ({
+        role: 'tool' as const,
+        content: JSON.stringify(
+          r.success ? r.output : { error: r.error ?? 'Unknown error', output: r.output }
+        ),
+        toolCallId: r.toolCallId,
+        timestamp: Date.now(),
+        metadata: { agent: agent.name, ...(r.captured ? { captured: true } : {}) },
+        ...(r.blocks && r.blocks.length > 0 ? { blocks: r.blocks } : {}),
+      }))
+
+      const assistantMessage = {
+        role: 'assistant' as const,
+        content,
+        toolCalls,
+        reasoning_content: reasoningContent || undefined,
+        timestamp: Date.now(),
+        metadata: {
+          agent: agent.name,
+          modelId: `${callParams.provider}:${callParams.model}`,
+        },
+      }
+
+      currentState = {
+        ...currentState,
+        messages: [...currentState.messages, assistantMessage, ...toolResultMessages],
+        capturedActions: [...(currentState.capturedActions ?? []), ...captureRun.capturedActions],
+      }
+
+      const terminator = captureRun.results.find((r) => isTerminatorResult(r.output))
+      if (terminator) {
+        const output = terminator.output as Record<string, unknown>
+        const rawContent = typeof output.content === 'string' ? output.content : ''
+        const finalContent = config.domainConfig.postProcessFinalContent
+          ? config.domainConfig.postProcessFinalContent(rawContent, currentState)
+          : rawContent
+        yield {
+          type: 'final-message',
+          agent: agent.name,
+          content: finalContent,
+        }
+        currentState = {
+          ...currentState,
+          messages: [
+            ...currentState.messages,
+            {
+              role: 'assistant' as const,
+              content: finalContent,
+              timestamp: Date.now(),
+              metadata: {
+                agent: agent.name,
+                modelId: `${callParams.provider}:${callParams.model}`,
+                final: true,
+              },
+            },
+          ],
+        }
+        currentState = await agent.processResult(finalContent, [], currentState, ctx)
+        break
+      }
+
+      currentState = await agent.processResult(content, toolCalls, currentState, ctx)
+      continue
+    }
 
     // Before executing, check if any tool requires approval. If so, we emit the
     // assistant message with tool_calls, then the approval-required event, and
@@ -327,7 +428,7 @@ export async function* agentQueryLoop(
         args: approvalArgs,
       }
 
-      currentState = await agent.processResult(content, toolCalls, currentState, deps)
+      currentState = await agent.processResult(content, toolCalls, currentState, ctx)
       currentState = {
         ...currentState,
         waitingForApproval: true,
@@ -347,7 +448,7 @@ export async function* agentQueryLoop(
       toolCalls,
       agent.tools,
       agent.name,
-      deps,
+      ctx,
       idempotentCache
     )
     for (const event of toolResults.events) {
@@ -427,12 +528,12 @@ export async function* agentQueryLoop(
           },
         ],
       }
-      currentState = await agent.processResult(finalContent, [], currentState, deps)
+      currentState = await agent.processResult(finalContent, [], currentState, ctx)
       break
     }
 
     // Let the agent process intermediate results
-    currentState = await agent.processResult(content, toolCalls, currentState, deps)
+    currentState = await agent.processResult(content, toolCalls, currentState, ctx)
   }
 
   yield { type: 'agent-completed', agent: agent.name }
@@ -443,34 +544,12 @@ export async function* agentQueryLoop(
 
 // ===== HELPERS =====
 
-interface ToolExecResult {
-  toolCallId: string
-  toolName: string
-  output: unknown
-  success: boolean
-  error?: string
-  blocks?: AgentBlock[]
-}
-
 function isTerminatorResult(output: unknown): boolean {
   return (
     typeof output === 'object' &&
     output !== null &&
     (output as Record<string, unknown>)[TERMINATOR_KEY] === true
   )
-}
-
-/**
- * Check that all `required` params from the tool's JSON Schema are present in the parsed args.
- */
-function validateRequiredParams(
-  toolDef: AgentToolDefinition | undefined,
-  args: Record<string, unknown>
-): string[] {
-  if (!toolDef) return []
-  const required = toolDef.parameters?.required
-  if (!Array.isArray(required)) return []
-  return required.filter((param: string) => !(param in args))
 }
 
 function agentToolsToLLMTools(tools: AgentToolDefinition[]) {
@@ -482,18 +561,6 @@ function agentToolsToLLMTools(tools: AgentToolDefinition[]) {
       parameters: t.parameters,
     },
   }))
-}
-
-function parseToolArgs(toolCall: ToolCall): Record<string, unknown> {
-  const raw = toolCall.function.arguments
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return {}
-    }
-  }
-  return raw as Record<string, unknown>
 }
 
 function findApprovalTool(
@@ -508,7 +575,7 @@ async function executeToolCalls(
   toolCalls: ToolCall[],
   agentTools: AgentToolDefinition[],
   agentName: string,
-  deps: AgentDeps,
+  ctx: ToolContext,
   idempotentCache: Map<string, ToolExecResult>
 ): Promise<{ events: AgentEvent[]; results: ToolExecResult[] }> {
   const toolMap = new Map(agentTools.map((t) => [t.name, t]))
@@ -571,7 +638,7 @@ async function executeToolCalls(
     events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
 
     try {
-      const result = await tool.execute(args, deps)
+      const result = await tool.execute(args, ctx)
       events.push({ type: 'tool-completed', agent: agentName, tool: toolName, result })
       const execResult: ToolExecResult = {
         toolCallId: toolCall.id,
@@ -637,17 +704,4 @@ function extractContentFromPartialJson(raw: string): string {
     i++
   }
   return out
-}
-
-/**
- * Deterministic JSON.stringify — sorts object keys so `{a:1,b:2}` and
- * `{b:2,a:1}` produce the same cache key.
- */
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
-  const entries = Object.entries(value as Record<string, unknown>)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`)
-  return `{${entries.join(',')}}`
 }

@@ -2,7 +2,7 @@
 // Drizzle table for EntityInstance
 
 import { createId } from '@paralleldrive/cuid2'
-import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp } from './_shared'
+import { type AnyPgColumn, index, jsonb, pgTable, sql, text, timestamp } from './_shared'
 import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
 import { User } from './user'
@@ -75,6 +75,15 @@ export const EntityInstance = pgTable(
      * Drives staleness scanners (Today, etc.).
      */
     lastActivityAt: timestamp({ precision: 3 }),
+
+    /**
+     * Set by the AI suggestion scanner (Phase 3c) every time it runs the
+     * headless kopilot on this entity — regardless of whether actions were
+     * proposed. Combined with `lastActivityAt`, drives the candidate-query
+     * suppression predicate ("never scanned, or scanned before latest
+     * activity"). Replaces v2's NOOP-row mechanism.
+     */
+    lastSuggestionScanAt: timestamp({ precision: 3 }),
   },
   (table) => [
     // Index for entity definition lookups
@@ -104,6 +113,16 @@ export const EntityInstance = pgTable(
       table.entityDefinitionId.asc().nullsLast(),
       table.lastActivityAt.asc().nullsLast()
     ),
+    // AI suggestion scanner candidate query (Phase 3c): non-archived rows
+    // ordered by activity & last-scan, scoped per (org, entity definition).
+    index('EntityInstance_org_def_scan_idx')
+      .on(
+        table.organizationId,
+        table.entityDefinitionId,
+        table.lastActivityAt,
+        table.lastSuggestionScanAt
+      )
+      .where(sql`"archivedAt" IS NULL`),
     // Note: GIN index for searchText full-text search should be added via raw SQL:
     // CREATE INDEX "EntityInstance_search_idx" ON "EntityInstance" USING gin (to_tsvector('english', COALESCE("searchText", '')));
     // Note: Partial indexes on metadata fields should be added via raw SQL:

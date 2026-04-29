@@ -1,6 +1,7 @@
 // packages/lib/src/ai/agent-framework/process-agent-job.ts
 
 import path from 'node:path'
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { withRunLog } from '@auxx/logger/run-log'
 import { getSessionById, saveSessionMessages, updateSessionDomainState } from '@auxx/services'
@@ -85,6 +86,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     organizationId,
     userId,
     sessionId,
+    db: database,
     domainConfig,
     callModel,
     signal,

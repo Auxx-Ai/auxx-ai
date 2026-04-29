@@ -155,6 +155,25 @@ export async function setupSchedules() {
     }
   )
 
+  // AI suggestion stale scanner — every 5 minutes. Sweeps deals/leads/tickets
+  // with cold activity, calls the headless kopilot, persists FRESH bundles
+  // for Today UI. Per-entity suppression via EntityInstance.lastSuggestionScanAt
+  // means a quiet org sees one no-op tick after entities are caught up.
+  await maintenanceQueue.upsertJobScheduler(
+    'nextActionStaleScannerJob',
+    { pattern: '*/5 * * * *' },
+    {
+      data: { dryRun: false },
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 7,
+        removeOnComplete: { count: 60 },
+        removeOnFail: { count: 100 },
+      },
+    }
+  )
+
   // Every day at 8 AM
   await maintenanceQueue.upsertJobScheduler(
     'requestDocumentSuggestionsJob',

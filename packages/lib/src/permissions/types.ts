@@ -42,6 +42,7 @@ export enum FeatureKey {
   kopilot = 'kopilot',
   realtimeSync = 'realtimeSync',
   callRecordings = 'callRecordings',
+  todayInbox = 'todayInbox',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -131,6 +132,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     type: 'boolean',
     label: 'Call Recordings',
     group: 'Communication',
+  },
+  {
+    key: FeatureKey.todayInbox,
+    type: 'boolean',
+    label: 'Today Inbox',
+    description: 'AI suggestion bundles for stale records, surfaced in /app/today.',
+    group: 'AI',
   },
 
   // ── Static limits ──
