@@ -4,7 +4,7 @@ import { ArticleStatus } from '@auxx/database/enums'
 import type { ArticleStatus as ArticleStatusType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, asc, desc, eq, gt, gte, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, isNull, ne, or, sql } from 'drizzle-orm'
 
 // Local model types inferred from Drizzle schema
 type KnowledgeBase = typeof schema.KnowledgeBase.$inferSelect
@@ -51,6 +51,8 @@ export interface KBFields {
   sidebarListStyle?: 'default' | 'pill' | 'line'
   searchbarPosition?: 'center' | 'corner'
   // Navigation
+  headerEnabled?: boolean
+  footerEnabled?: boolean
   headerNavigation?: Array<{
     title: string
     link: string
@@ -592,36 +594,36 @@ export class KBService {
     return withOptions
   }
   /**
-   * Find the next available page number for auto-numbering
-   * @param knowledgeBaseId The knowledge base ID to check existing pages
+   * Find the next available page number for auto-numbering. Scans both
+   * `Page N` titles and `page-N` slugs so the resulting slug never collides
+   * with an existing article whose title was renamed but slug retained.
    */
   private async findNextPageNumber(knowledgeBaseId: string): Promise<number> {
     try {
-      // Find all articles with titles matching "Page X" pattern
       const articles = await this.db.query.Article.findMany({
         where: and(
           eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
           eq(schema.Article.organizationId, this.organizationId),
-          sql`${schema.Article.title} like 'Page %'`
+          or(sql`${schema.Article.title} like 'Page %'`, sql`${schema.Article.slug} like 'page-%'`)
         ),
-        columns: { title: true },
+        columns: { title: true, slug: true },
       })
       if (articles.length === 0) return 1
-      // Extract numbers from titles and find maximum
-      const pageNumbers = articles
-        .map((article) => {
-          const match = article.title.match(/^Page (\d+)$/)
-          return match ? parseInt(match[1], 10) : 0
-        })
-        .filter((num) => num > 0)
-      return pageNumbers.length > 0 ? Math.max(...pageNumbers) + 1 : 1
+      const numbers: number[] = []
+      for (const article of articles) {
+        const titleMatch = article.title.match(/^Page (\d+)$/)
+        if (titleMatch) numbers.push(parseInt(titleMatch[1], 10))
+        const slugMatch = article.slug.match(/^page-(\d+)$/)
+        if (slugMatch) numbers.push(parseInt(slugMatch[1], 10))
+      }
+      return numbers.length > 0 ? Math.max(...numbers) + 1 : 1
     } catch (error) {
       logger.error('Error finding next page number', {
         knowledgeBaseId,
         organizationId: this.organizationId,
         error,
       })
-      return 1 // Default to 1 if there's an error
+      return 1
     }
   }
   /**

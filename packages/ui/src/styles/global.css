@@ -503,6 +503,15 @@
   --auxxai-highlight-gray: #3a3a3a;
 }
 
+@theme {
+  /* KB-scoped container query breakpoints — match the viewport scale (sm:640, md:768, lg:1024, xl:1280, 2xl:1536) so the KB layout reads like @kb-md instead of @[48rem]. Used only by @auxx/ui/components/kb. */
+  --container-kb-sm: 40rem;
+  --container-kb-md: 48rem;
+  --container-kb-lg: 64rem;
+  --container-kb-xl: 80rem;
+  --container-kb-2xl: 96rem;
+}
+
 @theme inline {
   --font-sans: var(--font-inter-sans);
   --font-mono: var(

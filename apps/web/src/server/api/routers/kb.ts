@@ -49,6 +49,8 @@ const kbFieldsSchema = z.object({
   sidebarListStyle: z.enum(['default', 'pill', 'line']).optional(),
   searchbarPosition: z.enum(['center', 'corner']).optional(),
   // Navigation
+  headerEnabled: z.boolean().optional(),
+  footerEnabled: z.boolean().optional(),
   headerNavigation: z.array(z.object({ title: z.string(), link: z.string() })).optional(),
   footerNavigation: z.array(z.object({ title: z.string(), link: z.string() })).optional(),
 })

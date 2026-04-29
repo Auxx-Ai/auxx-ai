@@ -1,7 +1,7 @@
 // packages/ui/src/components/kb/theme/kb-theme-provider.tsx
 
 import type { ReactNode } from 'react'
-import { buildKBCss, type KBMode, type KBThemeInput } from './kb-theme-tokens'
+import { buildKBCss, type KBMode, type KBThemeInput, sanitizeTheme } from './kb-theme-tokens'
 
 export interface KBThemeProviderProps {
   kb: KBThemeInput & { defaultMode?: string | null }
@@ -13,8 +13,13 @@ export interface KBThemeProviderProps {
 export function KBThemeProvider({ kb, mode, children }: KBThemeProviderProps) {
   const css = buildKBCss(kb)
   const initialMode = mode ?? normalizeMode(kb.defaultMode)
+  const theme = sanitizeTheme(kb.theme)
   return (
-    <div data-kb-id={kb.id} data-kb-mode={initialMode} style={{ background: 'var(--kb-bg)' }}>
+    <div
+      data-kb-id={kb.id}
+      data-kb-mode={initialMode}
+      data-kb-theme={theme}
+      style={{ background: 'var(--kb-page-bg)' }}>
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: values are sanitized via buildKBCss */}
       <style dangerouslySetInnerHTML={{ __html: css }} />
       {children}

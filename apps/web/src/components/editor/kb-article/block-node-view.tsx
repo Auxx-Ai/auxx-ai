@@ -63,7 +63,11 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
   }
 
   const pos = typeof getPos === 'function' ? getPos() : null
-  const indentLevel = level ?? 0
+  const isListType =
+    blockType === 'bulletListItem' ||
+    blockType === 'numberedListItem' ||
+    blockType === 'todoListItem'
+  const indentLevel = isListType ? (level ?? 1) : 0
 
   let lineNumber: number | null = null
   let numberedIndex = 1
@@ -103,6 +107,13 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
     .filter(Boolean)
     .join(' ')
 
+  const selectThisBlock = (event: React.MouseEvent) => {
+    if (typeof pos !== 'number') return
+    event.preventDefault()
+    event.stopPropagation()
+    editor.commands.setNodeSelection(pos)
+  }
+
   const containerClasses = [
     styles.blockContainer,
     isDivider ? styles['blockContainer--divider'] : '',
@@ -137,13 +148,15 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
   return (
     <NodeViewWrapper
       className={wrapperClasses}
+      data-block=''
       data-indent-level={indentLevel > 0 ? indentLevel : undefined}>
       <div className={containerClasses}>
         <div
           className={styles.lineGutter}
           contentEditable={false}
           draggable={true}
-          data-block-drag-handle='true'>
+          data-block-drag-handle='true'
+          onClick={selectThisBlock}>
           <div className={`${styles.lineNumber} text-xs tabular-nums`}>{lineNumber ?? ''}</div>
         </div>
 
@@ -182,6 +195,7 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
                 role='separator'
                 aria-hidden='true'
                 contentEditable={false}
+                onClick={selectThisBlock}
               />
               <NodeViewContent className={`${styles.blockContent} ${styles.blockContentHidden}`} />
             </>

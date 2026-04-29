@@ -136,6 +136,45 @@ export const Block = Node.create({
         }
         return false
       },
+      Enter: ({ editor }) => {
+        const { $from, empty } = editor.state.selection
+        if (!empty) return false
+
+        for (let depth = $from.depth; depth >= 0; depth--) {
+          const node = $from.node(depth)
+          if (node.type.name !== 'block') continue
+
+          const blockType = node.attrs.blockType as string
+          const isEmpty = node.content.size === 0
+
+          // Divider stays as divider — split and convert the new sibling to text.
+          if (blockType === 'divider') {
+            return editor
+              .chain()
+              .splitBlock()
+              .updateAttributes('block', { blockType: 'text', level: null, checked: false })
+              .run()
+          }
+
+          if (isEmpty && blockType !== 'text') {
+            return editor
+              .chain()
+              .updateAttributes('block', { blockType: 'text', level: null, checked: false })
+              .run()
+          }
+
+          if (blockType === 'heading' && $from.parentOffset === node.content.size) {
+            return editor
+              .chain()
+              .splitBlock()
+              .updateAttributes('block', { blockType: 'text', level: null })
+              .run()
+          }
+
+          return false
+        }
+        return false
+      },
     }
   },
 })

@@ -1,11 +1,21 @@
 // apps/web/src/components/kb/ui/preview/kb-preview.tsx
 'use client'
 
-import { KBArticleRenderer, KBLayout } from '@auxx/ui/components/kb'
+import {
+  type DocJSON,
+  extractKBHeadings,
+  getArticleNeighbours,
+  KBArticlePager,
+  KBArticleRenderer,
+  KBLayout,
+  KBTableOfContents,
+} from '@auxx/ui/components/kb'
+import { useEffect, useState } from 'react'
 import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleList } from '../../hooks/use-article-list'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import { KBPreviewTopBar } from './kb-preview-topbar'
+import { mapKBForPreview } from './map-kb-for-preview'
 import { PreviewProvider, usePreview } from './preview-context'
 
 interface KBPreviewProps {
@@ -26,17 +36,31 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   const { isMobile, isDark, knowledgeBase } = usePreview()
   const articles = useArticleList(kbId)
 
-  const activeArticle = findActiveArticle(articles, activeSlugPath)
-  const articleId = activeArticle?.id ?? articles[0]?.id ?? null
+  // Article from the editor's slug path; resets the override when the editor switches.
+  const editorArticle = findActiveArticle(articles, activeSlugPath)
+  const [overrideId, setOverrideId] = useState<string | null>(null)
+  useEffect(() => {
+    setOverrideId(null)
+  }, [editorArticle?.id])
+
+  const activeArticle = overrideId
+    ? articles.find((a) => a.id === overrideId)
+    : (editorArticle ?? articles[0])
+  const articleId = activeArticle?.id ?? null
   const { contentJson, description } = useArticleContent(articleId, kbId)
 
   if (!knowledgeBase) return null
 
-  const widthClass = isMobile ? 'w-[420px]' : 'w-full max-w-[1280px]'
+  const widthClass = isMobile ? 'w-[420px]' : 'w-full max-w-7xl'
+  const docJson = (contentJson ?? null) as DocJSON | null
+  const headings = docJson ? extractKBHeadings(docJson) : []
+  const { prev, next } = articleId
+    ? getArticleNeighbours(articles, articleId)
+    : { prev: undefined, next: undefined }
 
   return (
     <div className='flex flex-1 flex-col'>
-      <KBPreviewTopBar />
+      <KBPreviewTopBar kbId={kbId} activeSlugPath={activeSlugPath} />
       <div className='flex flex-1 items-start justify-center overflow-auto bg-muted p-4'>
         <div
           className={`${widthClass} overflow-hidden rounded border border-foreground/10 shadow-sm`}
@@ -46,13 +70,22 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
             articles={articles}
             basePath='#preview'
             activeArticleId={activeArticle?.id}
-            mode={isDark ? 'dark' : 'light'}>
+            mode={isDark ? 'dark' : 'light'}
+            onArticleClick={(id) => setOverrideId(id)}>
             {articleId ? (
-              <KBArticleRenderer
-                doc={(contentJson ?? null) as never}
-                title={activeArticle?.title ?? articles.find((a) => a.id === articleId)?.title}
-                description={description ?? activeArticle?.description}
-              />
+              <div className='min-w-0 flex-1'>
+                <div className='mx-auto max-w-3xl px-6 pt-4'>
+                  <KBTableOfContents headings={headings} />
+                </div>
+                <KBArticleRenderer
+                  doc={docJson}
+                  title={activeArticle?.title ?? articles.find((a) => a.id === articleId)?.title}
+                  description={description ?? activeArticle?.description}
+                />
+                <div className='mx-auto max-w-3xl px-6'>
+                  <KBArticlePager articles={articles} prev={prev} next={next} basePath='#preview' />
+                </div>
+              </div>
             ) : (
               <div style={{ padding: '2rem', opacity: 0.7 }}>No articles yet.</div>
             )}
@@ -61,34 +94,6 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
       </div>
     </div>
   )
-}
-
-function mapKBForPreview(kb: KnowledgeBase) {
-  return {
-    id: kb.id,
-    name: kb.name,
-    defaultMode: kb.defaultMode,
-    showMode: kb.showMode,
-    primaryColorLight: kb.primaryColorLight,
-    primaryColorDark: kb.primaryColorDark,
-    tintColorLight: kb.tintColorLight,
-    tintColorDark: kb.tintColorDark,
-    infoColorLight: kb.infoColorLight,
-    infoColorDark: kb.infoColorDark,
-    successColorLight: kb.successColorLight,
-    successColorDark: kb.successColorDark,
-    warningColorLight: kb.warningColorLight,
-    warningColorDark: kb.warningColorDark,
-    dangerColorLight: kb.dangerColorLight,
-    dangerColorDark: kb.dangerColorDark,
-    fontFamily: kb.fontFamily,
-    cornerStyle: kb.cornerStyle,
-    logoLight: kb.logoLight,
-    logoDark: kb.logoDark,
-    searchbarPosition: kb.searchbarPosition,
-    headerNavigation: kb.headerNavigation,
-    footerNavigation: kb.footerNavigation,
-  }
 }
 
 function findActiveArticle(

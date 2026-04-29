@@ -20,20 +20,9 @@ const FONT_OPTIONS = [
   { label: 'Montserrat', value: 'montserrat' },
 ]
 
-const ICONS_OPTIONS = [
-  { label: 'Solid', value: 'solid' },
-  { label: 'Regular', value: 'regular' },
-  { label: 'Light', value: 'light' },
-]
-
 const CORNER_OPTIONS = [
   { label: 'Rounded', value: 'rounded' },
   { label: 'Straight', value: 'straight' },
-]
-
-const SEARCHBAR_OPTIONS = [
-  { label: 'Center', value: 'center' },
-  { label: 'Corner', value: 'corner' },
 ]
 
 const sidebarStyles = [
@@ -75,27 +64,6 @@ export function StylingSection({ form, isPending }: StylingSectionProps) {
           />
           <FormField
             control={form.control}
-            name='iconsFamily'
-            render={({ field, fieldState }) => (
-              <VarEditorFieldRow
-                title='Icons'
-                type={BaseType.ENUM}
-                showIcon
-                validationError={fieldState.error?.message}>
-                <FieldInputAdapter
-                  fieldType={FieldType.SINGLE_SELECT}
-                  fieldOptions={{ options: ICONS_OPTIONS }}
-                  value={field.value}
-                  onChange={(v) => field.onChange((v as string[])[0] ?? 'regular')}
-                  placeholder='Pick…'
-                  disabled={isPending}
-                  triggerProps={{ className: 'w-full' }}
-                />
-              </VarEditorFieldRow>
-            )}
-          />
-          <FormField
-            control={form.control}
             name='cornerStyle'
             render={({ field, fieldState }) => (
               <VarEditorFieldRow
@@ -108,27 +76,6 @@ export function StylingSection({ form, isPending }: StylingSectionProps) {
                   fieldOptions={{ options: CORNER_OPTIONS }}
                   value={field.value}
                   onChange={(v) => field.onChange((v as string[])[0] ?? 'rounded')}
-                  placeholder='Pick…'
-                  disabled={isPending}
-                  triggerProps={{ className: 'w-full' }}
-                />
-              </VarEditorFieldRow>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name='searchbarPosition'
-            render={({ field, fieldState }) => (
-              <VarEditorFieldRow
-                title='Search bar position'
-                type={BaseType.ENUM}
-                showIcon
-                validationError={fieldState.error?.message}>
-                <FieldInputAdapter
-                  fieldType={FieldType.SINGLE_SELECT}
-                  fieldOptions={{ options: SEARCHBAR_OPTIONS }}
-                  value={field.value}
-                  onChange={(v) => field.onChange((v as string[])[0] ?? 'center')}
                   placeholder='Pick…'
                   disabled={isPending}
                   triggerProps={{ className: 'w-full' }}

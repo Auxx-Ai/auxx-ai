@@ -9,16 +9,17 @@ interface BlockRendererProps {
   node: BlockJSON
   idx: number
   doc: DocJSON
+  headingIds?: Record<number, string>
 }
 
-export function BlockRenderer({ node, idx, doc }: BlockRendererProps) {
+export function BlockRenderer({ node, idx, doc, headingIds }: BlockRendererProps) {
   const inline = <InlineRenderer content={node.content} />
   const blockType = node.attrs?.blockType ?? 'text'
 
   switch (blockType) {
     case 'heading': {
       const level = clampHeading(node.attrs?.level ?? 1)
-      const id = anchorId(node, idx)
+      const id = headingIds?.[idx] ?? fallbackAnchorId(node, idx)
       const className = styles[`h${level}`] ?? styles.h1
       if (level === 1) {
         return (
@@ -124,7 +125,7 @@ function clampIndent(level: number): number {
   return level
 }
 
-function anchorId(node: BlockJSON, idx: number): string {
+function fallbackAnchorId(node: BlockJSON, idx: number): string {
   const text = walkInlineToText(node.content)
   if (!text) return `h-${idx}`
   return text

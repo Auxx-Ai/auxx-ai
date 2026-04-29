@@ -4,6 +4,15 @@
   position: relative;
   overflow: visible;
   max-width: 100%;
+  border-radius: 4px;
+}
+
+/* PM applies .ProseMirror-selectednode to the wrapper of a node-selected block.
+   Outline gives the user visual confirmation that the block is selected and
+   ready for Backspace/Delete. */
+.blockWrapper:global(.ProseMirror-selectednode) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .blockContainer {
@@ -126,7 +135,6 @@
 
 .blockContentWrapper--divider {
   align-items: center;
-  padding: 0.5rem 0;
 }
 
 .blockContentWrapper--codeBlock {
@@ -199,17 +207,27 @@
    ============================================ */
 
 .blockContainer--divider {
-  padding: 0.25rem 0;
+  padding: 0;
 }
 
 .dividerLine {
   flex: 1 1 0%;
-  height: 1px;
-  min-height: 1px;
+  height: 1.5rem;
   width: 100%;
+  cursor: pointer;
+  position: relative;
+}
+
+.dividerLine::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
   background-color: var(--color-border);
   border-radius: 999px;
-  display: block;
+  transform: translateY(-50%);
 }
 
 /* ============================================
@@ -281,17 +299,29 @@
 .blockWrapper[data-indent-level='2'] .blockContentWrapper {
   padding-left: 1.5rem;
 }
+.blockWrapper[data-indent-level='2'] {
+  --indent-offset: 1.5rem;
+}
 
 .blockWrapper[data-indent-level='3'] .blockContentWrapper {
   padding-left: 3rem;
+}
+.blockWrapper[data-indent-level='3'] {
+  --indent-offset: 3rem;
 }
 
 .blockWrapper[data-indent-level='4'] .blockContentWrapper {
   padding-left: 4.5rem;
 }
+.blockWrapper[data-indent-level='4'] {
+  --indent-offset: 4.5rem;
+}
 
 .blockWrapper[data-indent-level='5'] .blockContentWrapper {
   padding-left: 6rem;
+}
+.blockWrapper[data-indent-level='5'] {
+  --indent-offset: 6rem;
 }
 
 /* Bullet & number indicators */
@@ -423,7 +453,7 @@
 .placeholder {
   position: absolute;
   top: 0;
-  left: 0;
+  left: var(--indent-offset, 0px);
   pointer-events: none;
   user-select: none;
   color: var(--color-muted-foreground);
@@ -437,12 +467,12 @@
 }
 
 /* When a list/todo/quote indicator sits to the left of the content,
-   shift the placeholder past it. */
-.bulletIndicator + .placeholder,
-.numberIndicator + .placeholder,
-.todoCheckbox + .placeholder,
-.quoteBar + .placeholder {
-  left: 1.75rem;
+   shift the placeholder past it (stacked on top of indent offset). */
+.bulletIndicator ~ .placeholder,
+.numberIndicator ~ .placeholder,
+.todoCheckbox ~ .placeholder,
+.quoteBar ~ .placeholder {
+  left: calc(var(--indent-offset, 0px) + 1.75rem);
 }
 
 /* Hide placeholder while dragging blocks. */

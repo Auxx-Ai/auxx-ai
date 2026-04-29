@@ -49,7 +49,7 @@ export function ArticleTreeSection({
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
                     transition={{ duration: 0.15 }}
-                    className={cn('relative overflow-hidden')}>
+                    className={cn('relative ')}>
                     <div className='absolute bottom-0 left-[calc(0.5rem+8px)] top-0 z-0 w-px bg-border' />
                     <ArticleTreeSection
                       articles={article.children}

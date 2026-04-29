@@ -9,8 +9,10 @@ export {
   type KBColorPair,
   type KBCornerStyle,
   type KBMode,
+  type KBTheme,
   type KBThemeInput,
   sanitizeColor,
   sanitizeCornerStyle,
   sanitizeFontFamily,
+  sanitizeTheme,
 } from './kb-theme-tokens'

@@ -953,6 +953,13 @@
       "when": 1777440205134,
       "tag": "0135_lowercase_kb_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1777482051229,
+      "tag": "0136_kb_header_footer_enabled",
+      "breakpoints": true
     }
   ]
 }
