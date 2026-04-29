@@ -57,6 +57,8 @@ export const KnowledgeBase = pgTable(
     cornerStyle: text().default('rounded'),
     sidebarListStyle: text().default('default'),
     searchbarPosition: text().default('center'),
+    headerEnabled: boolean().default(true).notNull(),
+    footerEnabled: boolean().default(true).notNull(),
     headerNavigation: jsonb(),
     footerNavigation: jsonb(),
     logoDarkId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),

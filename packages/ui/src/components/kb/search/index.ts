@@ -5,4 +5,5 @@ export {
   type KBSearchDoc,
   type KBSearchInputArticle,
 } from './build-search-index'
+export { KBSearchDialog } from './kb-search-dialog'
 export { KBSearchInput } from './kb-search-input'

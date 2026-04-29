@@ -22,8 +22,8 @@ function buildDefaults(kb: KnowledgeBase): LayoutFormValues {
   const footerNavigation = (kb.footerNavigation ?? []) as LayoutFormValues['footerNavigation']
   return {
     searchbarPosition: (kb.searchbarPosition as LayoutFormValues['searchbarPosition']) || 'center',
-    headerEnabled: headerNavigation.length > 0,
-    footerEnabled: footerNavigation.length > 0,
+    headerEnabled: kb.headerEnabled ?? true,
+    footerEnabled: kb.footerEnabled ?? true,
     headerNavigation,
     footerNavigation,
   }
@@ -45,8 +45,10 @@ export function LayoutTab({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
     if (!knowledgeBaseId) return
     await updateKnowledgeBase(knowledgeBaseId, {
       searchbarPosition: data.searchbarPosition,
-      headerNavigation: data.headerEnabled ? data.headerNavigation : [],
-      footerNavigation: data.footerEnabled ? data.footerNavigation : [],
+      headerEnabled: data.headerEnabled,
+      footerEnabled: data.footerEnabled,
+      headerNavigation: data.headerNavigation,
+      footerNavigation: data.footerNavigation,
     } as Partial<KnowledgeBase>)
   }
 

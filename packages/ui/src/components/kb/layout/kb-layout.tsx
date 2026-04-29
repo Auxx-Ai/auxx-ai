@@ -3,11 +3,9 @@
 import type { ReactNode } from 'react'
 import { KBThemeProvider } from '../theme/kb-theme-provider'
 import type { KBMode, KBThemeInput } from '../theme/kb-theme-tokens'
-import { KBFooter } from './kb-footer'
-import { KBHeader, type KBNavLink } from './kb-header'
-import styles from './kb-layout.module.css'
-import { KBSidebar } from './kb-sidebar'
-import type { KBSidebarArticle } from './kb-sidebar-tree'
+import type { KBNavLink } from './kb-header'
+import { KBLayoutShell } from './kb-layout-shell'
+import type { KBSidebarArticle, KBSidebarListStyle } from './kb-sidebar-tree'
 
 export interface KBLayoutKB extends KBThemeInput {
   name: string
@@ -18,6 +16,14 @@ export interface KBLayoutKB extends KBThemeInput {
   searchbarPosition?: string | null
   headerNavigation?: unknown
   footerNavigation?: unknown
+  /** Visual template — clean | muted | gradient | bold. */
+  theme?: string | null
+  /** Active-item style in the sidebar — default | pill | line. */
+  sidebarListStyle?: string | null
+  /** When false, navigation links hide but logo/search/mode toggle remain. */
+  headerEnabled?: boolean | null
+  /** When false, footer navigation columns hide but copyright line remains. */
+  footerEnabled?: boolean | null
 }
 
 interface KBLayoutProps<T extends KBSidebarArticle> {
@@ -30,6 +36,8 @@ interface KBLayoutProps<T extends KBSidebarArticle> {
   activeArticleId?: string
   /** Mode override (admin preview). When omitted, kb.defaultMode applies. */
   mode?: KBMode
+  /** Intercept sidebar article clicks (used by admin preview to swap article without navigation). */
+  onArticleClick?: (articleId: string) => void
   children: ReactNode
 }
 
@@ -40,42 +48,42 @@ export function KBLayout<T extends KBSidebarArticle>({
   searchOrigin,
   activeArticleId,
   mode,
+  onArticleClick,
   children,
 }: KBLayoutProps<T>) {
   const headerNav = parseNavigation(kb.headerNavigation)
   const footerNav = parseNavigation(kb.footerNavigation)
-  const searchbarPosition = (kb.searchbarPosition === 'corner' ? 'corner' : 'center') as
-    | 'center'
-    | 'corner'
+  const searchbarPosition: 'center' | 'corner' =
+    kb.searchbarPosition === 'corner' ? 'corner' : 'center'
   const effectiveMode: KBMode = mode ?? (kb.defaultMode === 'dark' ? 'dark' : 'light')
+  const listStyle: KBSidebarListStyle =
+    kb.sidebarListStyle === 'pill' || kb.sidebarListStyle === 'line'
+      ? kb.sidebarListStyle
+      : 'default'
 
   return (
     <KBThemeProvider kb={kb} mode={effectiveMode}>
-      <div className={styles.shell}>
-        <KBHeader
+      <div className='@container relative flex min-h-screen flex-col bg-[var(--kb-page-bg)] font-[var(--kb-font,system-ui)] text-[var(--kb-fg)]'>
+        <KBLayoutShell
           kbId={kb.id}
-          homeHref={basePath || '/'}
+          kbName={kb.name}
+          articles={articles}
           basePath={basePath}
-          title={kb.name}
+          searchOrigin={searchOrigin}
+          activeArticleId={activeArticleId}
+          effectiveMode={effectiveMode}
+          showMode={kb.showMode !== false}
+          headerEnabled={kb.headerEnabled !== false}
+          footerEnabled={kb.footerEnabled !== false}
+          searchbarPosition={searchbarPosition}
           logoLight={kb.logoLight}
           logoDark={kb.logoDark}
-          mode={effectiveMode}
-          showMode={kb.showMode !== false}
-          navigation={headerNav}
-          searchbarPosition={searchbarPosition}
-          searchOrigin={searchOrigin}
-        />
-        <div className={styles.body}>
-          <KBSidebar
-            articles={articles}
-            basePath={basePath}
-            activeArticleId={activeArticleId}
-            searchOrigin={searchOrigin}
-            showSearch={searchbarPosition === 'corner'}
-          />
-          <main className={styles.content}>{children}</main>
-        </div>
-        <KBFooter title={kb.name} navigation={footerNav} />
+          headerNav={headerNav}
+          footerNav={footerNav}
+          listStyle={listStyle}
+          onArticleClick={onArticleClick}>
+          {children}
+        </KBLayoutShell>
       </div>
     </KBThemeProvider>
   )

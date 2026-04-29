@@ -1,6 +1,13 @@
 // apps/kb/src/app/[orgSlug]/[kbSlug]/[...articleSlug]/page.tsx
 
-import { findArticleBySlugPath, KBArticleRenderer } from '@auxx/ui/components/kb'
+import {
+  extractKBHeadings,
+  findArticleBySlugPath,
+  getArticleNeighbours,
+  KBArticlePager,
+  KBArticleRenderer,
+  KBTableOfContents,
+} from '@auxx/ui/components/kb'
 import type { Metadata } from 'next'
 import { cacheLife, cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
@@ -62,14 +69,27 @@ async function ArticleBody({
   cacheLife('max')
 
   const { articles } = await getKBPayloadWithContent(orgSlug, kbSlug)
+  const basePath = `/${orgSlug}/${kbSlug}`
   const article = findArticleBySlugPath(articles, articleSlug)
   if (!article || article.isCategory) notFound()
 
+  const headings = extractKBHeadings(article.contentJson)
+  const { prev, next } = getArticleNeighbours(articles, article.id)
+
   return (
-    <KBArticleRenderer
-      doc={article.contentJson}
-      title={article.title}
-      description={article.description}
-    />
+    <div className='min-w-0 flex-1'>
+      <div className='mx-auto max-w-3xl px-6 pt-4'>
+        <KBTableOfContents headings={headings} />
+      </div>
+      <KBArticleRenderer
+        doc={article.contentJson}
+        title={article.title}
+        description={article.description}
+        updatedAt={article.updatedAt}
+      />
+      <div className='mx-auto max-w-3xl px-6'>
+        <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
+      </div>
+    </div>
   )
 }

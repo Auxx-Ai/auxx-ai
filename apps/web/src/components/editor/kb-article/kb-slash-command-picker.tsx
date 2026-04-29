@@ -147,7 +147,16 @@ const BASE_COMMANDS: CommandItemDef[] = [
     description: 'Visual separator',
     keywords: ['hr', 'horizontal', 'rule', 'line'],
     iconId: 'minus',
-    spec: { blockType: 'divider' },
+    custom: (editor, range) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .updateAttributes('block', { blockType: 'divider', level: null, checked: false })
+        .splitBlock()
+        .updateAttributes('block', { blockType: 'text', level: null, checked: false })
+        .run()
+    },
   },
   {
     id: 'image',

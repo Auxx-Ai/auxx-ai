@@ -1,5 +1,6 @@
 // packages/ui/src/components/kb/utils/index.ts
 
+export { getArticleNeighbours } from './article-neighbours'
 export {
   type ArticleSlugFields,
   findArticleBySlugPath,

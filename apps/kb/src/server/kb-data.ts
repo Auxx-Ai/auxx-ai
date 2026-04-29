@@ -101,6 +101,10 @@ export async function loadKBPayload(
     searchbarPosition: kb.searchbarPosition,
     headerNavigation: kb.headerNavigation,
     footerNavigation: kb.footerNavigation,
+    theme: kb.theme,
+    sidebarListStyle: kb.sidebarListStyle,
+    headerEnabled: kb.headerEnabled,
+    footerEnabled: kb.footerEnabled,
   }
 
   return { kb: publicKB, articles }

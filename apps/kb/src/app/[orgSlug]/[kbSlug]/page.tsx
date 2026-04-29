@@ -2,7 +2,13 @@
 
 // apps/kb/src/app/[orgSlug]/[kbSlug]/page.tsx
 
-import { KBArticleRenderer } from '@auxx/ui/components/kb'
+import {
+  extractKBHeadings,
+  getArticleNeighbours,
+  KBArticlePager,
+  KBArticleRenderer,
+  KBTableOfContents,
+} from '@auxx/ui/components/kb'
 import type { Metadata } from 'next'
 import { cacheLife, cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
@@ -37,14 +43,28 @@ export default async function KBLandingPage({ params }: PageProps) {
   const { kb, articles } = await getKBPayloadWithContent(orgSlug, kbSlug)
   if (!kb) notFound()
 
+  const basePath = `/${orgSlug}/${kbSlug}`
   const homeArticle = articles.find((a) => a.isPublished && !a.isCategory)
   const doc = homeArticle?.contentJson ?? null
+  const headings = doc ? extractKBHeadings(doc) : []
+  const { prev, next } = homeArticle
+    ? getArticleNeighbours(articles, homeArticle.id)
+    : { prev: undefined, next: undefined }
 
   return (
-    <KBArticleRenderer
-      doc={doc}
-      title={homeArticle?.title ?? kb.name}
-      description={homeArticle?.description ?? kb.description}
-    />
+    <div className='min-w-0 flex-1'>
+      <div className='mx-auto max-w-3xl px-6 pt-4'>
+        <KBTableOfContents headings={headings} />
+      </div>
+      <KBArticleRenderer
+        doc={doc}
+        title={homeArticle?.title ?? kb.name}
+        description={homeArticle?.description ?? kb.description}
+        updatedAt={homeArticle?.updatedAt ?? null}
+      />
+      <div className='mx-auto max-w-3xl px-6'>
+        <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
+      </div>
+    </div>
   )
 }

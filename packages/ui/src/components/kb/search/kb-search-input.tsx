@@ -1,10 +1,9 @@
 // packages/ui/src/components/kb/search/kb-search-input.tsx
 'use client'
 
-import Link from 'next/link'
-import { useDeferredValue, useEffect, useRef, useState } from 'react'
-import type { KBSearchDoc } from './build-search-index'
-import styles from './kb-search-input.module.css'
+import { cn } from '@auxx/ui/lib/utils'
+import { Search } from 'lucide-react'
+import { useKBLayoutContextOptional } from '../layout/kb-layout-context'
 
 interface KBSearchInputProps {
   /** Path to the search index JSON, e.g. `/<orgSlug>/<kbSlug>/_search.json`. */
@@ -12,111 +11,48 @@ interface KBSearchInputProps {
   /** Base path for article links, e.g. `/<orgSlug>/<kbSlug>`. */
   basePath: string
   placeholder?: string
-}
-
-interface MiniSearchHit {
-  id: string
-  score: number
-  title: string
-  path: string
-  description?: string
-}
-
-interface MiniSearchLike {
-  search: (query: string) => MiniSearchHit[]
+  /** `pill` (default) — full-width fumadocs-style trigger. `icon` — square icon button. */
+  variant?: 'pill' | 'icon'
+  className?: string
 }
 
 export function KBSearchInput({
-  searchOrigin,
-  basePath,
   placeholder = 'Search articles…',
+  variant = 'pill',
+  className,
 }: KBSearchInputProps) {
-  const [query, setQuery] = useState('')
-  const deferred = useDeferredValue(query)
-  const [mini, setMini] = useState<MiniSearchLike | null>(null)
-  const [results, setResults] = useState<MiniSearchHit[]>([])
-  const [open, setOpen] = useState(false)
-  const wrapRef = useRef<HTMLDivElement>(null)
+  const ctx = useKBLayoutContextOptional()
+  const onClick = () => ctx?.setSearchOpen(true)
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const [{ default: MiniSearch }, res] = await Promise.all([
-          import('minisearch'),
-          fetch(searchOrigin, { credentials: 'omit' }),
-        ])
-        if (!res.ok) return
-        const docs = (await res.json()) as KBSearchDoc[]
-        if (cancelled) return
-        const instance = new MiniSearch({
-          fields: ['title', 'headings', 'body', 'description'],
-          storeFields: ['title', 'path', 'description'],
-          searchOptions: { boost: { title: 3, headings: 2 }, fuzzy: 0.2, prefix: true },
-        })
-        instance.addAll(docs)
-        setMini(instance as unknown as MiniSearchLike)
-      } catch {
-        // Silently degrade: search becomes a no-op if the index can't load.
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [searchOrigin])
-
-  useEffect(() => {
-    if (!mini || !deferred.trim()) {
-      setResults([])
-      return
-    }
-    setResults(mini.search(deferred).slice(0, 8))
-  }, [mini, deferred])
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
+  if (variant === 'icon') {
+    return (
+      <button
+        type='button'
+        onClick={onClick}
+        aria-label='Search'
+        className={cn(
+          'inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-[var(--kb-radius)] border-0 bg-transparent text-[var(--kb-fg)] transition-colors hover:bg-[var(--kb-muted)]',
+          className
+        )}>
+        <Search className='size-4' />
+      </button>
+    )
+  }
 
   return (
-    <div ref={wrapRef} className={styles.wrap}>
-      <input
-        type='search'
-        className={styles.input}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value)
-          setOpen(true)
-        }}
-        onFocus={() => setOpen(true)}
-        placeholder={placeholder}
-        aria-label='Search articles'
-      />
-      {open && query.trim() ? (
-        <div className={styles.results} role='listbox'>
-          {results.length === 0 ? (
-            <div className={styles.empty}>No matches</div>
-          ) : (
-            results.map((hit) => (
-              <Link
-                key={hit.id}
-                href={`${basePath}/${hit.path}`}
-                className={styles.result}
-                prefetch={false}
-                onClick={() => setOpen(false)}>
-                <div className={styles.resultTitle}>{hit.title}</div>
-                {hit.description ? (
-                  <div className={styles.resultDescription}>{hit.description}</div>
-                ) : null}
-              </Link>
-            ))
-          )}
-        </div>
-      ) : null}
-    </div>
+    <button
+      type='button'
+      onClick={onClick}
+      className={cn(
+        'flex w-full cursor-pointer items-center gap-2 rounded-[var(--kb-radius)] border border-[var(--kb-border)] bg-[var(--kb-muted)] px-3 py-2 text-left text-sm text-[var(--kb-fg)]/60 transition-colors hover:border-[var(--kb-primary)] hover:text-[var(--kb-fg)]/80',
+        className
+      )}>
+      <Search className='size-4 shrink-0' />
+      <span className='flex-1'>{placeholder}</span>
+      <kbd className='hidden items-center gap-1 rounded border border-[var(--kb-border)] bg-[var(--kb-bg)] px-1.5 py-0.5 font-mono text-xs @kb-md:flex'>
+        <span>⌘</span>
+        <span>K</span>
+      </kbd>
+    </button>
   )
 }

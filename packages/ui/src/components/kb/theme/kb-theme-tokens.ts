@@ -2,6 +2,7 @@
 
 export type KBMode = 'light' | 'dark'
 export type KBCornerStyle = 'straight' | 'rounded' | 'pill'
+export type KBTheme = 'clean' | 'muted' | 'gradient' | 'bold'
 
 export interface KBColorPair {
   light: string
@@ -73,6 +74,11 @@ export function sanitizeCornerStyle(value: string | null | undefined): KBCornerS
   return 'rounded'
 }
 
+export function sanitizeTheme(value: string | null | undefined): KBTheme {
+  if (value === 'muted' || value === 'gradient' || value === 'bold') return value
+  return 'clean'
+}
+
 export interface KBThemeInput {
   id: string
   primaryColorLight?: string | null
@@ -89,6 +95,100 @@ export interface KBThemeInput {
   dangerColorDark?: string | null
   fontFamily?: string | null
   cornerStyle?: string | null
+  theme?: string | null
+}
+
+interface ThemeVars {
+  pageBg: string
+  surfaceBg: string
+  sidebarBg: string
+  contentBg: string
+  surfaceBorder: string
+  borderWeight: string
+  headingScale: string
+}
+
+const KB_THEME_VARS: Record<KBTheme, Record<KBMode, ThemeVars>> = {
+  clean: {
+    light: {
+      pageBg: '#ffffff',
+      surfaceBg: '#ffffff',
+      sidebarBg: '#ffffff',
+      contentBg: '#ffffff',
+      surfaceBorder: '#e4e4e7',
+      borderWeight: '1px',
+      headingScale: '1',
+    },
+    dark: {
+      pageBg: '#0a0a0a',
+      surfaceBg: '#0a0a0a',
+      sidebarBg: '#0a0a0a',
+      contentBg: '#0a0a0a',
+      surfaceBorder: '#27272a',
+      borderWeight: '1px',
+      headingScale: '1',
+    },
+  },
+  muted: {
+    light: {
+      pageBg: '#fafafa',
+      surfaceBg: '#ffffff',
+      sidebarBg: '#fafafa',
+      contentBg: '#ffffff',
+      surfaceBorder: '#e5e5e5',
+      borderWeight: '1px',
+      headingScale: '1',
+    },
+    dark: {
+      pageBg: '#09090b',
+      surfaceBg: '#18181b',
+      sidebarBg: '#09090b',
+      contentBg: '#18181b',
+      surfaceBorder: '#27272a',
+      borderWeight: '1px',
+      headingScale: '1',
+    },
+  },
+  bold: {
+    light: {
+      pageBg: '#ffffff',
+      surfaceBg: '#ffffff',
+      sidebarBg: '#ffffff',
+      contentBg: '#ffffff',
+      surfaceBorder: '#0a0a0a',
+      borderWeight: '2px',
+      headingScale: '1.15',
+    },
+    dark: {
+      pageBg: '#000000',
+      surfaceBg: '#000000',
+      sidebarBg: '#000000',
+      contentBg: '#000000',
+      surfaceBorder: '#ffffff',
+      borderWeight: '2px',
+      headingScale: '1.15',
+    },
+  },
+  gradient: {
+    light: {
+      pageBg: 'linear-gradient(180deg, var(--kb-tint) 0%, #ffffff 280px)',
+      surfaceBg: 'rgba(255,255,255,0.65)',
+      sidebarBg: 'transparent',
+      contentBg: '#ffffff',
+      surfaceBorder: '#e4e4e7',
+      borderWeight: '1px',
+      headingScale: '1',
+    },
+    dark: {
+      pageBg: 'linear-gradient(180deg, var(--kb-tint) 0%, #0a0a0a 280px)',
+      surfaceBg: 'rgba(10,10,10,0.65)',
+      sidebarBg: 'transparent',
+      contentBg: '#0a0a0a',
+      surfaceBorder: '#27272a',
+      borderWeight: '1px',
+      headingScale: '1',
+    },
+  },
 }
 
 /** Build a string of CSS rules scoped under [data-kb-id="<id>"]. */
@@ -96,9 +196,10 @@ export function buildKBCss(kb: KBThemeInput): string {
   const sel = `[data-kb-id="${escapeAttr(kb.id)}"]`
   const font = sanitizeFontFamily(kb.fontFamily)
   const radius = KB_CORNER_RADIUS[sanitizeCornerStyle(kb.cornerStyle)]
+  const theme = sanitizeTheme(kb.theme)
 
-  const lightVars = buildModeVars(kb, 'light')
-  const darkVars = buildModeVars(kb, 'dark')
+  const lightVars = buildModeVars(kb, 'light', theme)
+  const darkVars = buildModeVars(kb, 'dark', theme)
 
   return [
     `${sel} { --kb-font: ${font}; --kb-radius: ${radius}; }`,
@@ -107,7 +208,7 @@ export function buildKBCss(kb: KBThemeInput): string {
   ].join('\n')
 }
 
-function buildModeVars(kb: KBThemeInput, mode: KBMode): string {
+function buildModeVars(kb: KBThemeInput, mode: KBMode, theme: KBTheme): string {
   const get = (
     key: keyof typeof KB_TOKEN_DEFAULTS,
     light: string | null | undefined,
@@ -116,6 +217,7 @@ function buildModeVars(kb: KBThemeInput, mode: KBMode): string {
     const fallback = KB_TOKEN_DEFAULTS[key][mode]
     return sanitizeColor(mode === 'light' ? light : dark, fallback)
   }
+  const tv = KB_THEME_VARS[theme][mode]
   const decls: Array<[string, string]> = [
     ['--kb-primary', get('primary', kb.primaryColorLight, kb.primaryColorDark)],
     ['--kb-tint', get('tint', kb.tintColorLight, kb.tintColorDark)],
@@ -126,7 +228,13 @@ function buildModeVars(kb: KBThemeInput, mode: KBMode): string {
     ['--kb-bg', KB_TOKEN_DEFAULTS.bg[mode]],
     ['--kb-fg', KB_TOKEN_DEFAULTS.fg[mode]],
     ['--kb-muted', KB_TOKEN_DEFAULTS.muted[mode]],
-    ['--kb-border', KB_TOKEN_DEFAULTS.border[mode]],
+    ['--kb-border', tv.surfaceBorder],
+    ['--kb-page-bg', tv.pageBg],
+    ['--kb-surface-bg', tv.surfaceBg],
+    ['--kb-sidebar-bg', tv.sidebarBg],
+    ['--kb-content-bg', tv.contentBg],
+    ['--kb-border-weight', tv.borderWeight],
+    ['--kb-heading-scale', tv.headingScale],
   ]
   return decls.map(([k, v]) => `${k}: ${v};`).join(' ')
 }

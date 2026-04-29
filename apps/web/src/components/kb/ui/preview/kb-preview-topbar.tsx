@@ -3,10 +3,16 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { ToggleGroup, ToggleGroupItem } from '@auxx/ui/components/toggle-group'
-import { Monitor, Moon, Smartphone, Sun } from 'lucide-react'
+import { ExternalLink, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
 import { type Device, type Theme, usePreview } from './preview-context'
 
-export function KBPreviewTopBar() {
+interface KBPreviewTopBarProps {
+  kbId: string
+  /** Slug path of the article currently being edited; used to deep-link the new tab. */
+  activeSlugPath?: string[]
+}
+
+export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) {
   const { isDark, isMobile, setTheme, setDevice } = usePreview()
 
   const handleThemeChange = (value?: string) => {
@@ -19,6 +25,12 @@ export function KBPreviewTopBar() {
     setDevice(value as Device)
   }
 
+  const slugSegment =
+    activeSlugPath && activeSlugPath.length > 0
+      ? `/${activeSlugPath.map(encodeURIComponent).join('/')}`
+      : ''
+  const previewHref = `/preview/kb/${kbId}${slugSegment}`
+
   return (
     <div className='flex items-center border-b bg-background px-3 py-1'>
       <div className='flex flex-1 items-center gap-2'>
@@ -30,6 +42,17 @@ export function KBPreviewTopBar() {
       <div className='flex items-center gap-2'>
         <Button size='sm' variant='outline'>
           <span className='w-max-full text-ui-small truncate'>Share feedback</span>
+        </Button>
+
+        <Button size='icon-sm' variant='outline' asChild>
+          <a
+            href={previewHref}
+            target='_blank'
+            rel='noopener'
+            aria-label='Open preview in new tab'
+            title='Open preview in new tab'>
+            <ExternalLink />
+          </a>
         </Button>
 
         <ToggleGroup
