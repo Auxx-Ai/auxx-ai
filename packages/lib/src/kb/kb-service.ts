@@ -4,7 +4,8 @@ import { ArticleStatus } from '@auxx/database/enums'
 import type { ArticleStatus as ArticleStatusType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, asc, desc, eq, gt, gte, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, isNull, ne, sql } from 'drizzle-orm'
+import type { KBDraftSettings } from './draft-settings'
 import { enrichDocWithHighlighting } from './highlight-code'
 
 // Local model types inferred from Drizzle schema
@@ -90,7 +91,19 @@ export interface KBCreateInput
   extends Required<Pick<KBFields, 'name' | 'slug'>>,
     Omit<KBFields, 'name' | 'slug'> {}
 
-export type KBUpdateInput = KBFields
+/**
+ * Live-only update input. Settings that visitors care about (theme, colors,
+ * navigation, etc.) live in the draft envelope and go through
+ * {@link KBService.updateDraftSettings}.
+ */
+export interface KBLiveInput {
+  slug?: string
+  customDomain?: string | null
+  visibility?: 'PUBLIC' | 'INTERNAL'
+  publishStatus?: KBPublishStatus
+}
+
+export type KBUpdateInput = KBLiveInput
 
 export interface ArticleCreateInput {
   title?: string
@@ -185,7 +198,11 @@ export class KBService {
     }
   }
 
-  async updateKnowledgeBase(id: string, data: KBUpdateInput): Promise<KnowledgeBase> {
+  /**
+   * Update live-only KB columns (URL slug, custom domain, visibility, publish
+   * status). Draftable presentation fields go through {@link updateDraftSettings}.
+   */
+  async updateKnowledgeBase(id: string, data: KBLiveInput): Promise<KnowledgeBase> {
     try {
       const existingKb = await this.verifyKnowledgeBaseExists(id)
       if (data.slug && data.slug !== existingKb.slug) {
@@ -202,6 +219,66 @@ export class KBService {
     }
   }
 
+  /**
+   * Shallow-merge `patch` into the KB's `draftSettings` JSON. Never touches
+   * flat columns. Public visitors continue to see whatever's on the row.
+   */
+  async updateDraftSettings(id: string, patch: KBDraftSettings): Promise<KnowledgeBase> {
+    try {
+      if (Object.keys(patch).length === 0) {
+        return await this.verifyKnowledgeBaseExists(id)
+      }
+      const existing = await this.verifyKnowledgeBaseExists(id)
+      const nextDraft: KBDraftSettings = {
+        ...((existing.draftSettings as KBDraftSettings | null) ?? {}),
+        ...patch,
+      }
+      const [updated] = await this.db
+        .update(schema.KnowledgeBase)
+        .set({ draftSettings: nextDraft, updatedAt: new Date() })
+        .where(eq(schema.KnowledgeBase.id, id))
+        .returning()
+      return updated
+    } catch (error) {
+      return this.handleError(error, 'Error updating KB draft settings', { id })
+    }
+  }
+
+  /**
+   * Apply pending `draftSettings` onto the live columns and clear the JSON.
+   * No-op if there's no pending draft.
+   */
+  async publishPendingSettings(id: string): Promise<KnowledgeBase> {
+    try {
+      const kb = await this.verifyKnowledgeBaseExists(id)
+      const draft = kb.draftSettings as KBDraftSettings | null
+      if (!draft || Object.keys(draft).length === 0) return kb
+      const [updated] = await this.db
+        .update(schema.KnowledgeBase)
+        .set({ ...draft, draftSettings: null, updatedAt: new Date() })
+        .where(eq(schema.KnowledgeBase.id, id))
+        .returning()
+      return updated
+    } catch (error) {
+      return this.handleError(error, 'Error publishing KB draft settings', { id })
+    }
+  }
+
+  /** Drop the pending draft. Live columns are untouched. */
+  async discardSettingsDraft(id: string): Promise<KnowledgeBase> {
+    try {
+      await this.verifyKnowledgeBaseExists(id)
+      const [updated] = await this.db
+        .update(schema.KnowledgeBase)
+        .set({ draftSettings: null, updatedAt: new Date() })
+        .where(eq(schema.KnowledgeBase.id, id))
+        .returning()
+      return updated
+    } catch (error) {
+      return this.handleError(error, 'Error discarding KB draft settings', { id })
+    }
+  }
+
   async deleteKnowledgeBase(id: string): Promise<{ success: boolean }> {
     try {
       await this.verifyKnowledgeBaseExists(id)
@@ -214,15 +291,20 @@ export class KBService {
 
   /**
    * Toggle KB publish state. Updates publishedAt the first time it goes live;
-   * lastPublishedAt every time it transitions to PUBLISHED/UNLISTED.
+   * lastPublishedAt every time it transitions to PUBLISHED/UNLISTED. Also
+   * flushes any pending settings draft onto the live row in the same write,
+   * so "Publish site" ships pending presentation changes too.
    */
   async publishKnowledgeBase(id: string, status: 'PUBLISHED' | 'UNLISTED'): Promise<KnowledgeBase> {
     try {
       const kb = await this.verifyKnowledgeBaseExists(id)
+      const draft = kb.draftSettings as KBDraftSettings | null
       const now = new Date()
       const [updated] = await this.db
         .update(schema.KnowledgeBase)
         .set({
+          ...(draft ?? {}),
+          draftSettings: null,
           publishStatus: status,
           publishedAt: kb.publishedAt ?? now,
           lastPublishedAt: now,

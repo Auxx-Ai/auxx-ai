@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/editor/kb-editor-page-body.tsx
 'use client'
 
+import { mergeDraftOverLive } from '@auxx/lib/kb/client'
 import { findArticleBySlugPath } from '@auxx/ui/components/kb/utils'
 import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
@@ -59,11 +60,12 @@ function KBEditorBody({ knowledgeBaseId, slug, hasArticlesLoaded }: KBEditorBody
   if (!hasArticlesLoaded) return <ArticleEditorLoading />
 
   if (!slug || slug.length === 0) {
+    const mergedName = knowledgeBase
+      ? (mergeDraftOverLive(knowledgeBase as Record<string, unknown>) as typeof knowledgeBase).name
+      : null
     return (
       <div className='p-8'>
-        <h1 className='text-2xl font-bold'>
-          {knowledgeBase ? knowledgeBase.name : 'No knowledge base'}
-        </h1>
+        <h1 className='text-2xl font-bold'>{mergedName ?? 'No knowledge base'}</h1>
         <p className='mt-2 text-muted-foreground'>
           Select an article from the sidebar to edit, or create a new article.
         </p>

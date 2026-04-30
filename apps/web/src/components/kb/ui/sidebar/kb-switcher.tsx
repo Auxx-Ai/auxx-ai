@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/sidebar/kb-switcher.tsx
 'use client'
 
+import { mergeDraftOverLive } from '@auxx/lib/kb/client'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import {
@@ -53,7 +54,10 @@ export function KBSwitcher() {
     return true
   }, [kbLimit, knowledgeBases.length])
 
-  const activeKB = knowledgeBases.find((kb) => kb.id === activeKBId)
+  const activeKB = useMemo(() => {
+    const kb = knowledgeBases.find((k) => k.id === activeKBId)
+    return kb ? (mergeDraftOverLive(kb as Record<string, unknown>) as typeof kb) : kb
+  }, [knowledgeBases, activeKBId])
 
   const handleClickKnowledgeBase = (knowledgeBaseId: string) => {
     router.push(`/app/kb/${knowledgeBaseId}/editor`)
@@ -136,14 +140,17 @@ export function KBSwitcher() {
             {isLoading ? (
               <DropdownMenuItem disabled>Loading...</DropdownMenuItem>
             ) : knowledgeBases.length > 0 ? (
-              knowledgeBases.map((kb) => (
-                <DropdownMenuRadioItem value={kb.id} key={kb.id} className='gap-2 p-2'>
-                  <div className='flex size-6 items-center justify-center rounded-sm border'>
-                    <Book className='size-4 shrink-0' />
-                  </div>
-                  {kb.name}
-                </DropdownMenuRadioItem>
-              ))
+              knowledgeBases.map((kb) => {
+                const merged = mergeDraftOverLive(kb as Record<string, unknown>) as typeof kb
+                return (
+                  <DropdownMenuRadioItem value={kb.id} key={kb.id} className='gap-2 p-2'>
+                    <div className='flex size-6 items-center justify-center rounded-sm border'>
+                      <Book className='size-4 shrink-0' />
+                    </div>
+                    {merged.name}
+                  </DropdownMenuRadioItem>
+                )
+              })
             ) : (
               <DropdownMenuItem disabled>No knowledge bases found</DropdownMenuItem>
             )}

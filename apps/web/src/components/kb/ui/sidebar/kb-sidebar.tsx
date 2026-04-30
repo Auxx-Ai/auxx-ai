@@ -5,13 +5,13 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
-import { Book, Cog, Layout, Loader2 } from 'lucide-react'
+import { Book, Cog, Layout } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import { GeneralTab } from '../settings/general/general-tab'
 import { LayoutTab } from '../settings/layout/layout-tab'
-import { submitSettingsTab } from '../settings/settings-submit-registry'
+import { submitAllSettings } from '../settings/settings-submit-registry'
 import { KBArticlesPanel } from './kb-articles-panel'
 import { KBSwitcher } from './kb-switcher'
 
@@ -27,11 +27,13 @@ export function KBSidebar({ knowledgeBaseId, knowledgeBase }: KBSidebarProps) {
   const handleGlobalSave = async () => {
     setIsSaving(true)
     try {
-      await submitSettingsTab(activeTab)
+      await submitAllSettings()
     } finally {
       setIsSaving(false)
     }
   }
+
+  const showSave = activeTab !== 'articles'
 
   return (
     <div
@@ -84,12 +86,18 @@ export function KBSidebar({ knowledgeBaseId, knowledgeBase }: KBSidebarProps) {
           </TabsContent>
         </Tabs>
       </ScrollArea>
-      <div className='absolute bottom-4 right-4'>
-        <Button size='sm' variant='info' onClick={handleGlobalSave} disabled={isSaving}>
-          {isSaving ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : null}
-          Save Changes
-        </Button>
-      </div>
+      {showSave && (
+        <div className='absolute bottom-4 right-4'>
+          <Button
+            size='sm'
+            variant='info'
+            onClick={handleGlobalSave}
+            loading={isSaving}
+            loadingText='Saving…'>
+            Save changes
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

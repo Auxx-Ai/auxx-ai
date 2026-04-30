@@ -1,4 +1,4 @@
-// apps/web/src/components/kb/ui/settings/general/modes-section.tsx
+// apps/web/src/components/kb/ui/settings/general/branding-section.tsx
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
@@ -16,72 +16,66 @@ import { useDraftSettingsAutosave } from '../../../hooks/use-draft-settings-auto
 import { type KnowledgeBase, selectDraftedSections } from '../../../store/knowledge-base-store'
 import { SectionStatusBadge } from '../section-header'
 
-const modesSchema = z.object({
-  showMode: z.boolean().default(true),
-  defaultMode: z.enum(['light', 'dark']).default('light'),
+const brandingSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  description: z.string().nullish(),
 })
 
-type ModesFormValues = z.infer<typeof modesSchema>
+type BrandingFormValues = z.infer<typeof brandingSchema>
 
-const lower = (v: string | null | undefined) => (v ? v.toLowerCase() : v)
-
-function buildDefaults(kb: KnowledgeBase): ModesFormValues {
-  const merged = mergeDraftOverLive(kb as any) as KnowledgeBase
-  return {
-    showMode: merged.showMode,
-    defaultMode: (lower(merged.defaultMode) as ModesFormValues['defaultMode']) || 'light',
-  }
-}
-
-const MODE_OPTIONS = [
-  { label: 'Light', value: 'light' },
-  { label: 'Dark', value: 'dark' },
-]
-
-interface ModesSectionProps {
+interface BrandingSectionProps {
   knowledgeBaseId: string
   knowledgeBase: KnowledgeBase
 }
 
-export function ModesSection({ knowledgeBaseId, knowledgeBase }: ModesSectionProps) {
-  const form = useForm<ModesFormValues>({
-    resolver: standardSchemaResolver(modesSchema),
+function buildDefaults(kb: KnowledgeBase): BrandingFormValues {
+  const merged = mergeDraftOverLive(kb as any) as KnowledgeBase
+  return {
+    name: merged.name,
+    description: merged.description ?? '',
+  }
+}
+
+export function BrandingSection({ knowledgeBaseId, knowledgeBase }: BrandingSectionProps) {
+  const form = useForm<BrandingFormValues>({
+    resolver: standardSchemaResolver(brandingSchema),
     defaultValues: buildDefaults(knowledgeBase),
   })
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: only re-hydrate on KB switch — autosave keeps the form in sync otherwise
   useEffect(() => {
-    form.reset(buildDefaults(knowledgeBase))
+    form.reset(buildDefaults(knowledgeBase), { keepDirty: false })
   }, [knowledgeBase.id, form])
 
   const watch = form.watch()
   const { isSaving, lastSavedAt } = useDraftSettingsAutosave(knowledgeBaseId, watch, {
-    registryKey: 'modes',
+    registryKey: 'branding',
   })
-  const drafted = selectDraftedSections(knowledgeBase).has('modes')
+  const drafted = selectDraftedSections(knowledgeBase).has('identity')
 
   return (
     <Section
-      title='Modes'
-      description='Light/dark mode behaviour for visitors.'
+      title='Brand'
+      description='Title and short description shown on your knowledge base.'
       actions={<SectionStatusBadge drafted={drafted} saving={isSaving} savedAt={lastSavedAt} />}>
       <Form {...form}>
-        <VarEditorField orientation='responsive' className='p-0'>
+        <VarEditorField orientation='vertical' className='p-0'>
           <FormField
             control={form.control}
-            name='showMode'
+            name='name'
             render={({ field, fieldState }) => (
               <VarEditorFieldRow
-                title='Show switcher'
-                description='Allow users to switch between light and dark mode.'
-                type={BaseType.BOOLEAN}
+                title='Title'
+                description='Overwrite the title and icon of your content when published.'
+                type={BaseType.STRING}
                 showIcon
+                isRequired
                 validationError={fieldState.error?.message}>
                 <FieldInputAdapter
-                  fieldType={FieldType.CHECKBOX}
-                  fieldOptions={{ variant: 'switch' }}
+                  fieldType={FieldType.TEXT}
                   value={field.value}
-                  onChange={(v) => field.onChange(v)}
+                  onChange={(v) => field.onChange(v ?? '')}
+                  placeholder='My Knowledge Base'
                 />
               </VarEditorFieldRow>
             )}
@@ -89,21 +83,19 @@ export function ModesSection({ knowledgeBaseId, knowledgeBase }: ModesSectionPro
 
           <FormField
             control={form.control}
-            name='defaultMode'
+            name='description'
             render={({ field, fieldState }) => (
               <VarEditorFieldRow
-                title='Default mode'
-                description='All your viewers will see this mode by default.'
-                type={BaseType.ENUM}
+                title='Description'
+                description='A brief description of your knowledge base.'
+                type={BaseType.STRING}
                 showIcon
                 validationError={fieldState.error?.message}>
                 <FieldInputAdapter
-                  fieldType={FieldType.SINGLE_SELECT}
-                  fieldOptions={{ options: MODE_OPTIONS }}
-                  value={field.value}
-                  onChange={(v) => field.onChange((v as string[])[0] ?? 'light')}
-                  placeholder='Pick…'
-                  triggerProps={{ className: 'w-full' }}
+                  fieldType={FieldType.TEXT}
+                  value={field.value ?? ''}
+                  onChange={(v) => field.onChange(v ?? '')}
+                  placeholder='Enter a description...'
                 />
               </VarEditorFieldRow>
             )}

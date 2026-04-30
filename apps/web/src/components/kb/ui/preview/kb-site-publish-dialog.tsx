@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/preview/kb-site-publish-dialog.tsx
 'use client'
 
+import { draftedSections } from '@auxx/lib/kb/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -56,6 +57,8 @@ export function KBSitePublishDialog({ open, onOpenChange, kbId }: KBSitePublishD
   const publishMutation = api.kb.publishSite.useMutation()
 
   const publishedCount = articles?.length ?? 0
+  const pendingSections = draftedSections((kb?.draftSettings ?? null) as never)
+  const pendingCount = pendingSections.size
 
   const handleConfirm = async () => {
     try {
@@ -127,6 +130,16 @@ export function KBSitePublishDialog({ open, onOpenChange, kbId }: KBSitePublishD
                 </Tooltip>
               </InputGroupAddon>
             </InputGroup>
+          )}
+
+          {pendingCount > 0 && (
+            <p className='text-xs text-amber-700 dark:text-amber-400'>
+              Publishing will also apply{' '}
+              {pendingCount === 1
+                ? '1 pending settings change'
+                : `${pendingCount} pending settings changes`}
+              .
+            </p>
           )}
 
           <RadioGroup value={mode} onValueChange={(v) => setMode(v as PublishMode)}>

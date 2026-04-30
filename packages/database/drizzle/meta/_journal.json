@@ -981,6 +981,13 @@
       "when": 1777500228956,
       "tag": "0139_kb_visibility_and_custom_domain_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1777519169110,
+      "tag": "0140_kb_draft_settings",
+      "breakpoints": true
     }
   ]
 }

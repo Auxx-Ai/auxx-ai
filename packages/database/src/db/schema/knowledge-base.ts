@@ -69,6 +69,7 @@ export const KnowledgeBase = pgTable(
     footerNavigation: jsonb(),
     logoDarkId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),
     logoLightId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),
+    draftSettings: jsonb(),
   },
   (table) => [
     uniqueIndex('KnowledgeBase_logoDarkId_key').using('btree', table.logoDarkId.asc().nullsLast()),
