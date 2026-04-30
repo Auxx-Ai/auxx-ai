@@ -4,6 +4,7 @@
 import { cn } from '@auxx/ui/lib/utils'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ArticleTreeNode } from '../../store/article-store'
+import { ArticleHeaderItem } from './article-header-item'
 import { ArticleSidebarItem } from './article-sidebar-item'
 
 interface ArticleTreeSectionProps {
@@ -30,6 +31,30 @@ export function ArticleTreeSection({
     <>
       {articles.map((article) => {
         const hasChildren = article.children && article.children.length > 0
+
+        // Headers are presentational — uppercase label, always-open container,
+        // no drag handle. Their children render at the same depth. Hover
+        // exposes a 3-dot menu for rename/delete.
+        if (article.articleKind === 'header') {
+          return (
+            <div
+              key={article.id}
+              className='w-full'
+              style={{ paddingLeft: `${paddingLeftRem}rem` }}>
+              <ArticleHeaderItem article={article} knowledgeBaseId={knowledgeBaseId} />
+              {hasChildren ? (
+                <ArticleTreeSection
+                  articles={article.children}
+                  level={level}
+                  knowledgeBaseId={knowledgeBaseId}
+                  articleOpenStates={articleOpenStates}
+                  toggleArticleOpen={toggleArticleOpen}
+                />
+              ) : null}
+            </div>
+          )
+        }
+
         const isOpen = articleOpenStates[article.id] || false
 
         return (

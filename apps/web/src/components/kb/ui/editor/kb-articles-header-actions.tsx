@@ -1,19 +1,23 @@
 // apps/web/src/components/kb/ui/editor/kb-articles-header-actions.tsx
 'use client'
 
+import { ArticleKind } from '@auxx/database/enums'
+import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { toastError } from '@auxx/ui/components/toast'
-import { Loader2, Plus, Settings, Upload } from 'lucide-react'
+import { FileText, FolderClosed, Heading, Plus, Settings, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useRef } from 'react'
+import { useActiveTabId } from '../../hooks/use-active-tab'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 
@@ -24,22 +28,27 @@ interface KBArticlesHeaderActionsProps {
 export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderActionsProps) {
   const router = useRouter()
   const articles = useArticleList(knowledgeBaseId)
+  const activeTabId = useActiveTabId(knowledgeBaseId)
   const { createArticle, isCreating } = useArticleMutations(knowledgeBaseId)
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const basePath = `/app/kb/${knowledgeBaseId}`
 
-  const handleCreateRoot = useCallback(async () => {
-    const created = await createArticle({})
-    if (created) {
-      const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?tab=articles`
-      router.push(path)
-    }
-  }, [articles, basePath, createArticle, router])
+  const handleCreateInTab = useCallback(
+    async (articleKind: ArticleKindType = ArticleKind.page) => {
+      if (!activeTabId) return
+      const created = await createArticle({ parentId: activeTabId, articleKind })
+      if (created && articleKind !== ArticleKind.header) {
+        const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
+        router.push(path)
+      }
+    },
+    [activeTabId, articles, basePath, createArticle, router]
+  )
 
   const handleImportMarkdown = useCallback(
     async (files: FileList | null) => {
-      if (!files || files.length === 0) return
+      if (!files || files.length === 0 || !activeTabId) return
       const { mdToBlocks, parseFrontmatter } = await import('@auxx/lib/kb/markdown')
       const failures: string[] = []
       for (const file of Array.from(files)) {
@@ -54,6 +63,7 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
             slug: fields.slug,
             description: fields.description,
             contentJson: doc,
+            parentId: activeTabId,
           })
         } catch (error) {
           console.error('Markdown import failed', file.name, error)
@@ -67,7 +77,7 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
         })
       }
     },
-    [createArticle]
+    [activeTabId, createArticle]
   )
 
   return (
@@ -79,19 +89,23 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
             <span className='sr-only'>Add Page or Settings</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='end'>
-          <DropdownMenuItem disabled={isCreating} onClick={handleCreateRoot}>
-            {isCreating ? (
-              <>
-                <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Plus className='mr-2 h-4 w-4' /> Add Page
-              </>
-            )}
+        <DropdownMenuContent align='end' className='w-48'>
+          <DropdownMenuItem
+            disabled={isCreating || !activeTabId}
+            onSelect={() => void handleCreateInTab(ArticleKind.page)}>
+            <FileText className='mr-2 h-4 w-4' /> Page
           </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={isCreating || !activeTabId}
+            onSelect={() => void handleCreateInTab(ArticleKind.category)}>
+            <FolderClosed className='mr-2 h-4 w-4' /> Category
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={isCreating || !activeTabId}
+            onSelect={() => void handleCreateInTab(ArticleKind.header)}>
+            <Heading className='mr-2 h-4 w-4' /> Section header
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => importInputRef.current?.click()}>
             <Upload className='mr-2 h-4 w-4' /> Import .md
           </DropdownMenuItem>

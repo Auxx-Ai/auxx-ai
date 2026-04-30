@@ -17,8 +17,8 @@ import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import { KBSwitcherDropdownContent } from '../sidebar/kb-switcher'
 import { KBPublishCluster } from './kb-publish-cluster'
 
-const TAB_VALUES = ['general', 'layout', 'articles'] as const
-export type KBEditorTab = (typeof TAB_VALUES)[number]
+const PANEL_VALUES = ['general', 'layout', 'articles'] as const
+export type KBEditorPanel = (typeof PANEL_VALUES)[number]
 
 interface KBEditorHeaderProps {
   knowledgeBaseId: string
@@ -41,9 +41,9 @@ function getInitials(name?: string): string {
  * `MainPage` in the editor route segment layout.
  */
 export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeaderProps) {
-  const [tab, setTab] = useQueryState(
-    'tab',
-    parseAsStringLiteral(TAB_VALUES).withDefault('general')
+  const [panel, setPanel] = useQueryState(
+    'panel',
+    parseAsStringLiteral(PANEL_VALUES).withDefault('general')
   )
 
   const merged = useMemo(
@@ -78,7 +78,7 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
           <KBSwitcherDropdownContent />
         </MainPageBreadcrumbDropdown>
       </MainPageBreadcrumb>
-      <RadioTab value={tab} onValueChange={(v) => setTab(v as KBEditorTab)} size='sm'>
+      <RadioTab value={panel} onValueChange={(v) => setPanel(v as KBEditorPanel)} size='sm'>
         <RadioTabItem value='general' tooltip='General'>
           <Cog />
           <span className='hidden sm:inline'>General</span>

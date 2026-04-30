@@ -21,7 +21,7 @@ export interface KBSearchInputArticle {
   description?: string | null
   contentJson: DocJSON | null | undefined
   isPublished: boolean
-  isCategory?: boolean
+  articleKind?: 'page' | 'category' | 'header' | 'tab'
   parentId: string | null
 }
 
@@ -34,7 +34,7 @@ export function buildKBSearchIndex(
   const out: KBSearchDoc[] = []
   for (const article of articles) {
     if (!article.isPublished) continue
-    if (article.isCategory) continue
+    if (article.articleKind === 'tab' || article.articleKind === 'header') continue
     out.push({
       id: article.id,
       slug: article.slug,

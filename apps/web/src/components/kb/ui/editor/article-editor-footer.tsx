@@ -32,10 +32,10 @@ export function ArticleEditorFooter({ article, knowledgeBaseId }: ArticleEditorF
 
   const basePath = `/app/kb/${knowledgeBaseId}`
   const prevHref = prevArticle
-    ? `${basePath}/editor/~/${getFullSlugPath(prevArticle, articles)}?tab=articles`
+    ? `${basePath}/editor/~/${getFullSlugPath(prevArticle, articles)}?panel=articles`
     : '#'
   const nextHref = nextArticle
-    ? `${basePath}/editor/~/${getFullSlugPath(nextArticle, articles)}?tab=articles`
+    ? `${basePath}/editor/~/${getFullSlugPath(nextArticle, articles)}?panel=articles`
     : '#'
 
   return (

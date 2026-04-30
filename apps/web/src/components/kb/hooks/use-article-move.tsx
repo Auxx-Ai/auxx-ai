@@ -91,6 +91,11 @@ export function useArticleMove({
       const target = findArticleById(targetId)
       if (!source || !target) return null
 
+      // Article-kind constraints: tabs are root-only; everything else lives
+      // under a tab; headers cannot nest under another header.
+      if (source.articleKind === 'tab') return null
+      if (target.articleKind === 'header' && source.articleKind === 'header') return null
+
       // Build a deep-cloned working tree we can mutate.
       const workingTree = buildArticleTree(articles.map((a) => ({ ...a }))) as ArticleTreeNode[]
 
@@ -130,9 +135,6 @@ export function useArticleMove({
         const insertAsChild = (nodes: ArticleTreeNode[]): boolean => {
           for (let i = 0; i < nodes.length; i++) {
             if (nodes[i].id === targetId) {
-              if (!nodes[i].isCategory) {
-                nodes[i].isCategory = true
-              }
               if (!nodes[i].children) nodes[i].children = []
               sourceForInsert.parentId = targetId
               nodes[i].children.unshift(sourceForInsert)
@@ -268,7 +270,8 @@ export function useArticleMove({
       } else if (activeId !== overId && over.data.current?.type) {
         const targetId = overId
         const targetIsCategory = over.data.current?.isCategory === true
-        const action = targetIsCategory ? DROP_ACTION_TYPE.INSIDE : DROP_ACTION_TYPE.CONVERT
+        // Drop inside categories; pages stay leaves (no auto-promotion).
+        const action = targetIsCategory ? DROP_ACTION_TYPE.INSIDE : DROP_ACTION_TYPE.BEFORE
         newTarget = { id: targetId, action }
         if (
           targetIsCategory &&
@@ -354,7 +357,7 @@ export function useArticleMove({
             slugs.unshift(parent.slug)
             cursor = parent.parentId
           }
-          router.replace(`/app/kb/${knowledgeBaseId}/editor/~/${slugs.join('/')}?tab=articles`)
+          router.replace(`/app/kb/${knowledgeBaseId}/editor/~/${slugs.join('/')}?panel=articles`)
         }
       }
     },

@@ -13,9 +13,9 @@ import { LayoutTab } from '../settings/layout/layout-tab'
 import { KBArticlesPanel } from '../sidebar/kb-articles-panel'
 import { KBArticlesHeaderActions } from './kb-articles-header-actions'
 
-const TAB_VALUES = ['general', 'layout', 'articles'] as const
+const PANEL_VALUES = ['general', 'layout', 'articles'] as const
 
-const TAB_TITLES: Record<(typeof TAB_VALUES)[number], string> = {
+const PANEL_TITLES: Record<(typeof PANEL_VALUES)[number], string> = {
   general: 'General',
   layout: 'Layout',
   articles: 'Articles',
@@ -28,17 +28,20 @@ interface KBTabPanelProps {
 
 /**
  * Body of the small left panel in the KB editor. Hosts the active settings
- * tab (General / Layout) or the article tree (Articles). Reads `?tab=` from
+ * tab (General / Layout) or the article tree (Articles). Reads `?panel=` from
  * the URL and renders the matching content; the autosave registry handles
  * persistence per section, so this component owns no save state of its own.
  */
 export function KBTabPanel({ knowledgeBaseId, knowledgeBase }: KBTabPanelProps) {
-  const [activeTab] = useQueryState('tab', parseAsStringLiteral(TAB_VALUES).withDefault('general'))
+  const [activePanel] = useQueryState(
+    'panel',
+    parseAsStringLiteral(PANEL_VALUES).withDefault('general')
+  )
 
   const isSaving = useKnowledgeBaseStore((s) => Boolean(s.pendingDraftPatches[knowledgeBaseId]))
 
   const headerActions =
-    activeTab === 'articles' ? (
+    activePanel === 'articles' ? (
       <KBArticlesHeaderActions knowledgeBaseId={knowledgeBaseId} />
     ) : (
       <SavingIndicator isSaving={isSaving} />
@@ -47,18 +50,18 @@ export function KBTabPanel({ knowledgeBaseId, knowledgeBase }: KBTabPanelProps) 
   return (
     <div className='flex flex-1 flex-col overflow-hidden'>
       <DrawerHeader
-        title={<span className='text-sm font-medium'>{TAB_TITLES[activeTab]}</span>}
+        title={<span className='text-sm font-medium'>{PANEL_TITLES[activePanel]}</span>}
         actions={headerActions}
       />
 
       <ScrollArea className='flex min-h-0 flex-1 flex-col'>
-        {activeTab === 'general' && (
+        {activePanel === 'general' && (
           <GeneralTab knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
         )}
-        {activeTab === 'layout' && (
+        {activePanel === 'layout' && (
           <LayoutTab knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
         )}
-        {activeTab === 'articles' && <KBArticlesPanel knowledgeBaseId={knowledgeBaseId} />}
+        {activePanel === 'articles' && <KBArticlesPanel knowledgeBaseId={knowledgeBaseId} />}
       </ScrollArea>
     </div>
   )

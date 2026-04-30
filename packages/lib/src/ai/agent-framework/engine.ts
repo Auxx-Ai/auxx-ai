@@ -18,7 +18,7 @@ import type {
 
 const logger = createScopedLogger('agent-engine')
 const DEFAULT_MAX_TOTAL_ITERATIONS = 50
-const DEFAULT_MAX_TOKENS_PER_TURN = 50_000
+const DEFAULT_MAX_TOKENS_PER_TURN = 200_000
 const DEFAULT_MAX_APPROVALS_PER_TURN = 5
 
 /**

@@ -7,6 +7,7 @@ import {
   findArticleBySlugPath,
   getArticleNeighbours,
   getArticleParentLink,
+  getFullSlugPath,
   KBArticlePager,
   KBArticleRenderer,
   KBTableOfContents,
@@ -170,7 +171,15 @@ function ArticleBodyContent({
 }) {
   const basePath = `/${orgSlug}/${kbSlug}`
   const article = findArticleBySlugPath(articles, articleSlug)
-  if (!article || article.isCategory) notFound()
+  if (!article) notFound()
+  // Headers have no body; direct hits 404. Tabs are pure containers; redirect
+  // to the first navigable descendant (308) or 404 if the tab is empty.
+  if (article.articleKind === 'header') notFound()
+  if (article.articleKind === 'tab') {
+    const first = findFirstNavigableInTab(article.id, articles)
+    if (!first) notFound()
+    redirect(`${basePath}/${getFullSlugPath(first, articles)}`)
+  }
 
   const headings = extractKBHeadings(article.contentJson)
   const { prev, next } = getArticleNeighbours(articles, article.id)
@@ -198,4 +207,23 @@ function ArticleBodyContent({
       </div>
     </div>
   )
+}
+
+function findFirstNavigableInTab(
+  rootId: string,
+  articles: PublicArticleFull[]
+): PublicArticleFull | undefined {
+  const children = articles
+    .filter((a) => a.parentId === rootId && a.isPublished)
+    .sort((a, b) => a.order - b.order)
+  for (const child of children) {
+    if (child.articleKind === 'header') {
+      const grand = findFirstNavigableInTab(child.id, articles)
+      if (grand) return grand
+      continue
+    }
+    if (child.articleKind === 'tab') continue
+    return child
+  }
+  return undefined
 }

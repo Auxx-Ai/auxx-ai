@@ -390,7 +390,7 @@ export interface AgentEngineConfig {
   maxTotalIterations?: number
   /** Token budget for context management */
   contextTokenBudget?: number
-  /** Hard cap on total LLM tokens consumed in a single turn (default: 50000) */
+  /** Hard cap on total LLM tokens consumed in a single turn (default: 200000) */
   maxTokensPerTurn?: number
   /** Max chained approvals allowed within a single turn before forcing termination (default: 5) */
   maxApprovalsPerTurn?: number

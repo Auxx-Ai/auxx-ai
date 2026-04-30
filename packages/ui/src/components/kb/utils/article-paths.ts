@@ -4,16 +4,21 @@ import { type ArticleTreeFields, buildArticleTree } from './article-tree'
 
 export interface ArticleSlugFields extends ArticleTreeFields {
   slug: string
+  articleKind?: 'page' | 'category' | 'header' | 'tab'
 }
 
+/**
+ * Walk parentId building a slash-joined slug. Headers are presentational and
+ * never appear in URLs, so we skip them when collecting ancestor slugs.
+ */
 export function getFullSlugPath<T extends ArticleSlugFields>(article: T, allArticles: T[]): string {
   if (!article) return ''
-  const slugs: string[] = [article.slug]
+  const slugs: string[] = article.articleKind === 'header' ? [] : [article.slug]
   let currentId = article.parentId
   while (currentId) {
     const parent = allArticles.find((a) => a.id === currentId)
     if (!parent) break
-    slugs.unshift(parent.slug)
+    if (parent.articleKind !== 'header') slugs.unshift(parent.slug)
     currentId = parent.parentId
   }
   return slugs.join('/')
@@ -22,13 +27,13 @@ export function getFullSlugPath<T extends ArticleSlugFields>(article: T, allArti
 interface ParentLinkArticle extends ArticleSlugFields {
   title: string
   emoji?: string | null
-  isCategory?: boolean
 }
 
 /**
  * Resolves the parent breadcrumb for `KBArticleRenderer`. Returns `undefined`
- * when the article has no parent. Categories aren't navigable, so their `href`
- * is `null` and the renderer falls back to plain text.
+ * when the article has no parent. Categories, tabs, and headers aren't
+ * navigable, so their `href` is `null` and the renderer falls back to plain
+ * text.
  */
 export function getArticleParentLink<T extends ParentLinkArticle>(
   article: T | undefined | null,
@@ -38,10 +43,11 @@ export function getArticleParentLink<T extends ParentLinkArticle>(
   if (!article?.parentId) return undefined
   const parent = allArticles.find((a) => a.id === article.parentId)
   if (!parent) return undefined
+  const navigable = parent.articleKind === 'page'
   return {
     title: parent.title,
     emoji: parent.emoji,
-    href: parent.isCategory ? null : `${basePath}/${getFullSlugPath(parent, allArticles)}`,
+    href: navigable ? `${basePath}/${getFullSlugPath(parent, allArticles)}` : null,
   }
 }
 
@@ -111,7 +117,7 @@ export function isArticleActive<T extends ArticleSlugFields>(
   const editorPath = `${basePath}/editor/~/${fullSlugPath}`
 
   if (pathname === articlePath || pathname === editorPath) return true
-  if (pathname === `${editorPath}?tab=articles` || pathname.startsWith(`${editorPath}?`))
+  if (pathname === `${editorPath}?panel=articles` || pathname.startsWith(`${editorPath}?`))
     return true
   if (pathname.startsWith(`${editorPath}/`) || pathname.startsWith(`${articlePath}/`)) return false
 

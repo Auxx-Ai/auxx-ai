@@ -3,8 +3,8 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { isOrgMember } from '@auxx/lib/cache'
 import {
-  extractKBHeadings,
-  getArticleNeighbours,
+  getFullSlugPath,
+  getTopLevelTabs,
   KBArticlePager,
   KBArticleRenderer,
   KBTableOfContents,
@@ -130,34 +130,58 @@ function LandingBody({
   kbSlug: string
 }) {
   const basePath = `/${orgSlug}/${kbSlug}`
-  const homeArticle =
-    articles.find((a) => a.isHomePage && a.isPublished && !a.isCategory) ??
-    articles.find((a) => a.isPublished && !a.isCategory)
-  const doc = homeArticle?.contentJson ?? null
-  const headings = doc ? extractKBHeadings(doc) : []
-  const { prev, next } = homeArticle
-    ? getArticleNeighbours(articles, homeArticle.id)
-    : { prev: undefined, next: undefined }
+  // KB root routes through the first tab. We pick its first navigable
+  // descendant — the deepest first child that isn't itself a tab or header.
+  const firstTab = getTopLevelTabs(articles)[0]
+  const homeArticle = firstTab ? findFirstNavigableInTab(firstTab.id, articles) : undefined
+  if (homeArticle) {
+    redirect(`${basePath}/${getFullSlugPath(homeArticle, articles)}`)
+  }
 
+  // Empty state — no tabs (impossible at runtime: KBs always have ≥1 tab) or
+  // every tab is empty.
   return (
     <div className='flex min-w-0 flex-1 flex-col'>
       <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
         <aside className='w-full max-w-3xl px-6 pt-4 @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:px-4 @kb-lg:pt-8'>
-          <KBTableOfContents headings={headings} />
+          <KBTableOfContents headings={[]} />
         </aside>
         <div className='min-w-0 flex-1 @kb-lg:order-1'>
           <KBArticleRenderer
-            doc={doc}
-            title={homeArticle?.title ?? kb.name}
-            emoji={homeArticle?.emoji ?? null}
-            description={homeArticle?.description ?? kb.description}
-            updatedAt={homeArticle?.updatedAt ?? null}
+            doc={null}
+            title={kb.name}
+            emoji={null}
+            description={kb.description}
+            updatedAt={null}
           />
         </div>
       </div>
       <div className='mt-auto w-full max-w-3xl px-6'>
-        <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
+        <KBArticlePager articles={articles} prev={undefined} next={undefined} basePath={basePath} />
       </div>
     </div>
   )
+}
+
+/**
+ * Depth-first walk of `rootId`'s children, skipping headers and tabs. Used by
+ * the KB root and every tab pill click target.
+ */
+function findFirstNavigableInTab(
+  rootId: string,
+  articles: PublicArticleFull[]
+): PublicArticleFull | undefined {
+  const children = articles
+    .filter((a) => a.parentId === rootId && a.isPublished)
+    .sort((a, b) => a.order - b.order)
+  for (const child of children) {
+    if (child.articleKind === 'header') {
+      const grand = findFirstNavigableInTab(child.id, articles)
+      if (grand) return grand
+      continue
+    }
+    if (child.articleKind === 'tab') continue
+    return child
+  }
+  return undefined
 }

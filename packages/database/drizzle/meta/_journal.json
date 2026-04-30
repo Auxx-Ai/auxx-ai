@@ -995,6 +995,20 @@
       "when": 1777528496809,
       "tag": "0141_kb_managed_dataset_and_drop_legacy",
       "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1777531649022,
+      "tag": "0142_article_kind_enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1777531800000,
+      "tag": "0143_fix_tab_revision_pointers",
+      "breakpoints": true
     }
   ]
 }

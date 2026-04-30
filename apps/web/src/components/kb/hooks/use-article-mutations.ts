@@ -1,7 +1,8 @@
 // apps/web/src/components/kb/hooks/use-article-mutations.ts
 'use client'
 
-import { ArticleStatus } from '@auxx/database/enums'
+import { ArticleKind, ArticleStatus } from '@auxx/database/enums'
+import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
 import { useCallback } from 'react'
@@ -18,13 +19,12 @@ function normalizeServerArticle(server: any): ArticleMeta {
     slug: server.slug ?? '',
     emoji: server.emoji ?? null,
     parentId: server.parentId ?? null,
-    isCategory: !!server.isCategory,
+    articleKind: (server.articleKind ?? ArticleKind.page) as ArticleKindType,
     order: server.order ?? 0,
     isPublished: !!server.isPublished,
     status: (server.status ?? ArticleStatus.DRAFT) as ArticleMeta['status'],
     description: server.description ?? null,
     excerpt: server.excerpt ?? null,
-    isHomePage: !!server.isHomePage,
     hasUnpublishedChanges: !!server.hasUnpublishedChanges,
     publishedAt: server.publishedAt ? new Date(server.publishedAt) : null,
     publishedRevisionId: server.publishedRevisionId ?? null,
@@ -38,7 +38,7 @@ interface CreateArticleInput {
   position?: 'before' | 'after' | 'first_child'
   title?: string
   slug?: string
-  isCategory?: boolean
+  articleKind?: ArticleKindType
   emoji?: string | null
   content?: string | null
   contentJson?: unknown
@@ -58,10 +58,10 @@ export interface UseArticleMutationsResult {
       emoji?: string | null
     }
   ) => Promise<void>
-  /** Update structural fields (slug, parentId, order, isCategory). */
+  /** Update structural fields (slug, parentId, order). */
   updateArticleStructure: (
     id: string,
-    fields: { slug?: string; parentId?: string | null; order?: number; isCategory?: boolean }
+    fields: { slug?: string; parentId?: string | null; order?: number }
   ) => Promise<void>
   /** Save heavy content to the draft revision (no optimistic store update). */
   updateArticleContent: (
@@ -75,7 +75,6 @@ export interface UseArticleMutationsResult {
   unarchiveArticle: (id: string) => Promise<void>
   discardArticleDraft: (id: string) => Promise<void>
   restoreArticleVersion: (versionId: string) => Promise<void>
-  setHomeArticle: (id: string) => Promise<void>
   duplicateArticle: (article: ArticleMeta) => Promise<ArticleMeta | undefined>
   /** Convenience: rename via the draft (title/emoji) + structure (slug). */
   renameArticle: (
@@ -99,7 +98,6 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
   const unarchiveMutation = api.kb.unarchiveArticle.useMutation()
   const discardDraftMutation = api.kb.discardArticleDraft.useMutation()
   const restoreVersionMutation = api.kb.restoreArticleVersion.useMutation()
-  const setHomeMutation = api.kb.setHomeArticle.useMutation()
 
   const createArticle = useCallback<UseArticleMutationsResult['createArticle']>(
     async (input = {}) => {
@@ -112,13 +110,12 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         slug: input.slug ?? 'untitled',
         emoji: input.emoji ?? null,
         parentId: input.parentId ?? null,
-        isCategory: input.isCategory ?? false,
+        articleKind: input.articleKind ?? ArticleKind.page,
         order: 9999,
         isPublished: false,
         status: ArticleStatus.DRAFT,
         description: input.description ?? null,
         excerpt: input.excerpt ?? null,
-        isHomePage: false,
         hasUnpublishedChanges: false,
         publishedAt: null,
         publishedRevisionId: null,
@@ -130,7 +127,7 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
           knowledgeBaseId,
           title: input.title,
           slug: input.slug,
-          isCategory: input.isCategory,
+          articleKind: input.articleKind,
           emoji: input.emoji,
           content: input.content ?? undefined,
           contentJson: input.contentJson,
@@ -377,41 +374,12 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
     [knowledgeBaseId, restoreVersionMutation, utils.kb.getArticleById]
   )
 
-  const setHomeArticle = useCallback<UseArticleMutationsResult['setHomeArticle']>(
-    async (id) => {
-      const store = getArticleStoreState()
-      // Optimistically clear isHomePage on every other article in this KB.
-      for (const article of store.articles.values()) {
-        if (
-          article.knowledgeBaseId === knowledgeBaseId &&
-          article.isHomePage &&
-          article.id !== id
-        ) {
-          store.setArticleOptimistic(article.id, { isHomePage: false })
-        }
-      }
-      store.setArticleOptimistic(id, { isHomePage: true })
-      try {
-        const server = await setHomeMutation.mutateAsync({ id, knowledgeBaseId })
-        store.confirmUpdate(id, normalizeServerArticle(server))
-        utils.kb.getArticles.invalidate({ knowledgeBaseId })
-      } catch (error) {
-        store.rollbackUpdate(id)
-        toastError({
-          title: "Couldn't set home page",
-          description: error instanceof Error ? error.message : 'Unknown error occurred',
-        })
-      }
-    },
-    [knowledgeBaseId, setHomeMutation, utils.kb.getArticles]
-  )
-
   const duplicateArticle = useCallback<UseArticleMutationsResult['duplicateArticle']>(
     async (article) => {
       return await createArticle({
         title: `Copy of ${article.title}`,
         emoji: article.emoji,
-        isCategory: article.isCategory,
+        articleKind: article.articleKind,
         parentId: article.parentId,
         excerpt: article.excerpt,
         description: article.description,
@@ -452,7 +420,6 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
     unarchiveArticle,
     discardArticleDraft,
     restoreArticleVersion,
-    setHomeArticle,
     duplicateArticle,
     renameArticle,
     isCreating: createMutation.isPending,

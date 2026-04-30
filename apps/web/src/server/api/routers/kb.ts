@@ -74,8 +74,9 @@ const articleStructureFieldsSchema = z.object({
   slug: z.string().min(1).optional(),
   parentId: z.string().nullish(),
   order: z.number().optional(),
-  isCategory: z.boolean().optional(),
 })
+
+const articleKindSchema = z.enum(['page', 'category', 'header', 'tab'])
 
 const articleCreateSchema = z.object({
   title: z.string().optional(),
@@ -85,7 +86,7 @@ const articleCreateSchema = z.object({
   contentJson: z.any().nullish(),
   excerpt: z.string().nullish(),
   emoji: z.string().nullish(),
-  isCategory: z.boolean().optional(),
+  articleKind: articleKindSchema.optional(),
   parentId: z.string().nullish(),
   adjacentTo: z.string().optional(),
   position: z.enum(['before', 'after']).optional(),
@@ -269,7 +270,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
     }),
 
   /**
-   * Edit structural fields (slug/parentId/order/isCategory). Live; revalidates.
+   * Edit structural fields (slug/parentId/order). Live; revalidates.
    */
   updateArticleStructure: protectedProcedure
     .input(
@@ -361,11 +362,11 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return await getKBService(ctx).restoreArticleVersion(input.versionId, ctx.session.user.id)
     }),
 
-  setHomeArticle: protectedProcedure
-    .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
+  reorderTabs: protectedProcedure
+    .input(z.object({ knowledgeBaseId: z.string(), tabIds: z.array(z.string()) }))
     .mutation(async ({ ctx, input }) => {
-      const result = await getKBService(ctx).setHomeArticle(input.id)
-      if (input.knowledgeBaseId) void fireKBRevalidate(input.knowledgeBaseId)
+      const result = await getKBService(ctx).reorderTabs(input.knowledgeBaseId, input.tabIds)
+      void fireKBRevalidate(input.knowledgeBaseId)
       return result
     }),
 

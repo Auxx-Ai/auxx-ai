@@ -12,15 +12,11 @@ export {
 export { KBLayoutShell } from './kb-layout-shell'
 export { KBSidebar } from './kb-sidebar'
 export { KBSidebarMobileTrigger } from './kb-sidebar-mobile-trigger'
-export {
-  filterToTab,
-  findTabForArticle,
-  getTopLevelTabs,
-  KBSidebarTabs,
-} from './kb-sidebar-tabs'
+export { filterToTab, findTabForArticle, getTopLevelTabs } from './kb-sidebar-tabs'
 export { KBSidebarToggle } from './kb-sidebar-toggle'
 export {
   type KBSidebarArticle,
   type KBSidebarListStyle,
   KBSidebarTree,
 } from './kb-sidebar-tree'
+export { KBTopTabs } from './kb-top-tabs'

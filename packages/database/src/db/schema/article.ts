@@ -4,6 +4,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
+  articleKind,
   articleStatus,
   boolean,
   index,
@@ -27,7 +28,7 @@ export const Article = pgTable(
       .primaryKey()
       .notNull(),
     slug: text().notNull(),
-    isCategory: boolean().default(false).notNull(),
+    articleKind: articleKind().default('page').notNull(),
     authorId: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
@@ -50,7 +51,6 @@ export const Article = pgTable(
     order: integer().default(0).notNull(),
     isPublished: boolean().default(false).notNull(),
     publishedAt: timestamp({ precision: 3 }),
-    isHomePage: boolean().default(false).notNull(),
     publishedRevisionId: text().references((): AnyPgColumn => ArticleRevision.id, {
       onUpdate: 'cascade',
     }),
@@ -64,7 +64,7 @@ export const Article = pgTable(
     hasUnpublishedChanges: boolean().default(false).notNull(),
   },
   (table) => [
-    index('Article_isCategory_idx').using('btree', table.isCategory.asc().nullsLast()),
+    index('Article_articleKind_idx').using('btree', table.articleKind.asc().nullsLast()),
     index('Article_knowledgeBaseId_idx').using('btree', table.knowledgeBaseId.asc().nullsLast()),
     uniqueIndex('Article_knowledgeBaseId_slug_key').using(
       'btree',

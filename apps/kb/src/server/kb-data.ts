@@ -1,6 +1,7 @@
 // apps/kb/src/server/kb-data.ts
 
 import { Article, ArticleRevision, database, KnowledgeBase, Organization } from '@auxx/database'
+import type { ArticleKind } from '@auxx/database/types'
 import { isOrgMember } from '@auxx/lib/cache'
 import type { DocJSON, KBLayoutKB } from '@auxx/ui/components/kb'
 import { and, eq } from 'drizzle-orm'
@@ -13,10 +14,9 @@ export interface PublicArticleListItem {
   slug: string
   emoji: string | null
   parentId: string | null
-  isCategory: boolean
+  articleKind: ArticleKind
   order: number
   isPublished: boolean
-  isHomePage: boolean
   description: string | null
   excerpt: string | null
 }
@@ -130,10 +130,9 @@ export async function loadKBPayload(
       knowledgeBaseId: Article.knowledgeBaseId,
       slug: Article.slug,
       parentId: Article.parentId,
-      isCategory: Article.isCategory,
+      articleKind: Article.articleKind,
       order: Article.order,
       isPublished: Article.isPublished,
-      isHomePage: Article.isHomePage,
       title: pub.title,
       emoji: pub.emoji,
       description: pub.description,
@@ -217,10 +216,9 @@ export async function loadKBPayloadWithContent(
     slug: r.article.slug,
     emoji: r.pubEmoji,
     parentId: r.article.parentId,
-    isCategory: r.article.isCategory,
+    articleKind: r.article.articleKind,
     order: r.article.order,
     isPublished: r.article.isPublished,
-    isHomePage: r.article.isHomePage,
     description: r.pubDescription,
     excerpt: r.pubExcerpt,
     content: r.pubContent,
