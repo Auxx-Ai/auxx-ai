@@ -6,6 +6,7 @@ import {
   extractKBHeadings,
   findArticleBySlugPath,
   getArticleNeighbours,
+  getArticleParentLink,
   KBArticlePager,
   KBArticleRenderer,
   KBTableOfContents,
@@ -39,10 +40,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { orgSlug, kbSlug, articleSlug } = await params
 
   const visibility = await getCachedKBVisibility(orgSlug, kbSlug)
-  if (!visibility || visibility.publishStatus === 'DRAFT') return { title: 'Not found' }
+  if (!visibility || visibility.publishStatus === 'DRAFT') {
+    return { title: { absolute: 'Not found' } }
+  }
 
   if (visibility.visibility === 'INTERNAL') {
-    return { title: 'Knowledge base', robots: { index: false, follow: false } }
+    return { title: { absolute: 'Knowledge base' }, robots: { index: false, follow: false } }
   }
   return getCachedMetadata(orgSlug, kbSlug, articleSlug)
 }
@@ -57,8 +60,9 @@ async function getCachedMetadata(
   cacheLife('max')
   const { kb, articles } = await getPublicKBPayloadWithContent(orgSlug, kbSlug)
   const article = findArticleBySlugPath(articles, articleSlug)
-  if (!article) return { title: 'Not found' }
+  if (!article) return { title: { absolute: 'Not found' } }
   return {
+    // Bare string -- the parent layout's "%s | KB Name" template fills in the suffix.
     title: article.title,
     description: article.description ?? undefined,
     openGraph: { title: article.title, description: article.description ?? undefined },
@@ -170,18 +174,25 @@ function ArticleBodyContent({
 
   const headings = extractKBHeadings(article.contentJson)
   const { prev, next } = getArticleNeighbours(articles, article.id)
+  const parent = getArticleParentLink(article, articles, basePath)
 
   return (
     <div className='flex min-w-0 flex-1 flex-col'>
-      <div className='w-full max-w-3xl px-6 pt-4'>
-        <KBTableOfContents headings={headings} />
+      <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
+        <aside className='hidden @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:block @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:px-4 @kb-lg:pt-8'>
+          <KBTableOfContents headings={headings} />
+        </aside>
+        <div className='min-w-0 flex-1 @kb-lg:order-1'>
+          <KBArticleRenderer
+            doc={article.contentJson}
+            title={article.title}
+            emoji={article.emoji}
+            description={article.description}
+            updatedAt={article.updatedAt}
+            parent={parent}
+          />
+        </div>
       </div>
-      <KBArticleRenderer
-        doc={article.contentJson}
-        title={article.title}
-        description={article.description}
-        updatedAt={article.updatedAt}
-      />
       <div className='mt-auto w-full max-w-3xl px-6'>
         <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
       </div>

@@ -16,9 +16,11 @@ export function KBThemeProvider({ kb, mode, children }: KBThemeProviderProps) {
   const theme = sanitizeTheme(kb.theme)
   return (
     <div
+      data-slot='kb-theme'
       data-kb-id={kb.id}
       data-kb-mode={initialMode}
       data-kb-theme={theme}
+      className='flex flex-1 flex-col'
       style={{ background: 'var(--kb-page-bg)' }}>
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: values are sanitized via buildKBCss */}
       <style dangerouslySetInnerHTML={{ __html: css }} />

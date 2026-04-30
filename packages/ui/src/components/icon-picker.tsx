@@ -83,6 +83,8 @@ export interface IconPickerProps {
   children?: React.ReactNode
   /** Set to false when used inside a Dialog to fix scroll issues */
   modal?: boolean
+  /** Hide the color swatch row. The default color is still applied to onChange. */
+  hideColors?: boolean
 }
 
 /** Icon picker component */
@@ -96,6 +98,7 @@ export function IconPicker({
   open,
   children,
   modal = true,
+  hideColors = false,
 }: IconPickerProps) {
   // Use internal state if open is not provided (uncontrolled mode)
   const [internalOpen, setInternalOpen] = useState(false)
@@ -225,18 +228,20 @@ export function IconPicker({
           )}
         </div>
         {/* Color selector bar */}
-        <div className='border-b p-2'>
-          <div className='flex justify-start gap-2'>
-            {ICON_COLORS.map((color) => (
-              <ColorButton
-                key={color.id}
-                color={color}
-                isActive={selectedColor === color.id}
-                onClick={() => handleColorSelect(color.id)}
-              />
-            ))}
+        {hideColors ? null : (
+          <div className='border-b p-2'>
+            <div className='flex justify-start gap-2'>
+              {ICON_COLORS.map((color) => (
+                <ColorButton
+                  key={color.id}
+                  color={color}
+                  isActive={selectedColor === color.id}
+                  onClick={() => handleColorSelect(color.id)}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         {/* Icon grid */}
         <div
           className='relative h-64 overflow-y-auto p-2 pb-8'

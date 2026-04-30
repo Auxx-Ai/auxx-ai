@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { EntityIcon, getIcon } from '@auxx/ui/components/icons'
 import { getArticleSlugPaths, getFullSlugPath, isArticleActive } from '@auxx/ui/components/kb/utils'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
@@ -20,6 +21,8 @@ import {
   BookCopy,
   ChevronRight,
   Cog,
+  Copy,
+  Download,
   EyeOff,
   Files,
   FileText,
@@ -33,6 +36,7 @@ import {
 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
+import { api } from '~/trpc/react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleTreeNode } from '../../store/article-store'
@@ -68,6 +72,36 @@ export function ArticleSidebarItem({
     setHomeArticle,
     duplicateArticle,
   } = useArticleMutations(knowledgeBaseId)
+
+  const utils = api.useUtils()
+  const fetchExport = async () =>
+    utils.kb.exportArticleMarkdown.fetch({ id: article.id, knowledgeBaseId })
+
+  const handleCopyMarkdown = async () => {
+    try {
+      const { markdown } = await fetchExport()
+      await navigator.clipboard.writeText(markdown)
+    } catch (error) {
+      console.error('Failed to copy markdown', error)
+    }
+  }
+
+  const handleDownloadMarkdown = async () => {
+    try {
+      const { markdown, filename } = await fetchExport()
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Failed to download markdown', error)
+    }
+  }
 
   const basePath = `/app/kb/${knowledgeBaseId}`
   const slugPaths = useMemo(() => getArticleSlugPaths(articles), [articles])
@@ -105,17 +139,25 @@ export function ArticleSidebarItem({
     return `${basePath}/editor/~/${path}?tab=articles`
   }, [article, articles, slugPaths, basePath])
 
+  const hasCustomIcon = !!article.emoji && !!getIcon(article.emoji)
   const icon = isCategory ? (
     isOpen ? (
       <FolderOpen className='size-4 shrink-0 text-muted-foreground' />
     ) : (
       <FolderClosed className='size-4 shrink-0 text-muted-foreground' />
     )
+  ) : hasCustomIcon ? (
+    <EntityIcon
+      iconId={article.emoji as string}
+      variant='bare'
+      size='sm'
+      className='text-muted-foreground'
+    />
   ) : (
     <FileText className='size-4 shrink-0 text-muted-foreground' />
   )
 
-  const displayName = article.emoji ? `${article.emoji} ${article.title}` : article.title
+  const displayName = article.title
 
   const handleAddSubItem = async () => {
     const created = await createArticle({ parentId: article.id })
@@ -265,6 +307,15 @@ export function ArticleSidebarItem({
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => duplicateArticle(article)}>
                     <BookCopy /> Duplicate
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onClick={handleCopyMarkdown}>
+                    <Copy /> Copy as markdown
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDownloadMarkdown}>
+                    <Download /> Download .md
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />

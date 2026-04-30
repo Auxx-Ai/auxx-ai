@@ -1,5 +1,6 @@
 // packages/ui/src/components/kb/layout/kb-layout.tsx
 
+import { cn } from '@auxx/ui/lib/utils'
 import type { ReactNode } from 'react'
 import { KBThemeProvider } from '../theme/kb-theme-provider'
 import type { KBMode, KBThemeInput } from '../theme/kb-theme-tokens'
@@ -38,6 +39,8 @@ interface KBLayoutProps<T extends KBSidebarArticle> {
   mode?: KBMode
   /** Intercept sidebar article clicks (used by admin preview to swap article without navigation). */
   onArticleClick?: (articleId: string) => void
+  /** When true, drops the `min-h-screen` so the layout sizes to its content (used when embedded inside the admin editor preview). */
+  embedded?: boolean
   children: ReactNode
 }
 
@@ -49,6 +52,7 @@ export function KBLayout<T extends KBSidebarArticle>({
   activeArticleId,
   mode,
   onArticleClick,
+  embedded = false,
   children,
 }: KBLayoutProps<T>) {
   const headerNav = parseNavigation(kb.headerNavigation)
@@ -63,7 +67,12 @@ export function KBLayout<T extends KBSidebarArticle>({
 
   return (
     <KBThemeProvider kb={kb} mode={effectiveMode}>
-      <div className='@container relative flex min-h-screen flex-col bg-[var(--kb-page-bg)] font-[var(--kb-font,system-ui)] text-[var(--kb-fg)]'>
+      <div
+        data-slot='kb-layout'
+        className={cn(
+          '@container relative flex flex-col bg-[var(--kb-page-bg)] font-[var(--kb-font,system-ui)] text-[var(--kb-fg)]',
+          embedded ? 'flex-1' : 'min-h-screen'
+        )}>
         <KBLayoutShell
           kbId={kb.id}
           kbName={kb.name}

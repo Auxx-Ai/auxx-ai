@@ -2,6 +2,7 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
+import { cn } from '@auxx/ui/lib/utils'
 import type { ArticleMeta } from '../../store/article-store'
 
 interface ArticleStatusPillProps {
@@ -23,7 +24,7 @@ export function ArticleStatusPill({ article, className }: ArticleStatusPillProps
   if (article.isPublished) {
     if (article.hasUnpublishedChanges) {
       return (
-        <Badge variant='amber' className={className}>
+        <Badge variant='amber' className={cn(className, 'shrink-0')}>
           Live · unsaved changes
         </Badge>
       )
@@ -47,7 +48,7 @@ export function articleStatusDescription(
   if (article.status === 'ARCHIVED') return 'Hidden from sidebar and the public site.'
   if (article.isPublished) {
     if (article.hasUnpublishedChanges) {
-      return 'Visible publicly. Your draft has unsaved changes that aren’t live yet.'
+      return 'Your draft has unsaved changes that aren’t live yet.'
     }
     if (article.publishedAt) {
       return `Published ${formatRelative(article.publishedAt)}.`

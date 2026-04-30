@@ -19,6 +19,32 @@ export function getFullSlugPath<T extends ArticleSlugFields>(article: T, allArti
   return slugs.join('/')
 }
 
+interface ParentLinkArticle extends ArticleSlugFields {
+  title: string
+  emoji?: string | null
+  isCategory?: boolean
+}
+
+/**
+ * Resolves the parent breadcrumb for `KBArticleRenderer`. Returns `undefined`
+ * when the article has no parent. Categories aren't navigable, so their `href`
+ * is `null` and the renderer falls back to plain text.
+ */
+export function getArticleParentLink<T extends ParentLinkArticle>(
+  article: T | undefined | null,
+  allArticles: T[],
+  basePath: string
+): { title: string; emoji?: string | null; href: string | null } | undefined {
+  if (!article?.parentId) return undefined
+  const parent = allArticles.find((a) => a.id === article.parentId)
+  if (!parent) return undefined
+  return {
+    title: parent.title,
+    emoji: parent.emoji,
+    href: parent.isCategory ? null : `${basePath}/${getFullSlugPath(parent, allArticles)}`,
+  }
+}
+
 export function findArticleBySlugPath<T extends ArticleSlugFields>(
   allArticles: T[],
   slugPath: string[]

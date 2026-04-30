@@ -14,6 +14,8 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Table, TableCell, TableHeader, TableRow } from '../extensions/table'
 import { createPlaceholderNode, PlaceholderBadge, useSlashCommand } from '../inline-picker'
 import { Block } from './block-node'
+import { MarkdownInputRules } from './markdown-input-rules'
+import { MarkdownPaste } from './markdown-paste'
 import { migrateLegacyContent } from './migrate-legacy-content'
 
 const Doc = Node.create({
@@ -92,6 +94,8 @@ export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEdi
           // Marks stay enabled (bold, italic, strike, code).
         }),
         Block,
+        MarkdownInputRules,
+        MarkdownPaste,
         Table.configure({ resizable: true }),
         TableRow,
         TableHeader,

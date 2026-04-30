@@ -1,12 +1,14 @@
 // apps/web/src/components/editor/kb-article/block-node-view.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Input } from '@auxx/ui/components/input'
 import type { CalloutVariant, EmbedAspect, EmbedProvider } from '@auxx/ui/components/kb/article'
 import { CalloutIcon } from '@auxx/ui/components/kb/article'
 import { parseEmbedUrl } from '@auxx/ui/components/kb/utils'
@@ -154,13 +156,9 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
   const isEmpty = node.content.size === 0
   const isFirstBlock = pos === 0
   const showPlaceholder =
-    isEmpty && !isDivider && !isImage && !isEmbed && (isFocused || isFirstBlock)
+    isEmpty && !isDivider && !isImage && !isEmbed && !isCallout && (isFocused || isFirstBlock)
   const placeholderText =
-    blockType === 'heading'
-      ? `Heading ${level ?? 1}`
-      : isCallout
-        ? 'Callout text'
-        : "Press '/' for commands"
+    blockType === 'heading' ? `Heading ${level ?? 1}` : "Press '/' for commands"
 
   const submitEmbed = (raw: string) => {
     const trimmed = raw.trim()
@@ -326,28 +324,28 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
                 </div>
               ) : (
                 <div className={styles.embedPrompt} contentEditable={false}>
-                  <input
-                    type='url'
-                    className={styles.embedInput}
-                    placeholder='Paste YouTube / Loom / Vimeo URL'
-                    value={embedDraft}
-                    onChange={(e) => {
-                      setEmbedDraft(e.target.value)
-                      if (embedError) setEmbedError(null)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        submitEmbed(embedDraft)
-                      }
-                    }}
-                  />
-                  <button
-                    type='button'
-                    className={styles.embedSubmit}
-                    onClick={() => submitEmbed(embedDraft)}>
-                    Embed
-                  </button>
+                  <div className={styles.embedPromptRow}>
+                    <Input
+                      type='url'
+                      variant='secondary'
+                      className={styles.embedInput}
+                      placeholder='Paste YouTube / Loom / Vimeo URL'
+                      value={embedDraft}
+                      onChange={(e) => {
+                        setEmbedDraft(e.target.value)
+                        if (embedError) setEmbedError(null)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          submitEmbed(embedDraft)
+                        }
+                      }}
+                    />
+                    <Button type='button' onClick={() => submitEmbed(embedDraft)}>
+                      Embed
+                    </Button>
+                  </div>
                   {embedError && <span className={styles.embedError}>{embedError}</span>}
                 </div>
               )}

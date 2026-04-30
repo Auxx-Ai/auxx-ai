@@ -2,9 +2,10 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { EmojiPicker } from '@auxx/ui/components/emoji-picker'
+import { IconPicker } from '@auxx/ui/components/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { Cog, Smile } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { EditableText } from '~/components/editor/editable-text'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
@@ -26,7 +27,17 @@ export function ArticleEditorTop({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const { updateArticleDraft } = useArticleMutations(knowledgeBaseId)
 
+  // The store keeps article.emoji at the *published* revision's value for published
+  // articles, so a freshly picked icon would appear to revert. Mirror what
+  // EditableText does for the title: hold a local override that resets when the
+  // article id changes.
+  const [pickedEmoji, setPickedEmoji] = useState<string | null>(article.emoji)
+  useEffect(() => {
+    setPickedEmoji(article.emoji)
+  }, [article.id, article.emoji])
+
   const handleEmojiChange = (emoji: string) => {
+    setPickedEmoji(emoji)
     void updateArticleDraft(article.id, { emoji })
   }
 
@@ -52,15 +63,18 @@ export function ArticleEditorTop({
               <div className='flex h-full flex-1 self-stretch'>
                 <div className='flex h-10 w-auto shrink-0 flex-row items-center justify-end lg:h-12'>
                   <div className='relative flex pl-0 pr-2 lg:absolute lg:pl-4 lg:pr-2'>
-                    <EmojiPicker value={article.emoji ?? undefined} onChange={handleEmojiChange}>
+                    <IconPicker
+                      value={pickedEmoji ? { icon: pickedEmoji, color: 'gray' } : undefined}
+                      onChange={(v) => handleEmojiChange(v.icon)}
+                      hideColors>
                       <Button variant='ghost' size='icon' className='rounded-full'>
-                        {article.emoji ? (
-                          <span className='text-2xl leading-none'>{article.emoji}</span>
+                        {pickedEmoji ? (
+                          <EntityIcon iconId={pickedEmoji} variant='bare' size='xl' />
                         ) : (
                           <Smile size={26} />
                         )}
                       </Button>
-                    </EmojiPicker>
+                    </IconPicker>
                   </div>
                 </div>
                 <div className='relative flex h-full w-full items-center overflow-hidden text-2xl font-semibold lg:text-4xl'>

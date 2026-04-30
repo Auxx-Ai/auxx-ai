@@ -10,8 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { EmojiPicker } from '@auxx/ui/components/emoji-picker'
 import { Field, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
+import { IconPicker } from '@auxx/ui/components/icon-picker'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
@@ -86,9 +87,14 @@ export function ArticleSettingsDialog({
   const trigger = (
     <button
       type='button'
-      className='flex size-7.5 items-center justify-center rounded-full border bg-background text-lg leading-none hover:bg-muted'
+      className='flex size-7.5 items-center justify-center rounded-full border bg-background hover:bg-muted'
       disabled={isSaving}>
-      {emoji || '📄'}
+      <EntityIcon
+        iconId={emoji ?? 'file-text'}
+        variant='bare'
+        size='sm'
+        className={emoji ? '' : 'text-muted-foreground'}
+      />
     </button>
   )
 
@@ -196,10 +202,14 @@ export function ArticleSettingsDialog({
               <section className='space-y-3'>
                 <div className='grid grid-cols-[30px_1fr] items-end gap-2'>
                   <Field>
-                    <FieldLabel className='sr-only'>Emoji</FieldLabel>
-                    <EmojiPicker value={emoji ?? undefined} onChange={setEmoji} modal={false}>
+                    <FieldLabel className='sr-only'>Icon</FieldLabel>
+                    <IconPicker
+                      value={emoji ? { icon: emoji, color: 'gray' } : undefined}
+                      onChange={(v) => setEmoji(v.icon)}
+                      hideColors
+                      modal={false}>
                       {trigger}
-                    </EmojiPicker>
+                    </IconPicker>
                   </Field>
                   <Field>
                     <FieldLabel>Title</FieldLabel>
