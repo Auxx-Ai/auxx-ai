@@ -1,17 +1,16 @@
 // apps/web/src/components/kb/ui/editor/kb-editor-frame.tsx
 'use client'
 
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageContent,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { MainPage, MainPageContent } from '@auxx/ui/components/main-page'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import type React from 'react'
+import { useMemo } from 'react'
+import { LoadingSpinner } from '~/components/global/loading-content'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
-import { KBSidebar } from '../sidebar/kb-sidebar'
+import { KBEditorHeader } from './kb-editor-header'
+import { KBTabPanel } from './kb-tab-panel'
+
+const TAB_VALUES = ['general', 'layout', 'articles'] as const
 
 interface KBEditorFrameProps {
   knowledgeBaseId: string
@@ -19,40 +18,33 @@ interface KBEditorFrameProps {
 }
 
 /**
- * Persistent chrome for the KB editor: header, sidebar, and the content
- * frame. Lives in the route segment layout so slug-level navigations don't
- * remount the sidebar (which would lose its scroll position).
+ * Persistent chrome for the KB editor: header + small left panel + main
+ * content frame. Lives in the route segment layout so slug-level navigations
+ * don't remount the panel (which would lose its scroll position / form state).
  */
 export function KBEditorFrame({ knowledgeBaseId, children }: KBEditorFrameProps) {
   const { knowledgeBase, isLoading } = useKnowledgeBase(knowledgeBaseId)
+  const [activeTab] = useQueryState('tab', parseAsStringLiteral(TAB_VALUES).withDefault('general'))
+
+  const leftPanels = useMemo(() => {
+    if (!knowledgeBase) return []
+    return [
+      {
+        key: 'kb-tab-panel',
+        content: <KBTabPanel knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />,
+        width: activeTab === 'articles' ? 320 : 512,
+      },
+    ]
+  }, [knowledgeBase, knowledgeBaseId, activeTab])
 
   if (isLoading || !knowledgeBase) {
-    return (
-      <div className='p-8'>
-        <Skeleton className='h-8 w-64' />
-        <Skeleton className='mt-4 h-4 w-full' />
-        <Skeleton className='mt-2 h-4 w-full' />
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   return (
     <MainPage>
-      <MainPageHeader>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem
-            title='Knowledge base '
-            href={`/app/kb/${knowledgeBaseId}/editor/general`}
-            last
-          />
-        </MainPageBreadcrumb>
-      </MainPageHeader>
-      <MainPageContent>
-        <div className='flex flex-row w-full h-full'>
-          <KBSidebar knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
-          <div className='flex min-h-0 max-lg:shrink-0 lg:flex-1'>{children}</div>
-        </div>
-      </MainPageContent>
+      <KBEditorHeader knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
+      <MainPageContent leftPanels={leftPanels}>{children}</MainPageContent>
     </MainPage>
   )
 }

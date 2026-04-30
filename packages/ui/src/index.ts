@@ -44,7 +44,12 @@ export {
 } from './components/breadcrumb'
 export { Button, buttonVariants } from './components/button'
 export { CopyButton } from './components/button-copy'
-export { ButtonGroup } from './components/button-group'
+export {
+  ButtonGroup,
+  ButtonGroupSeparator,
+  ButtonGroupText,
+  buttonGroupVariants,
+} from './components/button-group'
 export { Calendar } from './components/calendar'
 export {
   Card,
@@ -254,6 +259,7 @@ export {
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/resizable'
 export { ScrollArea, ScrollBar } from './components/scroll-area'
 export { Field, type FieldProps, Section, type SectionProps } from './components/section'
+export { SegmentedControl } from './components/segmented-control'
 export {
   Select,
   SelectContent,

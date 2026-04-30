@@ -5,11 +5,11 @@ import { mergeDraftOverLive } from '@auxx/lib/kb/client'
 import { findArticleBySlugPath } from '@auxx/ui/components/kb/utils'
 import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
+import { LoadingSpinner } from '~/components/global/loading-content'
 import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-list'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
 import { KBPreview } from '../preview/kb-preview'
 import { ArticleEditor } from './article-editor'
-import { ArticleEditorLoading } from './article-editor-loading'
 
 interface KBEditorPageBodyProps {
   knowledgeBaseId: string
@@ -57,31 +57,20 @@ function KBEditorBody({ knowledgeBaseId, slug, hasArticlesLoaded }: KBEditorBody
     return findArticleBySlugPath(articles, slug)
   }, [articles, slug])
 
-  if (!hasArticlesLoaded) return <ArticleEditorLoading />
-
-  if (!slug || slug.length === 0) {
-    const mergedName = knowledgeBase
-      ? (mergeDraftOverLive(knowledgeBase as Record<string, unknown>) as typeof knowledgeBase).name
-      : null
-    return (
-      <div className='p-8'>
-        <h1 className='text-2xl font-bold'>{mergedName ?? 'No knowledge base'}</h1>
-        <p className='mt-2 text-muted-foreground'>
-          Select an article from the sidebar to edit, or create a new article.
-        </p>
-      </div>
-    )
-  }
+  if (!hasArticlesLoaded) return <LoadingSpinner />
 
   if (currentArticle) {
     return <ArticleEditor article={currentArticle} knowledgeBaseId={knowledgeBaseId} />
   }
 
+  const mergedName = knowledgeBase
+    ? (mergeDraftOverLive(knowledgeBase as Record<string, unknown>) as typeof knowledgeBase).name
+    : null
   return (
     <div className='p-8'>
-      <h2 className='text-xl font-semibold'>Article not found</h2>
+      <h1 className='text-2xl font-bold'>{mergedName ?? 'No knowledge base'}</h1>
       <p className='mt-2 text-muted-foreground'>
-        The requested article could not be found. It may have been deleted or moved.
+        Select an article from the sidebar to edit, or create a new article.
       </p>
     </div>
   )

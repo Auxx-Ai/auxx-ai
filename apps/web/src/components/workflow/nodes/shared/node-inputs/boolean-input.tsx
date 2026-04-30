@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/boolean-input.tsx
 
 import { Button } from '@auxx/ui/components/button'
-import { ButtonGroup } from '@auxx/ui/components/button-group'
+import { SegmentedControl } from '@auxx/ui/components/segmented-control'
 import { Switch } from '@auxx/ui/components/switch'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
@@ -22,7 +22,7 @@ interface BooleanInputProps extends NodeInputProps {
 
 /**
  * Boolean input component with two variants:
- * - 'button-group' (default): ButtonGroup with toggle-off capability, supports tri-state (true, false, null)
+ * - 'button-group' (default): SegmentedControl with toggle-off capability, supports tri-state (true, false, null)
  * - 'switch': Binary switch component (true or false only)
  */
 export const BooleanInput = createNodeInput<BooleanInputProps>(
@@ -51,8 +51,8 @@ export const BooleanInput = createNodeInput<BooleanInputProps>(
     }
 
     /** Handler for button-group variant */
-    const handleButtonGroupChange = (indices: number[]) => {
-      // Map ButtonGroup indices back to boolean value
+    const handleSegmentedChange = (indices: number[]) => {
+      // Map SegmentedControl indices back to boolean value
       // [0] -> true, [1] -> false, [] -> null
       let newValue: boolean | null = null
       if (indices.includes(0)) {
@@ -82,17 +82,17 @@ export const BooleanInput = createNodeInput<BooleanInputProps>(
     }
 
     // Button-group variant (default): tri-state toggle
-    // Map boolean value to ButtonGroup indices: true -> [0], false -> [1], null/undefined -> []
+    // Map boolean value to SegmentedControl indices: true -> [0], false -> [1], null/undefined -> []
     const selectedIndices = value === true ? [0] : value === false ? [1] : []
 
     return (
       <div className='flex items-center h-8'>
-        <ButtonGroup
+        <SegmentedControl
           mode='toggle'
           toggleMode='single'
           isPill={true}
           value={selectedIndices}
-          onChange={handleButtonGroupChange}
+          onChange={handleSegmentedChange}
           className='w-full'>
           <Button
             variant='transparent'
@@ -108,7 +108,7 @@ export const BooleanInput = createNodeInput<BooleanInputProps>(
             className='aria-checked:inset-shadow-black/20 rounded-full aria-checked:bg-info aria-checked:to-info aria-checked:from-info aria-checked:text-white duration-0'>
             {falseLabel}
           </Button>
-        </ButtonGroup>
+        </SegmentedControl>
       </div>
     )
   }
