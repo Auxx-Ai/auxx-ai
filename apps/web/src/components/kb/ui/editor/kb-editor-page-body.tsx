@@ -1,78 +1,43 @@
-// apps/web/src/components/kb/ui/editor/kb-editor-shell.tsx
+// apps/web/src/components/kb/ui/editor/kb-editor-page-body.tsx
 'use client'
 
 import { findArticleBySlugPath } from '@auxx/ui/components/kb/utils'
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageContent,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
 import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-list'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
 import { KBPreview } from '../preview/kb-preview'
-import { KBSidebar } from '../sidebar/kb-sidebar'
 import { ArticleEditor } from './article-editor'
 import { ArticleEditorLoading } from './article-editor-loading'
 
-interface KBEditorShellProps {
+interface KBEditorPageBodyProps {
   knowledgeBaseId: string
   slug: string[]
 }
 
 /**
- * Top-level editor shell. Wraps the page in MainPage + sidebar and
- * renders either the article editor or the live preview based on `?tab`.
+ * Right-pane content for the KB editor. Sits inside the editor route
+ * segment layout (which owns the chrome + sidebar). Only this component
+ * suspends on slug changes, so the sidebar stays mounted across article
+ * navigations.
  */
-export function KBEditorShell({ knowledgeBaseId, slug }: KBEditorShellProps) {
+export function KBEditorPageBody({ knowledgeBaseId, slug }: KBEditorPageBodyProps) {
   const [activeTab] = useQueryState('tab', { defaultValue: 'general' })
-  const { knowledgeBase, isLoading: isKBLoading } = useKnowledgeBase(knowledgeBaseId)
-  const articles = useArticleList(knowledgeBaseId)
+  const { knowledgeBase } = useKnowledgeBase(knowledgeBaseId)
   const hasArticlesLoaded = useIsArticleListLoaded(knowledgeBaseId)
 
-  if (isKBLoading || !knowledgeBase) {
-    return (
-      <div className='p-8'>
-        <Skeleton className='h-8 w-64' />
-        <Skeleton className='mt-4 h-4 w-full' />
-        <Skeleton className='mt-2 h-4 w-full' />
-      </div>
-    )
+  if (!knowledgeBase) return null
+
+  if (activeTab !== 'articles') {
+    return <KBPreview knowledgeBase={knowledgeBase} activeSlugPath={slug} />
   }
 
   return (
-    <MainPage>
-      <MainPageHeader>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem
-            title='Knowledge base '
-            href={`/app/kb/${knowledgeBaseId}/editor/general`}
-            last
-          />
-        </MainPageBreadcrumb>
-      </MainPageHeader>
-      <MainPageContent>
-        <div className='flex flex-row w-full h-full'>
-          <KBSidebar knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
-
-          <div className='flex min-h-0 max-lg:shrink-0 lg:flex-1'>
-            {activeTab === 'articles' ? (
-              <KBEditorBody
-                knowledgeBaseId={knowledgeBaseId}
-                slug={slug}
-                hasArticlesLoaded={hasArticlesLoaded}
-              />
-            ) : (
-              <KBPreview knowledgeBase={knowledgeBase} activeSlugPath={slug} />
-            )}
-          </div>
-        </div>
-      </MainPageContent>
-    </MainPage>
+    <KBEditorBody
+      knowledgeBaseId={knowledgeBaseId}
+      slug={slug}
+      hasArticlesLoaded={hasArticlesLoaded}
+    />
   )
 }
 

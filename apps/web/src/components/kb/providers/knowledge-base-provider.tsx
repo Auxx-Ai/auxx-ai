@@ -54,6 +54,12 @@ export function KnowledgeBaseProvider({ knowledgeBaseId, children }: KnowledgeBa
   }, [knowledgeBaseId])
 
   // Hydrate articles for the active KB.
+  // We intentionally do NOT clearKb on unmount: KBEditorPage suspends on
+  // slug changes (the parent loading.tsx wraps it in a Suspense boundary),
+  // so the provider remounts mid-navigation. Clearing here would race with
+  // pending optimistic state and cause the just-confirmed article to flicker
+  // out and back in. The store's setArticles is upsert-only and survives
+  // stale fetches without leaking across KBs (articleIdsByKb is per-kb).
   const articlesQuery = api.kb.getArticles.useQuery(
     { knowledgeBaseId, includeUnpublished: true },
     { enabled: !!knowledgeBaseId }
@@ -66,13 +72,6 @@ export function KnowledgeBaseProvider({ knowledgeBaseId, children }: KnowledgeBa
       )
     }
   }, [articlesQuery.data, knowledgeBaseId])
-
-  // Clear on unmount / KB switch.
-  useEffect(() => {
-    return () => {
-      getArticleStoreState().clearKb(knowledgeBaseId)
-    }
-  }, [knowledgeBaseId])
 
   return <>{children}</>
 }

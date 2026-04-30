@@ -68,6 +68,13 @@ interface ArticleStoreState {
   pendingUpdates: Record<string, PendingArticleUpdate>
   /** Optimistic create entries keyed by tempId. */
   optimisticNewArticles: Record<string, ArticleMeta>
+  /**
+   * Server ids confirmed by `confirmCreate` whose presence has not yet been
+   * observed in a server `setArticles` call. We preserve these in the per-kb
+   * list ordering when a stale fetch arrives, so the just-created article
+   * doesn't flicker out while the GET refetch is in flight.
+   */
+  recentlyCreatedIds: Record<string, Set<string>>
   /** Articles marked deleted (hidden from selectors). */
   optimisticDeleted: Set<string>
   /** Active reorder snapshot (only one in flight at a time). */
@@ -119,24 +126,44 @@ export const useArticleStore = create<ArticleStoreState>()(
 
       pendingUpdates: {},
       optimisticNewArticles: {},
+      recentlyCreatedIds: {},
       optimisticDeleted: new Set<string>(),
       pendingReorder: null,
 
       // ─── Hydration ───────────────────────────────────────────────
       setArticles: (kbId, articles) => {
         set((state) => {
-          // Replace the article ids for this KB
-          state.articleIdsByKb[kbId] = articles.map((a) => a.id)
+          const incomingIds = articles.map((a) => a.id)
+          const incomingSet = new Set(incomingIds)
 
-          // Drop stale entries from this KB that aren't in the new list
-          const incoming = new Set(articles.map((a) => a.id))
-          for (const [id, art] of state.articles) {
-            if (art.knowledgeBaseId === kbId && !incoming.has(id)) {
-              state.articles.delete(id)
+          // Reconcile recentlyCreatedIds: drop any that the server now lists
+          // (its create has been observed by a fetch). Anything still in the
+          // set is a confirmed create the server response hasn't seen yet —
+          // append those to the list ordering so the UI doesn't lose them.
+          const recent = state.recentlyCreatedIds[kbId]
+          const stillPending: string[] = []
+          if (recent) {
+            for (const id of recent) {
+              if (incomingSet.has(id)) {
+                recent.delete(id)
+              } else if (state.articles.has(id) && !state.optimisticDeleted.has(id)) {
+                stillPending.push(id)
+              } else {
+                // Entity gone (rolled back, deleted, etc.) — stop tracking it.
+                recent.delete(id)
+              }
             }
           }
 
-          // Upsert new entries
+          state.articleIdsByKb[kbId] = stillPending.length
+            ? [...incomingIds, ...stillPending]
+            : incomingIds
+
+          // Upsert into the entity map. We deliberately do NOT prune entries
+          // that are missing from the incoming list — a stale fetch arriving
+          // after a confirmed optimistic create/update would otherwise drop
+          // the just-confirmed entity. Entities leave the map only via
+          // explicit confirmDelete (mirrors record-store semantics).
           for (const article of articles) {
             state.articles.set(article.id, article)
           }
@@ -243,6 +270,11 @@ export const useArticleStore = create<ArticleStoreState>()(
           const next = ids.filter((id) => id !== tempId)
           if (!next.includes(server.id)) next.push(server.id)
           state.articleIdsByKb[server.knowledgeBaseId] = next
+          // Track until a server fetch confirms it — protects against a stale
+          // refetch wiping the new id out of articleIdsByKb mid-navigation.
+          const recent = state.recentlyCreatedIds[server.knowledgeBaseId] ?? new Set<string>()
+          recent.add(server.id)
+          state.recentlyCreatedIds[server.knowledgeBaseId] = recent
         })
       },
 
@@ -373,6 +405,7 @@ export const useArticleStore = create<ArticleStoreState>()(
             state.optimisticDeleted.delete(id)
           }
           delete state.articleIdsByKb[kbId]
+          delete state.recentlyCreatedIds[kbId]
           state.loadedKbs.delete(kbId)
         })
       },
@@ -384,6 +417,7 @@ export const useArticleStore = create<ArticleStoreState>()(
           state.loadedKbs.clear()
           state.pendingUpdates = {}
           state.optimisticNewArticles = {}
+          state.recentlyCreatedIds = {}
           state.optimisticDeleted.clear()
           state.pendingReorder = null
         })

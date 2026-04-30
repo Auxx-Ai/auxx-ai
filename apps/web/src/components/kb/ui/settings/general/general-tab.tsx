@@ -89,7 +89,7 @@ export function GeneralTab({ knowledgeBaseId, knowledgeBase }: GeneralTabProps) 
   }, [form, knowledgeBaseId])
 
   return (
-    <div className='relative pb-16'>
+    <div className='relative pb-16 [&_[data-slot=section]]:pr-5'>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <IdentitySection form={form} isPending={isUpdating} />
