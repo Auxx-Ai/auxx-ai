@@ -105,6 +105,7 @@ export class DatasetService {
           vectorDimension: embeddingConfig.dimensions,
           organizationId,
           createdById: userId,
+          isManaged: input.isManaged ?? false,
           updatedAt: timestamp,
         })
         .returning({ id: schema.Dataset.id })
@@ -669,6 +670,10 @@ export class DatasetService {
     if (filters?.dateRange) {
       conditions.push(gte(schema.Dataset.createdAt, filters.dateRange.start))
       conditions.push(lte(schema.Dataset.createdAt, filters.dateRange.end))
+    }
+
+    if (filters?.hideManaged !== false) {
+      conditions.push(eq(schema.Dataset.isManaged, false))
     }
 
     return conditions.length === 1 ? conditions[0]! : and(...conditions)

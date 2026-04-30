@@ -43,4 +43,6 @@ export enum Queues {
   recordingProcessingQueue = 'recording-processing',
   // AI autofill queue (per-field AI generation jobs)
   aiAutofillQueue = 'ai-autofill',
+  // KB article → managed-dataset sync queue
+  kbSyncQueue = 'kb-sync',
 }

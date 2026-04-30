@@ -34,8 +34,6 @@ import {
   EntityInstance,
   Event,
   ExternalKnowledgeSource,
-  embedding_jobs,
-  embeddings,
   FieldValue,
   File,
   Folder,
@@ -215,7 +213,6 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   threadReadStatuses: many(ThreadReadStatus),
   userInboxUnreadCounts: many(UserInboxUnreadCount),
   labels: many(Label),
-  embedding_jobs: many(embedding_jobs),
   emails: many(Message),
   orders: many(Order),
   threads: many(Thread),
@@ -355,21 +352,6 @@ export const emailEmbeddingRelations = relations(EmailEmbedding, ({ one }) => ({
   message: one(Message, {
     fields: [EmailEmbedding.messageId],
     references: [Message.id],
-  }),
-}))
-
-export const embeddingJobsRelations = relations(embedding_jobs, ({ one, many }) => ({
-  organization: one(Organization, {
-    fields: [embedding_jobs.organizationId],
-    references: [Organization.id],
-  }),
-  embeddings: many(embeddings),
-}))
-
-export const embeddingsRelations = relations(embeddings, ({ one }) => ({
-  job: one(embedding_jobs, {
-    fields: [embeddings.jobId],
-    references: [embedding_jobs.id],
   }),
 }))
 

@@ -2,8 +2,11 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { KBSearchInput } from '../search/kb-search-input'
+import { KBModeToggle } from '../theme/kb-mode-toggle'
+import type { KBMode } from '../theme/kb-theme-tokens'
 import { useKBLayoutContext } from './kb-layout-context'
 import { readOpenIds, writeOpenIds } from './kb-sidebar-state'
 import { filterToTab, findTabForArticle, getTopLevelTabs, KBSidebarTabs } from './kb-sidebar-tabs'
@@ -17,6 +20,13 @@ interface KBSidebarProps<T extends KBSidebarArticle> {
   showSearch?: boolean
   listStyle?: KBSidebarListStyle
   onArticleClick?: (articleId: string) => void
+  /** Mobile drawer header — logo + theme toggle. */
+  homeHref?: string
+  title?: string
+  logoLight?: string | null
+  logoDark?: string | null
+  mode?: KBMode
+  showMode?: boolean
 }
 
 export function KBSidebar<T extends KBSidebarArticle>({
@@ -27,6 +37,12 @@ export function KBSidebar<T extends KBSidebarArticle>({
   showSearch = false,
   listStyle = 'default',
   onArticleClick,
+  homeHref,
+  title,
+  logoLight,
+  logoDark,
+  mode = 'light',
+  showMode = true,
 }: KBSidebarProps<T>) {
   const { kbId, collapsed, setCollapsed, mobileOpen, setMobileOpen } = useKBLayoutContext()
 
@@ -145,12 +161,63 @@ export function KBSidebar<T extends KBSidebarArticle>({
         />
         <aside
           className={cn(
-            'absolute top-3 bottom-3 left-3 w-[min(18rem,calc(100%-1.5rem))] overflow-hidden rounded-[var(--kb-radius)] border border-[var(--kb-border)] bg-[var(--kb-sidebar-bg)] shadow-2xl transition-transform duration-200 ease-out',
+            'absolute top-3 bottom-3 left-3 flex w-[min(18rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-[var(--kb-radius)] border border-[var(--kb-border)] bg-[var(--kb-sidebar-bg)] shadow-2xl transition-transform duration-200 ease-out',
             mobileOpen ? 'translate-x-0' : '-translate-x-[calc(100%+1rem)]'
           )}>
+          <KBSidebarMobileHeader
+            kbId={kbId}
+            homeHref={homeHref}
+            title={title}
+            logoLight={logoLight}
+            logoDark={logoDark}
+            mode={mode}
+            showMode={showMode}
+            onNavigate={() => setMobileOpen(false)}
+          />
           {inner}
         </aside>
       </div>
     </>
+  )
+}
+
+interface KBSidebarMobileHeaderProps {
+  kbId: string
+  homeHref?: string
+  title?: string
+  logoLight?: string | null
+  logoDark?: string | null
+  mode: KBMode
+  showMode: boolean
+  onNavigate: () => void
+}
+
+function KBSidebarMobileHeader({
+  kbId,
+  homeHref,
+  title,
+  logoLight,
+  logoDark,
+  mode,
+  showMode,
+  onNavigate,
+}: KBSidebarMobileHeaderProps) {
+  const logo = mode === 'dark' ? (logoDark ?? logoLight) : (logoLight ?? logoDark)
+  const label = title ?? 'Home'
+  return (
+    <div className='flex items-center gap-2 border-b border-[var(--kb-border)] px-4 py-3'>
+      <Link
+        href={homeHref ?? '/'}
+        onClick={onNavigate}
+        className='inline-flex items-center gap-2 font-semibold text-[var(--kb-fg)] no-underline'>
+        {logo ? (
+          <img src={logo} alt={label} className='h-7 w-auto' />
+        ) : (
+          <span className='text-base'>{label}</span>
+        )}
+      </Link>
+      <div className='flex-1' />
+      {showMode ? <KBModeToggle kbId={kbId} initialMode={mode} /> : null}
+    </div>
   )
 }

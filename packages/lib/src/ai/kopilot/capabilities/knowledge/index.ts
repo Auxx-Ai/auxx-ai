@@ -2,26 +2,20 @@
 
 import type { GetToolDeps, PageCapability } from '../types'
 import { createSearchDocsTool } from './tools/search-docs'
-import { createSearchKBTool } from './tools/search-kb'
-import { createSearchRagTool } from './tools/search-rag'
+import { createSearchKnowledgeTool } from './tools/search-knowledge'
 
 /**
  * Create the global knowledge capability set.
- * Provides tools for searching documentation, knowledge base articles, and RAG datasets.
- * Registered as __global__ — available on all pages.
+ * Provides tools for searching the help-center documentation and the
+ * organization's knowledge (KB articles + uploaded RAG datasets) via a single
+ * unified hybrid-search tool.
  */
 export function createKnowledgeCapabilities(getDeps: GetToolDeps): PageCapability {
   return {
     page: '__global__',
-    tools: [
-      createSearchDocsTool(getDeps),
-      createSearchKBTool(getDeps),
-      createSearchRagTool(getDeps),
-    ],
+    tools: [createSearchDocsTool(getDeps), createSearchKnowledgeTool(getDeps)],
     systemPromptAddition:
-      "You can search the help center documentation (search_docs), knowledge base articles (search_kb), and the organization's knowledge datasets (search_rag) to find answers.",
-    capabilities: [
-      'Search help center documentation, knowledge base articles, and knowledge datasets',
-    ],
+      "You can search the help center documentation (search_docs) and the organization's own knowledge (search_knowledge) — both KB articles and uploaded RAG documents in one query.",
+    capabilities: ['Search help center documentation, knowledge base articles, and RAG datasets'],
   }
 }

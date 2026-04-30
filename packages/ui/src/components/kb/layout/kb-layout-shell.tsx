@@ -131,6 +131,12 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
           showSearch={searchbarPosition === 'corner'}
           listStyle={listStyle}
           onArticleClick={onArticleClick}
+          homeHref={basePath || '/'}
+          title={kbName}
+          logoLight={logoLight}
+          logoDark={logoDark}
+          mode={effectiveMode}
+          showMode={showMode}
         />
         <main className='flex min-w-0 flex-1 flex-col px-4 py-8 @kb-md:px-8'>{children}</main>
       </div>

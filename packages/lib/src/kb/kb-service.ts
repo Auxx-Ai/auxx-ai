@@ -5,8 +5,10 @@ import type { ArticleStatus as ArticleStatusType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, asc, desc, eq, gt, gte, isNull, ne, sql } from 'drizzle-orm'
+import { DatasetService } from '../datasets/services/dataset-service'
 import type { KBDraftSettings } from './draft-settings'
 import { enrichDocWithHighlighting } from './highlight-code'
+import { enqueueKBSync } from './kb-sync-queue'
 
 // Local model types inferred from Drizzle schema
 type KnowledgeBase = typeof schema.KnowledgeBase.$inferSelect
@@ -192,10 +194,61 @@ export class KBService {
           updatedAt: new Date(),
         })
         .returning()
+      // Best-effort: provision the managed dataset that holds article embeddings.
+      // First article publish will retry if this fails.
+      this.ensureManagedDataset(knowledgeBase, createdById).catch((error) => {
+        logger.warn('Failed to provision managed dataset for new KB', {
+          knowledgeBaseId: knowledgeBase.id,
+          error: error instanceof Error ? error.message : error,
+        })
+      })
       return knowledgeBase
     } catch (error) {
       return this.handleError(error, 'Error creating knowledge base', { input })
     }
+  }
+
+  /**
+   * Provision (or reuse) the managed dataset that backs this KB's embeddings.
+   * Idempotent: returns the existing datasetId if it still resolves to a row,
+   * otherwise creates a fresh `__kb:${kb.id}` dataset and writes it back to the
+   * KnowledgeBase row.
+   */
+  async ensureManagedDataset(kb: KnowledgeBase, createdById: string): Promise<string> {
+    if (kb.datasetId) {
+      const existing = await this.db.query.Dataset.findFirst({
+        where: and(
+          eq(schema.Dataset.id, kb.datasetId),
+          eq(schema.Dataset.organizationId, this.organizationId)
+        ),
+        columns: { id: true },
+      })
+      if (existing) return existing.id
+    }
+
+    const datasetService = new DatasetService(this.db)
+    const dataset = await datasetService.create(this.organizationId, createdById, {
+      name: `__kb:${kb.id}`,
+      description: `Managed dataset for KB "${kb.name}"`,
+      isManaged: true,
+      chunkSettings: {
+        strategy: 'FIXED_SIZE',
+        size: 1024,
+        overlap: 200,
+        delimiter: '\n## ',
+        preprocessing: {
+          normalizeWhitespace: true,
+          removeUrlsAndEmails: false,
+        },
+      },
+    })
+
+    await this.db
+      .update(schema.KnowledgeBase)
+      .set({ datasetId: dataset.id, updatedAt: new Date() })
+      .where(eq(schema.KnowledgeBase.id, kb.id))
+
+    return dataset.id
   }
 
   /**
@@ -672,6 +725,16 @@ export class KBService {
         with: { publishedRevision: true, draftRevision: true },
       })
       if (!reloaded) throw this.createNotFoundError(`Article with ID '${id}' not found`)
+      // Slug changes need to surface in indexed segment metadata so kopilot
+      // results deep-link to the right URL.
+      if (article.isPublished && fields.slug !== undefined && fields.slug !== article.slug) {
+        void enqueueKBSync({
+          type: 'metadata',
+          articleId: id,
+          kbId: article.knowledgeBaseId,
+          organizationId: this.organizationId,
+        })
+      }
       return this.flattenForList(reloaded)
     } catch (error) {
       return this.handleError(error, 'Error updating article structure', { articleId: id })
@@ -712,7 +775,21 @@ export class KBService {
             where: eq(schema.Article.id, id),
             with: { publishedRevision: true, draftRevision: true },
           })
-          if (reloaded) results.push(this.flattenForList(reloaded))
+          if (reloaded) {
+            results.push(this.flattenForList(reloaded))
+            if (
+              reloaded.isPublished &&
+              cleaned.slug !== undefined &&
+              cleaned.slug !== existing.slug
+            ) {
+              void enqueueKBSync({
+                type: 'metadata',
+                articleId: id,
+                kbId: reloaded.knowledgeBaseId,
+                organizationId: this.organizationId,
+              })
+            }
+          }
         }
         return results
       })
@@ -754,6 +831,12 @@ export class KBService {
           .set({ publishedRevisionId: null, draftRevisionId: null })
           .where(eq(schema.Article.id, id))
         await tx.delete(schema.Article).where(eq(schema.Article.id, id))
+      })
+      void enqueueKBSync({
+        type: 'delete',
+        articleId: id,
+        kbId: article.knowledgeBaseId,
+        organizationId: this.organizationId,
       })
       return { success: true }
     } catch (error) {
@@ -844,16 +927,20 @@ export class KBService {
         where: eq(schema.Article.id, id),
         with: { publishedRevision: true, draftRevision: true },
       })
-      return {
-        article: this.flattenForList(
-          reloaded ?? {
-            ...result.article,
-            publishedRevision: null,
-            draftRevision: null,
-          }
-        ),
-        version: result.version,
-      }
+      const flat = this.flattenForList(
+        reloaded ?? {
+          ...result.article,
+          publishedRevision: null,
+          draftRevision: null,
+        }
+      )
+      void enqueueKBSync({
+        type: 'sync',
+        articleId: id,
+        kbId: flat.knowledgeBaseId,
+        organizationId: this.organizationId,
+      })
+      return { article: flat, version: result.version }
     } catch (error) {
       return this.handleError(error, 'Error publishing article', { articleId: id })
     }
@@ -870,6 +957,12 @@ export class KBService {
           updatedAt: new Date(),
         })
         .where(eq(schema.Article.id, article.id))
+      void enqueueKBSync({
+        type: 'unpublish',
+        articleId: id,
+        kbId: article.knowledgeBaseId,
+        organizationId: this.organizationId,
+      })
       return await this.reloadFlat(id)
     } catch (error) {
       return this.handleError(error, 'Error unpublishing article', { articleId: id })
@@ -878,7 +971,7 @@ export class KBService {
 
   async archiveArticle(id: string): Promise<ArticleListItem> {
     try {
-      await this.verifyArticleExists(id)
+      const article = await this.verifyArticleExists(id)
       await this.db
         .update(schema.Article)
         .set({
@@ -887,6 +980,12 @@ export class KBService {
           updatedAt: new Date(),
         })
         .where(eq(schema.Article.id, id))
+      void enqueueKBSync({
+        type: 'unpublish',
+        articleId: id,
+        kbId: article.knowledgeBaseId,
+        organizationId: this.organizationId,
+      })
       return await this.reloadFlat(id)
     } catch (error) {
       return this.handleError(error, 'Error archiving article', { articleId: id })

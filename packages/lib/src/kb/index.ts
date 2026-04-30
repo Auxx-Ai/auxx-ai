@@ -23,4 +23,6 @@ export {
   KBService,
   type KBUpdateInput,
 } from './kb-service'
+export { enqueueKBSync, type KBSyncJobData, type KBSyncJobType } from './kb-sync-queue'
+export { KBSyncService } from './kb-sync-service'
 export { articleToMarkdown } from './markdown/article-to-markdown'

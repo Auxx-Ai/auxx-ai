@@ -249,6 +249,163 @@ export class DocumentProcessor {
   }
 
   /**
+   * Process already-extracted inline content (e.g. KB article markdown).
+   * Skips the MediaAsset/extract step and joins the pipeline at preprocessing.
+   *
+   * @param jobData.documentId - Existing Document row id
+   * @param jobData.content - Pre-extracted text/markdown
+   * @param jobData.contentMetadata - Optional metadata recorded on Document
+   * @param jobData.baseMetadata - Stamped onto every segment's `metadata`
+   */
+  static async processInlineContent(
+    jobData: {
+      documentId: string
+      datasetId: string
+      organizationId: string
+      userId?: string
+      content: string
+      contentMetadata?: Record<string, any>
+      baseMetadata?: Record<string, any>
+    },
+    reporter: DocumentExecutionReporter,
+    signal?: AbortSignal
+  ): Promise<WorkerJobResult> {
+    const { documentId, datasetId, organizationId, userId, content, baseMetadata } = jobData
+    const startTime = Date.now()
+    const documentService = new DocumentService(db)
+
+    try {
+      if (signal?.aborted) {
+        throw new Error('Job cancelled')
+      }
+
+      await reporter.emit(DocumentEventType.PROCESSING_STARTED, {
+        fileName: undefined,
+        mimeType: 'text/markdown',
+      })
+
+      const document = await documentService.update(
+        documentId,
+        organizationId,
+        { status: DocumentStatus.PROCESSING },
+        { returning: true }
+      )
+
+      if (signal?.aborted) throw new Error('Job cancelled')
+
+      const [dataset] = await db
+        .select({ chunkSettings: schema.Dataset.chunkSettings })
+        .from(schema.Dataset)
+        .where(eq(schema.Dataset.id, datasetId))
+        .limit(1)
+
+      const documentChunkSettings = document?.chunkSettings as ChunkSettings | undefined
+      const datasetChunkSettings = dataset?.chunkSettings as ChunkSettings | undefined
+      const settings = documentChunkSettings ?? datasetChunkSettings
+
+      const cleanedContent = DocumentProcessor.preprocessContent(content, settings?.preprocessing)
+
+      await db
+        .delete(schema.DocumentSegment)
+        .where(eq(schema.DocumentSegment.documentId, documentId))
+
+      await reporter.emit(DocumentEventType.CHUNKING_STARTED, {
+        contentLength: cleanedContent.length,
+      })
+
+      const segments = await DocumentProcessor.createSegments(
+        documentId,
+        datasetId,
+        cleanedContent,
+        jobData.contentMetadata ?? {},
+        undefined,
+        organizationId,
+        settings,
+        baseMetadata
+      )
+
+      await reporter.emit(DocumentEventType.CHUNKING_COMPLETED, {
+        segmentCount: segments.length,
+      })
+
+      await documentService.update(documentId, organizationId, {
+        totalChunks: segments.length,
+      })
+
+      if (segments.length > 0) {
+        await reporter.emit(DocumentEventType.EMBEDDING_STARTED, {
+          totalSegments: segments.length,
+        })
+
+        await createDocumentProcessingFlow({
+          documentId,
+          datasetId,
+          organizationId,
+          userId,
+          segments: segments.map((s) => ({
+            segmentId: s!.id,
+            content: s!.content,
+          })),
+        })
+      } else {
+        const processingTime = Date.now() - startTime
+        await documentService.update(documentId, organizationId, {
+          status: DocumentStatus.INDEXED,
+          totalChunks: 0,
+          processingTime,
+          processedAt: new Date(),
+          metadata: {
+            processingCompletedAt: new Date().toISOString(),
+            segmentCount: 0,
+            processingTime,
+          },
+        })
+
+        await reporter.emit(DocumentEventType.PROCESSING_COMPLETED, {
+          segmentCount: 0,
+          totalProcessingTimeMs: processingTime,
+        })
+      }
+
+      return {
+        success: true,
+        data: {
+          documentId,
+          segmentCount: segments.length,
+          flowCreated: segments.length > 0,
+        },
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Processing failed'
+
+      await reporter.emit(DocumentEventType.PROCESSING_FAILED, {
+        error: errorMessage,
+      })
+
+      await documentService
+        .update(documentId, organizationId, {
+          status: DocumentStatus.FAILED,
+          metadata: {
+            error: errorMessage,
+            failedAt: new Date().toISOString(),
+            processingTime: Date.now() - startTime,
+          },
+        })
+        .catch((updateError) => {
+          logger.error('Failed to update document error status', {
+            documentId,
+            updateError: updateError instanceof Error ? updateError.message : updateError,
+          })
+        })
+
+      return {
+        success: false,
+        error: { message: errorMessage, code: 'PROCESSING_FAILED' },
+      }
+    }
+  }
+
+  /**
    * Extract content from document file
    */
   private static async extractContent(jobData: DocumentProcessingJobData) {
@@ -361,7 +518,8 @@ export class DocumentProcessor {
     _metadata: Record<string, any> = {},
     chunkingConfig?: DocumentProcessingJobData['chunkingConfig'],
     organizationId?: string,
-    chunkSettings?: ChunkSettings
+    chunkSettings?: ChunkSettings,
+    baseMetadata?: Record<string, any>
   ) {
     try {
       // Use provided settings or fetch from database (for backward compatibility)
@@ -415,7 +573,7 @@ export class DocumentProcessor {
           startOffset: chunk.startOffset,
           endOffset: chunk.endOffset,
           tokenCount: chunk.tokenCount,
-          metadata: chunk.metadata || {},
+          metadata: { ...(baseMetadata ?? {}), ...(chunk.metadata || {}) },
           enabled: true,
           indexStatus: IndexStatus.PENDING,
           organizationId: actualOrganizationId,

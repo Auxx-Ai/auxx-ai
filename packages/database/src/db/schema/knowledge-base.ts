@@ -15,6 +15,7 @@ import {
   uniqueIndex,
 } from './_shared'
 
+import { Dataset } from './dataset'
 import { MediaAsset } from './media-asset'
 import { Organization } from './organization'
 
@@ -70,6 +71,11 @@ export const KnowledgeBase = pgTable(
     logoDarkId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),
     logoLightId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),
     draftSettings: jsonb(),
+    /** Managed dataset that holds embeddings for this KB's articles. */
+    datasetId: text().references((): AnyPgColumn => Dataset.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     uniqueIndex('KnowledgeBase_logoDarkId_key').using('btree', table.logoDarkId.asc().nullsLast()),
