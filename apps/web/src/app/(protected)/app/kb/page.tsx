@@ -8,7 +8,7 @@ export default async function KBMain() {
   const knowledgeBases = await api.kb.list()
 
   if (knowledgeBases && knowledgeBases.length > 0) {
-    redirect(`/app/kb/${knowledgeBases[0].id}/editor/general`)
+    redirect(`/app/kb/${knowledgeBases[0].id}/editor`)
   }
 
   return <KBEmptyState />

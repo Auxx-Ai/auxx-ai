@@ -8,8 +8,14 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@auxx/ui/components/breadcrumb'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { SidebarTrigger } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
+import { ChevronDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import Link from 'next/link'
 import React from 'react'
@@ -240,6 +246,61 @@ const MainPageBreadcrumbItem: React.FC<MainPageBreadcrumbItemProps> = ({
 }
 
 /**
+ * apps/web/src/components/ui/main-page.tsx
+ * MainPageBreadcrumbDropdown — a breadcrumb item whose body is a DropdownMenu
+ * trigger styled to match sibling MainPageBreadcrumbItem entries. Used for
+ * in-place entity switching (e.g. KB switcher) without leaving the breadcrumb.
+ */
+interface MainPageBreadcrumbDropdownProps {
+  /** The label rendered inside the trigger (text, badge, or anything React). */
+  label: React.ReactNode
+  /** Optional leading icon. */
+  icon?: React.ReactNode
+  /** Dropdown menu body (rendered inside DropdownMenuContent). */
+  children: React.ReactNode
+  /** If true, no separator chevron is rendered after this item. */
+  last?: boolean
+  /** Extra className merged onto the breadcrumb item. */
+  className?: string
+  /** Extra className merged onto the DropdownMenuContent. */
+  contentClassName?: string
+  /** DropdownMenuContent align prop. */
+  align?: 'start' | 'center' | 'end'
+}
+
+const MainPageBreadcrumbDropdown: React.FC<MainPageBreadcrumbDropdownProps> = ({
+  label,
+  icon,
+  children,
+  last,
+  className,
+  contentClassName,
+  align = 'start',
+}) => {
+  return (
+    <>
+      <BreadcrumbItem className={className}>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className={cn(
+              'flex items-center gap-1 rounded py-0.5 px-1.5 hover:bg-primary-200 text-nowrap shrink-0 outline-none',
+              'data-[state=open]:bg-primary-200'
+            )}>
+            {icon}
+            {label}
+            <ChevronDown className='size-3.5 opacity-60' />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align={align} className={contentClassName}>
+            {children}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </BreadcrumbItem>
+      {!last && <BreadcrumbSeparator />}
+    </>
+  )
+}
+
+/**
  * Configuration for a single docked panel
  */
 interface DockedPanelConfig {
@@ -263,7 +324,9 @@ interface DockedPanelConfig {
  * Props for MainPageContent component
  */
 interface MainPageContentProps extends React.ComponentProps<'div'> {
-  /** Docked panels configuration - supports multiple panels side by side */
+  /** Left-docked panels (rendered before the main panel). */
+  leftPanels?: DockedPanelConfig[]
+  /** Right-docked panels configuration - supports multiple panels side by side */
   dockedPanels?: DockedPanelConfig[]
 
   /** @deprecated Use dockedPanels instead - Optional docked panel content rendered on the right */
@@ -285,6 +348,7 @@ interface MainPageContentProps extends React.ComponentProps<'div'> {
 function MainPageContent({
   className,
   children,
+  leftPanels,
   dockedPanels,
   // Legacy props
   dockedPanel,
@@ -295,7 +359,7 @@ function MainPageContent({
   ...props
 }: MainPageContentProps) {
   // Convert legacy props to new format
-  const panels: DockedPanelConfig[] =
+  const rightPanels: DockedPanelConfig[] =
     dockedPanels ??
     (dockedPanel
       ? [
@@ -309,6 +373,7 @@ function MainPageContent({
           },
         ]
       : [])
+  const left: DockedPanelConfig[] = leftPanels ?? []
 
   const [isResizing, setIsResizing] = React.useState(false)
 
@@ -316,11 +381,35 @@ function MainPageContent({
   // only adds/removes siblings, never remounts the main content.
   return (
     <div className='flex flex-row flex-1 min-h-0 min-w-0'>
+      <AnimatePresence initial={false}>
+        {left.map((panel) => (
+          <motion.div
+            key={panel.key}
+            className={cn('flex flex-row shrink-0 overflow-hidden', panel.className)}
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: panel.width + 8, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={
+              isResizing ? { duration: 0 } : { duration: 0.2, ease: [0.165, 0.84, 0.44, 1] }
+            }>
+            <PanelFrame width={panel.width}>{panel.content}</PanelFrame>
+            <PanelResizeHandle
+              currentWidth={panel.width}
+              onWidthChange={panel.onWidthChange}
+              minWidth={panel.minWidth}
+              maxWidth={panel.maxWidth}
+              side='left'
+              onResizeStart={() => setIsResizing(true)}
+              onResizeEnd={() => setIsResizing(false)}
+            />
+          </motion.div>
+        ))}
+      </AnimatePresence>
       <PanelFrame data-main='content' flex shrink={false} className={className} {...props}>
         {children}
       </PanelFrame>
       <AnimatePresence initial={false}>
-        {panels.map((panel) => (
+        {rightPanels.map((panel) => (
           <motion.div
             key={panel.key}
             className={cn('flex flex-row shrink-0 overflow-hidden', panel.className)}
@@ -385,5 +474,6 @@ export {
   MainPageContent,
   MainPageBreadcrumb,
   MainPageBreadcrumbItem,
+  MainPageBreadcrumbDropdown,
   type DockedPanelConfig,
 }

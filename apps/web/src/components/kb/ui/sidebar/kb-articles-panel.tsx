@@ -2,21 +2,13 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon, getIcon } from '@auxx/ui/components/icons'
 import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
-import { toastError } from '@auxx/ui/components/toast'
 import { closestCorners, DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
-import { Archive, Loader2, Plus, Settings, Upload } from 'lucide-react'
-import Link from 'next/link'
+import { Archive, Loader2, Plus } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-list'
 import { useArticleMove } from '../../hooks/use-article-move'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
@@ -145,41 +137,6 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
     }
   }, [articles, basePath, createArticle, router])
 
-  const importInputRef = useRef<HTMLInputElement>(null)
-
-  const handleImportMarkdown = useCallback(
-    async (files: FileList | null) => {
-      if (!files || files.length === 0) return
-      const { mdToBlocks, parseFrontmatter } = await import('@auxx/lib/kb/markdown')
-      const failures: string[] = []
-      for (const file of Array.from(files)) {
-        try {
-          const text = await file.text()
-          const { fields } = parseFrontmatter(text)
-          const doc = mdToBlocks(text)
-          const inferredTitle =
-            fields.title ?? extractFirstHeading(doc) ?? file.name.replace(/\.md$/i, '')
-          await createArticle({
-            title: inferredTitle,
-            slug: fields.slug,
-            description: fields.description,
-            contentJson: doc,
-          })
-        } catch (error) {
-          console.error('Markdown import failed', file.name, error)
-          failures.push(file.name)
-        }
-      }
-      if (failures.length > 0) {
-        toastError({
-          title: `Failed to import ${failures.length} file${failures.length === 1 ? '' : 's'}`,
-          description: failures.join(', '),
-        })
-      }
-    },
-    [createArticle]
-  )
-
   if (!hasLoaded) {
     return (
       <div className='flex items-center justify-center py-8'>
@@ -207,52 +164,6 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
 
   return (
     <div className='relative space-y-1 p-1'>
-      <div className='mb-1 flex items-center justify-between px-2'>
-        <h3 className='text-xs font-medium uppercase text-muted-foreground'>Articles</h3>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant='ghost' size='icon-sm' className='h-6 w-6' disabled={isCreating}>
-              <Plus />
-              <span className='sr-only'>Add Page or Settings</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end'>
-            <DropdownMenuItem disabled={isCreating} onClick={handleCreateRoot}>
-              {isCreating ? (
-                <>
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className='mr-2 h-4 w-4' /> Add Page
-                </>
-              )}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => importInputRef.current?.click()}>
-              <Upload className='mr-2 h-4 w-4' /> Import .md
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href={`${basePath}/settings`}>
-                <Settings className='mr-2 h-4 w-4' />
-                KB Settings
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <input
-          ref={importInputRef}
-          type='file'
-          accept='.md,text/markdown'
-          multiple
-          className='hidden'
-          onChange={(e) => {
-            void handleImportMarkdown(e.target.files)
-            e.target.value = ''
-          }}
-        />
-      </div>
-
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -322,21 +233,4 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
       </div>
     </div>
   )
-}
-
-interface MaybeDoc {
-  content?: { attrs?: { blockType?: string }; content?: { type: string; text?: string }[] }[]
-}
-
-function extractFirstHeading(doc: MaybeDoc): string | undefined {
-  for (const block of doc.content ?? []) {
-    if (block?.attrs?.blockType !== 'heading') continue
-    const text = (block.content ?? [])
-      .filter((c) => c.type === 'text')
-      .map((c) => c.text ?? '')
-      .join('')
-      .trim()
-    if (text.length > 0) return text
-  }
-  return undefined
 }
