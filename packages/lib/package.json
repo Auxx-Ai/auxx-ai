@@ -382,6 +382,12 @@
       "import": "./dist/kb/index.mjs",
       "default": "./src/kb/index.ts"
     },
+    "./kb/client": {
+      "types": "./src/kb/client.ts",
+      "source": "./src/kb/client.ts",
+      "import": "./dist/kb/client.mjs",
+      "default": "./src/kb/client.ts"
+    },
     "./kb/markdown": {
       "types": "./src/kb/markdown/index.ts",
       "source": "./src/kb/markdown/index.ts",

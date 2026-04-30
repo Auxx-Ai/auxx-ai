@@ -1,21 +1,36 @@
 // apps/web/src/components/kb/ui/settings/general/logos-section.tsx
 'use client'
 
+import { mergeDraftOverLive } from '@auxx/lib/kb/client'
 import { Button } from '@auxx/ui/components/button'
-import { FormField } from '@auxx/ui/components/form'
+import { Form, FormField } from '@auxx/ui/components/form'
 import { Section } from '@auxx/ui/components/section'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Moon, Sun } from 'lucide-react'
-import type { UseFormReturn } from 'react-hook-form'
+import { useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { useFileSelect } from '~/components/file-select'
 import { FileSelectPicker } from '~/components/pickers/file-select-picker'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import type { GeneralFormValues } from './general-schema'
+import { useDraftSettingsAutosave } from '../../../hooks/use-draft-settings-autosave'
+import { type KnowledgeBase, selectDraftedSections } from '../../../store/knowledge-base-store'
+import { SectionStatusBadge } from '../section-header'
 
-interface LogosSectionProps {
-  form: UseFormReturn<GeneralFormValues>
-  isPending: boolean
-  knowledgeBaseId: string
+const logosSchema = z.object({
+  logoLight: z.string().nullish(),
+  logoDark: z.string().nullish(),
+})
+
+type LogosFormValues = z.infer<typeof logosSchema>
+
+function buildDefaults(kb: KnowledgeBase): LogosFormValues {
+  const merged = mergeDraftOverLive(kb as any) as KnowledgeBase
+  return {
+    logoLight: merged.logoLight || '',
+    logoDark: merged.logoDark || '',
+  }
 }
 
 interface LogoUploadCellProps {
@@ -23,16 +38,9 @@ interface LogoUploadCellProps {
   value: string
   onChange: (url: string) => void
   knowledgeBaseId: string
-  isPending: boolean
 }
 
-function LogoUploadCell({
-  variant,
-  value,
-  onChange,
-  knowledgeBaseId,
-  isPending,
-}: LogoUploadCellProps) {
+function LogoUploadCell({ variant, value, onChange, knowledgeBaseId }: LogoUploadCellProps) {
   const fileSelect = useFileSelect({
     entityType: 'KNOWLEDGE_BASE',
     entityId: knowledgeBaseId,
@@ -66,7 +74,7 @@ function LogoUploadCell({
       </div>
       <div className='flex items-center gap-2'>
         <FileSelectPicker fileSelect={fileSelect}>
-          <Button type='button' variant='outline' size='sm' disabled={isPending}>
+          <Button type='button' variant='outline' size='sm'>
             {value ? 'Change logo' : 'Upload logo'}
           </Button>
         </FileSelectPicker>
@@ -76,8 +84,7 @@ function LogoUploadCell({
             variant='ghost'
             size='sm'
             className='text-destructive'
-            onClick={() => onChange('')}
-            disabled={isPending}>
+            onClick={() => onChange('')}>
             Remove
           </Button>
         )}
@@ -86,52 +93,74 @@ function LogoUploadCell({
   )
 }
 
-export function LogosSection({ form, isPending, knowledgeBaseId }: LogosSectionProps) {
+interface LogosSectionProps {
+  knowledgeBaseId: string
+  knowledgeBase: KnowledgeBase
+}
+
+export function LogosSection({ knowledgeBaseId, knowledgeBase }: LogosSectionProps) {
+  const form = useForm<LogosFormValues>({
+    resolver: standardSchemaResolver(logosSchema),
+    defaultValues: buildDefaults(knowledgeBase),
+  })
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-hydrate on KB switch — autosave keeps the form in sync otherwise
+  useEffect(() => {
+    form.reset(buildDefaults(knowledgeBase))
+  }, [knowledgeBase.id, form])
+
+  const watch = form.watch()
+  const { isSaving, lastSavedAt } = useDraftSettingsAutosave(knowledgeBaseId, watch, {
+    registryKey: 'logos',
+  })
+  const drafted = selectDraftedSections(knowledgeBase).has('logos')
+
   return (
     <Section
       title='Logos'
-      description="Replace the content's title with a custom logo. Recommended width: 600px or wider.">
-      <VarEditorField orientation='vertical' className='p-0'>
-        <FormField
-          control={form.control}
-          name='logoLight'
-          render={({ field, fieldState }) => (
-            <VarEditorFieldRow
-              title='Light mode logo'
-              showIcon
-              icon={<Sun className='size-3.5' />}
-              validationError={fieldState.error?.message}>
-              <LogoUploadCell
-                variant='light'
-                value={field.value ?? ''}
-                onChange={(v) => field.onChange(v)}
-                knowledgeBaseId={knowledgeBaseId}
-                isPending={isPending}
-              />
-            </VarEditorFieldRow>
-          )}
-        />
+      description="Replace the content's title with a custom logo. Recommended width: 600px or wider."
+      actions={<SectionStatusBadge drafted={drafted} saving={isSaving} savedAt={lastSavedAt} />}>
+      <Form {...form}>
+        <VarEditorField orientation='vertical' className='p-0'>
+          <FormField
+            control={form.control}
+            name='logoLight'
+            render={({ field, fieldState }) => (
+              <VarEditorFieldRow
+                title='Light mode logo'
+                showIcon
+                icon={<Sun className='size-3.5' />}
+                validationError={fieldState.error?.message}>
+                <LogoUploadCell
+                  variant='light'
+                  value={field.value ?? ''}
+                  onChange={(v) => field.onChange(v)}
+                  knowledgeBaseId={knowledgeBaseId}
+                />
+              </VarEditorFieldRow>
+            )}
+          />
 
-        <FormField
-          control={form.control}
-          name='logoDark'
-          render={({ field, fieldState }) => (
-            <VarEditorFieldRow
-              title='Dark mode logo'
-              showIcon
-              icon={<Moon className='size-3.5' />}
-              validationError={fieldState.error?.message}>
-              <LogoUploadCell
-                variant='dark'
-                value={field.value ?? ''}
-                onChange={(v) => field.onChange(v)}
-                knowledgeBaseId={knowledgeBaseId}
-                isPending={isPending}
-              />
-            </VarEditorFieldRow>
-          )}
-        />
-      </VarEditorField>
+          <FormField
+            control={form.control}
+            name='logoDark'
+            render={({ field, fieldState }) => (
+              <VarEditorFieldRow
+                title='Dark mode logo'
+                showIcon
+                icon={<Moon className='size-3.5' />}
+                validationError={fieldState.error?.message}>
+                <LogoUploadCell
+                  variant='dark'
+                  value={field.value ?? ''}
+                  onChange={(v) => field.onChange(v)}
+                  knowledgeBaseId={knowledgeBaseId}
+                />
+              </VarEditorFieldRow>
+            )}
+          />
+        </VarEditorField>
+      </Form>
     </Section>
   )
 }

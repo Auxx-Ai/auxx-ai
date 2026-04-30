@@ -12,43 +12,54 @@ import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 import { fireKBRevalidate } from '~/server/lib/kb-revalidate'
 
-// Base knowledge base fields schema
-const kbFieldsSchema = z.object({
-  name: z.string().min(1).optional(),
+// Live-only fields. Draftable presentation fields go through
+// `kb.updateDraftSettings`.
+const kbLiveFieldsSchema = z.object({
   slug: z.string().min(1).optional(),
-  description: z.string().optional(),
-  publishStatus: z.enum(['DRAFT', 'PUBLISHED', 'UNLISTED']).optional(),
+  customDomain: z.string().nullish(),
   visibility: z.enum(['PUBLIC', 'INTERNAL']).optional(),
-  customDomain: z.string().optional(),
-  logoDark: z.string().optional(),
-  logoLight: z.string().optional(),
+  publishStatus: z.enum(['DRAFT', 'PUBLISHED', 'UNLISTED']).optional(),
+})
+
+// Draftable subset — shallow-merged into KnowledgeBase.draftSettings.
+const kbDraftSettingsSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().nullish(),
+  logoDark: z.string().nullish(),
+  logoLight: z.string().nullish(),
+  logoDarkId: z.string().nullish(),
+  logoLightId: z.string().nullish(),
   theme: z.enum(['clean', 'muted', 'gradient', 'bold']).optional(),
   showMode: z.boolean().optional(),
   defaultMode: z.enum(['light', 'dark']).optional(),
-  primaryColorLight: z.string().optional(),
-  primaryColorDark: z.string().optional(),
-  tintColorLight: z.string().optional(),
-  tintColorDark: z.string().optional(),
-  infoColorLight: z.string().optional(),
-  infoColorDark: z.string().optional(),
-  successColorLight: z.string().optional(),
-  successColorDark: z.string().optional(),
-  warningColorLight: z.string().optional(),
-  warningColorDark: z.string().optional(),
-  dangerColorLight: z.string().optional(),
-  dangerColorDark: z.string().optional(),
-  fontFamily: z.string().optional(),
+  primaryColorLight: z.string().nullish(),
+  primaryColorDark: z.string().nullish(),
+  tintColorLight: z.string().nullish(),
+  tintColorDark: z.string().nullish(),
+  infoColorLight: z.string().nullish(),
+  infoColorDark: z.string().nullish(),
+  successColorLight: z.string().nullish(),
+  successColorDark: z.string().nullish(),
+  warningColorLight: z.string().nullish(),
+  warningColorDark: z.string().nullish(),
+  dangerColorLight: z.string().nullish(),
+  dangerColorDark: z.string().nullish(),
+  fontFamily: z.string().nullish(),
   iconsFamily: z.enum(['solid', 'regular', 'light']).optional(),
   cornerStyle: z.enum(['rounded', 'straight']).optional(),
   sidebarListStyle: z.enum(['default', 'pill', 'line']).optional(),
   searchbarPosition: z.enum(['center', 'corner']).optional(),
   headerEnabled: z.boolean().optional(),
   footerEnabled: z.boolean().optional(),
-  headerNavigation: z.array(z.object({ title: z.string(), link: z.string() })).optional(),
-  footerNavigation: z.array(z.object({ title: z.string(), link: z.string() })).optional(),
+  headerNavigation: z.array(z.object({ title: z.string(), link: z.string() })).nullish(),
+  footerNavigation: z.array(z.object({ title: z.string(), link: z.string() })).nullish(),
 })
 
-const kbCreateSchema = kbFieldsSchema.extend({ name: z.string().min(1), slug: z.string().min(1) })
+const kbCreateSchema = z.object({
+  name: z.string().min(1),
+  slug: z.string().min(1),
+  description: z.string().optional(),
+})
 
 const articleDraftFieldsSchema = z.object({
   title: z.string().optional(),
@@ -137,11 +148,34 @@ export const knowledgeBaseRouter = createTRPCRouter({
   }),
 
   update: protectedProcedure
-    .input(z.object({ id: z.string(), data: kbFieldsSchema }))
+    .input(z.object({ id: z.string(), data: kbLiveFieldsSchema }))
     .mutation(async ({ ctx, input }) => {
       const result = await getKBService(ctx).updateKnowledgeBase(input.id, input.data)
       void fireKBRevalidate(input.id)
       return result
+    }),
+
+  updateDraftSettings: protectedProcedure
+    .input(z.object({ id: z.string(), patch: kbDraftSettingsSchema }))
+    .mutation(async ({ ctx, input }) => {
+      // No revalidate — draft is admin-only.
+      return await getKBService(ctx).updateDraftSettings(input.id, input.patch)
+    }),
+
+  publishPendingSettings: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .use(notDemo('publish knowledge base settings'))
+    .mutation(async ({ ctx, input }) => {
+      const result = await getKBService(ctx).publishPendingSettings(input.id)
+      void fireKBRevalidate(input.id)
+      return result
+    }),
+
+  discardSettingsDraft: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // No revalidate — discard never affects the public site.
+      return await getKBService(ctx).discardSettingsDraft(input.id)
     }),
 
   delete: protectedProcedure

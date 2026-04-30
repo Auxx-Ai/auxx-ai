@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/preview/kb-preview-topbar.tsx
 'use client'
 
+import { hasUnpublishedSettings as hasUnpublished } from '@auxx/lib/kb/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -9,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { ToggleGroup, ToggleGroupItem } from '@auxx/ui/components/toggle-group'
 import {
@@ -25,8 +27,10 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useKbPublicUrl } from '~/components/kb/hooks/use-kb-public-url'
+import { useKnowledgeBaseMutations } from '~/components/kb/hooks/use-knowledge-base-mutations'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { type KnowledgeBase, selectDraftedSections } from '../../store/knowledge-base-store'
 import { KBSitePublishDialog } from './kb-site-publish-dialog'
 import { type Device, type Theme, usePreview } from './preview-context'
 
@@ -34,6 +38,17 @@ interface KBPreviewTopBarProps {
   kbId: string
   /** Slug path of the article currently being edited; used to deep-link the new tab. */
   activeSlugPath?: string[]
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  identity: 'Brand',
+  logos: 'Logos',
+  theme: 'Theme',
+  colors: 'Colors',
+  modes: 'Modes',
+  styling: 'Site styles',
+  header: 'Header',
+  footer: 'Footer',
 }
 
 export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) {
@@ -45,6 +60,14 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
   const { data: kb } = api.kb.byId.useQuery({ id: kbId })
   const publishMutation = api.kb.publishSite.useMutation()
   const unpublishMutation = api.kb.unpublishSite.useMutation()
+
+  const { publishPendingSettings, discardSettingsDraft, isPublishingPending, isDiscarding } =
+    useKnowledgeBaseMutations()
+
+  const draftedKb = kb as KnowledgeBase | undefined
+  const drafted = selectDraftedSections(draftedKb)
+  const pendingCount = drafted.size
+  const hasPending = hasUnpublished((draftedKb?.draftSettings as never) ?? null) || pendingCount > 0
 
   const handleThemeChange = (value?: string) => {
     if (!value) return
@@ -102,6 +125,22 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
     }
   }
 
+  const handlePublishPending = async () => {
+    await publishPendingSettings(kbId)
+  }
+
+  const handleDiscardPending = async () => {
+    const ok = await confirm({
+      title: 'Discard pending changes?',
+      description: 'All unpublished settings changes will be lost. This cannot be undone.',
+      confirmText: 'Discard',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!ok) return
+    await discardSettingsDraft(kbId)
+  }
+
   const isPublished = kb?.publishStatus === 'PUBLISHED'
   const isUnlisted = kb?.publishStatus === 'UNLISTED'
   const isLive = isPublished || isUnlisted
@@ -148,6 +187,52 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        )}
+
+        {hasPending && (
+          <>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  size='sm'
+                  variant='outline'
+                  className='gap-2 rounded-md border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100'>
+                  <span className='inline-block size-1.5 animate-pulse rounded-full bg-amber-500' />
+                  {pendingCount === 1 ? '1 pending change' : `${pendingCount} pending changes`}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align='start' className='w-64 p-3 text-sm'>
+                <div className='mb-1 font-medium'>Pending sections</div>
+                {drafted.size === 0 ? (
+                  <p className='text-muted-foreground text-xs'>No drafted fields.</p>
+                ) : (
+                  <ul className='space-y-0.5 text-muted-foreground'>
+                    {Array.from(drafted).map((s) => (
+                      <li key={s}>· {SECTION_LABELS[s] ?? s}</li>
+                    ))}
+                  </ul>
+                )}
+              </PopoverContent>
+            </Popover>
+            {isLive ? (
+              <Button
+                size='sm'
+                variant='info'
+                onClick={handlePublishPending}
+                loading={isPublishingPending}
+                loadingText='Publishing…'>
+                Publish changes
+              </Button>
+            ) : null}
+            <Button
+              size='sm'
+              variant='ghost'
+              onClick={handleDiscardPending}
+              loading={isDiscarding}
+              loadingText='Discarding…'>
+              Discard
+            </Button>
+          </>
         )}
       </div>
 
@@ -197,7 +282,7 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
         onOpenChange={setIsPublishDialogOpen}
         kbId={kbId}
       />
-      {ConfirmDialog}
+      <ConfirmDialog />
     </div>
   )
 }

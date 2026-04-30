@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/preview/preview-context.tsx
 'use client'
 
+import { mergeDraftOverLive } from '@auxx/lib/kb/client'
 import React from 'react'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 
@@ -39,16 +40,26 @@ export function PreviewProvider({ children, knowledgeBase }: PreviewProviderProp
     setIsLoading(!knowledgeBase)
   }, [knowledgeBase])
 
+  // Merge pending draft on top of live columns so the preview iframe reflects
+  // unpublished settings while the public site stays untouched.
+  const merged = React.useMemo(
+    () =>
+      knowledgeBase
+        ? (mergeDraftOverLive(knowledgeBase as Record<string, unknown>) as KnowledgeBase)
+        : knowledgeBase,
+    [knowledgeBase]
+  )
+
   const value = React.useMemo<PreviewContextValue>(
     () => ({
-      knowledgeBase,
+      knowledgeBase: merged,
       isLoading,
       isDark: theme === 'dark',
       isMobile: device === 'mobile',
       setTheme,
       setDevice,
     }),
-    [knowledgeBase, isLoading, theme, device]
+    [merged, isLoading, theme, device]
   )
 
   return <PreviewContext.Provider value={value}>{children}</PreviewContext.Provider>

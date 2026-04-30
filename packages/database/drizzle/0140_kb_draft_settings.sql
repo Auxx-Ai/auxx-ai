@@ -1,0 +1,1 @@
+ALTER TABLE "KnowledgeBase" ADD COLUMN "draftSettings" jsonb;
