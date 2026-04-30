@@ -5,6 +5,7 @@ import {
   type DocJSON,
   extractKBHeadings,
   getArticleNeighbours,
+  getArticleParentLink,
   KBArticlePager,
   KBArticleRenderer,
   KBLayout,
@@ -13,10 +14,12 @@ import {
 import { useEffect, useState } from 'react'
 import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleList } from '../../hooks/use-article-list'
+import { useKbPublicUrl } from '../../hooks/use-kb-public-url'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import { KBPreviewTopBar } from './kb-preview-topbar'
 import { mapKBForPreview } from './map-kb-for-preview'
 import { PreviewProvider, usePreview } from './preview-context'
+import { DesktopPreviewFrame, MobilePreviewFrame } from './preview-frames'
 
 interface KBPreviewProps {
   knowledgeBase: KnowledgeBase
@@ -49,48 +52,67 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   const articleId = activeArticle?.id ?? null
   const { contentJson, description } = useArticleContent(articleId, kbId)
 
+  const publicUrl = useKbPublicUrl(knowledgeBase?.slug)
+
   if (!knowledgeBase) return null
 
-  const widthClass = isMobile ? 'w-[420px]' : 'w-full max-w-7xl'
   const docJson = (contentJson ?? null) as DocJSON | null
   const headings = docJson ? extractKBHeadings(docJson) : []
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
     : { prev: undefined, next: undefined }
+  const parent = getArticleParentLink(activeArticle, articles, '#preview')
+
+  const isLive =
+    knowledgeBase.publishStatus === 'PUBLISHED' || knowledgeBase.publishStatus === 'UNLISTED'
+  const browserUrl = isLive && publicUrl ? publicUrl : `(draft) ${knowledgeBase.slug}`
+
+  const layout = (
+    <div style={{ colorScheme: isDark ? 'dark' : 'light' }}>
+      <KBLayout
+        kb={mapKBForPreview(knowledgeBase)}
+        articles={articles}
+        basePath='#preview'
+        activeArticleId={activeArticle?.id}
+        mode={isDark ? 'dark' : 'light'}
+        embedded
+        onArticleClick={(id) => setOverrideId(id)}>
+        {articleId ? (
+          <div className='flex min-w-0 flex-1 flex-col'>
+            <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
+              <aside className='hidden @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:block @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:px-4 @kb-lg:pt-8'>
+                <KBTableOfContents headings={headings} />
+              </aside>
+              <div className='min-w-0 flex-1 @kb-lg:order-1'>
+                <KBArticleRenderer
+                  doc={docJson}
+                  title={activeArticle?.title ?? articles.find((a) => a.id === articleId)?.title}
+                  emoji={activeArticle?.emoji ?? articles.find((a) => a.id === articleId)?.emoji}
+                  description={description ?? activeArticle?.description}
+                  parent={parent}
+                />
+              </div>
+            </div>
+            <div className='mt-auto w-full max-w-3xl px-6'>
+              <KBArticlePager articles={articles} prev={prev} next={next} basePath='#preview' />
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '2rem', opacity: 0.7 }}>No articles yet.</div>
+        )}
+      </KBLayout>
+    </div>
+  )
 
   return (
     <div className='flex flex-1 flex-col'>
       <KBPreviewTopBar kbId={kbId} activeSlugPath={activeSlugPath} />
       <div className='flex flex-1 items-start justify-center overflow-auto bg-muted p-4'>
-        <div
-          className={`${widthClass} overflow-hidden rounded border border-foreground/10 shadow-sm`}
-          style={{ colorScheme: isDark ? 'dark' : 'light' }}>
-          <KBLayout
-            kb={mapKBForPreview(knowledgeBase)}
-            articles={articles}
-            basePath='#preview'
-            activeArticleId={activeArticle?.id}
-            mode={isDark ? 'dark' : 'light'}
-            onArticleClick={(id) => setOverrideId(id)}>
-            {articleId ? (
-              <div className='flex min-w-0 flex-1 flex-col'>
-                <div className='w-full max-w-3xl px-6 pt-4'>
-                  <KBTableOfContents headings={headings} />
-                </div>
-                <KBArticleRenderer
-                  doc={docJson}
-                  title={activeArticle?.title ?? articles.find((a) => a.id === articleId)?.title}
-                  description={description ?? activeArticle?.description}
-                />
-                <div className='mt-auto w-full max-w-3xl px-6'>
-                  <KBArticlePager articles={articles} prev={prev} next={next} basePath='#preview' />
-                </div>
-              </div>
-            ) : (
-              <div style={{ padding: '2rem', opacity: 0.7 }}>No articles yet.</div>
-            )}
-          </KBLayout>
-        </div>
+        {isMobile ? (
+          <MobilePreviewFrame>{layout}</MobilePreviewFrame>
+        ) : (
+          <DesktopPreviewFrame url={browserUrl}>{layout}</DesktopPreviewFrame>
+        )}
       </div>
     </div>
   )

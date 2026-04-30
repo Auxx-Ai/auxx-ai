@@ -3,7 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, ilike, or } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import { KBService } from '../../../../../kb'
+import { articleToMarkdown, KBService } from '../../../../../kb'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 
@@ -13,6 +13,14 @@ const MAX_CONTENT_LENGTH = 800
 function truncate(text: string | null | undefined, maxLen: number): string {
   if (!text) return ''
   return text.length > maxLen ? `${text.slice(0, maxLen)}...` : text
+}
+
+function renderArticleBody(contentJson: unknown, fallback: string | null | undefined): string {
+  if (contentJson) {
+    const md = articleToMarkdown({ contentJson })
+    if (md && md.trim().length > 0) return md
+  }
+  return fallback ?? ''
 }
 
 /**
@@ -46,6 +54,7 @@ async function searchArticles(
       description: pub.description,
       excerpt: pub.excerpt,
       content: pub.content,
+      contentJson: pub.contentJson,
       knowledgeBaseId: schema.Article.knowledgeBaseId,
       slug: schema.Article.slug,
       updatedAt: schema.Article.updatedAt,
@@ -109,7 +118,7 @@ export function createSearchKBTool(getDeps: GetToolDeps): AgentToolDefinition {
         id: a.id,
         title: a.title,
         excerpt: a.excerpt || a.description || '',
-        content: truncate(a.content, MAX_CONTENT_LENGTH),
+        content: truncate(renderArticleBody(a.contentJson, a.content), MAX_CONTENT_LENGTH),
         knowledgeBaseId: a.knowledgeBaseId,
       }))
 

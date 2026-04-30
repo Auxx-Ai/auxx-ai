@@ -38,16 +38,20 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { orgSlug, kbSlug } = await params
   const visibility = await getCachedKBVisibility(orgSlug, kbSlug)
-  if (!visibility || visibility.publishStatus === 'DRAFT') return { title: 'Not found' }
+  if (!visibility || visibility.publishStatus === 'DRAFT') {
+    return { title: { absolute: 'Not found' } }
+  }
 
   if (visibility.visibility === 'INTERNAL') {
-    return { title: 'Knowledge base', robots: { index: false, follow: false } }
+    return { title: { absolute: 'Knowledge base' }, robots: { index: false, follow: false } }
   }
 
   const { kb } = await getPublicKBPayloadWithContent(orgSlug, kbSlug)
-  if (!kb) return { title: 'Not found' }
+  if (!kb) return { title: { absolute: 'Not found' } }
   return {
-    title: kb.name,
+    // Use absolute so the parent layout's "%s | KB Name" template doesn't
+    // produce "KB Name | KB Name" on the index page.
+    title: { absolute: kb.name },
     description: kb.description ?? undefined,
     openGraph: { title: kb.name, description: kb.description ?? undefined },
     robots: kb.publishStatus === 'UNLISTED' ? { index: false, follow: false } : undefined,
@@ -137,15 +141,20 @@ function LandingBody({
 
   return (
     <div className='flex min-w-0 flex-1 flex-col'>
-      <div className='w-full max-w-3xl px-6 pt-4'>
-        <KBTableOfContents headings={headings} />
+      <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
+        <aside className='w-full max-w-3xl px-6 pt-4 @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:px-4 @kb-lg:pt-8'>
+          <KBTableOfContents headings={headings} />
+        </aside>
+        <div className='min-w-0 flex-1 @kb-lg:order-1'>
+          <KBArticleRenderer
+            doc={doc}
+            title={homeArticle?.title ?? kb.name}
+            emoji={homeArticle?.emoji ?? null}
+            description={homeArticle?.description ?? kb.description}
+            updatedAt={homeArticle?.updatedAt ?? null}
+          />
+        </div>
       </div>
-      <KBArticleRenderer
-        doc={doc}
-        title={homeArticle?.title ?? kb.name}
-        description={homeArticle?.description ?? kb.description}
-        updatedAt={homeArticle?.updatedAt ?? null}
-      />
       <div className='mt-auto w-full max-w-3xl px-6'>
         <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
       </div>

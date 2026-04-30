@@ -382,6 +382,12 @@
       "import": "./dist/kb/index.mjs",
       "default": "./src/kb/index.ts"
     },
+    "./kb/markdown": {
+      "types": "./src/kb/markdown/index.ts",
+      "source": "./src/kb/markdown/index.ts",
+      "import": "./dist/kb/markdown/index.mjs",
+      "default": "./src/kb/markdown/index.ts"
+    },
     "./mail-domains": {
       "types": "./src/mail-domains/index.ts",
       "source": "./src/mail-domains/index.ts",
@@ -825,6 +831,7 @@
     "lucide-react": "catalog:",
     "mailgun.js": "^12.0.1",
     "mammoth": "^1.10.0",
+    "mdast-util-to-string": "^4.0.0",
     "nanoid": "^5.1.5",
     "neverthrow": "^6.2.2",
     "nodemailer": "catalog:",
@@ -837,11 +844,15 @@
     "posthog-node": "catalog:",
     "pusher": "catalog:",
     "pusher-js": "catalog:",
+    "remark-directive": "^3.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-parse": "^11.0.0",
     "sharp": "catalog:",
     "shiki": "catalog:",
     "stripe": "catalog:",
     "tldts": "^7.0.28",
     "turndown": "catalog:",
+    "unified": "^11.0.5",
     "uuid": "catalog:",
     "xlsx": "^0.18.5",
     "zod": "catalog:",

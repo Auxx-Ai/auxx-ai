@@ -4,6 +4,7 @@ import { WEBAPP_URL } from '@auxx/config/urls'
 import { isOrgMember } from '@auxx/lib/cache'
 import { KBLayout } from '@auxx/ui/components/kb'
 import '@auxx/ui/global.css'
+import type { Metadata } from 'next'
 import { cacheLife, cacheTag } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
@@ -14,6 +15,19 @@ import { loadKBPayload } from '../../../server/kb-data'
 interface KBSlugLayoutProps {
   params: Promise<{ orgSlug: string; kbSlug: string }>
   children: React.ReactNode
+}
+
+export async function generateMetadata({ params }: KBSlugLayoutProps): Promise<Metadata> {
+  const { orgSlug, kbSlug } = await params
+  const visibility = await getCachedKBVisibility(orgSlug, kbSlug)
+  if (!visibility || visibility.publishStatus === 'DRAFT') return {}
+  // Keep internal KB names out of the tab title.
+  if (visibility.visibility === 'INTERNAL') {
+    return { title: { template: '%s | Knowledge base', default: 'Knowledge base' } }
+  }
+  const { kb } = await getPublicKBPayload(orgSlug, kbSlug)
+  if (!kb) return {}
+  return { title: { template: `%s | ${kb.name}`, default: kb.name } }
 }
 
 export default async function KBSlugLayout({ params, children }: KBSlugLayoutProps) {

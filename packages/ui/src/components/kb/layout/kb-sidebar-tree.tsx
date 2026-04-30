@@ -2,6 +2,7 @@
 'use client'
 
 import { AnimatedCollapsibleContent, CollapsibleChevron } from '@auxx/ui/components/collapsible'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
 import Link from 'next/link'
 import {
@@ -111,11 +112,7 @@ function TreeBranch<T extends KBSidebarArticle>({
 
   const itemContent = (
     <>
-      {node.emoji ? (
-        <span aria-hidden className='shrink-0'>
-          {node.emoji}
-        </span>
-      ) : null}
+      {node.emoji ? <EntityIcon iconId={node.emoji} variant='bare' size='sm' /> : null}
       <span className='min-w-0 truncate'>{node.title}</span>
       {hasChildren ? (
         <button
@@ -206,10 +203,8 @@ function itemClass(listStyle: KBSidebarListStyle): string {
   return cn(
     'group/item relative flex min-h-9 flex-1 items-center gap-2 px-2 py-1.5 text-sm leading-tight text-[var(--kb-fg)] no-underline transition-colors',
     'hover:bg-[var(--kb-muted)] hover:text-[var(--kb-primary)]',
-    listStyle === 'default' &&
+    (listStyle === 'default' || listStyle === 'pill') &&
       'rounded-[var(--kb-radius)] data-[active=true]:bg-[var(--kb-muted)] data-[active=true]:text-[var(--kb-primary)] data-[active=true]:font-medium',
-    listStyle === 'pill' &&
-      'rounded-full data-[active=true]:bg-[var(--kb-muted)] data-[active=true]:text-[var(--kb-primary)] data-[active=true]:font-medium',
     listStyle === 'line' && [
       'rounded-none hover:bg-transparent',
       'before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-[var(--kb-border)] before:transition-colors',

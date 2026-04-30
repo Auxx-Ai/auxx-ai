@@ -17,3 +17,4 @@ export {
   KBService,
   type KBUpdateInput,
 } from './kb-service'
+export { articleToMarkdown } from './markdown/article-to-markdown'

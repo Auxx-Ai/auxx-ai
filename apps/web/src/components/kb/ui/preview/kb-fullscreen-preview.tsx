@@ -6,6 +6,7 @@ import {
   extractKBHeadings,
   findArticleBySlugPath,
   getArticleNeighbours,
+  getArticleParentLink,
   KBArticlePager,
   KBArticleRenderer,
   KBLayout,
@@ -44,6 +45,7 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
     : { prev: undefined, next: undefined }
+  const parent = getArticleParentLink(activeArticle, articles, basePath)
 
   return (
     <KBLayout
@@ -53,14 +55,20 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
       activeArticleId={activeArticle?.id}>
       {articleId ? (
         <div className='flex min-w-0 flex-1 flex-col'>
-          <div className='w-full max-w-3xl px-6 pt-4'>
-            <KBTableOfContents headings={headings} />
+          <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
+            <aside className='hidden @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:block @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:px-4 @kb-lg:pt-8'>
+              <KBTableOfContents headings={headings} />
+            </aside>
+            <div className='min-w-0 flex-1 @kb-lg:order-1'>
+              <KBArticleRenderer
+                doc={docJson}
+                title={activeArticle?.title}
+                emoji={activeArticle?.emoji}
+                description={description ?? activeArticle?.description}
+                parent={parent}
+              />
+            </div>
           </div>
-          <KBArticleRenderer
-            doc={docJson}
-            title={activeArticle?.title}
-            description={description ?? activeArticle?.description}
-          />
           <div className='mt-auto w-full max-w-3xl px-6'>
             <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
           </div>

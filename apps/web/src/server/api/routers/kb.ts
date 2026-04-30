@@ -4,7 +4,7 @@ import { schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
-import { KBService } from '@auxx/lib/kb'
+import { articleToMarkdown, KBService } from '@auxx/lib/kb'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
@@ -388,6 +388,21 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .input(z.object({ articleId: z.string() }))
     .query(async ({ ctx, input }) => {
       return await getKBService(ctx).getArticleVersions(input.articleId)
+    }),
+
+  exportArticleMarkdown: protectedProcedure
+    .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const article = await getKBService(ctx).getArticleById(input.id, input.knowledgeBaseId)
+      const fallback = (article.slug || article.title || 'article').replace(/[^a-z0-9-_]+/gi, '-')
+      const filename = `${fallback}.md`
+      const markdown = articleToMarkdown({
+        title: article.title,
+        contentJson: article.contentJson,
+      })
+      const header =
+        article.title && article.title.trim().length > 0 ? `# ${article.title}\n\n` : ''
+      return { filename, markdown: header + markdown }
     }),
 
   renameArticleVersion: protectedProcedure

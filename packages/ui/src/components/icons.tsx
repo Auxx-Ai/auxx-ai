@@ -578,6 +578,7 @@ export const entityIconVariants = cva('flex items-center justify-center shrink-0
       full: 'rounded-full border',
       muted:
         'rounded-lg border bg-muted group-hover:bg-secondary transition-colors overflow-hidden',
+      bare: 'text-current',
     },
     size: {
       xs: 'size-4 [&_svg]:size-2.5!',

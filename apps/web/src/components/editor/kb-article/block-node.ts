@@ -187,6 +187,11 @@ export const Block = Node.create({
           const blockType = node.attrs.blockType as string
           const isEmpty = node.content.size === 0
 
+          // Code block: Enter inserts a literal newline; Mod-Enter exits below.
+          if (blockType === 'codeBlock') {
+            return editor.chain().insertContent('\n').run()
+          }
+
           // Divider stays as divider — split and convert the new sibling to text.
           if (blockType === 'divider') {
             return editor
@@ -222,6 +227,21 @@ export const Block = Node.create({
           }
 
           return false
+        }
+        return false
+      },
+      'Mod-Enter': ({ editor }) => {
+        const { $from } = editor.state.selection
+        for (let depth = $from.depth; depth >= 0; depth--) {
+          const node = $from.node(depth)
+          if (node.type.name !== 'block') continue
+          if (node.attrs.blockType !== 'codeBlock') return false
+          const blockEnd = $from.before(depth) + node.nodeSize
+          return editor
+            .chain()
+            .insertContentAt(blockEnd, { type: 'block' })
+            .focus(blockEnd + 1)
+            .run()
         }
         return false
       },

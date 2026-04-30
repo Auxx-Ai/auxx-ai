@@ -67,7 +67,12 @@ export function KBSidebar<T extends KBSidebarArticle>({
   const visible = tabs.length >= 2 ? filterToTab(articles, activeTabId) : articles
 
   const inner = (
-    <div className='flex h-full flex-col gap-2 overflow-y-auto px-4 py-6'>
+    <div
+      data-slot='kb-sidebar-inner'
+      className={cn(
+        'flex flex-1 flex-col gap-2 overflow-y-auto',
+        listStyle === 'pill' ? 'm-3 rounded-2xl bg-[var(--kb-muted)]/50 px-3 py-4' : 'px-4 py-6'
+      )}>
       {showSearch ? (
         <div className='mb-1'>
           <KBSearchInput searchOrigin={searchOrigin ?? ''} basePath={basePath} />
@@ -92,17 +97,19 @@ export function KBSidebar<T extends KBSidebarArticle>({
   return (
     <>
       {/* Desktop persistent sidebar */}
-      <div className='relative hidden shrink-0 @kb-md:block'>
+      <div className='relative hidden shrink-0 @kb-md:flex @kb-md:flex-col'>
         <aside
+          data-slot='kb-sidebar'
           data-collapsed={collapsed}
           className={cn(
-            'overflow-hidden border-r border-[var(--kb-border)] bg-[var(--kb-sidebar-bg)]',
+            'flex flex-1 flex-col overflow-hidden',
+            listStyle !== 'pill' && 'border-r border-[var(--kb-border)] bg-[var(--kb-sidebar-bg)]',
             'transition-[width,border-color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
             collapsed ? 'w-0 border-transparent' : 'w-72'
           )}>
           <div
             className={cn(
-              'w-72 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+              'flex w-72 flex-1 flex-col transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
               collapsed
                 ? 'pointer-events-none -translate-x-4 opacity-0'
                 : 'translate-x-0 opacity-100'

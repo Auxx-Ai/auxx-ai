@@ -2,14 +2,19 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
+import { Text } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { KBHeading } from './extract-headings'
 
 interface KBTableOfContentsProps {
   headings: KBHeading[]
+  /** Hide the inline "On this page" heading (used inside drawers that already provide a title). */
+  hideHeading?: boolean
+  /** Called when a heading link is clicked — used by the drawer to auto-close. */
+  onLinkClick?: () => void
 }
 
-export function KBTableOfContents({ headings }: KBTableOfContentsProps) {
+export function KBTableOfContents({ headings, hideHeading, onLinkClick }: KBTableOfContentsProps) {
   const [active, setActive] = useState<string | null>(headings[0]?.id ?? null)
 
   useEffect(() => {
@@ -33,26 +38,34 @@ export function KBTableOfContents({ headings }: KBTableOfContentsProps) {
   if (headings.length === 0) return null
 
   return (
-    <aside className='mx-auto mb-8 w-full max-w-3xl rounded-[var(--kb-radius)] border border-[var(--kb-border)] bg-[var(--kb-muted)]/40 px-5 py-4 text-sm'>
-      <p className='mb-2 text-xs font-medium uppercase tracking-wider text-[var(--kb-fg)]/60'>
-        On this page
-      </p>
-      <ul className='m-0 list-none space-y-1 p-0'>
-        {headings.map((h) => (
-          <li key={h.id} style={{ paddingLeft: `${(h.depth - 2) * 12}px` }}>
-            <a
-              href={`#${h.id}`}
-              data-active={active === h.id}
-              className={cn(
-                'block py-1 text-[var(--kb-fg)]/70 no-underline transition-colors',
-                'hover:text-[var(--kb-fg)]',
-                'data-[active=true]:font-medium data-[active=true]:text-[var(--kb-primary)]'
-              )}>
-              {h.text}
-            </a>
-          </li>
-        ))}
+    <nav data-slot='kb-toc' aria-label='Table of contents' className='text-sm'>
+      {hideHeading ? null : (
+        <p className='mb-3 flex items-center gap-2 font-medium text-[var(--kb-fg)]'>
+          <Text className='size-4 text-[var(--kb-fg)]/70' aria-hidden />
+          On this page
+        </p>
+      )}
+      <ul className='m-0 flex list-none flex-col border-l border-[var(--kb-border)] p-0'>
+        {headings.map((h) => {
+          const indent = Math.max(0, h.depth - 2) * 12
+          return (
+            <li key={h.id}>
+              <a
+                href={`#${h.id}`}
+                data-active={active === h.id}
+                style={{ paddingLeft: `${indent + 12}px` }}
+                onClick={onLinkClick}
+                className={cn(
+                  '-ml-px block border-l border-transparent py-1.5 pr-2 text-[var(--kb-fg)]/60 no-underline transition-colors',
+                  'hover:text-[var(--kb-fg)]',
+                  'data-[active=true]:border-[var(--kb-primary)] data-[active=true]:text-[var(--kb-primary)]'
+                )}>
+                {h.text}
+              </a>
+            </li>
+          )
+        })}
       </ul>
-    </aside>
+    </nav>
   )
 }

@@ -1,5 +1,6 @@
 // packages/ui/src/components/kb/article/kb-article-pager.tsx
 
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
 import Link from 'next/link'
 import type { ArticleSlugFields } from '../utils/article-paths'
@@ -64,9 +65,13 @@ function PagerLink<T extends PagerArticle>({
       <span className='block text-xs text-[var(--kb-fg)]/60'>
         {direction === 'prev' ? '← Previous' : 'Next →'}
       </span>
-      <span className='mt-1 block text-base font-medium text-[var(--kb-fg)] group-hover:text-[var(--kb-primary)]'>
-        {article.emoji ? <span className='mr-1.5'>{article.emoji}</span> : null}
-        {article.title}
+      <span
+        className={cn(
+          'mt-1 inline-flex items-center gap-1.5 text-base font-medium text-[var(--kb-fg)] group-hover:text-[var(--kb-primary)]',
+          direction === 'next' && '@kb-md:flex-row-reverse'
+        )}>
+        {article.emoji ? <EntityIcon iconId={article.emoji} variant='bare' size='sm' /> : null}
+        <span>{article.title}</span>
       </span>
     </Link>
   )

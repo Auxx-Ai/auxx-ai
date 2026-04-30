@@ -7,7 +7,7 @@
   font-size: 16px;
   max-width: 768px;
   margin: 0;
-  padding: 0 1.5rem;
+  padding-left:1.5rem;
 }
 
 .article :global(.kb-link) {
@@ -46,12 +46,65 @@
   margin: 0.5em 0;
 }
 
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1.5em 0 0;
+  padding-bottom: 2.5em;
+}
+
+.headerMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  min-width: 0;
+  flex: 1;
+}
+
+.headerDescription {
+  margin: 0.5em 0 0;
+}
+
+.headerUpdatedAt {
+  margin: 0.25em 0 0;
+  font-size: 0.75em;
+  color: var(--kb-fg);
+  opacity: 0.6;
+}
+
 .h1 {
   font-size: 2em;
   font-weight: 700;
   line-height: 1.2;
-  margin: 1.5em 0 0.5em;
+  margin: 0;
   scroll-margin-top: 4rem;
+}
+
+.parentLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  width: fit-content;
+  font-size: 0.875em;
+  color: var(--kb-primary);
+  text-decoration: none;
+}
+
+.parentLink:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.parentText {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  width: fit-content;
+  font-size: 0.875em;
+  color: var(--kb-fg);
+  opacity: 0.65;
 }
 
 .h2 {
