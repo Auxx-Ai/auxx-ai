@@ -64,6 +64,8 @@ export const Dataset = pgTable(
       .references((): AnyPgColumn => User.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     vectorDbType: vectorDbType().default('POSTGRESQL').notNull(),
     searchConfig: jsonb().default({ searchType: 'hybrid' }).notNull(),
+    /** Hidden from /app/datasets — managed by KB sync pipeline. */
+    isManaged: boolean().default(false).notNull(),
   },
   (table) => [
     index('Dataset_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
@@ -77,6 +79,11 @@ export const Dataset = pgTable(
 
     // Composite index for organization + status lookups (optimizes search queries)
     index('idx_dataset_org_status').using('btree', table.organizationId.asc(), table.status.asc()),
+    index('idx_dataset_org_managed').using(
+      'btree',
+      table.organizationId.asc(),
+      table.isManaged.asc()
+    ),
   ]
 )
 

@@ -196,12 +196,6 @@
       "import": "./dist/email/polling-import-cache.mjs",
       "default": "./src/email/polling-import-cache.ts"
     },
-    "./embeddings": {
-      "types": "./src/embeddings/index.ts",
-      "source": "./src/embeddings/index.ts",
-      "import": "./dist/embeddings/index.mjs",
-      "default": "./src/embeddings/index.ts"
-    },
     "./entity-definitions": {
       "types": "./src/entity-definitions/index.ts",
       "source": "./src/entity-definitions/index.ts",
@@ -387,6 +381,18 @@
       "source": "./src/kb/client.ts",
       "import": "./dist/kb/client.mjs",
       "default": "./src/kb/client.ts"
+    },
+    "./kb/kb-sync-queue": {
+      "types": "./src/kb/kb-sync-queue.ts",
+      "source": "./src/kb/kb-sync-queue.ts",
+      "import": "./dist/kb/kb-sync-queue.mjs",
+      "default": "./src/kb/kb-sync-queue.ts"
+    },
+    "./kb/kb-sync-service": {
+      "types": "./src/kb/kb-sync-service.ts",
+      "source": "./src/kb/kb-sync-service.ts",
+      "import": "./dist/kb/kb-sync-service.mjs",
+      "default": "./src/kb/kb-sync-service.ts"
     },
     "./kb/markdown": {
       "types": "./src/kb/markdown/index.ts",

@@ -12,7 +12,6 @@ import {
   text,
   timestamp,
   uniqueIndex,
-  vector,
 } from './_shared'
 import { ArticleRevision } from './article-revision'
 import { KnowledgeBase } from './knowledge-base'
@@ -52,7 +51,6 @@ export const Article = pgTable(
     isPublished: boolean().default(false).notNull(),
     publishedAt: timestamp({ precision: 3 }),
     isHomePage: boolean().default(false).notNull(),
-    embedding: vector({ dimensions: 1536 }),
     publishedRevisionId: text().references((): AnyPgColumn => ArticleRevision.id, {
       onUpdate: 'cascade',
     }),

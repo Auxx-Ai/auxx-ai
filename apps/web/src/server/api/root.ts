@@ -26,7 +26,6 @@ import { datasetRouter } from './routers/dataset'
 import { documentRouter } from './routers/document'
 import { draftRouter } from './routers/draft'
 import { emailTemplateRouter } from './routers/emailTemplate'
-import { embeddingRouter } from './routers/embedding'
 import { entityDefinitionRouter } from './routers/entityDefinition'
 import { entityGroupRouter } from './routers/entityGroup'
 import { extensionRouter } from './routers/extension'
@@ -110,7 +109,6 @@ export const appRouter = createTRPCRouter({
   mediaAsset: mediaAssetRouter,
   customer: customerRouter,
   emailTemplate: emailTemplateRouter,
-  embedding: embeddingRouter,
   entityDefinition: entityDefinitionRouter,
   entityGroup: entityGroupRouter,
   extension: extensionRouter,

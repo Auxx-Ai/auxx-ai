@@ -8,6 +8,7 @@ import {
   Comment,
   CommentMention,
   CommentReaction,
+  Dataset,
   File,
   KnowledgeBase,
   MediaAsset,
@@ -76,6 +77,10 @@ export const knowledgeBaseRelations = relations(KnowledgeBase, ({ one, many }) =
   organization: one(Organization, {
     fields: [KnowledgeBase.organizationId],
     references: [Organization.id],
+  }),
+  dataset: one(Dataset, {
+    fields: [KnowledgeBase.datasetId],
+    references: [Dataset.id],
   }),
   files: many(File),
 }))

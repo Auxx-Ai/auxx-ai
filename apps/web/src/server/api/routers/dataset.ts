@@ -76,6 +76,8 @@ const listDatasetsSchema = z.object({
       end: z.date(),
     })
     .optional(),
+  /** Pass false to include managed datasets (e.g. KB-backed). Default hides them. */
+  hideManaged: z.boolean().optional(),
 })
 export const datasetRouter = createTRPCRouter({
   /**
@@ -248,6 +250,7 @@ export const datasetRouter = createTRPCRouter({
       search: input.search,
       createdById: input.createdById,
       dateRange: input.dateRange,
+      hideManaged: input.hideManaged,
     }
     const pagination = {
       page: input.page,

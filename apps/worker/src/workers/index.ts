@@ -11,6 +11,7 @@ import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-main
 import { startDocumentProcessingWorker } from './worker-definitions/document-processing-worker'
 import { startEmailWorker } from './worker-definitions/email-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
+import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
 import { startMaintenanceWorker } from './worker-definitions/maintenance-worker'
 import { startMessageProcessingWorker } from './worker-definitions/message-processing-worker'
 import { startMessageSyncWorker } from './worker-definitions/message-sync-worker'
@@ -90,6 +91,9 @@ export async function startWorkers() {
   // Recording media processing worker
   const recordingProcessingWorker = startRecordingProcessingWorker()
 
+  // KB article → managed-dataset sync worker
+  const kbSyncWorker = startKBSyncWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -116,6 +120,7 @@ export async function startWorkers() {
     aiAutofillWorker,
     recordingBotWorker,
     recordingProcessingWorker,
+    kbSyncWorker,
   ]
 
   return Promise.all(workers)

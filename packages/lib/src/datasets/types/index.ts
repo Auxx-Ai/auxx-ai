@@ -41,6 +41,8 @@ export interface CreateDatasetInput {
   vectorDbConfig?: Record<string, any>
   embeddingModel?: string // "provider:model" format
   vectorDimension?: number
+  /** Hidden from /app/datasets — managed by an internal pipeline (e.g. KB sync). */
+  isManaged?: boolean
 }
 /**
  * Dataset update input
@@ -348,6 +350,8 @@ export interface DatasetFilters {
     start: Date
     end: Date
   }
+  /** When true (default in UI), excludes managed datasets (e.g. KB-backed). */
+  hideManaged?: boolean
 }
 /**
  * Filter parameters for listing documents
