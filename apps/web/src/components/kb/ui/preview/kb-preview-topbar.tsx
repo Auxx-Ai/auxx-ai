@@ -152,10 +152,6 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
       </div>
 
       <div className='flex items-center gap-2'>
-        <Button size='sm' variant='outline'>
-          <span className='w-max-full text-ui-small truncate'>Share feedback</span>
-        </Button>
-
         <Button size='icon-sm' variant='ghost' asChild>
           <a
             href={externalHref}

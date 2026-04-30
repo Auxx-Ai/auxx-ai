@@ -60,7 +60,7 @@ export function LayoutTab({ knowledgeBaseId, knowledgeBase }: LayoutTabProps) {
   }, [form, knowledgeBaseId])
 
   return (
-    <div className='pb-16'>
+    <div className='pb-16 [&_[data-slot=section]]:pr-5'>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <HeaderSection form={form} isPending={isUpdating} />

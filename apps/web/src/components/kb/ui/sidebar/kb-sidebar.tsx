@@ -2,6 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
 import { Book, Cog, Layout, Loader2 } from 'lucide-react'
@@ -44,7 +45,7 @@ export function KBSidebar({ knowledgeBaseId, knowledgeBase }: KBSidebarProps) {
           'lg:max-w-lg': activeTab !== 'articles',
         }
       )}>
-      <div className='flex min-h-0 flex-1 flex-col overflow-auto'>
+      <ScrollArea className='flex min-h-0 flex-1 flex-col'>
         <Tabs defaultValue='general' value={activeTab} onValueChange={setActiveTab}>
           <div className='sticky top-0 z-50 bg-background'>
             <div className='p-2'>
@@ -82,7 +83,7 @@ export function KBSidebar({ knowledgeBaseId, knowledgeBase }: KBSidebarProps) {
             <KBArticlesPanel knowledgeBaseId={knowledgeBaseId} />
           </TabsContent>
         </Tabs>
-      </div>
+      </ScrollArea>
       <div className='absolute bottom-4 right-4'>
         <Button size='sm' variant='info' onClick={handleGlobalSave} disabled={isSaving}>
           {isSaving ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : null}
