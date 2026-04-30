@@ -64,8 +64,8 @@ export function KBSwitcherDropdownContent() {
   }, [knowledgeBases, activeKBId])
 
   const handleClickKnowledgeBase = (knowledgeBaseId: string) => {
-    const tab = params?.get('tab') ?? 'general'
-    router.push(`/app/kb/${knowledgeBaseId}/editor?tab=${tab}`)
+    const panel = params?.get('panel') ?? 'general'
+    router.push(`/app/kb/${knowledgeBaseId}/editor?panel=${panel}`)
   }
 
   const handleCreateSubmit = async (values: KnowledgeBaseFormValues) => {

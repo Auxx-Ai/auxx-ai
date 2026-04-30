@@ -2,7 +2,7 @@
 'use client'
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
-import type { ArticleStatus } from '@auxx/database/types'
+import type { ArticleKind, ArticleStatus } from '@auxx/database/types'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -22,13 +22,12 @@ export interface ArticleMeta {
   slug: string
   emoji: string | null
   parentId: string | null
-  isCategory: boolean
+  articleKind: ArticleKind
   order: number
   isPublished: boolean
   status: ArticleStatus
   description: string | null
   excerpt: string | null
-  isHomePage: boolean
   hasUnpublishedChanges: boolean
   publishedAt: Date | null
   publishedRevisionId: string | null

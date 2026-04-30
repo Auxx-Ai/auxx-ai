@@ -33,7 +33,8 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
   const articles = useArticleList(knowledgeBaseId)
 
   const matchedArticle = slugPath.length > 0 ? findArticleBySlugPath(articles, slugPath) : undefined
-  const activeArticle = matchedArticle ?? articles.find((a) => !a.isCategory)
+  const activeArticle =
+    matchedArticle ?? articles.find((a) => a.articleKind === 'page' || a.articleKind === 'category')
   const articleId = activeArticle?.id ?? null
   const { contentJson, description } = useArticleContent(articleId, knowledgeBaseId)
 

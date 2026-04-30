@@ -1,12 +1,20 @@
 // apps/web/src/components/kb/ui/sidebar/kb-articles-panel.tsx
 'use client'
 
+import { ArticleKind } from '@auxx/database/enums'
+import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon, getIcon } from '@auxx/ui/components/icons'
 import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { closestCorners, DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
-import { Archive, Loader2, Plus } from 'lucide-react'
+import { Archive, FileText, FolderClosed, Heading, Loader2, Plus } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-list'
@@ -14,6 +22,7 @@ import { useArticleMove } from '../../hooks/use-article-move'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
 import { ArticleTreeSection } from './article-tree-section'
+import { KBTabStrip } from './kb-tab-strip'
 
 interface KBArticlesPanelProps {
   knowledgeBaseId: string
@@ -129,13 +138,69 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
     })
   }, [articles, findActiveArticle])
 
-  const handleCreateRoot = useCallback(async () => {
-    const created = await createArticle({})
-    if (created) {
-      const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?tab=articles`
-      router.push(path)
+  // Tabs are the structural root of the tree. Active tab is derived from the
+  // URL's article (walk up to the enclosing tab) and falls back to the first
+  // tab when nothing is selected.
+  const tabs = useMemo(
+    () =>
+      articles.filter((a) => a.articleKind === ArticleKind.tab).sort((a, b) => a.order - b.order),
+    [articles]
+  )
+
+  const activeTabId = useMemo(() => {
+    const active = findActiveArticle()
+    if (!active) return tabs[0]?.id ?? null
+    let cursor: ArticleMeta | undefined = active
+    while (cursor) {
+      if (cursor.articleKind === ArticleKind.tab) return cursor.id
+      if (!cursor.parentId) break
+      cursor = articles.find((a) => a.id === cursor!.parentId)
     }
-  }, [articles, basePath, createArticle, router])
+    return tabs[0]?.id ?? null
+  }, [findActiveArticle, articles, tabs])
+
+  const [pendingTabId, setPendingTabId] = useState<string | null>(null)
+  const effectiveTabId = pendingTabId ?? activeTabId
+  // Drop the local override once the URL catches up to it.
+  useEffect(() => {
+    if (pendingTabId && pendingTabId === activeTabId) setPendingTabId(null)
+  }, [pendingTabId, activeTabId])
+
+  const tabSubtree = useMemo(() => {
+    if (!effectiveTabId) return visibleTree
+    const root = visibleTree.find((n) => n.id === effectiveTabId)
+    return root?.children ?? []
+  }, [visibleTree, effectiveTabId])
+
+  const handleTabChange = useCallback(
+    (tabId: string) => {
+      setPendingTabId(tabId)
+      const firstChild = articles
+        .filter((a) => a.parentId === tabId && a.articleKind !== ArticleKind.header)
+        .sort((a, b) => a.order - b.order)[0]
+      if (firstChild) {
+        const slug = getFullSlugPath(firstChild, articles)
+        router.push(`${basePath}/editor/~/${slug}?panel=articles`)
+      }
+    },
+    [articles, basePath, router]
+  )
+
+  const handleCreateInTab = useCallback(
+    async (articleKind: ArticleKindType = ArticleKind.page) => {
+      if (!effectiveTabId) return
+      const created = await createArticle({ parentId: effectiveTabId, articleKind })
+      if (created) {
+        // Headers have no URL; stay where we are. Pages/categories navigate to
+        // the new article so the editor opens it.
+        if (articleKind !== ArticleKind.header) {
+          const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
+          router.push(path)
+        }
+      }
+    },
+    [effectiveTabId, articles, basePath, createArticle, router]
+  )
 
   if (!hasLoaded) {
     return (
@@ -145,25 +210,13 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
     )
   }
 
-  if (articles.length === 0) {
-    return (
-      <div className='flex flex-col items-center justify-center p-8 text-center'>
-        <p className='mb-4 text-muted-foreground'>No articles yet.</p>
-        <Button
-          variant='default'
-          size='sm'
-          className='gap-1'
-          onClick={handleCreateRoot}
-          loading={isCreating}>
-          <Plus />
-          Create First Article
-        </Button>
-      </div>
-    )
-  }
-
   return (
-    <div className='relative space-y-1 p-1'>
+    <div className='relative flex flex-col gap-1 p-1'>
+      <KBTabStrip
+        knowledgeBaseId={knowledgeBaseId}
+        activeTabId={effectiveTabId}
+        onTabChange={handleTabChange}
+      />
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -172,7 +225,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
         onDragEnd={handleDragEnd}
         modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}>
         <ArticleTreeSection
-          articles={visibleTree}
+          articles={tabSubtree}
           knowledgeBaseId={knowledgeBaseId}
           articleOpenStates={articleOpenStates}
           toggleArticleOpen={toggleArticleOpen}
@@ -189,7 +242,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
                 <span className='shrink-0 text-muted-foreground'>
                   {activeArticle.emoji && getIcon(activeArticle.emoji) ? (
                     <EntityIcon iconId={activeArticle.emoji} variant='bare' size='sm' />
-                  ) : activeArticle.isCategory ? (
+                  ) : activeArticle.articleKind === ArticleKind.category ? (
                     '📁'
                   ) : (
                     '📄'
@@ -203,23 +256,37 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
       </DndContext>
 
       <div className='mt-2 px-2'>
-        <Button
-          className='w-full justify-start text-muted-foreground'
-          variant='ghost'
-          size='sm'
-          disabled={isCreating}
-          onClick={handleCreateRoot}>
-          {isCreating ? (
-            <>
-              <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-              Creating...
-            </>
-          ) : (
-            <>
-              <Plus className='mr-2 h-4 w-4' /> Add Page
-            </>
-          )}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              className='w-full justify-start text-muted-foreground'
+              variant='ghost'
+              size='sm'
+              disabled={isCreating || !effectiveTabId}>
+              {isCreating ? (
+                <>
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className='mr-2 h-4 w-4' /> Add
+                </>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='start' className='w-48'>
+            <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.page)}>
+              <FileText className='mr-2 h-4 w-4' /> Page
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.category)}>
+              <FolderClosed className='mr-2 h-4 w-4' /> Category
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.header)}>
+              <Heading className='mr-2 h-4 w-4' /> Section header
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {archivedCount > 0 && (
           <Button
             className='mt-1 w-full justify-start text-muted-foreground'

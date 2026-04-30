@@ -17,7 +17,6 @@ export type KBSidebarListStyle = 'default' | 'pill' | 'line'
 export interface KBSidebarArticle extends ArticleSlugFields {
   title: string
   emoji?: string | null
-  isCategory?: boolean
 }
 
 interface KBSidebarTreeProps<T extends KBSidebarArticle> {
@@ -130,10 +129,45 @@ function TreeBranch<T extends KBSidebarArticle>({
     </>
   )
 
+  // Headers are pure presentational labels — uppercase, non-clickable, no
+  // collapse affordance. Their children render flat at the same depth.
+  if (node.articleKind === 'header') {
+    return (
+      <li className='my-0.5'>
+        <div
+          className='px-2 pt-3 pb-1 text-[var(--kb-fg)]/60 text-xs font-semibold uppercase tracking-wide'
+          style={lineIndent}>
+          {node.title}
+        </div>
+        {hasChildren ? (
+          <ul className='m-0 list-none p-0'>
+            {node.children.map((child) => (
+              <TreeBranch
+                key={child.id}
+                node={child}
+                allArticles={allArticles}
+                basePath={basePath}
+                activeArticleId={activeArticleId}
+                listStyle={listStyle}
+                depth={depth}
+                openIds={openIds}
+                onToggle={onToggle}
+                onArticleClick={onArticleClick}
+                animate={animate}
+              />
+            ))}
+          </ul>
+        ) : null}
+      </li>
+    )
+  }
+
+  const isCategory = node.articleKind === 'category'
+
   return (
     <li className={cn(listStyle === 'line' ? 'my-0' : 'my-0.5')}>
       <div className='flex items-center'>
-        {node.isCategory ? (
+        {isCategory ? (
           <button
             type='button'
             className={cn(itemClass(listStyle), 'cursor-pointer text-left')}

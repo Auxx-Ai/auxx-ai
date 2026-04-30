@@ -9,7 +9,6 @@ import { KBModeToggle } from '../theme/kb-mode-toggle'
 import type { KBMode } from '../theme/kb-theme-tokens'
 import { useKBLayoutContext } from './kb-layout-context'
 import { readOpenIds, writeOpenIds } from './kb-sidebar-state'
-import { filterToTab, findTabForArticle, getTopLevelTabs, KBSidebarTabs } from './kb-sidebar-tabs'
 import { type KBSidebarArticle, type KBSidebarListStyle, KBSidebarTree } from './kb-sidebar-tree'
 
 interface KBSidebarProps<T extends KBSidebarArticle> {
@@ -46,14 +45,6 @@ export function KBSidebar<T extends KBSidebarArticle>({
 }: KBSidebarProps<T>) {
   const { kbId, collapsed, setCollapsed, mobileOpen, setMobileOpen } = useKBLayoutContext()
 
-  const tabs = getTopLevelTabs(articles)
-  const initialTab = findTabForArticle(tabs, articles, activeArticleId)
-  const [activeTabId, setActiveTabId] = useState<string | null>(initialTab)
-  useEffect(() => {
-    setActiveTabId(findTabForArticle(tabs, articles, activeArticleId))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeArticleId, articles.length])
-
   const [openIds, setOpenIds] = useState<Record<string, boolean>>({})
   const [animateTree, setAnimateTree] = useState(false)
   useEffect(() => {
@@ -80,8 +71,6 @@ export function KBSidebar<T extends KBSidebarArticle>({
     })
   }
 
-  const visible = tabs.length >= 2 ? filterToTab(articles, activeTabId) : articles
-
   const inner = (
     <div
       data-slot='kb-sidebar-inner'
@@ -94,11 +83,8 @@ export function KBSidebar<T extends KBSidebarArticle>({
           <KBSearchInput searchOrigin={searchOrigin ?? ''} basePath={basePath} />
         </div>
       ) : null}
-      {tabs.length >= 2 ? (
-        <KBSidebarTabs tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTabId} />
-      ) : null}
       <KBSidebarTree
-        articles={visible}
+        articles={articles}
         basePath={basePath}
         activeArticleId={activeArticleId}
         listStyle={listStyle}

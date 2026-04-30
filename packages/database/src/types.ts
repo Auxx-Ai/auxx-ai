@@ -13,6 +13,8 @@ export type ApprovalStatus = (typeof Enums.ApprovalStatusValues)[number]
 
 export type ArticleStatus = (typeof Enums.ArticleStatusValues)[number]
 
+export type ArticleKind = (typeof Enums.ArticleKindValues)[number]
+
 export type AssetVersionStatus = (typeof Enums.AssetVersionStatusValues)[number]
 
 export type BillingCycle = (typeof Enums.BillingCycleValues)[number]

@@ -29,7 +29,6 @@ import {
   FolderClosed,
   FolderOpen,
   GripVertical,
-  House,
   MoreVertical,
   Send,
   Trash2,
@@ -58,7 +57,8 @@ export function ArticleSidebarItem({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname() ?? ''
-  const isCategory = article.isCategory || (article.children && article.children.length > 0)
+  const isCategory =
+    article.articleKind === 'category' || (article.children && article.children.length > 0)
   const isArchived = article.status === 'ARCHIVED'
 
   const articles = useArticleList(knowledgeBaseId)
@@ -69,7 +69,6 @@ export function ArticleSidebarItem({
     unpublishArticle,
     archiveArticle,
     unarchiveArticle,
-    setHomeArticle,
     duplicateArticle,
   } = useArticleMutations(knowledgeBaseId)
 
@@ -136,7 +135,7 @@ export function ArticleSidebarItem({
 
   const itemHref = useMemo(() => {
     const path = slugPaths[article.id] ?? getFullSlugPath(article, articles)
-    return `${basePath}/editor/~/${path}?tab=articles`
+    return `${basePath}/editor/~/${path}?panel=articles`
   }, [article, articles, slugPaths, basePath])
 
   const hasCustomIcon = !!article.emoji && !!getIcon(article.emoji)
@@ -162,7 +161,7 @@ export function ArticleSidebarItem({
   const handleAddSubItem = async () => {
     const created = await createArticle({ parentId: article.id })
     if (created) {
-      const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?tab=articles`
+      const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
       router.push(path)
     }
   }
@@ -174,7 +173,7 @@ export function ArticleSidebarItem({
       position: 'after',
     })
     if (created) {
-      const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?tab=articles`
+      const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
       router.push(path)
     }
   }
@@ -251,12 +250,6 @@ export function ArticleSidebarItem({
                   title='Unsaved changes'
                 />
               )}
-              {article.isHomePage && (
-                <House
-                  className='ml-1.5 size-3 shrink-0 text-muted-foreground'
-                  aria-label='Home page'
-                />
-              )}
               {isCategory && (
                 <button
                   onClick={(e) => {
@@ -328,12 +321,6 @@ export function ArticleSidebarItem({
                     <>
                       <DropdownMenuItem onClick={() => unpublishArticle(article.id)}>
                         <EyeOff /> Unpublish
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setHomeArticle(article.id)}
-                        disabled={article.isHomePage || article.isCategory}>
-                        <House />
-                        {article.isHomePage ? 'Home page' : 'Set as home page'}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
                         <Archive /> Archive

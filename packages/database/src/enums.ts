@@ -38,6 +38,8 @@ export const ApprovalStatusValues = ['pending', 'approved', 'denied', 'timeout']
 
 export const ArticleStatusValues = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const
 
+export const ArticleKindValues = ['page', 'category', 'header', 'tab'] as const
+
 export const AssetVersionStatusValues = ['PENDING', 'PROCESSING', 'READY', 'FAILED'] as const
 
 export const BillingCycleValues = ['MONTHLY', 'ANNUAL'] as const
@@ -777,6 +779,13 @@ export const ArticleStatus = {
   DRAFT: 'DRAFT',
   PUBLISHED: 'PUBLISHED',
   ARCHIVED: 'ARCHIVED',
+} as const
+
+export const ArticleKind = {
+  page: 'page',
+  category: 'category',
+  header: 'header',
+  tab: 'tab',
 } as const
 
 export const AssetVersionStatus = {

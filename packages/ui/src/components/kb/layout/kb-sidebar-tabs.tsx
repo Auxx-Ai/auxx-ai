@@ -1,45 +1,15 @@
 // packages/ui/src/components/kb/layout/kb-sidebar-tabs.tsx
 'use client'
 
-import { cn } from '@auxx/ui/lib/utils'
 import type { KBSidebarArticle } from './kb-sidebar-tree'
 
-export interface KBSidebarTabsProps<T extends KBSidebarArticle> {
-  tabs: T[]
-  activeTabId: string | null
-  onSelect: (tabId: string) => void
-}
-
-export function KBSidebarTabs<T extends KBSidebarArticle>({
-  tabs,
-  activeTabId,
-  onSelect,
-}: KBSidebarTabsProps<T>) {
-  if (tabs.length < 2) return null
-  return (
-    <div className='-mx-2 mb-3 flex gap-1 overflow-x-auto border-b border-[var(--kb-border)] px-2 pb-3'>
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type='button'
-          onClick={() => onSelect(tab.id)}
-          data-active={activeTabId === tab.id}
-          className={cn(
-            'inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-3 py-1.5 text-sm text-[var(--kb-fg)] transition-colors',
-            'hover:bg-[var(--kb-muted)]',
-            'data-[active=true]:bg-[var(--kb-tint)] data-[active=true]:text-[var(--kb-primary)] data-[active=true]:font-medium'
-          )}>
-          {tab.emoji ? <span aria-hidden>{tab.emoji}</span> : null}
-          <span>{tab.title}</span>
-        </button>
-      ))}
-    </div>
-  )
-}
-
+/**
+ * Returns the KB's tabs in display order. Tabs are top-level articles with
+ * `articleKind === 'tab'`.
+ */
 export function getTopLevelTabs<T extends KBSidebarArticle>(articles: T[]): T[] {
   return articles
-    .filter((a) => a.parentId === null && a.isCategory === true)
+    .filter((a) => a.articleKind === 'tab')
     .sort((a, b) => {
       const ao = (a as T & { order?: number }).order ?? 0
       const bo = (b as T & { order?: number }).order ?? 0
@@ -47,6 +17,10 @@ export function getTopLevelTabs<T extends KBSidebarArticle>(articles: T[]): T[] 
     })
 }
 
+/**
+ * Walk up `parentId` from `activeArticleId` to find the enclosing tab. Falls
+ * back to the first tab.
+ */
 export function findTabForArticle<T extends KBSidebarArticle>(
   tabs: T[],
   articles: T[],
@@ -55,10 +29,11 @@ export function findTabForArticle<T extends KBSidebarArticle>(
   if (!activeArticleId) return tabs[0]?.id ?? null
   let current = articles.find((a) => a.id === activeArticleId)
   while (current) {
-    if (current.parentId === null) {
+    if (current.articleKind === 'tab') {
       if (tabs.some((t) => t.id === current?.id)) return current.id
       return tabs[0]?.id ?? null
     }
+    if (current.parentId === null) break
     const next: T | undefined = articles.find((a) => a.id === current?.parentId)
     if (!next) break
     current = next
@@ -66,6 +41,10 @@ export function findTabForArticle<T extends KBSidebarArticle>(
   return tabs[0]?.id ?? null
 }
 
+/**
+ * Subtree filter: returns the tab and every descendant article. Used to scope
+ * the sidebar tree to the active tab.
+ */
 export function filterToTab<T extends KBSidebarArticle>(articles: T[], tabId: string | null): T[] {
   if (!tabId) return articles
   const out: T[] = []

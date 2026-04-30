@@ -10,7 +10,7 @@ import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
 import { KBEditorHeader } from './kb-editor-header'
 import { KBTabPanel } from './kb-tab-panel'
 
-const TAB_VALUES = ['general', 'layout', 'articles'] as const
+const PANEL_VALUES = ['general', 'layout', 'articles'] as const
 
 interface KBEditorFrameProps {
   knowledgeBaseId: string
@@ -24,7 +24,10 @@ interface KBEditorFrameProps {
  */
 export function KBEditorFrame({ knowledgeBaseId, children }: KBEditorFrameProps) {
   const { knowledgeBase, isLoading } = useKnowledgeBase(knowledgeBaseId)
-  const [activeTab] = useQueryState('tab', parseAsStringLiteral(TAB_VALUES).withDefault('general'))
+  const [activePanel] = useQueryState(
+    'panel',
+    parseAsStringLiteral(PANEL_VALUES).withDefault('general')
+  )
 
   const leftPanels = useMemo(() => {
     if (!knowledgeBase) return []
@@ -32,10 +35,10 @@ export function KBEditorFrame({ knowledgeBaseId, children }: KBEditorFrameProps)
       {
         key: 'kb-tab-panel',
         content: <KBTabPanel knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />,
-        width: activeTab === 'articles' ? 320 : 512,
+        width: activePanel === 'articles' ? 320 : 512,
       },
     ]
-  }, [knowledgeBase, knowledgeBaseId, activeTab])
+  }, [knowledgeBase, knowledgeBaseId, activePanel])
 
   if (isLoading || !knowledgeBase) {
     return <LoadingSpinner />

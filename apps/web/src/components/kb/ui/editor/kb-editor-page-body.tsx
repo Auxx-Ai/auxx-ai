@@ -23,13 +23,13 @@ interface KBEditorPageBodyProps {
  * navigations.
  */
 export function KBEditorPageBody({ knowledgeBaseId, slug }: KBEditorPageBodyProps) {
-  const [activeTab] = useQueryState('tab', { defaultValue: 'general' })
+  const [activePanel] = useQueryState('panel', { defaultValue: 'general' })
   const { knowledgeBase } = useKnowledgeBase(knowledgeBaseId)
   const hasArticlesLoaded = useIsArticleListLoaded(knowledgeBaseId)
 
   if (!knowledgeBase) return null
 
-  if (activeTab !== 'articles') {
+  if (activePanel !== 'articles') {
     return <KBPreview knowledgeBase={knowledgeBase} activeSlugPath={slug} />
   }
 

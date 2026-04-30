@@ -21,8 +21,7 @@ import {
   InputGroupText,
 } from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Switch } from '@auxx/ui/components/switch'
-import { Archive, History, House, RotateCcw, Send, Trash2, Undo2 } from 'lucide-react'
+import { Archive, History, RotateCcw, Send, Trash2, Undo2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
@@ -66,7 +65,6 @@ export function ArticleSettingsDialog({
     archiveArticle,
     unarchiveArticle,
     discardArticleDraft,
-    setHomeArticle,
     deleteArticle,
   } = useArticleMutations(knowledgeBaseId)
 
@@ -157,10 +155,6 @@ export function ArticleSettingsDialog({
     if (!ok) return
     await discardArticleDraft(article.id)
     onOpenChange(false)
-  }
-  const handleToggleHome = async () => {
-    if (article.isHomePage) return
-    await setHomeArticle(article.id)
   }
   const handleDelete = async () => {
     const ok = await confirm({
@@ -276,25 +270,6 @@ export function ArticleSettingsDialog({
                   )}
                 </div>
               </section>
-
-              {/* Home page */}
-              {isPublished && !article.isCategory && (
-                <section className='flex items-center justify-between gap-4'>
-                  <div className='space-y-0.5'>
-                    <h3 className='text-sm font-medium flex items-center gap-2'>
-                      <House className='size-4' /> Home page
-                    </h3>
-                    <p className='text-xs text-muted-foreground'>
-                      Use this article as the landing page of the knowledge base.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={article.isHomePage}
-                    disabled={article.isHomePage}
-                    onCheckedChange={() => handleToggleHome()}
-                  />
-                </section>
-              )}
 
               {/* Version history */}
               <section className='flex items-center justify-between gap-4'>

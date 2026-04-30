@@ -1,10 +1,13 @@
 // @auxx/lib/kb/kb-service.ts
 import { type Database, schema } from '@auxx/database'
-import { ArticleStatus } from '@auxx/database/enums'
-import type { ArticleStatus as ArticleStatusType } from '@auxx/database/types'
+import { ArticleKind, ArticleStatus } from '@auxx/database/enums'
+import type {
+  ArticleKind as ArticleKindType,
+  ArticleStatus as ArticleStatusType,
+} from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, asc, desc, eq, gt, gte, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, gte, isNull, ne, sql } from 'drizzle-orm'
 import { DatasetService } from '../datasets/services/dataset-service'
 import type { KBDraftSettings } from './draft-settings'
 import { enrichDocWithHighlighting } from './highlight-code'
@@ -27,10 +30,9 @@ export interface ArticleListItem {
   slug: string
   parentId: string | null
   order: number
-  isCategory: boolean
+  articleKind: ArticleKindType
   isPublished: boolean
   status: ArticleStatusType
-  isHomePage: boolean
   hasUnpublishedChanges: boolean
   publishedAt: Date | null
   publishedRevisionId: string | null
@@ -115,7 +117,7 @@ export interface ArticleCreateInput {
   contentJson?: unknown
   excerpt?: string | null
   emoji?: string | null
-  isCategory?: boolean
+  articleKind?: ArticleKindType
   parentId?: string | null
 }
 
@@ -132,7 +134,6 @@ export interface ArticleStructureFields {
   slug?: string
   parentId?: string | null
   order?: number
-  isCategory?: boolean
 }
 
 export interface ArticleBatchUpdateItem {
@@ -185,15 +186,51 @@ export class KBService {
   async createKnowledgeBase(input: KBCreateInput, createdById: string): Promise<KnowledgeBase> {
     try {
       await this.validateSlugAvailability(input.slug)
-      const [knowledgeBase] = await this.db
-        .insert(schema.KnowledgeBase)
-        .values({
-          ...input,
-          organizationId: this.organizationId,
-          createdById,
-          updatedAt: new Date(),
-        })
-        .returning()
+      const knowledgeBase = await this.db.transaction(async (tx) => {
+        const [kb] = await tx
+          .insert(schema.KnowledgeBase)
+          .values({
+            ...input,
+            organizationId: this.organizationId,
+            createdById,
+            updatedAt: new Date(),
+          })
+          .returning()
+        // Every KB ships with one undeletable tab so the article tree always
+        // has a stable root. The author can rename / re-slug it later.
+        const [tab] = await tx
+          .insert(schema.Article)
+          .values({
+            slug: 'docs',
+            articleKind: ArticleKind.tab,
+            knowledgeBaseId: kb.id,
+            organizationId: this.organizationId,
+            authorId: createdById,
+            parentId: null,
+            order: 0,
+            isPublished: true,
+            status: ArticleStatus.PUBLISHED,
+            publishedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning()
+        const [revision] = await tx
+          .insert(schema.ArticleRevision)
+          .values({
+            articleId: tab.id,
+            organizationId: this.organizationId,
+            versionNumber: 1,
+            title: 'Documentation',
+            content: '',
+            editorId: createdById,
+          })
+          .returning()
+        await tx
+          .update(schema.Article)
+          .set({ publishedRevisionId: revision.id, draftRevisionId: revision.id })
+          .where(eq(schema.Article.id, tab.id))
+        return kb
+      })
       // Best-effort: provision the managed dataset that holds article embeddings.
       // First article publish will retry if this fails.
       this.ensureManagedDataset(knowledgeBase, createdById).catch((error) => {
@@ -499,6 +536,8 @@ export class KBService {
     try {
       await this.verifyKnowledgeBaseExists(knowledgeBaseId)
       const articleInput = { ...input }
+      const kind: ArticleKindType = articleInput.articleKind ?? ArticleKind.page
+      articleInput.articleKind = kind
       if (!articleInput.title || articleInput.title.trim() === '') {
         const nextPageNumber = await this.findNextPageNumber(knowledgeBaseId)
         articleInput.title = `Page ${nextPageNumber}`
@@ -510,9 +549,10 @@ export class KBService {
         )
       }
       await this.validateArticleSlugAvailability(articleInput.slug!, knowledgeBaseId)
-      if (articleInput.parentId) {
-        await this.verifyParentArticleExists(articleInput.parentId, knowledgeBaseId)
-      }
+      const parent = articleInput.parentId
+        ? await this.verifyParentArticleExists(articleInput.parentId, knowledgeBaseId)
+        : null
+      this.validateArticleKind(kind, parent)
       let newOrder = 0
       if (orderInfo) {
         const adjacent = await this.db.query.Article.findFirst({
@@ -561,7 +601,7 @@ export class KBService {
           .insert(schema.Article)
           .values({
             slug: articleInput.slug || '',
-            isCategory: articleInput.isCategory || false,
+            articleKind: kind,
             parentId: articleInput.parentId ?? null,
             isPublished: false,
             status: ArticleStatus.DRAFT,
@@ -687,8 +727,8 @@ export class KBService {
   }
 
   /**
-   * Mutate structural fields (slug, parent, order, isCategory). Stays on the
-   * Article row — no revision side-effects.
+   * Mutate structural fields (slug, parent, order). Stays on the Article row —
+   * no revision side-effects. `articleKind` is immutable post-create.
    */
   async updateArticleStructure(
     id: string,
@@ -716,7 +756,6 @@ export class KBService {
       if (fields.slug !== undefined) updateData.slug = fields.slug
       if (fields.parentId !== undefined) updateData.parentId = fields.parentId
       if (fields.order !== undefined) updateData.order = fields.order
-      if (fields.isCategory !== undefined) updateData.isCategory = fields.isCategory
 
       await this.db.update(schema.Article).set(updateData).where(eq(schema.Article.id, id))
 
@@ -766,7 +805,7 @@ export class KBService {
           }
           const cleaned: Record<string, unknown> = { updatedAt: new Date() }
           for (const [key, value] of Object.entries(updates)) {
-            if (value !== undefined && ['slug', 'parentId', 'order', 'isCategory'].includes(key)) {
+            if (value !== undefined && ['slug', 'parentId', 'order'].includes(key)) {
               cleaned[key] = value
             }
           }
@@ -816,6 +855,23 @@ export class KBService {
           code: 'BAD_REQUEST',
           message: `Article does not belong to knowledge base with ID '${knowledgeBaseId}'`,
         })
+      }
+      if (article.articleKind === ArticleKind.tab) {
+        const [{ value: tabCount }] = await this.db
+          .select({ value: count() })
+          .from(schema.Article)
+          .where(
+            and(
+              eq(schema.Article.knowledgeBaseId, article.knowledgeBaseId),
+              eq(schema.Article.articleKind, ArticleKind.tab)
+            )
+          )
+        if (tabCount <= 1) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Cannot delete the only tab. Create another tab first.',
+          })
+        }
       }
       if (article.children.length > 0) {
         throw new TRPCError({
@@ -1110,36 +1166,38 @@ export class KBService {
   }
 
   /**
-   * Mark a single article as the home page of its KB. Clears isHomePage on
-   * every other article in the same KB.
+   * Reorder the tab strip. The KB root routes through the first tab, so this
+   * also implicitly changes the landing article when index 0 changes.
    */
-  async setHomeArticle(id: string): Promise<ArticleListItem> {
+  async reorderTabs(knowledgeBaseId: string, tabIds: string[]): Promise<ArticleListItem[]> {
     try {
-      const article = await this.verifyArticleExists(id)
-      if (!article.isPublished) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Only published articles can be set as the home page',
-        })
-      }
+      await this.verifyKnowledgeBaseExists(knowledgeBaseId)
       await this.db.transaction(async (tx) => {
-        await tx
-          .update(schema.Article)
-          .set({ isHomePage: false })
-          .where(
-            and(
-              eq(schema.Article.knowledgeBaseId, article.knowledgeBaseId),
-              ne(schema.Article.id, id)
+        for (let i = 0; i < tabIds.length; i++) {
+          await tx
+            .update(schema.Article)
+            .set({ order: i, updatedAt: new Date() })
+            .where(
+              and(
+                eq(schema.Article.id, tabIds[i]!),
+                eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
+                eq(schema.Article.articleKind, ArticleKind.tab)
+              )
             )
-          )
-        await tx
-          .update(schema.Article)
-          .set({ isHomePage: true, updatedAt: new Date() })
-          .where(eq(schema.Article.id, id))
+        }
       })
-      return await this.reloadFlat(id)
+      const tabs = await this.db.query.Article.findMany({
+        where: and(
+          eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
+          eq(schema.Article.organizationId, this.organizationId),
+          eq(schema.Article.articleKind, ArticleKind.tab)
+        ),
+        orderBy: asc(schema.Article.order),
+        with: { publishedRevision: true, draftRevision: true },
+      })
+      return tabs.map((t) => this.flattenForList(t))
     } catch (error) {
-      return this.handleError(error, 'Error setting home article', { articleId: id })
+      return this.handleError(error, 'Error reordering tabs', { knowledgeBaseId })
     }
   }
 
@@ -1189,10 +1247,9 @@ export class KBService {
       slug: a.slug,
       parentId: a.parentId,
       order: a.order,
-      isCategory: a.isCategory,
+      articleKind: a.articleKind,
       isPublished: a.isPublished,
       status: a.status,
-      isHomePage: a.isHomePage,
       hasUnpublishedChanges: a.hasUnpublishedChanges,
       publishedAt: a.publishedAt,
       publishedRevisionId: a.publishedRevisionId,
@@ -1220,10 +1277,9 @@ export class KBService {
       slug: a.slug,
       parentId: a.parentId,
       order: a.order,
-      isCategory: a.isCategory,
+      articleKind: a.articleKind,
       isPublished: a.isPublished,
       status: a.status,
-      isHomePage: a.isHomePage,
       hasUnpublishedChanges: a.hasUnpublishedChanges,
       publishedAt: a.publishedAt,
       publishedRevisionId: a.publishedRevisionId,
@@ -1308,7 +1364,7 @@ export class KBService {
   private async verifyParentArticleExists(
     parentId: string,
     knowledgeBaseId: string
-  ): Promise<void> {
+  ): Promise<ArticleRow> {
     const parentExists = await this.db.query.Article.findFirst({
       where: and(
         eq(schema.Article.id, parentId),
@@ -1319,6 +1375,37 @@ export class KBService {
       throw new TRPCError({
         code: 'BAD_REQUEST',
         message: `Parent article with ID '${parentId}' not found`,
+      })
+    }
+    return parentExists
+  }
+
+  /**
+   * Service-layer validation for `articleKind`. Mirrors the spec rules:
+   *  - tabs must sit at the root (`parentId: null`)
+   *  - non-tab articles must have a parent in the same KB
+   *  - headers can only sit directly under a tab (no nested headers)
+   */
+  private validateArticleKind(kind: ArticleKindType, parent: ArticleRow | null): void {
+    if (kind === ArticleKind.tab) {
+      if (parent !== null) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Tabs are root-level only and cannot have a parent.',
+        })
+      }
+      return
+    }
+    if (!parent) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Non-tab articles must live under a tab. Pick a parent.',
+      })
+    }
+    if (kind === ArticleKind.header && parent.articleKind !== ArticleKind.tab) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Section headers can only sit directly under a tab.',
       })
     }
   }

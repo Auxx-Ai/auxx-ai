@@ -6,15 +6,17 @@ import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { KBSearchDialog } from '../search/kb-search-dialog'
 import type { KBMode } from '../theme/kb-theme-tokens'
-import { findArticleBySlugPath } from '../utils'
+import { findArticleBySlugPath, getFullSlugPath } from '../utils'
 import { KBFooter } from './kb-footer'
 import { KBHeader, type KBNavLink } from './kb-header'
 import { KBLayoutContextProvider } from './kb-layout-context'
 import { KBSidebar } from './kb-sidebar'
 import { KBSidebarMobileTrigger } from './kb-sidebar-mobile-trigger'
 import { readCollapsedFromStorage, writeCollapsedToStorage } from './kb-sidebar-state'
+import { filterToTab, findTabForArticle, getTopLevelTabs } from './kb-sidebar-tabs'
 import { KBSidebarToggle } from './kb-sidebar-toggle'
 import type { KBSidebarArticle, KBSidebarListStyle } from './kb-sidebar-tree'
+import { KBTopTabs } from './kb-top-tabs'
 
 interface KBLayoutShellProps<T extends KBSidebarArticle> {
   kbId: string
@@ -67,6 +69,30 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
     return findArticleBySlugPath(articles, segments)?.id
   }, [articles, segments])
   const effectiveActiveId = activeArticleId ?? derivedActiveId
+
+  // Tabs are the source of truth for the active section. Walk the parent chain
+  // from the active article to find its enclosing tab, fall back to the first
+  // tab when nothing is selected.
+  const tabs = useMemo(() => getTopLevelTabs(articles), [articles])
+  const activeTabId = useMemo(
+    () => findTabForArticle(tabs, articles, effectiveActiveId),
+    [tabs, articles, effectiveActiveId]
+  )
+  const sidebarArticles = useMemo(
+    () => (tabs.length > 0 ? filterToTab(articles, activeTabId) : articles),
+    [tabs, articles, activeTabId]
+  )
+
+  // Click-target for each tab pill: the deepest first navigable descendant.
+  const tabHrefs = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const tab of tabs) {
+      const first = findFirstNavigableDescendant(tab.id, articles)
+      const slug = first ? getFullSlugPath(first, articles) : ''
+      map[tab.id] = slug ? `${basePath}/${slug}` : basePath || '/'
+    }
+    return map
+  }, [tabs, articles, basePath])
 
   useEffect(() => {
     setCollapsed(readCollapsedFromStorage())
@@ -122,9 +148,10 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
           </>
         }
       />
+      <KBTopTabs tabs={tabs} activeTabId={activeTabId} tabHrefs={tabHrefs} />
       <div className='mx-auto flex w-full max-w-7xl flex-1'>
         <KBSidebar
-          articles={articles}
+          articles={sidebarArticles}
           basePath={basePath}
           activeArticleId={effectiveActiveId}
           searchOrigin={searchOrigin}
@@ -151,4 +178,30 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
       ) : null}
     </KBLayoutContextProvider>
   )
+}
+
+/**
+ * Depth-first search for the first navigable descendant of `rootId`. Tabs and
+ * headers are skipped because they have no URL of their own.
+ */
+function findFirstNavigableDescendant<T extends KBSidebarArticle>(
+  rootId: string,
+  articles: T[]
+): T | undefined {
+  const children = articles
+    .filter((a) => a.parentId === rootId)
+    .sort((a, b) => {
+      const ao = (a as T & { order?: number }).order ?? 0
+      const bo = (b as T & { order?: number }).order ?? 0
+      return ao - bo
+    })
+  for (const child of children) {
+    if (child.articleKind === 'header') {
+      const grand = findFirstNavigableDescendant(child.id, articles)
+      if (grand) return grand
+      continue
+    }
+    return child
+  }
+  return undefined
 }

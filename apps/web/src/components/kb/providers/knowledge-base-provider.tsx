@@ -1,6 +1,8 @@
 // apps/web/src/components/kb/providers/knowledge-base-provider.tsx
 'use client'
 
+import { ArticleKind } from '@auxx/database/enums'
+import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import type React from 'react'
 import { useEffect } from 'react'
 import { api } from '~/trpc/react'
@@ -21,13 +23,12 @@ function normalize(server: any): ArticleMeta {
     slug: server.slug ?? '',
     emoji: server.emoji ?? null,
     parentId: server.parentId ?? null,
-    isCategory: !!server.isCategory,
+    articleKind: (server.articleKind ?? ArticleKind.page) as ArticleKindType,
     order: server.order ?? 0,
     isPublished: !!server.isPublished,
     status: server.status,
     description: server.description ?? null,
     excerpt: server.excerpt ?? null,
-    isHomePage: !!server.isHomePage,
     hasUnpublishedChanges: !!server.hasUnpublishedChanges,
     publishedAt: server.publishedAt ? new Date(server.publishedAt) : null,
     publishedRevisionId: server.publishedRevisionId ?? null,
