@@ -215,7 +215,7 @@ function findFirstNavigableInTab(
 ): PublicArticleFull | undefined {
   const children = articles
     .filter((a) => a.parentId === rootId && a.isPublished)
-    .sort((a, b) => a.order - b.order)
+    .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
   for (const child of children) {
     if (child.articleKind === 'header') {
       const grand = findFirstNavigableInTab(child.id, articles)

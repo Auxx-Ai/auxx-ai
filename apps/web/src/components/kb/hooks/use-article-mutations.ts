@@ -20,7 +20,7 @@ function normalizeServerArticle(server: any): ArticleMeta {
     emoji: server.emoji ?? null,
     parentId: server.parentId ?? null,
     articleKind: (server.articleKind ?? ArticleKind.page) as ArticleKindType,
-    order: server.order ?? 0,
+    sortOrder: server.sortOrder ?? 'a0',
     isPublished: !!server.isPublished,
     status: (server.status ?? ArticleStatus.DRAFT) as ArticleMeta['status'],
     description: server.description ?? null,
@@ -58,10 +58,10 @@ export interface UseArticleMutationsResult {
       emoji?: string | null
     }
   ) => Promise<void>
-  /** Update structural fields (slug, parentId, order). */
+  /** Update structural fields (slug, parentId). */
   updateArticleStructure: (
     id: string,
-    fields: { slug?: string; parentId?: string | null; order?: number }
+    fields: { slug?: string; parentId?: string | null }
   ) => Promise<void>
   /** Save heavy content to the draft revision (no optimistic store update). */
   updateArticleContent: (
@@ -69,7 +69,7 @@ export interface UseArticleMutationsResult {
     data: { content?: string; contentJson?: unknown }
   ) => Promise<void>
   deleteArticle: (id: string) => Promise<void>
-  publishArticle: (id: string) => Promise<void>
+  publishArticle: (id: string, ancestorIds?: string[]) => Promise<void>
   unpublishArticle: (id: string) => Promise<void>
   archiveArticle: (id: string) => Promise<void>
   unarchiveArticle: (id: string) => Promise<void>
@@ -111,7 +111,7 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         emoji: input.emoji ?? null,
         parentId: input.parentId ?? null,
         articleKind: input.articleKind ?? ArticleKind.page,
-        order: 9999,
+        sortOrder: 'zz',
         isPublished: false,
         status: ArticleStatus.DRAFT,
         description: input.description ?? null,
@@ -195,6 +195,7 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
           title: "Couldn't update article",
           description: error instanceof Error ? error.message : 'Unknown error occurred',
         })
+        throw error
       }
     },
     [knowledgeBaseId, updateStructureMutation]
@@ -249,29 +250,42 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
   )
 
   const publishArticle = useCallback<UseArticleMutationsResult['publishArticle']>(
-    async (id) => {
+    async (id, ancestorIds = []) => {
       const store = getArticleStoreState()
-      store.setArticleOptimistic(id, {
+      const optimisticPatch = {
         isPublished: true,
         status: ArticleStatus.PUBLISHED,
         hasUnpublishedChanges: false,
-      })
+      } as const
+      const allIds = [id, ...ancestorIds]
+      for (const articleId of allIds) {
+        store.setArticleOptimistic(articleId, optimisticPatch)
+      }
       try {
-        const result = await publishMutation.mutateAsync({ id, knowledgeBaseId })
+        const result = await publishMutation.mutateAsync({ id, knowledgeBaseId, ancestorIds })
+        // Server only returns the leaf row; refetch the list to pick up ancestors.
         store.confirmUpdate(id, normalizeServerArticle(result.article))
+        if (ancestorIds.length > 0) {
+          utils.kb.getArticles.invalidate({ knowledgeBaseId })
+        }
         toastSuccess({
           title: 'Article published',
-          description: 'The article is now visible to readers',
+          description:
+            ancestorIds.length > 0
+              ? `Published with ${ancestorIds.length} ${ancestorIds.length === 1 ? 'parent' : 'parents'}.`
+              : 'The article is now visible to readers',
         })
       } catch (error) {
-        store.rollbackUpdate(id)
+        for (const articleId of allIds) {
+          store.rollbackUpdate(articleId)
+        }
         toastError({
           title: "Couldn't publish article",
           description: error instanceof Error ? error.message : 'Unknown error occurred',
         })
       }
     },
-    [knowledgeBaseId, publishMutation]
+    [knowledgeBaseId, publishMutation, utils.kb.getArticles]
   )
 
   const unpublishArticle = useCallback<UseArticleMutationsResult['unpublishArticle']>(

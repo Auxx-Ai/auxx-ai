@@ -7,6 +7,7 @@ export {
   getArticleParentLink,
   getArticleSlugPaths,
   getFullSlugPath,
+  getKbPreviewHref,
   isArticleActive,
 } from './article-paths'
 export {
@@ -16,7 +17,6 @@ export {
   findAncestorIds,
   findArticleAndParent,
   findArticleById,
-  flattenArticleTree,
   flattenArticleTreePreservingChildren,
 } from './article-tree'
 export { type EmbedProvider, type ParsedEmbed, parseEmbedUrl } from './embed'

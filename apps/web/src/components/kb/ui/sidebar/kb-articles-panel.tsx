@@ -10,9 +10,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { EntityIcon, getIcon } from '@auxx/ui/components/icons'
 import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
-import { closestCorners, DndContext, DragOverlay } from '@dnd-kit/core'
+import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
 import { Archive, FileText, FolderClosed, Heading, Loader2, Plus } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
@@ -21,6 +20,7 @@ import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-
 import { useArticleMove } from '../../hooks/use-article-move'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
+import { ArticleSidebarItemPreview } from './article-sidebar-item'
 import { ArticleTreeSection } from './article-tree-section'
 import { KBTabStrip } from './kb-tab-strip'
 
@@ -69,8 +69,15 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
     setArticleOpenStates((prev) => ({ ...prev, [articleId]: !prev[articleId] }))
   }, [])
 
-  const { handleDragStart, handleDragOver, handleDragEnd, activeArticle, sensors, articleTree } =
-    useArticleMove({ knowledgeBaseId, articleOpenStates, setArticleOpenStates })
+  const {
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    activeArticle,
+    sensors,
+    articleTree,
+    collisionDetection,
+  } = useArticleMove({ knowledgeBaseId, articleOpenStates, setArticleOpenStates })
 
   const archivedCount = useMemo(
     () => articles.filter((a) => a.status === 'ARCHIVED').length,
@@ -143,7 +150,9 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   // tab when nothing is selected.
   const tabs = useMemo(
     () =>
-      articles.filter((a) => a.articleKind === ArticleKind.tab).sort((a, b) => a.order - b.order),
+      articles
+        .filter((a) => a.articleKind === ArticleKind.tab)
+        .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0)),
     [articles]
   )
 
@@ -219,7 +228,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
       />
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={collisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
@@ -234,24 +243,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
         <DragOverlay
           dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}
           style={{ cursor: 'grabbing' }}>
-          {activeArticle ? (
-            <div
-              className='pointer-events-none rounded-md border bg-background px-3 py-2 opacity-80 shadow-md'
-              style={{ maxWidth: '280px' }}>
-              <div className='flex items-center space-x-2'>
-                <span className='shrink-0 text-muted-foreground'>
-                  {activeArticle.emoji && getIcon(activeArticle.emoji) ? (
-                    <EntityIcon iconId={activeArticle.emoji} variant='bare' size='sm' />
-                  ) : activeArticle.articleKind === ArticleKind.category ? (
-                    '📁'
-                  ) : (
-                    '📄'
-                  )}
-                </span>
-                <span className='truncate font-medium'>{activeArticle.title || 'Untitled'}</span>
-              </div>
-            </div>
-          ) : null}
+          {activeArticle ? <ArticleSidebarItemPreview article={activeArticle} /> : null}
         </DragOverlay>
       </DndContext>
 
@@ -262,28 +254,21 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
               className='w-full justify-start text-muted-foreground'
               variant='ghost'
               size='sm'
-              disabled={isCreating || !effectiveTabId}>
-              {isCreating ? (
-                <>
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className='mr-2 h-4 w-4' /> Add
-                </>
-              )}
+              disabled={isCreating || !effectiveTabId}
+              loading={isCreating}
+              loadingText='Creating...'>
+              <Plus /> Add
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align='start' className='w-48'>
             <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.page)}>
-              <FileText className='mr-2 h-4 w-4' /> Page
+              <FileText /> Page
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.category)}>
-              <FolderClosed className='mr-2 h-4 w-4' /> Category
+              <FolderClosed /> Category
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.header)}>
-              <Heading className='mr-2 h-4 w-4' /> Section header
+              <Heading /> Section header
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -293,7 +278,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
             variant='ghost'
             size='sm'
             onClick={() => setShowArchived((v) => !v)}>
-            <Archive className='mr-2 h-4 w-4' />
+            <Archive />
             {showArchived ? `Hide archived (${archivedCount})` : `Show archived (${archivedCount})`}
           </Button>
         )}

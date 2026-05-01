@@ -15,7 +15,7 @@ export interface PublicArticleListItem {
   emoji: string | null
   parentId: string | null
   articleKind: ArticleKind
-  order: number
+  sortOrder: string
   isPublished: boolean
   description: string | null
   excerpt: string | null
@@ -131,7 +131,7 @@ export async function loadKBPayload(
       slug: Article.slug,
       parentId: Article.parentId,
       articleKind: Article.articleKind,
-      order: Article.order,
+      sortOrder: Article.sortOrder,
       isPublished: Article.isPublished,
       title: pub.title,
       emoji: pub.emoji,
@@ -217,7 +217,7 @@ export async function loadKBPayloadWithContent(
     emoji: r.pubEmoji,
     parentId: r.article.parentId,
     articleKind: r.article.articleKind,
-    order: r.article.order,
+    sortOrder: r.article.sortOrder,
     isPublished: r.article.isPublished,
     description: r.pubDescription,
     excerpt: r.pubExcerpt,

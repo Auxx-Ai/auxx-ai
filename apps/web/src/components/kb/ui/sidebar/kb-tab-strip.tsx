@@ -1,21 +1,30 @@
 // apps/web/src/components/kb/ui/sidebar/kb-tab-strip.tsx
 'use client'
 
+import { ArticleKind } from '@auxx/database/enums'
+import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@auxx/ui/components/context-menu'
-import { EntityIcon, getIcon } from '@auxx/ui/components/icons'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
-import { FileText, Pencil, Plus, Trash2 } from 'lucide-react'
+import { closestCenter, DndContext, DragOverlay } from '@dnd-kit/core'
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers'
+import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { EyeOff, Link2, Pencil, Plus, Send, Trash2 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
+import { usePublishWithConfirm } from '../../hooks/use-publish-with-confirm'
+import { useTabReorder } from '../../hooks/use-tab-reorder'
 import type { ArticleMeta } from '../../store/article-store'
-import { AddTabDialog } from '../articles/add-tab-dialog'
+import { TabSlugDialog } from './tab-slug-dialog'
 
 interface KBTabStripProps {
   knowledgeBaseId: string
@@ -26,48 +35,102 @@ interface KBTabStripProps {
 /**
  * Horizontal tab strip rendered at the top of `KBArticlesPanel`. Click switches
  * tabs, double-click (or right-click → Rename) renames inline, the trailing
- * `+` opens the add-tab dialog.
+ * `+` adds a pending tab pill — the new tab only persists once the user
+ * commits a non-empty title (Enter or blur). Escape/empty cancels.
  */
 export function KBTabStrip({ knowledgeBaseId, activeTabId, onTabChange }: KBTabStripProps) {
   const articles = useArticleList(knowledgeBaseId)
   const tabs = useMemo(
-    () => articles.filter((a) => a.articleKind === 'tab').sort((a, b) => a.order - b.order),
+    () =>
+      articles
+        .filter((a) => a.articleKind === 'tab')
+        .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0)),
     [articles]
   )
 
-  const [addOpen, setAddOpen] = useState(false)
+  const { createArticle, isCreating } = useArticleMutations(knowledgeBaseId)
+  const { sensors, activeTab, handleDragStart, handleDragEnd } = useTabReorder(knowledgeBaseId)
   const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+
+  const tabIds = useMemo(() => tabs.map((t) => t.id), [tabs])
+
+  const handleAddClick = useCallback(() => {
+    if (pending || isCreating) return
+    setPending(true)
+  }, [pending, isCreating])
+
+  const handleCommitPending = useCallback(
+    async (title: string) => {
+      setPending(false)
+      const created = await createArticle({
+        title,
+        articleKind: ArticleKind.tab,
+        parentId: null,
+      })
+      if (created) onTabChange(created.id)
+    },
+    [createArticle, onTabChange]
+  )
 
   return (
-    <div className='flex w-full items-center gap-0.5 border-b border-border'>
-      <div className='flex flex-1 items-center gap-0.5 overflow-x-auto'>
-        {tabs.map((tab) => (
-          <TabPill
-            key={tab.id}
-            tab={tab}
-            active={activeTabId === tab.id}
-            isRenaming={renamingId === tab.id}
-            onSelect={() => onTabChange(tab.id)}
-            onStartRename={() => setRenamingId(tab.id)}
-            onFinishRename={() => setRenamingId(null)}
-            knowledgeBaseId={knowledgeBaseId}
-            tabCount={tabs.length}
-          />
-        ))}
-      </div>
-      <button
-        type='button'
-        onClick={() => setAddOpen(true)}
-        className='flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground'
-        aria-label='Add tab'>
-        <Plus size={14} />
-      </button>
-      <AddTabDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        knowledgeBaseId={knowledgeBaseId}
-        onCreated={(id) => onTabChange(id)}
-      />
+    <div className='flex w-full items-center border-b border-border'>
+      <ScrollArea
+        orientation='horizontal'
+        scrollbarClassName='h-0.5! mb-0!'
+        className='flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-x-none'>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToHorizontalAxis]}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}>
+          <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
+            <div className='flex items-center gap-0.5'>
+              {tabs.map((tab) => (
+                <TabPill
+                  key={tab.id}
+                  tab={tab}
+                  active={activeTabId === tab.id}
+                  isRenaming={renamingId === tab.id}
+                  onSelect={() => onTabChange(tab.id)}
+                  onStartRename={() => setRenamingId(tab.id)}
+                  onFinishRename={() => setRenamingId(null)}
+                  knowledgeBaseId={knowledgeBaseId}
+                  tabCount={tabs.length}
+                />
+              ))}
+              {pending && (
+                <div className='inline-flex shrink-0 items-center border-b-2 border-transparent px-3 py-2 text-sm'>
+                  <TabTitleInput
+                    initialValue=''
+                    placeholder='Untitled'
+                    onCommit={handleCommitPending}
+                    onCancel={() => setPending(false)}
+                  />
+                </div>
+              )}
+              <div className='sticky right-0 z-10 ml-auto shrink-0 bg-primary-50 pl-2 [mask-image:linear-gradient(to_right,transparent_0,black_8px,black_100%)]'>
+                <button
+                  type='button'
+                  onClick={handleAddClick}
+                  disabled={pending || isCreating || !!activeTab}
+                  className='flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50'
+                  aria-label='Add tab'>
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
+          </SortableContext>
+          <DragOverlay>
+            {activeTab && (
+              <div className='inline-flex items-center border-b-2 border-primary bg-background px-3 py-2 text-sm font-medium text-foreground shadow-md'>
+                {activeTab.title || 'Untitled'}
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
+      </ScrollArea>
     </div>
   )
 }
@@ -95,6 +158,22 @@ function TabPill({
 }: TabPillProps) {
   const { renameArticle, deleteArticle } = useArticleMutations(knowledgeBaseId)
   const [confirm, ConfirmDialog] = useConfirm()
+  const [slugOpen, setSlugOpen] = useState(false)
+  const {
+    requestPublish,
+    requestUnpublish,
+    ConfirmDialog: PublishConfirmDialog,
+  } = usePublishWithConfirm(knowledgeBaseId)
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tab.id,
+  })
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : 1,
+  }
 
   const handleDelete = useCallback(async () => {
     if (tabCount <= 1) return
@@ -110,96 +189,124 @@ function TabPill({
     await deleteArticle(tab.id)
   }, [confirm, deleteArticle, tab.id, tabCount])
 
-  const hasIcon = !!tab.emoji && !!getIcon(tab.emoji)
+  const handleRenameCommit = useCallback(
+    (next: string) => {
+      void renameArticle(tab.id, { title: next })
+      onFinishRename()
+    },
+    [renameArticle, tab.id, onFinishRename]
+  )
 
   return (
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
+            ref={setNodeRef}
+            style={sortableStyle}
+            {...attributes}
+            {...(isRenaming ? {} : listeners)}
             className={cn(
-              'group/tab relative inline-flex shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 py-2 text-sm transition-colors',
+              'group/tab relative inline-flex shrink-0 items-center border-b-2 border-transparent px-3 py-2 text-sm transition-colors',
               active
                 ? 'border-primary font-medium text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             )}>
             {isRenaming ? (
-              <RenameInput tab={tab} onFinish={onFinishRename} renameArticle={renameArticle} />
+              <TabTitleInput
+                initialValue={tab.title}
+                onCommit={handleRenameCommit}
+                onCancel={onFinishRename}
+              />
             ) : (
-              <button
-                type='button'
-                onClick={onSelect}
-                onDoubleClick={onStartRename}
-                className='inline-flex items-center gap-1.5'>
-                {hasIcon ? (
-                  <EntityIcon iconId={tab.emoji as string} variant='bare' size='sm' />
-                ) : (
-                  <FileText size={14} className='opacity-60' />
-                )}
-                <span>{tab.title || 'Untitled'}</span>
+              <button type='button' onClick={onSelect} onDoubleClick={onStartRename}>
+                {tab.title || 'Untitled'}
               </button>
             )}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent>
+        <ContextMenuContent onCloseAutoFocus={(e) => e.preventDefault()}>
           <ContextMenuItem onSelect={() => onStartRename()}>
-            <Pencil className='mr-2 size-4' /> Rename
+            <Pencil /> Rename
           </ContextMenuItem>
+          <ContextMenuItem onSelect={() => setSlugOpen(true)}>
+            <Link2 /> Update slug
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          {tab.isPublished ? (
+            <ContextMenuItem onSelect={() => requestUnpublish(tab)}>
+              <EyeOff /> Unpublish
+            </ContextMenuItem>
+          ) : (
+            <ContextMenuItem onSelect={() => requestPublish(tab)}>
+              <Send /> Publish
+            </ContextMenuItem>
+          )}
+          <ContextMenuSeparator />
           <ContextMenuItem onSelect={handleDelete} disabled={tabCount <= 1} variant='destructive'>
-            <Trash2 className='mr-2 size-4' /> Delete tab
+            <Trash2 /> Delete tab
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
-      {ConfirmDialog}
+      <ConfirmDialog />
+      <PublishConfirmDialog />
+      <TabSlugDialog
+        open={slugOpen}
+        onOpenChange={setSlugOpen}
+        tab={tab}
+        knowledgeBaseId={knowledgeBaseId}
+      />
     </>
   )
 }
 
-interface RenameInputProps {
-  tab: ArticleMeta
-  onFinish: () => void
-  renameArticle: (
-    id: string,
-    fields: { title?: string; emoji?: string | null; slug?: string }
-  ) => Promise<void>
+interface TabTitleInputProps {
+  initialValue: string
+  placeholder?: string
+  /** Called with the trimmed value when it differs from initialValue and is non-empty. */
+  onCommit: (trimmed: string) => void
+  /** Called on Escape, or on blur/Enter when the value is empty or unchanged. */
+  onCancel: () => void
 }
 
-function RenameInput({ tab, onFinish, renameArticle }: RenameInputProps) {
-  const [value, setValue] = useState(tab.title)
-  const inputRef = useRef<HTMLInputElement>(null)
+function TabTitleInput({ initialValue, placeholder, onCommit, onCancel }: TabTitleInputProps) {
+  const [value, setValue] = useState(initialValue)
+  const inputRef = useRef<AutosizeInputRef>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
   }, [])
 
-  const commit = useCallback(async () => {
+  const finish = useCallback(() => {
     const trimmed = value.trim()
-    if (trimmed && trimmed !== tab.title) {
-      await renameArticle(tab.id, { title: trimmed })
+    if (!trimmed || trimmed === initialValue) {
+      onCancel()
+      return
     }
-    onFinish()
-  }, [value, tab.title, tab.id, renameArticle, onFinish])
+    onCommit(trimmed)
+  }, [value, initialValue, onCommit, onCancel])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      void commit()
+      finish()
     } else if (e.key === 'Escape') {
       e.preventDefault()
-      onFinish()
+      onCancel()
     }
   }
 
   return (
-    <input
+    <AutosizeInput
       ref={inputRef}
-      type='text'
       value={value}
+      placeholder={placeholder}
+      minWidth={30}
       onChange={(e) => setValue(e.target.value)}
-      onBlur={commit}
+      onBlur={finish}
       onKeyDown={handleKeyDown}
-      className='w-32 rounded-sm bg-background px-1 text-sm outline-none ring-1 ring-primary'
+      inputClassName='rounded-sm bg-background px-1 text-sm outline-none ring-1 ring-primary'
     />
   )
 }

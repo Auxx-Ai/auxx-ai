@@ -4,7 +4,12 @@
 // Run-scoped file sink hook (set by @auxx/logger/run-log on import)
 // ---------------------------------------------------------------------------
 
-type WriteToRunLogFn = (message: string) => void
+export interface RunLogEntryMeta {
+  scope: string
+  level: LogLevel
+}
+
+type WriteToRunLogFn = (message: string, meta: RunLogEntryMeta) => void
 
 let _writeToRunLog: WriteToRunLogFn | undefined
 
@@ -16,8 +21,8 @@ export function _registerRunLogWriter(fn: WriteToRunLogFn): void {
   _writeToRunLog = fn
 }
 
-function writeToRunLog(message: string): void {
-  _writeToRunLog?.(message)
+function writeToRunLog(message: string, meta: RunLogEntryMeta): void {
+  _writeToRunLog?.(message, meta)
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +215,7 @@ export function createScopedLogger(scope: string, options?: { color?: ColorName 
     ) => {
       const formatted = formatMessage(level, message, args)
       consoleFn(formatted)
-      writeToRunLog(formatted)
+      writeToRunLog(formatted, { scope, level })
     }
 
     return {

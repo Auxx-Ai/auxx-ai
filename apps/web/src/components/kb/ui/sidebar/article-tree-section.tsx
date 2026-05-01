@@ -25,7 +25,8 @@ export function ArticleTreeSection({
   articleOpenStates,
   toggleArticleOpen,
 }: ArticleTreeSectionProps) {
-  const paddingLeftRem = level * 1.125
+  // const paddingLeftRem = level * 1.125
+  const paddingLeftRem = level === 0 ? 0 : 1.125
 
   return (
     <>

@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/editor/article-editor.tsx
 'use client'
 
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import type { JSONContent } from '@tiptap/core'
 import { useCallback, useEffect, useRef } from 'react'
 import { useDebounceCallback } from 'usehooks-ts'
@@ -9,6 +10,7 @@ import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
 import { ArticleEditorFooter } from './article-editor-footer'
+import { ArticleEditorHeader } from './article-editor-header'
 import { ArticleEditorTop } from './article-editor-top'
 
 const emptyContent: JSONContent = {
@@ -57,33 +59,30 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
   }
 
   return (
-    <div className='flex flex-1'>
-      <div className='flex flex-1 flex-col overflow-y-auto'>
+    <div className='flex min-h-0 flex-1 flex-col'>
+      <ArticleEditorHeader article={article} knowledgeBaseId={knowledgeBaseId} />
+      <ScrollArea className='flex-1'>
         <div className='flex min-h-min flex-1 flex-col'>
-          <div className='flex flex-1'>
-            <div className='flex h-full flex-1'>
-              <div className='relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col px-7'>
-                <div className='flex min-h-0 flex-1 flex-col pb-10'>
-                  <ArticleEditorTop
-                    article={article}
-                    knowledgeBaseId={knowledgeBaseId}
-                    onUpdateMetadata={handleMetadataUpdate}
+          <div className='relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col px-7'>
+            <div className='flex min-h-0 flex-1 flex-col pb-10'>
+              <ArticleEditorTop
+                article={article}
+                knowledgeBaseId={knowledgeBaseId}
+                onUpdateMetadata={handleMetadataUpdate}
+              />
+              <div className='relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch'>
+                {!isContentLoading && (
+                  <KBArticleEditor
+                    initialContent={draftContentJson ?? emptyContent}
+                    onChange={debouncedPersist}
                   />
-                  <div className='relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch'>
-                    {!isContentLoading && (
-                      <KBArticleEditor
-                        initialContent={draftContentJson ?? emptyContent}
-                        onChange={debouncedPersist}
-                      />
-                    )}
-                  </div>
-                  <ArticleEditorFooter article={article} knowledgeBaseId={knowledgeBaseId} />
-                </div>
+                )}
               </div>
+              <ArticleEditorFooter article={article} knowledgeBaseId={knowledgeBaseId} />
             </div>
           </div>
         </div>
-      </div>
+      </ScrollArea>
     </div>
   )
 }

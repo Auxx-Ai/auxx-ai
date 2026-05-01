@@ -1,13 +1,14 @@
 // @auxx/lib/kb/kb-service.ts
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { ArticleKind, ArticleStatus } from '@auxx/database/enums'
 import type {
   ArticleKind as ArticleKindType,
   ArticleStatus as ArticleStatusType,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import { generateKeyBetween } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
-import { and, asc, count, desc, eq, gt, gte, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { DatasetService } from '../datasets/services/dataset-service'
 import type { KBDraftSettings } from './draft-settings'
 import { enrichDocWithHighlighting } from './highlight-code'
@@ -29,7 +30,7 @@ export interface ArticleListItem {
   organizationId: string
   slug: string
   parentId: string | null
-  order: number
+  sortOrder: string
   articleKind: ArticleKindType
   isPublished: boolean
   status: ArticleStatusType
@@ -133,7 +134,14 @@ export interface ArticleDraftFields {
 export interface ArticleStructureFields {
   slug?: string
   parentId?: string | null
-  order?: number
+}
+
+export interface MoveArticleInput {
+  id: string
+  parentId: string | null
+  sortOrder?: string
+  adjacentId?: string
+  position?: 'before' | 'after'
 }
 
 export interface ArticleBatchUpdateItem {
@@ -207,7 +215,7 @@ export class KBService {
             organizationId: this.organizationId,
             authorId: createdById,
             parentId: null,
-            order: 0,
+            sortOrder: 'a0',
             isPublished: true,
             status: ArticleStatus.PUBLISHED,
             publishedAt: new Date(),
@@ -441,7 +449,7 @@ export class KBService {
           eq(schema.Article.organizationId, this.organizationId),
           options.includeUnpublished ? undefined : eq(schema.Article.isPublished, true)
         ),
-        orderBy: [asc(schema.Article.parentId), asc(schema.Article.order)],
+        orderBy: [asc(schema.Article.parentId), asc(schema.Article.sortOrder)],
         with: { publishedRevision: true, draftRevision: true },
       })
       return articles.map((a) => this.flattenForList(a))
@@ -553,46 +561,41 @@ export class KBService {
         ? await this.verifyParentArticleExists(articleInput.parentId, knowledgeBaseId)
         : null
       this.validateArticleKind(kind, parent)
-      let newOrder = 0
+      let sortOrder: string
       if (orderInfo) {
         const adjacent = await this.db.query.Article.findFirst({
           where: eq(schema.Article.id, orderInfo.adjacentId),
-          columns: { order: true, parentId: true },
+          columns: { sortOrder: true, parentId: true },
         })
-        if (adjacent) {
+        if (!adjacent) {
+          sortOrder = await this.getNextArticleSortOrder(
+            knowledgeBaseId,
+            articleInput.parentId ?? null
+          )
+        } else {
           if (articleInput.parentId === undefined) articleInput.parentId = adjacent.parentId
-          if (orderInfo.position === 'before') {
-            newOrder = adjacent.order
-            await this.db
-              .update(schema.Article)
-              .set({ order: sql`${schema.Article.order} + 1` })
-              .where(
-                and(
-                  eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-                  articleInput.parentId === null
-                    ? isNull(schema.Article.parentId)
-                    : eq(schema.Article.parentId, articleInput.parentId as string),
-                  gte(schema.Article.order, newOrder)
-                )
-              )
-          } else {
-            newOrder = adjacent.order + 1
-            await this.db
-              .update(schema.Article)
-              .set({ order: sql`${schema.Article.order} + 1` })
-              .where(
-                and(
-                  eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-                  articleInput.parentId === null
-                    ? isNull(schema.Article.parentId)
-                    : eq(schema.Article.parentId, articleInput.parentId as string),
-                  gt(schema.Article.order, adjacent.order)
-                )
-              )
-          }
+          const targetParentId = articleInput.parentId ?? null
+          const siblings = await this.db.query.Article.findMany({
+            where: and(
+              eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
+              targetParentId === null
+                ? isNull(schema.Article.parentId)
+                : eq(schema.Article.parentId, targetParentId)
+            ),
+            orderBy: asc(schema.Article.sortOrder),
+            columns: { id: true, sortOrder: true },
+          })
+          const idx = siblings.findIndex((s) => s.id === orderInfo.adjacentId)
+          const before = orderInfo.position === 'before'
+          const lo = before ? (siblings[idx - 1]?.sortOrder ?? null) : adjacent.sortOrder
+          const hi = before ? adjacent.sortOrder : (siblings[idx + 1]?.sortOrder ?? null)
+          sortOrder = generateKeyBetween(lo, hi)
         }
       } else {
-        newOrder = await this.getNextArticleOrder(knowledgeBaseId, articleInput.parentId)
+        sortOrder = await this.getNextArticleSortOrder(
+          knowledgeBaseId,
+          articleInput.parentId ?? null
+        )
       }
 
       const result = await this.db.transaction(async (tx) => {
@@ -605,7 +608,7 @@ export class KBService {
             parentId: articleInput.parentId ?? null,
             isPublished: false,
             status: ArticleStatus.DRAFT,
-            order: newOrder,
+            sortOrder,
             knowledgeBaseId,
             organizationId: this.organizationId,
             authorId,
@@ -755,7 +758,6 @@ export class KBService {
       const updateData: Record<string, unknown> = { updatedAt: new Date() }
       if (fields.slug !== undefined) updateData.slug = fields.slug
       if (fields.parentId !== undefined) updateData.parentId = fields.parentId
-      if (fields.order !== undefined) updateData.order = fields.order
 
       await this.db.update(schema.Article).set(updateData).where(eq(schema.Article.id, id))
 
@@ -764,15 +766,13 @@ export class KBService {
         with: { publishedRevision: true, draftRevision: true },
       })
       if (!reloaded) throw this.createNotFoundError(`Article with ID '${id}' not found`)
-      // Slug changes need to surface in indexed segment metadata so kopilot
-      // results deep-link to the right URL.
-      if (article.isPublished && fields.slug !== undefined && fields.slug !== article.slug) {
-        void enqueueKBSync({
-          type: 'metadata',
-          articleId: id,
-          kbId: article.knowledgeBaseId,
-          organizationId: this.organizationId,
-        })
+      // Slug or parent changes shift the slugPath of the entire subtree, so
+      // every published descendant's indexed segment metadata also needs a
+      // refresh. Otherwise kopilot citations deep-link to the old URL.
+      const slugChanged = fields.slug !== undefined && fields.slug !== article.slug
+      const parentChanged = fields.parentId !== undefined && fields.parentId !== article.parentId
+      if (slugChanged || parentChanged) {
+        this.enqueueSubtreeMetadataSync(id, article.knowledgeBaseId, article.isPublished)
       }
       return this.flattenForList(reloaded)
     } catch (error) {
@@ -805,7 +805,7 @@ export class KBService {
           }
           const cleaned: Record<string, unknown> = { updatedAt: new Date() }
           for (const [key, value] of Object.entries(updates)) {
-            if (value !== undefined && ['slug', 'parentId', 'order'].includes(key)) {
+            if (value !== undefined && ['slug', 'parentId'].includes(key)) {
               cleaned[key] = value
             }
           }
@@ -816,17 +816,11 @@ export class KBService {
           })
           if (reloaded) {
             results.push(this.flattenForList(reloaded))
-            if (
-              reloaded.isPublished &&
-              cleaned.slug !== undefined &&
-              cleaned.slug !== existing.slug
-            ) {
-              void enqueueKBSync({
-                type: 'metadata',
-                articleId: id,
-                kbId: reloaded.knowledgeBaseId,
-                organizationId: this.organizationId,
-              })
+            const slugChanged = cleaned.slug !== undefined && cleaned.slug !== existing.slug
+            const parentChanged =
+              cleaned.parentId !== undefined && cleaned.parentId !== existing.parentId
+            if (slugChanged || parentChanged) {
+              this.enqueueSubtreeMetadataSync(id, reloaded.knowledgeBaseId, reloaded.isPublished)
             }
           }
         }
@@ -907,76 +901,49 @@ export class KBService {
    * revision yet), inserts a new ArticleRevision snapshot with the next
    * versionNumber and points the article at it. Otherwise just toggles
    * visibility back on (no new snapshot).
+   *
+   * `ancestorIds` opts into a cascade: each id is validated to be a DRAFT
+   * ancestor of `id` on the parentId chain, then published in the same
+   * transaction. Used to publish a tab/header alongside the leaf so the leaf
+   * is visible on the public site.
    */
   async publishArticle(
     id: string,
-    editorId: string
+    editorId: string,
+    ancestorIds: string[] = []
   ): Promise<{ article: ArticleListItem; version: ArticleRevision | null }> {
     try {
       const result = await this.db.transaction(async (tx) => {
-        const article = await tx.query.Article.findFirst({
+        if (ancestorIds.length > 0) {
+          await this.validateAncestorChain(tx, id, ancestorIds)
+        }
+
+        const orderedIds = [...ancestorIds, id]
+        const rows = await tx.query.Article.findMany({
           where: and(
-            eq(schema.Article.id, id),
-            eq(schema.Article.organizationId, this.organizationId)
+            eq(schema.Article.organizationId, this.organizationId),
+            inArray(schema.Article.id, orderedIds)
           ),
           with: { draftRevision: true },
         })
-        if (!article) throw this.createNotFoundError(`Article with ID '${id}' not found`)
-        if (!article.draftRevision) {
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Article has no draft revision to publish',
-          })
-        }
-        const needsNewSnapshot =
-          article.hasUnpublishedChanges || article.publishedRevisionId === null
+        const byId = new Map(rows.map((r) => [r.id, r]))
 
-        let newVersion: ArticleRevision | null = null
-        let newPublishedRevisionId = article.publishedRevisionId
-
-        if (needsNewSnapshot) {
-          // Compute next version number
-          const [{ next }] = await tx
-            .select({
-              next: sql<number>`COALESCE(MAX(${schema.ArticleRevision.versionNumber}), 0) + 1`,
+        let leafVersion: ArticleRevision | null = null
+        for (const articleId of orderedIds) {
+          const row = byId.get(articleId)
+          if (!row) throw this.createNotFoundError(`Article with ID '${articleId}' not found`)
+          if (!row.draftRevision) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: `Article ${articleId} has no draft revision to publish`,
             })
-            .from(schema.ArticleRevision)
-            .where(eq(schema.ArticleRevision.articleId, id))
-          const draft = article.draftRevision
-          const [inserted] = await tx
-            .insert(schema.ArticleRevision)
-            .values({
-              articleId: id,
-              organizationId: this.organizationId,
-              versionNumber: next,
-              title: draft.title,
-              description: draft.description,
-              excerpt: draft.excerpt,
-              emoji: draft.emoji,
-              content: draft.content,
-              contentJson: draft.contentJson,
-              editorId,
-            })
-            .returning()
-          newVersion = inserted
-          newPublishedRevisionId = inserted.id
+          }
+          const version = await this.publishArticleInTx(tx, row, editorId)
+          if (articleId === id) leafVersion = version
         }
 
-        const now = new Date()
-        const [updated] = await tx
-          .update(schema.Article)
-          .set({
-            publishedRevisionId: newPublishedRevisionId,
-            isPublished: true,
-            status: ArticleStatus.PUBLISHED,
-            publishedAt: article.publishedAt ?? now,
-            publishedById: editorId,
-            hasUnpublishedChanges: false,
-            updatedAt: now,
-          })
-          .where(eq(schema.Article.id, id))
-          .returning()
-        return { article: updated, version: newVersion }
+        const [updated] = await tx.select().from(schema.Article).where(eq(schema.Article.id, id))
+        return { article: updated, version: leafVersion }
       })
 
       const reloaded = await this.db.query.Article.findFirst({
@@ -996,10 +963,130 @@ export class KBService {
         kbId: flat.knowledgeBaseId,
         organizationId: this.organizationId,
       })
+      for (const ancestorId of ancestorIds) {
+        void enqueueKBSync({
+          type: 'sync',
+          articleId: ancestorId,
+          kbId: flat.knowledgeBaseId,
+          organizationId: this.organizationId,
+        })
+      }
       return { article: flat, version: result.version }
     } catch (error) {
-      return this.handleError(error, 'Error publishing article', { articleId: id })
+      return this.handleError(error, 'Error publishing article', { articleId: id, ancestorIds })
     }
+  }
+
+  /**
+   * Walk the org's article tree to confirm `ancestorIds` is exactly the set of
+   * DRAFT ancestors of `leafId` walking up to the first PUBLISHED row. Throws
+   * if any id is off-chain, ARCHIVED, already PUBLISHED, or if a DRAFT ancestor
+   * is missing from the input.
+   */
+  private async validateAncestorChain(
+    tx: Transaction,
+    leafId: string,
+    ancestorIds: string[]
+  ): Promise<void> {
+    const all = await tx.query.Article.findMany({
+      where: eq(schema.Article.organizationId, this.organizationId),
+      columns: { id: true, parentId: true, status: true, isPublished: true, title: true },
+    })
+    const byId = new Map(all.map((a) => [a.id, a]))
+    if (!byId.has(leafId)) {
+      throw this.createNotFoundError(`Article with ID '${leafId}' not found`)
+    }
+
+    const chainDrafts: string[] = []
+    let cursor = byId.get(leafId)?.parentId ? byId.get(byId.get(leafId)!.parentId!) : undefined
+    while (cursor) {
+      if (cursor.status === ArticleStatus.ARCHIVED) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Ancestor '${cursor.title}' is archived. Unarchive it before publishing.`,
+        })
+      }
+      if (cursor.status === ArticleStatus.PUBLISHED) break
+      chainDrafts.push(cursor.id)
+      cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined
+    }
+
+    const expected = new Set(chainDrafts)
+    for (const id of ancestorIds) {
+      if (!expected.has(id)) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Ancestor ${id} is not on the publish chain.`,
+        })
+      }
+    }
+    for (const id of chainDrafts) {
+      if (!ancestorIds.includes(id)) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Missing ancestor ${id} from publish cascade.`,
+        })
+      }
+    }
+  }
+
+  /**
+   * Publish a single article row inside an existing transaction. Snapshots the
+   * draft revision when needed, flips the article to PUBLISHED. Caller is
+   * responsible for chain validation and downstream sync enqueue.
+   */
+  private async publishArticleInTx(
+    tx: Transaction,
+    article: ArticleRow & { draftRevision: ArticleRevision | null },
+    editorId: string
+  ): Promise<ArticleRevision | null> {
+    const needsNewSnapshot = article.hasUnpublishedChanges || article.publishedRevisionId === null
+
+    let newVersion: ArticleRevision | null = null
+    let newPublishedRevisionId = article.publishedRevisionId
+
+    if (needsNewSnapshot) {
+      const [{ next }] = await tx
+        .select({
+          next: sql<number>`COALESCE(MAX(${schema.ArticleRevision.versionNumber}), 0) + 1`,
+        })
+        .from(schema.ArticleRevision)
+        .where(eq(schema.ArticleRevision.articleId, article.id))
+      const draft = article.draftRevision!
+      const [inserted] = await tx
+        .insert(schema.ArticleRevision)
+        .values({
+          articleId: article.id,
+          organizationId: this.organizationId,
+          versionNumber: next,
+          title: draft.title,
+          description: draft.description,
+          excerpt: draft.excerpt,
+          emoji: draft.emoji,
+          content: draft.content,
+          contentJson: draft.contentJson,
+          editorId,
+        })
+        .returning()
+      newVersion = inserted
+      newPublishedRevisionId = inserted.id
+    }
+
+    const now = new Date()
+    await tx
+      .update(schema.Article)
+      .set({
+        publishedRevisionId: newPublishedRevisionId,
+        isPublished: true,
+        status: ArticleStatus.PUBLISHED,
+        publishedAt: article.publishedAt ?? now,
+        publishedById: editorId,
+        hasUnpublishedChanges: false,
+        updatedAt: now,
+      })
+      .where(eq(schema.Article.id, article.id))
+
+    return newVersion
   }
 
   async unpublishArticle(id: string): Promise<ArticleListItem> {
@@ -1169,35 +1256,80 @@ export class KBService {
    * Reorder the tab strip. The KB root routes through the first tab, so this
    * also implicitly changes the landing article when index 0 changes.
    */
-  async reorderTabs(knowledgeBaseId: string, tabIds: string[]): Promise<ArticleListItem[]> {
+  /**
+   * Move an article — change its parent and/or its position among siblings.
+   * Single-row write; computes sortOrder via fractional indexing. Tabs are
+   * just root articles (`parentId === null`, `articleKind === 'tab'`); they
+   * use the same primitive.
+   */
+  async moveArticle(knowledgeBaseId: string, input: MoveArticleInput): Promise<ArticleListItem> {
     try {
       await this.verifyKnowledgeBaseExists(knowledgeBaseId)
-      await this.db.transaction(async (tx) => {
-        for (let i = 0; i < tabIds.length; i++) {
-          await tx
-            .update(schema.Article)
-            .set({ order: i, updatedAt: new Date() })
-            .where(
-              and(
-                eq(schema.Article.id, tabIds[i]!),
-                eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-                eq(schema.Article.articleKind, ArticleKind.tab)
-              )
-            )
-        }
-      })
-      const tabs = await this.db.query.Article.findMany({
+      const article = await this.db.query.Article.findFirst({
         where: and(
+          eq(schema.Article.id, input.id),
           eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-          eq(schema.Article.organizationId, this.organizationId),
-          eq(schema.Article.articleKind, ArticleKind.tab)
+          eq(schema.Article.organizationId, this.organizationId)
         ),
-        orderBy: asc(schema.Article.order),
-        with: { publishedRevision: true, draftRevision: true },
       })
-      return tabs.map((t) => this.flattenForList(t))
+      if (!article) throw this.createNotFoundError(`Article with ID '${input.id}' not found`)
+
+      const parent = input.parentId
+        ? await this.verifyParentArticleExists(input.parentId, knowledgeBaseId)
+        : null
+      this.validateArticleKind(article.articleKind, parent)
+
+      let sortOrder: string
+      if (input.sortOrder !== undefined) {
+        sortOrder = input.sortOrder
+      } else if (input.adjacentId && input.position) {
+        const adjacent = await this.db.query.Article.findFirst({
+          where: and(
+            eq(schema.Article.id, input.adjacentId),
+            eq(schema.Article.knowledgeBaseId, knowledgeBaseId)
+          ),
+          columns: { sortOrder: true, parentId: true },
+        })
+        if (!adjacent) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Adjacent article '${input.adjacentId}' not found`,
+          })
+        }
+        const siblings = await this.db.query.Article.findMany({
+          where: and(
+            eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
+            input.parentId === null
+              ? isNull(schema.Article.parentId)
+              : eq(schema.Article.parentId, input.parentId),
+            ne(schema.Article.id, input.id)
+          ),
+          orderBy: asc(schema.Article.sortOrder),
+          columns: { id: true, sortOrder: true },
+        })
+        const idx = siblings.findIndex((s) => s.id === input.adjacentId)
+        const before = input.position === 'before'
+        const lo = before ? (siblings[idx - 1]?.sortOrder ?? null) : adjacent.sortOrder
+        const hi = before ? adjacent.sortOrder : (siblings[idx + 1]?.sortOrder ?? null)
+        sortOrder = generateKeyBetween(lo, hi)
+      } else {
+        sortOrder = await this.getNextArticleSortOrder(knowledgeBaseId, input.parentId)
+      }
+
+      await this.db
+        .update(schema.Article)
+        .set({ parentId: input.parentId, sortOrder, updatedAt: new Date() })
+        .where(eq(schema.Article.id, input.id))
+
+      // Reparenting shifts the slugPath of the entire subtree — refresh
+      // metadata for the moved node and every published descendant.
+      if (article.parentId !== input.parentId) {
+        this.enqueueSubtreeMetadataSync(input.id, knowledgeBaseId, article.isPublished)
+      }
+
+      return await this.reloadFlat(input.id)
     } catch (error) {
-      return this.handleError(error, 'Error reordering tabs', { knowledgeBaseId })
+      return this.handleError(error, 'Error moving article', { input })
     }
   }
 
@@ -1246,7 +1378,7 @@ export class KBService {
       organizationId: a.organizationId,
       slug: a.slug,
       parentId: a.parentId,
-      order: a.order,
+      sortOrder: a.sortOrder,
       articleKind: a.articleKind,
       isPublished: a.isPublished,
       status: a.status,
@@ -1276,7 +1408,7 @@ export class KBService {
       organizationId: a.organizationId,
       slug: a.slug,
       parentId: a.parentId,
-      order: a.order,
+      sortOrder: a.sortOrder,
       articleKind: a.articleKind,
       isPublished: a.isPublished,
       status: a.status,
@@ -1433,6 +1565,58 @@ export class KBService {
     }
   }
 
+  /**
+   * Walk descendants of `rootId` (BFS over `parentId`, scoped to KB + org) and
+   * collect the ids of every published descendant. Used to refresh indexed
+   * segment metadata after a slugPath-shifting change.
+   */
+  private async getPublishedDescendantIds(
+    rootId: string,
+    knowledgeBaseId: string
+  ): Promise<string[]> {
+    const out: string[] = []
+    let frontier: string[] = [rootId]
+    while (frontier.length > 0) {
+      const children = await this.db.query.Article.findMany({
+        where: and(
+          eq(schema.Article.organizationId, this.organizationId),
+          eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
+          inArray(schema.Article.parentId, frontier)
+        ),
+        columns: { id: true, isPublished: true },
+      })
+      if (children.length === 0) break
+      for (const child of children) {
+        if (child.isPublished) out.push(child.id)
+      }
+      frontier = children.map((c) => c.id)
+    }
+    return out
+  }
+
+  /**
+   * Enqueue metadata sync for the root (if published) and every published
+   * descendant. Fire-and-forget — the BFS query happens on a microtask.
+   */
+  private enqueueSubtreeMetadataSync(
+    rootId: string,
+    knowledgeBaseId: string,
+    rootIsPublished: boolean
+  ): void {
+    const enqueue = (articleId: string) => {
+      void enqueueKBSync({
+        type: 'metadata',
+        articleId,
+        kbId: knowledgeBaseId,
+        organizationId: this.organizationId,
+      })
+    }
+    if (rootIsPublished) enqueue(rootId)
+    void this.getPublishedDescendantIds(rootId, knowledgeBaseId).then((ids) => {
+      for (const id of ids) enqueue(id)
+    })
+  }
+
   private async validateArticleSlugAvailability(
     slug: string,
     knowledgeBaseId: string,
@@ -1453,21 +1637,19 @@ export class KBService {
     }
   }
 
-  private async getNextArticleOrder(
+  private async getNextArticleSortOrder(
     knowledgeBaseId: string,
-    parentId?: string | null
-  ): Promise<number> {
-    const highestOrder = await this.db.query.Article.findFirst({
+    parentId: string | null
+  ): Promise<string> {
+    const last = await this.db.query.Article.findFirst({
       where: and(
         eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-        parentId === null || parentId === undefined
-          ? isNull(schema.Article.parentId)
-          : eq(schema.Article.parentId, parentId)
+        parentId === null ? isNull(schema.Article.parentId) : eq(schema.Article.parentId, parentId)
       ),
-      orderBy: desc(schema.Article.order),
-      columns: { order: true },
+      orderBy: desc(schema.Article.sortOrder),
+      columns: { sortOrder: true },
     })
-    return highestOrder ? (highestOrder as any).order + 1 : 0
+    return generateKeyBetween(last?.sortOrder ?? null, null)
   }
 
   private async generateUniqueSlugFromTitle(

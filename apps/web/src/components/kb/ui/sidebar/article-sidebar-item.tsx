@@ -10,7 +10,12 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon, getIcon } from '@auxx/ui/components/icons'
-import { getArticleSlugPaths, getFullSlugPath, isArticleActive } from '@auxx/ui/components/kb/utils'
+import {
+  getArticleSlugPaths,
+  getFullSlugPath,
+  getKbPreviewHref,
+  isArticleActive,
+} from '@auxx/ui/components/kb/utils'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
@@ -23,6 +28,7 @@ import {
   Cog,
   Copy,
   Download,
+  Eye,
   EyeOff,
   Files,
   FileText,
@@ -38,8 +44,10 @@ import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
-import type { ArticleTreeNode } from '../../store/article-store'
+import { usePublishWithConfirm } from '../../hooks/use-publish-with-confirm'
+import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
 import { ArticleSettingsDialog } from '../editor/article-settings-dialog'
+import { ArticleInsertLine } from './article-insert-line'
 
 interface ArticleSidebarItemProps {
   article: ArticleTreeNode
@@ -62,15 +70,9 @@ export function ArticleSidebarItem({
   const isArchived = article.status === 'ARCHIVED'
 
   const articles = useArticleList(knowledgeBaseId)
-  const {
-    createArticle,
-    deleteArticle,
-    publishArticle,
-    unpublishArticle,
-    archiveArticle,
-    unarchiveArticle,
-    duplicateArticle,
-  } = useArticleMutations(knowledgeBaseId)
+  const { createArticle, deleteArticle, archiveArticle, unarchiveArticle, duplicateArticle } =
+    useArticleMutations(knowledgeBaseId)
+  const { requestPublish, requestUnpublish, ConfirmDialog } = usePublishWithConfirm(knowledgeBaseId)
 
   const utils = api.useUtils()
   const fetchExport = async () =>
@@ -138,6 +140,11 @@ export function ArticleSidebarItem({
     return `${basePath}/editor/~/${path}?panel=articles`
   }, [article, articles, slugPaths, basePath])
 
+  const previewHref = useMemo(() => {
+    const path = slugPaths[article.id] ?? getFullSlugPath(article, articles)
+    return getKbPreviewHref(knowledgeBaseId, path)
+  }, [article, articles, slugPaths, knowledgeBaseId])
+
   const hasCustomIcon = !!article.emoji && !!getIcon(article.emoji)
   const icon = isCategory ? (
     isOpen ? (
@@ -158,20 +165,15 @@ export function ArticleSidebarItem({
 
   const displayName = article.title
 
+  const statusIcon = isArchived ? (
+    <Archive size={16} />
+  ) : !article.isPublished ? (
+    <EyeOff size={16} />
+  ) : null
+  const statusLabel = isArchived ? 'Archived' : !article.isPublished ? 'Unpublished' : undefined
+
   const handleAddSubItem = async () => {
     const created = await createArticle({ parentId: article.id })
-    if (created) {
-      const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
-      router.push(path)
-    }
-  }
-
-  const handleAddAfter = async () => {
-    const created = await createArticle({
-      parentId: article.parentId,
-      adjacentTo: article.id,
-      position: 'after',
-    })
     if (created) {
       const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
       router.push(path)
@@ -183,33 +185,19 @@ export function ArticleSidebarItem({
       <div ref={topSetNodeRef} className={cn('absolute left-0 right-0 h-6')}>
         <div className={cn('h-1 bg-transparent', { 'bg-blue-500': topIsOver })} />
       </div>
-      <div ref={setNodeRef} style={style} className={cn('relative', isBeingDraggedOver && 'z-10')}>
-        {isBeingDraggedOver && (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={cn('relative', isBeingDraggedOver && isCategory && 'z-10')}>
+        {isBeingDraggedOver && isCategory && (
           <div className='absolute inset-[4px] z-10 rounded-md border border-dashed border-primary/30 bg-primary/10' />
         )}
 
-        <div className='group/line absolute -bottom-px left-0 right-0 z-10 h-[12px]'>
-          <button
-            onClick={handleAddAfter}
-            className='peer absolute bottom-[-8px] left-[-8px] z-1 inline-flex rounded-full p-1 text-muted-foreground opacity-0 hover:bg-blue-500 hover:text-white group-hover/line:opacity-100'
-            type='button'
-            aria-label='Add item after'>
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              fill='none'
-              viewBox='0 0 16 16'
-              preserveAspectRatio='xMidYMid meet'
-              width='10'
-              height='10'
-              style={{ verticalAlign: 'middle' }}>
-              <path
-                fill='currentColor'
-                d='M8.6 3a.6.6 0 0 0-1.2 0v4.4H3a.6.6 0 0 0 0 1.2h4.4V13a.6.6 0 1 0 1.2 0V8.6H13a.6.6 0 1 0 0-1.2H8.6V3Z'
-              />
-            </svg>
-          </button>
-          <div className='absolute bottom-0 left-0 right-0 h-[2px] peer-hover:bg-blue-500' />
-        </div>
+        <ArticleInsertLine
+          article={article}
+          knowledgeBaseId={knowledgeBaseId}
+          mode={isCategory && isOpen ? 'first-child' : 'sibling-after'}
+        />
 
         <div
           className={cn(
@@ -270,24 +258,29 @@ export function ArticleSidebarItem({
             </div>
           </div>
 
-          {isArchived ? (
-            <div className='pointer-events-none ml-1' title='Archived'>
-              <Archive size={16} />
-            </div>
-          ) : !article.isPublished ? (
-            <div className='pointer-events-none ml-1' title='Unpublished'>
-              <EyeOff size={16} />
-            </div>
-          ) : null}
-
-          <div className='ml-1 mr-2 opacity-0 transition-opacity group-hover:opacity-100'>
+          <div className='mr-2'>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type='button'
-                  className='hover: rounded-md p-1 hover:bg-primary/5 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring'
-                  aria-label='More options'>
-                  <MoreVertical className='size-4 text-muted-foreground' />
+                  className={cn(
+                    'grid rounded-md p-1 text-muted-foreground hover:bg-primary/5 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring',
+                    !statusIcon && 'opacity-0 transition-opacity group-hover:opacity-100'
+                  )}
+                  aria-label='More options'
+                  title={statusLabel}>
+                  {statusIcon ? (
+                    <span className='col-start-1 row-start-1 group-hover:invisible'>
+                      {statusIcon}
+                    </span>
+                  ) : null}
+                  <span
+                    className={cn(
+                      'col-start-1 row-start-1',
+                      statusIcon && 'invisible group-hover:visible'
+                    )}>
+                    <MoreVertical className='size-4' />
+                  </span>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end' className='w-56'>
@@ -297,6 +290,11 @@ export function ArticleSidebarItem({
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
                     <Cog /> Page settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href={previewHref} target='_blank' rel='noopener'>
+                      <Eye /> Preview
+                    </a>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => duplicateArticle(article)}>
                     <BookCopy /> Duplicate
@@ -319,7 +317,7 @@ export function ArticleSidebarItem({
                     </DropdownMenuItem>
                   ) : article.isPublished ? (
                     <>
-                      <DropdownMenuItem onClick={() => unpublishArticle(article.id)}>
+                      <DropdownMenuItem onClick={() => requestUnpublish(article)}>
                         <EyeOff /> Unpublish
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
@@ -328,7 +326,7 @@ export function ArticleSidebarItem({
                     </>
                   ) : (
                     <>
-                      <DropdownMenuItem onClick={() => publishArticle(article.id)}>
+                      <DropdownMenuItem onClick={() => requestPublish(article)}>
                         <Send /> Publish
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
@@ -349,9 +347,72 @@ export function ArticleSidebarItem({
               article={article}
               knowledgeBaseId={knowledgeBaseId}
             />
+            <ConfirmDialog />
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Stripped-down visual of {@link ArticleSidebarItem} (and its sibling
+ * {@link import('./article-header-item').ArticleHeaderItem}) for use inside a
+ * dnd-kit `<DragOverlay>`. Branches on `articleKind` so the preview matches
+ * what the user picked up: header / category / page.
+ */
+export function ArticleSidebarItemPreview({ article }: { article: ArticleMeta }) {
+  if (article.articleKind === 'header') {
+    return (
+      <div
+        className='pointer-events-none flex items-center rounded-md border bg-background px-2 py-1 shadow-md'
+        style={{ maxWidth: '280px' }}>
+        <span className='truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
+          {article.title || 'Untitled'}
+        </span>
+      </div>
+    )
+  }
+
+  const isCategory = article.articleKind === 'category'
+  const isArchived = article.status === 'ARCHIVED'
+  const hasCustomIcon = !!article.emoji && !!getIcon(article.emoji)
+
+  const icon = isCategory ? (
+    <FolderClosed className='size-4 shrink-0 text-muted-foreground' />
+  ) : hasCustomIcon ? (
+    <EntityIcon
+      iconId={article.emoji as string}
+      variant='bare'
+      size='sm'
+      className='text-muted-foreground'
+    />
+  ) : (
+    <FileText className='size-4 shrink-0 text-muted-foreground' />
+  )
+
+  return (
+    <div
+      className={cn(
+        'pointer-events-none flex items-center rounded-md border bg-background px-2 py-2 text-sm text-muted-foreground shadow-md',
+        isArchived && 'opacity-60'
+      )}
+      style={{ maxWidth: '280px' }}>
+      <span className='mr-2 flex items-center'>{icon}</span>
+      <span className={cn('truncate', isCategory && 'font-medium text-foreground')}>
+        {article.title || 'Untitled'}
+      </span>
+      {article.hasUnpublishedChanges && article.isPublished && (
+        <span
+          className='ml-1.5 inline-block size-1.5 shrink-0 rounded-full bg-amber-500'
+          title='Unsaved changes'
+        />
+      )}
+      {isArchived ? (
+        <Archive size={16} className='ml-1 shrink-0' />
+      ) : !article.isPublished ? (
+        <EyeOff size={16} className='ml-1 shrink-0' />
+      ) : null}
     </div>
   )
 }

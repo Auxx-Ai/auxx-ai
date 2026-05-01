@@ -26,7 +26,7 @@ export function KBTopTabs<T extends KBSidebarArticle>({
   return (
     <div
       className={cn(
-        'sticky top-[var(--kb-header-h,3.5rem)] z-20 border-b border-[var(--kb-border)]',
+        'sticky top-[var(--kb-header-h,3.5rem)] z-20 hidden border-b border-[var(--kb-border)] @kb-md:block',
         'bg-[var(--kb-surface-bg)] backdrop-blur',
         'data-[kb-theme=bold]:border-b-2 data-[kb-theme=bold]:border-[var(--kb-fg)]'
       )}>

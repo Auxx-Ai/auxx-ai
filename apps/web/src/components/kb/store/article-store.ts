@@ -23,7 +23,7 @@ export interface ArticleMeta {
   emoji: string | null
   parentId: string | null
   articleKind: ArticleKind
-  order: number
+  sortOrder: string
   isPublished: boolean
   status: ArticleStatus
   description: string | null
@@ -46,11 +46,10 @@ interface PendingArticleUpdate {
   original: ArticleMeta
 }
 
-interface PendingReorder {
-  /** Updates that were applied. */
-  updates: Array<{ id: string; parentId: string | null; order: number }>
-  /** Originals captured for rollback. */
-  originals: Map<string, Pick<ArticleMeta, 'parentId' | 'order'>>
+interface PendingMove {
+  id: string
+  optimistic: { parentId: string | null; sortOrder: string }
+  original: { parentId: string | null; sortOrder: string }
 }
 
 interface ArticleStoreState {
@@ -76,8 +75,8 @@ interface ArticleStoreState {
   recentlyCreatedIds: Record<string, Set<string>>
   /** Articles marked deleted (hidden from selectors). */
   optimisticDeleted: Set<string>
-  /** Active reorder snapshot (only one in flight at a time). */
-  pendingReorder: PendingReorder | null
+  /** Active move snapshot (only one in flight at a time). */
+  pendingMove: PendingMove | null
 
   // ─── Actions ───────────────────────────────────────────────────────
   setArticles: (kbId: string, articles: ArticleMeta[]) => void
@@ -96,9 +95,9 @@ interface ArticleStoreState {
   confirmDelete: (id: string) => void
   rollbackDelete: (id: string) => void
 
-  applyOptimisticReorder: (updates: PendingReorder['updates']) => void
-  confirmReorder: () => void
-  rollbackReorder: () => void
+  applyOptimisticMove: (move: { id: string; parentId: string | null; sortOrder: string }) => void
+  confirmMove: () => void
+  rollbackMove: () => void
 
   clearKb: (kbId: string) => void
   reset: () => void
@@ -127,7 +126,7 @@ export const useArticleStore = create<ArticleStoreState>()(
       optimisticNewArticles: {},
       recentlyCreatedIds: {},
       optimisticDeleted: new Set<string>(),
-      pendingReorder: null,
+      pendingMove: null,
 
       // ─── Hydration ───────────────────────────────────────────────
       setArticles: (kbId, articles) => {
@@ -354,42 +353,38 @@ export const useArticleStore = create<ArticleStoreState>()(
         })
       },
 
-      // ─── Reorder (multi-article batch) ───────────────────────────
-      applyOptimisticReorder: (updates) => {
+      // ─── Move (single-row) ───────────────────────────────────────
+      applyOptimisticMove: (move) => {
         set((state) => {
-          // Capture originals (parentId + order) for every affected article.
-          const originals = new Map<string, Pick<ArticleMeta, 'parentId' | 'order'>>()
-          for (const update of updates) {
-            const article = state.articles.get(update.id)
-            if (article) {
-              originals.set(update.id, { parentId: article.parentId, order: article.order })
-              state.articles.set(update.id, {
-                ...article,
-                parentId: update.parentId,
-                order: update.order,
-              })
-            }
+          const article = state.articles.get(move.id)
+          if (!article) return
+          state.pendingMove = {
+            id: move.id,
+            optimistic: { parentId: move.parentId, sortOrder: move.sortOrder },
+            original: { parentId: article.parentId, sortOrder: article.sortOrder },
           }
-          state.pendingReorder = { updates, originals }
+          state.articles.set(move.id, {
+            ...article,
+            parentId: move.parentId,
+            sortOrder: move.sortOrder,
+          })
         })
       },
 
-      confirmReorder: () => {
+      confirmMove: () => {
         set((state) => {
-          state.pendingReorder = null
+          state.pendingMove = null
         })
       },
 
-      rollbackReorder: () => {
+      rollbackMove: () => {
         set((state) => {
-          if (!state.pendingReorder) return
-          for (const [id, original] of state.pendingReorder.originals) {
-            const article = state.articles.get(id)
-            if (article) {
-              state.articles.set(id, { ...article, ...original })
-            }
+          if (!state.pendingMove) return
+          const article = state.articles.get(state.pendingMove.id)
+          if (article) {
+            state.articles.set(article.id, { ...article, ...state.pendingMove.original })
           }
-          state.pendingReorder = null
+          state.pendingMove = null
         })
       },
 
@@ -418,7 +413,7 @@ export const useArticleStore = create<ArticleStoreState>()(
           state.optimisticNewArticles = {}
           state.recentlyCreatedIds = {}
           state.optimisticDeleted.clear()
-          state.pendingReorder = null
+          state.pendingMove = null
         })
       },
     }))

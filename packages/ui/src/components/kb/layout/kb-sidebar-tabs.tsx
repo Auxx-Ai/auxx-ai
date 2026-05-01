@@ -1,5 +1,4 @@
 // packages/ui/src/components/kb/layout/kb-sidebar-tabs.tsx
-'use client'
 
 import type { KBSidebarArticle } from './kb-sidebar-tree'
 
@@ -11,9 +10,9 @@ export function getTopLevelTabs<T extends KBSidebarArticle>(articles: T[]): T[] 
   return articles
     .filter((a) => a.articleKind === 'tab')
     .sort((a, b) => {
-      const ao = (a as T & { order?: number }).order ?? 0
-      const bo = (b as T & { order?: number }).order ?? 0
-      return ao - bo
+      const ao = (a as T & { sortOrder?: string }).sortOrder ?? ''
+      const bo = (b as T & { sortOrder?: string }).sortOrder ?? ''
+      return ao < bo ? -1 : ao > bo ? 1 : 0
     })
 }
 
@@ -42,8 +41,9 @@ export function findTabForArticle<T extends KBSidebarArticle>(
 }
 
 /**
- * Subtree filter: returns the tab and every descendant article. Used to scope
- * the sidebar tree to the active tab.
+ * Subtree filter: returns every descendant of `tabId`, **excluding the tab
+ * itself**. The tab is already shown in the top strip / mobile dropdown — the
+ * sidebar tree only needs what's inside.
  */
 export function filterToTab<T extends KBSidebarArticle>(articles: T[], tabId: string | null): T[] {
   if (!tabId) return articles
@@ -52,11 +52,10 @@ export function filterToTab<T extends KBSidebarArticle>(articles: T[], tabId: st
   while (queue.length > 0) {
     const id = queue.shift()
     if (!id) break
-    const node = articles.find((a) => a.id === id)
-    if (!node) continue
-    out.push(node)
     for (const child of articles) {
-      if (child.parentId === id) queue.push(child.id)
+      if (child.parentId !== id) continue
+      out.push(child)
+      queue.push(child.id)
     }
   }
   return out

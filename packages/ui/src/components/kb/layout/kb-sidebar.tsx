@@ -10,6 +10,7 @@ import type { KBMode } from '../theme/kb-theme-tokens'
 import { useKBLayoutContext } from './kb-layout-context'
 import { readOpenIds, writeOpenIds } from './kb-sidebar-state'
 import { type KBSidebarArticle, type KBSidebarListStyle, KBSidebarTree } from './kb-sidebar-tree'
+import { KBTabSelect } from './kb-tab-select'
 
 interface KBSidebarProps<T extends KBSidebarArticle> {
   articles: T[]
@@ -26,6 +27,10 @@ interface KBSidebarProps<T extends KBSidebarArticle> {
   logoDark?: string | null
   mode?: KBMode
   showMode?: boolean
+  /** Tabs for the mobile-only `<KBTabSelect>`. Empty hides the dropdown. */
+  tabs?: T[]
+  activeTabId?: string | null
+  tabHrefs?: Record<string, string>
 }
 
 export function KBSidebar<T extends KBSidebarArticle>({
@@ -42,6 +47,9 @@ export function KBSidebar<T extends KBSidebarArticle>({
   logoDark,
   mode = 'light',
   showMode = true,
+  tabs,
+  activeTabId,
+  tabHrefs,
 }: KBSidebarProps<T>) {
   const { kbId, collapsed, setCollapsed, mobileOpen, setMobileOpen } = useKBLayoutContext()
 
@@ -81,6 +89,16 @@ export function KBSidebar<T extends KBSidebarArticle>({
       {showSearch ? (
         <div className='mb-1'>
           <KBSearchInput searchOrigin={searchOrigin ?? ''} basePath={basePath} />
+        </div>
+      ) : null}
+      {tabs && tabs.length >= 2 && tabHrefs ? (
+        <div className='mb-2 @kb-md:hidden'>
+          <KBTabSelect
+            tabs={tabs}
+            activeTabId={activeTabId ?? null}
+            tabHrefs={tabHrefs}
+            onNavigate={() => setMobileOpen(false)}
+          />
         </div>
       ) : null}
       <KBSidebarTree

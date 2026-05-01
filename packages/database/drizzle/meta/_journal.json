@@ -1009,6 +1009,13 @@
       "when": 1777531800000,
       "tag": "0143_fix_tab_revision_pointers",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1777584826497,
+      "tag": "0144_article_sortorder",
+      "breakpoints": true
     }
   ]
 }

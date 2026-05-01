@@ -1,12 +1,12 @@
 // apps/web/src/components/kb/hooks/use-article-move.tsx
 'use client'
 
-import {
-  buildArticleTree,
-  flattenArticleTreePreservingChildren,
-} from '@auxx/ui/components/kb/utils'
+import { flattenArticleTreePreservingChildren } from '@auxx/ui/components/kb/utils'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { generateKeyBetween } from '@auxx/utils'
 import {
+  type CollisionDetection,
+  closestCorners,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -19,11 +19,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
-import {
-  type ArticleMeta,
-  type ArticleTreeNode,
-  getArticleStoreState,
-} from '../store/article-store'
+import { type ArticleMeta, getArticleStoreState } from '../store/article-store'
 import { useArticleList } from './use-article-list'
 import { useArticleTree } from './use-article-tree'
 
@@ -34,6 +30,44 @@ export const DROP_ACTION_TYPE = {
 } as const
 
 export type DropActionType = (typeof DROP_ACTION_TYPE)[keyof typeof DROP_ACTION_TYPE]
+
+/**
+ * Pure validity check for an article move. Used both as a hover-time gate
+ * (via `collisionDetection`) and at drop time (via `computeMove`) so the
+ * UI never highlights a target that the move handler would silently reject.
+ *
+ * Rules:
+ *   1. Source exists and is not the target.
+ *   2. Tabs are root-only — never moved as children.
+ *   3. No drops into the source's own subtree (cycle prevention).
+ *   4. Headers must remain direct children of a tab.
+ */
+export function canDropArticle(
+  source: ArticleMeta | undefined,
+  target: ArticleMeta,
+  action: 'before' | 'inside',
+  articles: ArticleMeta[]
+): boolean {
+  if (!source) return false
+  if (source.id === target.id) return false
+  if (source.articleKind === 'tab') return false
+
+  // Cycle check: walk up from the prospective new parent. If we cross the
+  // source, the move would put a node inside its own subtree.
+  const newParentId = action === 'inside' ? target.id : target.parentId
+  let cursor: string | null = newParentId
+  while (cursor) {
+    if (cursor === source.id) return false
+    cursor = articles.find((a) => a.id === cursor)?.parentId ?? null
+  }
+
+  if (source.articleKind === 'header') {
+    const newParent = newParentId ? articles.find((a) => a.id === newParentId) : null
+    if (!newParent || newParent.articleKind !== 'tab') return false
+  }
+
+  return true
+}
 
 interface UseArticleMoveOptions {
   knowledgeBaseId: string
@@ -73,95 +107,95 @@ export function useArticleMove({
     useSensor(KeyboardSensor, {})
   )
 
-  const updateArticleOrder = api.kb.updateArticleOrder.useMutation()
+  const moveArticle = api.kb.moveArticle.useMutation()
 
   const findArticleById = useCallback((id: string) => articles.find((a) => a.id === id), [articles])
 
   /**
-   * Compute the full set of `{ id, parentId, order }` updates after applying
-   * a move. Only changed articles are returned.
+   * Compute the single `{ id, parentId, sortOrder }` update needed to apply
+   * a move. Returns null if the move is invalid or impossible.
    */
-  const computeReorderUpdates = useCallback(
+  const computeMove = useCallback(
     (
       sourceId: string,
       targetId: string,
       action: DropActionType
-    ): Array<{ id: string; parentId: string | null; order: number }> | null => {
+    ): { id: string; parentId: string | null; sortOrder: string } | null => {
       const source = findArticleById(sourceId)
       const target = findArticleById(targetId)
       if (!source || !target) return null
 
-      // Article-kind constraints: tabs are root-only; everything else lives
-      // under a tab; headers cannot nest under another header.
-      if (source.articleKind === 'tab') return null
-      if (target.articleKind === 'header' && source.articleKind === 'header') return null
+      const validityAction =
+        action === DROP_ACTION_TYPE.INSIDE || action === DROP_ACTION_TYPE.CONVERT
+          ? 'inside'
+          : 'before'
+      if (!canDropArticle(source, target, validityAction, articles)) return null
 
-      // Build a deep-cloned working tree we can mutate.
-      const workingTree = buildArticleTree(articles.map((a) => ({ ...a }))) as ArticleTreeNode[]
+      let parentId: string | null
+      let lo: string | null
+      let hi: string | null
 
-      const removeFromTree = (nodes: ArticleTreeNode[]): ArticleTreeNode | null => {
-        for (let i = 0; i < nodes.length; i++) {
-          if (nodes[i].id === sourceId) {
-            return nodes.splice(i, 1)[0]
-          }
-          if (nodes[i].children?.length) {
-            const found = removeFromTree(nodes[i].children)
-            if (found) return found
-          }
-        }
+      if (validityAction === 'inside') {
+        parentId = targetId
+        const firstChild = articles
+          .filter((a) => a.parentId === targetId && a.id !== sourceId)
+          .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))[0]
+        lo = null
+        hi = firstChild?.sortOrder ?? null
+      } else {
+        parentId = target.parentId
+        const siblings = articles
+          .filter((a) => a.parentId === parentId && a.id !== sourceId)
+          .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
+        const idx = siblings.findIndex((s) => s.id === targetId)
+        if (idx === -1) return null
+        lo = siblings[idx - 1]?.sortOrder ?? null
+        hi = siblings[idx]?.sortOrder ?? null
+      }
+
+      try {
+        const sortOrder = generateKeyBetween(lo, hi)
+        return { id: sourceId, parentId, sortOrder }
+      } catch {
         return null
       }
+    },
+    [articles, findArticleById]
+  )
 
-      const removed = removeFromTree(workingTree)
-      if (!removed) return null
-      const sourceForInsert: ArticleTreeNode = { ...removed, children: [] }
+  /**
+   * Drop in a custom collision detector that filters out invalid targets so
+   * the existing `over` / `topIsOver` flags on each item naturally short-
+   * circuit — no per-item validity gate needed.
+   */
+  const collisionDetection = useCallback<CollisionDetection>(
+    (args) => {
+      const collisions = closestCorners(args)
+      const source = findArticleById(args.active.id.toString())
+      if (!source) return collisions
 
-      if (action === DROP_ACTION_TYPE.BEFORE) {
-        const insertBefore = (nodes: ArticleTreeNode[]): boolean => {
-          for (let i = 0; i < nodes.length; i++) {
-            if (nodes[i].id === targetId) {
-              sourceForInsert.parentId = nodes[i].parentId
-              nodes.splice(i, 0, sourceForInsert)
-              return true
-            }
-            if (nodes[i].children?.length) {
-              if (insertBefore(nodes[i].children)) return true
-            }
-          }
-          return false
+      const beforeSuffix = `-${DROP_ACTION_TYPE.BEFORE}`
+      return collisions.filter((c) => {
+        const id = c.id.toString()
+        const isBefore = id.endsWith(beforeSuffix)
+        const targetId = isBefore ? id.slice(0, -beforeSuffix.length) : id
+        const target = findArticleById(targetId)
+        if (!target) return false
+
+        // Mirror handleDragOver: bare-id collisions become INSIDE only when
+        // the droppable advertises isCategory; otherwise treat as BEFORE.
+        let action: 'before' | 'inside' = 'before'
+        if (!isBefore) {
+          const container = (
+            c.data?.droppableContainer as
+              | { data?: { current?: { isCategory?: boolean } } }
+              | undefined
+          )?.data?.current
+          if (container?.isCategory === true) action = 'inside'
         }
-        if (!insertBefore(workingTree)) return null
-      } else if (action === DROP_ACTION_TYPE.INSIDE || action === DROP_ACTION_TYPE.CONVERT) {
-        const insertAsChild = (nodes: ArticleTreeNode[]): boolean => {
-          for (let i = 0; i < nodes.length; i++) {
-            if (nodes[i].id === targetId) {
-              if (!nodes[i].children) nodes[i].children = []
-              sourceForInsert.parentId = targetId
-              nodes[i].children.unshift(sourceForInsert)
-              return true
-            }
-            if (nodes[i].children?.length) {
-              if (insertAsChild(nodes[i].children)) return true
-            }
-          }
-          return false
-        }
-        if (!insertAsChild(workingTree)) return null
-      }
 
-      // Walk the tree and assign new (parentId, order). Only return changed entries.
-      const updates: Array<{ id: string; parentId: string | null; order: number }> = []
-      const walk = (nodes: ArticleTreeNode[], parentId: string | null) => {
-        nodes.forEach((node, index) => {
-          const existing = articles.find((a) => a.id === node.id)
-          if (!existing || existing.parentId !== parentId || existing.order !== index) {
-            updates.push({ id: node.id, parentId, order: index })
-          }
-          if (node.children?.length) walk(node.children, node.id)
-        })
-      }
-      walk(workingTree, null)
-      return updates
+        return canDropArticle(source, target, action, articles)
+      })
     },
     [articles, findArticleById]
   )
@@ -171,18 +205,18 @@ export function useArticleMove({
       if (isMutating) return false
       setIsMutating(true)
 
-      const updates = computeReorderUpdates(sourceId, targetId, action)
-      if (!updates || updates.length === 0) {
+      const move = computeMove(sourceId, targetId, action)
+      if (!move) {
         setIsMutating(false)
         return false
       }
 
       const store = getArticleStoreState()
-      store.applyOptimisticReorder(updates)
+      store.applyOptimisticMove(move)
 
       try {
-        await updateArticleOrder.mutateAsync({ knowledgeBaseId, articles: updates })
-        store.confirmReorder()
+        await moveArticle.mutateAsync({ knowledgeBaseId, ...move })
+        store.confirmMove()
         utils.kb.getArticles.invalidate({ knowledgeBaseId })
         toastSuccess({
           title: 'Structure Updated',
@@ -190,7 +224,7 @@ export function useArticleMove({
         })
         return true
       } catch (error) {
-        store.rollbackReorder()
+        store.rollbackMove()
         toastError({
           title: 'Move Failed',
           description: error instanceof Error ? error.message : 'Could not process the move.',
@@ -200,7 +234,7 @@ export function useArticleMove({
         setIsMutating(false)
       }
     },
-    [computeReorderUpdates, isMutating, knowledgeBaseId, updateArticleOrder, utils.kb.getArticles]
+    [computeMove, isMutating, knowledgeBaseId, moveArticle, utils.kb.getArticles]
   )
 
   const openCategoryAfterDelay = useCallback(
@@ -377,6 +411,7 @@ export function useArticleMove({
     activeArticle,
     articleTree,
     sensors,
+    collisionDetection,
     handleDragStart,
     handleDragOver,
     handleDragEnd,

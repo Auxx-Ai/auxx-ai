@@ -93,27 +93,21 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
           <DropdownMenuItem
             disabled={isCreating || !activeTabId}
             onSelect={() => void handleCreateInTab(ArticleKind.page)}>
-            <FileText className='mr-2 h-4 w-4' /> Page
+            <FileText /> Page
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={isCreating || !activeTabId}
             onSelect={() => void handleCreateInTab(ArticleKind.category)}>
-            <FolderClosed className='mr-2 h-4 w-4' /> Category
+            <FolderClosed /> Category
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={isCreating || !activeTabId}
             onSelect={() => void handleCreateInTab(ArticleKind.header)}>
-            <Heading className='mr-2 h-4 w-4' /> Section header
+            <Heading /> Section header
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => importInputRef.current?.click()}>
-            <Upload className='mr-2 h-4 w-4' /> Import .md
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href={`${basePath}/settings`}>
-              <Settings className='mr-2 h-4 w-4' />
-              KB Settings
-            </Link>
+            <Upload /> Import .md
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

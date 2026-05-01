@@ -25,8 +25,9 @@ interface KBFullscreenPreviewProps {
 
 /**
  * Standalone fullscreen render of a KB, served at `/preview/kb/<id>[/<slug>...]`.
- * Shows last-saved DB state including unpublished articles — admin-only via the
- * surrounding (protected) layout. Real `<Link>` navigation between articles.
+ * Renders the author's current draft so unsaved changes show up before publish.
+ * Admin-only via the surrounding (protected) layout. Real `<Link>` navigation
+ * between articles.
  */
 export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenPreviewProps) {
   const { knowledgeBase } = useKnowledgeBase(knowledgeBaseId)
@@ -36,12 +37,12 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
   const activeArticle =
     matchedArticle ?? articles.find((a) => a.articleKind === 'page' || a.articleKind === 'category')
   const articleId = activeArticle?.id ?? null
-  const { contentJson, description } = useArticleContent(articleId, knowledgeBaseId)
+  const { draftContentJson, draftDescription } = useArticleContent(articleId, knowledgeBaseId)
 
   if (!knowledgeBase) return null
 
   const basePath = `/preview/kb/${knowledgeBaseId}`
-  const docJson = (contentJson ?? null) as DocJSON | null
+  const docJson = (draftContentJson ?? null) as DocJSON | null
   const headings = docJson ? extractKBHeadings(docJson) : []
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
@@ -65,7 +66,7 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
                 doc={docJson}
                 title={activeArticle?.title}
                 emoji={activeArticle?.emoji}
-                description={description ?? activeArticle?.description}
+                description={draftDescription ?? activeArticle?.description}
                 parent={parent}
               />
             </div>

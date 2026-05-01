@@ -16,6 +16,7 @@ export { createCallModel } from './llm-adapter'
 export { processAgentMessage } from './process-agent-job'
 
 export { agentQueryLoop } from './query-loop'
+export { withAgentRunLog } from './run-log'
 export type { ToolBridgeConfig } from './tool-bridge'
 export { buildToolsFromDefinitions, executeToolCall, getBuiltInTools } from './tool-bridge'
 export type { ToolContext } from './tool-context'

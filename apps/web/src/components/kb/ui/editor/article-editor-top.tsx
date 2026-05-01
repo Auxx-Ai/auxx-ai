@@ -1,17 +1,13 @@
 // apps/web/src/components/kb/ui/editor/article-editor-top.tsx
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
 import { IconPicker } from '@auxx/ui/components/icon-picker'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { Cog, Smile } from 'lucide-react'
+import { Smile } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { EditableText } from '~/components/editor/editable-text'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
-import { ArticleSettingsDialog } from './article-settings-dialog'
-import { ArticleStatusPill } from './article-status-pill'
-import { HiddenParentBadge } from './hidden-parent-badge'
 
 interface ArticleEditorTopProps {
   article: ArticleMeta
@@ -24,7 +20,6 @@ export function ArticleEditorTop({
   knowledgeBaseId,
   onUpdateMetadata,
 }: ArticleEditorTopProps) {
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const { updateArticleDraft } = useArticleMutations(knowledgeBaseId)
 
   // The store keeps article.emoji at the *published* revision's value for published
@@ -45,37 +40,28 @@ export function ArticleEditorTop({
     <div className='page-block-openapi:ml-0 relative mx-auto flex w-full max-w-(--block-wrapper-max-width)'>
       <div className='flex flex-1'>
         <div className='flex flex-1'>
-          <div className='group/page-header relative mb-6 flex flex-1 flex-col pt-8'>
-            <div className='absolute top-0 my-2 flex items-center gap-x-2 opacity-0 transition group-hover/page-header:opacity-100'>
-              <Button variant='outline' size='xs' onClick={() => setIsSettingsOpen(true)}>
-                <Cog /> Page settings
-              </Button>
-              <button
-                type='button'
-                onClick={() => setIsSettingsOpen(true)}
-                className='cursor-pointer'
-                aria-label='View status'>
-                <ArticleStatusPill article={article} />
-              </button>
-              <HiddenParentBadge article={article} knowledgeBaseId={knowledgeBaseId} />
-            </div>
+          <div className='relative mb-6 flex flex-1 flex-col pt-8'>
             <div className='flex items-start justify-between'>
-              <div className='flex h-full flex-1 self-stretch'>
-                <div className='flex h-10 w-auto shrink-0 flex-row items-center justify-end lg:h-12'>
-                  <div className='relative flex pl-0 pr-2 lg:absolute lg:pl-4 lg:pr-2'>
-                    <IconPicker
-                      value={pickedEmoji ? { icon: pickedEmoji, color: 'gray' } : undefined}
-                      onChange={(v) => handleEmojiChange(v.icon)}
-                      hideColors>
-                      <Button variant='ghost' size='icon' className='rounded-full'>
-                        {pickedEmoji ? (
-                          <EntityIcon iconId={pickedEmoji} variant='bare' size='xl' />
-                        ) : (
-                          <Smile size={26} />
-                        )}
-                      </Button>
-                    </IconPicker>
-                  </div>
+              <div className='flex h-full flex-1 items-center self-stretch'>
+                <div className=' flex shrink-0 items-center'>
+                  <IconPicker
+                    value={pickedEmoji ? { icon: pickedEmoji, color: 'gray' } : undefined}
+                    onChange={(v) => handleEmojiChange(v.icon)}
+                    hideColors>
+                    <div>
+                      {pickedEmoji ? (
+                        <EntityIcon
+                          iconId={pickedEmoji}
+                          variant='full'
+                          color='gray'
+                          size='xl'
+                          className='[&_svg]:size-6!'
+                        />
+                      ) : (
+                        <Smile className='size-6!' />
+                      )}
+                    </div>
+                  </IconPicker>
                 </div>
                 <div className='relative flex h-full w-full items-center overflow-hidden text-2xl font-semibold lg:text-4xl'>
                   <EditableText
@@ -113,12 +99,6 @@ export function ArticleEditorTop({
           </div>
         </div>
       </div>
-      <ArticleSettingsDialog
-        open={isSettingsOpen}
-        onOpenChange={setIsSettingsOpen}
-        article={article}
-        knowledgeBaseId={knowledgeBaseId}
-      />
     </div>
   )
 }
