@@ -22,7 +22,6 @@ export { buildToolsFromDefinitions, executeToolCall, getBuiltInTools } from './t
 export type { ToolContext } from './tool-context'
 
 export type {
-  AgentBlock,
   AgentDefinition,
   AgentDeps,
   AgentDomainConfig,

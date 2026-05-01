@@ -24,13 +24,6 @@ export interface SessionMessage {
   /** Optional metadata (e.g. which agent produced this) */
   metadata?: Record<string, unknown>
   /**
-   * Legacy field — historically held literal UI blocks attached to tool
-   * messages (kb-article-list, docs-results). No tool emits blocks anymore;
-   * the field stays on the type so old persisted sessions still parse. Slated
-   * for full removal once we no longer need to read those archives.
-   */
-  blocks?: AgentBlock[]
-  /**
    * On role:'tool' messages, persist the digest produced by the source tool's
    * `buildDigest`. Frontend reads this on session reload to re-render pills +
    * cards without re-fetching.
@@ -162,6 +155,28 @@ export interface AgentToolDefinition {
    */
   inputAmendmentSchema?: z.ZodType
   /**
+   * Optional input validator + normalizer. Runs after `parseToolArgs` and
+   * before `execute()` (or before `captureMint` in capture mode). Lets the
+   * tool reshape LLM args into canonical form and reject unrecoverable
+   * inputs with an LLM-actionable error message.
+   *
+   * - `{ ok: false, error }` short-circuits the call: the engine emits a
+   *   `tool-completed` event with `success: false` + the error, and skips
+   *   `execute()` / `captureMint`. Counts as one tool-loop iteration.
+   * - `{ ok: true, args, warnings? }` lets the tool rewrite args before
+   *   `execute()` sees them. Warnings are logged at info level only — not
+   *   surfaced to the user or the LLM.
+   *
+   * `ctx` is `ToolContext` so the validator can read from the org cache
+   * (entity-def slugs, members, groups). It must NOT touch the DB.
+   */
+  validateInputs?: (
+    args: Record<string, unknown>,
+    ctx: ToolContext
+  ) => Promise<
+    { ok: true; args: Record<string, unknown>; warnings?: string[] } | { ok: false; error: string }
+  >
+  /**
    * Canonical reference-block kind this tool's results map to. Drives both
    * the auto-generated prompt section and the generic snapshot walker.
    */
@@ -203,20 +218,6 @@ export interface AgentToolResult {
   success: boolean
   output: unknown
   error?: string
-  /** Structured UI blocks to render in the frontend */
-  blocks?: AgentBlock[]
-}
-
-/** A rich UI block returned by tools for frontend rendering */
-export interface AgentBlock {
-  type: string
-  data: unknown
-  /**
-   * Where the block surfaces. `'outcome'` (default) renders as a transcript
-   * card. `'reference'` is LLM-cite-only — never auto-rendered, only used to
-   * backfill `auxx:*` fences the LLM cites in its final message.
-   */
-  surface?: 'outcome' | 'reference'
 }
 
 // ===== REFERENCE BLOCK SNAPSHOTS =====
@@ -597,7 +598,7 @@ export type AgentEvent = { turnId?: string } & (
       /** Per-message lookup table for inline `auxx://` link chips (G phase). */
       linkSnapshots?: Record<string, LinkSnapshot>
     }
-  | { type: 'message'; role: 'assistant'; content: string; blocks?: AgentBlock[] }
+  | { type: 'message'; role: 'assistant'; content: string }
   | { type: 'session-created'; sessionId: string; title: string; createdAt: string }
   | { type: 'session-title-updated'; sessionId: string; title: string }
   | { type: 'done' }

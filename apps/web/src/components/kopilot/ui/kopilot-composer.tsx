@@ -361,6 +361,7 @@ export function KopilotComposer({
             triggerVariant='transparent'
             triggerClassName='h-7 text-xs text-muted-foreground'
             compact
+            skipDeprecated
           />
         </div>
         <div className='absolute bottom-1 right-1 flex items-center gap-0.5'>

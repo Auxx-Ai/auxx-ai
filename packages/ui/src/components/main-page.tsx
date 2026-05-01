@@ -13,6 +13,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { SidebarTrigger } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown } from 'lucide-react'
@@ -256,16 +257,22 @@ interface MainPageBreadcrumbDropdownProps {
   label: React.ReactNode
   /** Optional leading icon. */
   icon?: React.ReactNode
-  /** Dropdown menu body (rendered inside DropdownMenuContent). */
+  /** Dropdown body (rendered inside DropdownMenuContent or PopoverContent). */
   children: React.ReactNode
   /** If true, no separator chevron is rendered after this item. */
   last?: boolean
   /** Extra className merged onto the breadcrumb item. */
   className?: string
-  /** Extra className merged onto the DropdownMenuContent. */
+  /** Extra className merged onto the floating content. */
   contentClassName?: string
-  /** DropdownMenuContent align prop. */
+  /** Content alignment. */
   align?: 'start' | 'center' | 'end'
+  /**
+   * Use a Popover instead of a DropdownMenu. Required when the body contains
+   * a `cmdk`-based picker (e.g. MultiSelectPicker) — Radix's DropdownMenu
+   * intercepts arrow keys and fights cmdk for focus.
+   */
+  popover?: boolean
 }
 
 const MainPageBreadcrumbDropdown: React.FC<MainPageBreadcrumbDropdownProps> = ({
@@ -276,24 +283,38 @@ const MainPageBreadcrumbDropdown: React.FC<MainPageBreadcrumbDropdownProps> = ({
   className,
   contentClassName,
   align = 'start',
+  popover = false,
 }) => {
+  const triggerClassName = cn(
+    'flex items-center gap-1 rounded py-0.5 px-1.5 hover:bg-primary-200 text-nowrap shrink-0 outline-none',
+    'data-[state=open]:bg-primary-200'
+  )
+  const triggerInner = (
+    <>
+      {icon}
+      {label}
+      <ChevronDown className='size-3.5 opacity-60' />
+    </>
+  )
+
   return (
     <>
       <BreadcrumbItem className={className}>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className={cn(
-              'flex items-center gap-1 rounded py-0.5 px-1.5 hover:bg-primary-200 text-nowrap shrink-0 outline-none',
-              'data-[state=open]:bg-primary-200'
-            )}>
-            {icon}
-            {label}
-            <ChevronDown className='size-3.5 opacity-60' />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align={align} className={contentClassName}>
-            {children}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {popover ? (
+          <Popover>
+            <PopoverTrigger className={triggerClassName}>{triggerInner}</PopoverTrigger>
+            <PopoverContent align={align} className={cn('p-0', contentClassName)}>
+              {children}
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger className={triggerClassName}>{triggerInner}</DropdownMenuTrigger>
+            <DropdownMenuContent align={align} className={contentClassName}>
+              {children}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </BreadcrumbItem>
       {!last && <BreadcrumbSeparator />}
     </>

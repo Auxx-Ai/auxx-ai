@@ -286,7 +286,6 @@ export async function* agentQueryLoop(
             success: r.success,
             output: r.output,
             error: r.error,
-            blocks: r.blocks,
           }
           currentState = config.domainConfig.onToolResult(r.toolName, toolResult, currentState)
         }
@@ -301,7 +300,6 @@ export async function* agentQueryLoop(
         timestamp: Date.now(),
         metadata: { agent: agent.name, ...(r.captured ? { captured: true } : {}) },
         toolStatus: (r.success ? 'completed' : 'error') as 'completed' | 'error',
-        ...(r.blocks && r.blocks.length > 0 ? { blocks: r.blocks } : {}),
         ...(r.digest !== undefined ? { digest: r.digest } : {}),
       }))
 
@@ -368,7 +366,7 @@ export async function* agentQueryLoop(
     // a fake "awaiting_approval" tool result message (fixes F7, F23).
     const approvalTool = findApprovalTool(toolCalls, agent.tools)
     if (approvalTool) {
-      const approvalArgs = parseToolArgs(approvalTool)
+      let approvalArgs = parseToolArgs(approvalTool)
       const toolDef = agent.tools.find((t) => t.name === approvalTool.function.name)
       const missingParams = validateRequiredParams(toolDef, approvalArgs)
 
@@ -412,6 +410,56 @@ export async function* agentQueryLoop(
           ],
         }
         continue
+      }
+
+      // Pre-pause input validation. If the args are recoverable, the
+      // validator rewrites them and the user sees a clean approval card. If
+      // they're not, we surface a synthetic error tool message and let the
+      // LLM retry without bothering the user — same shape as the
+      // missing-params branch above.
+      if (toolDef?.validateInputs) {
+        const v = await toolDef.validateInputs(approvalArgs, ctx)
+        if (!v.ok) {
+          logger.info('validateInputs rejected approval-required call', {
+            turnId,
+            agent: agent.name,
+            tool: approvalTool.function.name,
+            error: v.error,
+          })
+          const errorContent = JSON.stringify({ error: v.error, output: null })
+          currentState = {
+            ...currentState,
+            messages: [
+              ...currentState.messages,
+              {
+                role: 'assistant' as const,
+                content,
+                toolCalls: [approvalTool],
+                reasoning_content: reasoningContent || undefined,
+                timestamp: Date.now(),
+                metadata: {
+                  agent: agent.name,
+                  modelId: `${callParams.provider}:${callParams.model}`,
+                },
+              },
+              {
+                role: 'tool' as const,
+                content: errorContent,
+                toolCallId: approvalTool.id,
+                timestamp: Date.now(),
+                metadata: { agent: agent.name, validationError: true },
+              },
+            ],
+          }
+          continue
+        }
+        if (v.warnings?.length) {
+          logger.info('validateInputs warnings (pre-pause)', {
+            tool: approvalTool.function.name,
+            warnings: v.warnings,
+          })
+        }
+        approvalArgs = v.args
       }
 
       logger.info('Approval required', {
@@ -481,7 +529,6 @@ export async function* agentQueryLoop(
           success: r.success,
           output: r.output,
           error: r.error,
-          blocks: r.blocks,
         }
         currentState = config.domainConfig.onToolResult(r.toolName, toolResult, currentState)
       }
@@ -496,7 +543,6 @@ export async function* agentQueryLoop(
       timestamp: Date.now(),
       metadata: { agent: agent.name },
       toolStatus: (r.success ? 'completed' : 'error') as 'completed' | 'error',
-      ...(r.blocks && r.blocks.length > 0 ? { blocks: r.blocks } : {}),
       ...(r.digest !== undefined ? { digest: r.digest } : {}),
     }))
 
@@ -613,7 +659,7 @@ async function executeToolCalls(
   for (const toolCall of toolCalls) {
     const toolName = toolCall.function.name
     const tool = toolMap.get(toolName)
-    const args = parseToolArgs(toolCall)
+    let args = parseToolArgs(toolCall)
 
     if (!tool) {
       events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
@@ -633,6 +679,47 @@ async function executeToolCalls(
     // them before calling executeToolCalls. Guard just in case.
     if (needsApproval(tool, args)) {
       continue
+    }
+
+    // Input validation + normalization. Runs before the idempotent cache
+    // lookup so two LLM calls passing equivalent-but-different input shapes
+    // (e.g. raw vs. over-prefixed recordId) collapse to a single cache hit.
+    if (tool.validateInputs) {
+      const v = await tool.validateInputs(args, ctx)
+      if (!v.ok) {
+        events.push({
+          type: 'tool-started',
+          agent: agentName,
+          tool: toolName,
+          toolCallId: toolCall.id,
+          args,
+        })
+        const errResult = { success: false, output: null, error: v.error }
+        events.push({
+          type: 'tool-completed',
+          agent: agentName,
+          tool: toolName,
+          toolCallId: toolCall.id,
+          result: errResult,
+        })
+        logger.info('validateInputs rejected', { agent: agentName, tool: toolName, error: v.error })
+        results.push({
+          toolCallId: toolCall.id,
+          toolName,
+          output: { error: v.error },
+          success: false,
+          error: v.error,
+        })
+        continue
+      }
+      if (v.warnings?.length) {
+        logger.info('validateInputs warnings', {
+          agent: agentName,
+          tool: toolName,
+          warnings: v.warnings,
+        })
+      }
+      args = v.args
     }
 
     const cacheKey = tool.idempotent ? `${toolName}::${stableStringify(args)}` : null
@@ -655,7 +742,6 @@ async function executeToolCalls(
             success: cached.success,
             output: cached.output,
             error: cached.error,
-            blocks: cached.blocks,
           },
           digest: cached.digest,
         })
@@ -665,7 +751,6 @@ async function executeToolCalls(
           output: cached.output,
           success: cached.success,
           error: cached.error,
-          blocks: cached.blocks,
           digest: cached.digest,
         })
         continue
@@ -697,7 +782,6 @@ async function executeToolCalls(
         success: result.success,
         error: result.error,
         output: previewValue(result.output),
-        blocks: result.blocks?.map((b) => b.type),
       })
       const execResult: ToolExecResult = {
         toolCallId: toolCall.id,
@@ -705,7 +789,6 @@ async function executeToolCalls(
         output: result.output,
         success: result.success,
         error: result.error,
-        blocks: result.blocks,
         digest,
       }
       results.push(execResult)
