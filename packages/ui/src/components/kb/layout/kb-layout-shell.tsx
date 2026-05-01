@@ -3,7 +3,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { useSelectedLayoutSegments } from 'next/navigation'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { KBSearchDialog } from '../search/kb-search-dialog'
 import type { KBMode } from '../theme/kb-theme-tokens'
@@ -153,7 +153,9 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
         }
       />
       <KBTopTabs tabs={tabs} activeTabId={activeTabId} tabHrefs={tabHrefs} />
-      <div className={cn('mx-auto flex w-full max-w-7xl flex-1', mainScroll && 'min-h-0')}>
+      <div
+        className={cn('mx-auto flex w-full max-w-7xl flex-1', mainScroll && 'min-h-0')}
+        style={tabs.length >= 2 ? ({ '--kb-tabs-h': '2.625rem' } as CSSProperties) : undefined}>
         <KBSidebar
           articles={articles}
           basePath={basePath}
