@@ -2,9 +2,26 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { ButtonGroup, ButtonGroupSeparator } from '@auxx/ui/components/button-group'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { getKbPreviewHref } from '@auxx/ui/components/kb/utils'
 import { ToggleGroup, ToggleGroupItem } from '@auxx/ui/components/toggle-group'
-import { ExternalLink, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
+import {
+  ChevronDown,
+  ExternalLink,
+  Eye,
+  Monitor,
+  Moon,
+  RotateCcw,
+  Smartphone,
+  Sun,
+} from 'lucide-react'
 import { useKbPublicUrl } from '~/components/kb/hooks/use-kb-public-url'
 import { api } from '~/trpc/react'
 import { type Device, type Theme, usePreview } from './preview-context'
@@ -16,12 +33,13 @@ interface KBPreviewTopBarProps {
 }
 
 /**
- * Preview-pane controls only — open-in-new-tab, light/dark toggle, and
- * desktop/mobile device toggle. Publish lifecycle controls live in the
- * editor header (`KBPublishCluster`).
+ * Preview-pane controls — preview/live entry on the left, theme + device
+ * toggles on the right. Publish lifecycle controls live in the editor header
+ * (`KBPublishCluster`).
  */
 export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) {
-  const { isDark, isMobile, setTheme, setDevice } = usePreview()
+  const { effectiveMode, defaultMode, override, isMobile, knowledgeBase, setOverride, setDevice } =
+    usePreview()
 
   const { data: kb } = api.kb.byId.useQuery({ id: kbId })
 
@@ -34,14 +52,15 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
 
   const isPublished = kb?.publishStatus === 'PUBLISHED'
   const isUnlisted = kb?.publishStatus === 'UNLISTED'
-  const isLive = isPublished || isUnlisted
-  const externalHref = isLive && publicUrl ? `${publicUrl}${slugSegment}` : previewHref
-  const externalLabel =
-    isLive && publicUrl ? 'Open public site in new tab' : 'Open preview in new tab'
+  const isLive = (isPublished || isUnlisted) && Boolean(publicUrl)
+  const liveHref = publicUrl ? `${publicUrl}${slugSegment}` : null
+
+  const showMode = knowledgeBase?.showMode !== false
+  const showsHiddenModeHint = !showMode && override !== null && override !== defaultMode
 
   const handleThemeChange = (value?: string) => {
     if (!value) return
-    setTheme(value as Theme)
+    setOverride(value as Theme)
   }
 
   const handleDeviceChange = (value?: string) => {
@@ -50,45 +69,96 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
   }
 
   return (
-    <div className='flex items-center justify-end gap-2 border-b bg-background px-3 py-1'>
-      <Button size='icon-sm' variant='ghost' asChild>
-        <a
-          href={externalHref}
-          target='_blank'
-          rel='noopener'
-          aria-label={externalLabel}
-          title={externalLabel}>
-          <ExternalLink />
-        </a>
-      </Button>
+    <div className='flex items-center justify-between gap-2 border-b bg-background px-3 py-1'>
+      {isLive && liveHref ? (
+        <DropdownMenu>
+          <ButtonGroup>
+            <Button variant='outline' size='xs' className='border-r-0' asChild>
+              <a
+                href={previewHref}
+                target='_blank'
+                rel='noopener'
+                aria-label='Open preview in new tab'>
+                <Eye /> Preview
+              </a>
+            </Button>
+            <ButtonGroupSeparator />
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant='outline'
+                size='xs'
+                className='px-1.5'
+                aria-label='More preview options'>
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+          </ButtonGroup>
+          <DropdownMenuContent align='start'>
+            <DropdownMenuItem asChild>
+              <a href={liveHref} target='_blank' rel='noopener'>
+                <ExternalLink /> Open live site
+              </a>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Button variant='outline' size='xs' asChild>
+          <a href={previewHref} target='_blank' rel='noopener' aria-label='Open preview in new tab'>
+            <Eye /> Preview
+          </a>
+        </Button>
+      )}
 
-      <ToggleGroup
-        size='sm'
-        type='single'
-        value={isDark ? 'dark' : 'light'}
-        onValueChange={handleThemeChange}
-        aria-label='Theme'>
-        <ToggleGroupItem value='light' aria-label='Light mode'>
-          <Sun />
-        </ToggleGroupItem>
-        <ToggleGroupItem value='dark' aria-label='Dark mode'>
-          <Moon />
-        </ToggleGroupItem>
-      </ToggleGroup>
+      <div className='flex items-center gap-2'>
+        {showsHiddenModeHint && (
+          <span className='text-xs text-muted-foreground'>
+            Visitors only see {defaultMode} mode
+          </span>
+        )}
 
-      <ToggleGroup
-        size='sm'
-        type='single'
-        value={isMobile ? 'mobile' : 'desktop'}
-        onValueChange={handleDeviceChange}
-        aria-label='Screen size'>
-        <ToggleGroupItem value='desktop' aria-label='Desktop mode'>
-          <Monitor />
-        </ToggleGroupItem>
-        <ToggleGroupItem value='mobile' aria-label='Mobile mode'>
-          <Smartphone />
-        </ToggleGroupItem>
-      </ToggleGroup>
+        <ToggleGroup
+          size='sm'
+          type='single'
+          value={effectiveMode}
+          onValueChange={handleThemeChange}
+          aria-label='Theme'>
+          <ToggleGroupItem value='light' aria-label='Light mode'>
+            <Sun />
+          </ToggleGroupItem>
+          <ToggleGroupItem value='dark' aria-label='Dark mode'>
+            <Moon />
+          </ToggleGroupItem>
+        </ToggleGroup>
+
+        {override !== null && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size='icon-sm'
+                variant='ghost'
+                onClick={() => setOverride(null)}
+                aria-label='Reset to default mode'>
+                <RotateCcw />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Reset to default ({defaultMode})</TooltipContent>
+          </Tooltip>
+        )}
+
+        <ToggleGroup
+          size='sm'
+          type='single'
+          value={isMobile ? 'mobile' : 'desktop'}
+          onValueChange={handleDeviceChange}
+          aria-label='Screen size'>
+          <ToggleGroupItem value='desktop' aria-label='Desktop mode'>
+            <Monitor />
+          </ToggleGroupItem>
+          <ToggleGroupItem value='mobile' aria-label='Mobile mode'>
+            <Smartphone />
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
     </div>
   )
 }

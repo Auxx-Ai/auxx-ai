@@ -49,7 +49,7 @@ export function KBHeader({
   return (
     <header
       className={cn(
-        'sticky top-0 z-30 border-b border-[var(--kb-border)] bg-[var(--kb-surface-bg)] px-4 py-3 backdrop-blur',
+        'sticky top-[var(--kb-top-offset,0px)] z-30 border-b border-[var(--kb-border)] bg-[var(--kb-surface-bg)] px-4 py-3 backdrop-blur',
         'data-[kb-theme=bold]:border-b-2 data-[kb-theme=bold]:border-[var(--kb-fg)]'
       )}>
       <div className='mx-auto flex w-full max-w-7xl items-center gap-4'>

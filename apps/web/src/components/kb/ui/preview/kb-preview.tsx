@@ -36,7 +36,7 @@ export function KBPreview({ knowledgeBase, activeSlugPath }: KBPreviewProps) {
 }
 
 function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath?: string[] }) {
-  const { isMobile, isDark, knowledgeBase } = usePreview()
+  const { isMobile, effectiveMode, knowledgeBase } = usePreview()
   const articles = useArticleList(kbId)
 
   // Article from the editor's slug path; resets the override when the editor switches.
@@ -71,13 +71,13 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
     <div
       data-slot='kb-preview-color-scheme'
       className='flex min-h-0 flex-1 flex-col'
-      style={{ colorScheme: isDark ? 'dark' : 'light' }}>
+      style={{ colorScheme: effectiveMode }}>
       <KBLayout
         kb={mapKBForPreview(knowledgeBase)}
         articles={articles}
         basePath='#preview'
         activeArticleId={activeArticle?.id}
-        mode={isDark ? 'dark' : 'light'}
+        mode={effectiveMode}
         embedded
         mainScroll
         onArticleClick={(id) => setOverrideId(id)}>

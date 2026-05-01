@@ -11,20 +11,18 @@ export type Device = 'desktop' | 'mobile'
 interface PreviewContextValue {
   knowledgeBase?: KnowledgeBase
   isLoading: boolean
-  isDark: boolean
+  /** What a fresh visitor sees on first load (from `kb.defaultMode`). */
+  defaultMode: Theme
+  /** Author's transient override; null when following `defaultMode`. */
+  override: Theme | null
+  /** Mode the preview is currently rendering: `override ?? defaultMode`. */
+  effectiveMode: Theme
   isMobile: boolean
-  setTheme: (t: Theme) => void
+  setOverride: (t: Theme | null) => void
   setDevice: (d: Device) => void
 }
 
 const PreviewContext = React.createContext<PreviewContextValue | undefined>(undefined)
-
-function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'light'
-  const stored = localStorage.getItem('kb-theme') as Theme | null
-  if (stored) return stored
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
 
 interface PreviewProviderProps {
   children: React.ReactNode
@@ -32,8 +30,8 @@ interface PreviewProviderProps {
 }
 
 export function PreviewProvider({ children, knowledgeBase }: PreviewProviderProps) {
-  const [theme, setTheme] = React.useState<Theme>(getInitialTheme)
   const [device, setDevice] = React.useState<Device>('desktop')
+  const [override, setOverride] = React.useState<Theme | null>(null)
   const [isLoading, setIsLoading] = React.useState(!knowledgeBase)
 
   React.useEffect(() => {
@@ -50,16 +48,30 @@ export function PreviewProvider({ children, knowledgeBase }: PreviewProviderProp
     [knowledgeBase]
   )
 
+  const defaultMode: Theme = merged?.defaultMode === 'dark' ? 'dark' : 'light'
+  const kbId = merged?.id
+
+  // Settings are the source of truth — reset the override whenever the active KB
+  // changes or its default mode is edited so the new default propagates.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `kbId` is intentional — switching KBs must clear any author override even if both KBs share the same defaultMode.
+  React.useEffect(() => {
+    setOverride(null)
+  }, [defaultMode, kbId])
+
+  const effectiveMode: Theme = override ?? defaultMode
+
   const value = React.useMemo<PreviewContextValue>(
     () => ({
       knowledgeBase: merged,
       isLoading,
-      isDark: theme === 'dark',
+      defaultMode,
+      override,
+      effectiveMode,
       isMobile: device === 'mobile',
-      setTheme,
+      setOverride,
       setDevice,
     }),
-    [merged, isLoading, theme, device]
+    [merged, isLoading, defaultMode, override, effectiveMode, device]
   )
 
   return <PreviewContext.Provider value={value}>{children}</PreviewContext.Provider>

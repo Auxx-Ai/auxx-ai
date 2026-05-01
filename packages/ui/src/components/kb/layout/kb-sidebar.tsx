@@ -118,7 +118,7 @@ export function KBSidebar<T extends KBSidebarArticle>({
   return (
     <>
       {/* Desktop persistent sidebar */}
-      <div className='relative hidden shrink-0 @kb-md:sticky @kb-md:top-[var(--kb-header-h,3.5rem)] @kb-md:flex @kb-md:h-[calc(100dvh_-_var(--kb-header-h,3.5rem))] @kb-md:max-h-full @kb-md:flex-col @kb-md:self-start'>
+      <div className='relative hidden shrink-0 @kb-md:sticky @kb-md:top-[calc(var(--kb-top-offset,0px)+var(--kb-header-h,3.5rem)+var(--kb-tabs-h,0px))] @kb-md:flex @kb-md:h-[calc(100dvh_-_var(--kb-top-offset,0px)_-_var(--kb-header-h,3.5rem)_-_var(--kb-tabs-h,0px))] @kb-md:max-h-full @kb-md:flex-col @kb-md:self-start'>
         <aside
           data-slot='kb-sidebar'
           data-collapsed={collapsed}
