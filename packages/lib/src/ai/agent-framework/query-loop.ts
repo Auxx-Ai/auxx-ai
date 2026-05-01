@@ -14,7 +14,9 @@ import type {
   LLMCallParams,
 } from './types'
 import {
+  needsApproval,
   parseToolArgs,
+  previewValue,
   stableStringify,
   type ToolExecResult,
   validateRequiredParams,
@@ -248,7 +250,10 @@ export async function* agentQueryLoop(
     logger.info('Executing tools', {
       turnId,
       agent: agent.name,
-      tools: toolCalls.map((tc) => tc.function.name),
+      tools: toolCalls.map((tc) => ({
+        name: tc.function.name,
+        args: previewValue(parseToolArgs(tc)),
+      })),
     })
 
     // Capture mode (headless kopilot): never pause. Approval-required tools
@@ -567,8 +572,12 @@ function findApprovalTool(
   toolCalls: ToolCall[],
   agentTools: AgentToolDefinition[]
 ): ToolCall | undefined {
-  const approvalToolNames = new Set(agentTools.filter((t) => t.requiresApproval).map((t) => t.name))
-  return toolCalls.find((tc) => approvalToolNames.has(tc.function.name))
+  const toolMap = new Map(agentTools.map((t) => [t.name, t]))
+  return toolCalls.find((tc) => {
+    const tool = toolMap.get(tc.function.name)
+    if (!tool) return false
+    return needsApproval(tool, parseToolArgs(tc))
+  })
 }
 
 async function executeToolCalls(
@@ -603,7 +612,7 @@ async function executeToolCalls(
 
     // Approval-required tools should never reach this executor — the loop handles
     // them before calling executeToolCalls. Guard just in case.
-    if (tool.requiresApproval) {
+    if (needsApproval(tool, args)) {
       continue
     }
 
@@ -640,6 +649,14 @@ async function executeToolCalls(
     try {
       const result = await tool.execute(args, ctx)
       events.push({ type: 'tool-completed', agent: agentName, tool: toolName, result })
+      logger.info('Tool result', {
+        agent: agentName,
+        tool: toolName,
+        success: result.success,
+        error: result.error,
+        output: previewValue(result.output),
+        blocks: result.blocks?.map((b) => b.type),
+      })
       const execResult: ToolExecResult = {
         toolCallId: toolCall.id,
         toolName,
@@ -653,6 +670,12 @@ async function executeToolCalls(
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
       events.push({ type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg })
+      logger.error('Tool threw', {
+        agent: agentName,
+        tool: toolName,
+        error: errorMsg,
+        stack: error instanceof Error ? error.stack : undefined,
+      })
       results.push({
         toolCallId: toolCall.id,
         toolName,

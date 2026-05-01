@@ -41,23 +41,30 @@ const configs: Record<string, ToolPillConfig> = {
       error: () => ({ label: 'Failed to read thread' }),
     },
   },
-  draft_reply: {
+  reply_to_thread: {
     icon: 'PenTool',
     labels: {
-      running: () => ({ label: 'Drafting reply' }),
-      completed: (_args, summary) => ({
-        label: 'Draft ready',
+      running: (args) => ({
+        label: args?.mode === 'send' ? 'Sending reply' : 'Drafting reply',
+      }),
+      completed: (args, summary) => ({
+        label: args?.mode === 'send' ? 'Reply sent' : 'Draft ready',
         secondary: summary,
       }),
-      error: () => ({ label: 'Failed to draft reply' }),
+      error: () => ({ label: 'Reply failed' }),
     },
   },
-  send_reply: {
+  start_new_conversation: {
     icon: 'Send',
     labels: {
-      running: () => ({ label: 'Sending reply' }),
-      completed: () => ({ label: 'Reply sent' }),
-      error: () => ({ label: 'Failed to send reply' }),
+      running: (args) => ({
+        label: args?.mode === 'send' ? 'Sending message' : 'Drafting message',
+      }),
+      completed: (args, summary) => ({
+        label: args?.mode === 'send' ? 'Message sent' : 'Draft ready',
+        secondary: summary,
+      }),
+      error: () => ({ label: 'Send failed' }),
     },
   },
   update_thread: {

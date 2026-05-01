@@ -473,11 +473,12 @@ interface SoftActionContext {
 }
 
 /**
- * Promote a `draft_reply` capture to a real `ScheduledMessage`. The Draft
- * was already created during the headless run; we read it back, extract the
- * minimum send payload, and enqueue a delayed BullMQ job. Returns the
- * promoted ScheduledMessage id as the action's "real id" so chained actions
- * (none today, but future) can reference it.
+ * Promote a draft-mode write tool capture (`reply_to_thread` /
+ * `start_new_conversation` with `mode: 'draft'`) to a real `ScheduledMessage`.
+ * The Draft was already created during the headless run; we read it back,
+ * extract the minimum send payload, and enqueue a delayed BullMQ job. Returns
+ * the promoted ScheduledMessage id as the action's "real id" so chained
+ * actions (none today, but future) can reference it.
  */
 async function applySoftAction(args: SoftActionContext): Promise<{
   outcome: ActionOutcome
@@ -555,8 +556,8 @@ async function applySoftAction(args: SoftActionContext): Promise<{
 }
 
 /**
- * Translate Draft.content (jsonb produced by the draft_reply tool) into the
- * `sendPayload` shape the message-processing worker consumes. Mirrors the
+ * Translate Draft.content (jsonb produced by the draft-mode write tools) into
+ * the `sendPayload` shape the message-processing worker consumes. Mirrors the
  * structure used by the user-facing thread-router schedule path.
  */
 function buildSendPayloadFromDraft(draft: DraftRow, userId: string): Record<string, unknown> {

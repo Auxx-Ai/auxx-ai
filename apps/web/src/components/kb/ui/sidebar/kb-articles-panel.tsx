@@ -22,6 +22,7 @@ import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-
 import { useArticleMove } from '../../hooks/use-article-move'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
+import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { inferCreateParent } from '../../utils/infer-create-parent'
 import { ArticleSidebarItemPreview } from './article-sidebar-item'
 import { ArticleTreeSection } from './article-tree-section'
@@ -54,7 +55,10 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   const articles = useArticleList(knowledgeBaseId)
   const activeArticle = useActiveArticle(knowledgeBaseId)
   const hasLoaded = useIsArticleListLoaded(knowledgeBaseId)
-  const { createArticle, isCreating } = useArticleMutations(knowledgeBaseId)
+  const { isCreating } = useArticleMutations(knowledgeBaseId)
+  const setPending = usePendingInsertStore((s) => s.setPending)
+  const clearPending = usePendingInsertStore((s) => s.clearPending)
+  const pending = usePendingInsertStore((s) => s.pending)
 
   const archivedKey = `kb-${knowledgeBaseId}-show-archived`
   const [showArchived, setShowArchived] = useState<boolean>(() => {
@@ -183,7 +187,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   )
 
   const handleCreateInTab = useCallback(
-    async (articleKind: ArticleKindType = ArticleKind.page) => {
+    (articleKind: ArticleKindType = ArticleKind.page) => {
       // Tabs are optional — `effectiveTabId === null` means the KB has zero
       // tabs and articles live at the root. Headers must sit directly at root
       // or under a tab; pages/categories drop into whatever section the user
@@ -192,21 +196,46 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
         articleKind === ArticleKind.header
           ? effectiveTabId
           : inferCreateParent(activeArticle, effectiveTabId, articles)
-      const created = await createArticle({ parentId, articleKind })
-      if (created) {
-        // Pages/categories navigate to the new article so the editor opens
-        // it. Headers are organizational — they participate in URLs but have
-        // no editable body, so we stay on the current article. The user's
-        // next move is usually to drag pages into the new section or rename
-        // it inline from the sidebar.
-        if (articleKind !== ArticleKind.header) {
-          const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
-          router.push(path)
-        }
-      }
+      setPending({ articleKind, parentId })
     },
-    [effectiveTabId, activeArticle, articles, basePath, createArticle, router]
+    [effectiveTabId, activeArticle, articles, setPending]
   )
+
+  // When a pending insert targets a closed category, expand it so the inline
+  // create-row is visible. Also drop pending if the user switches tabs and
+  // the target parent no longer lives under the active tab.
+  useEffect(() => {
+    if (!pending) return
+    const { parentId } = pending
+    if (parentId === null) return
+    const parent = articles.find((a) => a.id === parentId)
+    if (!parent) {
+      clearPending()
+      return
+    }
+    if (parent.articleKind === 'category') {
+      setArticleOpenStates((prev) => (prev[parentId] ? prev : { ...prev, [parentId]: true }))
+    }
+  }, [pending, articles, clearPending])
+
+  // Cancel pending when the active tab changes — the previous insertion point
+  // is no longer on screen.
+  useEffect(() => {
+    if (!pending) return
+    if (pending.parentId === null) return
+    if (pending.parentId === effectiveTabId) return
+    // Walk up from the pending parent to find its enclosing tab. If it's not
+    // under the current tab, drop pending.
+    let cursor = articles.find((a) => a.id === pending.parentId)
+    while (cursor) {
+      if (cursor.articleKind === ArticleKind.tab) {
+        if (cursor.id !== effectiveTabId) clearPending()
+        return
+      }
+      if (!cursor.parentId) return
+      cursor = articles.find((a) => a.id === cursor!.parentId)
+    }
+  }, [effectiveTabId, pending, articles, clearPending])
 
   if (!hasLoaded) {
     return (
@@ -242,10 +271,11 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
           <ArticleTreeSection
             articles={tabSubtree}
             knowledgeBaseId={knowledgeBaseId}
+            parentId={effectiveTabId}
             articleOpenStates={articleOpenStates}
             toggleArticleOpen={toggleArticleOpen}
           />
-          {tabSubtree.length === 0 && (
+          {tabSubtree.length === 0 && !(pending && pending.parentId === effectiveTabId) && (
             <div className='px-6 text-center text-base text-muted-foreground'>
               Nothing here yet.
               <br /> Add a{' '}
@@ -299,7 +329,10 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
                 <Plus /> Add
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align='start' className='w-48'>
+            <DropdownMenuContent
+              align='start'
+              className='w-48'
+              onCloseAutoFocus={(e) => e.preventDefault()}>
               <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.page)}>
                 <FileText /> Page
               </DropdownMenuItem>

@@ -21,7 +21,20 @@ const globalForCache = globalThis as unknown as {
   _auxxOrgCache?: OrganizationCacheService
   _auxxTokenCache?: TokenCacheService
   _auxxUserCache?: UserCacheService
+  /**
+   * Last provider-registration version applied to the persisted singletons.
+   * Bump `PROVIDERS_VERSION` whenever a new cache key + provider is added so
+   * HMR re-runs registration on the existing singleton instead of failing
+   * with `No provider registered for cache key: <name>` until restart.
+   */
+  _auxxCacheProvidersVersion?: number
 }
+
+/**
+ * Bump this whenever `register-providers.ts` adds a new cache key/provider.
+ * The next access to a singleton sees the mismatch and re-runs registration.
+ */
+const PROVIDERS_VERSION = 2
 
 /** Initialize all cache services (lazily called on first access) */
 function initCaches(): void {
@@ -29,23 +42,41 @@ function initCaches(): void {
   globalForCache._auxxUserCache = new UserCacheService()
   globalForCache._auxxAppCache = new AppCacheService()
   globalForCache._auxxBuildUserCache = new BuildUserCacheService()
+  registerProvidersOnExisting()
+}
+
+/**
+ * Re-run provider registration against the existing singletons when the
+ * compiled-in `PROVIDERS_VERSION` differs from the version last applied.
+ * `register()` is an idempotent `Map.set` so re-runs are safe; gating by
+ * version avoids paying the cost on every singleton access in steady state.
+ */
+function ensureProvidersUpToDate(): void {
+  if (globalForCache._auxxCacheProvidersVersion === PROVIDERS_VERSION) return
+  registerProvidersOnExisting()
+}
+
+function registerProvidersOnExisting(): void {
   registerAllProviders(
-    globalForCache._auxxOrgCache,
-    globalForCache._auxxUserCache,
-    globalForCache._auxxAppCache,
-    globalForCache._auxxBuildUserCache
+    globalForCache._auxxOrgCache!,
+    globalForCache._auxxUserCache!,
+    globalForCache._auxxAppCache!,
+    globalForCache._auxxBuildUserCache!
   )
+  globalForCache._auxxCacheProvidersVersion = PROVIDERS_VERSION
 }
 
 /** Get the singleton app-wide cache service (lazily initialized with all providers) */
 export function getAppCache(): AppCacheService {
   if (!globalForCache._auxxAppCache) initCaches()
+  else ensureProvidersUpToDate()
   return globalForCache._auxxAppCache!
 }
 
 /** Get the singleton org cache service (lazily initialized with all providers) */
 export function getOrgCache(): OrganizationCacheService {
   if (!globalForCache._auxxOrgCache) initCaches()
+  else ensureProvidersUpToDate()
   return globalForCache._auxxOrgCache!
 }
 
@@ -60,11 +91,13 @@ export function getTokenCache(): TokenCacheService {
 /** Get the singleton user cache service (lazily initialized with all providers) */
 export function getUserCache(): UserCacheService {
   if (!globalForCache._auxxUserCache) initCaches()
+  else ensureProvidersUpToDate()
   return globalForCache._auxxUserCache!
 }
 
 /** Get the singleton build user cache service (lazily initialized with all providers) */
 export function getBuildUserCache(): BuildUserCacheService {
   if (!globalForCache._auxxBuildUserCache) initCaches()
+  else ensureProvidersUpToDate()
   return globalForCache._auxxBuildUserCache!
 }

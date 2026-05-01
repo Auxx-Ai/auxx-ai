@@ -117,7 +117,7 @@ describe('mergeActions', () => {
     const soft: ProposedAction[] = [
       {
         localIndex: -1,
-        toolName: 'draft_reply',
+        toolName: 'reply_to_thread',
         args: { threadId: 't1', body: 'hi' },
         summary: 'Reply: "hi"',
         ranDuringCapture: { output: { draftId: 'd1', body: 'hi' } },
@@ -129,7 +129,7 @@ describe('mergeActions', () => {
     expect(merged[0]?.toolName).toBe('create_task')
     expect(merged[1]?.localIndex).toBe(1)
     expect(merged[2]?.localIndex).toBe(2)
-    expect(merged[2]?.toolName).toBe('draft_reply')
+    expect(merged[2]?.toolName).toBe('reply_to_thread')
     expect(merged[2]?.ranDuringCapture?.output).toEqual({ draftId: 'd1', body: 'hi' })
   })
 
@@ -147,7 +147,7 @@ describe('mergeActions', () => {
     const soft: ProposedAction[] = [
       {
         localIndex: -1,
-        toolName: 'draft_reply',
+        toolName: 'reply_to_thread',
         args: {},
         summary: 's',
         ranDuringCapture: { output: {} },
@@ -165,7 +165,7 @@ describe('mergeActions', () => {
     const soft: ProposedAction[] = [
       {
         localIndex: -1,
-        toolName: 'draft_reply',
+        toolName: 'reply_to_thread',
         args: {},
         summary: 's',
         ranDuringCapture: { output: {} },

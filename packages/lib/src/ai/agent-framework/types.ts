@@ -87,7 +87,7 @@ export type ToolOutputBlock = 'entity-list' | 'entity-card' | 'thread-list' | 't
 
 /** A tool available to an agent, built from node processors or custom definitions */
 export interface AgentToolDefinition {
-  /** Unique tool name (e.g. 'find_threads', 'draft_reply') */
+  /** Unique tool name (e.g. 'find_threads', 'reply_to_thread') */
   name: string
   /** Human-readable description for the LLM */
   description: string
@@ -99,8 +99,12 @@ export interface AgentToolDefinition {
    * tool was invoked from chat, the headless runner, or apply-time.
    */
   execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<AgentToolResult>
-  /** Whether this tool requires human approval before execution */
-  requiresApproval?: boolean
+  /**
+   * Whether this tool requires human approval before execution. Pass a boolean
+   * for static gating, or a predicate to gate per-call based on the call's args
+   * (e.g. `(args) => args.mode === 'send'` to approve only sends, not drafts).
+   */
+  requiresApproval?: boolean | ((args: Record<string, unknown>) => boolean)
   /**
    * Marks this tool as a read-only / side-effect-free operation. When true, the
    * agent query loop caches the first call's result for the duration of the turn
@@ -271,7 +275,7 @@ export interface AgentState<TDomainState = Record<string, unknown>> {
 export interface ResumeOptions {
   /** Whether the user approved or rejected the pending tool call */
   action: 'approve' | 'reject'
-  /** Optional overrides merged into the tool args (e.g. { saveAsDraft: true }) */
+  /** Optional overrides merged into the tool args (e.g. { mode: 'draft' }) */
   inputAmendment?: Record<string, unknown>
   /** Optional state to restore before resuming (e.g. after reconnect) */
   resumeState?: AgentState

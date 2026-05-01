@@ -4,8 +4,9 @@ import type { CapturedAction } from '../ai/agent-framework/types'
 import type { ProposedAction } from './types'
 
 /**
- * Merge in-flight soft-tool actions (currently just `draft_reply`) with the
- * captured actions the engine accumulated. Captures already carry the
+ * Merge in-flight soft-tool actions (draft-mode write tools — `reply_to_thread`
+ * and `start_new_conversation` with `mode: 'draft'`) with the captured actions
+ * the engine accumulated. Captures already carry the
  * canonical `localIndex` the model saw via `captureMint`; soft-tool actions
  * fired synchronously and don't have one. Soft actions land at the end with
  * indices renumbered from `max(captured.localIndex) + 1`.

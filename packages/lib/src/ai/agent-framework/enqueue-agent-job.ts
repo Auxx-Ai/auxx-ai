@@ -16,7 +16,7 @@ export interface AgentJobPayload {
   context?: Record<string, unknown>
   /** Approval action — required when type is 'approval' */
   approvalAction?: 'approve' | 'reject'
-  /** Input amendment for approval (e.g. { saveAsDraft: true }) */
+  /** Input amendment for approval (e.g. { mode: 'draft' }) */
   inputAmendment?: Record<string, unknown>
   /** Model override in "provider:model" format — omit to use system default */
   modelId?: string

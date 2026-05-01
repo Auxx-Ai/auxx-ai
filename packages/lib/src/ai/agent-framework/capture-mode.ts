@@ -5,7 +5,9 @@ import type { ToolCall } from '../clients/base/types'
 import type { ToolContext } from './tool-context'
 import type { AgentEvent, AgentToolDefinition, CapturedAction } from './types'
 import {
+  needsApproval,
   parseToolArgs,
+  previewValue,
   stableStringify,
   type ToolExecResult,
   validateRequiredParams,
@@ -68,7 +70,7 @@ export async function processCaptureToolCalls(
       continue
     }
 
-    if (tool.requiresApproval) {
+    if (needsApproval(tool, args)) {
       // Validate required params first. Capture should reflect "intent to
       // execute on approval" — bad args wouldn't execute regardless, so we
       // emit a tool-error result and let the model retry instead of capturing.
@@ -125,6 +127,13 @@ export async function processCaptureToolCalls(
         tool: toolName,
         result: { success: true, output: predictedOutput },
       })
+      logger.info('Tool captured (no execute)', {
+        agent: agentName,
+        tool: toolName,
+        localIndex,
+        summary,
+        predictedOutput: previewValue(predictedOutput),
+      })
       results.push({
         toolCallId: toolCall.id,
         toolName,
@@ -170,6 +179,14 @@ export async function processCaptureToolCalls(
     try {
       const result = await tool.execute(args, ctx)
       events.push({ type: 'tool-completed', agent: agentName, tool: toolName, result })
+      logger.info('Tool result (capture)', {
+        agent: agentName,
+        tool: toolName,
+        success: result.success,
+        error: result.error,
+        output: previewValue(result.output),
+        blocks: result.blocks?.map((b) => b.type),
+      })
       const execResult: CaptureExecResult = {
         toolCallId: toolCall.id,
         toolName,

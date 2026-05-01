@@ -11,16 +11,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { toastError } from '@auxx/ui/components/toast'
-import { FileText, FolderClosed, Heading, Plus, Settings, Upload } from 'lucide-react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { FileText, FolderClosed, Heading, Plus, Upload } from 'lucide-react'
 import { useCallback, useRef } from 'react'
 import { useActiveArticle } from '../../hooks/use-active-article'
 import { useActiveTabId } from '../../hooks/use-active-tab'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
+import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { inferCreateParent } from '../../utils/infer-create-parent'
 
 interface KBArticlesHeaderActionsProps {
@@ -28,33 +26,24 @@ interface KBArticlesHeaderActionsProps {
 }
 
 export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderActionsProps) {
-  const router = useRouter()
   const articles = useArticleList(knowledgeBaseId)
   const activeTabId = useActiveTabId(knowledgeBaseId)
   const activeArticle = useActiveArticle(knowledgeBaseId)
   const { createArticle, isCreating } = useArticleMutations(knowledgeBaseId)
+  const setPending = usePendingInsertStore((s) => s.setPending)
   const importInputRef = useRef<HTMLInputElement>(null)
 
-  const basePath = `/app/kb/${knowledgeBaseId}`
-
   const handleCreateInTab = useCallback(
-    async (articleKind: ArticleKindType = ArticleKind.page) => {
+    (articleKind: ArticleKindType = ArticleKind.page) => {
       // Tabs are optional — `activeTabId === null` means the KB has no tabs;
       // we create at the root. Headers may sit at root or under a tab.
       const parentId =
         articleKind === ArticleKind.header
           ? activeTabId
           : inferCreateParent(activeArticle, activeTabId, articles)
-      const created = await createArticle({ parentId, articleKind })
-      // Pages/categories navigate to the new article so the editor opens it.
-      // Headers are organizational — they participate in URLs but have no
-      // editable body, so we stay on the current article.
-      if (created && articleKind !== ArticleKind.header) {
-        const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
-        router.push(path)
-      }
+      setPending({ articleKind, parentId })
     },
-    [activeArticle, activeTabId, articles, basePath, createArticle, router]
+    [activeArticle, activeTabId, articles, setPending]
   )
 
   const handleImportMarkdown = useCallback(
@@ -100,7 +89,10 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
             <span className='sr-only'>Add Page or Settings</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' className='w-48'>
+        <DropdownMenuContent
+          align='end'
+          className='w-48'
+          onCloseAutoFocus={(e) => e.preventDefault()}>
           <DropdownMenuItem
             disabled={isCreating}
             onSelect={() => void handleCreateInTab(ArticleKind.page)}>

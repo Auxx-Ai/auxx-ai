@@ -19,6 +19,7 @@ import { featuresProvider } from './providers/features-provider'
 import { groupsProvider } from './providers/groups-provider'
 import { inboxesProvider } from './providers/inboxes-provider'
 import { installedAppsProvider } from './providers/installed-apps-provider'
+import { integrationsProvider } from './providers/integrations-provider'
 import { memberRoleMapProvider, membersProvider } from './providers/members-provider'
 import { orgProfileProvider } from './providers/org-profile-provider'
 import { orgSettingsProvider } from './providers/org-settings-provider'
@@ -64,6 +65,7 @@ export function registerAllProviders(
   orgCache.register('customFields', customFieldsProvider)
   orgCache.register('groups', groupsProvider)
   orgCache.register('inboxes', inboxesProvider)
+  orgCache.register('integrations', integrationsProvider)
   orgCache.register('overages', overagesProvider)
   orgCache.register('orgSettings', orgSettingsProvider)
   orgCache.register('installedApps', installedAppsProvider)

@@ -81,7 +81,7 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'get_entity_history',
     idempotent: true,
     description:
-      "Returns a token-bounded recent-activity digest for a CRM record (contact, company, deal, lead, ticket, custom) — covers threads, comments, timeline, tasks, related entities, and meetings. Use when the user asks for an overview/summary of a record, or when you need cross-category context that isn't tied to a single thread. NOT for email reply workflows: when the user wants to draft, send, or respond to a thread, use `find_threads` → `get_thread_detail` → `draft_reply`/`send_reply` — those return full message bodies that this digest truncates.",
+      "Returns a token-bounded recent-activity digest for a CRM record (contact, company, deal, lead, ticket, custom) — covers threads, comments, timeline, tasks, related entities, and meetings. Use when the user asks for an overview/summary of a record, or when you need cross-category context that isn't tied to a single thread. NOT for conversation reply workflows: when the user wants to draft, send, or respond on a thread, use `find_threads` → `get_thread_detail` → `reply_to_thread` — those return full message bodies that this digest truncates.",
     parameters: {
       type: 'object',
       properties: {

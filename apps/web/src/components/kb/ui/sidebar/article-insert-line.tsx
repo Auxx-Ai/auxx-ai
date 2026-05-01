@@ -9,16 +9,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
 import { FileText, FolderClosed, Heading } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { AFTER_GROUP_SUFFIX } from '../../hooks/use-article-move'
-import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleTreeNode } from '../../store/article-store'
+import { usePendingInsertStore } from '../../store/pending-insert-store'
 
 type InsertMode = 'sibling-after' | 'first-child' | 'after-group'
 
@@ -41,8 +39,9 @@ interface ArticleInsertLineProps {
 /**
  * Hover-revealed insert affordance along the bottom edge of a sidebar row.
  * Clicking the plus opens a kind picker (Page / Category / Section Header)
- * and creates the chosen article. Section Header is only offered when the
- * resulting parent would be the KB root or a tab — the same rule
+ * which seeds the pending-insert store — `ArticleTreeSection` then renders an
+ * inline title input at the matching position. Section Header is only offered
+ * when the resulting parent would be the KB root or a tab — the same rule
  * `validateArticleKind` enforces server-side.
  */
 export function ArticleInsertLine({
@@ -50,9 +49,8 @@ export function ArticleInsertLine({
   knowledgeBaseId,
   mode = 'sibling-after',
 }: ArticleInsertLineProps) {
-  const router = useRouter()
   const articles = useArticleList(knowledgeBaseId)
-  const { createArticle } = useArticleMutations(knowledgeBaseId)
+  const setPending = usePendingInsertStore((s) => s.setPending)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const isFirstChild = mode === 'first-child'
@@ -70,45 +68,37 @@ export function ArticleInsertLine({
   })
 
   // Resolved parent of the about-to-be-created article. Drives both the
-  // create payload and the header-eligibility check.
+  // pending payload and the header-eligibility check.
   const resolvedParentId = isFirstChild ? article.id : (article.parentId ?? null)
   const resolvedParent = resolvedParentId
     ? articles.find((a) => a.id === resolvedParentId)
     : undefined
   const headerAllowed = resolvedParentId === null || resolvedParent?.articleKind === 'tab'
 
-  const handleCreate = async (articleKind: ArticleKindType) => {
-    let created: Awaited<ReturnType<typeof createArticle>>
+  const handlePick = (articleKind: ArticleKindType) => {
     if (isFirstChild) {
-      // The server only understands `adjacentTo` + position 'before'/'after'.
       // Translate "first child" into "before the current first child"; if the
-      // container is empty, omit ordering and let the server append.
+      // container is empty, omit ordering and let the create call append.
       const firstChild = articles
         .filter((a) => a.parentId === article.id)
         .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))[0]
-      created = await createArticle(
+      setPending(
         firstChild
           ? {
+              articleKind,
               parentId: article.id,
               adjacentTo: firstChild.id,
               position: 'before',
-              articleKind,
             }
-          : { parentId: article.id, articleKind }
+          : { articleKind, parentId: article.id }
       )
     } else {
-      created = await createArticle({
-        parentId: article.parentId,
+      setPending({
+        articleKind,
+        parentId: article.parentId ?? null,
         adjacentTo: article.id,
         position: 'after',
-        articleKind,
       })
-    }
-    // Pages/categories navigate to the new article so the editor opens it.
-    // Headers are organizational — stay on the current article.
-    if (created && articleKind !== ArticleKind.header) {
-      const path = `/app/kb/${knowledgeBaseId}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
-      router.push(path)
     }
   }
 
@@ -159,15 +149,18 @@ export function ArticleInsertLine({
               </svg>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align='start' className='w-48'>
-            <DropdownMenuItem onSelect={() => void handleCreate(ArticleKind.page)}>
+          <DropdownMenuContent
+            align='start'
+            className='w-48'
+            onCloseAutoFocus={(e) => e.preventDefault()}>
+            <DropdownMenuItem onSelect={() => handlePick(ArticleKind.page)}>
               <FileText /> Page
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void handleCreate(ArticleKind.category)}>
+            <DropdownMenuItem onSelect={() => handlePick(ArticleKind.category)}>
               <FolderClosed /> Category
             </DropdownMenuItem>
             {headerAllowed && (
-              <DropdownMenuItem onSelect={() => void handleCreate(ArticleKind.header)}>
+              <DropdownMenuItem onSelect={() => handlePick(ArticleKind.header)}>
                 <Heading /> Section header
               </DropdownMenuItem>
             )}

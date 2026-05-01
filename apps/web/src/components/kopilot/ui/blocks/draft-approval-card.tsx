@@ -7,15 +7,27 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { ApprovalCardProps } from './approval-card-registry'
 import { BlockCard, type BlockCardAction, StatusIndicator } from './block-card'
 
-export function DraftApprovalCard({ args, status, onApprove, onReject }: ApprovalCardProps) {
+export function DraftApprovalCard({
+  args,
+  status,
+  onApprove,
+  onReject,
+  resolvedRecipients,
+}: ApprovalCardProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const threadId = args.threadId as string
-  const body = args.body as string
-  const toRecipients = (args.toRecipients as string[]) ?? []
+  const threadId = typeof args.threadId === 'string' ? args.threadId : undefined
+  const body = (args.body as string) ?? ''
+  const argTo = Array.isArray(args.to) ? (args.to as string[]) : []
+
+  // Prefer resolved display names; fall back to whatever the LLM passed in `to`.
+  // Raw emails / phones are user-friendly; recordIds and participantIds appear
+  // as-is during pending state when the resolver hasn't run yet.
+  const recipientLabels = resolvedRecipients?.map((r) => r.displayName ?? r.identifier) ?? argTo
 
   const handleEditInThread = () => {
+    if (!threadId) return
     const params = new URLSearchParams(searchParams.toString())
     params.set('threadId', threadId)
     router.push(`?${params.toString()}`)
@@ -23,26 +35,34 @@ export function DraftApprovalCard({ args, status, onApprove, onReject }: Approva
 
   const isPending = status === 'pending'
 
-  const actions: BlockCardAction[] = isPending
+  const baseActions: BlockCardAction[] = isPending
     ? [
         { label: 'Deny', onClick: onReject },
-        { label: 'Save as Draft', onClick: () => onApprove({ saveAsDraft: true }) },
-        { label: 'Edit in Thread', onClick: handleEditInThread },
-        { label: 'Send', onClick: () => onApprove(), primary: true },
+        { label: 'Save as Draft', onClick: () => onApprove({ mode: 'draft' }) },
       ]
-    : status === 'approved'
+    : []
+
+  const actions: BlockCardAction[] = isPending
+    ? threadId
+      ? [
+          ...baseActions,
+          { label: 'Edit in Thread', onClick: handleEditInThread },
+          { label: 'Send', onClick: () => onApprove(), primary: true },
+        ]
+      : [...baseActions, { label: 'Send', onClick: () => onApprove(), primary: true }]
+    : status === 'approved' && threadId
       ? [{ label: 'View in Thread', onClick: handleEditInThread, primary: true }]
       : []
 
-  const secondaryText = toRecipients.length > 0 ? `To: ${toRecipients.join(', ')}` : undefined
+  const secondaryText = recipientLabels.length > 0 ? `To: ${recipientLabels.join(', ')}` : undefined
 
   return (
     <BlockCard
       data-slot='draft-approval-card'
       indicator={<StatusIndicator status={status} />}
-      primaryText='Send Reply'
+      primaryText='Send Message'
       secondaryText={secondaryText}
-      actionLabel={isPending ? 'Send reply?' : undefined}
+      actionLabel={isPending ? 'Send message?' : undefined}
       hasFooter={actions.length > 0}
       actions={actions}>
       <div className='h-40'>
