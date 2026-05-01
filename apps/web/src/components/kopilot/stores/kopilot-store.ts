@@ -5,6 +5,23 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { summarizeToolResult } from '../ui/blocks/summarize-tool-result'
 
+/**
+ * Mirror of `LinkSnapshot` from `@auxx/lib/ai/agent-framework/types`. Inlined
+ * because that subpath pulls in server-only deps; this file is client-side
+ * Zustand store. Keep in sync with the lib type.
+ */
+export type LinkSnapshot =
+  | { recordId: string; entityDefinitionId: string; displayName: string; summary?: string }
+  | {
+      threadId: string
+      subject: string | null
+      lastMessageAt: string | null
+      sender?: string
+      isUnread?: boolean
+    }
+  | { taskId: string; title: string; deadline: string | null; completedAt: string | null }
+  | { slug: string; title: string; description?: string; url?: string }
+
 /** A single step within a thinking group */
 export interface ThinkingStep {
   id: string
@@ -35,7 +52,7 @@ export interface ThinkingGroup {
 
 export interface KopilotMessage {
   id: string
-  role: 'user' | 'assistant' | 'tool' | 'system' | 'block'
+  role: 'user' | 'assistant' | 'tool' | 'system'
   content: string
   timestamp: number
   /** Parent message ID — null for root messages */
@@ -47,18 +64,13 @@ export interface KopilotMessage {
   /** Tool call metadata (for tool messages) */
   tool?: {
     name: string
+    /** Provider-emitted tool_call_id — stable across the lifecycle of a single call. */
+    callId?: string
     args: Record<string, unknown>
     result?: unknown
+    /** Display projection of `result` produced by the tool's `buildDigest`. */
+    digest?: unknown
     status: 'running' | 'completed' | 'error'
-  }
-  /** Block payload for role='block' — rich UI card produced by the tool above */
-  block?: {
-    type: string
-    data: unknown
-    /** Source tool that emitted this block — used for "see result below" links on approval cards */
-    sourceTool?: string
-    /** Tool call id of the producing tool (when known) */
-    sourceToolCallId?: string
   }
   /** Approval state — present when this message represents a tool approval request */
   approval?: {
@@ -73,6 +85,11 @@ export interface KopilotMessage {
   }
   /** Error that occurred while generating this message */
   error?: string
+  /**
+   * Per-message lookup table for inline `auxx://` link chips, keyed by the
+   * full href. Set on assistant final messages.
+   */
+  linkSnapshots?: Record<string, LinkSnapshot>
 }
 
 export interface KopilotStreamState {
@@ -207,7 +224,7 @@ interface KopilotState {
   appendThinkingText: (delta: string) => void
   commitThinkingText: () => void
   addThinkingToolStep: (tool: string, args: Record<string, unknown>) => void
-  completeThinkingToolStep: (tool: string, result: unknown) => void
+  completeThinkingToolStep: (tool: string, result: unknown, digest?: unknown) => void
   failThinkingToolStep: (tool: string, error: string) => void
   finalizeThinkingGroup: () => void
   attachThinkingGroupToMessage: (messageId: string) => void
@@ -460,7 +477,7 @@ export const useKopilotStore = create<KopilotState>()(
           }
         }),
 
-      completeThinkingToolStep: (tool, result) =>
+      completeThinkingToolStep: (tool, result, digest) =>
         set((s) => {
           const gid = s.activeThinkingGroupId
           if (!gid) return s
@@ -471,7 +488,7 @@ export const useKopilotStore = create<KopilotState>()(
           for (let i = steps.length - 1; i >= 0; i--) {
             const step = steps[i]!
             if (step.tool?.name === tool && step.tool.status === 'running') {
-              const { summary, entities } = summarizeToolResult(tool, result)
+              const { summary, entities } = summarizeToolResult(tool, result, digest)
               steps[i] = {
                 ...step,
                 tool: { ...step.tool, status: 'completed', summary, entities },
@@ -575,7 +592,11 @@ export const useKopilotStore = create<KopilotState>()(
                   pendingThinking: '',
                 }
               }
-              const { summary, entities } = summarizeToolResult(msg.tool.name, msg.tool.result)
+              const { summary, entities } = summarizeToolResult(
+                msg.tool.name,
+                msg.tool.result,
+                msg.tool.digest
+              )
               currentGroup.steps.push({
                 id: generateId(),
                 thinking: pendingThinking || undefined,

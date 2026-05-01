@@ -1,11 +1,13 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/reply-to-thread.ts
 
+import { z } from 'zod'
 import { getCachedIntegrationCatalog } from '../../../../../cache/integration-catalog'
 import { DraftService } from '../../../../../drafts'
 import { MessageQueryService, MessageSenderService } from '../../../../../messages'
 import { ParticipantService } from '../../../../../participants'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { EmailWriteDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { type ResolvedRecipient, resolveRecipients } from '../recipient-resolver'
 import { stripSignOff } from './strip-sign-off'
@@ -13,20 +15,54 @@ import { stripSignOff } from './strip-sign-off'
 interface ReplyArgs {
   threadId: string
   body: string
-  mode: 'draft' | 'send'
+  /** Resolved at approval time via the approval card's `inputAmendment.mode`. */
+  mode?: 'draft' | 'send'
   to?: string[]
   cc?: string[]
   bcc?: string[]
   attachments?: string[]
 }
 
+const ReplyAmendmentSchema = z.object({
+  mode: z.enum(['draft', 'send']),
+  body: z.string().optional(),
+  to: z.array(z.string()).optional(),
+  cc: z.array(z.string()).optional(),
+  bcc: z.array(z.string()).optional(),
+})
+
 export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'reply_to_thread',
+    requiresApproval: true,
+    inputAmendmentSchema: ReplyAmendmentSchema,
+    outputDigestSchema: EmailWriteDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        threadId?: string
+        draftId?: string
+        messageId?: string
+        mode?: 'draft' | 'send'
+        status?: string
+        body?: string
+        resolvedRecipients?: Array<{ displayName?: string; identifier?: string }>
+      }
+      return {
+        threadId: out.threadId,
+        draftId: out.draftId,
+        messageId: out.messageId,
+        mode: out.mode === 'send' ? 'send' : 'draft',
+        status: out.status,
+        recipients: Array.isArray(out.resolvedRecipients)
+          ? out.resolvedRecipients.map((r) => r.displayName ?? r.identifier ?? '').filter(Boolean)
+          : undefined,
+        body: out.body,
+      }
+    },
     usageNotes:
-      'Use `mode: "draft"` to save without sending; `mode: "send"` to send (requires approval). Defaults `to` to the last inbound sender.',
+      'Always pauses for approval; the user picks Save as Draft or Send in the approval card. Defaults `to` to the last inbound sender.',
     description:
-      "Reply on an existing thread. Works for any channel (email, SMS, WhatsApp, Facebook DM, Instagram DM). Body should not contain a sign-off — for email channels the user's signature is appended automatically.",
+      "Reply on an existing thread. Works for any channel (email, SMS, WhatsApp, Facebook DM, Instagram DM). Body should not contain a sign-off — for email channels the user's signature is appended automatically. The user picks save-as-draft vs send in the approval card; do NOT pass a `mode` argument.",
     parameters: {
       type: 'object',
       properties: {
@@ -34,12 +70,6 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
         body: {
           type: 'string',
           description: 'Reply body. No sign-offs / signatures — appended automatically for email.',
-        },
-        mode: {
-          type: 'string',
-          enum: ['draft', 'send'],
-          description:
-            '`draft` saves without sending. `send` sends through the channel and requires approval.',
         },
         to: {
           type: 'array',
@@ -63,15 +93,12 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
           description: 'File IDs.',
         },
       },
-      required: ['threadId', 'body', 'mode'],
+      required: ['threadId', 'body'],
       additionalProperties: false,
     },
-    requiresApproval: (args) => (args as Partial<ReplyArgs>).mode === 'send',
     summary: (args) => {
-      const a = args as Partial<ReplyArgs>
-      const verb = a.mode === 'send' ? 'Send reply' : 'Draft reply'
-      const body = a.body ?? ''
-      return `${verb}: "${body.slice(0, 60)}${body.length > 60 ? '…' : ''}"`
+      const body = (args as Partial<ReplyArgs>).body ?? ''
+      return `Reply: "${body.slice(0, 60)}${body.length > 60 ? '…' : ''}"`
     },
     execute: async (rawArgs, agentDeps) => {
       const args = rawArgs as Partial<ReplyArgs>
@@ -81,7 +108,9 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
         return { success: false, output: null, error: 'threadId is required' }
       }
       const body = stripSignOff(args.body ?? '')
-      const mode = args.mode
+      // Mode is set by the approval card's input amendment; default to draft if
+      // somehow missing (e.g. tool invoked through a non-pause path in tests).
+      const mode: 'draft' | 'send' = args.mode === 'send' ? 'send' : 'draft'
 
       const threadService = new ThreadQueryService(agentDeps.organizationId, db)
       const [threadMeta] = await threadService.getThreadMetaBatch([threadId], agentDeps.userId)
@@ -188,24 +217,12 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
           output: {
             draftId: draft.id,
             threadId,
+            subject,
             body,
             mode: 'draft',
             resolvedRecipients: resolved,
             status: 'draft_saved',
           },
-          blocks: [
-            {
-              type: 'draft-preview',
-              data: {
-                draftId: draft.id,
-                threadId,
-                to: toIds.map((r) => r.displayName ?? r.identifier),
-                cc: ccIds.length ? ccIds.map((r) => r.displayName ?? r.identifier) : undefined,
-                body,
-                subject,
-              },
-            },
-          ],
         }
       }
 
@@ -239,28 +256,17 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
           : undefined,
       })
 
-      const recipientSummary = toIds.map((r) => r.displayName ?? r.identifier).join(', ')
       return {
         success: true,
         output: {
           messageId: result.id,
           threadId: result.threadId,
+          subject: threadMeta.subject ? `Re: ${threadMeta.subject}` : undefined,
+          body,
           mode: 'send',
           resolvedRecipients: resolved,
           status: result.sendStatus,
         },
-        blocks: [
-          {
-            type: 'action-result',
-            data: {
-              action: 'reply_to_thread',
-              success: true,
-              summary: `Reply sent to ${recipientSummary}`,
-              messageId: result.id,
-              threadId: result.threadId,
-            },
-          },
-        ],
       }
     },
   }

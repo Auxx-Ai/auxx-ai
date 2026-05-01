@@ -16,6 +16,44 @@ export interface ToolExecResult {
   success: boolean
   error?: string
   blocks?: AgentBlock[]
+  /** Display projection of the tool output, computed via `buildDigest`. */
+  digest?: unknown
+}
+
+/**
+ * Compute the display digest for a tool result. Best-effort — `buildDigest`
+ * errors and `outputDigestSchema` validation failures are logged and dropped so
+ * a misshapen digest never fails the turn. Returns `undefined` when the tool
+ * has no `buildDigest` or the output cannot be projected.
+ */
+export function buildToolDigest(
+  tool: AgentToolDefinition | undefined,
+  output: unknown,
+  logger?: { warn: (msg: string, meta?: Record<string, unknown>) => void }
+): unknown {
+  if (!tool?.buildDigest) return undefined
+  let digest: unknown
+  try {
+    digest = tool.buildDigest(output)
+  } catch (err) {
+    logger?.warn('buildDigest threw', {
+      tool: tool.name,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return undefined
+  }
+  if (tool.outputDigestSchema) {
+    const parsed = tool.outputDigestSchema.safeParse(digest)
+    if (!parsed.success) {
+      logger?.warn('digest failed outputDigestSchema validation', {
+        tool: tool.name,
+        issues: parsed.error.issues.slice(0, 3),
+      })
+      return undefined
+    }
+    return parsed.data
+  }
+  return digest
 }
 
 /**

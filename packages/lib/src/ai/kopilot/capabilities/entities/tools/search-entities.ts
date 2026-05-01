@@ -5,6 +5,7 @@ import { findCachedResource, getCachedResources } from '../../../../../cache/org
 import { RecordPickerService } from '../../../../../resources/picker'
 import { parseRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { SearchEntitiesDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
 import { formatEnrichedFields } from '../format-enriched-fields'
@@ -16,6 +17,27 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
     name: 'search_entities',
     idempotent: true,
     outputBlock: 'entity-list',
+    outputDigestSchema: SearchEntitiesDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        items?: Array<Record<string, unknown>>
+        count?: number
+      }
+      const items = Array.isArray(out.items) ? out.items : []
+      return {
+        count: typeof out.count === 'number' ? out.count : items.length,
+        sample: takeSample(items).map((item) => {
+          const recordId = String(item.recordId ?? '')
+          const entityDefinitionId = recordId.split(':')[0] ?? ''
+          return {
+            recordId,
+            entityDefinitionId,
+            displayName: typeof item.displayName === 'string' ? item.displayName : '',
+            secondary: typeof item.secondaryInfo === 'string' ? item.secondaryInfo : undefined,
+          }
+        }),
+      }
+    },
     usageNotes:
       'For field-value comparisons, follow up with `get_entity` per record — this tool only enriches fields when matches ≤5. When you reach `submit_final_answer`, embed the records you are referring to in an `auxx:entity-card` (1) or `auxx:entity-list` (2+) fence inside `content`. Records mentioned in prose without a fence will not be visible to the user.',
     description:

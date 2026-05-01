@@ -4,6 +4,7 @@ import { schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { SearchService } from '../../../../../datasets/services/search.service'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ArticleSearchDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_RESULTS = 10
@@ -21,7 +22,24 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
   return {
     name: 'search_knowledge',
     idempotent: true,
-    usageNotes: 'Emits a `kb-article-list` block automatically.',
+    outputDigestSchema: ArticleSearchDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        results?: Array<Record<string, unknown>>
+        count?: number
+      }
+      const results = Array.isArray(out.results) ? out.results : []
+      return {
+        articleCount: typeof out.count === 'number' ? out.count : results.length,
+        titles: takeSample(
+          results
+            .map((r) => (typeof r.documentTitle === 'string' ? r.documentTitle : null))
+            .filter((t): t is string => Boolean(t))
+        ),
+      }
+    },
+    usageNotes:
+      'For KB articles, cite individual articles in the final message via `[Title](auxx://doc/<docSlug>)` — `docSlug` is on each result. RAG segments have no citable URL; mention them in prose.',
     description:
       "Hybrid (BM25 + vector) search across the organization's knowledge — published KB articles and uploaded RAG documents. Use for written content (articles, manuals, policies, FAQs). Do NOT use for contacts, customers, products, orders, or other entities — use search_entities for that.",
     parameters: {
@@ -123,6 +141,12 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
         const results = trimmed.map((r) => {
           const meta = (r.segment.metadata as any) ?? {}
           const isKb = meta.source === 'kb'
+          const articleSlugPath = isKb ? (meta.articleSlugPath as string | undefined) : undefined
+          const kbSlug = isKb ? (meta.kbSlug as string | undefined) : undefined
+          // Slug for `auxx://doc/<slug>` inline links — only for KB items
+          // with the necessary metadata. RAG segments have no canonical URL
+          // and are skipped.
+          const docSlug = kbSlug && articleSlugPath ? `${kbSlug}/${articleSlugPath}` : undefined
           return {
             id: r.segment.id,
             source: isKb ? ('kb' as const) : ('rag' as const),
@@ -136,39 +160,32 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
             datasetId: r.segment.document.dataset.id,
             articleId: isKb ? (meta.articleId as string | undefined) : undefined,
             articleSlug: isKb ? (meta.articleSlug as string | undefined) : undefined,
-            articleSlugPath: isKb ? (meta.articleSlugPath as string | undefined) : undefined,
+            articleSlugPath,
             kbId: isKb ? (meta.kbId as string | undefined) : undefined,
-            kbSlug: isKb ? (meta.kbSlug as string | undefined) : undefined,
+            kbSlug,
+            docSlug,
             searchType: r.searchType,
           }
         })
 
+        const docs = results
+          .filter((r): r is typeof r & { docSlug: string } => Boolean(r.docSlug))
+          .map((r) => ({
+            slug: r.docSlug,
+            title: r.documentTitle,
+            description: r.content,
+          }))
+        // Deduplicate — multiple matching segments can share the same article
+        const dedupedDocs = Array.from(new Map(docs.map((d) => [d.slug, d])).values())
+
         return {
           success: true,
-          output: { results, count: results.length, total: response.total },
-          blocks: [
-            {
-              type: 'kb-article-list',
-              data: {
-                query,
-                articles: results.map((r) => ({
-                  id: r.articleId ?? r.id,
-                  title: r.documentTitle,
-                  excerpt: r.content,
-                  source: r.source,
-                  ...(r.source === 'kb'
-                    ? {
-                        articleSlug: r.articleSlug,
-                        articleSlugPath: r.articleSlugPath,
-                        kbId: r.kbId,
-                        kbSlug: r.kbSlug,
-                      }
-                    : { datasetName: r.datasetName }),
-                  score: r.score,
-                })),
-              },
-            },
-          ],
+          output: {
+            results,
+            count: results.length,
+            total: response.total,
+            docs: dedupedDocs,
+          },
         }
       } catch (error) {
         return {

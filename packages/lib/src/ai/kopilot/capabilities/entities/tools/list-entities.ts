@@ -2,12 +2,22 @@
 
 import { getCachedResources } from '../../../../../cache/org-cache-helpers'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ListEntitiesDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_entities',
     idempotent: true,
+    outputDigestSchema: ListEntitiesDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { entities?: Array<{ apiSlug?: string; label?: string }> }
+      return {
+        entityTypes: Array.isArray(out.entities)
+          ? out.entities.map((e) => e.label ?? e.apiSlug ?? '').filter(Boolean)
+          : [],
+      }
+    },
     usageNotes:
       'Returns entity TYPES, not records. Use to discover what exists; then `query_records` or `search_entities` for actual records.',
     description:

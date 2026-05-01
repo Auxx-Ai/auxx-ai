@@ -4,6 +4,7 @@ import { findCachedResource, getCachedResources } from '../../../../../cache/org
 import { UnprocessableEntityError } from '../../../../../errors'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { CreateEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { formatUnknownFieldsError, validateFieldKeys } from './field-label-helpers'
 import { formatActorResolutionError, resolveActorValues } from './resolve-actor-values'
@@ -12,7 +13,16 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
   return {
     name: 'create_entity',
     outputBlock: 'entity-card',
-    usageNotes: 'Emits an `action-result` block automatically.',
+    outputDigestSchema: CreateEntityDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { recordId?: string }
+      const recordId = String(out.recordId ?? '')
+      return {
+        recordId,
+        displayName: recordId,
+        entityDefinitionId: recordId.split(':')[0] || undefined,
+      }
+    },
     description: `Create a new entity instance.
 
 REQUIRED BEFORE CALLING: Call \`search_entities\` with the proposed values (name,
@@ -130,17 +140,6 @@ Example (ids match list_entity_fields output):
         return {
           success: true,
           output: { recordId: result.recordId },
-          blocks: [
-            {
-              type: 'action-result',
-              data: {
-                action: 'create_entity',
-                success: true,
-                summary: `Created ${resource.label}`,
-                recordId: String(result.recordId),
-              },
-            },
-          ],
         }
       } catch (err) {
         if (err instanceof UnprocessableEntityError && 'missingFields' in err.details) {

@@ -5,6 +5,7 @@ import type { ToolCall } from '../clients/base/types'
 import type { ToolContext } from './tool-context'
 import type { AgentEvent, AgentToolDefinition, CapturedAction } from './types'
 import {
+  buildToolDigest,
   needsApproval,
   parseToolArgs,
   previewValue,
@@ -56,9 +57,21 @@ export async function processCaptureToolCalls(
     const args = parseToolArgs(toolCall)
 
     if (!tool) {
-      events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
+      events.push({
+        type: 'tool-started',
+        agent: agentName,
+        tool: toolName,
+        toolCallId: toolCall.id,
+        args,
+      })
       const errorMsg = `Unknown tool: ${toolName}`
-      events.push({ type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg })
+      events.push({
+        type: 'tool-error',
+        agent: agentName,
+        tool: toolName,
+        toolCallId: toolCall.id,
+        error: errorMsg,
+      })
       results.push({
         toolCallId: toolCall.id,
         toolName,
@@ -77,8 +90,20 @@ export async function processCaptureToolCalls(
       const missing = validateRequiredParams(tool, args)
       if (missing.length > 0) {
         const errMsg = `Missing required parameters: ${missing.join(', ')}. Please provide all required parameters.`
-        events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
-        events.push({ type: 'tool-error', agent: agentName, tool: toolName, error: errMsg })
+        events.push({
+          type: 'tool-started',
+          agent: agentName,
+          tool: toolName,
+          toolCallId: toolCall.id,
+          args,
+        })
+        events.push({
+          type: 'tool-error',
+          agent: agentName,
+          tool: toolName,
+          toolCallId: toolCall.id,
+          error: errMsg,
+        })
         results.push({
           toolCallId: toolCall.id,
           toolName,
@@ -120,11 +145,18 @@ export async function processCaptureToolCalls(
         predictedOutput,
       })
 
-      events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
+      events.push({
+        type: 'tool-started',
+        agent: agentName,
+        tool: toolName,
+        toolCallId: toolCall.id,
+        args,
+      })
       events.push({
         type: 'tool-completed',
         agent: agentName,
         tool: toolName,
+        toolCallId: toolCall.id,
         result: { success: true, output: predictedOutput },
       })
       logger.info('Tool captured (no execute)', {
@@ -149,17 +181,25 @@ export async function processCaptureToolCalls(
     if (cacheKey) {
       const cached = idempotentCache.get(cacheKey)
       if (cached) {
-        events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
+        events.push({
+          type: 'tool-started',
+          agent: agentName,
+          tool: toolName,
+          toolCallId: toolCall.id,
+          args,
+        })
         events.push({
           type: 'tool-completed',
           agent: agentName,
           tool: toolName,
+          toolCallId: toolCall.id,
           result: {
             success: cached.success,
             output: cached.output,
             error: cached.error,
             blocks: cached.blocks,
           },
+          digest: cached.digest,
         })
         results.push({
           toolCallId: toolCall.id,
@@ -168,17 +208,32 @@ export async function processCaptureToolCalls(
           success: cached.success,
           error: cached.error,
           blocks: cached.blocks,
+          digest: cached.digest,
           captured: false,
         })
         continue
       }
     }
 
-    events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
+    events.push({
+      type: 'tool-started',
+      agent: agentName,
+      tool: toolName,
+      toolCallId: toolCall.id,
+      args,
+    })
 
     try {
       const result = await tool.execute(args, ctx)
-      events.push({ type: 'tool-completed', agent: agentName, tool: toolName, result })
+      const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
+      events.push({
+        type: 'tool-completed',
+        agent: agentName,
+        tool: toolName,
+        toolCallId: toolCall.id,
+        result,
+        digest,
+      })
       logger.info('Tool result (capture)', {
         agent: agentName,
         tool: toolName,
@@ -194,13 +249,20 @@ export async function processCaptureToolCalls(
         success: result.success,
         error: result.error,
         blocks: result.blocks,
+        digest,
         captured: false,
       }
       results.push(execResult)
       if (cacheKey && result.success) idempotentCache.set(cacheKey, execResult)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
-      events.push({ type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg })
+      events.push({
+        type: 'tool-error',
+        agent: agentName,
+        tool: toolName,
+        toolCallId: toolCall.id,
+        error: errorMsg,
+      })
       results.push({
         toolCallId: toolCall.id,
         toolName,

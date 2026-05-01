@@ -19,7 +19,6 @@ import {
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { type KopilotMessage, useKopilotStore } from '../stores/kopilot-store'
 import { getApprovalCard } from './blocks/approval-card-registry'
-import { AuxxBlock } from './blocks/auxx-block'
 import { GenericApprovalCard } from './blocks/generic-approval-card'
 import { KopilotEmptyState } from './kopilot-empty-state'
 import { AssistantMessage } from './messages/assistant-message'
@@ -297,6 +296,11 @@ export function KopilotMessageList({
 
     if (message.approval) {
       const ApprovalCard = getApprovalCard(message.approval.toolName) ?? GenericApprovalCard
+      // Once the tool runs (post-approval), its digest lives on the matching
+      // tool message — pull it so the card can morph in place to a completed
+      // state ("Sent" / "Draft saved") without DOM swaps.
+      const toolCallId = message.approval.toolCallId
+      const matchingTool = messages.find((m) => m.tool?.callId === toolCallId)?.tool
       messageEl = (
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -304,9 +308,10 @@ export function KopilotMessageList({
           transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
           <ApprovalCard
             toolName={message.approval.toolName}
-            toolCallId={message.approval.toolCallId}
+            toolCallId={toolCallId}
             args={message.approval.args}
             status={message.approval.status}
+            digest={matchingTool?.digest}
             onApprove={(inputAmendment) => handleApproval(message.id, 'approved', inputAmendment)}
             onReject={() => handleApproval(message.id, 'rejected')}
           />
@@ -335,10 +340,6 @@ export function KopilotMessageList({
           break
         case 'tool':
           return null
-        case 'block':
-          if (!message.block) return null
-          messageEl = <AuxxBlock type={message.block.type} data={message.block.data} />
-          break
         default:
           break
       }

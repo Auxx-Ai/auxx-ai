@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { and, asc, eq } from 'drizzle-orm'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { GetTranscriptDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const DEFAULT_MAX_TOKENS = 4000
@@ -13,6 +14,13 @@ export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefiniti
   return {
     name: 'get_transcript',
     idempotent: true,
+    outputDigestSchema: GetTranscriptDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { transcriptId?: string }
+      return {
+        recordingId: typeof out.transcriptId === 'string' ? out.transcriptId : '',
+      }
+    },
     description:
       'Fetch the full text of a transcript, optionally with utterance-level speaker attribution. Token-heavy — call only when transcript content is decision-relevant.',
     parameters: {
@@ -61,6 +69,7 @@ export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefiniti
         return {
           success: true,
           output: {
+            transcriptId,
             fullText: truncated ? `${fullText.slice(0, charBudget)}...` : fullText,
             truncated,
             totalWords: transcript.wordCount ?? 0,
@@ -113,7 +122,7 @@ export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefiniti
 
       return {
         success: true,
-        output: { utterances: out, truncated },
+        output: { transcriptId, utterances: out, truncated },
       }
     },
   }

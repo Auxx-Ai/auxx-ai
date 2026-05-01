@@ -20,6 +20,12 @@ export interface ApprovalCardProps {
   toolCallId: string
   args: Record<string, unknown>
   status: 'pending' | 'approved' | 'rejected'
+  /**
+   * Display digest produced by the tool's `buildDigest`. Available after the
+   * tool executes (post-approval) so the card can render completed-state info
+   * — sent timestamp, draft id, etc. Undefined while pending.
+   */
+  digest?: unknown
   onApprove: (inputAmendment?: Record<string, unknown>) => void
   onReject: () => void
   /**

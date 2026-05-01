@@ -1,9 +1,11 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/start-new-conversation.ts
 
+import { z } from 'zod'
 import { getCachedIntegrationCatalog } from '../../../../../cache/integration-catalog'
 import { DraftService } from '../../../../../drafts'
 import { MessageSenderService } from '../../../../../messages'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { EmailWriteDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { resolveRecipients } from '../recipient-resolver'
 import { stripSignOff } from './strip-sign-off'
@@ -15,17 +17,54 @@ interface StartArgs {
   bcc?: string[]
   body: string
   subject?: string
-  mode: 'draft' | 'send'
+  /** Resolved at approval time via the approval card's `inputAmendment.mode`. */
+  mode?: 'draft' | 'send'
   attachments?: string[]
 }
+
+const StartAmendmentSchema = z.object({
+  mode: z.enum(['draft', 'send']),
+  body: z.string().optional(),
+  subject: z.string().optional(),
+  to: z.array(z.string()).optional(),
+  cc: z.array(z.string()).optional(),
+  bcc: z.array(z.string()).optional(),
+})
 
 export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'start_new_conversation',
+    requiresApproval: true,
+    inputAmendmentSchema: StartAmendmentSchema,
+    outputDigestSchema: EmailWriteDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        threadId?: string
+        draftId?: string
+        messageId?: string
+        mode?: 'draft' | 'send'
+        status?: string
+        subject?: string | null
+        body?: string
+        resolvedRecipients?: Array<{ displayName?: string; identifier?: string }>
+      }
+      return {
+        threadId: out.threadId,
+        draftId: out.draftId,
+        messageId: out.messageId,
+        mode: out.mode === 'send' ? 'send' : 'draft',
+        status: out.status,
+        subject: out.subject ?? undefined,
+        recipients: Array.isArray(out.resolvedRecipients)
+          ? out.resolvedRecipients.map((r) => r.displayName ?? r.identifier ?? '').filter(Boolean)
+          : undefined,
+        body: out.body,
+      }
+    },
     usageNotes:
-      'Use `mode: "draft"` to save without sending; `mode: "send"` to send (requires approval). For email channels `subject` is required; on messaging channels it is silently ignored.',
+      'Always pauses for approval; the user picks Save as Draft or Send in the approval card. For email channels `subject` is required; on messaging channels it is silently ignored.',
     description:
-      'Start a brand-new outbound conversation on an integration that supports it (no existing thread). Recipients are recordIds, participantIds, or raw identifiers — the tool picks the channel-appropriate identifier from the record.',
+      'Start a brand-new outbound conversation on an integration that supports it (no existing thread). Recipients are recordIds, participantIds, or raw identifiers — the tool picks the channel-appropriate identifier from the record. The user picks save-as-draft vs send in the approval card; do NOT pass a `mode` argument.',
     parameters: {
       type: 'object',
       properties: {
@@ -58,25 +97,19 @@ export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolD
           type: 'string',
           description: 'Required for email channels. Silently dropped on messaging channels.',
         },
-        mode: {
-          type: 'string',
-          enum: ['draft', 'send'],
-        },
         attachments: {
           type: 'array',
           items: { type: 'string' },
         },
       },
-      required: ['integrationId', 'to', 'body', 'mode'],
+      required: ['integrationId', 'to', 'body'],
       additionalProperties: false,
     },
-    requiresApproval: (args) => (args as Partial<StartArgs>).mode === 'send',
     summary: (args) => {
       const a = args as Partial<StartArgs>
-      const verb = a.mode === 'send' ? 'Send' : 'Draft'
       const to = Array.isArray(a.to) ? a.to.join(', ').slice(0, 40) : 'recipients'
       const body = a.body ?? ''
-      return `${verb} to ${to}: "${body.slice(0, 50)}${body.length > 50 ? '…' : ''}"`
+      return `Compose to ${to}: "${body.slice(0, 50)}${body.length > 50 ? '…' : ''}"`
     },
     execute: async (rawArgs, agentDeps) => {
       const args = rawArgs as Partial<StartArgs>
@@ -88,7 +121,8 @@ export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolD
         return { success: false, output: null, error: 'to is required and must be non-empty' }
       }
       const body = stripSignOff(args.body ?? '')
-      const mode = args.mode
+      // Mode is set by the approval card's input amendment; default to draft.
+      const mode: 'draft' | 'send' = args.mode === 'send' ? 'send' : 'draft'
 
       const catalog = await getCachedIntegrationCatalog(agentDeps.organizationId)
       const integration = catalog.find((i) => i.integrationId === args.integrationId)
@@ -172,21 +206,11 @@ export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolD
           output: {
             draftId: draft.id,
             mode: 'draft',
+            subject,
+            body,
             resolvedRecipients: resolved,
             status: 'draft_saved',
           },
-          blocks: [
-            {
-              type: 'draft-preview',
-              data: {
-                draftId: draft.id,
-                to: toIds.map((r) => r.displayName ?? r.identifier),
-                cc: ccIds.length ? ccIds.map((r) => r.displayName ?? r.identifier) : undefined,
-                body,
-                subject,
-              },
-            },
-          ],
         }
       }
 
@@ -219,28 +243,17 @@ export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolD
           : undefined,
       })
 
-      const recipientSummary = toIds.map((r) => r.displayName ?? r.identifier).join(', ')
       return {
         success: true,
         output: {
           messageId: result.id,
           threadId: result.threadId,
           mode: 'send',
+          subject,
+          body,
           resolvedRecipients: resolved,
           status: result.sendStatus,
         },
-        blocks: [
-          {
-            type: 'action-result',
-            data: {
-              action: 'start_new_conversation',
-              success: true,
-              summary: `Sent to ${recipientSummary}`,
-              messageId: result.id,
-              threadId: result.threadId,
-            },
-          },
-        ],
       }
     },
   }

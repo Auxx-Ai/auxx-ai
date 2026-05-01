@@ -2,12 +2,29 @@
 
 import { ActorService } from '../../../../../actors/actor-service'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ListGroupsDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_groups',
     idempotent: true,
+    outputDigestSchema: ListGroupsDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        groups?: Array<{ name?: string | null }>
+        count?: number
+      }
+      const groups = Array.isArray(out.groups) ? out.groups : []
+      return {
+        count: typeof out.count === 'number' ? out.count : groups.length,
+        names: takeSample(
+          groups
+            .map((g) => (typeof g.name === 'string' && g.name ? g.name : null))
+            .filter((n): n is string => Boolean(n))
+        ),
+      }
+    },
     description: 'List organization groups. Use to find group IDs for assignments.',
     parameters: {
       type: 'object',

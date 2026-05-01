@@ -7,6 +7,7 @@ import { createTaskService } from '../../../../../tasks/task-service'
 import { TextDateParser } from '../../../../../tasks/text-date-parser'
 import type { CreateTaskInput } from '../../../../../tasks/types'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { CreateTaskDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition {
@@ -15,7 +16,21 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
     description:
       'Create a new task. Resolving names: try list_members first for the assignee. If the name does not match any workspace member, fall back to search_entities — they are likely a contact (or the subject is a company/record). Pass the matched recordId to linkedRecordIds and leave assigneeIds empty so the task is assigned to the current user. Use search_entities for any other referenced records (products, orders, etc.). Supports natural language deadlines like "next Friday", "in 3 days", "end of week".',
     requiresApproval: true,
-    usageNotes: "Emits an `action-result` block automatically. Don't re-embed anything for it.",
+    outputDigestSchema: CreateTaskDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        taskId?: string
+        title?: string
+        deadline?: string | null
+        assignees?: string[]
+      }
+      return {
+        taskId: String(out.taskId ?? ''),
+        title: typeof out.title === 'string' ? out.title : '',
+        deadline: out.deadline ?? undefined,
+        assignees: Array.isArray(out.assignees) ? out.assignees : undefined,
+      }
+    },
     summary: (args) => {
       const title = typeof args.title === 'string' ? args.title : 'task'
       return `Create task: "${title.slice(0, 60)}"`
@@ -121,17 +136,6 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
           priority: task.priority,
           assignees: assigneeIds,
         },
-        blocks: [
-          {
-            type: 'action-result',
-            data: {
-              action: 'create_task',
-              success: true,
-              summary: `Task created: ${task.title}`,
-              taskId: task.id,
-            },
-          },
-        ],
       }
     },
   }

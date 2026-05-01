@@ -3,6 +3,7 @@
 import { MessageQueryService } from '../../../../../messages'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { GetThreadDetailDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_MESSAGES = 20
@@ -18,6 +19,20 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
     name: 'get_thread_detail',
     idempotent: true,
     outputBlock: 'thread-list',
+    outputDigestSchema: GetThreadDetailDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        thread?: { id?: string; subject?: string | null; lastMessageAt?: string | null }
+        totalMessages?: number
+      }
+      return {
+        threadId: String(out.thread?.id ?? ''),
+        subject: out.thread?.subject ?? null,
+        messageCount: typeof out.totalMessages === 'number' ? out.totalMessages : 0,
+        lastMessageAt:
+          typeof out.thread?.lastMessageAt === 'string' ? out.thread.lastMessageAt : null,
+      }
+    },
     usageNotes:
       "Returns a single thread's messages. Use after `find_threads` to read a conversation before drafting a reply.",
     description:

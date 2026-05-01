@@ -4,6 +4,7 @@ import { getCachedMembersByUserIds } from '../../../../../cache/org-cache-helper
 import { CommentService } from '../../../../../comments'
 import { isRecordId, type RecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ListNotesDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_LIMIT = 50
@@ -28,6 +29,11 @@ export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_notes',
     idempotent: true,
+    outputDigestSchema: ListNotesDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { notes?: unknown[] }
+      return { count: Array.isArray(out.notes) ? out.notes.length : 0 }
+    },
     description:
       'List internal notes (a.k.a. comments) on a record. Use whenever the user asks for notes, comments, discussion, internal remarks, or annotations on an entity. Ordered most-recent first.',
     parameters: {

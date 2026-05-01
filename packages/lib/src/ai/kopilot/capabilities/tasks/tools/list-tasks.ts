@@ -2,6 +2,7 @@
 
 import { createTaskService } from '../../../../../tasks/task-service'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ListTasksDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
@@ -9,6 +10,28 @@ export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'list_tasks',
     idempotent: true,
     outputBlock: 'task-list',
+    outputDigestSchema: ListTasksDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        tasks?: Array<{
+          id?: string
+          title?: string
+          deadline?: string | null
+          completedAt?: string | null
+        }>
+        count?: number
+      }
+      const tasks = Array.isArray(out.tasks) ? out.tasks : []
+      return {
+        count: typeof out.count === 'number' ? out.count : tasks.length,
+        sample: takeSample(tasks).map((t) => ({
+          taskId: String(t.id ?? ''),
+          title: typeof t.title === 'string' ? t.title : '',
+          deadline: t.deadline ?? undefined,
+          completedAt: t.completedAt ?? undefined,
+        })),
+      }
+    },
     description:
       'Search and filter tasks. Returns all organization tasks by default. Use assigneeId to filter by a specific user.',
     parameters: {

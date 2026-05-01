@@ -10,6 +10,7 @@ import { BlockCard, type BlockCardAction, StatusIndicator } from './block-card'
 export function DraftApprovalCard({
   args,
   status,
+  digest,
   onApprove,
   onReject,
   resolvedRecipients,
@@ -17,14 +18,28 @@ export function DraftApprovalCard({
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const threadId = typeof args.threadId === 'string' ? args.threadId : undefined
-  const body = (args.body as string) ?? ''
+  // Prefer the post-execution digest values when present (subject/body can be
+  // edited at approval time and the digest reflects what was actually sent).
+  const d = (digest ?? {}) as {
+    threadId?: string
+    draftId?: string
+    messageId?: string
+    mode?: 'draft' | 'send'
+    status?: string
+    subject?: string
+    body?: string
+    recipients?: string[]
+  }
+
+  const threadId =
+    (typeof d.threadId === 'string' && d.threadId) ||
+    (typeof args.threadId === 'string' ? args.threadId : undefined)
+  const body = typeof d.body === 'string' ? d.body : ((args.body as string) ?? '')
   const argTo = Array.isArray(args.to) ? (args.to as string[]) : []
 
   // Prefer resolved display names; fall back to whatever the LLM passed in `to`.
-  // Raw emails / phones are user-friendly; recordIds and participantIds appear
-  // as-is during pending state when the resolver hasn't run yet.
-  const recipientLabels = resolvedRecipients?.map((r) => r.displayName ?? r.identifier) ?? argTo
+  const recipientLabels =
+    d.recipients ?? resolvedRecipients?.map((r) => r.displayName ?? r.identifier) ?? argTo
 
   const handleEditInThread = () => {
     if (!threadId) return
@@ -34,33 +49,54 @@ export function DraftApprovalCard({
   }
 
   const isPending = status === 'pending'
+  const isApproved = status === 'approved'
+  const isRejected = status === 'rejected'
 
-  const baseActions: BlockCardAction[] = isPending
-    ? [
-        { label: 'Deny', onClick: onReject },
-        { label: 'Save as Draft', onClick: () => onApprove({ mode: 'draft' }) },
-      ]
-    : []
+  const completedLabel =
+    d.mode === 'send'
+      ? d.status === 'sent'
+        ? 'Sent'
+        : 'Sending…'
+      : d.draftId
+        ? 'Draft saved'
+        : isApproved
+          ? 'Working…'
+          : ''
 
-  const actions: BlockCardAction[] = isPending
-    ? threadId
+  let actions: BlockCardAction[]
+  if (isPending) {
+    const baseActions: BlockCardAction[] = [
+      { label: 'Deny', onClick: onReject },
+      { label: 'Save as Draft', onClick: () => onApprove({ mode: 'draft' }) },
+    ]
+    actions = threadId
       ? [
           ...baseActions,
           { label: 'Edit in Thread', onClick: handleEditInThread },
-          { label: 'Send', onClick: () => onApprove(), primary: true },
+          { label: 'Send', onClick: () => onApprove({ mode: 'send' }), primary: true },
         ]
-      : [...baseActions, { label: 'Send', onClick: () => onApprove(), primary: true }]
-    : status === 'approved' && threadId
-      ? [{ label: 'View in Thread', onClick: handleEditInThread, primary: true }]
-      : []
+      : [
+          ...baseActions,
+          { label: 'Send', onClick: () => onApprove({ mode: 'send' }), primary: true },
+        ]
+  } else if (isApproved && threadId) {
+    actions = [{ label: 'View in Thread', onClick: handleEditInThread, primary: true }]
+  } else {
+    actions = []
+  }
 
+  const primaryText = isApproved
+    ? completedLabel || 'Done'
+    : isRejected
+      ? 'Cancelled'
+      : 'Send Message'
   const secondaryText = recipientLabels.length > 0 ? `To: ${recipientLabels.join(', ')}` : undefined
 
   return (
     <BlockCard
       data-slot='draft-approval-card'
       indicator={<StatusIndicator status={status} />}
-      primaryText='Send Message'
+      primaryText={primaryText}
       secondaryText={secondaryText}
       actionLabel={isPending ? 'Send message?' : undefined}
       hasFooter={actions.length > 0}

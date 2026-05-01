@@ -2,14 +2,16 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { AlertTriangle } from 'lucide-react'
+import { useMemo } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { KopilotMessage, ThinkingGroup } from '../../stores/kopilot-store'
+import type { KopilotMessage, LinkSnapshot, ThinkingGroup } from '../../stores/kopilot-store'
 import { useKopilotStore } from '../../stores/kopilot-store'
 import '../../styles/kopilot-prose.css'
 import { AuxxBlock } from '../blocks/auxx-block'
 import { REFERENCE_BLOCK_TYPES } from '../blocks/block-schemas'
 import { SparkleIcon } from '../sparkle-icon'
+import { AuxxInlineLink } from './auxx-inline-link'
 import { MessageActions } from './message-actions'
 import { ThinkingSteps } from './thinking-steps'
 
@@ -28,43 +30,63 @@ function parseAuxxType(className: string | undefined): string | null {
   return REFERENCE_BLOCK_SET.has(type) ? type : null
 }
 
-const markdownComponents: Components = {
-  code(props) {
-    const { className, children } = props
-    const auxxType = parseAuxxType(className)
-    if (!auxxType) return <code className={className}>{children}</code>
+function buildMarkdownComponents(
+  linkSnapshots: Record<string, LinkSnapshot> | undefined
+): Components {
+  return {
+    code(props) {
+      const { className, children } = props
+      const auxxType = parseAuxxType(className)
+      if (!auxxType) return <code className={className}>{children}</code>
 
-    const raw = String(children ?? '').trim()
-    if (!raw) {
+      const raw = String(children ?? '').trim()
+      if (!raw) {
+        return (
+          <pre className='not-prose'>
+            <code>{String(children ?? '')}</code>
+          </pre>
+        )
+      }
+      let data: unknown
+      try {
+        data = JSON.parse(raw)
+      } catch {
+        // Keep the fence visible as code while streaming / if JSON is malformed
+        return (
+          <pre className='not-prose'>
+            <code>{String(children ?? '')}</code>
+          </pre>
+        )
+      }
+      return <AuxxBlock type={auxxType} data={data} />
+    },
+    // Unwrap the <pre> that react-markdown wraps around our custom block so the
+    // motion.div / cards aren't nested inside a monospace <pre>.
+    pre(props) {
+      const child = Array.isArray(props.children) ? props.children[0] : props.children
+      const childEl = child as { props?: { className?: string } } | undefined
+      if (childEl && parseAuxxType(childEl.props?.className)) {
+        return <>{props.children}</>
+      }
+      return <pre {...props} />
+    },
+    a({ href, children }) {
+      if (typeof href === 'string' && href.startsWith('auxx://')) {
+        const label =
+          typeof children === 'string'
+            ? children
+            : Array.isArray(children)
+              ? children.map((c) => (typeof c === 'string' ? c : '')).join('')
+              : String(children ?? '')
+        return <AuxxInlineLink href={href} label={label} snapshot={linkSnapshots?.[href]} />
+      }
       return (
-        <pre className='not-prose'>
-          <code>{String(children ?? '')}</code>
-        </pre>
+        <a href={href} target='_blank' rel='noreferrer'>
+          {children}
+        </a>
       )
-    }
-    let data: unknown
-    try {
-      data = JSON.parse(raw)
-    } catch {
-      // Keep the fence visible as code while streaming / if JSON is malformed
-      return (
-        <pre className='not-prose'>
-          <code>{String(children ?? '')}</code>
-        </pre>
-      )
-    }
-    return <AuxxBlock type={auxxType} data={data} />
-  },
-  // Unwrap the <pre> that react-markdown wraps around our custom block so the
-  // motion.div / cards aren't nested inside a monospace <pre>.
-  pre(props) {
-    const child = Array.isArray(props.children) ? props.children[0] : props.children
-    const childEl = child as { props?: { className?: string } } | undefined
-    if (childEl && parseAuxxType(childEl.props?.className)) {
-      return <>{props.children}</>
-    }
-    return <pre {...props} />
-  },
+    },
+  }
 }
 
 interface AssistantMessageProps {
@@ -85,6 +107,9 @@ export function AssistantMessage({
 }: AssistantMessageProps) {
   const isStreaming = streamingContent !== undefined
   const content = isStreaming ? streamingContent : (message?.content ?? '')
+
+  const linkSnapshots = message?.linkSnapshots
+  const markdownComponents = useMemo(() => buildMarkdownComponents(linkSnapshots), [linkSnapshots])
 
   const thinkingGroups = useKopilotStore((s) => s.thinkingGroups)
   const activeThinkingGroupId = useKopilotStore((s) => s.activeThinkingGroupId)

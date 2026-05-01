@@ -14,6 +14,7 @@ import type {
   LLMCallParams,
 } from './types'
 import {
+  buildToolDigest,
   needsApproval,
   parseToolArgs,
   previewValue,
@@ -216,11 +217,17 @@ export async function* agentQueryLoop(
       // injection, fallback fence auto-emit) and persist + emit a final-message
       // event so the frontend renders instead of showing nothing.
       if (content.length > 0) {
-        const finalContent = config.domainConfig.postProcessFinalContent
+        const processed = config.domainConfig.postProcessFinalContent
           ? config.domainConfig.postProcessFinalContent(content, currentState)
-          : content
+          : { content }
+        const finalContent = processed.content
 
-        yield { type: 'final-message', agent: agent.name, content: finalContent }
+        yield {
+          type: 'final-message',
+          agent: agent.name,
+          content: finalContent,
+          ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
+        }
 
         currentState = {
           ...currentState,
@@ -236,6 +243,7 @@ export async function* agentQueryLoop(
                 modelId: `${callParams.provider}:${callParams.model}`,
                 final: true,
               },
+              ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
             },
           ],
         }
@@ -292,7 +300,9 @@ export async function* agentQueryLoop(
         toolCallId: r.toolCallId,
         timestamp: Date.now(),
         metadata: { agent: agent.name, ...(r.captured ? { captured: true } : {}) },
+        toolStatus: (r.success ? 'completed' : 'error') as 'completed' | 'error',
         ...(r.blocks && r.blocks.length > 0 ? { blocks: r.blocks } : {}),
+        ...(r.digest !== undefined ? { digest: r.digest } : {}),
       }))
 
       const assistantMessage = {
@@ -317,13 +327,15 @@ export async function* agentQueryLoop(
       if (terminator) {
         const output = terminator.output as Record<string, unknown>
         const rawContent = typeof output.content === 'string' ? output.content : ''
-        const finalContent = config.domainConfig.postProcessFinalContent
+        const processed = config.domainConfig.postProcessFinalContent
           ? config.domainConfig.postProcessFinalContent(rawContent, currentState)
-          : rawContent
+          : { content: rawContent }
+        const finalContent = processed.content
         yield {
           type: 'final-message',
           agent: agent.name,
           content: finalContent,
+          ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
         }
         currentState = {
           ...currentState,
@@ -338,6 +350,7 @@ export async function* agentQueryLoop(
                 modelId: `${callParams.provider}:${callParams.model}`,
                 final: true,
               },
+              ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
             },
           ],
         }
@@ -482,7 +495,9 @@ export async function* agentQueryLoop(
       toolCallId: r.toolCallId,
       timestamp: Date.now(),
       metadata: { agent: agent.name },
+      toolStatus: (r.success ? 'completed' : 'error') as 'completed' | 'error',
       ...(r.blocks && r.blocks.length > 0 ? { blocks: r.blocks } : {}),
+      ...(r.digest !== undefined ? { digest: r.digest } : {}),
     }))
 
     const assistantMessage = {
@@ -507,14 +522,17 @@ export async function* agentQueryLoop(
     if (terminator) {
       const output = terminator.output as Record<string, unknown>
       const rawContent = typeof output.content === 'string' ? output.content : ''
-      // Let the domain post-process (inject snapshots, auto-emit fallback fences).
-      const finalContent = config.domainConfig.postProcessFinalContent
+      // Let the domain post-process (inject snapshots, auto-emit fallback fences,
+      // build inline-link snapshot map).
+      const processed = config.domainConfig.postProcessFinalContent
         ? config.domainConfig.postProcessFinalContent(rawContent, currentState)
-        : rawContent
+        : { content: rawContent }
+      const finalContent = processed.content
       yield {
         type: 'final-message',
         agent: agent.name,
         content: finalContent,
+        ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
       }
       // Persist the final prose as an assistant message so session restore is clean.
       currentState = {
@@ -530,6 +548,7 @@ export async function* agentQueryLoop(
               modelId: `${callParams.provider}:${callParams.model}`,
               final: true,
             },
+            ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
           },
         ],
       }
@@ -620,17 +639,25 @@ async function executeToolCalls(
     if (cacheKey) {
       const cached = idempotentCache.get(cacheKey)
       if (cached) {
-        events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
+        events.push({
+          type: 'tool-started',
+          agent: agentName,
+          tool: toolName,
+          toolCallId: toolCall.id,
+          args,
+        })
         events.push({
           type: 'tool-completed',
           agent: agentName,
           tool: toolName,
+          toolCallId: toolCall.id,
           result: {
             success: cached.success,
             output: cached.output,
             error: cached.error,
             blocks: cached.blocks,
           },
+          digest: cached.digest,
         })
         results.push({
           toolCallId: toolCall.id,
@@ -639,16 +666,31 @@ async function executeToolCalls(
           success: cached.success,
           error: cached.error,
           blocks: cached.blocks,
+          digest: cached.digest,
         })
         continue
       }
     }
 
-    events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
+    events.push({
+      type: 'tool-started',
+      agent: agentName,
+      tool: toolName,
+      toolCallId: toolCall.id,
+      args,
+    })
 
     try {
       const result = await tool.execute(args, ctx)
-      events.push({ type: 'tool-completed', agent: agentName, tool: toolName, result })
+      const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
+      events.push({
+        type: 'tool-completed',
+        agent: agentName,
+        tool: toolName,
+        toolCallId: toolCall.id,
+        result,
+        digest,
+      })
       logger.info('Tool result', {
         agent: agentName,
         tool: toolName,
@@ -664,12 +706,19 @@ async function executeToolCalls(
         success: result.success,
         error: result.error,
         blocks: result.blocks,
+        digest,
       }
       results.push(execResult)
       if (cacheKey && result.success) idempotentCache.set(cacheKey, execResult)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
-      events.push({ type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg })
+      events.push({
+        type: 'tool-error',
+        agent: agentName,
+        tool: toolName,
+        toolCallId: toolCall.id,
+        error: errorMsg,
+      })
       logger.error('Tool threw', {
         agent: agentName,
         tool: toolName,

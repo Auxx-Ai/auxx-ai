@@ -54,42 +54,6 @@ export const taskListSchema = z.object({
   snapshot: z.record(z.string(), taskSnapshotSchema).optional(),
 })
 
-export const draftPreviewSchema = z.object({
-  draftId: z.string(),
-  /**
-   * Optional: drafts produced by `start_new_conversation` are not yet bound to
-   * a thread and arrive without a threadId. The block falls back to opening
-   * `FloatingCompose` in `mode: 'new'` with preset values when threadId is
-   * absent.
-   */
-  threadId: z.string().optional(),
-  to: z.array(z.string()),
-  cc: z.array(z.string()).optional(),
-  body: z.string(),
-  subject: z.string().optional(),
-})
-
-export const kbArticleSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  excerpt: z.string().optional(),
-  url: z.string().optional(),
-})
-
-export const kbArticleListSchema = z.object({
-  query: z.string().optional(),
-  articles: z.array(
-    z.object({
-      id: z.string(),
-      title: z.string(),
-      excerpt: z.string().optional(),
-      url: z.string().optional(),
-      datasetName: z.string().optional(),
-      score: z.number().optional(),
-    })
-  ),
-})
-
 export const entityDefinitionFieldSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -118,19 +82,6 @@ export const planStepsSchema = z.object({
       detail: z.string().optional(),
     })
   ),
-})
-
-export const actionResultSchema = z.object({
-  action: z.string(),
-  success: z.boolean(),
-  summary: z.string(),
-  recordId: z.string().optional(),
-  recordIds: z.array(z.string()).optional(),
-  threadId: z.string().optional(),
-  messageId: z.string().optional(),
-  draftId: z.string().optional(),
-  taskId: z.string().optional(),
-  count: z.number().optional(),
 })
 
 const CELL_TYPE_VALUES = ['actor', 'date', 'tags', 'email', 'phone', 'currency', 'number'] as const
@@ -191,29 +142,13 @@ export const tableBlockSchema = z.object({
   rows: z.array(z.array(tableCellSchema)),
 })
 
-export const docsResultsSchema = z.object({
-  articles: z.array(
-    z.object({
-      title: z.string(),
-      url: z.string(),
-      description: z.string().nullable().optional(),
-    })
-  ),
-  query: z.string().optional(),
-})
-
 /** Registry of block type → Zod schema */
 export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
   'thread-list': threadListSchema,
   'entity-card': entityCardSchema,
   'entity-list': entityListSchema,
   'entity-definition': entityDefinitionSchema,
-  'draft-preview': draftPreviewSchema,
-  'kb-article': kbArticleSchema,
-  'kb-article-list': kbArticleListSchema,
   'plan-steps': planStepsSchema,
-  'action-result': actionResultSchema,
-  'docs-results': docsResultsSchema,
   table: tableBlockSchema,
   'task-list': taskListSchema,
 }
@@ -225,14 +160,9 @@ export type TaskSnapshotData = z.infer<typeof taskSnapshotSchema>
 export type ThreadListData = z.infer<typeof threadListSchema>
 export type EntityCardData = z.infer<typeof entityCardSchema>
 export type EntityListData = z.infer<typeof entityListSchema>
-export type DraftPreviewData = z.infer<typeof draftPreviewSchema>
-export type KBArticleData = z.infer<typeof kbArticleSchema>
-export type KBArticleListData = z.infer<typeof kbArticleListSchema>
 export type EntityDefinitionFieldData = z.infer<typeof entityDefinitionFieldSchema>
 export type EntityDefinitionData = z.infer<typeof entityDefinitionSchema>
 export type PlanStepsData = z.infer<typeof planStepsSchema>
-export type ActionResultData = z.infer<typeof actionResultSchema>
-export type DocsResultsData = z.infer<typeof docsResultsSchema>
 export type TableCellData = z.infer<typeof tableCellSchema>
 export type TableColumnData = z.infer<typeof tableColumnSchema>
 export type TableBlockData = z.infer<typeof tableBlockSchema>

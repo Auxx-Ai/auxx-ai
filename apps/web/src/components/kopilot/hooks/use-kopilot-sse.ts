@@ -120,6 +120,7 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
               content,
               timestamp: Date.now(),
               parentId: leafId,
+              ...(data.linkSnapshots ? { linkSnapshots: data.linkSnapshots } : {}),
             })
             attachThinkingGroupToMessage(msgId)
             responderCommittedRef.current = true
@@ -163,42 +164,32 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
             content: '',
             timestamp: Date.now(),
             parentId: getCurrentLeafId(),
-            tool: { name: data.tool, args: data.args ?? {}, status: 'running' },
+            tool: {
+              name: data.tool,
+              callId: data.toolCallId,
+              args: data.args ?? {},
+              status: 'running',
+            },
           })
           break
         }
         case 'tool-completed': {
           removeActiveTool(data.tool)
-          completeThinkingToolStep(data.tool, data.result?.output)
+          completeThinkingToolStep(data.tool, data.result?.output, data.digest)
           // Still update tool message for persistence
           const store = useKopilotStore.getState()
-          const toolMsg = Object.values(store.messageMap)
-            .reverse()
-            .find((m) => m.tool?.name === data.tool && m.tool?.status === 'running')
+          const toolMsg = data.toolCallId
+            ? Object.values(store.messageMap).find((m) => m.tool?.callId === data.toolCallId)
+            : Object.values(store.messageMap)
+                .reverse()
+                .find((m) => m.tool?.name === data.tool && m.tool?.status === 'running')
           if (toolMsg) {
             updateMessage(toolMsg.id, {
               tool: {
                 ...toolMsg.tool!,
                 status: 'completed',
                 result: data.result?.output,
-              },
-            })
-          }
-
-          // Surface each tool-produced block as its own transcript item.
-          const blocks = Array.isArray(data.result?.blocks) ? data.result.blocks : []
-          for (const block of blocks) {
-            if (!block || typeof block !== 'object' || typeof block.type !== 'string') continue
-            addMessage({
-              id: generateId(),
-              role: 'block',
-              content: '',
-              timestamp: Date.now(),
-              parentId: getCurrentLeafId(),
-              block: {
-                type: block.type,
-                data: block.data,
-                sourceTool: data.tool,
+                digest: data.digest,
               },
             })
           }
@@ -208,12 +199,55 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           removeActiveTool(data.tool)
           failThinkingToolStep(data.tool, data.error)
           const store = useKopilotStore.getState()
-          const errToolMsg = Object.values(store.messageMap)
-            .reverse()
-            .find((m) => m.tool?.name === data.tool && m.tool?.status === 'running')
+          const errToolMsg = data.toolCallId
+            ? Object.values(store.messageMap).find((m) => m.tool?.callId === data.toolCallId)
+            : Object.values(store.messageMap)
+                .reverse()
+                .find((m) => m.tool?.name === data.tool && m.tool?.status === 'running')
           if (errToolMsg) {
             updateMessage(errToolMsg.id, {
               tool: { ...errToolMsg.tool!, status: 'error', result: data.error },
+            })
+          }
+          break
+        }
+        case 'tool-status-changed': {
+          // In-place lifecycle transition for the existing tool message, used
+          // by approval-flow tools to morph preview → executing → completed.
+          const store = useKopilotStore.getState()
+          const target = Object.values(store.messageMap).find(
+            (m) => m.tool?.callId === data.toolCallId
+          )
+          if (target?.tool) {
+            const nextStatus =
+              data.status === 'awaiting-approval' || data.status === 'rejected'
+                ? target.tool.status
+                : data.status === 'executing'
+                  ? 'running'
+                  : data.status === 'completed'
+                    ? 'completed'
+                    : 'error'
+            updateMessage(target.id, {
+              tool: {
+                ...target.tool,
+                status: nextStatus,
+                ...(data.digest !== undefined ? { digest: data.digest } : {}),
+              },
+            })
+          }
+          // Also update the matching approval message's status, if any.
+          const approvalMsg = Object.values(store.messageMap).find(
+            (m) => m.approval?.toolCallId === data.toolCallId
+          )
+          if (approvalMsg?.approval) {
+            const nextApprovalStatus =
+              data.status === 'rejected'
+                ? 'rejected'
+                : data.status === 'completed' || data.status === 'executing'
+                  ? 'approved'
+                  : approvalMsg.approval.status
+            updateMessage(approvalMsg.id, {
+              approval: { ...approvalMsg.approval, status: nextApprovalStatus },
             })
           }
           break

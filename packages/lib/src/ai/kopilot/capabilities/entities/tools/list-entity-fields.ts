@@ -2,6 +2,7 @@
 
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ListEntityFieldsDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { buildListEntityFieldsOutput } from './list-entity-fields-output'
 
@@ -9,6 +10,14 @@ export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefi
   return {
     name: 'list_entity_fields',
     idempotent: true,
+    outputDigestSchema: ListEntityFieldsDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { entityDefinitionId?: string; fields?: unknown[] }
+      return {
+        entityType: typeof out.entityDefinitionId === 'string' ? out.entityDefinitionId : '',
+        fieldCount: Array.isArray(out.fields) ? out.fields.length : 0,
+      }
+    },
     description: `List fields/attributes for an entity type. Use to discover field ids before searching, filtering, sorting, or mutating.
 
 Response shape:

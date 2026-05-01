@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { and, desc, eq, gte, inArray, isNotNull, or } from 'drizzle-orm'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ListTranscriptsForEntityDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_LIMIT = 25
@@ -12,6 +13,17 @@ export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentT
   return {
     name: 'list_transcripts_for_entity',
     idempotent: true,
+    outputDigestSchema: ListTranscriptsForEntityDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { transcripts?: Array<{ transcriptId?: string }> }
+      const transcripts = Array.isArray(out.transcripts) ? out.transcripts : []
+      return {
+        count: transcripts.length,
+        ids: takeSample(
+          transcripts.map((t) => String(t.transcriptId ?? '')).filter((s) => s.length > 0)
+        ),
+      }
+    },
     description:
       'List meeting transcripts linked to an entity. Resolves via two paths: (1) the entity itself is a meeting (CallRecording.meetingId matches), or (2) the entity is a contact/company that attended meetings (MeetingParticipant.contactEntityInstanceId / companyEntityInstanceId). Returns metadata only — call `get_transcript` to fetch the text.',
     parameters: {
