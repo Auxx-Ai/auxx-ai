@@ -46,7 +46,7 @@ export function DesktopPreviewFrame({ url, children }: DesktopPreviewFrameProps)
   return (
     <div
       data-slot='desktop-frame'
-      className='w-full max-w-7xl overflow-hidden rounded-lg border border-foreground/10 bg-background shadow-sm'>
+      className='flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background shadow-sm'>
       <div
         data-slot='desktop-chrome'
         className='flex items-center gap-3 border-b border-foreground/10 bg-muted/60 px-3 py-2'>
@@ -60,7 +60,7 @@ export function DesktopPreviewFrame({ url, children }: DesktopPreviewFrameProps)
         </div>
         <div className='w-12' aria-hidden />
       </div>
-      <div data-slot='desktop-content' className='relative'>
+      <div data-slot='desktop-content' className='relative flex min-h-0 flex-1 flex-col'>
         {children}
       </div>
     </div>

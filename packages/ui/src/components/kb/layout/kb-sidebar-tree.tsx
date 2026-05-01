@@ -32,6 +32,13 @@ interface KBSidebarTreeProps<T extends KBSidebarArticle> {
   onArticleClick?: (articleId: string) => void
   /** When false, branch open/close changes apply instantly (used to skip the post-hydration flash). */
   animate?: boolean
+  /**
+   * Root id for tree construction. When the caller passes a tab-scoped article
+   * subset (descendants of `activeTabId`, tab itself excluded), the tree's
+   * roots are those descendants whose `parentId === activeTabId` — not null.
+   * Defaults to null for KBs without tabs.
+   */
+  rootParentId?: string | null
 }
 
 export function KBSidebarTree<T extends KBSidebarArticle>({
@@ -43,8 +50,9 @@ export function KBSidebarTree<T extends KBSidebarArticle>({
   onToggle,
   onArticleClick,
   animate = true,
+  rootParentId = null,
 }: KBSidebarTreeProps<T>) {
-  const tree = buildArticleTree(articles)
+  const tree = buildArticleTree(articles, rootParentId)
   return (
     <ul
       className={cn(
@@ -129,16 +137,20 @@ function TreeBranch<T extends KBSidebarArticle>({
     </>
   )
 
-  // Headers are pure presentational labels — uppercase, non-clickable, no
-  // collapse affordance. Their children render flat at the same depth.
+  // Headers are uppercase section labels rendered flat at the same depth as
+  // their children. The label itself is a link to the header's slug path —
+  // the public route handler 308-redirects to the first navigable descendant
+  // (or 404s on an empty section).
   if (node.articleKind === 'header') {
     return (
-      <li className='my-0.5'>
-        <div
-          className='px-2 pt-3 pb-1 text-[var(--kb-fg)]/60 text-xs font-semibold uppercase tracking-wide'
-          style={lineIndent}>
+      <li className='my-0.5 pb-4'>
+        <Link
+          href={href}
+          className='block px-2 pt-3 pb-1 text-[var(--kb-fg)]/60 text-xs font-semibold uppercase tracking-wide no-underline hover:text-[var(--kb-primary)]'
+          style={lineIndent}
+          prefetch={false}>
           {node.title}
-        </div>
+        </Link>
         {hasChildren ? (
           <ul className='m-0 list-none p-0'>
             {node.children.map((child) => (

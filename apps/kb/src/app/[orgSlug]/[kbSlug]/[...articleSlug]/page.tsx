@@ -5,6 +5,7 @@ import { isOrgMember } from '@auxx/lib/cache'
 import {
   extractKBHeadings,
   findArticleBySlugPath,
+  findFirstNavigableUnder,
   getArticleNeighbours,
   getArticleParentLink,
   getFullSlugPath,
@@ -172,11 +173,10 @@ function ArticleBodyContent({
   const basePath = `/${orgSlug}/${kbSlug}`
   const article = findArticleBySlugPath(articles, articleSlug)
   if (!article) notFound()
-  // Headers have no body; direct hits 404. Tabs are pure containers; redirect
-  // to the first navigable descendant (308) or 404 if the tab is empty.
-  if (article.articleKind === 'header') notFound()
-  if (article.articleKind === 'tab') {
-    const first = findFirstNavigableInTab(article.id, articles)
+  // Tabs and headers are pure containers; redirect to the first navigable
+  // descendant (308) or 404 if the container is empty.
+  if (article.articleKind === 'tab' || article.articleKind === 'header') {
+    const first = findFirstNavigableUnder(article.id, articles, { publishedOnly: true })
     if (!first) notFound()
     redirect(`${basePath}/${getFullSlugPath(first, articles)}`)
   }
@@ -188,7 +188,7 @@ function ArticleBodyContent({
   return (
     <div className='flex min-w-0 flex-1 flex-col'>
       <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
-        <aside className='hidden @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:block @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:px-4 @kb-lg:pt-8'>
+        <aside className='hidden @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:block @kb-lg:max-h-[calc(100dvh-5rem)] @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:overflow-y-auto @kb-lg:px-4 @kb-lg:pt-8'>
           <KBTableOfContents headings={headings} />
         </aside>
         <div className='min-w-0 flex-1 @kb-lg:order-1'>
@@ -207,23 +207,4 @@ function ArticleBodyContent({
       </div>
     </div>
   )
-}
-
-function findFirstNavigableInTab(
-  rootId: string,
-  articles: PublicArticleFull[]
-): PublicArticleFull | undefined {
-  const children = articles
-    .filter((a) => a.parentId === rootId && a.isPublished)
-    .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
-  for (const child of children) {
-    if (child.articleKind === 'header') {
-      const grand = findFirstNavigableInTab(child.id, articles)
-      if (grand) return grand
-      continue
-    }
-    if (child.articleKind === 'tab') continue
-    return child
-  }
-  return undefined
 }

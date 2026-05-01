@@ -4,6 +4,7 @@ export { getArticleNeighbours } from './article-neighbours'
 export {
   type ArticleSlugFields,
   findArticleBySlugPath,
+  findFirstNavigableUnder,
   getArticleParentLink,
   getArticleSlugPaths,
   getFullSlugPath,

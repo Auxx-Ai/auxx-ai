@@ -8,7 +8,7 @@ import type {
 import { createScopedLogger } from '@auxx/logger'
 import { generateKeyBetween } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
-import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { DatasetService } from '../datasets/services/dataset-service'
 import type { KBDraftSettings } from './draft-settings'
 import { enrichDocWithHighlighting } from './highlight-code'
@@ -204,39 +204,6 @@ export class KBService {
             updatedAt: new Date(),
           })
           .returning()
-        // Every KB ships with one undeletable tab so the article tree always
-        // has a stable root. The author can rename / re-slug it later.
-        const [tab] = await tx
-          .insert(schema.Article)
-          .values({
-            slug: 'docs',
-            articleKind: ArticleKind.tab,
-            knowledgeBaseId: kb.id,
-            organizationId: this.organizationId,
-            authorId: createdById,
-            parentId: null,
-            sortOrder: 'a0',
-            isPublished: true,
-            status: ArticleStatus.PUBLISHED,
-            publishedAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .returning()
-        const [revision] = await tx
-          .insert(schema.ArticleRevision)
-          .values({
-            articleId: tab.id,
-            organizationId: this.organizationId,
-            versionNumber: 1,
-            title: 'Documentation',
-            content: '',
-            editorId: createdById,
-          })
-          .returning()
-        await tx
-          .update(schema.Article)
-          .set({ publishedRevisionId: revision.id, draftRevisionId: revision.id })
-          .where(eq(schema.Article.id, tab.id))
         return kb
       })
       // Best-effort: provision the managed dataset that holds article embeddings.
@@ -850,32 +817,53 @@ export class KBService {
           message: `Article does not belong to knowledge base with ID '${knowledgeBaseId}'`,
         })
       }
-      if (article.articleKind === ArticleKind.tab) {
-        const [{ value: tabCount }] = await this.db
-          .select({ value: count() })
-          .from(schema.Article)
-          .where(
-            and(
-              eq(schema.Article.knowledgeBaseId, article.knowledgeBaseId),
-              eq(schema.Article.articleKind, ArticleKind.tab)
-            )
-          )
-        if (tabCount <= 1) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Cannot delete the only tab. Create another tab first.',
-          })
-        }
-      }
-      if (article.children.length > 0) {
+      const isContainerKind =
+        article.articleKind === ArticleKind.header || article.articleKind === ArticleKind.tab
+      if (!isContainerKind && article.children.length > 0) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message:
             'Cannot delete an article with children. Please remove or reassign children first.',
         })
       }
-      // Drop revision pointers first to avoid the circular FK blocking the cascade
+      // Drop revision pointers first to avoid the circular FK blocking the cascade.
+      // For containers (headers + tabs): promote direct children up to the
+      // container's own parent — null for tabs, the enclosing tab/null for
+      // headers — slotting new sortOrder strings into the gap between the
+      // container's previous and next siblings so visual order is preserved.
       await this.db.transaction(async (tx) => {
+        if (isContainerKind && article.children.length > 0) {
+          const promotedParentId = article.parentId
+          const siblings = await tx.query.Article.findMany({
+            where: and(
+              eq(schema.Article.organizationId, this.organizationId),
+              eq(schema.Article.knowledgeBaseId, article.knowledgeBaseId),
+              promotedParentId === null
+                ? isNull(schema.Article.parentId)
+                : eq(schema.Article.parentId, promotedParentId),
+              ne(schema.Article.id, id)
+            ),
+            columns: { id: true, sortOrder: true },
+            orderBy: asc(schema.Article.sortOrder),
+          })
+          const lo =
+            siblings.filter((s) => s.sortOrder < article.sortOrder).at(-1)?.sortOrder ?? null
+          const hi = siblings.find((s) => s.sortOrder > article.sortOrder)?.sortOrder ?? null
+
+          const sortedChildren = [...article.children].sort((a, b) =>
+            a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0
+          )
+          let prevKey = lo
+          for (const child of sortedChildren) {
+            const newKey = generateKeyBetween(prevKey, hi)
+            await tx
+              .update(schema.Article)
+              .set({ parentId: promotedParentId, sortOrder: newKey, updatedAt: new Date() })
+              .where(eq(schema.Article.id, child.id))
+            prevKey = newKey
+          }
+        }
+
         await tx
           .update(schema.Article)
           .set({ publishedRevisionId: null, draftRevisionId: null })
@@ -1513,10 +1501,10 @@ export class KBService {
   }
 
   /**
-   * Service-layer validation for `articleKind`. Mirrors the spec rules:
-   *  - tabs must sit at the root (`parentId: null`)
-   *  - non-tab articles must have a parent in the same KB
-   *  - headers can only sit directly under a tab (no nested headers)
+   * Tabs are root-only. Tabs are optional: pages, categories, and headers may
+   * sit at the KB root (`parent === null`) when no tabs exist. Headers may
+   * only sit at the root or directly under a tab — never nested inside other
+   * containers.
    */
   private validateArticleKind(kind: ArticleKindType, parent: ArticleRow | null): void {
     if (kind === ArticleKind.tab) {
@@ -1528,16 +1516,10 @@ export class KBService {
       }
       return
     }
-    if (!parent) {
+    if (kind === ArticleKind.header && parent !== null && parent.articleKind !== ArticleKind.tab) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
-        message: 'Non-tab articles must live under a tab. Pick a parent.',
-      })
-    }
-    if (kind === ArticleKind.header && parent.articleKind !== ArticleKind.tab) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: 'Section headers can only sit directly under a tab.',
+        message: 'Section headers can only sit at the KB root or directly under a tab.',
       })
     }
   }

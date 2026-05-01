@@ -38,13 +38,15 @@ interface ArticleSettingsDialogProps {
   knowledgeBaseId: string
 }
 
-function toSlug(str: string): string {
+function sanitizeSlugInput(str: string): string {
   return str
     .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]/g, '')
+}
+
+function normalizeSlug(str: string): string {
+  return str.replace(/-+/g, '-').replace(/^[-_]+|[-_]+$/g, '')
 }
 
 export function ArticleSettingsDialog({
@@ -103,11 +105,12 @@ export function ArticleSettingsDialog({
     e.preventDefault()
     if (!isValid) return
     setIsSaving(true)
+    const cleanSlug = normalizeSlug(slug)
     try {
       await renameArticle(article.id, {
         title: title.trim(),
         emoji,
-        slug: slug.trim() || undefined,
+        slug: cleanSlug || undefined,
       })
       onOpenChange(false)
     } catch {
@@ -177,7 +180,8 @@ export function ArticleSettingsDialog({
                   <InputGroupInput
                     placeholder='article-slug'
                     value={slug}
-                    onChange={(e) => setSlug(toSlug(e.target.value))}
+                    onChange={(e) => setSlug(sanitizeSlugInput(e.target.value))}
+                    onBlur={() => setSlug((s) => normalizeSlug(s))}
                     disabled={isSaving}
                     autoComplete='off'
                   />

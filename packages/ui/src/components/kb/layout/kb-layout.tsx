@@ -41,6 +41,8 @@ interface KBLayoutProps<T extends KBSidebarArticle> {
   onArticleClick?: (articleId: string) => void
   /** When true, drops the `min-h-screen` so the layout sizes to its content (used when embedded inside the admin editor preview). */
   embedded?: boolean
+  /** When true, the `<main>` element owns vertical scroll instead of the document. Required in admin previews where document scroll is unavailable. */
+  mainScroll?: boolean
   children: ReactNode
 }
 
@@ -53,6 +55,7 @@ export function KBLayout<T extends KBSidebarArticle>({
   mode,
   onArticleClick,
   embedded = false,
+  mainScroll = false,
   children,
 }: KBLayoutProps<T>) {
   const headerNav = parseNavigation(kb.headerNavigation)
@@ -71,7 +74,7 @@ export function KBLayout<T extends KBSidebarArticle>({
         data-slot='kb-layout'
         className={cn(
           '@container relative flex flex-col bg-[var(--kb-page-bg)] font-[var(--kb-font,system-ui)] text-[var(--kb-fg)]',
-          embedded ? 'flex-1' : 'min-h-screen'
+          embedded ? 'min-h-0 flex-1' : 'min-h-screen'
         )}>
         <KBLayoutShell
           kbId={kb.id}
@@ -90,7 +93,8 @@ export function KBLayout<T extends KBSidebarArticle>({
           headerNav={headerNav}
           footerNav={footerNav}
           listStyle={listStyle}
-          onArticleClick={onArticleClick}>
+          onArticleClick={onArticleClick}
+          mainScroll={mainScroll}>
           {children}
         </KBLayoutShell>
       </div>
