@@ -58,10 +58,18 @@ export function KopilotChat({
   useEffect(() => {
     if (hasLoadedInitialRef.current) return
 
-    // If an explicit initialSessionId is provided, load it
+    // If an explicit initialSessionId is provided, load it — unless the store
+    // already has it loaded. Skip only when the id matches AND we have
+    // messages: this is the post-SSE case where /new flipped to /[sessionId]
+    // via history.replaceState and reloading would clobber the in-flight
+    // stream. After a cold refresh the id is rehydrated from localStorage
+    // but messages aren't persisted, so we must still load.
     if (initialSessionId) {
       hasLoadedInitialRef.current = true
-      loadSession(initialSessionId)
+      const alreadyLoaded = initialSessionId === activeSessionId && messages.length > 0
+      if (!alreadyLoaded) {
+        loadSession(initialSessionId)
+      }
       return
     }
 

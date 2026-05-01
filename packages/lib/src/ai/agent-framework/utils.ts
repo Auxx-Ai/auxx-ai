@@ -1,7 +1,7 @@
 // packages/lib/src/ai/agent-framework/utils.ts
 
 import type { ToolCall } from '../clients/base/types'
-import type { AgentBlock, AgentToolDefinition } from './types'
+import type { AgentToolDefinition } from './types'
 
 /**
  * Result of executing (or synthesizing) a single tool call inside the query
@@ -15,7 +15,6 @@ export interface ToolExecResult {
   output: unknown
   success: boolean
   error?: string
-  blocks?: AgentBlock[]
   /** Display projection of the tool output, computed via `buildDigest`. */
   digest?: unknown
 }

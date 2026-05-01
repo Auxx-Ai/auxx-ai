@@ -374,7 +374,7 @@ export class AgentEngine {
         }
       }
 
-      const finalArgs = opts.inputAmendment
+      let finalArgs = opts.inputAmendment
         ? { ...pending.args, ...opts.inputAmendment }
         : pending.args
       const ctx = {
@@ -385,6 +385,62 @@ export class AgentEngine {
         signal: config.signal,
         turnId: this.turnId ?? undefined,
         traceId: this.turnId ?? undefined,
+      }
+
+      // Re-run input validation on the merged args. The pre-pause validator
+      // (in query-loop) already saw `pending.args`; an inputAmendment may have
+      // mutated fields it cared about, so we revalidate here. A failure at
+      // this point is surfaced as a tool error — the user already approved,
+      // so we cannot pause again; the LLM gets the error and retries.
+      if (tool.validateInputs) {
+        const v = await tool.validateInputs(finalArgs, ctx)
+        if (!v.ok) {
+          logger.info('Approved tool validateInputs failed', {
+            turnId: this.turnId,
+            tool: pending.toolName,
+            error: v.error,
+          })
+          yield this.tagEvent({
+            type: 'tool-error',
+            agent: pending.agentName,
+            tool: pending.toolName,
+            toolCallId: pending.toolCallId,
+            error: v.error,
+          })
+          yield this.tagEvent({
+            type: 'tool-status-changed',
+            agent: pending.agentName,
+            tool: pending.toolName,
+            toolCallId: pending.toolCallId,
+            status: 'error',
+          })
+          this.state = {
+            ...this.state,
+            waitingForApproval: false,
+            pendingToolCall: undefined,
+            messages: [
+              ...this.state.messages,
+              pending.assistantMessage,
+              {
+                role: 'tool' as const,
+                content: JSON.stringify({ error: v.error, output: null }),
+                toolCallId: pending.toolCallId,
+                timestamp: Date.now(),
+                metadata: { agent: pending.agentName, validationError: true },
+                toolStatus: 'error' as const,
+                ...(opts.inputAmendment ? { inputAmendment: opts.inputAmendment } : {}),
+              },
+            ],
+          }
+          return
+        }
+        if (v.warnings?.length) {
+          logger.info('validateInputs warnings (resume)', {
+            tool: pending.toolName,
+            warnings: v.warnings,
+          })
+        }
+        finalArgs = v.args
       }
 
       yield this.tagEvent({
@@ -449,7 +505,6 @@ export class AgentEngine {
               timestamp: Date.now(),
               metadata: { agent: pending.agentName, approved: true },
               toolStatus: (result.success ? 'completed' : 'error') as 'completed' | 'error',
-              ...(result.blocks && result.blocks.length > 0 ? { blocks: result.blocks } : {}),
               ...(digest !== undefined ? { digest } : {}),
               ...(opts.inputAmendment ? { inputAmendment: opts.inputAmendment } : {}),
             },

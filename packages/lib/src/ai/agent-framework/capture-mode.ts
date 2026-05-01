@@ -54,7 +54,7 @@ export async function processCaptureToolCalls(
   for (const toolCall of toolCalls) {
     const toolName = toolCall.function.name
     const tool = toolMap.get(toolName)
-    const args = parseToolArgs(toolCall)
+    let args = parseToolArgs(toolCall)
 
     if (!tool) {
       events.push({
@@ -113,6 +113,52 @@ export async function processCaptureToolCalls(
           captured: false,
         })
         continue
+      }
+
+      // Same input-validation pass as pause mode. Capture mints a synthetic
+      // result the model chains on — running the tool-defined validator
+      // here keeps the captured args in canonical form so apply-time has
+      // less reshape work to do.
+      if (tool.validateInputs) {
+        const v = await tool.validateInputs(args, ctx)
+        if (!v.ok) {
+          events.push({
+            type: 'tool-started',
+            agent: agentName,
+            tool: toolName,
+            toolCallId: toolCall.id,
+            args,
+          })
+          events.push({
+            type: 'tool-error',
+            agent: agentName,
+            tool: toolName,
+            toolCallId: toolCall.id,
+            error: v.error,
+          })
+          logger.info('validateInputs rejected (capture, approval-required)', {
+            agent: agentName,
+            tool: toolName,
+            error: v.error,
+          })
+          results.push({
+            toolCallId: toolCall.id,
+            toolName,
+            output: { error: v.error },
+            success: false,
+            error: v.error,
+            captured: false,
+          })
+          continue
+        }
+        if (v.warnings?.length) {
+          logger.info('validateInputs warnings (capture, approval)', {
+            agent: agentName,
+            tool: toolName,
+            warnings: v.warnings,
+          })
+        }
+        args = v.args
       }
 
       const localIndex = nextLocalIndex++
@@ -177,6 +223,48 @@ export async function processCaptureToolCalls(
     }
 
     // Non-approval tool — execute normally, mirroring executeToolCalls.
+    if (tool.validateInputs) {
+      const v = await tool.validateInputs(args, ctx)
+      if (!v.ok) {
+        events.push({
+          type: 'tool-started',
+          agent: agentName,
+          tool: toolName,
+          toolCallId: toolCall.id,
+          args,
+        })
+        events.push({
+          type: 'tool-completed',
+          agent: agentName,
+          tool: toolName,
+          toolCallId: toolCall.id,
+          result: { success: false, output: null, error: v.error },
+        })
+        logger.info('validateInputs rejected (capture, non-approval)', {
+          agent: agentName,
+          tool: toolName,
+          error: v.error,
+        })
+        results.push({
+          toolCallId: toolCall.id,
+          toolName,
+          output: { error: v.error },
+          success: false,
+          error: v.error,
+          captured: false,
+        })
+        continue
+      }
+      if (v.warnings?.length) {
+        logger.info('validateInputs warnings (capture, non-approval)', {
+          agent: agentName,
+          tool: toolName,
+          warnings: v.warnings,
+        })
+      }
+      args = v.args
+    }
+
     const cacheKey = tool.idempotent ? `${toolName}::${stableStringify(args)}` : null
     if (cacheKey) {
       const cached = idempotentCache.get(cacheKey)
@@ -197,7 +285,6 @@ export async function processCaptureToolCalls(
             success: cached.success,
             output: cached.output,
             error: cached.error,
-            blocks: cached.blocks,
           },
           digest: cached.digest,
         })
@@ -207,7 +294,6 @@ export async function processCaptureToolCalls(
           output: cached.output,
           success: cached.success,
           error: cached.error,
-          blocks: cached.blocks,
           digest: cached.digest,
           captured: false,
         })
@@ -240,7 +326,6 @@ export async function processCaptureToolCalls(
         success: result.success,
         error: result.error,
         output: previewValue(result.output),
-        blocks: result.blocks?.map((b) => b.type),
       })
       const execResult: CaptureExecResult = {
         toolCallId: toolCall.id,
@@ -248,7 +333,6 @@ export async function processCaptureToolCalls(
         output: result.output,
         success: result.success,
         error: result.error,
-        blocks: result.blocks,
         digest,
         captured: false,
       }

@@ -73,6 +73,8 @@ interface AiModelPickerProps {
   isUpdating?: boolean
   /** Compact trigger — show only icon + model name, no badges */
   compact?: boolean
+  /** Hide deprecated models from the picker */
+  skipDeprecated?: boolean
 }
 
 /**
@@ -121,6 +123,7 @@ export function AiModelPicker({
   data: externalData,
   isUpdating = false,
   compact = false,
+  skipDeprecated = false,
 }: AiModelPickerProps) {
   /** Router instance used for navigation when no models exist */
   const router = useRouter()
@@ -157,6 +160,8 @@ export function AiModelPicker({
       provider.models
         // Hide retired models from picker
         .filter((model) => model.status !== 'retired')
+        // Optionally hide deprecated models
+        .filter((model) => !skipDeprecated || !model.deprecated)
         // Filter by modelTypes when using external data (backend filtering isn't applied)
         .filter((model) => {
           if (!externalData || modelTypes.length === 0) return true
@@ -176,7 +181,7 @@ export function AiModelPicker({
           })
         )
     )
-  }, [unifiedData, externalData, modelTypes, showUnconfigured])
+  }, [unifiedData, externalData, modelTypes, showUnconfigured, skipDeprecated])
 
   // Memoize the selected model object
   const selectedModel = useMemo(() => {
