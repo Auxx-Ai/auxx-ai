@@ -1,8 +1,8 @@
 // packages/ui/src/components/kb/article/kb-article-renderer.tsx
 
-import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { BlockRenderer } from './block-renderer'
 import { extractKBHeadings, type KBHeading } from './extract-headings'
 import styles from './kb-article-renderer.module.css'
@@ -19,6 +19,12 @@ interface KBArticleRendererProps {
   updatedAt?: Date | string | null
   /** Parent category/section rendered as a small link above the title. Omit when the article has no parent. */
   parent?: { title: string; emoji?: string | null; href?: string | null }
+  /**
+   * Slot for the Copy / View-as-Markdown action cluster. Apps pass a
+   * pre-instantiated client wrapper here because the converter
+   * (`@auxx/lib/kb/markdown`) lives outside the UI package's dep tier.
+   */
+  copyMenu?: ReactNode
 }
 
 export function KBArticleRenderer({
@@ -28,6 +34,7 @@ export function KBArticleRenderer({
   description,
   updatedAt,
   parent,
+  copyMenu,
 }: KBArticleRendererProps) {
   const headings = doc ? extractKBHeadings(doc) : []
   const headingIds = doc ? buildHeadingIdMap(doc, headings) : {}
@@ -66,7 +73,7 @@ export function KBArticleRenderer({
           </div>
           <div className='flex items-center gap-2'>
             <KBTableOfContentsDrawer headings={headings} className='@kb-lg:hidden' />
-            <Button variant='outline'>Copy</Button>
+            {copyMenu}
           </div>
         </header>
       ) : null}
