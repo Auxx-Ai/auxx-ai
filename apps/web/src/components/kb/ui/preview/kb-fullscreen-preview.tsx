@@ -9,6 +9,7 @@ import {
   findFirstNavigableUnder,
   getArticleNeighbours,
   getArticleParentLink,
+  getFullSlugPath,
   KBArticlePager,
   KBArticleRenderer,
   KBLayout,
@@ -21,6 +22,7 @@ import { useArticleList } from '../../hooks/use-article-list'
 import { useBodyClass } from '../../hooks/use-body-class'
 import { useKbPublicUrl } from '../../hooks/use-kb-public-url'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
+import { ArticleMarkdownCopy } from './article-markdown-copy'
 import { mapKBForPreview } from './map-kb-for-preview'
 
 interface KBFullscreenPreviewProps {
@@ -82,6 +84,8 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
     ? getArticleNeighbours(articles, articleId)
     : { prev: undefined, next: undefined }
   const parent = getArticleParentLink(activeArticle, articles, basePath)
+  const activeFullSlug = activeArticle ? getFullSlugPath(activeArticle, articles) : null
+  const markdownHref = activeFullSlug ? `${basePath}/${activeFullSlug}.md` : undefined
 
   const isLive =
     knowledgeBase.publishStatus === 'PUBLISHED' || knowledgeBase.publishStatus === 'UNLISTED'
@@ -129,6 +133,13 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
                   emoji={activeArticle?.emoji}
                   description={draftDescription ?? activeArticle?.description}
                   parent={parent}
+                  copyMenu={
+                    <ArticleMarkdownCopy
+                      doc={docJson}
+                      title={activeArticle?.title}
+                      markdownHref={markdownHref}
+                    />
+                  }
                 />
               </div>
             </div>

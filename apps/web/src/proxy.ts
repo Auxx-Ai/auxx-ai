@@ -89,6 +89,17 @@ const EMBED_FRAME_ANCESTORS =
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl
 
+  // KB fullscreen-preview Markdown view: `/preview/kb/<id>/<slug>.md` rewrites
+  // onto `/preview/kb/md/<id>/<slug>` so a Route Handler can coexist with the
+  // existing HTML `page.tsx` at the same dynamic segment. The segment can't
+  // start with `_` — Next treats `_*` folders as private and excludes them
+  // from routing.
+  if (pathname.startsWith('/preview/kb/') && pathname.endsWith('.md')) {
+    const stripped = pathname.slice(0, -3)
+    const rewritten = stripped.replace('/preview/kb/', '/preview/kb/md/')
+    return NextResponse.rewrite(new URL(rewritten + search, req.url))
+  }
+
   // CSP for the extension embed iframe — allow the full nested ancestor
   // chain: supported host page -> chrome-extension panel -> embed page.
   if (pathname.startsWith('/embed/') && EMBED_FRAME_ANCESTORS) {

@@ -8,6 +8,17 @@ export function proxy(req: NextRequest) {
   const host = req.headers.get('host')
   const url = req.nextUrl
 
+  // Article URLs ending in `.md` serve a plain-text Markdown rendering. The
+  // suffix is rewritten onto an internal `/md/...` segment so the dedicated
+  // Route Handler can coexist with the existing HTML `page.tsx` at the same
+  // dynamic segment (Next.js doesn't allow both at one path). The segment
+  // can't start with `_` — Next treats `_*` folders as private and excludes
+  // them from routing.
+  if (url.pathname.endsWith('.md')) {
+    const stripped = url.pathname.slice(0, -3)
+    return NextResponse.rewrite(new URL(`/md${stripped}${url.search}`, req.url))
+  }
+
   // TODO(custom-domains): when KnowledgeBase.customDomain ships, look up the
   // KB by host and rewrite to /<orgSlug>/<kbSlug>/... Until then, custom hosts
   // are routed to a stub path so they 404 in a controlled way.

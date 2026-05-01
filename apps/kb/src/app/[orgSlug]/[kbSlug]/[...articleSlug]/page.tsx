@@ -17,6 +17,7 @@ import type { Metadata } from 'next'
 import { cacheLife, cacheTag } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
+import { ArticleMarkdownCopy } from '~/components/article-markdown-copy'
 import { getLocalSession, getLoginUrl } from '~/lib/auth'
 import {
   getCachedKBVisibility,
@@ -184,6 +185,8 @@ function ArticleBodyContent({
   const headings = extractKBHeadings(article.contentJson)
   const { prev, next } = getArticleNeighbours(articles, article.id)
   const parent = getArticleParentLink(article, articles, basePath)
+  const fullSlug = getFullSlugPath(article, articles)
+  const markdownHref = `${basePath}/${fullSlug}.md`
 
   return (
     <div className='flex min-w-0 flex-1 flex-col'>
@@ -199,6 +202,13 @@ function ArticleBodyContent({
             description={article.description}
             updatedAt={article.updatedAt}
             parent={parent}
+            copyMenu={
+              <ArticleMarkdownCopy
+                doc={article.contentJson}
+                title={article.title}
+                markdownHref={markdownHref}
+              />
+            }
           />
         </div>
       </div>
