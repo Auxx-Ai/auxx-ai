@@ -24,7 +24,7 @@ function normalize(server: any): ArticleMeta {
     emoji: server.emoji ?? null,
     parentId: server.parentId ?? null,
     articleKind: (server.articleKind ?? ArticleKind.page) as ArticleKindType,
-    order: server.order ?? 0,
+    sortOrder: server.sortOrder ?? 'a0',
     isPublished: !!server.isPublished,
     status: server.status,
     description: server.description ?? null,

@@ -1,6 +1,5 @@
 // apps/web/src/app/api/kopilot/stream/route.ts
 
-import path from 'node:path'
 import { database as db } from '@auxx/database'
 import { type UsageTrackingRequest, UsageTrackingService } from '@auxx/lib/ai'
 import {
@@ -12,6 +11,7 @@ import {
   enqueueAgentJob,
   flattenMessagesForModelSwitch,
   subscribeToAgentEvents,
+  withAgentRunLog,
 } from '@auxx/lib/ai/agent-framework'
 import {
   createActorCapabilities,
@@ -27,7 +27,6 @@ import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
 import { getModelCreditMultiplier } from '@auxx/lib/ai/quota'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
-import { withRunLog } from '@auxx/logger/run-log'
 import {
   createSession,
   getSessionById,
@@ -227,16 +226,9 @@ export async function POST(request: NextRequest) {
                 isNewSession,
               })
 
-        // Dev only: tee all logs to a per-session file
+        // Dev only: tee agent-relevant logs to a per-session file
         if (process.env.NODE_ENV === 'development') {
-          const logFile = path.join(
-            process.cwd(),
-            '.logs',
-            'agent-sessions',
-            sessionId,
-            `${Date.now()}.log`
-          )
-          await withRunLog(sessionId, logFile, runPath)
+          await withAgentRunLog(sessionId, runPath)
         } else {
           await runPath()
         }

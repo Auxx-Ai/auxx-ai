@@ -211,7 +211,7 @@ export function ArticleVersionsDialog({
           </div>
         </DialogContent>
       </Dialog>
-      {ConfirmDialog}
+      <ConfirmDialog />
     </>
   )
 }

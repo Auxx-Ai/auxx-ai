@@ -1,9 +1,7 @@
 // packages/lib/src/ai/agent-framework/process-agent-job.ts
 
-import path from 'node:path'
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { withRunLog } from '@auxx/logger/run-log'
 import { getSessionById, saveSessionMessages, updateSessionDomainState } from '@auxx/services'
 import type { JobContext } from '../../jobs/types'
 import {
@@ -20,9 +18,10 @@ import { AgentEngine } from './engine'
 import type { AgentJobPayload } from './enqueue-agent-job'
 import { createAgentEventPublisher } from './event-publisher'
 import { createCallModel } from './llm-adapter'
+import { withAgentRunLog } from './run-log'
 import type { AgentEngineConfig, SessionMessage } from './types'
 
-const logger = createScopedLogger('process-agent-job')
+const logger = createScopedLogger('agent-job')
 
 /**
  * BullMQ job handler for processing agent messages.
@@ -36,16 +35,9 @@ export async function processAgentMessage(ctx: JobContext<AgentJobPayload>) {
 
   const run = () => processAgentMessageInternal(ctx)
 
-  // Dev only: tee all logs to a per-session file
+  // Dev only: tee agent-relevant logs to a per-session file
   if (process.env.NODE_ENV === 'development') {
-    const logFile = path.join(
-      process.cwd(),
-      '.logs',
-      'agent-sessions',
-      sessionId,
-      `${Date.now()}.log`
-    )
-    return withRunLog(sessionId, logFile, run)
+    return withAgentRunLog(sessionId, run)
   }
 
   return run()

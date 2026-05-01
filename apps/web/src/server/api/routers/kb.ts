@@ -70,10 +70,14 @@ const articleDraftFieldsSchema = z.object({
   contentJson: z.any().nullish(),
 })
 
+// Slug regex mirrors `toSlug` output — kebab, lowercase, no leading/trailing
+// dashes. Hardens every caller (settings dialog, batch updates, tab dialog).
 const articleStructureFieldsSchema = z.object({
-  slug: z.string().min(1).optional(),
+  slug: z
+    .string()
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be kebab-case lowercase (a-z, 0-9, -)')
+    .optional(),
   parentId: z.string().nullish(),
-  order: z.number().optional(),
 })
 
 const articleKindSchema = z.enum(['page', 'category', 'header', 'tab'])
@@ -291,7 +295,13 @@ export const knowledgeBaseRouter = createTRPCRouter({
     }),
 
   publishArticle: protectedProcedure
-    .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
+    .input(
+      z.object({
+        id: z.string(),
+        knowledgeBaseId: z.string().optional(),
+        ancestorIds: z.array(z.string()).default([]),
+      })
+    )
     .use(notDemo('publish knowledge base articles'))
     .mutation(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
@@ -310,16 +320,24 @@ export const knowledgeBaseRouter = createTRPCRouter({
               eq(schema.Article.status, ArticleStatus.PUBLISHED)
             )
           )
-        if (current >= articleLimit) {
+        const cascadeTotal = input.ancestorIds.length + 1
+        if (current + cascadeTotal > articleLimit) {
           throw new TRPCError({
             code: 'FORBIDDEN',
             message: `You have reached your published article limit (${articleLimit}). Upgrade your plan to publish more articles.`,
           })
         }
       }
-      const result = await getKBService(ctx).publishArticle(input.id, ctx.session.user.id)
+      const result = await getKBService(ctx).publishArticle(
+        input.id,
+        ctx.session.user.id,
+        input.ancestorIds
+      )
       await onCacheEvent('article.published', { orgId: organizationId })
       await revalidateForArticle(ctx, input.knowledgeBaseId, input.id)
+      for (const ancestorId of input.ancestorIds) {
+        await revalidateForArticle(ctx, input.knowledgeBaseId, ancestorId)
+      }
       return result
     }),
 
@@ -362,11 +380,21 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return await getKBService(ctx).restoreArticleVersion(input.versionId, ctx.session.user.id)
     }),
 
-  reorderTabs: protectedProcedure
-    .input(z.object({ knowledgeBaseId: z.string(), tabIds: z.array(z.string()) }))
+  moveArticle: protectedProcedure
+    .input(
+      z.object({
+        knowledgeBaseId: z.string(),
+        id: z.string(),
+        parentId: z.string().nullable(),
+        sortOrder: z.string().optional(),
+        adjacentId: z.string().optional(),
+        position: z.enum(['before', 'after']).optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      const result = await getKBService(ctx).reorderTabs(input.knowledgeBaseId, input.tabIds)
-      void fireKBRevalidate(input.knowledgeBaseId)
+      const { knowledgeBaseId, ...rest } = input
+      const result = await getKBService(ctx).moveArticle(knowledgeBaseId, rest)
+      void fireKBRevalidate(knowledgeBaseId)
       return result
     }),
 
@@ -384,29 +412,6 @@ export const knowledgeBaseRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       return await getKBService(ctx).updateArticlesBatch(input.knowledgeBaseId, input.articles)
-    }),
-
-  updateArticleOrder: protectedProcedure
-    .input(
-      z.object({
-        knowledgeBaseId: z.string(),
-        articles: z.array(
-          z.object({ id: z.string(), parentId: z.string().nullable(), order: z.number() })
-        ),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { articles } = input
-      await ctx.db.transaction(async (tx) => {
-        for (const article of articles) {
-          await tx
-            .update(schema.Article)
-            .set({ parentId: article.parentId, order: article.order })
-            .where(eq(schema.Article.id, article.id))
-        }
-      })
-      void fireKBRevalidate(input.knowledgeBaseId)
-      return { success: true }
     }),
 
   deleteArticle: protectedProcedure

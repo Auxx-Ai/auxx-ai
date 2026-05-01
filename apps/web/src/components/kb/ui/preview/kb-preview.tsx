@@ -11,6 +11,7 @@ import {
   KBLayout,
   KBTableOfContents,
 } from '@auxx/ui/components/kb'
+import { cn } from '@auxx/ui/lib/utils'
 import { useEffect, useState } from 'react'
 import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleList } from '../../hooks/use-article-list'
@@ -50,13 +51,13 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
     ? articles.find((a) => a.id === overrideId)
     : (editorArticle ?? articles[0])
   const articleId = activeArticle?.id ?? null
-  const { contentJson, description } = useArticleContent(articleId, kbId)
+  const { draftContentJson, draftDescription } = useArticleContent(articleId, kbId)
 
   const publicUrl = useKbPublicUrl(knowledgeBase?.slug)
 
   if (!knowledgeBase) return null
 
-  const docJson = (contentJson ?? null) as DocJSON | null
+  const docJson = (draftContentJson ?? null) as DocJSON | null
   const headings = docJson ? extractKBHeadings(docJson) : []
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
@@ -68,7 +69,7 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   const browserUrl = isLive && publicUrl ? publicUrl : `(draft) ${knowledgeBase.slug}`
 
   const layout = (
-    <div style={{ colorScheme: isDark ? 'dark' : 'light' }}>
+    <div data-slot='kb-preview-color-scheme' style={{ colorScheme: isDark ? 'dark' : 'light' }}>
       <KBLayout
         kb={mapKBForPreview(knowledgeBase)}
         articles={articles}
@@ -88,7 +89,7 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
                   doc={docJson}
                   title={activeArticle?.title ?? articles.find((a) => a.id === articleId)?.title}
                   emoji={activeArticle?.emoji ?? articles.find((a) => a.id === articleId)?.emoji}
-                  description={description ?? activeArticle?.description}
+                  description={draftDescription ?? activeArticle?.description}
                   parent={parent}
                 />
               </div>
@@ -107,7 +108,13 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   return (
     <div className='flex flex-1 flex-col'>
       <KBPreviewTopBar kbId={kbId} activeSlugPath={activeSlugPath} />
-      <div className='flex flex-1 items-start justify-center overflow-auto bg-muted p-4'>
+      <div
+        className={cn(
+          'flex flex-1 justify-center overflow-auto bg-muted p-4',
+          '**:data-[slot=desktop-frame]:flex **:data-[slot=desktop-frame]:flex-1 **:data-[slot=desktop-frame]:flex-col',
+          '**:data-[slot=desktop-content]:flex **:data-[slot=desktop-content]:flex-1 **:data-[slot=desktop-content]:flex-col',
+          '**:data-[slot=kb-preview-color-scheme]:flex **:data-[slot=kb-preview-color-scheme]:flex-1 **:data-[slot=kb-preview-color-scheme]:flex-col'
+        )}>
         {isMobile ? (
           <MobilePreviewFrame>{layout}</MobilePreviewFrame>
         ) : (

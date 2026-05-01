@@ -164,6 +164,9 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
           logoDark={logoDark}
           mode={effectiveMode}
           showMode={showMode}
+          tabs={tabs}
+          activeTabId={activeTabId}
+          tabHrefs={tabHrefs}
         />
         <main className='flex min-w-0 flex-1 flex-col px-4 py-8 @kb-md:px-8'>{children}</main>
       </div>
@@ -191,9 +194,9 @@ function findFirstNavigableDescendant<T extends KBSidebarArticle>(
   const children = articles
     .filter((a) => a.parentId === rootId)
     .sort((a, b) => {
-      const ao = (a as T & { order?: number }).order ?? 0
-      const bo = (b as T & { order?: number }).order ?? 0
-      return ao - bo
+      const ao = (a as T & { sortOrder?: string }).sortOrder ?? ''
+      const bo = (b as T & { sortOrder?: string }).sortOrder ?? ''
+      return ao < bo ? -1 : ao > bo ? 1 : 0
     })
   for (const child of children) {
     if (child.articleKind === 'header') {

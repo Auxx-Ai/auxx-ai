@@ -133,3 +133,14 @@ export function getArticleSlugPaths<T extends ArticleSlugFields>(
   }
   return paths
 }
+
+/**
+ * URL for the in-app fullscreen preview route
+ * (`/preview/kb/{kbId}/{...articleSlug}`). Pass the slug path either as an
+ * array of segments or as a slash-joined string.
+ */
+export function getKbPreviewHref(kbId: string, slugPath: string[] | string = []): string {
+  const segments = typeof slugPath === 'string' ? (slugPath ? slugPath.split('/') : []) : slugPath
+  const segment = segments.length > 0 ? `/${segments.map(encodeURIComponent).join('/')}` : ''
+  return `/preview/kb/${kbId}${segment}`
+}

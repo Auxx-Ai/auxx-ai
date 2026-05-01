@@ -8,11 +8,15 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { cn } from '@auxx/ui/lib/utils'
-import { MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { useDroppable } from '@dnd-kit/core'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { GripVertical, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleTreeNode } from '../../store/article-store'
+import { ArticleInsertLine } from './article-insert-line'
 
 interface ArticleHeaderItemProps {
   article: ArticleTreeNode
@@ -20,9 +24,10 @@ interface ArticleHeaderItemProps {
 }
 
 /**
- * Section header rendered in the admin tree. Presentational by default — no
- * link, no drag — but reveals a 3-dot menu on hover for rename/delete. Title
- * edits inline via the same flow as tab rename.
+ * Section header rendered in the admin tree. Presentational label, but
+ * draggable: a hover-reveal grip lets the author reorder the header (and
+ * dropping another article above it places it as a sibling under the same
+ * tab). Inline rename via double-click; 3-dot menu for delete.
  */
 export function ArticleHeaderItem({ article, knowledgeBaseId }: ArticleHeaderItemProps) {
   const { renameArticle, deleteArticle } = useArticleMutations(knowledgeBaseId)
@@ -44,47 +49,83 @@ export function ArticleHeaderItem({ article, knowledgeBaseId }: ArticleHeaderIte
     await deleteArticle(article.id)
   }, [confirm, deleteArticle, article])
 
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: article.id,
+    data: { article, isCategory: false, type: 'header', dropPosition: 'inside' },
+  })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : 1,
+    position: 'relative',
+    zIndex: isDragging ? 10 : 1,
+  }
+
+  const { setNodeRef: topSetNodeRef, isOver: topIsOver } = useDroppable({
+    id: `${article.id}-before`,
+    data: { article, isCategory: false, dropArea: 'before', articleId: article.id },
+  })
+
   return (
     <>
-      <div className='group/header flex items-center px-2 pb-1 pt-3'>
-        {isRenaming ? (
-          <RenameInput
-            initialTitle={article.title}
-            articleId={article.id}
-            onFinish={() => setIsRenaming(false)}
-            renameArticle={renameArticle}
-          />
-        ) : (
-          <button
-            type='button'
-            onDoubleClick={() => setIsRenaming(true)}
-            className={cn(
-              'flex-1 truncate text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground',
-              'cursor-text'
-            )}>
-            {article.title || 'Untitled'}
-          </button>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+      <div className='relative'>
+        <div ref={topSetNodeRef} className='absolute left-0 right-0 h-4 -top-1'>
+          <div className={cn('h-1 bg-transparent', { 'bg-blue-500': topIsOver })} />
+        </div>
+        <div
+          ref={setNodeRef}
+          style={style}
+          className={cn(
+            'group/header relative flex items-center pb-1 pt-3',
+            isDragging ? 'cursor-grabbing' : 'cursor-grab'
+          )}>
+          <div
+            className='flex cursor-grab items-center px-1 opacity-0 group-hover/header:opacity-100'
+            {...attributes}
+            {...listeners}>
+            <GripVertical className='size-3.5 text-muted-foreground' />
+          </div>
+          {isRenaming ? (
+            <RenameInput
+              initialTitle={article.title}
+              articleId={article.id}
+              onFinish={() => setIsRenaming(false)}
+              renameArticle={renameArticle}
+            />
+          ) : (
             <button
               type='button'
-              aria-label='Header options'
-              className='ml-1 rounded-md p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover/header:opacity-100'>
-              <MoreVertical className='size-4' />
+              onDoubleClick={() => setIsRenaming(true)}
+              className={cn(
+                'flex-1 truncate text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground',
+                'cursor-text'
+              )}>
+              {article.title || 'Untitled'}
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end' className='w-40'>
-            <DropdownMenuItem onSelect={() => setIsRenaming(true)}>
-              <Pencil className='mr-2 size-4' /> Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={handleDelete} variant='destructive'>
-              <Trash2 className='mr-2 size-4' /> Delete header
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type='button'
+                aria-label='Header options'
+                className='ml-1 mr-2 rounded-md p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover/header:opacity-100'>
+                <MoreVertical className='size-4' />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end' className='w-40'>
+              <DropdownMenuItem onSelect={() => setIsRenaming(true)}>
+                <Pencil className='mr-2 size-4' /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleDelete} variant='destructive'>
+                <Trash2 className='mr-2 size-4' /> Delete header
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ArticleInsertLine article={article} knowledgeBaseId={knowledgeBaseId} />
+        </div>
       </div>
-      {ConfirmDialog}
+      <ConfirmDialog />
     </>
   )
 }

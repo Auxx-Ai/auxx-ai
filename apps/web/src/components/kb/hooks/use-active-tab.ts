@@ -19,7 +19,7 @@ export function useActiveTabId(knowledgeBaseId: string): string | null {
   return useMemo(() => {
     const tabs = articles
       .filter((a) => a.articleKind === ArticleKind.tab)
-      .sort((a, b) => a.order - b.order)
+      .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
     if (tabs.length === 0) return null
 
     const basePath = `/app/kb/${knowledgeBaseId}`

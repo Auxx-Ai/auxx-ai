@@ -7,7 +7,7 @@
 export interface ArticleTreeFields {
   id: string
   parentId: string | null
-  order: number
+  sortOrder: string
 }
 
 export type ArticleTreeNode<T extends ArticleTreeFields> = T & {
@@ -20,7 +20,7 @@ export function buildArticleTree<T extends ArticleTreeFields>(
 ): Array<ArticleTreeNode<T>> {
   return articles
     .filter((article) => article.parentId === parentId)
-    .sort((a, b) => a.order - b.order)
+    .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
     .map((article) => ({
       ...article,
       children: buildArticleTree(articles, article.id),
@@ -36,20 +36,6 @@ export function flattenArticleTreePreservingChildren<T extends { children?: T[] 
     }
   }
   walk(tree)
-  return result
-}
-
-export function flattenArticleTree<T extends { id: string; children?: T[] }>(
-  tree: T[],
-  parentId: string | null = null,
-  result: Array<T & { parentId: string | null; order: number }> = []
-): Array<T & { parentId: string | null; order: number }> {
-  tree.forEach((article, index) => {
-    result.push({ ...article, parentId, order: index })
-    if (article.children && article.children.length > 0) {
-      flattenArticleTree(article.children, article.id, result)
-    }
-  })
   return result
 }
 

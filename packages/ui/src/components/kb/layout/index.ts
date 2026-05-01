@@ -19,4 +19,5 @@ export {
   type KBSidebarListStyle,
   KBSidebarTree,
 } from './kb-sidebar-tree'
+export { KBTabSelect } from './kb-tab-select'
 export { KBTopTabs } from './kb-top-tabs'

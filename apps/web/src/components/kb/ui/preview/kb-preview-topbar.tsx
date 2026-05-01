@@ -2,6 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { getKbPreviewHref } from '@auxx/ui/components/kb/utils'
 import { ToggleGroup, ToggleGroupItem } from '@auxx/ui/components/toggle-group'
 import { ExternalLink, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
 import { useKbPublicUrl } from '~/components/kb/hooks/use-kb-public-url'
@@ -24,11 +25,11 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
 
   const { data: kb } = api.kb.byId.useQuery({ id: kbId })
 
+  const previewHref = getKbPreviewHref(kbId, activeSlugPath)
   const slugSegment =
     activeSlugPath && activeSlugPath.length > 0
       ? `/${activeSlugPath.map(encodeURIComponent).join('/')}`
       : ''
-  const previewHref = `/preview/kb/${kbId}${slugSegment}`
   const publicUrl = useKbPublicUrl(kb?.slug)
 
   const isPublished = kb?.publishStatus === 'PUBLISHED'
