@@ -2,12 +2,29 @@
 
 import { ActorService } from '../../../../../actors/actor-service'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ListMembersDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_members',
     idempotent: true,
+    outputDigestSchema: ListMembersDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        members?: Array<{ name?: string | null }>
+        count?: number
+      }
+      const members = Array.isArray(out.members) ? out.members : []
+      return {
+        count: typeof out.count === 'number' ? out.count : members.length,
+        names: takeSample(
+          members
+            .map((m) => (typeof m.name === 'string' && m.name ? m.name : null))
+            .filter((n): n is string => Boolean(n))
+        ),
+      }
+    },
     description:
       'List organization members (users). Use to find user IDs for assigning tasks, threads, etc.',
     parameters: {

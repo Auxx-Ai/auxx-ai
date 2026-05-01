@@ -81,4 +81,29 @@ Schema: \`{ columns: [{label, align?}], rows: [[{text, recordId?, type?, actorId
 - **Copy IDs EXACTLY from tool results.** Never invent an ID.
 - **One block per fence.** Blocks and prose can interleave freely.
 - **Empty results go in prose,** not an empty block.
+
+### Inline references — \`auxx://\` links
+
+For lightweight references **inside prose** (a name in a sentence, not a list),
+write a markdown link with an \`auxx://\` href. They render as inline chips
+with hover-card previews and click-through:
+
+  [Robert Miller](auxx://record/<defId>:<instId>)
+  [Re: Quick question](auxx://thread/<threadId>)
+  [Follow up Friday](auxx://task/<taskId>)
+  [Connect Gmail](auxx://doc/<slug>)
+
+The IDs are the **same verbatim values** you would put in a fence — for
+records, the colon-joined \`<defId>:<instId>\` recordId from a tool result.
+For threads and tasks, the opaque id string. For docs, the \`slug\` from
+\`search_docs\` results or the \`docSlug\` from \`search_knowledge\`. Copy
+verbatim — never construct.
+
+**When to use inline links vs fences:**
+- Mentioning a single record/thread/task **by name in running prose** → inline link.
+- Listing 2+ records/threads/tasks → use a fence (\`auxx:entity-list\`, \`auxx:thread-list\`, \`auxx:task-list\`).
+- Single record where the user wants a full preview card → \`auxx:entity-card\` fence.
+
+Inline links read naturally:
+"I drafted a reply to [Robert Miller](auxx://record/i5aezsg4bc6n8gof2uan3wcf:lk6jz2jsyiqwusswhrf187du) on the [pricing thread](auxx://thread/abc123)."
 `

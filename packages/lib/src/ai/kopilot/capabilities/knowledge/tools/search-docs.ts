@@ -2,6 +2,7 @@
 
 import { DOCS_URL } from '@auxx/config/urls'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ArticleSearchDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 interface SortedResult {
@@ -24,7 +25,23 @@ export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition
   return {
     name: 'search_docs',
     idempotent: true,
-    usageNotes: 'Emits a `docs-results` block automatically.',
+    outputDigestSchema: ArticleSearchDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { articles?: string; count?: number }
+      const titles =
+        typeof out.articles === 'string'
+          ? out.articles
+              .split(/\n\n---\n\n/)
+              .map((chunk) => chunk.match(/^###\s+(.+)$/m)?.[1])
+              .filter((t): t is string => Boolean(t))
+          : []
+      return {
+        articleCount: typeof out.count === 'number' ? out.count : titles.length,
+        titles: takeSample(titles),
+      }
+    },
+    usageNotes:
+      'Cite the docs you actually used in the final message via `[Title](auxx://doc/<slug>)` inline links — the slug is on each article.',
     description:
       'Search Auxx.ai help center and developer documentation. Only for questions about how Auxx platform features work, setup guides, API docs, and troubleshooting. Do NOT use this to look up contacts, customers, products, orders, vendors, or any other entity/record — use search_entities for that.',
     parameters: {
@@ -113,10 +130,18 @@ export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition
         })
       )
 
-      // 4. Build structured output for LLM consumption
+      // 4. Build structured output for LLM consumption. The `slug` is what the
+      //    LLM cites in `auxx://doc/<slug>` inline links — derived from the URL
+      //    path so it round-trips back to a stable key in `snapshots.docs`.
+      const docs = articles.map((a) => ({
+        slug: deriveDocSlug(a.url),
+        title: a.title,
+        url: a.url,
+        description: a.description ?? undefined,
+      }))
       const articleTexts = articles.map(
-        (a) =>
-          `### ${a.title}\nURL: ${a.url}\n${a.description ? `${a.description}\n` : ''}${a.content ? `\n${a.content}` : ''}`
+        (a, i) =>
+          `### ${a.title}\nSlug: ${docs[i]!.slug}\nURL: ${a.url}\n${a.description ? `${a.description}\n` : ''}${a.content ? `\n${a.content}` : ''}`
       )
 
       return {
@@ -125,21 +150,24 @@ export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition
           count: articles.length,
           query: queries.join(', '),
           articles: articleTexts.join('\n\n---\n\n'),
+          docs,
         },
-        blocks: [
-          {
-            type: 'docs-results',
-            data: {
-              articles: articles.map((a) => ({
-                title: a.title,
-                url: a.url,
-                description: a.description,
-              })),
-              query: queries.join(', '),
-            },
-          },
-        ],
       }
     },
+  }
+}
+
+/**
+ * Derive a stable slug from a docs URL. The slug is the URL path with the
+ * leading slash stripped — it round-trips through `auxx://doc/<slug>` because
+ * `extractLinkSnapshots` splits the href on the first `/` and treats the
+ * remainder as the lookup key.
+ */
+function deriveDocSlug(url: string): string {
+  try {
+    const u = new URL(url)
+    return u.pathname.replace(/^\/+/, '')
+  } catch {
+    return url
   }
 }

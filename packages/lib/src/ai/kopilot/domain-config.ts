@@ -6,9 +6,11 @@ import type {
   AgentState,
   AgentToolDefinition,
   AgentToolResult,
+  PostProcessResult,
   TurnSnapshots,
 } from '../agent-framework/types'
 import { createKopilotAgent } from './agents/agent'
+import { extractLinkSnapshots } from './blocks/extract-link-snapshots'
 import {
   buildFallbackFence,
   countReferenceBlockFences,
@@ -96,12 +98,20 @@ export function createKopilotDomainConfig(
     },
     onToolResult(toolName: string, result: AgentToolResult, state: AgentState): AgentState {
       const tool = resolvedTools.find((t) => t.name === toolName)
-      if (!tool?.outputBlock) return state
       const snapshots: TurnSnapshots = state.turnSnapshots ?? createEmptyTurnSnapshots()
-      runSnapshotWalker(tool.outputBlock, result.output, snapshots)
-      return { ...state, turnSnapshots: snapshots }
+      let mutated = false
+      if (tool?.outputBlock) {
+        runSnapshotWalker(tool.outputBlock, result.output, snapshots)
+        mutated = true
+      }
+      // Doc snapshot mining for the two knowledge tools — they emit a
+      // `docs: [{ slug, title, description?, url? }]` field on success.
+      if (toolName === 'search_docs' || toolName === 'search_knowledge') {
+        if (mineDocSnapshots(result.output, snapshots)) mutated = true
+      }
+      return mutated ? { ...state, turnSnapshots: snapshots } : state
     },
-    postProcessFinalContent(content: string, state: AgentState): string {
+    postProcessFinalContent(content: string, state: AgentState): PostProcessResult {
       const snapshots = state.turnSnapshots ?? createEmptyTurnSnapshots()
       // Find the last read-tool in the turn — drives the fallback block kind
       let lastTool: AgentToolDefinition | undefined
@@ -131,7 +141,37 @@ export function createKopilotDomainConfig(
         const fence = buildFallbackFence(snapshots, lastTool)
         if (fence) next = `${next.trimEnd()}\n\n${fence}`
       }
-      return next
+      const linkSnapshots = extractLinkSnapshots(next, snapshots)
+      return Object.keys(linkSnapshots).length > 0
+        ? { content: next, linkSnapshots }
+        : { content: next }
     },
   }
+}
+
+/**
+ * Mine `output.docs` from a knowledge tool result into `snapshots.docs`.
+ * Returns `true` if any snapshots were added.
+ */
+function mineDocSnapshots(output: unknown, snapshots: TurnSnapshots): boolean {
+  if (!output || typeof output !== 'object') return false
+  const docs = (output as { docs?: unknown }).docs
+  if (!Array.isArray(docs)) return false
+  let added = false
+  for (const d of docs) {
+    if (!d || typeof d !== 'object') continue
+    const slug = (d as { slug?: unknown }).slug
+    const title = (d as { title?: unknown }).title
+    if (typeof slug !== 'string' || typeof title !== 'string') continue
+    const url = (d as { url?: unknown }).url
+    const description = (d as { description?: unknown }).description
+    snapshots.docs[slug] = {
+      slug,
+      title,
+      ...(typeof description === 'string' ? { description } : {}),
+      ...(typeof url === 'string' ? { url } : {}),
+    }
+    added = true
+  }
+  return added
 }

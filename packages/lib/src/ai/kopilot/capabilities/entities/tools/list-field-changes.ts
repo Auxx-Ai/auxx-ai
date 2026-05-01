@@ -8,6 +8,7 @@ import type {
   TimelineFieldChangeSnapshotValue,
 } from '../../../../../timeline/field-change-snapshot'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { ListFieldChangesDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_LIMIT = 50
@@ -71,6 +72,25 @@ function snapshotItemToDisplay(snap: TimelineFieldChangeSnapshot): string {
 export function createListFieldChangesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_field_changes',
+    outputDigestSchema: ListFieldChangesDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        changes?: Array<{
+          fieldSystemAttribute?: string
+          oldDisplay?: unknown
+          newDisplay?: unknown
+        }>
+      }
+      const changes = Array.isArray(out.changes) ? out.changes : []
+      return {
+        count: changes.length,
+        sample: takeSample(changes).map((c) => ({
+          fieldKey: typeof c.fieldSystemAttribute === 'string' ? c.fieldSystemAttribute : '',
+          oldValue: c.oldDisplay ?? undefined,
+          newValue: c.newDisplay ?? undefined,
+        })),
+      }
+    },
     idempotent: true,
     description:
       'Return recent custom-field changes on an entity (e.g. stage progression, owner changes). Reads from timeline events.',

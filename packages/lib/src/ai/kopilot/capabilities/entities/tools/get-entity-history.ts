@@ -8,6 +8,7 @@ import type {
   TimelineFieldChangeSnapshotValue,
 } from '../../../../../timeline/field-change-snapshot'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { GetEntityHistoryDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const FIELD_UPDATE_EVENT_TYPES = [
@@ -80,6 +81,21 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
   return {
     name: 'get_entity_history',
     idempotent: true,
+    outputDigestSchema: GetEntityHistoryDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        entity?: { id?: string }
+        threads?: unknown[]
+        recentComments?: unknown[]
+        openTasks?: unknown[]
+      }
+      return {
+        entityId: String(out.entity?.id ?? ''),
+        threadCount: Array.isArray(out.threads) ? out.threads.length : 0,
+        commentCount: Array.isArray(out.recentComments) ? out.recentComments.length : 0,
+        taskCount: Array.isArray(out.openTasks) ? out.openTasks.length : 0,
+      }
+    },
     description:
       "Returns a token-bounded recent-activity digest for a CRM record (contact, company, deal, lead, ticket, custom) — covers threads, comments, timeline, tasks, related entities, and meetings. Use when the user asks for an overview/summary of a record, or when you need cross-category context that isn't tied to a single thread. NOT for conversation reply workflows: when the user wants to draft, send, or respond on a thread, use `find_threads` → `get_thread_detail` → `reply_to_thread` — those return full message bodies that this digest truncates.",
     parameters: {

@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { RecordPickerService } from '../../../../../resources/picker'
 import { isRecordId, parseRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { GetEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
 import { formatEnrichedFields } from '../format-enriched-fields'
@@ -17,6 +18,21 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'get_entity',
     idempotent: true,
     outputBlock: 'entity-card',
+    outputDigestSchema: GetEntityDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        recordId?: string
+        displayName?: string
+        secondaryInfo?: string | null
+      }
+      const recordId = String(out.recordId ?? '')
+      return {
+        recordId,
+        entityDefinitionId: recordId.split(':')[0] || undefined,
+        displayName: typeof out.displayName === 'string' ? out.displayName : recordId,
+        secondary: typeof out.secondaryInfo === 'string' ? out.secondaryInfo : undefined,
+      }
+    },
     description:
       'Get detailed information about a specific entity instance including all field values. Use when you need to read specific field data, not just display the record.',
     parameters: {

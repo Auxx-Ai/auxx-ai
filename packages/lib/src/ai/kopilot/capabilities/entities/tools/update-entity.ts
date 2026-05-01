@@ -4,6 +4,7 @@ import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
 import { getDefinitionId, isRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { UpdateEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import {
   formatUnknownFieldsError,
@@ -15,7 +16,14 @@ import { formatActorResolutionError, resolveActorValues } from './resolve-actor-
 export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_entity',
-    usageNotes: 'Emits an `action-result` block automatically.',
+    outputDigestSchema: UpdateEntityDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { recordId?: string; updatedFields?: string[] }
+      return {
+        recordId: String(out.recordId ?? ''),
+        updatedFields: Array.isArray(out.updatedFields) ? out.updatedFields : [],
+      }
+    },
     description: `Update field values on an entity instance.
 
 REQUIRED BEFORE CALLING: If you have NOT already called \`list_entity_fields\` for this
@@ -109,23 +117,9 @@ Example (ids match list_entity_fields output):
         await handler.update(recordId, resolvedValues)
         const fieldIds = Object.keys(resolvedValues)
         const labels = resolveFieldLabels(resource, fieldIds)
-        const summary =
-          labels.length === 1 ? `Updated ${labels[0]}` : `Updated ${labels.length} fields`
         return {
           success: true,
           output: { recordId, updatedFields: labels },
-          blocks: [
-            {
-              type: 'action-result',
-              data: {
-                action: 'update_entity',
-                success: true,
-                summary,
-                recordId,
-                count: labels.length,
-              },
-            },
-          ],
         }
       } catch (err) {
         return {

@@ -15,6 +15,7 @@ import type {
   TurnBudget,
   TurnUsageSummary,
 } from './types'
+import { buildToolDigest } from './utils'
 
 const logger = createScopedLogger('agent-engine')
 const DEFAULT_MAX_TOTAL_ITERATIONS = 50
@@ -318,6 +319,13 @@ export class AgentEngine {
         tool: pending.toolName,
         toolCallId: pending.toolCallId,
       })
+      yield this.tagEvent({
+        type: 'tool-status-changed',
+        agent: pending.agentName,
+        tool: pending.toolName,
+        toolCallId: pending.toolCallId,
+        status: 'rejected',
+      })
       const rejectionResult = { rejected: true, reason: 'User declined the action' }
       this.state = {
         ...this.state,
@@ -332,6 +340,7 @@ export class AgentEngine {
             toolCallId: pending.toolCallId,
             timestamp: Date.now(),
             metadata: { agent: pending.agentName, rejected: true },
+            toolStatus: 'rejected' as const,
           },
         ],
       }
@@ -345,6 +354,24 @@ export class AgentEngine {
           error: `Tool "${pending.toolName}" not found on agent "${pending.agentName}"`,
         })
         return
+      }
+
+      // Validate input amendment against the tool's schema (when defined).
+      // Rejection here surfaces as a turn-error so the frontend can show a clear
+      // message rather than silently sending malformed data through to execute.
+      if (opts.inputAmendment && tool.inputAmendmentSchema) {
+        const parsed = tool.inputAmendmentSchema.safeParse(opts.inputAmendment)
+        if (!parsed.success) {
+          const issues = parsed.error.issues
+            .slice(0, 3)
+            .map((i) => i.message)
+            .join('; ')
+          yield this.tagEvent({
+            type: 'turn-error',
+            error: `Invalid input amendment for "${pending.toolName}": ${issues}`,
+          })
+          return
+        }
       }
 
       const finalArgs = opts.inputAmendment
@@ -364,16 +391,38 @@ export class AgentEngine {
         type: 'tool-started',
         agent: pending.agentName,
         tool: pending.toolName,
+        toolCallId: pending.toolCallId,
         args: finalArgs,
+      })
+
+      // Notify the frontend that the approval card should switch from
+      // 'awaiting-approval' to 'executing' so the UI can morph in place.
+      yield this.tagEvent({
+        type: 'tool-status-changed',
+        agent: pending.agentName,
+        tool: pending.toolName,
+        toolCallId: pending.toolCallId,
+        status: 'executing',
       })
 
       try {
         const result = await tool.execute(finalArgs, ctx)
+        const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
         yield this.tagEvent({
           type: 'tool-completed',
           agent: pending.agentName,
           tool: pending.toolName,
+          toolCallId: pending.toolCallId,
           result,
+          digest,
+        })
+        yield this.tagEvent({
+          type: 'tool-status-changed',
+          agent: pending.agentName,
+          tool: pending.toolName,
+          toolCallId: pending.toolCallId,
+          status: result.success ? 'completed' : 'error',
+          digest,
         })
         const toolResultContent = JSON.stringify(
           result.success
@@ -399,7 +448,10 @@ export class AgentEngine {
               toolCallId: pending.toolCallId,
               timestamp: Date.now(),
               metadata: { agent: pending.agentName, approved: true },
+              toolStatus: (result.success ? 'completed' : 'error') as 'completed' | 'error',
               ...(result.blocks && result.blocks.length > 0 ? { blocks: result.blocks } : {}),
+              ...(digest !== undefined ? { digest } : {}),
+              ...(opts.inputAmendment ? { inputAmendment: opts.inputAmendment } : {}),
             },
           ],
         }
@@ -414,7 +466,15 @@ export class AgentEngine {
           type: 'tool-error',
           agent: pending.agentName,
           tool: pending.toolName,
+          toolCallId: pending.toolCallId,
           error: errorMessage,
+        })
+        yield this.tagEvent({
+          type: 'tool-status-changed',
+          agent: pending.agentName,
+          tool: pending.toolName,
+          toolCallId: pending.toolCallId,
+          status: 'error',
         })
         this.state = {
           ...this.state,
@@ -429,6 +489,8 @@ export class AgentEngine {
               toolCallId: pending.toolCallId,
               timestamp: Date.now(),
               metadata: { agent: pending.agentName, failed: true },
+              toolStatus: 'error' as const,
+              ...(opts.inputAmendment ? { inputAmendment: opts.inputAmendment } : {}),
             },
           ],
         }

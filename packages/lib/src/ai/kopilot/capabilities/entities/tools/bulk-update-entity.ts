@@ -4,6 +4,7 @@ import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { FieldValueService } from '../../../../../field-values/field-value-service'
 import { getDefinitionId, isRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { BulkUpdateEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import {
   formatUnknownFieldsError,
@@ -15,7 +16,15 @@ import { formatActorResolutionError, resolveActorValuesFlat } from './resolve-ac
 export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'bulk_update_entity',
-    usageNotes: 'Emits an `action-result` block automatically.',
+    outputDigestSchema: BulkUpdateEntityDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { updated?: number; updatedFields?: string[] }
+      return {
+        recordCount: typeof out.updated === 'number' ? out.updated : 0,
+        updatedFields: Array.isArray(out.updatedFields) ? out.updatedFields : [],
+        sample: [],
+      }
+    },
     description: `Update the same field values on multiple entity instances at once. All records must be the same entity type.
 
 REQUIRED BEFORE CALLING: If you have NOT already called \`list_entity_fields\` for this
@@ -158,18 +167,6 @@ Example (ids match list_entity_fields output):
             updated: result.count,
             updatedFields: fieldLabels,
           },
-          blocks: [
-            {
-              type: 'action-result',
-              data: {
-                action: 'bulk_update_entity',
-                success: true,
-                summary: `Updated ${result.count} record${result.count === 1 ? '' : 's'} (${fieldLabels.join(', ')})`,
-                recordIds,
-                count: result.count,
-              },
-            },
-          ],
         }
       } catch (err) {
         return {

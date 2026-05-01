@@ -14,6 +14,7 @@ import { getFieldOptions } from '../../../../../resources/registry/option-helper
 import type { Resource } from '../../../../../resources/registry/types'
 import { toRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { QueryRecordsDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 interface SimplifiedFilter {
@@ -48,6 +49,33 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'query_records',
     idempotent: true,
     outputBlock: 'entity-list',
+    outputDigestSchema: QueryRecordsDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as {
+        items?: Array<Record<string, unknown>>
+        total_matching?: number
+        returned_count?: number
+      }
+      const items = Array.isArray(out.items) ? out.items : []
+      const count =
+        typeof out.total_matching === 'number'
+          ? out.total_matching
+          : typeof out.returned_count === 'number'
+            ? out.returned_count
+            : items.length
+      return {
+        count,
+        sample: takeSample(items).map((item) => {
+          const recordId = String(item.recordId ?? '')
+          return {
+            recordId,
+            entityDefinitionId: recordId.split(':')[0] ?? '',
+            displayName: typeof item.displayName === 'string' ? item.displayName : '',
+            secondary: typeof item.secondaryInfo === 'string' ? item.secondaryInfo : undefined,
+          }
+        }),
+      }
+    },
     usageNotes:
       'Inspect `warnings[]` before trusting the result — each entry means a filter was rejected and dropped. `returned_count` is items in this page, `total_matching` is the full count for the query. When you reach `submit_final_answer`, embed the records you are referring to in an `auxx:entity-card` (1) or `auxx:entity-list` (2+) fence inside `content`. Records mentioned in prose without a fence will not be visible to the user.',
     description: `Query entity records with field-level filters, sorting, and pagination.

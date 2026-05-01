@@ -39,7 +39,7 @@ const WALKER_MAX_DEPTH = 3
 const CONTAINER_KEYS = ['items', 'threads', 'thread', 'tasks', 'results'] as const
 
 export function createEmptyTurnSnapshots(): TurnSnapshots {
-  return { records: {}, threads: {}, tasks: {} }
+  return { records: {}, threads: {}, tasks: {}, docs: {} }
 }
 
 export function runSnapshotWalker(

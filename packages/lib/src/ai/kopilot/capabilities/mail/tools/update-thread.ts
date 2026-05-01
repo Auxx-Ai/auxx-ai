@@ -4,12 +4,30 @@ import { toRecordId } from '@auxx/types/resource'
 import { requireCachedEntityDefId } from '../../../../../cache'
 import { ThreadMutationService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { UpdateThreadDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_thread',
-    usageNotes: 'Emits an `action-result` block automatically.',
+    outputDigestSchema: UpdateThreadDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { threadId?: string; changes?: Record<string, unknown> }
+      const changes: string[] = []
+      const c = out.changes ?? {}
+      if (typeof c.status === 'string') changes.push(`status → ${c.status}`)
+      if (typeof c.assigneeId === 'string') changes.push(`assignee → ${c.assigneeId}`)
+      if (Array.isArray(c.addedTags) && c.addedTags.length > 0) {
+        changes.push(`+${c.addedTags.length} tag${c.addedTags.length === 1 ? '' : 's'}`)
+      }
+      if (Array.isArray(c.removedTags) && c.removedTags.length > 0) {
+        changes.push(`-${c.removedTags.length} tag${c.removedTags.length === 1 ? '' : 's'}`)
+      }
+      return {
+        threadId: String(out.threadId ?? ''),
+        changes,
+      }
+    },
     description:
       "Update a thread's status, assignee, or tags. At least one update field must be provided besides threadId.",
     parameters: {
@@ -99,35 +117,10 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
         }
       }
 
-      const changeSummary = buildUpdateThreadSummary(changes)
       return {
         success: true,
         output: { threadId, updated: true, changes },
-        blocks: [
-          {
-            type: 'action-result',
-            data: {
-              action: 'update_thread',
-              success: true,
-              summary: `Thread updated: ${changeSummary}`,
-              threadId,
-            },
-          },
-        ],
       }
     },
   }
-}
-
-function buildUpdateThreadSummary(changes: Record<string, unknown>): string {
-  const parts: string[] = []
-  if (typeof changes.status === 'string') parts.push(`status → ${changes.status}`)
-  if (typeof changes.assigneeId === 'string') parts.push(`assignee → ${changes.assigneeId}`)
-  if (Array.isArray(changes.addedTags) && changes.addedTags.length > 0) {
-    parts.push(`+${changes.addedTags.length} tag${changes.addedTags.length === 1 ? '' : 's'}`)
-  }
-  if (Array.isArray(changes.removedTags) && changes.removedTags.length > 0) {
-    parts.push(`-${changes.removedTags.length} tag${changes.removedTags.length === 1 ? '' : 's'}`)
-  }
-  return parts.length > 0 ? parts.join(', ') : 'no changes'
 }

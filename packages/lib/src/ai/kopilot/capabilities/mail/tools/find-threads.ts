@@ -4,6 +4,7 @@ import { generateId } from '@auxx/utils'
 import type { Condition, ConditionGroup } from '../../../../../conditions'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { FindThreadsDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_RESULTS = 25
@@ -84,6 +85,21 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
     name: 'find_threads',
     idempotent: true,
     outputBlock: 'thread-list',
+    outputDigestSchema: FindThreadsDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { threads?: Array<Record<string, unknown>>; count?: number }
+      const threads = Array.isArray(out.threads) ? out.threads : []
+      return {
+        count: typeof out.count === 'number' ? out.count : threads.length,
+        sample: takeSample(threads).map((t) => ({
+          threadId: String(t.id ?? ''),
+          subject: typeof t.subject === 'string' ? t.subject : null,
+          sender: typeof t.sender === 'string' ? t.sender : undefined,
+          lastMessageAt: typeof t.lastMessageAt === 'string' ? t.lastMessageAt : null,
+          isUnread: typeof t.isUnread === 'boolean' ? t.isUnread : undefined,
+        })),
+      }
+    },
     description:
       'Search and filter email threads by status, assignee, tags, sender, or free-text query. Returns a list of matching thread summaries.',
     parameters: {

@@ -3,11 +3,20 @@
 import { CommentService } from '../../../../../comments'
 import { isRecordId, type RecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { CreateNoteDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_note',
+    outputDigestSchema: CreateNoteDigest,
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { commentId?: string; recordId?: string }
+      return {
+        noteId: String(out.commentId ?? ''),
+        entityId: typeof out.recordId === 'string' ? out.recordId : undefined,
+      }
+    },
     description:
       "Add a new internal note (a.k.a. comment) to a record. Use whenever the user asks to leave a note, add a comment, drop a remark, or annotate a record. Mentions of the form '@username' in content are auto-resolved.",
     parameters: {

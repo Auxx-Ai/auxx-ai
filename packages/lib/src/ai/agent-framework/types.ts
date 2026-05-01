@@ -24,12 +24,35 @@ export interface SessionMessage {
   /** Optional metadata (e.g. which agent produced this) */
   metadata?: Record<string, unknown>
   /**
-   * Literal UI blocks produced by tools (draft-preview, action-result, kb-article-list,
-   * docs-results). Persisted alongside the tool message so session reload can re-emit them
-   * as role:'block' transcript items. Reference blocks live inside the final assistant
-   * message's content as `auxx:*` fences, not here.
+   * Legacy field — historically held literal UI blocks attached to tool
+   * messages (kb-article-list, docs-results). No tool emits blocks anymore;
+   * the field stays on the type so old persisted sessions still parse. Slated
+   * for full removal once we no longer need to read those archives.
    */
   blocks?: AgentBlock[]
+  /**
+   * On role:'tool' messages, persist the digest produced by the source tool's
+   * `buildDigest`. Frontend reads this on session reload to re-render pills +
+   * cards without re-fetching.
+   */
+  digest?: unknown
+  /**
+   * On role:'tool' messages — current lifecycle status. Replaces the implicit
+   * "tool completed = result present" check.
+   */
+  toolStatus?: 'awaiting-approval' | 'executing' | 'completed' | 'error' | 'rejected'
+  /**
+   * Input amendment applied at approval time, if any. Shallow-merged into the
+   * original args before execution.
+   */
+  inputAmendment?: Record<string, unknown>
+  /**
+   * On role:'assistant' final messages, the per-message lookup table for
+   * inline `auxx://` link chips. Keyed by the full `auxx://...` href; values
+   * are the snapshot the frontend renders in the hover card. Populated at
+   * serialize time; reload-safe.
+   */
+  linkSnapshots?: Record<string, LinkSnapshot>
 }
 
 /** Discriminated session type — each domain registers its own */
@@ -119,6 +142,26 @@ export interface AgentToolDefinition {
    */
   outputSchema?: z.ZodType
   /**
+   * Schema describing the display projection of the tool's output. Persisted
+   * alongside the tool message; status pills and approval/result cards render
+   * from this. When omitted, falls through to a generic pill rendering name +
+   * args summary.
+   */
+  outputDigestSchema?: z.ZodType
+  /**
+   * Build the digest from the raw output. Called once at tool-completion time;
+   * the result is stored on the tool message and re-emitted on session reload.
+   * MUST be deterministic and pure.
+   */
+  buildDigest?: (output: unknown) => unknown
+  /**
+   * Schema for input-amendment data sent back from the approval card on
+   * approve. The amendment is shallow-merged into the original args before
+   * execution. Use for tool-mode toggles ("Save as draft" / "Send"), recipient
+   * edits, body overrides, etc.
+   */
+  inputAmendmentSchema?: z.ZodType
+  /**
    * Canonical reference-block kind this tool's results map to. Drives both
    * the auto-generated prompt section and the generic snapshot walker.
    */
@@ -168,6 +211,12 @@ export interface AgentToolResult {
 export interface AgentBlock {
   type: string
   data: unknown
+  /**
+   * Where the block surfaces. `'outcome'` (default) renders as a transcript
+   * card. `'reference'` is LLM-cite-only — never auto-rendered, only used to
+   * backfill `auxx:*` fences the LLM cites in its final message.
+   */
+  surface?: 'outcome' | 'reference'
 }
 
 // ===== REFERENCE BLOCK SNAPSHOTS =====
@@ -197,16 +246,39 @@ export interface TaskSnapshot {
   completedAt: string | null
 }
 
+/** Minimal knowledge-base / docs snapshot written by search_docs / search_knowledge */
+export interface DocSnapshot {
+  /** URL-friendly id used in `auxx://doc/<slug>` */
+  slug: string
+  title: string
+  description?: string
+  /**
+   * Canonical https URL the chip links to. Optional — internal KB articles may
+   * not have a stable user-facing URL yet, in which case the chip is
+   * hover-only.
+   */
+  url?: string
+}
+
 /**
  * Per-turn map of id → snapshot, populated by per-tool extractors as tool
  * results land. Consumed by `injectSnapshotsIntoFinal()` to backfill
- * `auxx:*` reference-block fences in the final assistant message.
+ * `auxx:*` reference-block fences and by inline-link post-processing to
+ * build per-message `linkSnapshots` maps.
  */
 export interface TurnSnapshots {
   records: Record<string, EntitySnapshot>
   threads: Record<string, ThreadSnapshot>
   tasks: Record<string, TaskSnapshot>
+  docs: Record<string, DocSnapshot>
 }
+
+/**
+ * A snapshot value referenced by an inline `auxx://` link in an assistant
+ * message. Persisted on the assistant `SessionMessage` so reload renders the
+ * hover-card preview without re-fetching.
+ */
+export type LinkSnapshot = EntitySnapshot | ThreadSnapshot | TaskSnapshot | DocSnapshot
 
 // ===== AGENT STATE =====
 
@@ -363,10 +435,18 @@ export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
   /**
    * Optional hook called on the final content string from a terminator tool
    * (e.g. `submit_final_answer`) before it is persisted as the assistant's
-   * final message. Kopilot uses this to inject snapshots into `auxx:*` fences
-   * and to auto-emit a fallback fence when the LLM forgot to embed one.
+   * final message. Kopilot uses this to inject snapshots into `auxx:*` fences,
+   * auto-emit a fallback fence when the LLM forgot to embed one, and build the
+   * per-message `linkSnapshots` lookup table for inline `auxx://` chips.
    */
-  postProcessFinalContent?: (content: string, state: AgentState) => string
+  postProcessFinalContent?: (content: string, state: AgentState) => PostProcessResult
+}
+
+/** Return shape from `postProcessFinalContent`. */
+export interface PostProcessResult {
+  content: string
+  /** Per-message lookup table for inline `auxx://` link chips (G phase). */
+  linkSnapshots?: Record<string, LinkSnapshot>
 }
 
 // ===== ENGINE CONFIG =====
@@ -461,14 +541,29 @@ export type AgentEvent = { turnId?: string } & (
       providerType?: string
       credentialSource?: string
     }
-  | { type: 'tool-started'; agent: string; tool: string; args: Record<string, unknown> }
+  | {
+      type: 'tool-started'
+      agent: string
+      tool: string
+      toolCallId?: string
+      args: Record<string, unknown>
+    }
   | {
       type: 'tool-completed'
       agent: string
       tool: string
+      toolCallId?: string
       result: AgentToolResult
+      /** Typed display projection of the tool's output (matches `outputDigestSchema`). */
+      digest?: unknown
     }
-  | { type: 'tool-error'; agent: string; tool: string; error: string }
+  | {
+      type: 'tool-error'
+      agent: string
+      tool: string
+      toolCallId?: string
+      error: string
+    }
   | { type: 'agent-completed'; agent: string }
   | {
       type: 'approval-required'
@@ -476,12 +571,32 @@ export type AgentEvent = { turnId?: string } & (
       tool: string
       toolCallId: string
       args: Record<string, unknown>
+      /** Preview projection (e.g. for an email body). Matches the tool's `outputDigestSchema`. */
+      digest?: unknown
     }
   | { type: 'tool-rejected'; agent: string; tool: string; toolCallId: string }
+  | {
+      /**
+       * In-place lifecycle transition for an existing tool call. Lets approval
+       * cards morph preview → executing → completed without DOM swaps.
+       */
+      type: 'tool-status-changed'
+      agent: string
+      tool: string
+      toolCallId: string
+      status: 'awaiting-approval' | 'executing' | 'completed' | 'error' | 'rejected'
+      digest?: unknown
+    }
   /** Streaming delta for submit_final_answer.content as the LLM types the final message */
   | { type: 'final-message-delta'; agent: string; delta: string }
   /** Commits the final assistant prose message for the turn */
-  | { type: 'final-message'; agent: string; content: string }
+  | {
+      type: 'final-message'
+      agent: string
+      content: string
+      /** Per-message lookup table for inline `auxx://` link chips (G phase). */
+      linkSnapshots?: Record<string, LinkSnapshot>
+    }
   | { type: 'message'; role: 'assistant'; content: string; blocks?: AgentBlock[] }
   | { type: 'session-created'; sessionId: string; title: string; createdAt: string }
   | { type: 'session-title-updated'; sessionId: string; title: string }
