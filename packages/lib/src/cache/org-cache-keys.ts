@@ -12,6 +12,7 @@ import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
 import type { Resource } from '../resources/registry/types'
 import type { SettingValue } from '../settings/types'
+import type { CachedIntegration } from './providers/integrations-provider'
 import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
 
 /** Member info cached with joined user data */
@@ -168,6 +169,7 @@ export interface OrgCacheDataMap {
   customFields: Record<string, CustomFieldEntity[]> // entityDefId → fields
   groups: CachedGroup[] // all entity_group instances
   inboxes: Inbox[]
+  integrations: CachedIntegration[]
   overages: Overage[]
   orgSettings: Record<string, SettingValue> // key → value (org defaults only)
   installedApps: CachedInstalledApp[]
@@ -207,6 +209,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
   inboxes: { prefix: 'org:inboxes', ttlSeconds: ONE_DAY },
+  integrations: { prefix: 'org:integrations', ttlSeconds: ONE_DAY },
   overages: { prefix: 'org:overages', ttlSeconds: 900 },
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
   installedApps: { prefix: 'org:installed-apps', ttlSeconds: 900 },

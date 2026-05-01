@@ -39,10 +39,20 @@ const logger = createScopedLogger('headless-runner')
 const FIELD_VALUE_CAP = 200
 /** Max number of open tasks to include verbatim in the prompt. */
 const OPEN_TASKS_CAP = 5
-/** The single "soft" tool today — its result is durable (a Draft) and gets recorded as a ranDuringCapture action. */
-const SOFT_TOOL_NAMES = new Set(['draft_reply'])
+/**
+ * Soft calls are draft-mode invocations of write tools — they execute for real
+ * (producing a durable Draft) and are recorded as `ranDuringCapture` actions
+ * for the bundle. Send-mode calls of the same tools are approval-gated and
+ * captured by the engine instead.
+ */
+function isSoftCall(toolName: string, args: Record<string, unknown>): boolean {
+  if (toolName === 'reply_to_thread' || toolName === 'start_new_conversation') {
+    return args.mode !== 'send'
+  }
+  return false
+}
 
-const HEADLESS_SYSTEM_PROMPT_ADDITION = `You are running in headless suggestion mode. Propose 0..N actions for the human to triage. You may use read-only tools (search, list, query) to gather context. For broad context on a record, prefer a single \`get_entity_history\` call over assembling the same data from \`find_threads\` + \`list_notes\` + \`list_tasks\` separately. \`draft_reply\` will create a draft (the user reviews it before sending). Other mutation tools will be queued for human approval — they do not execute immediately, but you will see a predicted output (e.g. a \`temp_<n>\` id) so you can chain dependent actions. Plan all actions up front; results from queued mutations are predictions only, not real state. End with a single line: \`[summary] <≤ 12 words>\` if you proposed actions, or \`[noop] <reason>\` if no action is appropriate. Limit yourself to 5 read-tool calls.`
+const HEADLESS_SYSTEM_PROMPT_ADDITION = `You are running in headless suggestion mode. Propose 0..N actions for the human to triage. You may use read-only tools (search, list, query) to gather context. For broad context on a record, prefer a single \`get_entity_history\` call over assembling the same data from \`find_threads\` + \`list_notes\` + \`list_tasks\` separately. \`reply_to_thread\` and \`start_new_conversation\` with \`mode: 'draft'\` create a draft for the user to review before sending. The same tools with \`mode: 'send'\` (and other mutation tools) will be queued for human approval — they do not execute immediately, but you will see a predicted output (e.g. a \`temp_<n>\` id) so you can chain dependent actions. Plan all actions up front; results from queued mutations are predictions only, not real state. End with a single line: \`[summary] <≤ 12 words>\` if you proposed actions, or \`[noop] <reason>\` if no action is appropriate. Limit yourself to 5 read-tool calls.`
 
 /**
  * Run kopilot once in headless capture mode and produce a bundle of proposed
@@ -54,8 +64,9 @@ const HEADLESS_SYSTEM_PROMPT_ADDITION = `You are running in headless suggestion 
  * - Sanitizes the trigger event payload to strip raw free-text PII.
  * - Runs `AgentEngine` with `approvalMode: 'capture'`. Read-only tools execute;
  *   approval-required tools are captured (not executed) with a `predictedOutput`
- *   minted by the tool's `captureMint`. The single soft tool (`draft_reply`)
- *   runs for real and lands as a `ranDuringCapture` action.
+ *   minted by the tool's `captureMint`. Draft-mode write tools (`reply_to_thread`
+ *   / `start_new_conversation` with `mode: 'draft'`) run for real and land as a
+ *   `ranDuringCapture` action.
  * - Parses the final assistant text for `[summary]` / `[noop]`.
  *
  * No session row is written; headless runs are not part of chat history.
@@ -124,10 +135,10 @@ export async function runHeadlessSuggestion(
     return Result.error(new Error(`Invalid modelId "${input.modelId}" (expected "provider:model")`))
   }
 
-  // Soft-tool side channel: capture draft_reply's real result via a tool wrapper
+  // Soft-tool side channel: capture draft-mode write tool results via a wrapper
   // (cheaper than rewalking state.messages after the run).
   const softActions: ProposedAction[] = []
-  const wrappedTools = tools.map((t) => wrapSoftTool(t, softActions))
+  const wrappedTools = tools.map((t) => wrapWithSoftCapture(t, softActions))
   const submitFinalAnswer = createSubmitFinalAnswerTool()
   const agentTools: AgentToolDefinition[] = wrappedTools.some(
     (t) => t.name === submitFinalAnswer.name
@@ -171,8 +182,8 @@ export async function runHeadlessSuggestion(
     return Result.error(err instanceof Error ? err : new Error(msg))
   }
 
-  // 5. Merge soft actions (draft_reply) with captured actions (everything
-  // else). Re-index `localIndex` so it's monotonic across the merged list.
+  // 5. Merge soft actions (draft-mode write tools) with captured actions
+  // (everything else). Re-index `localIndex` so it's monotonic across the merged list.
   const state = engine.getState()
   const captured = state.capturedActions ?? []
   const actions = mergeActions(softActions, captured)
@@ -203,18 +214,21 @@ export interface HeadlessRunDeps {
 // ===== INTERNALS =====
 
 /**
- * Wrap a tool so that when `draft_reply` (or any future soft tool) succeeds,
- * we record its real output as a `ProposedAction` with `ranDuringCapture` set.
+ * Wrap a tool so that when a soft call (draft-mode write tool) succeeds, we
+ * record its real output as a `ProposedAction` with `ranDuringCapture` set.
  * The wrapper preserves the original execute return so the engine sees the
- * normal tool result and the model can chain on `draftId`.
+ * normal tool result and the model can chain on `draftId`. Whether a call is
+ * "soft" is decided per-invocation by `isSoftCall(toolName, args)`.
  */
-function wrapSoftTool(tool: AgentToolDefinition, sink: ProposedAction[]): AgentToolDefinition {
-  if (!SOFT_TOOL_NAMES.has(tool.name)) return tool
+function wrapWithSoftCapture(
+  tool: AgentToolDefinition,
+  sink: ProposedAction[]
+): AgentToolDefinition {
   return {
     ...tool,
     execute: async (args, ctx) => {
       const result = await tool.execute(args, ctx)
-      if (result.success) {
+      if (result.success && isSoftCall(tool.name, args)) {
         sink.push({
           // localIndex is rewritten in mergeActions; placeholder here.
           localIndex: -1,
@@ -232,11 +246,11 @@ function wrapSoftTool(tool: AgentToolDefinition, sink: ProposedAction[]): AgentT
 }
 
 function softToolSummary(toolName: string, args: Record<string, unknown>): string {
-  if (toolName === 'draft_reply') {
-    const body = typeof args.body === 'string' ? args.body : ''
-    const trimmed = body.replace(/\s+/g, ' ').trim().slice(0, 60)
-    return `Reply: "${trimmed}${body.length > 60 ? '…' : ''}"`
-  }
+  const body = typeof args.body === 'string' ? args.body : ''
+  const trimmed = body.replace(/\s+/g, ' ').trim().slice(0, 60)
+  const tail = body.length > 60 ? '…' : ''
+  if (toolName === 'reply_to_thread') return `Draft reply: "${trimmed}${tail}"`
+  if (toolName === 'start_new_conversation') return `Draft message: "${trimmed}${tail}"`
   return `${toolName}(${JSON.stringify(args).slice(0, 60)}…)`
 }
 

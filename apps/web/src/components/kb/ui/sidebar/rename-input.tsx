@@ -33,9 +33,24 @@ export function RenameInput({
   const [value, setValue] = useState(initialValue)
   const inputRef = useRef<AutosizeInputRef>(null)
 
+  // Mount focus is fought over by Radix's focus trap when the parent dropdown
+  // is still in its close cycle. Calling focus once isn't enough — Radix may
+  // pull focus back into the menu div before unmounting. We focus immediately,
+  // re-focus next frame, and then verify after the timeout that focus
+  // actually landed on our input — re-focusing if not.
   useEffect(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+      setTimeout(() => {
+        if (document.activeElement !== inputRef.current?.getInput()) {
+          inputRef.current?.focus()
+          inputRef.current?.select()
+        }
+      }, 50)
+    })
   }, [])
 
   const finish = useCallback(() => {

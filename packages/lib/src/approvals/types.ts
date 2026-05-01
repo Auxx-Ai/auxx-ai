@@ -9,8 +9,9 @@
  * No `kind: 'soft' | 'captured'` discriminator. The two cases differ only by
  * which optional field is set:
  * - `ranDuringCapture` present → side effect already happened during the
- *   headless run (today: only `draft_reply`); apply-time promotes/finalizes
- *   the existing artifact (e.g. schedules the existing Draft).
+ *   headless run (draft-mode write tools — `reply_to_thread` /
+ *   `start_new_conversation` with `mode: 'draft'`); apply-time
+ *   promotes/finalizes the existing artifact (e.g. schedules the existing Draft).
  * - `predictedOutput` present → tool was *captured*, not executed. Apply-time
  *   runs the tool now with `args` (after temp-ID substitution) and uses the
  *   real return value to satisfy any downstream `temp_<n>` references.
@@ -31,8 +32,9 @@ export interface ProposedAction {
   /** Human-readable card description, ≤ 80 chars. */
   summary: string
   /**
-   * Set when the tool ran for real during the headless capture (currently
-   * only `draft_reply`). The output (e.g. `{ draftId, threadId, body, ... }`)
+   * Set when the tool ran for real during the headless capture (draft-mode
+   * write tools — `reply_to_thread` / `start_new_conversation` with
+   * `mode: 'draft'`). The output (e.g. `{ draftId, threadId, body, ... }`)
    * is durable and can be referenced at apply-time without re-invoking the
    * tool — apply-time just promotes/finalizes the artifact.
    */

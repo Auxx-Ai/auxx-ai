@@ -5,6 +5,7 @@ import {
   type DocJSON,
   extractKBHeadings,
   findArticleBySlugPath,
+  findFirstNavigableUnder,
   getArticleNeighbours,
   getArticleParentLink,
   KBArticlePager,
@@ -34,8 +35,17 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
   const articles = useArticleList(knowledgeBaseId)
 
   const matchedArticle = slugPath.length > 0 ? findArticleBySlugPath(articles, slugPath) : undefined
+  // Tabs and headers are pure containers — resolve to their first navigable
+  // descendant so the preview never tries to render a body-less article. The
+  // public route does this via a 308; we do it client-side here.
+  const resolvedArticle =
+    matchedArticle &&
+    (matchedArticle.articleKind === 'tab' || matchedArticle.articleKind === 'header')
+      ? findFirstNavigableUnder(matchedArticle.id, articles)
+      : matchedArticle
   const activeArticle =
-    matchedArticle ?? articles.find((a) => a.articleKind === 'page' || a.articleKind === 'category')
+    resolvedArticle ??
+    articles.find((a) => a.articleKind === 'page' || a.articleKind === 'category')
   const articleId = activeArticle?.id ?? null
   const { draftContentJson, draftDescription } = useArticleContent(articleId, knowledgeBaseId)
 

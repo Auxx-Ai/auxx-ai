@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { toActorId } from '@auxx/types/actor'
+import { getCachedIntegrationCatalog } from '../../../cache/integration-catalog'
 import { getCachedMembersByUserIds, getCachedResources } from '../../../cache/org-cache-helpers'
 import type {
   AgentDefinition,
@@ -51,9 +52,10 @@ export function createKopilotAgent(
       state: AgentState<KopilotDomainState>,
       deps: AgentDeps
     ): Promise<Message[]> {
-      const [resources, currentUser] = await Promise.all([
+      const [resources, currentUser, integrations] = await Promise.all([
         getCachedResources(deps.organizationId),
         hydrateCurrentUser(deps.organizationId, deps.userId),
+        getCachedIntegrationCatalog(deps.organizationId),
       ])
 
       const entityCatalog = resources
@@ -70,7 +72,8 @@ export function createKopilotAgent(
         entityCatalog,
         capabilities,
         agentTools,
-        currentUser
+        currentUser,
+        integrations
       )
 
       // Full conversation for tool-loop continuity.

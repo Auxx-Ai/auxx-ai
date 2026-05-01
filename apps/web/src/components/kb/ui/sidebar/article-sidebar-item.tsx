@@ -48,6 +48,7 @@ import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import { usePublishWithConfirm } from '../../hooks/use-publish-with-confirm'
 import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
+import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { ArticleSettingsDialog } from '../editor/article-settings-dialog'
 import { ArticleInsertLine } from './article-insert-line'
 import { RenameInput } from './rename-input'
@@ -75,14 +76,9 @@ export function ArticleSidebarItem({
   const isArchived = article.status === 'ARCHIVED'
 
   const articles = useArticleList(knowledgeBaseId)
-  const {
-    createArticle,
-    deleteArticle,
-    archiveArticle,
-    unarchiveArticle,
-    duplicateArticle,
-    renameArticle,
-  } = useArticleMutations(knowledgeBaseId)
+  const { deleteArticle, archiveArticle, unarchiveArticle, duplicateArticle, renameArticle } =
+    useArticleMutations(knowledgeBaseId)
+  const setPending = usePendingInsertStore((s) => s.setPending)
   const {
     requestPublish,
     requestUnpublish,
@@ -209,12 +205,8 @@ export function ArticleSidebarItem({
   ) : null
   const statusLabel = isArchived ? 'Archived' : !article.isPublished ? 'Unpublished' : undefined
 
-  const handleAddSubItem = async () => {
-    const created = await createArticle({ parentId: article.id })
-    if (created) {
-      const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
-      router.push(path)
-    }
+  const handleAddSubItem = () => {
+    setPending({ articleKind: 'page', parentId: article.id })
   }
 
   const handleDelete = async () => {
@@ -239,7 +231,7 @@ export function ArticleSidebarItem({
   // renderer-bound items (Preview / Copy as MD / Download .md) gated to
   // non-headers since headers have no body.
   const dropdownMenuContent = (
-    <DropdownMenuContent align='end' className='w-56'>
+    <DropdownMenuContent align='end' className='w-56' onCloseAutoFocus={(e) => e.preventDefault()}>
       <DropdownMenuGroup>
         <DropdownMenuItem onSelect={() => setIsRenaming(true)}>
           <Pencil /> Rename

@@ -24,11 +24,11 @@ export function DraftPreviewBlock({ data }: BlockRendererProps<DraftPreviewData>
       identifierType: 'EMAIL' as const,
     }))
 
-    // If draftId looks real (from draft_reply tool), open in draft mode so it fetches from server
+    // If draftId looks real (from a draft-mode write tool), open in draft mode so it fetches from server.
     if (data.draftId && data.draftId.length > 10) {
       openCompose({
         mode: 'draft',
-        thread: { id: data.threadId },
+        thread: data.threadId ? { id: data.threadId } : undefined,
         draft: { id: data.draftId } as any,
         displayMode: 'floating',
       })
@@ -60,12 +60,16 @@ export function DraftPreviewBlock({ data }: BlockRendererProps<DraftPreviewData>
     { label: 'Edit Draft', onClick: handleEditDraft, primary: true },
   ]
 
+  // Reply drafts carry a threadId; brand-new outbound drafts (from
+  // `start_new_conversation`) don't — render the right title for each case.
+  const primaryText = data.threadId ? 'Draft Reply' : 'Draft Message'
+
   return (
     <div className='not-prose my-2'>
       <BlockCard
         data-slot='draft-preview-block'
         indicator={<Pencil className='size-3 text-muted-foreground' />}
-        primaryText='Draft Reply'
+        primaryText={primaryText}
         secondaryText={<span className='text-xs text-muted-foreground'>{secondaryText}</span>}
         actions={actions}>
         {data.subject && (

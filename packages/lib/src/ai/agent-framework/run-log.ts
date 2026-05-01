@@ -31,14 +31,22 @@ const agentRunLogFilter: RunLogFilter = ({ scope, level }) => {
  *
  * The path, scope allowlist, and level threshold are all decided here so the
  * logger package stays domain-blind.
+ *
+ * File layout: `agent-sessions/<YYYY-MM-DD>/<HH-mm-ss-SSSZ>__<sessionId>.log`.
+ * Date-bucketed so a day's runs sort lexically; session id stays in the
+ * filename for grep + multi-turn lookup. Colons replaced with hyphens so the
+ * names work on every filesystem.
  */
 export function withAgentRunLog<T>(sessionId: string, fn: () => T): T {
+  const now = new Date()
+  const datePart = now.toISOString().slice(0, 10) // YYYY-MM-DD
+  const timePart = now.toISOString().slice(11, 23).replace(/[:.]/g, '-') // HH-mm-ss-SSS
   const logFile = path.join(
     process.cwd(),
     '.logs',
     'agent-sessions',
-    sessionId,
-    `${Date.now()}.log`
+    datePart,
+    `${timePart}Z__${sessionId}.log`
   )
   return withRunLog(sessionId, logFile, fn, { filter: agentRunLogFilter })
 }

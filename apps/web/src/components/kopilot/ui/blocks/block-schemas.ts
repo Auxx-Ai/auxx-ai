@@ -56,7 +56,13 @@ export const taskListSchema = z.object({
 
 export const draftPreviewSchema = z.object({
   draftId: z.string(),
-  threadId: z.string(),
+  /**
+   * Optional: drafts produced by `start_new_conversation` are not yet bound to
+   * a thread and arrive without a threadId. The block falls back to opening
+   * `FloatingCompose` in `mode: 'new'` with preset values when threadId is
+   * absent.
+   */
+  threadId: z.string().optional(),
   to: z.array(z.string()),
   cc: z.array(z.string()).optional(),
   body: z.string(),

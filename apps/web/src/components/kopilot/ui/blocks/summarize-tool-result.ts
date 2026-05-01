@@ -35,17 +35,20 @@ export function summarizeToolResult(toolName: string, result: unknown): ToolSumm
       }
     }
 
-    case 'draft_reply': {
-      const subject = data.subject
-      return {
-        summary: subject ? `Draft saved: "${truncate(subject, 50)}"` : 'Draft reply saved',
+    case 'reply_to_thread': {
+      const mode = data.mode
+      if (mode === 'draft') {
+        return { summary: 'Draft reply saved' }
       }
+      return { summary: data.status === 'sent' ? 'Reply sent' : 'Reply queued' }
     }
 
-    case 'send_reply': {
-      return {
-        summary: data.status === 'sent' ? 'Reply sent' : 'Reply queued',
+    case 'start_new_conversation': {
+      const mode = data.mode
+      if (mode === 'draft') {
+        return { summary: 'Draft message saved' }
       }
+      return { summary: data.status === 'sent' ? 'Message sent' : 'Message queued' }
     }
 
     case 'update_thread': {
