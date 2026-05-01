@@ -17,9 +17,11 @@ import { FileText, FolderClosed, Heading, Plus, Settings, Upload } from 'lucide-
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useRef } from 'react'
+import { useActiveArticle } from '../../hooks/use-active-article'
 import { useActiveTabId } from '../../hooks/use-active-tab'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
+import { inferCreateParent } from '../../utils/infer-create-parent'
 
 interface KBArticlesHeaderActionsProps {
   knowledgeBaseId: string
@@ -29,6 +31,7 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
   const router = useRouter()
   const articles = useArticleList(knowledgeBaseId)
   const activeTabId = useActiveTabId(knowledgeBaseId)
+  const activeArticle = useActiveArticle(knowledgeBaseId)
   const { createArticle, isCreating } = useArticleMutations(knowledgeBaseId)
   const importInputRef = useRef<HTMLInputElement>(null)
 
@@ -36,19 +39,27 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
 
   const handleCreateInTab = useCallback(
     async (articleKind: ArticleKindType = ArticleKind.page) => {
-      if (!activeTabId) return
-      const created = await createArticle({ parentId: activeTabId, articleKind })
+      // Tabs are optional — `activeTabId === null` means the KB has no tabs;
+      // we create at the root. Headers may sit at root or under a tab.
+      const parentId =
+        articleKind === ArticleKind.header
+          ? activeTabId
+          : inferCreateParent(activeArticle, activeTabId, articles)
+      const created = await createArticle({ parentId, articleKind })
+      // Pages/categories navigate to the new article so the editor opens it.
+      // Headers are organizational — they participate in URLs but have no
+      // editable body, so we stay on the current article.
       if (created && articleKind !== ArticleKind.header) {
         const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
         router.push(path)
       }
     },
-    [activeTabId, articles, basePath, createArticle, router]
+    [activeArticle, activeTabId, articles, basePath, createArticle, router]
   )
 
   const handleImportMarkdown = useCallback(
     async (files: FileList | null) => {
-      if (!files || files.length === 0 || !activeTabId) return
+      if (!files || files.length === 0) return
       const { mdToBlocks, parseFrontmatter } = await import('@auxx/lib/kb/markdown')
       const failures: string[] = []
       for (const file of Array.from(files)) {
@@ -91,17 +102,17 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end' className='w-48'>
           <DropdownMenuItem
-            disabled={isCreating || !activeTabId}
+            disabled={isCreating}
             onSelect={() => void handleCreateInTab(ArticleKind.page)}>
             <FileText /> Page
           </DropdownMenuItem>
           <DropdownMenuItem
-            disabled={isCreating || !activeTabId}
+            disabled={isCreating}
             onSelect={() => void handleCreateInTab(ArticleKind.category)}>
             <FolderClosed /> Category
           </DropdownMenuItem>
           <DropdownMenuItem
-            disabled={isCreating || !activeTabId}
+            disabled={isCreating}
             onSelect={() => void handleCreateInTab(ArticleKind.header)}>
             <Heading /> Section header
           </DropdownMenuItem>

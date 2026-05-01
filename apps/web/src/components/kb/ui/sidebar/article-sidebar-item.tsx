@@ -36,11 +36,13 @@ import {
   FolderOpen,
   GripVertical,
   MoreVertical,
+  Pencil,
   Send,
   Trash2,
 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
@@ -48,6 +50,7 @@ import { usePublishWithConfirm } from '../../hooks/use-publish-with-confirm'
 import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
 import { ArticleSettingsDialog } from '../editor/article-settings-dialog'
 import { ArticleInsertLine } from './article-insert-line'
+import { RenameInput } from './rename-input'
 
 interface ArticleSidebarItemProps {
   article: ArticleTreeNode
@@ -65,14 +68,36 @@ export function ArticleSidebarItem({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname() ?? ''
+  const isHeader = article.articleKind === 'header'
   const isCategory =
-    article.articleKind === 'category' || (article.children && article.children.length > 0)
+    !isHeader &&
+    (article.articleKind === 'category' || (article.children && article.children.length > 0))
   const isArchived = article.status === 'ARCHIVED'
 
   const articles = useArticleList(knowledgeBaseId)
-  const { createArticle, deleteArticle, archiveArticle, unarchiveArticle, duplicateArticle } =
-    useArticleMutations(knowledgeBaseId)
-  const { requestPublish, requestUnpublish, ConfirmDialog } = usePublishWithConfirm(knowledgeBaseId)
+  const {
+    createArticle,
+    deleteArticle,
+    archiveArticle,
+    unarchiveArticle,
+    duplicateArticle,
+    renameArticle,
+  } = useArticleMutations(knowledgeBaseId)
+  const {
+    requestPublish,
+    requestUnpublish,
+    ConfirmDialog: PublishConfirmDialog,
+  } = usePublishWithConfirm(knowledgeBaseId)
+  const [confirm, ConfirmDialog] = useConfirm()
+  const [isRenaming, setIsRenaming] = useState(false)
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (navTimerRef.current) clearTimeout(navTimerRef.current)
+    },
+    []
+  )
 
   const utils = api.useUtils()
   const fetchExport = async () =>
@@ -106,17 +131,25 @@ export function ArticleSidebarItem({
 
   const basePath = `/app/kb/${knowledgeBaseId}`
   const slugPaths = useMemo(() => getArticleSlugPaths(articles), [articles])
-  const isActive = isArticleActive(article, pathname, basePath, slugPaths)
+  const isActive = !isHeader && isArticleActive(article, pathname, basePath, slugPaths)
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, over, active } =
     useSortable({
       id: article.id,
-      data: {
-        article,
-        isCategory,
-        type: isCategory ? 'category' : 'article',
-        dropPosition: 'inside',
-      },
+      data: isHeader
+        ? {
+            article,
+            isCategory: false,
+            isHeaderContainer: true,
+            type: 'header',
+            dropPosition: 'inside',
+          }
+        : {
+            article,
+            isCategory,
+            type: isCategory ? 'category' : 'article',
+            dropPosition: 'inside',
+          },
     })
 
   const style: React.CSSProperties = {
@@ -124,7 +157,7 @@ export function ArticleSidebarItem({
     transition,
     opacity: isDragging ? 0.3 : 1,
     position: 'relative',
-    zIndex: isDragging ? 999 : 1,
+    zIndex: isDragging ? 999 : undefined,
   }
 
   const { setNodeRef: topSetNodeRef, isOver: topIsOver } = useDroppable({
@@ -134,6 +167,10 @@ export function ArticleSidebarItem({
 
   const isOver = over?.id === article.id && active?.id !== article.id
   const isBeingDraggedOver = isOver && !isDragging
+  // Headers render a wrapping highlight at the group level (see
+  // `article-tree-section`) so the affordance covers the whole section, not
+  // just the header label row.
+  const showInsideAffordance = isBeingDraggedOver && isCategory
 
   const itemHref = useMemo(() => {
     const path = slugPaths[article.id] ?? getFullSlugPath(article, articles)
@@ -166,9 +203,9 @@ export function ArticleSidebarItem({
   const displayName = article.title
 
   const statusIcon = isArchived ? (
-    <Archive size={16} />
+    <Archive className='size-4' />
   ) : !article.isPublished ? (
-    <EyeOff size={16} />
+    <EyeOff className='size-4' />
   ) : null
   const statusLabel = isArchived ? 'Archived' : !article.isPublished ? 'Unpublished' : undefined
 
@@ -180,65 +217,239 @@ export function ArticleSidebarItem({
     }
   }
 
+  const handleDelete = async () => {
+    const hasChildren = article.children && article.children.length > 0
+    const kindLabel = isHeader ? 'section header' : isCategory ? 'category' : 'page'
+    const ok = await confirm({
+      title: hasChildren ? `Delete '${article.title || 'Untitled'}'?` : `Delete ${kindLabel}?`,
+      description: hasChildren
+        ? isHeader
+          ? 'Articles in this section will be moved up one level.'
+          : `Children of this ${kindLabel} will be moved up one level.`
+        : 'This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!ok) return
+    await deleteArticle(article.id)
+  }
+
+  // Shared dropdown menu — same items for headers and pages, with the three
+  // renderer-bound items (Preview / Copy as MD / Download .md) gated to
+  // non-headers since headers have no body.
+  const dropdownMenuContent = (
+    <DropdownMenuContent align='end' className='w-56'>
+      <DropdownMenuGroup>
+        <DropdownMenuItem onSelect={() => setIsRenaming(true)}>
+          <Pencil /> Rename
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleAddSubItem}>
+          <Files /> Add sub-item
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
+          <Cog /> Page settings
+        </DropdownMenuItem>
+        {!isHeader && (
+          <DropdownMenuItem asChild>
+            <a href={previewHref} target='_blank' rel='noopener'>
+              <Eye /> Preview
+            </a>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={() => duplicateArticle(article)}>
+          <BookCopy /> Duplicate
+        </DropdownMenuItem>
+      </DropdownMenuGroup>
+      {!isHeader && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={handleCopyMarkdown}>
+              <Copy /> Copy as markdown
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleDownloadMarkdown}>
+              <Download /> Download .md
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </>
+      )}
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        {isArchived ? (
+          <DropdownMenuItem onClick={() => unarchiveArticle(article.id)}>
+            <ArchiveRestore /> Unarchive
+          </DropdownMenuItem>
+        ) : article.isPublished ? (
+          <>
+            <DropdownMenuItem onClick={() => requestUnpublish(article)}>
+              <EyeOff /> Unpublish
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
+              <Archive /> Archive
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <>
+            <DropdownMenuItem onClick={() => requestPublish(article)}>
+              <Send /> Publish
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
+              <Archive /> Archive
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={handleDelete} variant='destructive'>
+        <Trash2 /> Delete
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  )
+
+  // Shared dialog/confirm portals — rendered once regardless of branch.
+  const dialogs = (
+    <>
+      <ArticleSettingsDialog
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        article={article}
+        knowledgeBaseId={knowledgeBaseId}
+      />
+      <ConfirmDialog />
+      <PublishConfirmDialog />
+    </>
+  )
+
   return (
     <div className='relative'>
-      <div ref={topSetNodeRef} className={cn('absolute left-0 right-0 h-6')}>
-        <div className={cn('h-1 bg-transparent', { 'bg-blue-500': topIsOver })} />
+      <div
+        ref={topSetNodeRef}
+        className={cn('absolute left-0 right-0', isHeader ? '-top-1 h-4' : 'h-6')}>
+        <div className={cn('h-[1px] bg-transparent', { 'bg-blue-500': topIsOver })} />
       </div>
       <div
         ref={setNodeRef}
         style={style}
-        className={cn('relative', isBeingDraggedOver && isCategory && 'z-10')}>
-        {isBeingDraggedOver && isCategory && (
-          <div className='absolute inset-[4px] z-10 rounded-md border border-dashed border-primary/30 bg-primary/10' />
+        className={cn('relative', showInsideAffordance && !isHeader && 'z-10')}>
+        {showInsideAffordance && (
+          <div
+            className={cn(
+              'pointer-events-none absolute z-10 rounded-md border border-dashed bg-primary/10',
+              isHeader ? 'inset-x-0 inset-y-1 border-primary/40' : 'inset-[4px] border-primary/30'
+            )}
+          />
         )}
 
         <ArticleInsertLine
           article={article}
           knowledgeBaseId={knowledgeBaseId}
-          mode={isCategory && isOpen ? 'first-child' : 'sibling-after'}
+          mode={isHeader || (isCategory && isOpen) ? 'first-child' : 'sibling-after'}
         />
 
         <div
           className={cn(
-            'group relative flex items-center rounded-md text-sm text-muted-foreground hover:bg-background focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring',
-            {
-              'bg-background text-accent-foreground': isActive,
-              'cursor-grab': !isDragging,
-              'cursor-grabbing': isDragging,
-              'opacity-60': isArchived,
-            }
+            'group/row relative flex items-center',
+            isHeader
+              ? cn(
+                  'pb-1 pt-3',
+                  isDragging ? 'cursor-grabbing' : 'cursor-grab',
+                  isArchived && 'opacity-60'
+                )
+              : cn(
+                  'cursor-default rounded-md text-sm text-muted-foreground hover:bg-background',
+                  'focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring',
+                  isActive && 'bg-background text-accent-foreground',
+                  isArchived && 'opacity-60'
+                )
           )}
           data-is-category={isCategory ? 'true' : 'false'}>
           <div
-            className='flex cursor-grab items-center px-1 opacity-0 group-hover:opacity-100'
+            className={cn(
+              'flex cursor-grab items-center px-1',
+              isDragging && 'cursor-grabbing',
+              isHeader && '-ml-3.5 opacity-0 group-hover/row:opacity-100'
+            )}
             {...attributes}
-            {...listeners}>
-            <GripVertical className='size-4 text-muted-foreground' />
+            {...(isRenaming ? {} : listeners)}>
+            {!isHeader && (
+              <span className='flex items-center group-hover/row:hidden size-4'>{icon}</span>
+            )}
+            <span className={cn('items-center', isHeader ? 'flex' : 'hidden group-hover/row:flex')}>
+              <GripVertical
+                className={cn('text-muted-foreground', isHeader ? 'size-3.5' : 'size-4')}
+              />
+            </span>
           </div>
 
           <div
             onClick={(e) => {
-              if (isDragging) e.preventDefault()
-              if (!isActive) router.push(itemHref)
+              if (isHeader) return
+              if (isRenaming) return
+              if (isDragging) {
+                e.preventDefault()
+                return
+              }
+              if (e.detail >= 2) {
+                if (navTimerRef.current) {
+                  clearTimeout(navTimerRef.current)
+                  navTimerRef.current = null
+                }
+                return
+              }
+              if (navTimerRef.current) clearTimeout(navTimerRef.current)
+              navTimerRef.current = setTimeout(() => {
+                navTimerRef.current = null
+                if (!isActive) router.push(itemHref)
+              }, 200)
+            }}
+            onDoubleClick={() => {
+              if (navTimerRef.current) {
+                clearTimeout(navTimerRef.current)
+                navTimerRef.current = null
+              }
+              setIsRenaming(true)
             }}
             className={cn(
-              'flex flex-1 items-center rounded-md px-2 py-2 text-sm',
-              'transition-colors duration-200',
+              'flex flex-1 items-center transition-colors duration-200',
               'focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring',
-              isActive && 'font-medium text-accent-foreground',
+              !isHeader && 'rounded-md px-2 py-2 text-sm',
+              !isHeader && isActive && 'font-medium text-accent-foreground',
+              isHeader && 'cursor-text',
               isDragging && 'pointer-events-none'
             )}>
-            <span className='mr-2 flex items-center'>{icon}</span>
             <div className='flex flex-1 items-center'>
-              <span className='truncate'>{displayName}</span>
+              {isRenaming ? (
+                <RenameInput
+                  initialValue={article.title}
+                  onCommit={(trimmed) => {
+                    void renameArticle(article.id, { title: trimmed })
+                    setIsRenaming(false)
+                  }}
+                  onCancel={() => setIsRenaming(false)}
+                  inputClassName={cn(
+                    'rounded-sm bg-background px-1 outline-none ring-1 ring-primary',
+                    isHeader ? 'text-xs font-semibold uppercase tracking-wide' : 'text-sm'
+                  )}
+                  minWidth={80}
+                />
+              ) : (
+                <span
+                  className={cn(
+                    'truncate',
+                    isHeader &&
+                      'text-xs font-semibold uppercase tracking-wide text-muted-foreground'
+                  )}>
+                  {displayName || (isHeader ? 'Untitled' : '')}
+                </span>
+              )}
               {article.hasUnpublishedChanges && article.isPublished && (
                 <span
                   className='ml-1.5 inline-block size-1.5 shrink-0 rounded-full bg-amber-500'
                   title='Unsaved changes'
                 />
               )}
-              {isCategory && (
+              {!isHeader && isCategory && (
                 <button
                   onClick={(e) => {
                     e.preventDefault()
@@ -264,112 +475,90 @@ export function ArticleSidebarItem({
                 <button
                   type='button'
                   className={cn(
-                    'grid rounded-md p-1 text-muted-foreground hover:bg-primary/5 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring',
-                    !statusIcon && 'opacity-0 transition-opacity group-hover:opacity-100'
+                    'grid rounded-md p-1 text-muted-foreground hover:bg-primary/5',
+                    'focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring',
+                    !statusIcon && 'opacity-0 transition-opacity group-hover/row:opacity-100'
                   )}
                   aria-label='More options'
                   title={statusLabel}>
                   {statusIcon ? (
-                    <span className='col-start-1 row-start-1 group-hover:invisible'>
+                    <span className='col-start-1 row-start-1 group-hover/row:invisible'>
                       {statusIcon}
                     </span>
                   ) : null}
                   <span
                     className={cn(
                       'col-start-1 row-start-1',
-                      statusIcon && 'invisible group-hover:visible'
+                      statusIcon && 'invisible group-hover/row:visible'
                     )}>
                     <MoreVertical className='size-4' />
                   </span>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align='end' className='w-56'>
-                <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={handleAddSubItem}>
-                    <Files /> Add sub-item
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
-                    <Cog /> Page settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <a href={previewHref} target='_blank' rel='noopener'>
-                      <Eye /> Preview
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => duplicateArticle(article)}>
-                    <BookCopy /> Duplicate
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={handleCopyMarkdown}>
-                    <Copy /> Copy as markdown
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleDownloadMarkdown}>
-                    <Download /> Download .md
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  {isArchived ? (
-                    <DropdownMenuItem onClick={() => unarchiveArticle(article.id)}>
-                      <ArchiveRestore /> Unarchive
-                    </DropdownMenuItem>
-                  ) : article.isPublished ? (
-                    <>
-                      <DropdownMenuItem onClick={() => requestUnpublish(article)}>
-                        <EyeOff /> Unpublish
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
-                        <Archive /> Archive
-                      </DropdownMenuItem>
-                    </>
-                  ) : (
-                    <>
-                      <DropdownMenuItem onClick={() => requestPublish(article)}>
-                        <Send /> Publish
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => archiveArticle(article.id)}>
-                        <Archive /> Archive
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => deleteArticle(article.id)} variant='destructive'>
-                  <Trash2 /> Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
+              {dropdownMenuContent}
             </DropdownMenu>
-            <ArticleSettingsDialog
-              open={isSettingsOpen}
-              onOpenChange={setIsSettingsOpen}
-              article={article}
-              knowledgeBaseId={knowledgeBaseId}
-            />
-            <ConfirmDialog />
           </div>
         </div>
       </div>
+      {dialogs}
     </div>
   )
 }
 
 /**
- * Stripped-down visual of {@link ArticleSidebarItem} (and its sibling
- * {@link import('./article-header-item').ArticleHeaderItem}) for use inside a
+ * Stripped-down visual of {@link ArticleSidebarItem} for use inside a
  * dnd-kit `<DragOverlay>`. Branches on `articleKind` so the preview matches
  * what the user picked up: header / category / page.
  */
-export function ArticleSidebarItemPreview({ article }: { article: ArticleMeta }) {
+export function ArticleSidebarItemPreview({
+  article,
+  descendants,
+}: {
+  article: ArticleMeta
+  descendants?: ArticleMeta[]
+}) {
   if (article.articleKind === 'header') {
     return (
       <div
-        className='pointer-events-none flex items-center rounded-md border bg-background px-2 py-1 shadow-md'
+        className='pointer-events-none flex flex-col gap-0.5 rounded-md border bg-background p-1 shadow-md'
         style={{ maxWidth: '280px' }}>
-        <span className='truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
+        <span className='truncate px-1 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
           {article.title || 'Untitled'}
         </span>
+        {descendants && descendants.length > 0 && (
+          <div className='flex flex-col gap-0.5 pl-2'>
+            {descendants.map((d) => {
+              const dHasIcon = !!d.emoji && !!getIcon(d.emoji)
+              const dIcon =
+                d.articleKind === 'category' ? (
+                  <FolderClosed className='size-3.5 shrink-0 text-muted-foreground' />
+                ) : dHasIcon ? (
+                  <EntityIcon
+                    iconId={d.emoji as string}
+                    variant='bare'
+                    size='sm'
+                    className='text-muted-foreground'
+                  />
+                ) : (
+                  <FileText className='size-3.5 shrink-0 text-muted-foreground' />
+                )
+              return (
+                <div
+                  key={d.id}
+                  className='flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground'>
+                  {dIcon}
+                  <span
+                    className={cn(
+                      'truncate',
+                      d.articleKind === 'category' && 'font-medium text-foreground'
+                    )}>
+                    {d.title || 'Untitled'}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     )
   }
@@ -394,8 +583,7 @@ export function ArticleSidebarItemPreview({ article }: { article: ArticleMeta })
   return (
     <div
       className={cn(
-        'pointer-events-none flex items-center rounded-md border bg-background px-2 py-2 text-sm text-muted-foreground shadow-md',
-        isArchived && 'opacity-60'
+        'pointer-events-none opacity-60 flex items-center rounded-md border bg-background px-2 py-2 text-sm text-muted-foreground shadow-md'
       )}
       style={{ maxWidth: '280px' }}>
       <span className='mr-2 flex items-center'>{icon}</span>
@@ -409,9 +597,9 @@ export function ArticleSidebarItemPreview({ article }: { article: ArticleMeta })
         />
       )}
       {isArchived ? (
-        <Archive size={16} className='ml-1 shrink-0' />
+        <Archive size={16} className='ml-auto shrink-0' />
       ) : !article.isPublished ? (
-        <EyeOff size={16} className='ml-1 shrink-0' />
+        <EyeOff size={16} className='ml-auto shrink-0' />
       ) : null}
     </div>
   )

@@ -11,7 +11,6 @@ import {
   KBLayout,
   KBTableOfContents,
 } from '@auxx/ui/components/kb'
-import { cn } from '@auxx/ui/lib/utils'
 import { useEffect, useState } from 'react'
 import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleList } from '../../hooks/use-article-list'
@@ -69,7 +68,10 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   const browserUrl = isLive && publicUrl ? publicUrl : `(draft) ${knowledgeBase.slug}`
 
   const layout = (
-    <div data-slot='kb-preview-color-scheme' style={{ colorScheme: isDark ? 'dark' : 'light' }}>
+    <div
+      data-slot='kb-preview-color-scheme'
+      className='flex min-h-0 flex-1 flex-col'
+      style={{ colorScheme: isDark ? 'dark' : 'light' }}>
       <KBLayout
         kb={mapKBForPreview(knowledgeBase)}
         articles={articles}
@@ -77,11 +79,12 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
         activeArticleId={activeArticle?.id}
         mode={isDark ? 'dark' : 'light'}
         embedded
+        mainScroll
         onArticleClick={(id) => setOverrideId(id)}>
         {articleId ? (
           <div className='flex min-w-0 flex-1 flex-col'>
             <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
-              <aside className='hidden @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:block @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:px-4 @kb-lg:pt-8'>
+              <aside className='hidden @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:block @kb-lg:max-h-[calc(100dvh-5rem)] @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:overflow-y-auto @kb-lg:px-4 @kb-lg:pt-8'>
                 <KBTableOfContents headings={headings} />
               </aside>
               <div className='min-w-0 flex-1 @kb-lg:order-1'>
@@ -106,15 +109,9 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   )
 
   return (
-    <div className='flex flex-1 flex-col'>
+    <div className='flex min-h-0 flex-1 flex-col'>
       <KBPreviewTopBar kbId={kbId} activeSlugPath={activeSlugPath} />
-      <div
-        className={cn(
-          'flex flex-1 justify-center overflow-auto bg-muted p-4',
-          '**:data-[slot=desktop-frame]:flex **:data-[slot=desktop-frame]:flex-1 **:data-[slot=desktop-frame]:flex-col',
-          '**:data-[slot=desktop-content]:flex **:data-[slot=desktop-content]:flex-1 **:data-[slot=desktop-content]:flex-col',
-          '**:data-[slot=kb-preview-color-scheme]:flex **:data-[slot=kb-preview-color-scheme]:flex-1 **:data-[slot=kb-preview-color-scheme]:flex-col'
-        )}>
+      <div className='flex min-h-0 flex-1 justify-center bg-muted p-4'>
         {isMobile ? (
           <MobilePreviewFrame>{layout}</MobilePreviewFrame>
         ) : (

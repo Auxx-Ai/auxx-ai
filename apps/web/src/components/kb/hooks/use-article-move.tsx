@@ -1,7 +1,7 @@
 // apps/web/src/components/kb/hooks/use-article-move.tsx
 'use client'
 
-import { flattenArticleTreePreservingChildren } from '@auxx/ui/components/kb/utils'
+import { flattenArticleTreePreservingChildren, getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { generateKeyBetween } from '@auxx/utils'
 import {
@@ -27,7 +27,10 @@ export const DROP_ACTION_TYPE = {
   BEFORE: 'before',
   INSIDE: 'inside',
   CONVERT: 'convert',
+  AFTER: 'after',
 } as const
+
+export const AFTER_GROUP_SUFFIX = '-after-group'
 
 export type DropActionType = (typeof DROP_ACTION_TYPE)[keyof typeof DROP_ACTION_TYPE]
 
@@ -36,16 +39,19 @@ export type DropActionType = (typeof DROP_ACTION_TYPE)[keyof typeof DROP_ACTION_
  * (via `collisionDetection`) and at drop time (via `computeMove`) so the
  * UI never highlights a target that the move handler would silently reject.
  *
+ * `before` and `after` resolve `newParentId` to `target.parentId`; `inside`
+ * resolves to `target.id`.
+ *
  * Rules:
  *   1. Source exists and is not the target.
  *   2. Tabs are root-only — never moved as children.
  *   3. No drops into the source's own subtree (cycle prevention).
- *   4. Headers must remain direct children of a tab.
+ *   4. Headers must remain direct children of a tab (or KB root).
  */
 export function canDropArticle(
   source: ArticleMeta | undefined,
   target: ArticleMeta,
-  action: 'before' | 'inside',
+  action: 'before' | 'inside' | 'after',
   articles: ArticleMeta[]
 ): boolean {
   if (!source) return false
@@ -62,8 +68,10 @@ export function canDropArticle(
   }
 
   if (source.articleKind === 'header') {
+    // Headers may sit at KB root (newParentId === null) or directly under a
+    // tab. Never inside categories, pages, or other headers.
     const newParent = newParentId ? articles.find((a) => a.id === newParentId) : null
-    if (!newParent || newParent.articleKind !== 'tab') return false
+    if (newParent && newParent.articleKind !== 'tab') return false
   }
 
   return true
@@ -125,10 +133,12 @@ export function useArticleMove({
       const target = findArticleById(targetId)
       if (!source || !target) return null
 
-      const validityAction =
+      const validityAction: 'before' | 'inside' | 'after' =
         action === DROP_ACTION_TYPE.INSIDE || action === DROP_ACTION_TYPE.CONVERT
           ? 'inside'
-          : 'before'
+          : action === DROP_ACTION_TYPE.AFTER
+            ? 'after'
+            : 'before'
       if (!canDropArticle(source, target, validityAction, articles)) return null
 
       let parentId: string | null
@@ -149,8 +159,13 @@ export function useArticleMove({
           .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
         const idx = siblings.findIndex((s) => s.id === targetId)
         if (idx === -1) return null
-        lo = siblings[idx - 1]?.sortOrder ?? null
-        hi = siblings[idx]?.sortOrder ?? null
+        if (validityAction === 'after') {
+          lo = siblings[idx]?.sortOrder ?? null
+          hi = siblings[idx + 1]?.sortOrder ?? null
+        } else {
+          lo = siblings[idx - 1]?.sortOrder ?? null
+          hi = siblings[idx]?.sortOrder ?? null
+        }
       }
 
       try {
@@ -178,20 +193,33 @@ export function useArticleMove({
       return collisions.filter((c) => {
         const id = c.id.toString()
         const isBefore = id.endsWith(beforeSuffix)
-        const targetId = isBefore ? id.slice(0, -beforeSuffix.length) : id
+        const isAfterGroup = id.endsWith(AFTER_GROUP_SUFFIX)
+        const targetId = isBefore
+          ? id.slice(0, -beforeSuffix.length)
+          : isAfterGroup
+            ? id.slice(0, -AFTER_GROUP_SUFFIX.length)
+            : id
         const target = findArticleById(targetId)
         if (!target) return false
 
-        // Mirror handleDragOver: bare-id collisions become INSIDE only when
-        // the droppable advertises isCategory; otherwise treat as BEFORE.
-        let action: 'before' | 'inside' = 'before'
-        if (!isBefore) {
+        // Mirror handleDragOver: bare-id collisions become INSIDE when the
+        // droppable advertises itself as a container (category or header);
+        // `-after-group` resolves to AFTER (sibling-after the target at the
+        // target's parent level); `-before` is the row's top edge.
+        let action: 'before' | 'inside' | 'after' = 'before'
+        if (isAfterGroup) {
+          action = 'after'
+        } else if (!isBefore) {
           const container = (
             c.data?.droppableContainer as
-              | { data?: { current?: { isCategory?: boolean } } }
+              | {
+                  data?: { current?: { isCategory?: boolean; isHeaderContainer?: boolean } }
+                }
               | undefined
           )?.data?.current
-          if (container?.isCategory === true) action = 'inside'
+          if (container?.isCategory === true || container?.isHeaderContainer === true) {
+            action = 'inside'
+          }
         }
 
         return canDropArticle(source, target, action, articles)
@@ -301,12 +329,27 @@ export function useArticleMove({
             lastHoveredCategoryRef.current = null
           }
         }
+      } else if (overId.endsWith(AFTER_GROUP_SUFFIX)) {
+        const targetId = overId.slice(0, -AFTER_GROUP_SUFFIX.length)
+        if (activeId !== targetId) {
+          newTarget = { id: targetId, action: DROP_ACTION_TYPE.AFTER }
+          if (openCategoryTimerRef.current) {
+            clearTimeout(openCategoryTimerRef.current)
+            openCategoryTimerRef.current = null
+            lastHoveredCategoryRef.current = null
+          }
+        }
       } else if (activeId !== overId && over.data.current?.type) {
         const targetId = overId
         const targetIsCategory = over.data.current?.isCategory === true
-        // Drop inside categories; pages stay leaves (no auto-promotion).
-        const action = targetIsCategory ? DROP_ACTION_TYPE.INSIDE : DROP_ACTION_TYPE.BEFORE
+        const targetIsHeaderContainer = over.data.current?.isHeaderContainer === true
+        const targetIsContainer = targetIsCategory || targetIsHeaderContainer
+        // Drop inside containers (categories + headers); pages stay leaves
+        // (no auto-promotion).
+        const action = targetIsContainer ? DROP_ACTION_TYPE.INSIDE : DROP_ACTION_TYPE.BEFORE
         newTarget = { id: targetId, action }
+        // Headers are always rendered open, so don't trigger the auto-open
+        // delay — only categories need to expand on hover.
         if (
           targetIsCategory &&
           action === DROP_ACTION_TYPE.INSIDE &&
@@ -376,22 +419,15 @@ export function useArticleMove({
       openedDuringDragRef.current.clear()
 
       if (success) {
-        // The store already reflects the new position; update the URL to match.
+        // The store already reflects the new position; update the URL to match
+        // via `getFullSlugPath`, which now includes header segments.
         const moved = getArticleStoreState().articles.get(sourceId)
         if (moved) {
-          // Build full slug path from the updated store state.
           const all = Array.from(getArticleStoreState().articles.values()).filter(
             (a) => a.knowledgeBaseId === knowledgeBaseId
           )
-          const slugs: string[] = [moved.slug]
-          let cursor = moved.parentId
-          while (cursor) {
-            const parent = all.find((a) => a.id === cursor)
-            if (!parent) break
-            slugs.unshift(parent.slug)
-            cursor = parent.parentId
-          }
-          router.replace(`/app/kb/${knowledgeBaseId}/editor/~/${slugs.join('/')}?panel=articles`)
+          const slugPath = getFullSlugPath(moved, all)
+          router.replace(`/app/kb/${knowledgeBaseId}/editor/~/${slugPath}?panel=articles`)
         }
       }
     },

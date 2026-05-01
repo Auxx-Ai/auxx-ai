@@ -1,19 +1,20 @@
 // packages/ui/src/components/kb/layout/kb-layout-shell.tsx
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
 import { useSelectedLayoutSegments } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { KBSearchDialog } from '../search/kb-search-dialog'
 import type { KBMode } from '../theme/kb-theme-tokens'
-import { findArticleBySlugPath, getFullSlugPath } from '../utils'
+import { findArticleBySlugPath, findFirstNavigableUnder, getFullSlugPath } from '../utils'
 import { KBFooter } from './kb-footer'
 import { KBHeader, type KBNavLink } from './kb-header'
 import { KBLayoutContextProvider } from './kb-layout-context'
 import { KBSidebar } from './kb-sidebar'
 import { KBSidebarMobileTrigger } from './kb-sidebar-mobile-trigger'
 import { readCollapsedFromStorage, writeCollapsedToStorage } from './kb-sidebar-state'
-import { filterToTab, findTabForArticle, getTopLevelTabs } from './kb-sidebar-tabs'
+import { findTabForArticle, getTopLevelTabs } from './kb-sidebar-tabs'
 import { KBSidebarToggle } from './kb-sidebar-toggle'
 import type { KBSidebarArticle, KBSidebarListStyle } from './kb-sidebar-tree'
 import { KBTopTabs } from './kb-top-tabs'
@@ -36,6 +37,8 @@ interface KBLayoutShellProps<T extends KBSidebarArticle> {
   footerNav: KBNavLink[]
   listStyle: KBSidebarListStyle
   onArticleClick?: (articleId: string) => void
+  /** When true, the `<main>` element owns the scroll instead of the document. Used inside admin previews where document scroll is unavailable. */
+  mainScroll?: boolean
   children: ReactNode
 }
 
@@ -57,6 +60,7 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
   footerNav,
   listStyle,
   onArticleClick,
+  mainScroll = false,
   children,
 }: KBLayoutShellProps<T>) {
   const [collapsed, setCollapsed] = useState(false)
@@ -78,16 +82,16 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
     () => findTabForArticle(tabs, articles, effectiveActiveId),
     [tabs, articles, effectiveActiveId]
   )
-  const sidebarArticles = useMemo(
-    () => (tabs.length > 0 ? filterToTab(articles, activeTabId) : articles),
-    [tabs, articles, activeTabId]
-  )
+  // KBSidebar receives the full article set so `getFullSlugPath` can walk the
+  // entire parent chain (including the tab) when constructing hrefs. The tree
+  // is scoped to the active tab via `rootParentId={activeTabId}` on KBSidebar →
+  // KBSidebarTree, so the tab itself isn't rendered as a duplicate root node.
 
   // Click-target for each tab pill: the deepest first navigable descendant.
   const tabHrefs = useMemo(() => {
     const map: Record<string, string> = {}
     for (const tab of tabs) {
-      const first = findFirstNavigableDescendant(tab.id, articles)
+      const first = findFirstNavigableUnder(tab.id, articles)
       const slug = first ? getFullSlugPath(first, articles) : ''
       map[tab.id] = slug ? `${basePath}/${slug}` : basePath || '/'
     }
@@ -149,9 +153,9 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
         }
       />
       <KBTopTabs tabs={tabs} activeTabId={activeTabId} tabHrefs={tabHrefs} />
-      <div className='mx-auto flex w-full max-w-7xl flex-1'>
+      <div className={cn('mx-auto flex w-full max-w-7xl flex-1', mainScroll && 'min-h-0')}>
         <KBSidebar
-          articles={sidebarArticles}
+          articles={articles}
           basePath={basePath}
           activeArticleId={effectiveActiveId}
           searchOrigin={searchOrigin}
@@ -168,7 +172,13 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
           activeTabId={activeTabId}
           tabHrefs={tabHrefs}
         />
-        <main className='flex min-w-0 flex-1 flex-col px-4 py-8 @kb-md:px-8'>{children}</main>
+        <main
+          className={cn(
+            'flex min-w-0 flex-1 flex-col px-4 py-8 @kb-md:px-8',
+            mainScroll && 'min-h-0 overflow-y-auto'
+          )}>
+          {children}
+        </main>
       </div>
       <KBFooter title={kbName} navigation={footerNav} navigationEnabled={footerEnabled} />
       {searchOrigin ? (
@@ -181,30 +191,4 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
       ) : null}
     </KBLayoutContextProvider>
   )
-}
-
-/**
- * Depth-first search for the first navigable descendant of `rootId`. Tabs and
- * headers are skipped because they have no URL of their own.
- */
-function findFirstNavigableDescendant<T extends KBSidebarArticle>(
-  rootId: string,
-  articles: T[]
-): T | undefined {
-  const children = articles
-    .filter((a) => a.parentId === rootId)
-    .sort((a, b) => {
-      const ao = (a as T & { sortOrder?: string }).sortOrder ?? ''
-      const bo = (b as T & { sortOrder?: string }).sortOrder ?? ''
-      return ao < bo ? -1 : ao > bo ? 1 : 0
-    })
-  for (const child of children) {
-    if (child.articleKind === 'header') {
-      const grand = findFirstNavigableDescendant(child.id, articles)
-      if (grand) return grand
-      continue
-    }
-    return child
-  }
-  return undefined
 }

@@ -10,16 +10,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
+import { findFirstNavigableUnder, getFullSlugPath } from '@auxx/ui/components/kb/utils'
+import { cn } from '@auxx/ui/lib/utils'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
 import { Archive, FileText, FolderClosed, Heading, Loader2, Plus } from 'lucide-react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useActiveArticle } from '../../hooks/use-active-article'
 import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-list'
 import { useArticleMove } from '../../hooks/use-article-move'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta, ArticleTreeNode } from '../../store/article-store'
+import { inferCreateParent } from '../../utils/infer-create-parent'
 import { ArticleSidebarItemPreview } from './article-sidebar-item'
 import { ArticleTreeSection } from './article-tree-section'
 import { KBTabStrip } from './kb-tab-strip'
@@ -28,11 +31,28 @@ interface KBArticlesPanelProps {
   knowledgeBaseId: string
 }
 
+/**
+ * Walks `parentId` recursively and returns a depth-first list of descendants
+ * sorted by `sortOrder`. Used for the drag preview so dragging a header shows
+ * the whole group, not just its label.
+ */
+function collectDescendants(parentId: string, all: ArticleMeta[]): ArticleMeta[] {
+  const out: ArticleMeta[] = []
+  const direct = all
+    .filter((a) => a.parentId === parentId)
+    .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
+  for (const child of direct) {
+    out.push(child)
+    out.push(...collectDescendants(child.id, all))
+  }
+  return out
+}
+
 export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
-  const pathname = usePathname() ?? ''
   const router = useRouter()
 
   const articles = useArticleList(knowledgeBaseId)
+  const activeArticle = useActiveArticle(knowledgeBaseId)
   const hasLoaded = useIsArticleListLoaded(knowledgeBaseId)
   const { createArticle, isCreating } = useArticleMutations(knowledgeBaseId)
 
@@ -73,7 +93,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
     handleDragStart,
     handleDragOver,
     handleDragEnd,
-    activeArticle,
+    activeArticle: draggingArticle,
     sensors,
     articleTree,
     collisionDetection,
@@ -93,43 +113,13 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
     return stripArchived(articleTree)
   }, [articleTree, showArchived])
 
-  // Find the article matching the current pathname so we can expand its parents.
-  const findActiveArticle = useCallback((): ArticleMeta | undefined => {
-    if (!articles || articles.length === 0) return undefined
-    const editorPrefix = `${basePath}/editor/~/`
-    const articlesPrefix = `${basePath}/articles/`
-    let slug = ''
-    if (pathname.startsWith(editorPrefix)) {
-      slug = pathname.slice(editorPrefix.length).split('?')[0]
-    } else if (pathname.startsWith(articlesPrefix)) {
-      slug = pathname.slice(articlesPrefix.length).split('?')[0]
-    }
-    if (!slug) return undefined
-    const slugParts = slug.split('/')
-    return articles.find((article) => {
-      if (article.slug === slug && !article.parentId) return true
-      if (slugParts.length > 1 && slugParts[slugParts.length - 1] === article.slug) {
-        let cursor: ArticleMeta | undefined = article
-        for (let i = slugParts.length - 1; i >= 0; i--) {
-          if (!cursor || cursor.slug !== slugParts[i]) return false
-          if (i > 0) {
-            cursor = articles.find((a) => a.id === cursor!.parentId)
-          }
-        }
-        return true
-      }
-      return false
-    })
-  }, [articles, pathname, basePath])
-
   // Auto-expand parents of the active article whenever pathname changes.
   useEffect(() => {
     if (!articles || articles.length === 0) return
-    const active = findActiveArticle()
-    if (!active) return
+    if (!activeArticle) return
 
     const parentIds: string[] = []
-    let cursor = active.parentId
+    let cursor = activeArticle.parentId
     while (cursor) {
       parentIds.push(cursor)
       const parent = articles.find((a) => a.id === cursor)
@@ -143,7 +133,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
       for (const id of parentIds) next[id] = true
       return next
     })
-  }, [articles, findActiveArticle])
+  }, [articles, activeArticle])
 
   // Tabs are the structural root of the tree. Active tab is derived from the
   // URL's article (walk up to the enclosing tab) and falls back to the first
@@ -157,16 +147,15 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   )
 
   const activeTabId = useMemo(() => {
-    const active = findActiveArticle()
-    if (!active) return tabs[0]?.id ?? null
-    let cursor: ArticleMeta | undefined = active
+    if (!activeArticle) return tabs[0]?.id ?? null
+    let cursor: ArticleMeta | undefined = activeArticle
     while (cursor) {
       if (cursor.articleKind === ArticleKind.tab) return cursor.id
       if (!cursor.parentId) break
       cursor = articles.find((a) => a.id === cursor!.parentId)
     }
     return tabs[0]?.id ?? null
-  }, [findActiveArticle, articles, tabs])
+  }, [activeArticle, articles, tabs])
 
   const [pendingTabId, setPendingTabId] = useState<string | null>(null)
   const effectiveTabId = pendingTabId ?? activeTabId
@@ -184,9 +173,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   const handleTabChange = useCallback(
     (tabId: string) => {
       setPendingTabId(tabId)
-      const firstChild = articles
-        .filter((a) => a.parentId === tabId && a.articleKind !== ArticleKind.header)
-        .sort((a, b) => a.order - b.order)[0]
+      const firstChild = findFirstNavigableUnder(tabId, articles)
       if (firstChild) {
         const slug = getFullSlugPath(firstChild, articles)
         router.push(`${basePath}/editor/~/${slug}?panel=articles`)
@@ -197,18 +184,28 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
 
   const handleCreateInTab = useCallback(
     async (articleKind: ArticleKindType = ArticleKind.page) => {
-      if (!effectiveTabId) return
-      const created = await createArticle({ parentId: effectiveTabId, articleKind })
+      // Tabs are optional — `effectiveTabId === null` means the KB has zero
+      // tabs and articles live at the root. Headers must sit directly at root
+      // or under a tab; pages/categories drop into whatever section the user
+      // is editing, falling back to the tab (or root).
+      const parentId =
+        articleKind === ArticleKind.header
+          ? effectiveTabId
+          : inferCreateParent(activeArticle, effectiveTabId, articles)
+      const created = await createArticle({ parentId, articleKind })
       if (created) {
-        // Headers have no URL; stay where we are. Pages/categories navigate to
-        // the new article so the editor opens it.
+        // Pages/categories navigate to the new article so the editor opens
+        // it. Headers are organizational — they participate in URLs but have
+        // no editable body, so we stay on the current article. The user's
+        // next move is usually to drag pages into the new section or rename
+        // it inline from the sidebar.
         if (articleKind !== ArticleKind.header) {
           const path = `${basePath}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
           router.push(path)
         }
       }
     },
-    [effectiveTabId, articles, basePath, createArticle, router]
+    [effectiveTabId, activeArticle, articles, basePath, createArticle, router]
   )
 
   if (!hasLoaded) {
@@ -220,7 +217,11 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   }
 
   return (
-    <div className='relative flex flex-col gap-1 p-1'>
+    <div
+      className={cn(
+        'relative flex h-full flex-col gap-1 p-1',
+        tabSubtree.length === 0 && 'flex-1'
+      )}>
       <KBTabStrip
         knowledgeBaseId={knowledgeBaseId}
         activeTabId={effectiveTabId}
@@ -233,45 +234,84 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}>
-        <ArticleTreeSection
-          articles={tabSubtree}
-          knowledgeBaseId={knowledgeBaseId}
-          articleOpenStates={articleOpenStates}
-          toggleArticleOpen={toggleArticleOpen}
-        />
+        <div
+          className={cn(
+            'flex flex-1 flex-col pt-3',
+            tabSubtree.length === 0 && 'items-center justify-center'
+          )}>
+          <ArticleTreeSection
+            articles={tabSubtree}
+            knowledgeBaseId={knowledgeBaseId}
+            articleOpenStates={articleOpenStates}
+            toggleArticleOpen={toggleArticleOpen}
+          />
+          {tabSubtree.length === 0 && (
+            <div className='px-6 text-center text-base text-muted-foreground'>
+              Nothing here yet.
+              <br /> Add a{' '}
+              <button
+                type='button'
+                onClick={() => void handleCreateInTab(ArticleKind.header)}
+                disabled={isCreating}
+                className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
+                Section Header
+              </button>{' '}
+              or add a{' '}
+              <button
+                type='button'
+                onClick={() => void handleCreateInTab(ArticleKind.page)}
+                disabled={isCreating}
+                className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
+                Page
+              </button>
+              .
+            </div>
+          )}
+        </div>
 
         <DragOverlay
           dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}
           style={{ cursor: 'grabbing' }}>
-          {activeArticle ? <ArticleSidebarItemPreview article={activeArticle} /> : null}
+          {draggingArticle ? (
+            <ArticleSidebarItemPreview
+              article={draggingArticle}
+              descendants={
+                draggingArticle.articleKind === ArticleKind.header
+                  ? collectDescendants(draggingArticle.id, articles)
+                  : undefined
+              }
+            />
+          ) : null}
         </DragOverlay>
       </DndContext>
 
       <div className='mt-2 px-2'>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              className='w-full justify-start text-muted-foreground'
-              variant='ghost'
-              size='sm'
-              disabled={isCreating || !effectiveTabId}
-              loading={isCreating}
-              loadingText='Creating...'>
-              <Plus /> Add
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='start' className='w-48'>
-            <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.page)}>
-              <FileText /> Page
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.category)}>
-              <FolderClosed /> Category
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.header)}>
-              <Heading /> Section header
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {tabSubtree.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className='w-full justify-start text-muted-foreground'
+                variant='ghost'
+                size='sm'
+                disabled={isCreating}
+                loading={isCreating}
+                loadingText='Creating...'>
+                <Plus /> Add
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='start' className='w-48'>
+              <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.page)}>
+                <FileText /> Page
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.category)}>
+                <FolderClosed /> Category
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.header)}>
+                <Heading /> Section header
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         {archivedCount > 0 && (
           <Button
             className='mt-1 w-full justify-start text-muted-foreground'

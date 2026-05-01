@@ -8,20 +8,51 @@ export interface ArticleSlugFields extends ArticleTreeFields {
 }
 
 /**
- * Walk parentId building a slash-joined slug. Headers are presentational and
- * never appear in URLs, so we skip them when collecting ancestor slugs.
+ * Walk parentId building a slash-joined slug. Tabs and headers participate
+ * in URLs alongside pages and categories; only the KB itself is implicit.
  */
 export function getFullSlugPath<T extends ArticleSlugFields>(article: T, allArticles: T[]): string {
   if (!article) return ''
-  const slugs: string[] = article.articleKind === 'header' ? [] : [article.slug]
+  const slugs: string[] = [article.slug]
   let currentId = article.parentId
   while (currentId) {
     const parent = allArticles.find((a) => a.id === currentId)
     if (!parent) break
-    if (parent.articleKind !== 'header') slugs.unshift(parent.slug)
+    slugs.unshift(parent.slug)
     currentId = parent.parentId
   }
   return slugs.join('/')
+}
+
+/**
+ * Depth-first walk of `parentId`'s descendants for the first navigable child.
+ * Tabs and headers are pure containers with no body of their own — skip them
+ * and recurse into headers (tabs only sit at the root). Pass `null` for the
+ * KB-root walk used by tab-less landings.
+ *
+ * `publishedOnly` filters out drafts; the public site sets it true, the admin
+ * tree leaves it false so a freshly-created tab can resolve its first page
+ * before anything is published.
+ */
+export function findFirstNavigableUnder<T extends ArticleSlugFields & { isPublished?: boolean }>(
+  parentId: string | null,
+  articles: T[],
+  options?: { publishedOnly?: boolean }
+): T | undefined {
+  const publishedOnly = options?.publishedOnly ?? false
+  const children = articles
+    .filter((a) => a.parentId === parentId && (!publishedOnly || a.isPublished !== false))
+    .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
+  for (const child of children) {
+    if (child.articleKind === 'header') {
+      const grand = findFirstNavigableUnder(child.id, articles, options)
+      if (grand) return grand
+      continue
+    }
+    if (child.articleKind === 'tab') continue
+    return child
+  }
+  return undefined
 }
 
 interface ParentLinkArticle extends ArticleSlugFields {
@@ -31,9 +62,10 @@ interface ParentLinkArticle extends ArticleSlugFields {
 
 /**
  * Resolves the parent breadcrumb for `KBArticleRenderer`. Returns `undefined`
- * when the article has no parent. Categories, tabs, and headers aren't
- * navigable, so their `href` is `null` and the renderer falls back to plain
- * text.
+ * when the article has no parent. Pages and headers are navigable (a header
+ * URL redirects to its first descendant on the public site); tabs and
+ * categories aren't, so their `href` is `null` and the renderer falls back
+ * to plain text.
  */
 export function getArticleParentLink<T extends ParentLinkArticle>(
   article: T | undefined | null,
@@ -43,7 +75,7 @@ export function getArticleParentLink<T extends ParentLinkArticle>(
   if (!article?.parentId) return undefined
   const parent = allArticles.find((a) => a.id === article.parentId)
   if (!parent) return undefined
-  const navigable = parent.articleKind === 'page'
+  const navigable = parent.articleKind === 'page' || parent.articleKind === 'header'
   return {
     title: parent.title,
     emoji: parent.emoji,
