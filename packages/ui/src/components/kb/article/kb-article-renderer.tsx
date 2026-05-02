@@ -7,7 +7,7 @@ import { BlockRenderer } from './block-renderer'
 import { extractKBHeadings, type KBHeading } from './extract-headings'
 import styles from './kb-article-renderer.module.css'
 import { KBTableOfContentsDrawer } from './kb-toc-drawer'
-import type { DocJSON } from './types'
+import type { DocJSON, ResolveAuxxHref } from './types'
 
 interface KBArticleRendererProps {
   doc: DocJSON | null | undefined
@@ -25,6 +25,10 @@ interface KBArticleRendererProps {
    * (`@auxx/lib/kb/markdown`) lives outside the UI package's dep tier.
    */
   copyMenu?: ReactNode
+  /** Override how `auxx://kb/article/{id}` link/card hrefs are emitted.
+   * Defaults to `/r/{id}` — public KB hosts a redirect handler at that
+   * path. Preview/embed contexts override to nest under their URL prefix. */
+  resolveAuxxHref?: ResolveAuxxHref
 }
 
 export function KBArticleRenderer({
@@ -35,6 +39,7 @@ export function KBArticleRenderer({
   updatedAt,
   parent,
   copyMenu,
+  resolveAuxxHref,
 }: KBArticleRendererProps) {
   const headings = doc ? extractKBHeadings(doc) : []
   const headingIds = doc ? buildHeadingIdMap(doc, headings) : {}
@@ -78,8 +83,15 @@ export function KBArticleRenderer({
         </header>
       ) : null}
       {doc?.content?.map((node, idx) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: block order is stable per render
-        <BlockRenderer key={idx} node={node} idx={idx} doc={doc} headingIds={headingIds} />
+        <BlockRenderer
+          // biome-ignore lint/suspicious/noArrayIndexKey: block order is stable per render
+          key={idx}
+          node={node}
+          idx={idx}
+          doc={doc}
+          headingIds={headingIds}
+          resolveAuxxHref={resolveAuxxHref}
+        />
       ))}
     </article>
   )

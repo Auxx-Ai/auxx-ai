@@ -2,6 +2,7 @@
 'use client'
 
 import { Banner } from '@auxx/ui/components/banner'
+import { Button } from '@auxx/ui/components/button'
 import {
   type DocJSON,
   extractKBHeadings,
@@ -15,33 +16,40 @@ import {
   KBLayout,
   KBTableOfContents,
 } from '@auxx/ui/components/kb'
-import { ExternalLink, Eye } from 'lucide-react'
+import { ExternalLink, Eye, Undo2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { type CSSProperties, useCallback, useState } from 'react'
-import { useArticleContent } from '../../hooks/use-article-content'
+import { api } from '~/trpc/react'
+import { type PreviewMode, useArticleContent } from '../../hooks/use-article-content'
 import { useArticleList } from '../../hooks/use-article-list'
+import { useArticleMutations } from '../../hooks/use-article-mutations'
 import { useBodyClass } from '../../hooks/use-body-class'
 import { useKbPublicUrl } from '../../hooks/use-kb-public-url'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
 import { ArticleMarkdownCopy } from './article-markdown-copy'
 import { mapKBForPreview } from './map-kb-for-preview'
+import { PreviewVersionPicker } from './preview-version-picker'
 
 interface KBFullscreenPreviewProps {
   knowledgeBaseId: string
   /** Slug path from the URL catch-all, e.g. `["docs", "intro"]`. */
   slugPath: string[]
+  /** Resolved from the `?v=` query param by the server route. */
+  mode: PreviewMode
 }
 
 /**
- * Standalone fullscreen render of a KB, served at `/preview/kb/<id>[/<slug>...]`.
- * Renders the author's current draft so unsaved changes show up before publish.
- * Admin-only via the surrounding (protected) layout. Real `<Link>` navigation
- * between articles.
+ * Standalone fullscreen render of a KB, served at `/preview/kb/<id>[/<slug>...][?v=…]`.
+ * Renders draft, the live published revision, or any historical snapshot
+ * depending on `mode`. Admin-only via the surrounding (protected) layout.
  */
-export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenPreviewProps) {
+export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFullscreenPreviewProps) {
   // The global body has `overflow-hidden` so app routes manage their own scroll.
   // The fullscreen preview wants document-level scroll to match the public KB site
   // (header scrolls away naturally with content).
   useBodyClass({ remove: 'overflow-hidden' })
+
+  const router = useRouter()
 
   // Measure the banner so the KB layout's sticky elements (header, tabs, sidebar)
   // can offset themselves below it via the `--kb-top-offset` CSS variable.
@@ -73,12 +81,51 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
     resolvedArticle ??
     articles.find((a) => a.articleKind === 'page' || a.articleKind === 'category')
   const articleId = activeArticle?.id ?? null
-  const { draftContentJson, draftDescription } = useArticleContent(articleId, knowledgeBaseId)
+  const {
+    previewContentJson,
+    previewDescription,
+    previewTitle,
+    previewEmoji,
+    hasPublishedVersion,
+    fellBackToDraft,
+  } = useArticleContent(articleId, knowledgeBaseId, mode)
+
+  // Versions list — used to label the live banner with vN and to map a
+  // historical versionNumber to a revision id for "Restore as draft".
+  const versionsQuery = api.kb.getArticleVersions.useQuery(
+    { articleId: articleId ?? '' },
+    { enabled: !!articleId && (mode === 'live' || (typeof mode === 'object' && mode !== null)) }
+  )
+  const versions = versionsQuery.data ?? []
+  const liveVersionNumber = versions[0]?.versionNumber ?? null
+  const historicalVersion =
+    typeof mode === 'object' && mode !== null
+      ? versions.find((v) => v.versionNumber === mode.versionNumber)
+      : undefined
+
+  const { restoreArticleVersion } = useArticleMutations(knowledgeBaseId)
+
+  const handleModeChange = useCallback(
+    (next: PreviewMode) => {
+      const path = slugPath.length > 0 ? `/${slugPath.map(encodeURIComponent).join('/')}` : ''
+      const token = next === 'draft' ? null : next === 'live' ? 'live' : String(next.versionNumber)
+      const query = token ? `?v=${token}` : ''
+      router.replace(`/preview/kb/${knowledgeBaseId}${path}${query}`)
+    },
+    [knowledgeBaseId, router, slugPath]
+  )
+
+  const handleSwitchToDraft = useCallback(() => handleModeChange('draft'), [handleModeChange])
+  const handleRestoreFromBanner = useCallback(async () => {
+    if (!historicalVersion) return
+    await restoreArticleVersion(historicalVersion.id)
+    handleModeChange('draft')
+  }, [historicalVersion, restoreArticleVersion, handleModeChange])
 
   if (!knowledgeBase) return null
 
   const basePath = `/preview/kb/${knowledgeBaseId}`
-  const docJson = (draftContentJson ?? null) as DocJSON | null
+  const docJson = (previewContentJson ?? null) as DocJSON | null
   const headings = docJson ? extractKBHeadings(docJson) : []
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
@@ -90,29 +137,104 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
   const isLive =
     knowledgeBase.publishStatus === 'PUBLISHED' || knowledgeBase.publishStatus === 'UNLISTED'
   const slugSegment = slugPath.length > 0 ? `/${slugPath.map(encodeURIComponent).join('/')}` : ''
-  const liveHref = isLive && publicUrl ? `${publicUrl}${slugSegment}` : null
+  const liveSiteHref = isLive && publicUrl ? `${publicUrl}${slugSegment}` : null
+
+  const isHistoricalMode = typeof mode === 'object' && mode !== null
+  const bannerVariant = isHistoricalMode || mode === 'live' ? 'warning' : 'default'
+
+  let bannerTitle: string
+  let bannerBody: string
+  let bannerAction: React.ReactNode
+
+  if (mode === 'draft') {
+    bannerTitle = 'Preview mode'
+    bannerBody = 'Viewing draft (includes unpublished changes)'
+    bannerAction = (
+      <>
+        {articleId ? (
+          <PreviewVersionPicker
+            articleId={articleId}
+            mode={mode}
+            hasPublishedVersion={hasPublishedVersion}
+            onModeChange={handleModeChange}
+          />
+        ) : null}
+        {liveSiteHref ? (
+          <a
+            href={liveSiteHref}
+            target='_blank'
+            rel='noopener'
+            className='inline-flex items-center gap-1 font-medium text-info hover:underline'>
+            View live site <ExternalLink className='size-3.5' />
+          </a>
+        ) : (
+          <span className='text-muted-foreground'>Not published yet</span>
+        )}
+      </>
+    )
+  } else if (mode === 'live') {
+    if (fellBackToDraft) {
+      bannerTitle = 'No published version yet'
+      bannerBody = 'Showing draft until this article is published.'
+    } else {
+      bannerTitle = liveVersionNumber
+        ? `Viewing the live version (v${liveVersionNumber})`
+        : 'Viewing the live version'
+      bannerBody = ''
+    }
+    bannerAction = (
+      <>
+        {articleId ? (
+          <PreviewVersionPicker
+            articleId={articleId}
+            mode={mode}
+            hasPublishedVersion={hasPublishedVersion}
+            onModeChange={handleModeChange}
+          />
+        ) : null}
+        <Button variant='outline' size='xs' onClick={handleSwitchToDraft}>
+          Switch to draft
+        </Button>
+      </>
+    )
+  } else {
+    const v = mode.versionNumber
+    const labelSuffix = historicalVersion?.label ? ` — “${historicalVersion.label}”` : ''
+    const editorName = historicalVersion?.editor?.name ?? null
+    const meta = historicalVersion?.createdAt
+      ? new Date(historicalVersion.createdAt).toLocaleDateString()
+      : null
+    bannerTitle = `Viewing v${v}${labelSuffix}`
+    bannerBody = [meta ? `published ${meta}` : null, editorName ? `by ${editorName}` : null]
+      .filter(Boolean)
+      .join(' ')
+    bannerAction = (
+      <>
+        {articleId ? (
+          <PreviewVersionPicker
+            articleId={articleId}
+            mode={mode}
+            hasPublishedVersion={hasPublishedVersion}
+            onModeChange={handleModeChange}
+          />
+        ) : null}
+        <Button variant='outline' size='xs' onClick={handleSwitchToDraft}>
+          Switch to draft
+        </Button>
+        {historicalVersion ? (
+          <Button variant='outline' size='xs' onClick={handleRestoreFromBanner}>
+            <Undo2 /> Restore as draft
+          </Button>
+        ) : null}
+      </>
+    )
+  }
 
   return (
     <div style={{ '--kb-top-offset': `${bannerHeight}px` } as CSSProperties}>
       <div ref={setBannerRef} className='sticky top-0 z-30'>
-        <Banner
-          variant='default'
-          icon={<Eye />}
-          title='Preview mode'
-          action={
-            liveHref ? (
-              <a
-                href={liveHref}
-                target='_blank'
-                rel='noopener'
-                className='inline-flex items-center gap-1 font-medium text-info hover:underline'>
-                View live site <ExternalLink className='size-3.5' />
-              </a>
-            ) : (
-              <span className='text-muted-foreground'>Not published yet</span>
-            )
-          }>
-          Viewing draft (includes unpublished changes)
+        <Banner variant={bannerVariant} icon={<Eye />} title={bannerTitle} action={bannerAction}>
+          {bannerBody}
         </Banner>
       </div>
       <KBLayout
@@ -129,14 +251,15 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath }: KBFullscreenP
               <div className='min-w-0 flex-1 @kb-lg:order-1'>
                 <KBArticleRenderer
                   doc={docJson}
-                  title={activeArticle?.title}
-                  emoji={activeArticle?.emoji}
-                  description={draftDescription ?? activeArticle?.description}
+                  title={previewTitle ?? activeArticle?.title}
+                  emoji={previewEmoji ?? activeArticle?.emoji}
+                  description={previewDescription ?? activeArticle?.description}
                   parent={parent}
+                  resolveAuxxHref={(id) => `/preview/kb/${knowledgeBaseId}/r/${id}`}
                   copyMenu={
                     <ArticleMarkdownCopy
                       doc={docJson}
-                      title={activeArticle?.title}
+                      title={previewTitle ?? activeArticle?.title}
                       markdownHref={markdownHref}
                     />
                   }

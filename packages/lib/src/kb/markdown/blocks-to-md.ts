@@ -8,6 +8,7 @@ import type {
   BlockAttrs,
   BlockJSON,
   CalloutVariant,
+  CardData,
   DocJSON,
   EmbedAspect,
   EmbedProvider,
@@ -103,9 +104,30 @@ function renderBlock(block: BlockJSON, ctx: RenderCtx): string[] {
       return renderCallout(attrs.calloutVariant, inline)
     case 'embed':
       return [renderEmbed(attrs)]
+    case 'cards':
+      return renderCards(attrs.cards)
     default:
       return inline.length > 0 ? [inline] : []
   }
+}
+
+function renderCards(cards: CardData[] | undefined): string[] {
+  if (!Array.isArray(cards) || cards.length === 0) return []
+  const out: string[] = [':::cards']
+  for (const card of cards) {
+    const parts: string[] = [`title="${escapeAttrValue(card.title ?? '')}"`]
+    if (card.href) parts.push(`href="${escapeAttrValue(card.href)}"`)
+    if (card.iconId) parts.push(`icon="${escapeAttrValue(card.iconId)}"`)
+    if (card.description) {
+      // Description is markdown-lite; we keep it on the attribute line so
+      // each card stays a single leaf directive (`::card{...}`). Newlines
+      // inside the description are preserved as `\n` literals.
+      parts.push(`description="${escapeAttrValue(card.description)}"`)
+    }
+    out.push(`::card{${parts.join(' ')}}`)
+  }
+  out.push(':::')
+  return out
 }
 
 function clampLevel(value: unknown, min: number, max: number): number {

@@ -75,6 +75,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                   <KBArticleEditor
                     initialContent={draftContentJson ?? emptyContent}
                     onChange={debouncedPersist}
+                    knowledgeBaseId={knowledgeBaseId}
                   />
                 )}
               </div>

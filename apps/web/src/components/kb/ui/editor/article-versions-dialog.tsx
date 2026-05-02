@@ -10,11 +10,14 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
+import { getFullSlugPath } from '@auxx/ui/components/kb'
+import { getKbPreviewHref } from '@auxx/ui/components/kb/utils'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { Check, Loader2, Pencil, Undo2, X } from 'lucide-react'
+import { Check, ExternalLink, Loader2, Pencil, Undo2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 
 interface ArticleVersionsDialogProps {
@@ -53,6 +56,12 @@ export function ArticleVersionsDialog({
     { id: articleId, knowledgeBaseId },
     { enabled: open }
   )
+
+  const articles = useArticleList(knowledgeBaseId)
+  const slugPath = (() => {
+    const a = articles.find((x) => x.id === articleId)
+    return a ? getFullSlugPath(a, articles) : ''
+  })()
 
   const renameMutation = api.kb.renameArticleVersion.useMutation()
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -194,6 +203,18 @@ export function ArticleVersionsDialog({
                         <span className='flex-1 text-xs text-muted-foreground'>
                           {v.editor?.name ?? 'System'}
                         </span>
+                        {v.versionNumber !== null && slugPath ? (
+                          <Button size='sm' variant='ghost' asChild>
+                            <a
+                              href={getKbPreviewHref(knowledgeBaseId, slugPath, {
+                                versionNumber: v.versionNumber,
+                              })}
+                              target='_blank'
+                              rel='noopener'>
+                              <ExternalLink /> View
+                            </a>
+                          </Button>
+                        ) : null}
                         {!isCurrent && (
                           <Button
                             size='sm'

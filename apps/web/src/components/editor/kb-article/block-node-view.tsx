@@ -9,7 +9,12 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Input } from '@auxx/ui/components/input'
-import type { CalloutVariant, EmbedAspect, EmbedProvider } from '@auxx/ui/components/kb/article'
+import type {
+  CalloutVariant,
+  CardData,
+  EmbedAspect,
+  EmbedProvider,
+} from '@auxx/ui/components/kb/article'
 import { CalloutIcon } from '@auxx/ui/components/kb/article'
 import { parseEmbedUrl } from '@auxx/ui/components/kb/utils'
 import type { NodeViewProps } from '@tiptap/react'
@@ -17,6 +22,7 @@ import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { Check, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import styles from './block-node-view.module.css'
+import { CardsBlockView } from './cards-block-view'
 
 const CALLOUT_VARIANTS: CalloutVariant[] = ['info', 'tip', 'warn', 'error', 'success']
 
@@ -113,6 +119,8 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
 
   const [embedDraft, setEmbedDraft] = useState('')
   const [embedError, setEmbedError] = useState<string | null>(null)
+  const cards = (node.attrs as { cards?: CardData[] }).cards ?? []
+  const isCards = blockType === 'cards'
 
   const pos = typeof getPos === 'function' ? getPos() : null
   const isListType =
@@ -156,7 +164,13 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
   const isEmpty = node.content.size === 0
   const isFirstBlock = pos === 0
   const showPlaceholder =
-    isEmpty && !isDivider && !isImage && !isEmbed && !isCallout && (isFocused || isFirstBlock)
+    isEmpty &&
+    !isDivider &&
+    !isImage &&
+    !isEmbed &&
+    !isCallout &&
+    !isCards &&
+    (isFocused || isFirstBlock)
   const placeholderText =
     blockType === 'heading' ? `Heading ${level ?? 1}` : "Press '/' for commands"
 
@@ -281,6 +295,19 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
                 aria-hidden='true'
                 contentEditable={false}
                 onClick={selectThisBlock}
+              />
+              <NodeViewContent className={`${styles.blockContent} ${styles.blockContentHidden}`} />
+            </>
+          ) : isCards ? (
+            <>
+              <CardsBlockView
+                cards={cards}
+                onChange={(next) => updateAttributes({ cards: next })}
+                onDeleteBlock={() => {
+                  if (typeof pos === 'number') {
+                    editor.chain().setNodeSelection(pos).deleteSelection().run()
+                  }
+                }}
               />
               <NodeViewContent className={`${styles.blockContent} ${styles.blockContentHidden}`} />
             </>

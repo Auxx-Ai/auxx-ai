@@ -67,3 +67,32 @@ export function deriveTitleFromUrl(url: string): string {
     return url
   }
 }
+
+// ─── auxx:// internal URI scheme ─────────────────────────────────────
+//
+// Internal references inside the product use opaque `auxx://...` URIs that
+// resolve to the current slug at render time. This keeps links stable when
+// the targeted entity is renamed.
+
+const AUXX_KB_ARTICLE_PREFIX = 'auxx://kb/article/'
+
+export interface AuxxArticleRef {
+  kind: 'kb-article'
+  articleId: string
+}
+
+export function buildAuxxArticleUrl(articleId: string): string {
+  return `${AUXX_KB_ARTICLE_PREFIX}${articleId}`
+}
+
+export function isAuxxUrl(url: string | null | undefined): boolean {
+  return typeof url === 'string' && url.startsWith('auxx://')
+}
+
+export function parseAuxxArticleUrl(url: string | null | undefined): AuxxArticleRef | null {
+  if (typeof url !== 'string') return null
+  if (!url.startsWith(AUXX_KB_ARTICLE_PREFIX)) return null
+  const articleId = url.slice(AUXX_KB_ARTICLE_PREFIX.length)
+  if (!articleId) return null
+  return { kind: 'kb-article', articleId }
+}

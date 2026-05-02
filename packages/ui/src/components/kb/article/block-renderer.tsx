@@ -3,20 +3,22 @@
 import { parseEmbedUrl } from '../utils/embed'
 import { walkInlineToText } from '../utils/inline-text'
 import { CalloutIcon } from './callout-icon'
+import { CardItem } from './card-item'
 import { ImageZoomable } from './image-zoomable'
 import { InlineRenderer } from './inline-renderer'
 import styles from './kb-article-renderer.module.css'
-import type { BlockJSON, CalloutVariant, DocJSON } from './types'
+import type { BlockJSON, CalloutVariant, CardData, DocJSON, ResolveAuxxHref } from './types'
 
 interface BlockRendererProps {
   node: BlockJSON
   idx: number
   doc: DocJSON
   headingIds?: Record<number, string>
+  resolveAuxxHref?: ResolveAuxxHref
 }
 
-export function BlockRenderer({ node, idx, doc, headingIds }: BlockRendererProps) {
-  const inline = <InlineRenderer content={node.content} />
+export function BlockRenderer({ node, idx, doc, headingIds, resolveAuxxHref }: BlockRendererProps) {
+  const inline = <InlineRenderer content={node.content} resolveAuxxHref={resolveAuxxHref} />
   const blockType = node.attrs?.blockType ?? 'text'
 
   switch (blockType) {
@@ -142,6 +144,18 @@ export function BlockRenderer({ node, idx, doc, headingIds }: BlockRendererProps
             title={`${parsed.provider} embed`}
             loading='lazy'
           />
+        </div>
+      )
+    }
+
+    case 'cards': {
+      const cards = (node.attrs?.cards ?? []) as CardData[]
+      if (cards.length === 0) return null
+      return (
+        <div className={styles.cardsGrid} role='list'>
+          {cards.map((c) => (
+            <CardItem key={c.id} card={c} resolveAuxxHref={resolveAuxxHref} />
+          ))}
         </div>
       )
     }

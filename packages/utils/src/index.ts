@@ -160,8 +160,12 @@ export {
 export * from './timezone'
 // URL utilities
 export {
+  type AuxxArticleRef,
+  buildAuxxArticleUrl,
   deriveTitleFromUrl,
   formatUrlForDisplay,
+  isAuxxUrl,
   isLikelyUrlInput,
   normalizeUrl,
+  parseAuxxArticleUrl,
 } from './url'
