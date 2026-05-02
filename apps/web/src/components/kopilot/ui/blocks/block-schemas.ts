@@ -32,6 +32,17 @@ export const taskSnapshotSchema = z.object({
   completedAt: z.string().nullable(),
 })
 
+export const draftSnapshotSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['reply', 'standalone']),
+  subject: z.string().nullable(),
+  recipientSummary: z.string().nullable(),
+  snippet: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  scheduledAt: z.string().nullable(),
+  threadId: z.string().nullable(),
+})
+
 // ─── Reference block payloads (LLM writes ids; server injects snapshots) ───
 
 export const entityCardSchema = z.object({
@@ -52,6 +63,11 @@ export const threadListSchema = z.object({
 export const taskListSchema = z.object({
   taskIds: z.array(z.string()),
   snapshot: z.record(z.string(), taskSnapshotSchema).optional(),
+})
+
+export const draftListSchema = z.object({
+  draftIds: z.array(z.string()),
+  snapshot: z.record(z.string(), draftSnapshotSchema).optional(),
 })
 
 export const entityDefinitionFieldSchema = z.object({
@@ -151,12 +167,14 @@ export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
   'plan-steps': planStepsSchema,
   table: tableBlockSchema,
   'task-list': taskListSchema,
+  'draft-list': draftListSchema,
 }
 
 /** Inferred types for block components */
 export type EntitySnapshotData = z.infer<typeof entitySnapshotSchema>
 export type ThreadSnapshotData = z.infer<typeof threadSnapshotSchema>
 export type TaskSnapshotData = z.infer<typeof taskSnapshotSchema>
+export type DraftSnapshotData = z.infer<typeof draftSnapshotSchema>
 export type ThreadListData = z.infer<typeof threadListSchema>
 export type EntityCardData = z.infer<typeof entityCardSchema>
 export type EntityListData = z.infer<typeof entityListSchema>
@@ -167,3 +185,4 @@ export type TableCellData = z.infer<typeof tableCellSchema>
 export type TableColumnData = z.infer<typeof tableColumnSchema>
 export type TableBlockData = z.infer<typeof tableBlockSchema>
 export type TaskListData = z.infer<typeof taskListSchema>
+export type DraftListData = z.infer<typeof draftListSchema>

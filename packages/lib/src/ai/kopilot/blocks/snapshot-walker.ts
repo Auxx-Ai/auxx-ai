@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/blocks/snapshot-walker.ts
 
 import type {
+  DraftSnapshot,
   EntitySnapshot,
   TaskSnapshot,
   ThreadSnapshot,
@@ -29,10 +30,10 @@ import type {
  */
 
 const WALKER_MAX_DEPTH = 3
-const CONTAINER_KEYS = ['items', 'threads', 'thread', 'tasks', 'results'] as const
+const CONTAINER_KEYS = ['items', 'threads', 'thread', 'tasks', 'drafts', 'results'] as const
 
 export function createEmptyTurnSnapshots(): TurnSnapshots {
-  return { records: {}, threads: {}, tasks: {}, docs: {} }
+  return { records: {}, threads: {}, tasks: {}, drafts: {}, docs: {} }
 }
 
 export function runSnapshotWalker(output: unknown, target: TurnSnapshots): void {
@@ -50,6 +51,7 @@ function walk(node: unknown, target: TurnSnapshots, depth: number): void {
   // Probes are disjoint by shape — entity needs `recordId`, thread/task explicitly
   // exclude `recordId`-bearing items in their detectors.
   if (isEntityLike(obj)) addEntitySnapshot(target, obj)
+  else if (isDraftLike(obj)) addDraftSnapshot(target, obj)
   else if (isThreadLike(obj)) addThreadSnapshot(target, obj)
   else if (isTaskLike(obj)) addTaskSnapshot(target, obj)
   for (const key of CONTAINER_KEYS) {
@@ -79,6 +81,13 @@ function isTaskLike(obj: Record<string, unknown>): boolean {
   if (!id) return false
   if ('recordId' in obj && typeof obj.recordId === 'string') return false
   return 'title' in obj && (typeof obj.title === 'string' || typeof obj.title === 'undefined')
+}
+
+function isDraftLike(obj: Record<string, unknown>): boolean {
+  const id = asString(obj.id)
+  if (!id) return false
+  if ('recordId' in obj && typeof obj.recordId === 'string') return false
+  return obj.kind === 'reply' || obj.kind === 'standalone'
 }
 
 // ===== Snapshot emitters =====
@@ -125,6 +134,23 @@ function addTaskSnapshot(target: TurnSnapshots, item: Record<string, unknown>): 
     completedAt: asDateString(item.completedAt),
   }
   target.tasks[taskId] = snap
+}
+
+function addDraftSnapshot(target: TurnSnapshots, item: Record<string, unknown>): void {
+  const id = asString(item.id)
+  if (!id) return
+  const kind = item.kind === 'reply' ? 'reply' : 'standalone'
+  const snap: DraftSnapshot = {
+    id,
+    kind,
+    subject: asString(item.subject) ?? null,
+    recipientSummary: asString(item.recipientSummary) ?? null,
+    snippet: asString(item.snippet) ?? null,
+    updatedAt: asDateString(item.updatedAt),
+    scheduledAt: asDateString(item.scheduledAt),
+    threadId: asString(item.threadId) ?? null,
+  }
+  target.drafts[id] = snap
 }
 
 // ===== Low-level type guards =====

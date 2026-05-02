@@ -30,6 +30,20 @@ const configs: Record<string, ToolPillConfig> = {
       error: () => ({ label: 'Failed to search threads' }),
     },
   },
+  list_drafts: {
+    icon: 'FileEdit',
+    labels: {
+      running: (args) => ({
+        label: 'Listing drafts',
+        secondary: args.query ? `"${args.query}"` : undefined,
+      }),
+      completed: (_args, summary) => ({
+        label: 'Drafts listed',
+        secondary: summary,
+      }),
+      error: () => ({ label: 'Failed to list drafts' }),
+    },
+  },
   get_thread_detail: {
     icon: 'MailOpen',
     labels: {

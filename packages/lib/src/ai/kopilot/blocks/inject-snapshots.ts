@@ -103,6 +103,17 @@ function injectForType(
       }
       return Object.keys(snap).length > 0 ? { ...data, snapshot: snap } : data
     }
+    case 'draft-list': {
+      const ids = Array.isArray(data.draftIds)
+        ? (data.draftIds as unknown[]).filter((id): id is string => typeof id === 'string')
+        : []
+      const snap: Record<string, unknown> = {}
+      for (const id of ids) {
+        const entry = snapshots.drafts[id]
+        if (entry) snap[id] = entry
+      }
+      return Object.keys(snap).length > 0 ? { ...data, snapshot: snap } : data
+    }
     default:
       return null
   }

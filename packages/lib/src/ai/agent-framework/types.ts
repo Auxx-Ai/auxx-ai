@@ -225,6 +225,20 @@ export interface TaskSnapshot {
   completedAt: string | null
 }
 
+/** Minimal draft snapshot written by the list_drafts tool */
+export interface DraftSnapshot {
+  /** RecordId — `thread:<id>` for in-progress replies, `draft:<id>` for standalones */
+  id: string
+  kind: 'reply' | 'standalone'
+  subject: string | null
+  recipientSummary: string | null
+  snippet: string | null
+  updatedAt: string | null
+  scheduledAt: string | null
+  /** Populated when kind === 'reply'; the underlying thread instance id */
+  threadId: string | null
+}
+
 /** Minimal knowledge-base / docs snapshot written by search_docs / search_knowledge */
 export interface DocSnapshot {
   /** URL-friendly id used in `auxx://doc/<slug>` */
@@ -249,6 +263,7 @@ export interface TurnSnapshots {
   records: Record<string, EntitySnapshot>
   threads: Record<string, ThreadSnapshot>
   tasks: Record<string, TaskSnapshot>
+  drafts: Record<string, DraftSnapshot>
   docs: Record<string, DocSnapshot>
 }
 

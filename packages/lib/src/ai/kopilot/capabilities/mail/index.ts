@@ -3,6 +3,7 @@
 import type { GetToolDeps, PageCapability } from '../types'
 import { createFindThreadsTool } from './tools/find-threads'
 import { createGetThreadDetailTool } from './tools/get-thread-detail'
+import { createListDraftsTool } from './tools/list-drafts'
 import { createReplyToThreadTool } from './tools/reply-to-thread'
 import { createStartNewConversationTool } from './tools/start-new-conversation'
 import { createUpdateThreadTool } from './tools/update-thread'
@@ -19,6 +20,7 @@ export function createMailCapabilities(getDeps: GetToolDeps): PageCapability {
     tools: [
       createFindThreadsTool(getDeps),
       createGetThreadDetailTool(getDeps),
+      createListDraftsTool(getDeps),
       createReplyToThreadTool(getDeps),
       createStartNewConversationTool(getDeps),
       createUpdateThreadTool(getDeps),
@@ -29,6 +31,7 @@ export function createMailCapabilities(getDeps: GetToolDeps): PageCapability {
       'Search threads and read messages across email and messaging channels',
       'Draft or send replies on existing threads',
       'Start brand-new conversations on integrations that support new outbound',
+      'List unsent drafts — in-progress replies and standalone compositions',
       'Manage thread status, tags, and assignment',
     ],
   }

@@ -57,6 +57,13 @@ verbatim from tool results — never construct them.
 {"taskIds": ["<taskId>", "<taskId>"]}
 \\\`\\\`\\\`
 
+#### \`auxx:draft-list\`
+\\\`\\\`\\\`auxx:draft-list
+{"draftIds": ["thread:<threadId>", "draft:<draftId>"]}
+\\\`\\\`\\\`
+- Source IDs from \`list_drafts\` only — copy each \`id\` field verbatim, including the \`thread:\` or \`draft:\` prefix.
+- Reply rows (\`thread:...\`) click through to the thread; standalone rows (\`draft:...\`) open the floating composer.
+
 #### \`auxx:table\`
 Schema: \`{ columns: [{label, align?}], rows: [[{text, recordId?, type?, actorId?, tags?, href?}]] }\`.
 \\\`\\\`\\\`auxx:table
@@ -113,7 +120,7 @@ never construct.
 
 **When to use inline links vs fences:**
 - Mentioning a single record/thread/task **by name in running prose** → inline link.
-- Listing 2+ records/threads/tasks → use a fence (\`auxx:entity-list\`, \`auxx:thread-list\`, \`auxx:task-list\`).
+- Listing 2+ records/threads/tasks/drafts → use a fence (\`auxx:entity-list\`, \`auxx:thread-list\`, \`auxx:task-list\`, \`auxx:draft-list\`).
 - Single record where the user wants a full preview card → \`auxx:entity-card\` fence.
 
 Inline links read naturally:
