@@ -18,6 +18,7 @@ const TRANSFORMERS: Record<string, Transformer> = {
   'entity-card': transformEntityCard,
   'thread-list': transformThreadList,
   'task-list': transformTaskList,
+  'draft-list': transformDraftList,
 }
 
 export function transformAssistantContentForLLM(content: string): string {
@@ -97,4 +98,26 @@ function transformTaskList(data: Record<string, unknown>): string | null {
     return `  ${i + 1}. ${left}${middle} (taskId: ${id})`
   })
   return `[Showed task-list to user (${taskIds.length} task${taskIds.length === 1 ? '' : 's'}):\n${lines.join('\n')}]`
+}
+
+function transformDraftList(data: Record<string, unknown>): string | null {
+  const draftIds = Array.isArray(data.draftIds)
+    ? (data.draftIds as unknown[]).filter((id): id is string => typeof id === 'string')
+    : []
+  if (draftIds.length === 0) return null
+  const snapshot = (data.snapshot as Record<string, unknown> | undefined) ?? {}
+  const lines = draftIds.map((id, i) => {
+    const entry = snapshot[id] as Record<string, unknown> | undefined
+    const subject = typeof entry?.subject === 'string' ? entry.subject : null
+    const recipientSummary =
+      typeof entry?.recipientSummary === 'string' ? entry.recipientSummary : null
+    const kind = entry?.kind === 'reply' ? 'reply' : 'standalone'
+    const scheduledAt = typeof entry?.scheduledAt === 'string' ? entry.scheduledAt : null
+    const left = subject ? `"${subject}"` : '(no subject)'
+    const middleParts: string[] = [kind]
+    if (recipientSummary) middleParts.push(`to ${recipientSummary}`)
+    if (scheduledAt) middleParts.push(`scheduled ${scheduledAt}`)
+    return `  ${i + 1}. ${left} — ${middleParts.join(', ')} (id: ${id})`
+  })
+  return `[Showed draft-list to user (${draftIds.length} draft${draftIds.length === 1 ? '' : 's'}):\n${lines.join('\n')}]`
 }

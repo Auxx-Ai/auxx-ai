@@ -100,7 +100,7 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
       }
     },
     description:
-      'Search and filter email threads by status, assignee, tags, sender, or free-text query. Returns a list of matching thread summaries.',
+      'Search and filter email threads by status, assignee, tags, sender, or free-text query. Returns a list of matching thread summaries. Returns sent threads only — for unsent drafts (saved compositions waiting to send), use list_drafts.',
     parameters: {
       type: 'object',
       properties: {

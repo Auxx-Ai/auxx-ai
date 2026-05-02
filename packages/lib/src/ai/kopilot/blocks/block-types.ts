@@ -18,6 +18,7 @@ export const REFERENCE_BLOCK_TYPES = [
   'entity-list',
   'thread-list',
   'task-list',
+  'draft-list',
   'table',
 ] as const
 export type ReferenceBlockType = (typeof REFERENCE_BLOCK_TYPES)[number]
@@ -31,5 +32,6 @@ export const SNAPSHOT_INJECTABLE_TYPES = [
   'entity-list',
   'thread-list',
   'task-list',
+  'draft-list',
 ] as const
 export type SnapshotInjectableType = (typeof SNAPSHOT_INJECTABLE_TYPES)[number]

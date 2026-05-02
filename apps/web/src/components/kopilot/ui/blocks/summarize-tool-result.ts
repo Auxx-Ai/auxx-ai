@@ -24,6 +24,15 @@ function summaryFromDigest(toolName: string, digest: unknown): ToolSummary | nul
       }
       return { summary: `${count} threads found` }
     }
+    case 'list_drafts': {
+      const count = typeof d.count === 'number' ? d.count : 0
+      const subject = d.sample?.[0]?.subject
+      if (count === 0) return { summary: 'No drafts found' }
+      if (count === 1 && typeof subject === 'string') {
+        return { summary: `Draft found: "${truncate(subject, 50)}"` }
+      }
+      return { summary: `${count} drafts found` }
+    }
     case 'get_thread_detail': {
       const subject = typeof d.subject === 'string' ? d.subject : undefined
       const msgCount = typeof d.messageCount === 'number' ? d.messageCount : undefined
@@ -127,6 +136,19 @@ export function summarizeToolResult(
             : count === 1
               ? `Thread found: "${truncate(subject, 50)}"`
               : `${count} threads found`,
+      }
+    }
+
+    case 'list_drafts': {
+      const count = data.count ?? data.drafts?.length ?? 0
+      const subject = data.drafts?.[0]?.subject
+      return {
+        summary:
+          count === 0
+            ? 'No drafts found'
+            : count === 1
+              ? `Draft found: "${truncate(subject, 50)}"`
+              : `${count} drafts found`,
       }
     }
 

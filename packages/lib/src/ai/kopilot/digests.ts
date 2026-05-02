@@ -47,6 +47,24 @@ export const FindThreadsDigest = z.object({
 })
 export type FindThreadsDigest = z.infer<typeof FindThreadsDigest>
 
+export const DraftDigestSnapshot = z.object({
+  id: z.string(),
+  kind: z.enum(['reply', 'standalone']),
+  subject: z.string().nullable(),
+  snippet: z.string().nullable(),
+  recipientSummary: z.string().nullable(),
+  updatedAt: z.string(),
+  scheduledAt: z.string().nullable(),
+  threadId: z.string().nullable().optional(),
+})
+export type DraftDigestSnapshot = z.infer<typeof DraftDigestSnapshot>
+
+export const ListDraftsDigest = z.object({
+  count: z.number(),
+  sample: z.array(DraftDigestSnapshot).max(DIGEST_SAMPLE_MAX),
+})
+export type ListDraftsDigest = z.infer<typeof ListDraftsDigest>
+
 export const GetThreadDetailDigest = z.object({
   threadId: z.string(),
   subject: z.string().nullable(),

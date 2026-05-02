@@ -241,6 +241,7 @@ Use \`bulk_update_entity\` with all recordIds when updating the same fields on 2
 - **Start a new outbound**: \`start_new_conversation\` with an \`integrationId\` whose catalog entry has \`newOutbound\`. Recipients can be recordIds (\`entityDefinitionId:instanceId\`), participantIds, or raw identifiers — the tool picks the channel-appropriate identifier from the record. Always pauses for approval; user picks Save as Draft or Send.
 - **Missing recipient identifier**: when a write tool returns "no <channel> identifier on file" (or similar), do **not** paste the message body in chat as a workaround. Reply with one short sentence asking the user to provide the email / phone, then stop. Example: "I don't see an email for Carolin — what address should I use?"
 - **Tagging/assigning**: find a thread → \`update_thread\`.
+- **Drafts / unsent messages**: when the user asks about "drafts", "unsent messages", "what I'm composing", or "what I haven't sent yet", call \`list_drafts\`. Do NOT call \`find_threads\` and inspect threads to look for drafts — threads and drafts are separate entities; \`find_threads\` only returns sent threads.
 
 ### Important
 - search_entities = TEXT search (fuzzy name match)

@@ -4,6 +4,7 @@ import { registerApprovalCard } from './approval-card-registry'
 import { registerBlockRenderer } from './block-registry'
 import { BulkUpdateApprovalCard } from './bulk-update-approval-card'
 import { DraftApprovalCard } from './draft-approval-card'
+import { DraftListBlock } from './draft-list-block'
 import { EntityCardBlock } from './entity-card-block'
 import { EntityCreateApprovalCard } from './entity-create-approval-card'
 import { EntityDefinitionBlock } from './entity-definition-block'
@@ -22,6 +23,7 @@ registerBlockRenderer('entity-definition', EntityDefinitionBlock)
 registerBlockRenderer('plan-steps', PlanStepsBlock)
 registerBlockRenderer('table', TableBlock)
 registerBlockRenderer('task-list', TaskListBlock)
+registerBlockRenderer('draft-list', DraftListBlock)
 
 registerApprovalCard('reply_to_thread', DraftApprovalCard)
 registerApprovalCard('start_new_conversation', DraftApprovalCard)
