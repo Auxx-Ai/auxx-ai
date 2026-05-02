@@ -16,6 +16,11 @@ interface KBTabSelectProps<T extends KBSidebarArticle> {
   activeTabId: string | null
   /** `tabId → href` map for the first navigable child of each tab. */
   tabHrefs: Record<string, string>
+  /**
+   * When set, the dropdown calls this with the tab id instead of navigating.
+   * The admin preview uses this to swap the active article in place.
+   */
+  onTabSelect?: (tabId: string) => void
   /** Called after navigation kicks off — used to close the mobile drawer. */
   onNavigate?: () => void
 }
@@ -29,12 +34,18 @@ export function KBTabSelect<T extends KBSidebarArticle>({
   tabs,
   activeTabId,
   tabHrefs,
+  onTabSelect,
   onNavigate,
 }: KBTabSelectProps<T>) {
   const router = useRouter()
   if (tabs.length < 2) return null
 
   const handleChange = (tabId: string) => {
+    if (onTabSelect) {
+      onTabSelect(tabId)
+      onNavigate?.()
+      return
+    }
     const href = tabHrefs[tabId]
     if (!href) return
     router.push(href)

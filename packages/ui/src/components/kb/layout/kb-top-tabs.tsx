@@ -11,6 +11,12 @@ interface KBTopTabsProps<T extends KBSidebarArticle> {
   activeTabId: string | null
   /** `tabId → href` map for the first navigable child of each tab. */
   tabHrefs: Record<string, string>
+  /**
+   * When set, renders each tab as a button that calls this with the tab id
+   * instead of navigating. The admin preview uses this to swap articles in
+   * place; the public site leaves it undefined so `<Link>` navigation runs.
+   */
+  onTabSelect?: (tabId: string) => void
 }
 
 /**
@@ -21,8 +27,14 @@ export function KBTopTabs<T extends KBSidebarArticle>({
   tabs,
   activeTabId,
   tabHrefs,
+  onTabSelect,
 }: KBTopTabsProps<T>) {
   if (tabs.length < 2) return null
+  const tabClass = cn(
+    'inline-flex shrink-0 items-center gap-1.5 border-b-2 border-transparent bg-transparent px-3 py-2.5 text-sm text-[var(--kb-fg)]/85 no-underline transition-colors',
+    'cursor-pointer hover:text-[var(--kb-primary)]',
+    'data-[active=true]:border-[var(--kb-primary)] data-[active=true]:font-medium data-[active=true]:text-[var(--kb-primary)]'
+  )
   return (
     <div
       className={cn(
@@ -34,17 +46,26 @@ export function KBTopTabs<T extends KBSidebarArticle>({
         {tabs.map((tab) => {
           const href = tabHrefs[tab.id] ?? '#'
           const active = activeTabId === tab.id
+          if (onTabSelect) {
+            return (
+              <button
+                key={tab.id}
+                type='button'
+                data-active={active}
+                onClick={() => onTabSelect(tab.id)}
+                className={tabClass}>
+                {tab.emoji ? <span aria-hidden>{tab.emoji}</span> : null}
+                <span>{tab.title}</span>
+              </button>
+            )
+          }
           return (
             <Link
               key={tab.id}
               href={href}
               prefetch={false}
               data-active={active}
-              className={cn(
-                'inline-flex shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-sm text-[var(--kb-fg)]/85 no-underline transition-colors',
-                'hover:text-[var(--kb-primary)]',
-                'data-[active=true]:border-[var(--kb-primary)] data-[active=true]:font-medium data-[active=true]:text-[var(--kb-primary)]'
-              )}>
+              className={tabClass}>
               {tab.emoji ? <span aria-hidden>{tab.emoji}</span> : null}
               <span>{tab.title}</span>
             </Link>
