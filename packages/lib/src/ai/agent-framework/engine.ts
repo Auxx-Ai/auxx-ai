@@ -4,16 +4,17 @@ import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
 import { manageContext } from './context-manager'
 import { agentQueryLoop } from './query-loop'
-import type {
-  AgentDefinition,
-  AgentEngineConfig,
-  AgentEvent,
-  AgentState,
-  ResumeOptions,
-  Route,
-  SessionMessage,
-  TurnBudget,
-  TurnUsageSummary,
+import {
+  type AgentDefinition,
+  type AgentEngineConfig,
+  type AgentEvent,
+  type AgentState,
+  createEmptyTurnSnapshots,
+  type ResumeOptions,
+  type Route,
+  type SessionMessage,
+  type TurnBudget,
+  type TurnUsageSummary,
 } from './types'
 import { buildToolDigest } from './utils'
 
@@ -90,7 +91,7 @@ export class AgentEngine {
       waitingForApproval: false,
       pendingToolCall: undefined,
       approvalsThisTurn: 0,
-      turnSnapshots: { records: {}, threads: {}, tasks: {} },
+      turnSnapshots: createEmptyTurnSnapshots(),
       capturedActions: [],
     }
 

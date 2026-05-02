@@ -267,6 +267,10 @@ export interface TurnSnapshots {
   docs: Record<string, DocSnapshot>
 }
 
+export function createEmptyTurnSnapshots(): TurnSnapshots {
+  return { records: {}, threads: {}, tasks: {}, drafts: {}, docs: {} }
+}
+
 /**
  * A snapshot value referenced by an inline `auxx://` link in an assistant
  * message. Persisted on the assistant `SessionMessage` so reload renders the
