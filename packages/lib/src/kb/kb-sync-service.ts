@@ -62,6 +62,13 @@ export class KBSyncService {
       return
     }
 
+    // Link articles have no body to embed — they're external pointers, not
+    // indexable content. Skip the dataset write.
+    if (article.articleKind === 'link') {
+      logger.info('syncArticle: link kind has no body, skipping', { articleId })
+      return
+    }
+
     const revision = article.publishedRevision ?? article.draftRevision
     if (!revision) {
       logger.warn('syncArticle: article has no revision', { articleId })

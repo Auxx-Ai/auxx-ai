@@ -1,0 +1,1 @@
+ALTER TYPE "public"."articleKind" ADD VALUE 'link';

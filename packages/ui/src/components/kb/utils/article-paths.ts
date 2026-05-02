@@ -4,7 +4,7 @@ import { type ArticleTreeFields, buildArticleTree } from './article-tree'
 
 export interface ArticleSlugFields extends ArticleTreeFields {
   slug: string
-  articleKind?: 'page' | 'category' | 'header' | 'tab'
+  articleKind?: 'page' | 'category' | 'header' | 'tab' | 'link'
 }
 
 /**
@@ -13,6 +13,10 @@ export interface ArticleSlugFields extends ArticleTreeFields {
  */
 export function getFullSlugPath<T extends ArticleSlugFields>(article: T, allArticles: T[]): string {
   if (!article) return ''
+  // Defensive: a link's slug stores an external URL — it must never compose
+  // into an internal route. Links are leaves, so this only triggers when
+  // the link itself is the target.
+  if (article.articleKind === 'link') return ''
   const slugs: string[] = [article.slug]
   let currentId = article.parentId
   while (currentId) {
@@ -50,6 +54,9 @@ export function findFirstNavigableUnder<T extends ArticleSlugFields & { isPublis
       continue
     }
     if (child.articleKind === 'tab') continue
+    // Link kinds aren't navigable to as an internal route — they open
+    // external. Skip them when picking the first navigable descendant.
+    if (child.articleKind === 'link') continue
     return child
   }
   return undefined

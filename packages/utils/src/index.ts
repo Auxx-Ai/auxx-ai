@@ -158,3 +158,10 @@ export {
 } from './task-date'
 // Timezone utilities (re-export everything)
 export * from './timezone'
+// URL utilities
+export {
+  deriveTitleFromUrl,
+  formatUrlForDisplay,
+  isLikelyUrlInput,
+  normalizeUrl,
+} from './url'

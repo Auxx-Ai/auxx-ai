@@ -4,6 +4,7 @@
 import { AnimatedCollapsibleContent, CollapsibleChevron } from '@auxx/ui/components/collapsible'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
+import { ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import {
   type ArticleSlugFields,
@@ -136,6 +137,24 @@ function TreeBranch<T extends KBSidebarArticle>({
       ) : null}
     </>
   )
+
+  // Link kind: render as an external anchor. The "slug" carries the URL.
+  if (node.articleKind === 'link') {
+    return (
+      <li className={cn(listStyle === 'line' ? 'my-0' : 'my-0.5')}>
+        <a
+          href={node.slug || '#'}
+          target='_blank'
+          rel='noopener noreferrer'
+          className={cn(itemClass(listStyle), 'group/link')}
+          style={lineIndent}>
+          {node.emoji ? <EntityIcon iconId={node.emoji} variant='bare' size='sm' /> : null}
+          <span className='min-w-0 truncate'>{node.title}</span>
+          <ExternalLink className='ml-auto size-3.5 opacity-0 transition-opacity group-hover/link:opacity-60' />
+        </a>
+      </li>
+    )
+  }
 
   // Headers are uppercase section labels rendered flat at the same depth as
   // their children. The label itself is a link to the header's slug path —
