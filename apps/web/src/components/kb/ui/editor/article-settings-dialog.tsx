@@ -23,6 +23,7 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { generateId, normalizeUrl } from '@auxx/utils'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
@@ -55,9 +56,13 @@ export function ArticleSettingsDialog({
   article,
   knowledgeBaseId,
 }: ArticleSettingsDialogProps) {
+  const isLink = article.articleKind === 'link'
   const [emoji, setEmoji] = useState<string | null>(article.emoji ?? null)
   const [title, setTitle] = useState(article.title)
-  const [slug, setSlug] = useState(article.slug)
+  // For link kind, slug holds a URL — but the empty-URL placeholder
+  // (`link-<id>`) is server-bookkeeping, not user-facing. Show it as empty
+  // in the field; saving an empty value just skips the slug write.
+  const [slug, setSlug] = useState(isLink && article.slug.startsWith('link-') ? '' : article.slug)
   const [isSaving, setIsSaving] = useState(false)
   const [isMoveOpen, setIsMoveOpen] = useState(false)
   const articles = useArticleList(knowledgeBaseId)
@@ -81,9 +86,9 @@ export function ArticleSettingsDialog({
     if (open) {
       setEmoji(article.emoji ?? null)
       setTitle(article.title)
-      setSlug(article.slug)
+      setSlug(isLink && article.slug.startsWith('link-') ? '' : article.slug)
     }
-  }, [open, article])
+  }, [open, article, isLink])
 
   const isValid = title.trim().length > 0
 
@@ -105,12 +110,29 @@ export function ArticleSettingsDialog({
     e.preventDefault()
     if (!isValid) return
     setIsSaving(true)
-    const cleanSlug = normalizeSlug(slug)
+    let slugForSave: string | undefined
+    if (isLink) {
+      const trimmed = slug.trim()
+      if (trimmed) {
+        // Permissive: prepend https:// for bare hostnames, then validate
+        // via `new URL()`. Falls back to the raw input if it can't be
+        // normalised (lets the user save weirder shapes if they insist).
+        slugForSave = normalizeUrl(trimmed) ?? trimmed
+      } else if (!article.slug.startsWith('link-')) {
+        // User cleared a previously-set URL — reset to a fresh placeholder
+        // so Open link disappears from the dropdown.
+        slugForSave = `link-${generateId()}`
+      }
+      // else: still empty + still placeholder → skip the slug write.
+    } else {
+      const cleanSlug = normalizeSlug(slug)
+      slugForSave = cleanSlug || undefined
+    }
     try {
       await renameArticle(article.id, {
         title: title.trim(),
         emoji,
-        slug: cleanSlug || undefined,
+        slug: slugForSave,
       })
       onOpenChange(false)
     } catch {
@@ -172,21 +194,30 @@ export function ArticleSettingsDialog({
                 </Field>
               </div>
               <Field>
-                <FieldLabel>Slug</FieldLabel>
+                <FieldLabel>{isLink ? 'URL' : 'Slug'}</FieldLabel>
                 <InputGroup>
                   <InputGroupAddon align='inline-start'>
-                    <InputGroupText>/</InputGroupText>
+                    <InputGroupText>{isLink ? 'Url' : '/'}</InputGroupText>
                   </InputGroupAddon>
                   <InputGroupInput
-                    placeholder='article-slug'
+                    placeholder={isLink ? 'https://example.com' : 'article-slug'}
                     value={slug}
-                    onChange={(e) => setSlug(sanitizeSlugInput(e.target.value))}
-                    onBlur={() => setSlug((s) => normalizeSlug(s))}
+                    onChange={(e) =>
+                      setSlug(isLink ? e.target.value : sanitizeSlugInput(e.target.value))
+                    }
+                    onBlur={() => {
+                      if (isLink) setSlug((s) => s.trim())
+                      else setSlug((s) => normalizeSlug(s))
+                    }}
                     disabled={isSaving}
                     autoComplete='off'
                   />
                 </InputGroup>
-                <FieldDescription>The URL-friendly identifier for this article.</FieldDescription>
+                <FieldDescription>
+                  {isLink
+                    ? 'Where this link points. Leave empty to fill in later.'
+                    : 'The URL-friendly identifier for this article.'}
+                </FieldDescription>
               </Field>
               {article.articleKind !== 'tab' && (
                 <Field>

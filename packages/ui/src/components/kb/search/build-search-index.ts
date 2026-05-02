@@ -21,7 +21,7 @@ export interface KBSearchInputArticle {
   description?: string | null
   contentJson: DocJSON | null | undefined
   isPublished: boolean
-  articleKind?: 'page' | 'category' | 'header' | 'tab'
+  articleKind?: 'page' | 'category' | 'header' | 'tab' | 'link'
   parentId: string | null
 }
 
@@ -35,6 +35,10 @@ export function buildKBSearchIndex(
   for (const article of articles) {
     if (!article.isPublished) continue
     if (article.articleKind === 'tab' || article.articleKind === 'header') continue
+    // Links are external pointers, not internal articles — skip them. The
+    // current search UI dispatches results via internal path navigation,
+    // which doesn't fit a "go open this URL in a new tab" result.
+    if (article.articleKind === 'link') continue
     out.push({
       id: article.id,
       slug: article.slug,

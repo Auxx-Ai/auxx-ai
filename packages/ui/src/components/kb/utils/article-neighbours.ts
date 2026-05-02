@@ -7,7 +7,7 @@ import {
 } from './article-tree'
 
 interface ArticleNeighbourFields extends ArticleTreeFields {
-  articleKind?: 'page' | 'category' | 'header' | 'tab'
+  articleKind?: 'page' | 'category' | 'header' | 'tab' | 'link'
 }
 
 /**

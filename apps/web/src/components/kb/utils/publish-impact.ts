@@ -54,7 +54,8 @@ export function countPublishedDescendants(id: string, articles: ArticleMeta[]): 
       if (
         a.isPublished &&
         a.articleKind !== ArticleKind.tab &&
-        a.articleKind !== ArticleKind.header
+        a.articleKind !== ArticleKind.header &&
+        a.articleKind !== ArticleKind.link
       ) {
         count++
       }

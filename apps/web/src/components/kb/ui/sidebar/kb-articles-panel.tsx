@@ -14,7 +14,7 @@ import { findFirstNavigableUnder, getFullSlugPath } from '@auxx/ui/components/kb
 import { cn } from '@auxx/ui/lib/utils'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
-import { Archive, FileText, FolderClosed, Heading, Loader2, Plus } from 'lucide-react'
+import { Archive, FileText, FolderClosed, Heading, Link2, Loader2, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useActiveArticle } from '../../hooks/use-active-article'
@@ -285,14 +285,22 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
                 disabled={isCreating}
                 className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
                 Section Header
-              </button>{' '}
-              or add a{' '}
+              </button>
+              , a{' '}
               <button
                 type='button'
                 onClick={() => void handleCreateInTab(ArticleKind.page)}
                 disabled={isCreating}
                 className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
                 Page
+              </button>
+              , or a{' '}
+              <button
+                type='button'
+                onClick={() => void handleCreateInTab(ArticleKind.link)}
+                disabled={isCreating}
+                className='font-medium text-foreground underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'>
+                Link
               </button>
               .
             </div>
@@ -338,6 +346,9 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.category)}>
                 <FolderClosed /> Category
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.link)}>
+                <Link2 /> Link
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.header)}>
                 <Heading /> Section header

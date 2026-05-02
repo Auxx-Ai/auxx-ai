@@ -80,7 +80,7 @@ const articleStructureFieldsSchema = z.object({
   parentId: z.string().nullish(),
 })
 
-const articleKindSchema = z.enum(['page', 'category', 'header', 'tab'])
+const articleKindSchema = z.enum(['page', 'category', 'header', 'tab', 'link'])
 
 const articleCreateSchema = z.object({
   title: z.string().optional(),
@@ -434,6 +434,12 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       const article = await getKBService(ctx).getArticleById(input.id, input.knowledgeBaseId)
+      if (article.articleKind === 'link') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Link articles have no body to export.',
+        })
+      }
       const fallback = (article.slug || article.title || 'article').replace(/[^a-z0-9-_]+/gi, '-')
       const filename = `${fallback}.md`
       const markdown = articleToMarkdown({

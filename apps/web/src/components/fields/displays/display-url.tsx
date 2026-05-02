@@ -3,47 +3,12 @@
 // apps/web/src/components/fields/displays/display-url.tsx
 
 import { Badge } from '@auxx/ui/components/badge'
+import { formatUrlForDisplay, normalizeUrl } from '@auxx/utils'
 import { ExternalLink } from 'lucide-react'
 import { useMemo } from 'react'
 import { useFieldContext } from './display-field'
 import DisplayWrapper from './display-wrapper'
 import { FieldOptionButton } from './field-option-button'
-
-/**
- * normalizeUrl function
- * Ensures that the provided URL includes a protocol and is syntactically valid
- */
-function normalizeUrl(url: string): string | null {
-  const trimmed = url.trim()
-  if (!trimmed) return null
-
-  const hasProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed)
-  const candidate = hasProtocol ? trimmed : `https://${trimmed}`
-
-  try {
-    const parsed = new URL(candidate)
-    return parsed.toString()
-  } catch {
-    return null
-  }
-}
-
-/**
- * formatUrlForDisplay function
- * Produces a human-friendly URL label without protocol noise
- */
-function formatUrlForDisplay(url: string): string {
-  try {
-    const parsed = new URL(url)
-    const pathname = parsed.pathname === '/' ? '' : parsed.pathname
-    const search = parsed.search
-    const hash = parsed.hash
-    const host = parsed.hostname.replace(/^www\./, '')
-    return `${host}${pathname}${search}${hash}` || host
-  } catch {
-    return url
-  }
-}
 
 /**
  * DisplayUrl component

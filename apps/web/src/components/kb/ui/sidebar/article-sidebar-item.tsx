@@ -28,6 +28,7 @@ import {
   Cog,
   Copy,
   Download,
+  ExternalLink,
   Eye,
   EyeOff,
   Files,
@@ -35,6 +36,7 @@ import {
   FolderClosed,
   FolderOpen,
   GripVertical,
+  Link2,
   MoreVertical,
   Pencil,
   Send,
@@ -70,10 +72,17 @@ export function ArticleSidebarItem({
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const isHeader = article.articleKind === 'header'
+  const isLink = article.articleKind === 'link'
   const isCategory =
     !isHeader &&
+    !isLink &&
     (article.articleKind === 'category' || (article.children && article.children.length > 0))
   const isArchived = article.status === 'ARCHIVED'
+  // For link kind, slug stores the URL. Only treat it as openable if it
+  // carries a real protocol — the empty-URL placeholder slug `link-<id>`
+  // doesn't and shouldn't open anything.
+  const linkUrl =
+    isLink && article.slug && /^[a-z][a-z0-9+.-]*:/i.test(article.slug) ? article.slug : null
 
   const articles = useArticleList(knowledgeBaseId)
   const { deleteArticle, archiveArticle, unarchiveArticle, duplicateArticle, renameArticle } =
@@ -192,6 +201,8 @@ export function ArticleSidebarItem({
       size='sm'
       className='text-muted-foreground'
     />
+  ) : isLink ? (
+    <Link2 className='size-4 shrink-0 text-muted-foreground' />
   ) : (
     <FileText className='size-4 shrink-0 text-muted-foreground' />
   )
@@ -229,20 +240,35 @@ export function ArticleSidebarItem({
 
   // Shared dropdown menu — same items for headers and pages, with the three
   // renderer-bound items (Preview / Copy as MD / Download .md) gated to
-  // non-headers since headers have no body.
+  // non-headers since headers have no body. Link kind drops Add-sub-item,
+  // Preview, and the markdown items, and surfaces "Open link" at the top.
   const dropdownMenuContent = (
     <DropdownMenuContent align='end' className='w-56' onCloseAutoFocus={(e) => e.preventDefault()}>
+      {isLink && linkUrl && (
+        <>
+          <DropdownMenuGroup>
+            <DropdownMenuItem asChild>
+              <a href={linkUrl} target='_blank' rel='noopener noreferrer'>
+                <ExternalLink /> Open link
+              </a>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+        </>
+      )}
       <DropdownMenuGroup>
         <DropdownMenuItem onSelect={() => setIsRenaming(true)}>
           <Pencil /> Rename
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleAddSubItem}>
-          <Files /> Add sub-item
-        </DropdownMenuItem>
+        {!isLink && (
+          <DropdownMenuItem onClick={handleAddSubItem}>
+            <Files /> Add sub-item
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
           <Cog /> Page settings
         </DropdownMenuItem>
-        {!isHeader && (
+        {!isHeader && !isLink && (
           <DropdownMenuItem asChild>
             <a href={previewHref} target='_blank' rel='noopener'>
               <Eye /> Preview
@@ -253,7 +279,7 @@ export function ArticleSidebarItem({
           <BookCopy /> Duplicate
         </DropdownMenuItem>
       </DropdownMenuGroup>
-      {!isHeader && (
+      {!isHeader && !isLink && (
         <>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
@@ -376,7 +402,11 @@ export function ArticleSidebarItem({
 
           <div
             onClick={(e) => {
-              if (isHeader) return
+              if (isLink && (e.metaKey || e.ctrlKey)) {
+                if (linkUrl) window.open(linkUrl, '_blank', 'noopener,noreferrer')
+                return
+              }
+              if (isHeader || isLink) return
               if (isRenaming) return
               if (isDragging) {
                 e.preventDefault()
@@ -457,6 +487,12 @@ export function ArticleSidebarItem({
                     )}
                   />
                 </button>
+              )}
+              {isLink && (
+                <ExternalLink
+                  className='ml-1 size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-60'
+                  aria-hidden
+                />
               )}
             </div>
           </div>
@@ -556,6 +592,7 @@ export function ArticleSidebarItemPreview({
   }
 
   const isCategory = article.articleKind === 'category'
+  const isLinkPreview = article.articleKind === 'link'
   const isArchived = article.status === 'ARCHIVED'
   const hasCustomIcon = !!article.emoji && !!getIcon(article.emoji)
 
@@ -568,6 +605,8 @@ export function ArticleSidebarItemPreview({
       size='sm'
       className='text-muted-foreground'
     />
+  ) : isLinkPreview ? (
+    <Link2 className='size-4 shrink-0 text-muted-foreground' />
   ) : (
     <FileText className='size-4 shrink-0 text-muted-foreground' />
   )

@@ -11,7 +11,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
-import { FileText, FolderClosed, Heading } from 'lucide-react'
+import { FileText, FolderClosed, Heading, Link2 } from 'lucide-react'
 import { useState } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { AFTER_GROUP_SUFFIX } from '../../hooks/use-article-move'
@@ -158,6 +158,9 @@ export function ArticleInsertLine({
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => handlePick(ArticleKind.category)}>
               <FolderClosed /> Category
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => handlePick(ArticleKind.link)}>
+              <Link2 /> Link
             </DropdownMenuItem>
             {headerAllowed && (
               <DropdownMenuItem onSelect={() => handlePick(ArticleKind.header)}>

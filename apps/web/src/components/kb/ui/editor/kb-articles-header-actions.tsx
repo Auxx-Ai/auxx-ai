@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
-import { FileText, FolderClosed, Heading, Plus, Upload } from 'lucide-react'
+import { FileText, FolderClosed, Heading, Link2, Plus, Upload } from 'lucide-react'
 import { useCallback, useRef } from 'react'
 import { useActiveArticle } from '../../hooks/use-active-article'
 import { useActiveTabId } from '../../hooks/use-active-tab'
@@ -102,6 +102,11 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
             disabled={isCreating}
             onSelect={() => void handleCreateInTab(ArticleKind.category)}>
             <FolderClosed /> Category
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={isCreating}
+            onSelect={() => void handleCreateInTab(ArticleKind.link)}>
+            <Link2 /> Link
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={isCreating}

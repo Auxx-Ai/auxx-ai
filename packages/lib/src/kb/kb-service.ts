@@ -6,7 +6,7 @@ import type {
   ArticleStatus as ArticleStatusType,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { generateKeyBetween } from '@auxx/utils'
+import { generateId, generateKeyBetween } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { DatasetService } from '../datasets/services/dataset-service'
@@ -513,7 +513,18 @@ export class KBService {
       const articleInput = { ...input }
       const kind: ArticleKindType = articleInput.articleKind ?? ArticleKind.page
       articleInput.articleKind = kind
-      if (!articleInput.title || articleInput.title.trim() === '') {
+      if (kind === ArticleKind.link) {
+        // Title and URL are independent for links. Slug carries the URL —
+        // empty URLs get a unique placeholder so the unique constraint
+        // doesn't bite when a user creates several empty links in a row.
+        if (!articleInput.title || articleInput.title.trim() === '') {
+          const n = await this.findNextPageNumber(knowledgeBaseId)
+          articleInput.title = `Link ${n}`
+        }
+        if (!articleInput.slug || articleInput.slug.trim() === '') {
+          articleInput.slug = `link-${generateId()}`
+        }
+      } else if (!articleInput.title || articleInput.title.trim() === '') {
         const nextPageNumber = await this.findNextPageNumber(knowledgeBaseId)
         articleInput.title = `Page ${nextPageNumber}`
         articleInput.slug = `page-${nextPageNumber}`
@@ -725,6 +736,16 @@ export class KBService {
       const updateData: Record<string, unknown> = { updatedAt: new Date() }
       if (fields.slug !== undefined) updateData.slug = fields.slug
       if (fields.parentId !== undefined) updateData.parentId = fields.parentId
+      // For link kind, the slug *is* the URL — surface a URL change as an
+      // unpublished diff so the publish UI prompts the user to re-publish.
+      if (
+        article.articleKind === ArticleKind.link &&
+        fields.slug !== undefined &&
+        fields.slug !== article.slug &&
+        article.isPublished
+      ) {
+        updateData.hasUnpublishedChanges = true
+      }
 
       await this.db.update(schema.Article).set(updateData).where(eq(schema.Article.id, id))
 

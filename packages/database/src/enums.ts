@@ -38,7 +38,7 @@ export const ApprovalStatusValues = ['pending', 'approved', 'denied', 'timeout']
 
 export const ArticleStatusValues = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const
 
-export const ArticleKindValues = ['page', 'category', 'header', 'tab'] as const
+export const ArticleKindValues = ['page', 'category', 'header', 'tab', 'link'] as const
 
 export const AssetVersionStatusValues = ['PENDING', 'PROCESSING', 'READY', 'FAILED'] as const
 
@@ -786,6 +786,7 @@ export const ArticleKind = {
   category: 'category',
   header: 'header',
   tab: 'tab',
+  link: 'link',
 } as const
 
 export const AssetVersionStatus = {

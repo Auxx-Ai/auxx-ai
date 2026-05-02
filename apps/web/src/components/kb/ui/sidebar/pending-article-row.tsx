@@ -5,7 +5,8 @@ import { ArticleKind } from '@auxx/database/enums'
 import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { cn } from '@auxx/ui/lib/utils'
-import { FileText, FolderClosed, Heading } from 'lucide-react'
+import { deriveTitleFromUrl, isLikelyUrlInput, normalizeUrl } from '@auxx/utils'
+import { FileText, FolderClosed, Heading, Link2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
@@ -49,16 +50,32 @@ export function PendingArticleRow({
     containerRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [])
 
-  const handleCommit = async (title: string) => {
+  const handleCommit = async (raw: string) => {
     clearPending()
+    const trimmed = raw.trim()
+    let title = trimmed
+    let slug: string | undefined
+    // Smart paste for link kind: if the user typed something that looks
+    // like a URL (`google.com`, `https://x.com`, `mailto:a@b.com`), store
+    // it as the slug — normalised — and derive a friendly title.
+    if (articleKind === ArticleKind.link && trimmed && isLikelyUrlInput(trimmed)) {
+      const normalized = normalizeUrl(trimmed)
+      if (normalized) {
+        slug = normalized
+        title = deriveTitleFromUrl(normalized)
+      }
+    }
     const created = await createArticle({
       title,
+      slug,
       articleKind,
       parentId,
       adjacentTo,
       position,
     })
-    if (created && articleKind !== ArticleKind.header) {
+    // Link and header kinds never navigate after create — link rows aren't
+    // editor targets, headers have no body.
+    if (created && articleKind !== ArticleKind.header && articleKind !== ArticleKind.link) {
       const path = `/app/kb/${knowledgeBaseId}/editor/~/${getFullSlugPath(created, [...articles, created])}?panel=articles`
       router.push(path)
     }
@@ -69,6 +86,8 @@ export function PendingArticleRow({
       <FolderClosed className='size-4 shrink-0 text-muted-foreground' />
     ) : isHeader ? (
       <Heading className='size-4 shrink-0 text-muted-foreground' />
+    ) : articleKind === ArticleKind.link ? (
+      <Link2 className='size-4 shrink-0 text-muted-foreground' />
     ) : (
       <FileText className='size-4 shrink-0 text-muted-foreground' />
     )
