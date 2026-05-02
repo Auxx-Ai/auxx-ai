@@ -68,6 +68,7 @@ export function KBArticleEditor({
     (pick: ArticleLinkPick) => {
       if (!pendingLink) return
       const isInternal = pick.href.startsWith('auxx://')
+      const endPos = pendingLink.insertPos + pick.text.length
       pendingLink.editor
         .chain()
         .focus()
@@ -84,6 +85,8 @@ export function KBArticleEditor({
             },
           ],
         })
+        .setTextSelection(endPos)
+        .unsetMark('link')
         .run()
       setPendingLink(null)
     },

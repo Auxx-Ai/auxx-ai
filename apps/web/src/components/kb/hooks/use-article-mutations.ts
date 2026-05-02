@@ -167,6 +167,11 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         const normalized = normalizeServerArticle(server)
         if (showInSidebar) store.confirmUpdate(id, normalized)
         else store.applyArticleMetadataFromServer(id, normalized)
+        // The article-list response carries the *published* revision's
+        // metadata for published articles, so the store can't see draft-only
+        // edits (title/emoji/description). The editor reads those from
+        // getArticleById — invalidate so a remount picks up fresh draft data.
+        utils.kb.getArticleById.invalidate({ id, knowledgeBaseId })
       } catch (error) {
         if (showInSidebar) store.rollbackUpdate(id)
         toastError({
@@ -175,7 +180,7 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         })
       }
     },
-    [knowledgeBaseId, updateDraftMutation]
+    [knowledgeBaseId, updateDraftMutation, utils.kb.getArticleById]
   )
 
   const updateArticleStructure = useCallback<UseArticleMutationsResult['updateArticleStructure']>(

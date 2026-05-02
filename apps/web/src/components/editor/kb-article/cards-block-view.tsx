@@ -170,7 +170,7 @@ function SortableCard({
             <EntityIcon iconId={card.iconId} variant='bare' size='sm' />
           </span>
         ) : null}
-        <span className={styles.cardTitle}>{card.title || 'Untitled'}</span>
+        {card.title ? <span className={styles.cardTitle}>{card.title}</span> : null}
         {card.description ? (
           <span className={styles.cardDescription}>{renderMarkdownLite(card.description)}</span>
         ) : null}

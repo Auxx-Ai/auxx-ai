@@ -3,9 +3,11 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { isOrgMember } from '@auxx/lib/cache'
 import { KBLayout } from '@auxx/ui/components/kb'
+import type { KBMode } from '@auxx/ui/components/kb/theme'
 import '@auxx/ui/global.css'
 import type { Metadata } from 'next'
 import { cacheLife, cacheTag } from 'next/cache'
+import { cookies } from 'next/headers'
 import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { getLocalSession, getLoginUrl } from '~/lib/auth'
@@ -36,9 +38,11 @@ export default async function KBSlugLayout({ params, children }: KBSlugLayoutPro
   const visibility = await getCachedKBVisibility(orgSlug, kbSlug)
   if (!visibility || visibility.publishStatus === 'DRAFT') notFound()
 
+  const mode = await readModeCookie(visibility.id)
+
   if (visibility.visibility === 'PUBLIC') {
     return (
-      <PublicKBLayout orgSlug={orgSlug} kbSlug={kbSlug}>
+      <PublicKBLayout orgSlug={orgSlug} kbSlug={kbSlug} mode={mode}>
         {children}
       </PublicKBLayout>
     )
@@ -52,20 +56,29 @@ export default async function KBSlugLayout({ params, children }: KBSlugLayoutPro
         orgSlug={orgSlug}
         kbSlug={kbSlug}
         kbId={visibility.id}
-        organizationId={visibility.organizationId}>
+        organizationId={visibility.organizationId}
+        mode={mode}>
         {children}
       </InternalKBLayoutGate>
     </Suspense>
   )
 }
 
+async function readModeCookie(kbId: string): Promise<KBMode | undefined> {
+  const cookieStore = await cookies()
+  const value = cookieStore.get(`kb-mode-${kbId}`)?.value
+  return value === 'dark' ? 'dark' : value === 'light' ? 'light' : undefined
+}
+
 async function PublicKBLayout({
   orgSlug,
   kbSlug,
+  mode,
   children,
 }: {
   orgSlug: string
   kbSlug: string
+  mode?: KBMode
   children: React.ReactNode
 }) {
   'use cache'
@@ -79,7 +92,12 @@ async function PublicKBLayout({
   const searchOrigin = `${basePath}/search.json`
 
   return (
-    <KBLayout kb={kb} articles={articles} basePath={basePath} searchOrigin={searchOrigin}>
+    <KBLayout
+      kb={kb}
+      articles={articles}
+      basePath={basePath}
+      searchOrigin={searchOrigin}
+      mode={mode}>
       {children}
     </KBLayout>
   )
@@ -90,12 +108,14 @@ async function InternalKBLayoutGate({
   kbSlug,
   kbId,
   organizationId,
+  mode,
   children,
 }: {
   orgSlug: string
   kbSlug: string
   kbId: string
   organizationId: string
+  mode?: KBMode
   children: React.ReactNode
 }) {
   const session = await getLocalSession()
@@ -116,7 +136,12 @@ async function InternalKBLayoutGate({
   const searchOrigin = `${basePath}/search.json`
 
   return (
-    <KBLayout kb={kb} articles={articles} basePath={basePath} searchOrigin={searchOrigin}>
+    <KBLayout
+      kb={kb}
+      articles={articles}
+      basePath={basePath}
+      searchOrigin={searchOrigin}
+      mode={mode}>
       {children}
     </KBLayout>
   )

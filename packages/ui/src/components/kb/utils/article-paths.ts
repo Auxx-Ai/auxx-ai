@@ -69,10 +69,9 @@ interface ParentLinkArticle extends ArticleSlugFields {
 
 /**
  * Resolves the parent breadcrumb for `KBArticleRenderer`. Returns `undefined`
- * when the article has no parent. Pages and headers are navigable (a header
- * URL redirects to its first descendant on the public site); tabs and
- * categories aren't, so their `href` is `null` and the renderer falls back
- * to plain text.
+ * when the article has no parent. Pages and categories are navigable; tabs
+ * and headers are pure groupings, so their `href` is `null` and the renderer
+ * falls back to plain text.
  */
 export function getArticleParentLink<T extends ParentLinkArticle>(
   article: T | undefined | null,
@@ -82,7 +81,7 @@ export function getArticleParentLink<T extends ParentLinkArticle>(
   if (!article?.parentId) return undefined
   const parent = allArticles.find((a) => a.id === article.parentId)
   if (!parent) return undefined
-  const navigable = parent.articleKind === 'page' || parent.articleKind === 'header'
+  const navigable = parent.articleKind === 'page' || parent.articleKind === 'category'
   return {
     title: parent.title,
     emoji: parent.emoji,

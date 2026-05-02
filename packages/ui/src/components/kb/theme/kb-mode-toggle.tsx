@@ -7,29 +7,40 @@ import type { KBMode } from './kb-theme-tokens'
 
 interface KBModeToggleProps {
   kbId: string
-  /** Default mode when no localStorage value is set. */
+  /** Server-resolved mode (from cookie or KB default) used for SSR/initial render. */
   initialMode?: KBMode
+  /**
+   * When provided, the toggle also notifies the parent so external state
+   * (e.g. apps/web admin preview) can stay in sync. The toggle still writes
+   * the cookie + updates the DOM imperatively so first paint is instant.
+   */
+  onChange?: (mode: KBMode) => void
   className?: string
 }
 
-const STORAGE_PREFIX = 'kb-mode:'
+const COOKIE_PREFIX = 'kb-mode-'
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
-export function KBModeToggle({ kbId, initialMode = 'light', className }: KBModeToggleProps) {
+export function KBModeToggle({
+  kbId,
+  initialMode = 'light',
+  onChange,
+  className,
+}: KBModeToggleProps) {
   const [mode, setMode] = useState<KBMode>(initialMode)
 
+  // Keep the icon in sync when the parent drives the mode (apps/web preview).
   useEffect(() => {
-    const stored = window.localStorage.getItem(`${STORAGE_PREFIX}${kbId}`) as KBMode | null
-    const next = stored === 'dark' || stored === 'light' ? stored : initialMode
-    setMode(next)
-    applyMode(kbId, next)
-  }, [kbId, initialMode])
+    setMode(initialMode)
+  }, [initialMode])
 
   const toggle = useCallback(() => {
     const next: KBMode = mode === 'dark' ? 'light' : 'dark'
     setMode(next)
     applyMode(kbId, next)
-    window.localStorage.setItem(`${STORAGE_PREFIX}${kbId}`, next)
-  }, [kbId, mode])
+    document.cookie = `${COOKIE_PREFIX}${kbId}=${next}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`
+    onChange?.(next)
+  }, [kbId, mode, onChange])
 
   return (
     <button

@@ -43,6 +43,8 @@ interface KBLayoutProps<T extends KBSidebarArticle> {
   embedded?: boolean
   /** When true, the `<main>` element owns vertical scroll instead of the document. Required in admin previews where document scroll is unavailable. */
   mainScroll?: boolean
+  /** Notified when the in-tree mode toggle flips. Used by apps/web preview to keep its override in sync with cookie writes. */
+  onModeChange?: (mode: KBMode) => void
   children: ReactNode
 }
 
@@ -56,6 +58,7 @@ export function KBLayout<T extends KBSidebarArticle>({
   onArticleClick,
   embedded = false,
   mainScroll = false,
+  onModeChange,
   children,
 }: KBLayoutProps<T>) {
   const headerNav = parseNavigation(kb.headerNavigation)
@@ -94,6 +97,7 @@ export function KBLayout<T extends KBSidebarArticle>({
           footerNav={footerNav}
           listStyle={listStyle}
           onArticleClick={onArticleClick}
+          onModeChange={onModeChange}
           mainScroll={mainScroll}>
           {children}
         </KBLayoutShell>

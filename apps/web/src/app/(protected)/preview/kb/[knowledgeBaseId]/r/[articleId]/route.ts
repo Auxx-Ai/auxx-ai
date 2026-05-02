@@ -44,8 +44,9 @@ export async function GET(req: NextRequest, ctx: RouteContext): Promise<Response
   // Authorize against the *target* article's org. Cross-org leakage would
   // be a problem, but we expect the picker to scope to the active org so
   // this is mostly a sanity check.
-  const activeOrgId = (session.session as { activeOrganizationId?: string }).activeOrganizationId
-  if (activeOrgId && activeOrgId !== row.organizationId) {
+  const userOrgId = (session.user as { defaultOrganizationId?: string | null })
+    .defaultOrganizationId
+  if (userOrgId && userOrgId !== row.organizationId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

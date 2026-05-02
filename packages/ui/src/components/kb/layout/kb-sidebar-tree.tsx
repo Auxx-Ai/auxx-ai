@@ -157,19 +157,16 @@ function TreeBranch<T extends KBSidebarArticle>({
   }
 
   // Headers are uppercase section labels rendered flat at the same depth as
-  // their children. The label itself is a link to the header's slug path —
-  // the public route handler 308-redirects to the first navigable descendant
-  // (or 404s on an empty section).
+  // their children. They are pure visual groupings — not navigable — so the
+  // label is a static span. Children always render (no collapse).
   if (node.articleKind === 'header') {
     return (
       <li className='my-0.5 pb-4'>
-        <Link
-          href={href}
-          className='block px-2 pt-3 pb-1 text-[var(--kb-fg)]/60 text-xs font-semibold uppercase tracking-wide no-underline hover:text-[var(--kb-primary)]'
-          style={lineIndent}
-          prefetch={false}>
+        <span
+          className='block px-2 pt-3 pb-1 text-[var(--kb-fg)]/60 text-xs font-semibold uppercase tracking-wide'
+          style={lineIndent}>
           {node.title}
-        </Link>
+        </span>
         {hasChildren ? (
           <ul className='m-0 list-none p-0'>
             {node.children.map((child) => (
@@ -193,21 +190,10 @@ function TreeBranch<T extends KBSidebarArticle>({
     )
   }
 
-  const isCategory = node.articleKind === 'category'
-
   return (
     <li className={cn(listStyle === 'line' ? 'my-0' : 'my-0.5')}>
       <div className='flex items-center'>
-        {isCategory ? (
-          <button
-            type='button'
-            className={cn(itemClass(listStyle), 'cursor-pointer text-left')}
-            data-active={active}
-            style={lineIndent}
-            onClick={() => onToggle?.(node.id, !open)}>
-            {itemContent}
-          </button>
-        ) : onArticleClick ? (
+        {onArticleClick ? (
           <button
             type='button'
             className={cn(itemClass(listStyle), 'cursor-pointer text-left')}

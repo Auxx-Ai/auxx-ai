@@ -36,7 +36,8 @@ export function KBPreview({ knowledgeBase, activeSlugPath }: KBPreviewProps) {
 }
 
 function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath?: string[] }) {
-  const { isMobile, effectiveMode, knowledgeBase, previewMode, setPreviewMode } = usePreview()
+  const { isMobile, effectiveMode, knowledgeBase, previewMode, setPreviewMode, setOverride } =
+    usePreview()
   const articles = useArticleList(kbId)
 
   // Article from the editor's slug path; resets the override when the editor switches.
@@ -91,7 +92,8 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
         mode={effectiveMode}
         embedded
         mainScroll
-        onArticleClick={(id) => setOverrideId(id)}>
+        onArticleClick={(id) => setOverrideId(id)}
+        onModeChange={setOverride}>
         {articleId ? (
           <div className='flex min-w-0 flex-1 flex-col'>
             <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
