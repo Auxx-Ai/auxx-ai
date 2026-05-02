@@ -9,7 +9,6 @@ export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_tasks',
     idempotent: true,
-    outputBlock: 'task-list',
     outputDigestSchema: ListTasksDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
@@ -33,7 +32,7 @@ export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
       }
     },
     description:
-      'Search and filter tasks. Returns all organization tasks by default. Use assigneeId to filter by a specific user.',
+      'Search and filter tasks. Returns all organization tasks by default. Use assigneeId to filter by a specific workspace member or group (actorId).',
     parameters: {
       type: 'object',
       properties: {
@@ -48,7 +47,8 @@ export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
         },
         assigneeId: {
           type: 'string',
-          description: 'Filter by specific user ID (use list_members to find IDs)',
+          description:
+            'Filter by a specific workspace member or group actorId (use list_members / list_groups to find actorIds).',
         },
         includeCompleted: {
           type: 'boolean',

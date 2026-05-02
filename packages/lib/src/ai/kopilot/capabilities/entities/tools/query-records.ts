@@ -48,7 +48,6 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
   return {
     name: 'query_records',
     idempotent: true,
-    outputBlock: 'entity-list',
     outputDigestSchema: QueryRecordsDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
@@ -77,7 +76,7 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
       }
     },
     usageNotes:
-      'Inspect `warnings[]` before trusting the result — each entry means a filter was rejected and dropped. `returned_count` is items in this page, `total_matching` is the full count for the query. When you reach `submit_final_answer`, embed the records you are referring to in an `auxx:entity-card` (1) or `auxx:entity-list` (2+) fence inside `content`. Records mentioned in prose without a fence will not be visible to the user.',
+      'Inspect `warnings[]` before trusting the result — each entry means a filter was rejected and dropped. `returned_count` is items in this page, `total_matching` is the full count for the query. In your final reply, embed the records you are referring to in an `auxx:entity-card` (1) or `auxx:entity-list` (2+) fence. Records mentioned in prose without a fence will not be visible to the user.',
     description: `Query entity records with field-level filters, sorting, and pagination.
 Use list_entity_fields first to discover available fields and their valid option values.
 

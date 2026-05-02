@@ -3,6 +3,7 @@
 import { generateId } from '@auxx/utils/generateId'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { ContextSlice } from '../context/types'
 import { summarizeToolResult } from '../ui/blocks/summarize-tool-result'
 
 /**
@@ -161,12 +162,6 @@ function rebuildTree(messages: KopilotMessage[]): {
   return { messageMap, childrenMap, activeBranch }
 }
 
-/** Page context pushed by the active page so KopilotDock knows what's on-screen */
-export interface KopilotPageContext {
-  page: string
-  [key: string]: unknown
-}
-
 interface KopilotState {
   // Panel
   panelOpen: boolean
@@ -175,9 +170,22 @@ interface KopilotState {
   panelWidth: number
   setPanelWidth: (width: number) => void
 
-  // Page context — set by the active page, read by KopilotDock
-  context: KopilotPageContext | null
-  setContext: (context: KopilotPageContext | null) => void
+  /**
+   * Page context — distributed mount-time registration. Each `<KopilotContext>`
+   * component writes one slice keyed by its `useId()`. Consumers read the
+   * merged view via `selectMergedContext` / `selectMergedChips`.
+   */
+  contextSlices: Record<string, ContextSlice>
+  setContextSlice: (id: string, slice: ContextSlice) => void
+  clearContextSlice: (id: string) => void
+
+  /**
+   * Per-turn chip dismissals. Keyed as `field:value` (e.g. `activeThreadId:abc`).
+   * Cleared after each submit so the chip reappears next turn.
+   */
+  dismissedChipKeys: Set<string>
+  dismissChip: (key: string) => void
+  clearDismissedChips: () => void
 
   // Session — null means "new session" (not yet created on server)
   activeSessionId: string | null
@@ -278,9 +286,29 @@ export const useKopilotStore = create<KopilotState>()(
       panelWidth: 420,
       setPanelWidth: (panelWidth) => set({ panelWidth }),
 
-      // Page context
-      context: null,
-      setContext: (context) => set({ context }),
+      // Page context — distributed slices
+      contextSlices: {},
+      setContextSlice: (id, slice) =>
+        set((s) => ({ contextSlices: { ...s.contextSlices, [id]: slice } })),
+      clearContextSlice: (id) =>
+        set((s) => {
+          if (!(id in s.contextSlices)) return s
+          const next = { ...s.contextSlices }
+          delete next[id]
+          return { contextSlices: next }
+        }),
+
+      // Per-turn chip dismissals
+      dismissedChipKeys: new Set<string>(),
+      dismissChip: (key) =>
+        set((s) => {
+          if (s.dismissedChipKeys.has(key)) return s
+          const next = new Set(s.dismissedChipKeys)
+          next.add(key)
+          return { dismissedChipKeys: next }
+        }),
+      clearDismissedChips: () =>
+        set((s) => (s.dismissedChipKeys.size === 0 ? s : { dismissedChipKeys: new Set() })),
 
       // Session
       activeSessionId: null,

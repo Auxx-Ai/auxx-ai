@@ -2,7 +2,10 @@
 
 import { type ActorId, type ActorIdType, isActorId, toActorId } from '@auxx/types/actor'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
+import type { AbsoluteDate, RelativeDate } from '@auxx/types/task'
 import { getCachedResources } from '../../cache/org-cache-helpers'
+import { DateLanguageModule } from '../../tasks/date-language-module'
+import { TextDateParser } from '../../tasks/text-date-parser'
 
 /**
  * Generic input-validation helpers used by `AgentToolDefinition.validateInputs`.
@@ -263,6 +266,41 @@ export function normalizeActorIdArg(
     ok: false,
     error: `${argName} '${input}' has ${parts.length} colon-separated parts; expected 'user:<id>' or 'group:<id>'.`,
   }
+}
+
+/**
+ * Parse a free-text deadline (e.g. "next Friday", "in 3 days", "end of month")
+ * into the canonical `AbsoluteDate | RelativeDate` shape used by the task service.
+ *
+ * Undefined / null / empty input returns `ok: true, value: undefined` (deadline
+ * is optional). On parse failure, returns guidance with example phrasings the
+ * LLM can retry with.
+ */
+export function parseDeadlineArg(
+  input: unknown,
+  ctx: { argName?: string } = {}
+): ParseResult<AbsoluteDate | RelativeDate | undefined> {
+  const argName = ctx.argName ?? 'deadline'
+  if (input === undefined || input === null || input === '') {
+    return { ok: true, value: undefined }
+  }
+  if (typeof input !== 'string') {
+    return { ok: false, error: `${argName} must be a string; got ${typeof input}.` }
+  }
+  const parser = new TextDateParser()
+  const result = parser.parse(input)
+  if (!result.found || !result.duration) {
+    return {
+      ok: false,
+      error: `${argName} '${input}' could not be parsed. Try a phrasing like "next Friday", "in 3 days", "tomorrow", or "end of month".`,
+    }
+  }
+  if (typeof result.duration === 'string') {
+    const dateModule = new DateLanguageModule()
+    const resolved = dateModule.calculateTargetDate(result.duration)
+    return { ok: true, value: { type: 'static', value: resolved } satisfies AbsoluteDate }
+  }
+  return { ok: true, value: result.duration satisfies RelativeDate }
 }
 
 /**

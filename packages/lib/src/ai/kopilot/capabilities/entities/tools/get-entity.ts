@@ -4,7 +4,8 @@ import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { RecordPickerService } from '../../../../../resources/picker'
-import { isRecordId, parseRecordId } from '../../../../../resources/resource-id'
+import { parseRecordId } from '../../../../../resources/resource-id'
+import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { GetEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -17,7 +18,6 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_entity',
     idempotent: true,
-    outputBlock: 'entity-card',
     outputDigestSchema: GetEntityDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
@@ -46,17 +46,22 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
       required: ['recordId'],
       additionalProperties: false,
     },
+    validateInputs: async (args, ctx) => {
+      const known = await getKnownDefIds(ctx.organizationId)
+      const recordId = normalizeRecordIdArg(args.recordId, {
+        knownDefIds: known,
+        argName: 'recordId',
+      })
+      if (!recordId.ok) return { ok: false, error: recordId.error }
+      return {
+        ok: true,
+        args: { ...args, recordId: recordId.value },
+        warnings: recordId.warnings,
+      }
+    },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       const recordId = args.recordId as string
-
-      if (!isRecordId(recordId)) {
-        return {
-          success: false,
-          output: null,
-          error: `Invalid recordId format "${recordId}". Expected "entityDefinitionId:entityInstanceId".`,
-        }
-      }
 
       const pickerService = new RecordPickerService(agentDeps.organizationId, agentDeps.userId, db)
       const items = await pickerService.getResourcesByIds([recordId])

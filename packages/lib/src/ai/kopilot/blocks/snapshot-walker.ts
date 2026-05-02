@@ -4,21 +4,14 @@ import type {
   EntitySnapshot,
   TaskSnapshot,
   ThreadSnapshot,
-  ToolOutputBlock,
   TurnSnapshots,
 } from '../../agent-framework/types'
 
 /**
- * Generic snapshot walker. Drives snapshot extraction off the tool's
- * declared `outputBlock` rather than per-tool code.
- *
- * For each `outputBlock` kind, a probe recurses into the tool's `output`,
- * finds items that structurally match the expected id-bearing shape, and
- * calls the matching `addX` helper to populate the turn's snapshot map.
- *
- * Tools whose output shape is unusual can either (a) omit `outputBlock`
- * to skip the walker entirely or (b) emit items in one of the known
- * shapes listed below.
+ * Generic snapshot walker. Recurses into every tool result and harvests
+ * record / thread / task ids based on item shape — no `outputBlock` hint
+ * required. The three shape probes are mutually exclusive enough that
+ * running them all on every output is cheap and safe.
  *
  * Recognized container shapes (max recursion depth = WALKER_MAX_DEPTH):
  *   - top-level arrays
@@ -42,64 +35,25 @@ export function createEmptyTurnSnapshots(): TurnSnapshots {
   return { records: {}, threads: {}, tasks: {}, docs: {} }
 }
 
-export function runSnapshotWalker(
-  outputBlock: ToolOutputBlock | undefined,
-  output: unknown,
-  target: TurnSnapshots
-): void {
-  if (!outputBlock) return
-  const probe = PROBES[outputBlock]
-  probe(output, target)
+export function runSnapshotWalker(output: unknown, target: TurnSnapshots): void {
+  walk(output, target, 0)
 }
 
-// ===== Shape probes =====
-
-const PROBES: Record<ToolOutputBlock, (output: unknown, target: TurnSnapshots) => void> = {
-  'entity-card': (output, target) => walkForEntities(output, target, 0),
-  'entity-list': (output, target) => walkForEntities(output, target, 0),
-  'thread-list': (output, target) => walkForThreads(output, target, 0),
-  'task-list': (output, target) => walkForTasks(output, target, 0),
-}
-
-function walkForEntities(node: unknown, target: TurnSnapshots, depth: number): void {
+function walk(node: unknown, target: TurnSnapshots, depth: number): void {
   if (depth > WALKER_MAX_DEPTH || node == null) return
   if (Array.isArray(node)) {
-    for (const item of node) walkForEntities(item, target, depth + 1)
+    for (const item of node) walk(item, target, depth + 1)
     return
   }
   const obj = asObject(node)
   if (!obj) return
+  // Probes are disjoint by shape — entity needs `recordId`, thread/task explicitly
+  // exclude `recordId`-bearing items in their detectors.
   if (isEntityLike(obj)) addEntitySnapshot(target, obj)
+  else if (isThreadLike(obj)) addThreadSnapshot(target, obj)
+  else if (isTaskLike(obj)) addTaskSnapshot(target, obj)
   for (const key of CONTAINER_KEYS) {
-    if (key in obj) walkForEntities(obj[key], target, depth + 1)
-  }
-}
-
-function walkForThreads(node: unknown, target: TurnSnapshots, depth: number): void {
-  if (depth > WALKER_MAX_DEPTH || node == null) return
-  if (Array.isArray(node)) {
-    for (const item of node) walkForThreads(item, target, depth + 1)
-    return
-  }
-  const obj = asObject(node)
-  if (!obj) return
-  if (isThreadLike(obj)) addThreadSnapshot(target, obj)
-  for (const key of CONTAINER_KEYS) {
-    if (key in obj) walkForThreads(obj[key], target, depth + 1)
-  }
-}
-
-function walkForTasks(node: unknown, target: TurnSnapshots, depth: number): void {
-  if (depth > WALKER_MAX_DEPTH || node == null) return
-  if (Array.isArray(node)) {
-    for (const item of node) walkForTasks(item, target, depth + 1)
-    return
-  }
-  const obj = asObject(node)
-  if (!obj) return
-  if (isTaskLike(obj)) addTaskSnapshot(target, obj)
-  for (const key of CONTAINER_KEYS) {
-    if (key in obj) walkForTasks(obj[key], target, depth + 1)
+    if (key in obj) walk(obj[key], target, depth + 1)
   }
 }
 

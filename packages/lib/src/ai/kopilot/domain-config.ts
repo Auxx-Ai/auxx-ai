@@ -11,11 +11,7 @@ import type {
 } from '../agent-framework/types'
 import { createKopilotAgent } from './agents/agent'
 import { extractLinkSnapshots } from './blocks/extract-link-snapshots'
-import {
-  buildFallbackFence,
-  countReferenceBlockFences,
-  injectSnapshotsIntoFinal,
-} from './blocks/inject-snapshots'
+import { injectSnapshotsIntoFinal } from './blocks/inject-snapshots'
 import { createEmptyTurnSnapshots, runSnapshotWalker } from './blocks/snapshot-walker'
 import type { CapabilityRegistry } from './capabilities/types'
 import type { KopilotDomainState } from './types'
@@ -41,8 +37,9 @@ export interface KopilotDomainConfigOptions {
  * Create a Kopilot domain config for the agent framework.
  *
  * The v2 Kopilot is a solo-agent domain: one agent owns the entire turn. There is
- * no supervisor, planner, executor, or responder. Tools emit rich UI blocks
- * directly; the agent ends the turn by calling `submit_final_answer`.
+ * no supervisor, planner, executor, or responder. The agent ends the turn by
+ * stopping tool calls — its last response (prose plus optional `auxx:*` fences)
+ * is committed as the final assistant message.
  */
 export function createKopilotDomainConfig(
   options: KopilotDomainConfigOptions = {}
@@ -97,50 +94,22 @@ export function createKopilotDomainConfig(
       return { ...state, context }
     },
     onToolResult(toolName: string, result: AgentToolResult, state: AgentState): AgentState {
-      const tool = resolvedTools.find((t) => t.name === toolName)
       const snapshots: TurnSnapshots = state.turnSnapshots ?? createEmptyTurnSnapshots()
-      let mutated = false
-      if (tool?.outputBlock) {
-        runSnapshotWalker(tool.outputBlock, result.output, snapshots)
-        mutated = true
-      }
+      // Walk every tool output for entity / thread / task ids. Probes are
+      // shape-disjoint, so running them all on every result is safe + cheap.
+      runSnapshotWalker(result.output, snapshots)
+      let mutated = true
       // Doc snapshot mining for the two knowledge tools — they emit a
       // `docs: [{ slug, title, description?, url? }]` field on success.
       if (toolName === 'search_docs' || toolName === 'search_knowledge') {
-        if (mineDocSnapshots(result.output, snapshots)) mutated = true
+        mineDocSnapshots(result.output, snapshots)
+        mutated = true
       }
       return mutated ? { ...state, turnSnapshots: snapshots } : state
     },
     postProcessFinalContent(content: string, state: AgentState): PostProcessResult {
       const snapshots = state.turnSnapshots ?? createEmptyTurnSnapshots()
-      // Find the last read-tool in the turn — drives the fallback block kind
-      let lastTool: AgentToolDefinition | undefined
-      for (let i = state.messages.length - 1; i >= 0; i--) {
-        const msg = state.messages[i]
-        if (msg?.role !== 'tool' || !msg.metadata || !('agent' in msg.metadata)) continue
-        const toolCallId = msg.toolCallId
-        let lastToolName: string | undefined
-        for (let j = i - 1; j >= 0; j--) {
-          const maybeAssistant = state.messages[j]
-          if (maybeAssistant?.role !== 'assistant' || !maybeAssistant.toolCalls) continue
-          const tc = maybeAssistant.toolCalls.find((c) => c.id === toolCallId)
-          if (tc) {
-            lastToolName = tc.function.name
-            break
-          }
-        }
-        if (lastToolName && lastToolName !== 'submit_final_answer') {
-          lastTool = resolvedTools.find((t) => t.name === lastToolName)
-          break
-        }
-      }
-
-      let next = injectSnapshotsIntoFinal(content, snapshots)
-      // If the LLM forgot to embed any reference block but we captured ids, auto-emit one
-      if (countReferenceBlockFences(next) === 0) {
-        const fence = buildFallbackFence(snapshots, lastTool)
-        if (fence) next = `${next.trimEnd()}\n\n${fence}`
-      }
+      const next = injectSnapshotsIntoFinal(content, snapshots)
       const linkSnapshots = extractLinkSnapshots(next, snapshots)
       return Object.keys(linkSnapshots).length > 0
         ? { content: next, linkSnapshots }

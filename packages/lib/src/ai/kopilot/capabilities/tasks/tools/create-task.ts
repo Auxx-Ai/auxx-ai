@@ -2,10 +2,14 @@
 
 import { toActorId } from '@auxx/types/actor'
 import type { AbsoluteDate, RelativeDate } from '@auxx/types/task'
-import { DateLanguageModule } from '../../../../../tasks/date-language-module'
 import { createTaskService } from '../../../../../tasks/task-service'
-import { TextDateParser } from '../../../../../tasks/text-date-parser'
-import type { CreateTaskInput } from '../../../../../tasks/types'
+import {
+  getKnownDefIds,
+  normalizeActorIdArrayArg,
+  normalizeRecordIdArrayArg,
+  parseDeadlineArg,
+  parseStringArg,
+} from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { CreateTaskDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -14,7 +18,7 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
   return {
     name: 'create_task',
     description:
-      'Create a new task. Resolving names: try list_members first for the assignee. If the name does not match any workspace member, fall back to search_entities — they are likely a contact (or the subject is a company/record). Pass the matched recordId to linkedRecordIds and leave assigneeIds empty so the task is assigned to the current user. Use search_entities for any other referenced records (products, orders, etc.). Supports natural language deadlines like "next Friday", "in 3 days", "end of week".',
+      'Create a new task. Resolving names: try list_members first for the assignee — assignees are workspace members (teammates), not contacts. If the name does not match any member, fall back to search_entities — the person is likely a contact (or the subject is a company/record). Pass the matched recordId to linkedRecordIds and leave assigneeIds empty so the task is assigned to the caller. Use search_entities for any other referenced records (products, orders, etc.). Supports natural language deadlines like "next Friday", "in 3 days", "end of week".',
     requiresApproval: true,
     outputDigestSchema: CreateTaskDigest,
     buildDigest: (output) => {
@@ -38,7 +42,9 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
     captureMint: (args, ctx) => ({
       taskId: `temp_${ctx.localIndex}`,
       title: typeof args.title === 'string' ? args.title : '',
-      deadline: typeof args.deadline === 'string' ? args.deadline : null,
+      // deadline is canonicalized to AbsoluteDate | RelativeDate by validateInputs;
+      // for capture-mode preview we just show the original phrasing if still a string.
+      deadline: typeof args.deadline === 'string' ? args.deadline : args.deadline ? 'parsed' : null,
       priority: (args.priority as string | undefined) ?? null,
       assignees: (args.assigneeIds as string[] | undefined) ?? [],
     }),
@@ -66,7 +72,8 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
         assigneeIds: {
           type: 'array',
           items: { type: 'string' },
-          description: 'ActorId format (e.g., "user:abc"). Defaults to current user.',
+          description:
+            'Workspace member or group actorIds (e.g., "user:abc", "group:xyz"). Defaults to the caller. NOT for contacts — contacts go in linkedRecordIds.',
         },
         linkedRecordIds: {
           type: 'array',
@@ -77,41 +84,75 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
       required: ['title'],
       additionalProperties: false,
     },
+    validateInputs: async (args, ctx) => {
+      const known = await getKnownDefIds(ctx.organizationId)
+
+      const title = parseStringArg(args.title, { name: 'title', required: true, max: 500 })
+      if (!title.ok) return { ok: false, error: title.error }
+
+      const description = parseStringArg(args.description, { name: 'description', max: 10000 })
+      if (!description.ok) return { ok: false, error: description.error }
+
+      const deadline = parseDeadlineArg(args.deadline)
+      if (!deadline.ok) return { ok: false, error: deadline.error }
+
+      const linked =
+        args.linkedRecordIds === undefined
+          ? { ok: true as const, value: undefined as undefined }
+          : normalizeRecordIdArrayArg(args.linkedRecordIds, {
+              knownDefIds: known,
+              argName: 'linkedRecordIds',
+            })
+      if (!linked.ok) return { ok: false, error: linked.error }
+
+      const assignees =
+        args.assigneeIds === undefined
+          ? { ok: true as const, value: undefined as undefined }
+          : normalizeActorIdArrayArg(args.assigneeIds, {
+              defaultKind: 'user',
+              argName: 'assigneeIds',
+            })
+      if (!assignees.ok) return { ok: false, error: assignees.error }
+
+      const priority = args.priority
+      if (
+        priority !== undefined &&
+        priority !== 'low' &&
+        priority !== 'medium' &&
+        priority !== 'high'
+      ) {
+        return {
+          ok: false,
+          error: `priority must be 'low' | 'medium' | 'high'; got ${JSON.stringify(priority)}.`,
+        }
+      }
+
+      return {
+        ok: true,
+        args: {
+          title: title.value,
+          description: description.value,
+          deadline: deadline.value,
+          priority,
+          assigneeIds: assignees.value,
+          linkedRecordIds: linked.value,
+        },
+        warnings: [
+          ...('warnings' in linked && linked.warnings ? linked.warnings : []),
+          ...('warnings' in assignees && assignees.warnings ? assignees.warnings : []),
+        ],
+      }
+    },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       const title = args.title as string
       const description = args.description as string | undefined
-      const deadlineText = args.deadline as string | undefined
+      const deadline = args.deadline as AbsoluteDate | RelativeDate | undefined
       const priority = args.priority as 'low' | 'medium' | 'high' | undefined
       const assigneeIds = (args.assigneeIds as string[] | undefined) ?? [
         toActorId('user', agentDeps.userId),
       ]
       const linkedRecordIds = args.linkedRecordIds as string[] | undefined
-
-      // Parse deadline from natural language
-      let deadline: CreateTaskInput['deadline']
-      if (deadlineText) {
-        const parser = new TextDateParser()
-        const result = parser.parse(deadlineText)
-
-        if (!result.found || !result.duration) {
-          return {
-            success: false,
-            output: null,
-            error:
-              'Could not parse deadline. Try a format like "next Friday", "in 3 days", or "end of month".',
-          }
-        }
-
-        // Handle special string durations (eom, next-quarter) by resolving to absolute date
-        if (typeof result.duration === 'string') {
-          const dateModule = new DateLanguageModule()
-          const resolved = dateModule.calculateTargetDate(result.duration)
-          deadline = { type: 'static', value: resolved } satisfies AbsoluteDate
-        } else {
-          deadline = result.duration satisfies RelativeDate
-        }
-      }
 
       const taskService = createTaskService(db)
       const task = await taskService.createTask(

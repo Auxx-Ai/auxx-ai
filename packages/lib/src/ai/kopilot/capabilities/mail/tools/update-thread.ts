@@ -3,6 +3,7 @@
 import { toRecordId } from '@auxx/types/resource'
 import { requireCachedEntityDefId } from '../../../../../cache'
 import { ThreadMutationService } from '../../../../../threads'
+import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { UpdateThreadDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -59,6 +60,15 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
       },
       required: ['threadId'],
       additionalProperties: false,
+    },
+    validateInputs: async (args) => {
+      const threadId = parseStringArg(args.threadId, {
+        name: 'threadId',
+        required: true,
+        max: 200,
+      })
+      if (!threadId.ok) return { ok: false, error: threadId.error }
+      return { ok: true, args: { ...args, threadId: threadId.value } }
     },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()

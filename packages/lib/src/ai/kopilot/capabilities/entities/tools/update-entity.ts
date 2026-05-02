@@ -2,7 +2,8 @@
 
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
-import { getDefinitionId, isRecordId } from '../../../../../resources/resource-id'
+import { getDefinitionId } from '../../../../../resources/resource-id'
+import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { UpdateEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -56,6 +57,19 @@ Example (ids match list_entity_fields output):
       required: ['recordId', 'values'],
       additionalProperties: false,
     },
+    validateInputs: async (args, ctx) => {
+      const known = await getKnownDefIds(ctx.organizationId)
+      const recordId = normalizeRecordIdArg(args.recordId, {
+        knownDefIds: known,
+        argName: 'recordId',
+      })
+      if (!recordId.ok) return { ok: false, error: recordId.error }
+      return {
+        ok: true,
+        args: { ...args, recordId: recordId.value },
+        warnings: recordId.warnings,
+      }
+    },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       const recordId = args.recordId as string
@@ -64,14 +78,6 @@ Example (ids match list_entity_fields output):
       const values =
         (args.values as Record<string, unknown>) ??
         Object.fromEntries(Object.entries(args).filter(([k]) => k !== 'recordId' && k !== 'values'))
-
-      if (!isRecordId(recordId)) {
-        return {
-          success: false,
-          output: null,
-          error: `Invalid recordId format "${recordId}". Expected "entityDefinitionId:entityInstanceId".`,
-        }
-      }
 
       if (!values || Object.keys(values).length === 0) {
         return {

@@ -41,7 +41,7 @@ import {
 } from 'react'
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { EmptyState } from '~/components/global/empty-state'
-import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
+import { KopilotContext } from '~/components/kopilot/context'
 import {
   MailFilterProvider,
   type SortDirection,
@@ -200,10 +200,10 @@ function MailboxInner({
   const [openTicketId, setOpenTicketId] = useQueryState('ticketId', { defaultValue: '' })
   const isTicketDrawerOpen = !!openTicketId
 
-  // Kopilot — push page context so the global KopilotDock knows what's on-screen
+  // Kopilot — page-level mount lives in the JSX below. Active-thread/contact/
+  // ticket context is contributed by their respective drawer components.
   const { hasAccess } = useFeatureFlags()
   const kopilotEnabled = hasAccess('kopilot')
-  const setKopilotContext = useKopilotStore((s) => s.setContext)
 
   // Use new selection store directly
   const selectedThreads = useSelectedThreadIds()
@@ -260,13 +260,6 @@ function MailboxInner({
   // Sync Zustand → URL (persist active thread when user clicks a thread row)
   const activeThreadId = useActiveThreadId()
   const activeThreadVersion = useActiveThreadVersion()
-
-  // Push page context to Kopilot global dock
-  useEffect(() => {
-    if (!kopilotEnabled) return
-    setKopilotContext({ page: 'mail', activeThreadId: activeThreadId ?? undefined })
-    return () => setKopilotContext(null)
-  }, [kopilotEnabled, activeThreadId, setKopilotContext])
 
   // Track the previous activeThreadId so we only clear the URL when we
   // actually transitioned from truthy → null (an explicit deselect). On the
@@ -502,6 +495,7 @@ function MailboxInner({
 
   return (
     <MailFilterProvider value={mailFilterContextValue}>
+      {kopilotEnabled && <KopilotContext page='mail' />}
       <MainPage>
         <MainPageHeader
           action={

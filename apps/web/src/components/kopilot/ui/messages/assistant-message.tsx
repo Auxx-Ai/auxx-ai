@@ -3,7 +3,7 @@
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { AlertTriangle } from 'lucide-react'
 import { useMemo } from 'react'
-import Markdown, { type Components } from 'react-markdown'
+import Markdown, { type Components, defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { KopilotMessage, LinkSnapshot, ThinkingGroup } from '../../stores/kopilot-store'
 import { useKopilotStore } from '../../stores/kopilot-store'
@@ -16,6 +16,17 @@ import { MessageActions } from './message-actions'
 import { ThinkingSteps } from './thinking-steps'
 
 const REFERENCE_BLOCK_SET = new Set<string>(REFERENCE_BLOCK_TYPES)
+
+/**
+ * react-markdown's default urlTransform strips any href whose protocol isn't
+ * in its hard-coded safe list (http/https/mailto/etc), which silently nukes
+ * our `auxx://` chips before the `a()` component callback ever sees them.
+ * Pass `auxx://` through; defer to the default sanitizer for everything else.
+ */
+const auxxUrlTransform: UrlTransform = (url) => {
+  if (url.startsWith('auxx://')) return url
+  return defaultUrlTransform(url)
+}
 
 /**
  * Extract a fenced `auxx:<type>` block from a react-markdown `code` node's
@@ -140,7 +151,10 @@ export function AssistantMessage({
           </Alert>
         ) : (
           <div className='kopilot-prose'>
-            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <Markdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+              urlTransform={auxxUrlTransform}>
               {isStreaming ? `${content}\u258C` : content}
             </Markdown>
           </div>

@@ -26,7 +26,7 @@ export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition
       }
     },
     description:
-      'List organization members (users). Use to find user IDs for assigning tasks, threads, etc.',
+      "List workspace members — teammates who use Auxx with the caller. Use to find a member's actorId for assigning tasks, threads, owner/assignee fields, etc. Does NOT return contacts — contacts are CRM entity records (use search_entities for those).",
     parameters: {
       type: 'object',
       properties: {

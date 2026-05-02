@@ -14,11 +14,9 @@ import { KopilotSessionPicker } from './kopilot-session-picker'
 export interface KopilotPanelProps {
   /** Current page context (e.g. 'mail') */
   page: string
-  /** Page-specific context */
-  context?: Record<string, unknown>
 }
 
-export function KopilotPanel({ page, context }: KopilotPanelProps) {
+export function KopilotPanel({ page }: KopilotPanelProps) {
   const router = useRouter()
   const setPanelOpen = useKopilotStore((s) => s.setPanelOpen)
   const activeSessionId = useKopilotStore((s) => s.activeSessionId)
@@ -50,7 +48,7 @@ export function KopilotPanel({ page, context }: KopilotPanelProps) {
         }
         onClose={() => setPanelOpen(false)}
       />
-      <KopilotChat page={page} context={context} />
+      <KopilotChat page={page} />
     </div>
   )
 }

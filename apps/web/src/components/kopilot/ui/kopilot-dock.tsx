@@ -11,6 +11,7 @@ import { useState } from 'react'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useKopilotStore } from '../stores/kopilot-store'
+import { useMergedKopilotContext } from '../stores/select-context'
 import { KopilotPanel } from './kopilot-panel'
 
 /**
@@ -28,7 +29,7 @@ export function KopilotDock() {
   const togglePanel = useKopilotStore((s) => s.togglePanel)
   const panelWidth = useKopilotStore((s) => s.panelWidth)
   const setPanelWidth = useKopilotStore((s) => s.setPanelWidth)
-  const context = useKopilotStore((s) => s.context)
+  const context = useMergedKopilotContext()
 
   const [isResizing, setIsResizing] = useState(false)
   const isMobile = useIsMobile()
@@ -51,7 +52,7 @@ export function KopilotDock() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
             transition={{ duration: 0.2, ease: [0.165, 0.84, 0.44, 1] }}>
-            <KopilotPanel page={context?.page ?? 'unknown'} context={context ?? undefined} />
+            <KopilotPanel page={context.page ?? 'unknown'} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -79,7 +80,7 @@ export function KopilotDock() {
           />
           <div className='pb-3 pr-3 pt-1.5'>
             <PanelFrame width={panelWidth}>
-              <KopilotPanel page={context?.page ?? 'unknown'} context={context ?? undefined} />
+              <KopilotPanel page={context.page ?? 'unknown'} />
             </PanelFrame>
           </div>
         </motion.div>

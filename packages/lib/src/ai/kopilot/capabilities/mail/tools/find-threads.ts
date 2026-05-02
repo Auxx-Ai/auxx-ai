@@ -84,7 +84,6 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
   return {
     name: 'find_threads',
     idempotent: true,
-    outputBlock: 'thread-list',
     outputDigestSchema: FindThreadsDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as { threads?: Array<Record<string, unknown>>; count?: number }

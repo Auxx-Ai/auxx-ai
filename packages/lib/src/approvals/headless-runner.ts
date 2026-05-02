@@ -25,7 +25,6 @@ import {
   type GetToolDeps,
 } from '../ai/kopilot/capabilities'
 import { enrichEntitiesWithFieldValues } from '../ai/kopilot/capabilities/entities/enrich-entity-fields'
-import { createSubmitFinalAnswerTool } from '../ai/kopilot/meta-tools/submit-final-answer'
 import { findCachedResource } from '../cache/org-cache-helpers'
 import { Result, type TypedResult } from '../result'
 import { createTaskService } from '../tasks/task-service'
@@ -139,12 +138,7 @@ export async function runHeadlessSuggestion(
   // (cheaper than rewalking state.messages after the run).
   const softActions: ProposedAction[] = []
   const wrappedTools = tools.map((t) => wrapWithSoftCapture(t, softActions))
-  const submitFinalAnswer = createSubmitFinalAnswerTool()
-  const agentTools: AgentToolDefinition[] = wrappedTools.some(
-    (t) => t.name === submitFinalAnswer.name
-  )
-    ? wrappedTools
-    : [...wrappedTools, submitFinalAnswer]
+  const agentTools: AgentToolDefinition[] = wrappedTools
 
   const agent = buildHeadlessAgent({ tools: agentTools, prompt })
   const domainConfig = buildHeadlessDomainConfig({ agent, model, provider })

@@ -25,7 +25,8 @@ export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition 
         ),
       }
     },
-    description: 'List organization groups. Use to find group IDs for assignments.',
+    description:
+      "List workspace groups (teams of members). Use to find a group's actorId for assignments and ACTOR-typed fields.",
     parameters: {
       type: 'object',
       properties: {
