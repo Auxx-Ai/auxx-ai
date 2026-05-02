@@ -102,10 +102,6 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           // Finalize streaming state; `done` still handles cleanup.
           break
         }
-        case 'final-message-delta': {
-          appendStreamDelta(data.delta)
-          break
-        }
         case 'final-message': {
           // Close out the thinking group, then commit the assistant prose.
           finalizeThinkingGroup()
@@ -137,10 +133,12 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           break
         }
         case 'llm-stream': {
-          // Interstitial prose (between tool calls) goes into the thinking group —
-          // the user-visible final message is carried by submit_final_answer and
-          // surfaces via final-message-delta / final-message instead.
-          appendThinkingText(data.delta)
+          // Stream every text-delta into the main message buffer so the final
+          // answer waterfalls character-by-character. Interstitial prose between
+          // tool calls accumulates here too — `final-message` overwrites with the
+          // post-processed canonical content (snapshot injection, link snapshots)
+          // when the turn ends.
+          appendStreamDelta(data.delta)
           break
         }
         case 'llm-reasoning-stream': {

@@ -3,6 +3,7 @@
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { UnprocessableEntityError } from '../../../../../errors'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
+import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { CreateEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -12,7 +13,6 @@ import { formatActorResolutionError, resolveActorValues } from './resolve-actor-
 export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_entity',
-    outputBlock: 'entity-card',
     outputDigestSchema: CreateEntityDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as { recordId?: string }
@@ -73,6 +73,21 @@ Example (ids match list_entity_fields output):
       },
       required: ['entityDefinitionId', 'values'],
       additionalProperties: false,
+    },
+    validateInputs: async (args) => {
+      const entityDefinitionId = parseStringArg(args.entityDefinitionId, {
+        name: 'entityDefinitionId',
+        required: true,
+        max: 200,
+      })
+      if (!entityDefinitionId.ok) return { ok: false, error: entityDefinitionId.error }
+      if (args.values !== undefined && (typeof args.values !== 'object' || args.values === null)) {
+        return {
+          ok: false,
+          error: 'values must be an object mapping field ids to values.',
+        }
+      }
+      return { ok: true, args: { ...args, entityDefinitionId: entityDefinitionId.value } }
     },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()

@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/knowledge/tools/search-docs.ts
 
 import { DOCS_URL } from '@auxx/config/urls'
+import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { ArticleSearchDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -63,6 +64,31 @@ export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition
       },
       required: ['objective', 'search_queries'],
       additionalProperties: false,
+    },
+    validateInputs: async (args) => {
+      const objective = parseStringArg(args.objective, {
+        name: 'objective',
+        required: true,
+        max: 500,
+      })
+      if (!objective.ok) return { ok: false, error: objective.error }
+      if (!Array.isArray(args.search_queries) || args.search_queries.length === 0) {
+        return { ok: false, error: 'search_queries must be a non-empty array of strings.' }
+      }
+      const queries: string[] = []
+      for (let i = 0; i < args.search_queries.length; i++) {
+        const q = parseStringArg(args.search_queries[i], {
+          name: `search_queries[${i}]`,
+          required: true,
+          max: 500,
+        })
+        if (!q.ok) return { ok: false, error: q.error }
+        if (q.value) queries.push(q.value)
+      }
+      return {
+        ok: true,
+        args: { ...args, objective: objective.value, search_queries: queries },
+      }
     },
     execute: async (args) => {
       const queries = args.search_queries as string[]

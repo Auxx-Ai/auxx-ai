@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLoadSession } from '../hooks/use-kopilot-sessions'
 import { type KopilotRequest, useKopilotSSE } from '../hooks/use-kopilot-sse'
 import { useKopilotStore } from '../stores/kopilot-store'
+import { applyChipDismissals, selectMergedContext } from '../stores/select-context'
 import './blocks/register-blocks'
 import { api } from '~/trpc/react'
 import { KopilotComposer, type KopilotComposerHandle } from './kopilot-composer'
@@ -14,10 +15,12 @@ import { KopilotMessageList, type KopilotMessageListHandle } from './kopilot-mes
 import { KopilotStatusBar } from './kopilot-status-bar'
 
 export interface KopilotChatProps {
-  /** Current page context (e.g. 'mail', 'kopilot') */
+  /**
+   * Page identifier — used as a fallback when no `<KopilotContext>` has
+   * registered a `page` field. The standalone /app/kopilot route hardcodes
+   * 'kopilot' here; the panel reads it from merged store and passes it through.
+   */
   page: string
-  /** Page-specific context */
-  context?: Record<string, unknown>
   /** Called when user switches sessions. Panel: updates store. Page: router.push. */
   onSessionChange?: (sessionId: string | null) => void
   /** Initial session to load on mount */
@@ -28,7 +31,6 @@ export interface KopilotChatProps {
 
 export function KopilotChat({
   page,
-  context,
   onSessionChange,
   initialSessionId,
   contentClassName,
@@ -114,15 +116,21 @@ export function KopilotChat({
         timestamp: Date.now(),
         parentId: messages.length > 0 ? messages[messages.length - 1]!.id : null,
       })
+      const store = useKopilotStore.getState()
+      const merged = applyChipDismissals(
+        selectMergedContext(store.contextSlices),
+        store.dismissedChipKeys
+      )
+      store.clearDismissedChips()
       setPendingRequest({
         sessionId: activeSessionId ?? undefined,
         message: text,
         type: 'message',
-        page,
-        context,
+        page: merged.page ?? page,
+        context: merged,
       })
     },
-    [addMessage, messages, activeSessionId, page, context]
+    [addMessage, messages, activeSessionId, page]
   )
 
   const handleApprovalAction = useCallback((request: KopilotRequest) => {
@@ -142,16 +150,22 @@ export function KopilotChat({
       if (!userMsg || userMsg.role !== 'user') return
 
       const text = userMsg.content.replace(/<[^>]*>/g, '')
+      const store = useKopilotStore.getState()
+      const merged = applyChipDismissals(
+        selectMergedContext(store.contextSlices),
+        store.dismissedChipKeys
+      )
+      store.clearDismissedChips()
 
       setPendingRequest({
         sessionId: activeSessionId ?? undefined,
         message: text,
         type: 'message',
-        page,
-        context,
+        page: merged.page ?? page,
+        context: merged,
       })
     },
-    [messageMap, activeSessionId, page, context]
+    [messageMap, activeSessionId, page]
   )
 
   return (
@@ -169,7 +183,6 @@ export function KopilotChat({
       <KopilotComposer
         ref={composerRef}
         page={page}
-        context={context}
         onSend={handleSend}
         contentClassName={contentClassName}
       />

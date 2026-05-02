@@ -1,7 +1,12 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/create-note.ts
 
 import { CommentService } from '../../../../../comments'
-import { isRecordId, type RecordId } from '../../../../../resources/resource-id'
+import type { RecordId } from '../../../../../resources/resource-id'
+import {
+  getKnownDefIds,
+  normalizeRecordIdArg,
+  parseStringArg,
+} from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { CreateNoteDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -34,18 +39,29 @@ export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition 
       required: ['recordId', 'content'],
       additionalProperties: false,
     },
+    validateInputs: async (args, ctx) => {
+      const known = await getKnownDefIds(ctx.organizationId)
+      const recordId = normalizeRecordIdArg(args.recordId, {
+        knownDefIds: known,
+        argName: 'recordId',
+      })
+      if (!recordId.ok) return { ok: false, error: recordId.error }
+      const content = parseStringArg(args.content, {
+        name: 'content',
+        required: true,
+        max: 50000,
+      })
+      if (!content.ok) return { ok: false, error: content.error }
+      return {
+        ok: true,
+        args: { ...args, recordId: recordId.value, content: content.value },
+        warnings: recordId.warnings,
+      }
+    },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       const recordId = args.recordId as string
       const content = args.content as string
-
-      if (!isRecordId(recordId)) {
-        return {
-          success: false,
-          output: null,
-          error: `Invalid recordId "${recordId}". Expected "entityDefinitionId:entityInstanceId".`,
-        }
-      }
 
       const service = new CommentService(agentDeps.organizationId, agentDeps.userId, db)
 

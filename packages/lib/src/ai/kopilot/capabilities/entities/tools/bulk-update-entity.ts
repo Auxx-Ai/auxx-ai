@@ -2,7 +2,8 @@
 
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { FieldValueService } from '../../../../../field-values/field-value-service'
-import { getDefinitionId, isRecordId } from '../../../../../resources/resource-id'
+import { getDefinitionId } from '../../../../../resources/resource-id'
+import { getKnownDefIds, normalizeRecordIdArrayArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { BulkUpdateEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -73,6 +74,22 @@ Example (ids match list_entity_fields output):
       required: ['recordIds', 'values'],
       additionalProperties: false,
     },
+    validateInputs: async (args, ctx) => {
+      const known = await getKnownDefIds(ctx.organizationId)
+      const recordIds = normalizeRecordIdArrayArg(args.recordIds, {
+        knownDefIds: known,
+        argName: 'recordIds',
+      })
+      if (!recordIds.ok) return { ok: false, error: recordIds.error }
+      if (recordIds.value.length === 0) {
+        return { ok: false, error: 'recordIds must contain at least one record id.' }
+      }
+      return {
+        ok: true,
+        args: { ...args, recordIds: recordIds.value },
+        warnings: recordIds.warnings,
+      }
+    },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       const allRecordIds = args.recordIds as string[]
@@ -89,15 +106,6 @@ Example (ids match list_entity_fields output):
           success: false,
           output: null,
           error: 'No record IDs provided or none were approved.',
-        }
-      }
-
-      const invalidIds = recordIds.filter((id) => !isRecordId(id))
-      if (invalidIds.length > 0) {
-        return {
-          success: false,
-          output: null,
-          error: `Invalid recordId format: ${invalidIds.join(', ')}. Expected "entityDefinitionId:entityInstanceId".`,
         }
       }
 

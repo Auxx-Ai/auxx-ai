@@ -123,7 +123,6 @@ export function KopilotPageShell({ sessionId }: KopilotPageShellProps) {
       <MainPageContent>
         <KopilotChat
           page='kopilot'
-          context={undefined}
           initialSessionId={sessionId}
           contentClassName='mx-auto w-full max-w-3xl'
         />

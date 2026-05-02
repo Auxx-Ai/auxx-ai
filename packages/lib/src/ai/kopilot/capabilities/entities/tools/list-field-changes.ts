@@ -7,6 +7,7 @@ import type {
   TimelineFieldChangeSnapshot,
   TimelineFieldChangeSnapshotValue,
 } from '../../../../../timeline/field-change-snapshot'
+import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { ListFieldChangesDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -117,6 +118,15 @@ export function createListFieldChangesTool(getDeps: GetToolDeps): AgentToolDefin
       },
       required: ['entityInstanceId'],
       additionalProperties: false,
+    },
+    validateInputs: async (args) => {
+      const entityInstanceId = parseStringArg(args.entityInstanceId, {
+        name: 'entityInstanceId',
+        required: true,
+        max: 200,
+      })
+      if (!entityInstanceId.ok) return { ok: false, error: entityInstanceId.error }
+      return { ok: true, args: { ...args, entityInstanceId: entityInstanceId.value } }
     },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()

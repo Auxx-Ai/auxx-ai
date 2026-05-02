@@ -4,8 +4,10 @@
 
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { useRouter, useSearchParams } from 'next/navigation'
+import type { ReactNode } from 'react'
 import type { ApprovalCardProps } from './approval-card-registry'
 import { BlockCard, type BlockCardAction, StatusIndicator } from './block-card'
+import { RecipientChip } from './recipient-chip'
 
 export function DraftApprovalCard({
   args,
@@ -36,10 +38,11 @@ export function DraftApprovalCard({
     (typeof args.threadId === 'string' ? args.threadId : undefined)
   const body = typeof d.body === 'string' ? d.body : ((args.body as string) ?? '')
   const argTo = Array.isArray(args.to) ? (args.to as string[]) : []
+  const argCc = Array.isArray(args.cc) ? (args.cc as string[]) : []
 
-  // Prefer resolved display names; fall back to whatever the LLM passed in `to`.
-  const recipientLabels =
-    d.recipients ?? resolvedRecipients?.map((r) => r.displayName ?? r.identifier) ?? argTo
+  // Post-execution: prefer resolved labels from the digest (real emails / phones).
+  const resolvedLabels =
+    d.recipients ?? resolvedRecipients?.map((r) => r.displayName ?? r.identifier)
 
   const handleEditInThread = () => {
     if (!threadId) return
@@ -90,7 +93,28 @@ export function DraftApprovalCard({
     : isRejected
       ? 'Cancelled'
       : 'Send Message'
-  const secondaryText = recipientLabels.length > 0 ? `To: ${recipientLabels.join(', ')}` : undefined
+
+  // Pre-approval: render badges from the raw args so contact recordIds resolve
+  // to a contact's name instead of dumping the id. Post-approval: fall back to
+  // the digest's already-resolved string list (real emails / phones).
+  const secondaryText: ReactNode = resolvedLabels?.length ? (
+    `To: ${resolvedLabels.join(', ')}`
+  ) : argTo.length > 0 ? (
+    <span className='inline-flex flex-wrap items-center gap-1'>
+      <span>To:</span>
+      {argTo.map((v, i) => (
+        <RecipientChip key={`to-${i}-${v}`} value={v} />
+      ))}
+      {argCc.length > 0 && (
+        <>
+          <span className='ml-2'>Cc:</span>
+          {argCc.map((v, i) => (
+            <RecipientChip key={`cc-${i}-${v}`} value={v} />
+          ))}
+        </>
+      )}
+    </span>
+  ) : undefined
 
   return (
     <BlockCard

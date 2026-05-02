@@ -26,9 +26,6 @@ import {
 const logger = createScopedLogger('agent-query-loop')
 const DEFAULT_MAX_ITERATIONS = 10
 
-/** Terminator marker returned by meta-tools like `submit_final_answer` */
-const TERMINATOR_KEY = '__terminate'
-
 /**
  * Core agent query loop — standalone async generator.
  *
@@ -37,8 +34,10 @@ const TERMINATOR_KEY = '__terminate'
  *
  * One-shot agents (tools=[], maxIterations=1) and looping agents use the same code path.
  *
- * If a tool's output contains `{ __terminate: true, content }`, the loop yields a
- * `final-message` event and exits cleanly. This is how `submit_final_answer` ends a turn.
+ * Termination: the loop exits when the LLM returns a response with no tool
+ * calls — that response's content becomes the turn's final answer (post-
+ * processed via `domainConfig.postProcessFinalContent` and emitted as a
+ * `final-message` event).
  */
 export async function* agentQueryLoop(
   agent: AgentDefinition,
@@ -110,10 +109,6 @@ export async function* agentQueryLoop(
     let toolCalls: ToolCall[] = []
     let reasoningContent: string | undefined
 
-    // Per-tool-call arg buffers for streaming — only surfaced for meta-tools
-    // like submit_final_answer where the arg text IS the user-facing content.
-    const toolArgBuffers = new Map<string, { toolName?: string; lastContent: string }>()
-
     try {
       for await (const event of config.callModel(callParams)) {
         switch (event.type) {
@@ -125,24 +120,6 @@ export async function* agentQueryLoop(
             break
           case 'tool-call':
             break
-          case 'tool-args-delta': {
-            if (event.toolName !== 'submit_final_answer') break
-            const prior = toolArgBuffers.get(event.toolCallId) ?? {
-              toolName: event.toolName,
-              lastContent: '',
-            }
-            const nextRaw = (prior as { raw?: string }).raw ?? ''
-            const raw = nextRaw + event.argsDelta
-            const extracted = extractContentFromPartialJson(raw)
-            if (extracted.length > prior.lastContent.length) {
-              const delta = extracted.slice(prior.lastContent.length)
-              yield { type: 'final-message-delta', agent: agent.name, delta }
-              prior.lastContent = extracted
-            }
-            ;(prior as { raw?: string }).raw = raw
-            toolArgBuffers.set(event.toolCallId, prior)
-            break
-          }
           case 'usage':
             break
           case 'done':
@@ -211,11 +188,10 @@ export async function* agentQueryLoop(
         contentLength: content.length,
       })
 
-      // The LLM ended the turn by typing text without calling the terminator
-      // tool (`submit_final_answer`). Treat this as an implicit final answer:
-      // run the same post-process pipeline a terminator would get (snapshot
-      // injection, fallback fence auto-emit) and persist + emit a final-message
-      // event so the frontend renders instead of showing nothing.
+      // The LLM stopped calling tools — that's the turn's terminator. Run the
+      // domain post-process (snapshot injection, link-snapshot extraction) and
+      // persist + emit a final-message event so the frontend commits the
+      // canonical content.
       if (content.length > 0) {
         const processed = config.domainConfig.postProcessFinalContent
           ? config.domainConfig.postProcessFinalContent(content, currentState)
@@ -266,8 +242,8 @@ export async function* agentQueryLoop(
 
     // Capture mode (headless kopilot): never pause. Approval-required tools
     // are recorded into state.capturedActions with a synthetic `_captured: true`
-    // result, and the loop continues until the model emits submit_final_answer
-    // or runs out of tool calls. Read-only tools execute normally.
+    // result, and the loop continues until the model returns no tool calls.
+    // Read-only tools execute normally.
     if (config.approvalMode === 'capture') {
       const captureRun = await processCaptureToolCalls(
         toolCalls,
@@ -319,41 +295,6 @@ export async function* agentQueryLoop(
         ...currentState,
         messages: [...currentState.messages, assistantMessage, ...toolResultMessages],
         capturedActions: [...(currentState.capturedActions ?? []), ...captureRun.capturedActions],
-      }
-
-      const terminator = captureRun.results.find((r) => isTerminatorResult(r.output))
-      if (terminator) {
-        const output = terminator.output as Record<string, unknown>
-        const rawContent = typeof output.content === 'string' ? output.content : ''
-        const processed = config.domainConfig.postProcessFinalContent
-          ? config.domainConfig.postProcessFinalContent(rawContent, currentState)
-          : { content: rawContent }
-        const finalContent = processed.content
-        yield {
-          type: 'final-message',
-          agent: agent.name,
-          content: finalContent,
-          ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
-        }
-        currentState = {
-          ...currentState,
-          messages: [
-            ...currentState.messages,
-            {
-              role: 'assistant' as const,
-              content: finalContent,
-              timestamp: Date.now(),
-              metadata: {
-                agent: agent.name,
-                modelId: `${callParams.provider}:${callParams.model}`,
-                final: true,
-              },
-              ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
-            },
-          ],
-        }
-        currentState = await agent.processResult(finalContent, [], currentState, ctx)
-        break
       }
 
       currentState = await agent.processResult(content, toolCalls, currentState, ctx)
@@ -563,45 +504,6 @@ export async function* agentQueryLoop(
       messages: [...currentState.messages, assistantMessage, ...toolResultMessages],
     }
 
-    // Check for termination marker from meta-tools (e.g. submit_final_answer)
-    const terminator = toolResults.results.find((r) => isTerminatorResult(r.output))
-    if (terminator) {
-      const output = terminator.output as Record<string, unknown>
-      const rawContent = typeof output.content === 'string' ? output.content : ''
-      // Let the domain post-process (inject snapshots, auto-emit fallback fences,
-      // build inline-link snapshot map).
-      const processed = config.domainConfig.postProcessFinalContent
-        ? config.domainConfig.postProcessFinalContent(rawContent, currentState)
-        : { content: rawContent }
-      const finalContent = processed.content
-      yield {
-        type: 'final-message',
-        agent: agent.name,
-        content: finalContent,
-        ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
-      }
-      // Persist the final prose as an assistant message so session restore is clean.
-      currentState = {
-        ...currentState,
-        messages: [
-          ...currentState.messages,
-          {
-            role: 'assistant' as const,
-            content: finalContent,
-            timestamp: Date.now(),
-            metadata: {
-              agent: agent.name,
-              modelId: `${callParams.provider}:${callParams.model}`,
-              final: true,
-            },
-            ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
-          },
-        ],
-      }
-      currentState = await agent.processResult(finalContent, [], currentState, ctx)
-      break
-    }
-
     // Let the agent process intermediate results
     currentState = await agent.processResult(content, toolCalls, currentState, ctx)
   }
@@ -613,14 +515,6 @@ export async function* agentQueryLoop(
 }
 
 // ===== HELPERS =====
-
-function isTerminatorResult(output: unknown): boolean {
-  return (
-    typeof output === 'object' &&
-    output !== null &&
-    (output as Record<string, unknown>)[TERMINATOR_KEY] === true
-  )
-}
 
 function agentToolsToLLMTools(tools: AgentToolDefinition[]) {
   return tools.map((t) => ({
@@ -819,44 +713,4 @@ async function executeToolCalls(
   }
 
   return { events, results }
-}
-
-/**
- * Best-effort extraction of the `content` field from a streaming, potentially
- * incomplete JSON tool-args payload. Designed for `submit_final_answer` where
- * the model streams `{"content":"..."}` — we don't wait for a complete parse,
- * we just read characters of the content string as they arrive. Returns the
- * content captured so far (possibly empty).
- */
-function extractContentFromPartialJson(raw: string): string {
-  const marker = '"content"'
-  const keyIdx = raw.indexOf(marker)
-  if (keyIdx < 0) return ''
-  let i = keyIdx + marker.length
-  // Skip whitespace and colon
-  while (i < raw.length && (raw[i] === ' ' || raw[i] === ':' || raw[i] === '\t' || raw[i] === '\n'))
-    i++
-  if (raw[i] !== '"') return ''
-  i++
-  let out = ''
-  while (i < raw.length) {
-    const ch = raw[i]
-    if (ch === '\\') {
-      const next = raw[i + 1]
-      if (next === undefined) break
-      if (next === 'n') out += '\n'
-      else if (next === 't') out += '\t'
-      else if (next === 'r') out += '\r'
-      else if (next === '"') out += '"'
-      else if (next === '\\') out += '\\'
-      else if (next === '/') out += '/'
-      else out += next
-      i += 2
-      continue
-    }
-    if (ch === '"') break
-    out += ch
-    i++
-  }
-  return out
 }

@@ -13,6 +13,7 @@ import * as React from 'react'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
+import { KopilotContext } from '~/components/kopilot/context'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
 import { toRecordId, useRecord } from '~/components/resources'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
@@ -103,82 +104,87 @@ export function ContactDrawer({
 
   if (!open || !contactId) return null
 
+  const contactLabel = contact ? getFullName(contact) : undefined
+
   return (
-    <BaseEntityDrawer
-      recordId={recordId}
-      open={open}
-      onOpenChange={onOpenChange ?? (() => {})}
-      entityType='contact'
-      isDocked={isDocked}
-      dockedWidth={dockedWidth}
-      onWidthChange={setDockedWidth}
-      minWidth={400}
-      maxWidth={800}
-      focusComposerTrigger={focusComposerTrigger}
-      onClose={handleClose}
-      headerIcon={<EntityIcon iconId='circle-user' color='indigo' className='size-6' />}
-      headerTitle='Contact'
-      headerActions={
-        <>
-          <Button
-            variant='ghost'
-            size='xs'
-            disabled={!presetValues}
-            onClick={() => presetValues && openCompose({ presetValues })}>
-            <Mail />
-            Compose
-          </Button>
-          <Tooltip content='Create note'>
-            <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
-              <MessagesSquare />
-            </Button>
-          </Tooltip>
-          <Tooltip content='View full page'>
+    <>
+      <KopilotContext activeContactId={contactId} activeContactLabel={contactLabel} />
+      <BaseEntityDrawer
+        recordId={recordId}
+        open={open}
+        onOpenChange={onOpenChange ?? (() => {})}
+        entityType='contact'
+        isDocked={isDocked}
+        dockedWidth={dockedWidth}
+        onWidthChange={setDockedWidth}
+        minWidth={400}
+        maxWidth={800}
+        focusComposerTrigger={focusComposerTrigger}
+        onClose={handleClose}
+        headerIcon={<EntityIcon iconId='circle-user' color='indigo' className='size-6' />}
+        headerTitle='Contact'
+        headerActions={
+          <>
             <Button
               variant='ghost'
-              size='icon-xs'
-              onClick={() => router.push(`/app/contacts/${contactId}`)}>
-              <Expand />
+              size='xs'
+              disabled={!presetValues}
+              onClick={() => presetValues && openCompose({ presetValues })}>
+              <Mail />
+              Compose
             </Button>
-          </Tooltip>
-          <ManualTriggerButton
-            resourceType='contact'
-            recordId={recordId}
-            buttonVariant='ghost'
-            buttonSize='icon-sm'
-            buttonClassName='rounded-full'
-            tooltipContent='Trigger workflow'
-          />
-          <Tooltip content='Delete contact'>
-            <Button
-              variant='ghost'
-              size='icon-xs'
-              onClick={() => {
-                if (onDeleteContact) {
-                  void onDeleteContact(contactId)
-                }
-              }}>
-              <Trash className='text-bad-500' />
-            </Button>
-          </Tooltip>
-          <DockToggleButton />
-        </>
-      }
-      cardContent={
-        <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
-          <div className='size-10 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
-            <User className='size-6 text-neutral-500 dark:text-foreground' />
-          </div>
-          <div className='flex flex-col align-start w-full'>
-            <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
-              {contact ? getFullName(contact) : <Skeleton className='h-6 w-80 mb-1' />}
+            <Tooltip content='Create note'>
+              <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
+                <MessagesSquare />
+              </Button>
+            </Tooltip>
+            <Tooltip content='View full page'>
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                onClick={() => router.push(`/app/contacts/${contactId}`)}>
+                <Expand />
+              </Button>
+            </Tooltip>
+            <ManualTriggerButton
+              resourceType='contact'
+              recordId={recordId}
+              buttonVariant='ghost'
+              buttonSize='icon-sm'
+              buttonClassName='rounded-full'
+              tooltipContent='Trigger workflow'
+            />
+            <Tooltip content='Delete contact'>
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                onClick={() => {
+                  if (onDeleteContact) {
+                    void onDeleteContact(contactId)
+                  }
+                }}>
+                <Trash className='text-bad-500' />
+              </Button>
+            </Tooltip>
+            <DockToggleButton />
+          </>
+        }
+        cardContent={
+          <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
+            <div className='size-10 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
+              <User className='size-6 text-neutral-500 dark:text-foreground' />
             </div>
-            <div className='text-xs text-neutral-500 truncate'>
-              {contact ? createdAtText : <Skeleton className='h-4 w-40' />}
+            <div className='flex flex-col align-start w-full'>
+              <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
+                {contact ? getFullName(contact) : <Skeleton className='h-6 w-80 mb-1' />}
+              </div>
+              <div className='text-xs text-neutral-500 truncate'>
+                {contact ? createdAtText : <Skeleton className='h-4 w-40' />}
+              </div>
             </div>
           </div>
-        </div>
-      }
-    />
+        }
+      />
+    </>
   )
 }

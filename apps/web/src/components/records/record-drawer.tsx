@@ -34,6 +34,7 @@ import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
+import { KopilotContext } from '~/components/kopilot/context'
 import { MergeDialog } from '~/components/merge'
 import { useRecord, useResource } from '~/components/resources'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
@@ -242,6 +243,7 @@ export const RecordDrawer = React.memo(function RecordDrawer({
 
   return (
     <>
+      <KopilotContext activeRecordId={recordId} activeRecordLabel={displayName ?? undefined} />
       <BaseEntityDrawer
         recordId={recordId}
         open={open}

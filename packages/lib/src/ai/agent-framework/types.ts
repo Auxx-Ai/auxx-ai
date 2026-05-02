@@ -71,14 +71,6 @@ export type LLMStreamEvent =
   | { type: 'text-delta'; delta: string }
   | { type: 'reasoning-delta'; delta: string }
   | { type: 'tool-call'; toolCall: ToolCall }
-  /**
-   * Incremental delta of a tool call's argument JSON string as the model emits it.
-   * Used by the query loop to surface streaming `submit_final_answer.content`
-   * deltas as `final-message-delta` events. Providers that don't support arg
-   * streaming simply never emit this and the loop falls back to the atomic
-   * `final-message` event when the tool completes.
-   */
-  | { type: 'tool-args-delta'; toolCallId: string; toolName?: string; argsDelta: string }
   | { type: 'usage'; usage: UsageMetrics }
   | {
       type: 'done'
@@ -91,15 +83,6 @@ export type LLMStreamEvent =
     }
 
 // ===== TOOL TYPES =====
-
-/**
- * Canonical reference-block kind a tool's output maps to. Both a prompt hint
- * (which block the LLM should embed) and the dispatch key for the snapshot
- * walker (what id shape to look for in the output). Omit when the tool emits
- * no id-bearing output (e.g. writes attach literal blocks directly, or
- * metadata-only tools like `list_entities`).
- */
-export type ToolOutputBlock = 'entity-list' | 'entity-card' | 'thread-list' | 'task-list'
 
 /** A tool available to an agent, built from node processors or custom definitions */
 export interface AgentToolDefinition {
@@ -176,11 +159,6 @@ export interface AgentToolDefinition {
   ) => Promise<
     { ok: true; args: Record<string, unknown>; warnings?: string[] } | { ok: false; error: string }
   >
-  /**
-   * Canonical reference-block kind this tool's results map to. Drives both
-   * the auto-generated prompt section and the generic snapshot walker.
-   */
-  outputBlock?: ToolOutputBlock
   /**
    * Escape hatch for non-obvious usage rules (e.g. "search_entities only
    * enriches fields when matches ≤5"). Rendered as-is under the tool's
@@ -434,11 +412,10 @@ export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
    */
   onToolResult?: (toolName: string, result: AgentToolResult, state: AgentState) => AgentState
   /**
-   * Optional hook called on the final content string from a terminator tool
-   * (e.g. `submit_final_answer`) before it is persisted as the assistant's
-   * final message. Kopilot uses this to inject snapshots into `auxx:*` fences,
-   * auto-emit a fallback fence when the LLM forgot to embed one, and build the
-   * per-message `linkSnapshots` lookup table for inline `auxx://` chips.
+   * Optional hook called on the responder's final content string before it is
+   * persisted as the assistant's final message. Kopilot uses this to inject
+   * snapshots into `auxx:*` fences and build the per-message `linkSnapshots`
+   * lookup table for inline `auxx://` chips.
    */
   postProcessFinalContent?: (content: string, state: AgentState) => PostProcessResult
 }
@@ -485,9 +462,9 @@ export interface AgentEngineConfig {
    *   first approval tool, waiting for `engine.resume()`. This is chat behavior.
    * - `'capture'`: the loop never pauses. Approval tools are recorded into
    *   `state.capturedActions` with a synthetic `_captured: true` result (driven
-   *   by the tool's `captureMint`), and the loop continues until the model emits
-   *   `submit_final_answer` or runs out of tool calls. Read-only tools execute
-   *   normally in either mode. Used by the headless kopilot runner.
+   *   by the tool's `captureMint`), and the loop continues until the model
+   *   returns no tool calls. Read-only tools execute normally in either mode.
+   *   Used by the headless kopilot runner.
    */
   approvalMode?: 'pause' | 'capture'
 }
@@ -588,8 +565,6 @@ export type AgentEvent = { turnId?: string } & (
       status: 'awaiting-approval' | 'executing' | 'completed' | 'error' | 'rejected'
       digest?: unknown
     }
-  /** Streaming delta for submit_final_answer.content as the LLM types the final message */
-  | { type: 'final-message-delta'; agent: string; delta: string }
   /** Commits the final assistant prose message for the turn */
   | {
       type: 'final-message'

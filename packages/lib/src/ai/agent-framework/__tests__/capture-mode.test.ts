@@ -437,7 +437,7 @@ describe('AgentEngine — capture mode', () => {
     })
   })
 
-  it('submit_final_answer terminates capture-mode cleanly (no waitingForApproval)', async () => {
+  it('capture-mode terminates cleanly when the responder stops calling tools', async () => {
     const tools: AgentToolDefinition[] = [
       {
         name: 'create_task',
@@ -446,32 +446,16 @@ describe('AgentEngine — capture mode', () => {
         requiresApproval: true,
         execute: noopExecute,
       },
-      {
-        name: 'submit_final_answer',
-        description: 'final',
-        parameters: {
-          type: 'object',
-          properties: { content: { type: 'string' } },
-          required: ['content'],
-        },
-        execute: async (args) => ({
-          success: true,
-          output: { __terminate: true, content: String(args.content ?? '') },
-        }),
-      },
     ]
 
     const engine = buildEngine({
       approvalMode: 'capture',
       tools,
       turns: [
-        {
-          content: 'wrap',
-          toolCalls: [
-            makeToolCall('c1', 'create_task'),
-            makeToolCall('f1', 'submit_final_answer', { content: 'all set' }),
-          ],
-        },
+        // Iteration 1: capture the approval-required tool.
+        { content: '', toolCalls: [makeToolCall('c1', 'create_task')] },
+        // Iteration 2: no tool calls — implicit termination, content becomes the final message.
+        { content: 'all set', toolCalls: [] },
       ],
     })
 

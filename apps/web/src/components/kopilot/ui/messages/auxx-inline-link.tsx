@@ -2,20 +2,17 @@
 
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
+import type { ActorId } from '@auxx/types/actor'
+import { isActorId } from '@auxx/types/actor'
+import type { RecordId } from '@auxx/types/resource'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@auxx/ui/components/hover-card'
 import { cn } from '@auxx/ui/lib/utils'
-import { formatDistanceToNowStrict } from 'date-fns'
-import {
-  CheckCircle2,
-  CircleDot,
-  ExternalLink,
-  FileText,
-  type LucideIcon,
-  Mail,
-} from 'lucide-react'
+import { ExternalLink, FileText, type LucideIcon } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
-import { RecordHoverCard } from '~/components/resources/ui/record-hover-card'
+import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
+import { TaskBadge } from '~/components/tasks/ui/task-badge'
+import { ThreadBadge } from '~/components/threads/ui/thread-badge'
 import type { LinkSnapshot } from '../../stores/kopilot-store'
 
 interface AuxxInlineLinkProps {
@@ -27,9 +24,9 @@ interface AuxxInlineLinkProps {
 
 /**
  * Inline `auxx://` chip rendered for `[label](auxx://...)` markdown links in
- * assistant messages. Each kind (record/thread/task/doc) gets its own click
- * behavior + hover preview, all driven from the per-message `linkSnapshots`
- * map populated server-side.
+ * assistant messages. Each kind (record/thread/task/actor/doc) gets its own
+ * click behavior + hover preview, all driven from the per-message
+ * `linkSnapshots` map populated server-side.
  */
 export function AuxxInlineLink({ href, label, snapshot }: AuxxInlineLinkProps) {
   const parsed = parseAuxxHref(href)
@@ -37,11 +34,17 @@ export function AuxxInlineLink({ href, label, snapshot }: AuxxInlineLinkProps) {
 
   switch (parsed.kind) {
     case 'record':
-      return <RecordChip recordId={parsed.id} label={label} />
+      return <RecordChip recordId={parsed.id as RecordId} />
     case 'thread':
-      return <ThreadChip threadId={parsed.id} label={label} snapshot={asThreadSnapshot(snapshot)} />
+      return <ThreadChip threadId={parsed.id} />
     case 'task':
-      return <TaskChip taskId={parsed.id} label={label} snapshot={asTaskSnapshot(snapshot)} />
+      return <TaskChip taskId={parsed.id} />
+    case 'actor':
+      return isActorId(parsed.id) ? (
+        <ActorChip actorId={parsed.id} />
+      ) : (
+        <FallbackChip label={label} />
+      )
     case 'doc':
       return <DocChip slug={parsed.id} label={label} snapshot={asDocSnapshot(snapshot)} />
     default:
@@ -51,16 +54,59 @@ export function AuxxInlineLink({ href, label, snapshot }: AuxxInlineLinkProps) {
 
 function parseAuxxHref(
   href: string
-): { kind: 'record' | 'thread' | 'task' | 'doc'; id: string } | null {
+): { kind: 'record' | 'thread' | 'task' | 'doc' | 'actor'; id: string } | null {
   if (!href.startsWith('auxx://')) return null
   const rest = href.slice('auxx://'.length)
   const slashIdx = rest.indexOf('/')
   if (slashIdx === -1) return null
   const kind = rest.slice(0, slashIdx)
-  const id = rest.slice(slashIdx + 1)
-  if (!id) return null
-  if (kind !== 'record' && kind !== 'thread' && kind !== 'task' && kind !== 'doc') return null
-  return { kind, id }
+  const rawId = rest.slice(slashIdx + 1)
+  if (!rawId) return null
+  if (
+    kind !== 'record' &&
+    kind !== 'thread' &&
+    kind !== 'task' &&
+    kind !== 'doc' &&
+    kind !== 'actor'
+  )
+    return null
+  return { kind, id: normalizeId(kind, rawId) }
+}
+
+/**
+ * Lenient id normalization to absorb the model emitting an extra prefix
+ * segment.
+ *
+ * Observed model mistake (gpt-5.4-nano):
+ *   `auxx://record/contacts:<defId>:<instId>`
+ * The model prepends the entity slug (`contacts`, `companies`, …) before the
+ * real `<defId>:<instId>` pair. We strip it by keeping the last two
+ * colon-separated segments — the canonical RecordId shape.
+ *
+ * Same idea for actors: `auxx://actor/<workspace>:user:<id>` collapses to
+ * `user:<id>` if the trailing two segments form a valid actor type+id pair.
+ *
+ * Other kinds carry single-segment ids and are passed through untouched.
+ */
+function normalizeId(kind: string, id: string): string {
+  if (kind === 'record') {
+    const parts = id.split(':')
+    if (parts.length > 2) return parts.slice(-2).join(':')
+    return id
+  }
+  if (kind === 'actor') {
+    const parts = id.split(':')
+    if (parts.length > 2) {
+      const last = parts[parts.length - 1]!
+      // Pick the rightmost user/group marker to anchor the id.
+      for (let i = parts.length - 2; i >= 0; i--) {
+        const seg = parts[i]
+        if (seg === 'user' || seg === 'group') return `${seg}:${last}`
+      }
+    }
+    return id
+  }
+  return id
 }
 
 interface ChipProps {
@@ -92,44 +138,17 @@ function FallbackChip({ label }: { label: string }) {
 
 // ===== Record =====
 
-function RecordChip({ recordId, label }: { recordId: string; label: string }) {
+function RecordChip({ recordId }: { recordId: RecordId }) {
   return (
-    <RecordHoverCard recordId={recordId}>
-      <span className='cursor-pointer'>
-        <ChipBody
-          label={label}
-          className='bg-primary/10 text-primary ring-primary/20 hover:bg-primary/15'
-        />
-      </span>
-    </RecordHoverCard>
+    <span className='inline-flex align-baseline'>
+      <RecordBadge recordId={recordId} variant='link' link={true} size='sm' />
+    </span>
   )
 }
 
 // ===== Thread =====
 
-function asThreadSnapshot(
-  snapshot: LinkSnapshot | undefined
-):
-  | { threadId: string; subject: string | null; sender?: string; lastMessageAt: string | null }
-  | undefined {
-  if (!snapshot || !('threadId' in snapshot)) return undefined
-  return snapshot
-}
-
-function ThreadChip({
-  threadId,
-  label,
-  snapshot,
-}: {
-  threadId: string
-  label: string
-  snapshot?: {
-    threadId: string
-    subject: string | null
-    sender?: string
-    lastMessageAt: string | null
-  }
-}) {
+function ThreadChip({ threadId }: { threadId: string }) {
   const searchParams = useSearchParams()
 
   const handleClick = (e: React.MouseEvent) => {
@@ -140,98 +159,29 @@ function ThreadChip({
   }
 
   return (
-    <HoverCard openDelay={300} closeDelay={100}>
-      <HoverCardTrigger asChild>
-        <button type='button' onClick={handleClick} className='inline-flex'>
-          <ChipBody
-            label={label}
-            icon={Mail}
-            className='bg-blue-500/10 text-blue-700 ring-blue-500/20 hover:bg-blue-500/15 dark:text-blue-300'
-          />
-        </button>
-      </HoverCardTrigger>
-      <HoverCardContent className='w-72 p-3'>
-        {snapshot ? (
-          <div className='space-y-1'>
-            <div className='font-medium text-sm'>{snapshot.subject ?? '(no subject)'}</div>
-            {snapshot.sender && (
-              <div className='text-muted-foreground text-xs'>{snapshot.sender}</div>
-            )}
-            {snapshot.lastMessageAt && (
-              <div className='text-muted-foreground text-xs'>
-                {formatDistanceToNowStrict(new Date(snapshot.lastMessageAt), {
-                  addSuffix: true,
-                })}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className='text-muted-foreground text-xs'>Thread {threadId}</div>
-        )}
-      </HoverCardContent>
-    </HoverCard>
+    <button type='button' onClick={handleClick} className='inline-flex align-baseline'>
+      <ThreadBadge threadId={threadId} variant='link' size='sm' />
+    </button>
   )
 }
 
 // ===== Task =====
 
-function asTaskSnapshot(
-  snapshot: LinkSnapshot | undefined
-):
-  | { taskId: string; title: string; deadline: string | null; completedAt: string | null }
-  | undefined {
-  if (!snapshot || !('taskId' in snapshot)) return undefined
-  return snapshot
+function TaskChip({ taskId }: { taskId: string }) {
+  return (
+    <span className='inline-flex align-baseline'>
+      <TaskBadge taskId={taskId} size='sm' />
+    </span>
+  )
 }
 
-function TaskChip({
-  taskId,
-  label,
-  snapshot,
-}: {
-  taskId: string
-  label: string
-  snapshot?: { taskId: string; title: string; deadline: string | null; completedAt: string | null }
-}) {
-  const completed = !!snapshot?.completedAt
-  const Icon = completed ? CheckCircle2 : CircleDot
+// ===== Actor =====
 
+function ActorChip({ actorId }: { actorId: ActorId }) {
   return (
-    <HoverCard openDelay={300} closeDelay={100}>
-      <HoverCardTrigger asChild>
-        <span className='inline-flex cursor-default'>
-          <ChipBody
-            label={label}
-            icon={Icon}
-            className={cn(
-              'ring-inset',
-              completed
-                ? 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300'
-                : 'bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300'
-            )}
-          />
-        </span>
-      </HoverCardTrigger>
-      <HoverCardContent className='w-72 p-3'>
-        {snapshot ? (
-          <div className='space-y-1'>
-            <div className='font-medium text-sm'>{snapshot.title}</div>
-            {snapshot.deadline && (
-              <div className='text-muted-foreground text-xs'>
-                Due {formatDistanceToNowStrict(new Date(snapshot.deadline), { addSuffix: true })}
-              </div>
-            )}
-            {completed && snapshot.completedAt && (
-              <Badge variant='outline' className='text-[10px] uppercase'>
-                Completed
-              </Badge>
-            )}
-          </div>
-        ) : (
-          <div className='text-muted-foreground text-xs'>Task {taskId}</div>
-        )}
-      </HoverCardContent>
-    </HoverCard>
+    <span className='inline-flex align-baseline'>
+      <ActorBadge actorId={actorId} variant='link' size='sm' />
+    </span>
   )
 }
 

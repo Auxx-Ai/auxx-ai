@@ -7,6 +7,7 @@ import {
   normalizeActorIdArrayArg,
   normalizeRecordIdArg,
   normalizeRecordIdArrayArg,
+  parseDeadlineArg,
   parseStringArg,
 } from '../tool-inputs'
 
@@ -255,5 +256,47 @@ describe('parseStringArg', () => {
     const r = parseStringArg('hi', { name: 'title', min: 5 })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toContain('at least 5 characters')
+  })
+})
+
+describe('parseDeadlineArg', () => {
+  it('passes through undefined / null / empty as ok with undefined value', () => {
+    expect(parseDeadlineArg(undefined)).toEqual({ ok: true, value: undefined })
+    expect(parseDeadlineArg(null)).toEqual({ ok: true, value: undefined })
+    expect(parseDeadlineArg('')).toEqual({ ok: true, value: undefined })
+  })
+
+  it('rejects non-string with type info', () => {
+    const r = parseDeadlineArg(42)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('must be a string')
+  })
+
+  it('parses a relative phrasing into a RelativeDate', () => {
+    const r = parseDeadlineArg('in 3 days')
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.value).toBeDefined()
+      // RelativeDate has a `value` numeric field; AbsoluteDate has type 'static'.
+      // We don't assert exact shape — just that it parsed to *something*.
+      expect(typeof r.value).toBe('object')
+    }
+  })
+
+  it('parses a string-duration phrasing (eom) into an AbsoluteDate', () => {
+    const r = parseDeadlineArg('end of month')
+    expect(r.ok).toBe(true)
+    if (r.ok && r.value && 'type' in r.value) {
+      expect(r.value.type).toBe('static')
+    }
+  })
+
+  it('rejects unparseable text with example phrasings in the error', () => {
+    const r = parseDeadlineArg('not a date at all xyzzy')
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.error).toContain('could not be parsed')
+      expect(r.error).toContain('next Friday')
+    }
   })
 })

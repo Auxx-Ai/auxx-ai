@@ -12,7 +12,6 @@ import type {
 } from '../../agent-framework/types'
 import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
-import { createSubmitFinalAnswerTool } from '../meta-tools/submit-final-answer'
 import { buildAgentSystemPrompt, type CurrentUserInfo } from '../prompts/agent-prompt'
 import type { KopilotDomainState } from '../types'
 
@@ -30,20 +29,16 @@ export interface CreateKopilotAgentOptions {
 /**
  * Create the solo Kopilot agent.
  *
- * Owns the full turn: calls tools (which emit their own `auxx:*` blocks via
- * tool results), loops on tool results, and finally calls `submit_final_answer`
- * to terminate with a prose wrap-up.
+ * Owns the full turn: calls tools, loops on tool results, and ends the turn
+ * by responding with prose plus any `auxx:*` reference fences (no separate
+ * terminator tool — implicit termination on no-tool-call iterations).
  */
 export function createKopilotAgent(
   options: CreateKopilotAgentOptions
 ): AgentDefinition<KopilotDomainState> {
   const { tools, capabilities = [], maxIterations = 15 } = options
 
-  // Append the terminator meta-tool. Dedupe if someone already added it.
-  const submitFinalAnswer = createSubmitFinalAnswerTool()
-  const agentTools: AgentToolDefinition[] = tools.some((t) => t.name === submitFinalAnswer.name)
-    ? tools
-    : [...tools, submitFinalAnswer]
+  const agentTools: AgentToolDefinition[] = tools
 
   return {
     name: 'agent',

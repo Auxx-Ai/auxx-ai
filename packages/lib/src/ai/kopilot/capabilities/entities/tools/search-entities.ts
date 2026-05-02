@@ -4,6 +4,7 @@ import type { RecordId } from '@auxx/types/resource'
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { RecordPickerService } from '../../../../../resources/picker'
 import { parseRecordId } from '../../../../../resources/resource-id'
+import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { SearchEntitiesDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -16,7 +17,6 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
   return {
     name: 'search_entities',
     idempotent: true,
-    outputBlock: 'entity-list',
     outputDigestSchema: SearchEntitiesDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
@@ -39,7 +39,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
       }
     },
     usageNotes:
-      'For field-value comparisons, follow up with `get_entity` per record — this tool only enriches fields when matches ≤5. When you reach `submit_final_answer`, embed the records you are referring to in an `auxx:entity-card` (1) or `auxx:entity-list` (2+) fence inside `content`. Records mentioned in prose without a fence will not be visible to the user.',
+      'For field-value comparisons, follow up with `get_entity` per record — this tool only enriches fields when matches ≤5. In your final reply, embed the records you are referring to in an `auxx:entity-card` (1) or `auxx:entity-list` (2+) fence. Records mentioned in prose without a fence will not be visible to the user.',
     description:
       'Search for records by name or text across all entity types, or within a specific entity type. Returns matching records with display names. If you know the entity type, pass entityDefinitionId for faster results.',
     parameters: {
@@ -61,6 +61,23 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
       },
       required: [],
       additionalProperties: false,
+    },
+    validateInputs: async (args) => {
+      const query = parseStringArg(args.query, { name: 'query', max: 500 })
+      if (!query.ok) return { ok: false, error: query.error }
+      const entityDefinitionId = parseStringArg(args.entityDefinitionId, {
+        name: 'entityDefinitionId',
+        max: 200,
+      })
+      if (!entityDefinitionId.ok) return { ok: false, error: entityDefinitionId.error }
+      return {
+        ok: true,
+        args: {
+          ...args,
+          query: query.value,
+          entityDefinitionId: entityDefinitionId.value,
+        },
+      }
     },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()

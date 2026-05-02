@@ -22,18 +22,23 @@ import { Tooltip } from '~/components/global/tooltip'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
 import { api } from '~/trpc/react'
+import { KopilotContextChipStrip } from '../context/kopilot-context-chip-strip'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { usePromptTemplates } from '../hooks/use-prompt-templates'
 import type { KopilotMessage } from '../stores/kopilot-store'
 import { useKopilotStore } from '../stores/kopilot-store'
+import { applyChipDismissals, selectMergedContext } from '../stores/select-context'
 import { PromptFormDialog } from './dialogs/prompt-form-dialog'
 import { PromptTemplateDialog } from './dialogs/prompt-template-dialog'
 import { PromptTemplatePickerContent } from './pickers/prompt-template-picker/prompt-template-picker-content'
 
 interface KopilotComposerProps {
   ref?: React.Ref<KopilotComposerHandle>
+  /**
+   * Page identifier — fallback when no `<KopilotContext page="...">` mount has
+   * registered one. Merged store wins when both are present.
+   */
   page: string
-  context?: KopilotRequest['context']
   onSend: (request: KopilotRequest) => void
   contentClassName?: string
 }
@@ -80,13 +85,7 @@ function formatPromptBadgesForDisplay(
   })
 }
 
-export function KopilotComposer({
-  ref,
-  page,
-  context,
-  onSend,
-  contentClassName,
-}: KopilotComposerProps) {
+export function KopilotComposer({ ref, page, onSend, contentClassName }: KopilotComposerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleSendRef = useRef<() => void>(() => {})
 
@@ -234,13 +233,21 @@ export function KopilotComposer({
     }
     addMessage(userMessage)
 
-    // Build request
+    // Snapshot the merged context at submit time, strip dismissed chips, then
+    // reset dismissals so the chip reappears next turn.
+    const store = useKopilotStore.getState()
+    const merged = applyChipDismissals(
+      selectMergedContext(store.contextSlices),
+      store.dismissedChipKeys
+    )
+    store.clearDismissedChips()
+
     onSend({
       sessionId: activeSessionId ?? undefined,
       message: text.trim(),
       type: 'message',
-      page,
-      context,
+      page: merged.page ?? page,
+      context: merged,
       modelId: selectedModelId ?? undefined,
     })
 
@@ -256,7 +263,6 @@ export function KopilotComposer({
     addMessage,
     onSend,
     page,
-    context,
     editingMessageId,
     setEditingMessage,
     messageMap,
@@ -287,12 +293,22 @@ export function KopilotComposer({
 
   const handleInsertSlash = useCallback(() => {
     if (!editor) return
-    if (!editor.isFocused) editor.commands.focus('end')
-    editor.commands.insertContent('/')
+    if (editor.isFocused) {
+      editor.commands.insertContent('/')
+      return
+    }
+    // Editor wasn't focused. TipTap's focus() schedules DOM focus via
+    // setTimeout(0); inserting "/" synchronously opens the picker before DOM
+    // focus lands, and the late focus event then bubbles outside the popover
+    // — Radix sees focus leave and closes the picker. Wait one task for DOM
+    // focus to settle before inserting.
+    editor.commands.focus('end')
+    setTimeout(() => editor.commands.insertContent('/'), 0)
   }, [editor])
 
   return (
     <div ref={containerRef} className={cn('p-3', contentClassName)}>
+      <KopilotContextChipStrip />
       <div className='relative flex flex-row items-end rounded-xl border min-h-[120px] bg-primary-150  focus-within:border-info'>
         <div className='relative flex flex-1 flex-col self-stretch'>
           {editingMessageId && (

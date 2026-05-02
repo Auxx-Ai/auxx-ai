@@ -3,11 +3,10 @@
 export const BLOCK_CATALOG = `
 ## Rich Blocks
 
-Inside \`submit_final_answer.content\`, embed rich UI cards by writing fenced
-code blocks with the \`auxx:<type>\` language tag. The fence JSON should
-contain only IDs that came from tool results — the server fills in display
-data automatically. Never re-type record subjects, field values, or other
-record content.
+Inside your final reply, embed rich UI cards by writing fenced code blocks
+with the \`auxx:<type>\` language tag. The fence JSON should contain only IDs
+that came from tool results — the server fills in display data automatically.
+Never re-type record subjects, field values, or other record content.
 
 **Syntax:**
 \\\`\\\`\\\`auxx:<type>
@@ -89,15 +88,28 @@ write a markdown link with an \`auxx://\` href. They render as inline chips
 with hover-card previews and click-through:
 
   [Robert Miller](auxx://record/<defId>:<instId>)
+  [Markus Klooth](auxx://actor/user:<userId>)
+  [Support Team](auxx://actor/group:<groupId>)
   [Re: Quick question](auxx://thread/<threadId>)
   [Follow up Friday](auxx://task/<taskId>)
   [Connect Gmail](auxx://doc/<slug>)
 
 The IDs are the **same verbatim values** you would put in a fence — for
 records, the colon-joined \`<defId>:<instId>\` recordId from a tool result.
-For threads and tasks, the opaque id string. For docs, the \`slug\` from
-\`search_docs\` results or the \`docSlug\` from \`search_knowledge\`. Copy
-verbatim — never construct.
+For actors, the verbatim \`actorId\` (\`user:<id>\` or \`group:<id>\`) from
+any tool result that mentions an actor (Owner / Assignee / createdBy
+fields, \`list_members\` / \`list_groups\` results). For threads and
+tasks, the opaque id string. For docs, the \`slug\` from \`search_docs\`
+results or the \`docSlug\` from \`search_knowledge\`. Copy verbatim —
+never construct.
+
+**Actor (\`auxx://actor/...\`) vs record (\`auxx://record/...\`).**
+- \`actor\` is for **workspace members and groups** — people who use Auxx
+  with you. ActorIds always start with \`user:\` or \`group:\`.
+- \`record\` is for **CRM entity records** — contacts, companies, deals,
+  tickets, products, etc. RecordIds are \`<defId>:<instId>\`.
+- A "contact" is NOT an actor; link contacts as \`auxx://record/...\`. A
+  workspace teammate is NOT a record; link them as \`auxx://actor/...\`.
 
 **When to use inline links vs fences:**
 - Mentioning a single record/thread/task **by name in running prose** → inline link.
@@ -105,5 +117,5 @@ verbatim — never construct.
 - Single record where the user wants a full preview card → \`auxx:entity-card\` fence.
 
 Inline links read naturally:
-"I drafted a reply to [Robert Miller](auxx://record/i5aezsg4bc6n8gof2uan3wcf:lk6jz2jsyiqwusswhrf187du) on the [pricing thread](auxx://thread/abc123)."
+"I drafted a reply to [Robert Miller](auxx://record/i5aezsg4bc6n8gof2uan3wcf:lk6jz2jsyiqwusswhrf187du) on the [pricing thread](auxx://thread/abc123); assigned the follow-up to [Markus](auxx://actor/user:JR28eYz582CHqZN5SFlVrEnXErXmunaj)."
 `

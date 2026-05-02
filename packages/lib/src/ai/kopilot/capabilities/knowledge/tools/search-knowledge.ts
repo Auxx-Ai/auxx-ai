@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { SearchService } from '../../../../../datasets/services/search.service'
+import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { ArticleSearchDigest, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -76,6 +77,11 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
       },
       required: ['query'],
       additionalProperties: false,
+    },
+    validateInputs: async (args) => {
+      const query = parseStringArg(args.query, { name: 'query', required: true, max: 500 })
+      if (!query.ok) return { ok: false, error: query.error }
+      return { ok: true, args: { ...args, query: query.value } }
     },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()

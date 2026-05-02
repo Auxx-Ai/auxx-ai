@@ -119,8 +119,8 @@ export class AgentEngine {
    *
    * On **approve**: executes the stored `pendingToolCall` directly (no LLM re-call),
    * appends the real tool result to state.messages, then re-enters the same agent's
-   * query loop so it can decide whether to request more approvals or call
-   * `submit_final_answer`.
+   * query loop so it can decide whether to request more approvals or wrap up
+   * with a final reply.
    *
    * On **reject**: appends `{ rejected: true, reason }` as the tool result and
    * re-enters the same agent's loop so it can respond to the rejection.
@@ -562,8 +562,7 @@ export class AgentEngine {
     }
 
     // Re-enter the SAME agent's query loop so it can request more approvals or
-    // call submit_final_answer. This is the resume-loop-re-entry behaviour from
-    // Phase A.4 of the v2 plan.
+    // wrap up with a final reply.
     const agent = config.domainConfig.agents[pending.agentName]
     if (!agent) {
       yield this.tagEvent({
@@ -655,8 +654,8 @@ export class AgentEngine {
 
   /**
    * Emit the legacy `message` event for consumers that listen on it. Returns null
-   * if the final message was already delivered via `final-message` (submit_final_answer
-   * path) so we don't double-fire.
+   * if the final message was already delivered via `final-message` (the
+   * implicit-termination path in the query loop) so we don't double-fire.
    */
   private emitFinalMessageFromState(): AgentEvent | null {
     const lastMessage = this.state.messages[this.state.messages.length - 1]
