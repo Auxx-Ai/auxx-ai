@@ -88,15 +88,29 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
   // KBSidebarTree, so the tab itself isn't rendered as a duplicate root node.
 
   // Click-target for each tab pill: the deepest first navigable descendant.
-  const tabHrefs = useMemo(() => {
-    const map: Record<string, string> = {}
+  // `tabHrefs` powers public-site `<Link>` navigation; `tabFirstArticleIds` is
+  // used by the admin preview to switch articles without touching the URL.
+  const { tabHrefs, tabFirstArticleIds } = useMemo(() => {
+    const hrefs: Record<string, string> = {}
+    const firstIds: Record<string, string | null> = {}
     for (const tab of tabs) {
       const first = findFirstNavigableUnder(tab.id, articles)
       const slug = first ? getFullSlugPath(first, articles) : ''
-      map[tab.id] = slug ? `${basePath}/${slug}` : basePath || '/'
+      hrefs[tab.id] = slug ? `${basePath}/${slug}` : basePath || '/'
+      firstIds[tab.id] = first?.id ?? null
     }
-    return map
+    return { tabHrefs: hrefs, tabFirstArticleIds: firstIds }
   }, [tabs, articles, basePath])
+
+  // Inline preview hands `onArticleClick` to swap articles in place. Tabs go
+  // through this same channel so clicking a tab pill / dropdown lands on the
+  // tab's first navigable descendant without an actual route change.
+  const onTabSelect = onArticleClick
+    ? (tabId: string) => {
+        const firstId = tabFirstArticleIds[tabId]
+        if (firstId) onArticleClick(firstId)
+      }
+    : undefined
 
   useEffect(() => {
     setCollapsed(readCollapsedFromStorage())
@@ -152,7 +166,12 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
           </>
         }
       />
-      <KBTopTabs tabs={tabs} activeTabId={activeTabId} tabHrefs={tabHrefs} />
+      <KBTopTabs
+        tabs={tabs}
+        activeTabId={activeTabId}
+        tabHrefs={tabHrefs}
+        onTabSelect={onTabSelect}
+      />
       <div
         className={cn('mx-auto flex w-full max-w-7xl flex-1', mainScroll && 'min-h-0')}
         style={tabs.length >= 2 ? ({ '--kb-tabs-h': '2.625rem' } as CSSProperties) : undefined}>
@@ -173,6 +192,7 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
           tabs={tabs}
           activeTabId={activeTabId}
           tabHrefs={tabHrefs}
+          onTabSelect={onTabSelect}
         />
         <main
           className={cn(

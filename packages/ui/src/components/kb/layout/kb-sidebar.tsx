@@ -31,6 +31,8 @@ interface KBSidebarProps<T extends KBSidebarArticle> {
   tabs?: T[]
   activeTabId?: string | null
   tabHrefs?: Record<string, string>
+  /** Forwarded to `<KBTabSelect>` so the admin preview can intercept tab clicks. */
+  onTabSelect?: (tabId: string) => void
 }
 
 export function KBSidebar<T extends KBSidebarArticle>({
@@ -50,6 +52,7 @@ export function KBSidebar<T extends KBSidebarArticle>({
   tabs,
   activeTabId,
   tabHrefs,
+  onTabSelect,
 }: KBSidebarProps<T>) {
   const { kbId, collapsed, setCollapsed, mobileOpen, setMobileOpen } = useKBLayoutContext()
 
@@ -97,6 +100,7 @@ export function KBSidebar<T extends KBSidebarArticle>({
             tabs={tabs}
             activeTabId={activeTabId ?? null}
             tabHrefs={tabHrefs}
+            onTabSelect={onTabSelect}
             onNavigate={() => setMobileOpen(false)}
           />
         </div>
@@ -207,7 +211,7 @@ function KBSidebarMobileHeader({
   showMode,
   onNavigate,
 }: KBSidebarMobileHeaderProps) {
-  const logo = mode === 'dark' ? (logoDark ?? logoLight) : (logoLight ?? logoDark)
+  const logo = (mode === 'dark' ? logoDark || logoLight : logoLight || logoDark) || null
   const label = title ?? 'Home'
   return (
     <div className='flex items-center gap-2 border-b border-[var(--kb-border)] px-4 py-3'>

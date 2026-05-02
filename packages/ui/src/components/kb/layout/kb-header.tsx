@@ -44,7 +44,9 @@ export function KBHeader({
   searchOrigin,
   startSlot,
 }: KBHeaderProps) {
-  const logo = mode === 'dark' ? (logoDark ?? logoLight) : (logoLight ?? logoDark)
+  // Treat empty strings as missing — `LogoUploadCell` writes `''` on remove,
+  // so `??` would lock the variant slot and hide the opposite-mode fallback.
+  const logo = (mode === 'dark' ? logoDark || logoLight : logoLight || logoDark) || null
   const showNav = navigationEnabled && navigation && navigation.length > 0
   return (
     <header
