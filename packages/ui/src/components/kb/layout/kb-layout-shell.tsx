@@ -39,6 +39,8 @@ interface KBLayoutShellProps<T extends KBSidebarArticle> {
   onArticleClick?: (articleId: string) => void
   /** When true, the `<main>` element owns the scroll instead of the document. Used inside admin previews where document scroll is unavailable. */
   mainScroll?: boolean
+  /** Notified when an in-tree mode toggle flips. */
+  onModeChange?: (mode: KBMode) => void
   children: ReactNode
 }
 
@@ -61,6 +63,7 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
   listStyle,
   onArticleClick,
   mainScroll = false,
+  onModeChange,
   children,
 }: KBLayoutShellProps<T>) {
   const [collapsed, setCollapsed] = useState(false)
@@ -159,6 +162,7 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
         navigationEnabled={headerEnabled}
         searchbarPosition={searchbarPosition}
         searchOrigin={searchOrigin}
+        onModeChange={onModeChange}
         startSlot={
           <>
             <KBSidebarMobileTrigger />
@@ -189,6 +193,7 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
           logoDark={logoDark}
           mode={effectiveMode}
           showMode={showMode}
+          onModeChange={onModeChange}
           tabs={tabs}
           activeTabId={activeTabId}
           tabHrefs={tabHrefs}

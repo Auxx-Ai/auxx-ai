@@ -33,9 +33,11 @@ interface PreviewProviderProps {
   knowledgeBase?: KnowledgeBase
 }
 
+const COOKIE_PREFIX = 'kb-mode-'
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
 export function PreviewProvider({ children, knowledgeBase }: PreviewProviderProps) {
   const [device, setDevice] = React.useState<Device>('desktop')
-  const [override, setOverride] = React.useState<Theme | null>(null)
   const [previewMode, setPreviewMode] = React.useState<PreviewMode>('draft')
   const [isLoading, setIsLoading] = React.useState(!knowledgeBase)
 
@@ -56,12 +58,29 @@ export function PreviewProvider({ children, knowledgeBase }: PreviewProviderProp
   const defaultMode: Theme = merged?.defaultMode === 'dark' ? 'dark' : 'light'
   const kbId = merged?.id
 
-  // Settings are the source of truth — reset the override whenever the active KB
-  // changes or its default mode is edited so the new default propagates.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `kbId` is intentional — switching KBs must clear any author override even if both KBs share the same defaultMode.
+  // Initialize from the live cookie so admins see the same mode they last picked
+  // (preview and live share the `kb-mode-<id>` cookie). Falls back to the KB's
+  // default when no cookie is set.
+  const [override, setOverrideState] = React.useState<Theme | null>(() => readModeCookie(kbId))
+
+  // Re-sync the override when the active KB changes (cookies are scoped per id).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `kbId` is intentional — switching KBs must re-read the cookie under the new id.
   React.useEffect(() => {
-    setOverride(null)
-  }, [defaultMode, kbId])
+    setOverrideState(readModeCookie(kbId))
+  }, [kbId])
+
+  const setOverride = React.useCallback(
+    (next: Theme | null) => {
+      setOverrideState(next)
+      if (!kbId) return
+      if (next === null) {
+        document.cookie = `${COOKIE_PREFIX}${kbId}=; path=/; max-age=0; SameSite=Lax`
+      } else {
+        document.cookie = `${COOKIE_PREFIX}${kbId}=${next}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`
+      }
+    },
+    [kbId]
+  )
 
   const effectiveMode: Theme = override ?? defaultMode
 
@@ -78,10 +97,23 @@ export function PreviewProvider({ children, knowledgeBase }: PreviewProviderProp
       setDevice,
       setPreviewMode,
     }),
-    [merged, isLoading, defaultMode, override, effectiveMode, device, previewMode]
+    [merged, isLoading, defaultMode, override, effectiveMode, device, previewMode, setOverride]
   )
 
   return <PreviewContext.Provider value={value}>{children}</PreviewContext.Provider>
+}
+
+function readModeCookie(kbId: string | undefined): Theme | null {
+  if (!kbId || typeof document === 'undefined') return null
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${COOKIE_PREFIX}${escapeRegex(kbId)}=([^;]+)`)
+  )
+  if (!match) return null
+  return match[1] === 'dark' ? 'dark' : match[1] === 'light' ? 'light' : null
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 export function usePreview(): PreviewContextValue {

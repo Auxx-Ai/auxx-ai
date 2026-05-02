@@ -27,6 +27,8 @@ export interface KBHeaderProps {
   searchOrigin?: string
   /** Optional slot rendered before the logo (mobile menu trigger / sidebar toggle). */
   startSlot?: React.ReactNode
+  /** Notified when the in-header mode toggle flips. Used to keep external state in sync. */
+  onModeChange?: (mode: KBMode) => void
 }
 
 export function KBHeader({
@@ -43,6 +45,7 @@ export function KBHeader({
   searchbarPosition = 'center',
   searchOrigin,
   startSlot,
+  onModeChange,
 }: KBHeaderProps) {
   // Treat empty strings as missing — `LogoUploadCell` writes `''` on remove,
   // so `??` would lock the variant slot and hide the opposite-mode fallback.
@@ -81,13 +84,11 @@ export function KBHeader({
         <nav className='flex items-center gap-2 @kb-md:gap-4'>
           {showNav
             ? navigation?.map((link) => (
-                <Link
+                <span
                   key={link.href}
-                  href={link.href}
-                  className='hidden text-sm text-[var(--kb-fg)]/85 no-underline hover:text-[var(--kb-primary)] hover:opacity-100 @kb-md:inline'
-                  prefetch={false}>
+                  className='hidden text-sm text-[var(--kb-fg)]/85 @kb-md:inline'>
                   {link.label}
-                </Link>
+                </span>
               ))
             : null}
           {searchbarPosition === 'center' ? (
@@ -98,7 +99,9 @@ export function KBHeader({
               className='@kb-md:hidden'
             />
           ) : null}
-          {showMode ? <KBModeToggle kbId={kbId} initialMode={mode} /> : null}
+          {showMode ? (
+            <KBModeToggle kbId={kbId} initialMode={mode} onChange={onModeChange} />
+          ) : null}
         </nav>
       </div>
     </header>

@@ -73,7 +73,16 @@ export function blockDragPlugin() {
         event.dataTransfer.clearData()
         event.dataTransfer.setData('text/plain', node.textContent ?? '')
         event.dataTransfer.effectAllowed = 'move'
-        event.dataTransfer.setDragImage(blockEl, 0, 0)
+        // Anchor the drag image at the cursor's actual offset within the block
+        // — passing (0, 0) puts the cursor at the top-left, which visibly
+        // yanks tall blocks (cards grids) down when the grip is grabbed
+        // mid-height.
+        const rect = blockEl.getBoundingClientRect()
+        event.dataTransfer.setDragImage(
+          blockEl,
+          event.clientX - rect.left,
+          event.clientY - rect.top
+        )
 
         document.body.classList.add('is-block-dragging')
         // Block PM's own dragstart so it doesn't also seed view.dragging,

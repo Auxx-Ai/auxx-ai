@@ -33,6 +33,8 @@ interface KBSidebarProps<T extends KBSidebarArticle> {
   tabHrefs?: Record<string, string>
   /** Forwarded to `<KBTabSelect>` so the admin preview can intercept tab clicks. */
   onTabSelect?: (tabId: string) => void
+  /** Notified when the mobile-drawer mode toggle flips. Keeps external state in sync. */
+  onModeChange?: (mode: KBMode) => void
 }
 
 export function KBSidebar<T extends KBSidebarArticle>({
@@ -53,6 +55,7 @@ export function KBSidebar<T extends KBSidebarArticle>({
   activeTabId,
   tabHrefs,
   onTabSelect,
+  onModeChange,
 }: KBSidebarProps<T>) {
   const { kbId, collapsed, setCollapsed, mobileOpen, setMobileOpen } = useKBLayoutContext()
 
@@ -181,6 +184,7 @@ export function KBSidebar<T extends KBSidebarArticle>({
             logoDark={logoDark}
             mode={mode}
             showMode={showMode}
+            onModeChange={onModeChange}
             onNavigate={() => setMobileOpen(false)}
           />
           {inner}
@@ -198,6 +202,7 @@ interface KBSidebarMobileHeaderProps {
   logoDark?: string | null
   mode: KBMode
   showMode: boolean
+  onModeChange?: (mode: KBMode) => void
   onNavigate: () => void
 }
 
@@ -209,6 +214,7 @@ function KBSidebarMobileHeader({
   logoDark,
   mode,
   showMode,
+  onModeChange,
   onNavigate,
 }: KBSidebarMobileHeaderProps) {
   const logo = (mode === 'dark' ? logoDark || logoLight : logoLight || logoDark) || null
@@ -226,7 +232,7 @@ function KBSidebarMobileHeader({
         )}
       </Link>
       <div className='flex-1' />
-      {showMode ? <KBModeToggle kbId={kbId} initialMode={mode} /> : null}
+      {showMode ? <KBModeToggle kbId={kbId} initialMode={mode} onChange={onModeChange} /> : null}
     </div>
   )
 }

@@ -9,7 +9,7 @@
 @import 'tw-animate-css';
 @import './random-gradient.css';
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *):not([data-kb-mode='light'] *), &:is([data-kb-mode='dark'] *));
 
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
@@ -167,7 +167,8 @@
   animation: action-bar-enter-top 200ms ease-out forwards;
 }
 
-:root {
+:root,
+[data-kb-mode='light'] {
   /* --text-sm: 0.5rem; */
   /* --background: 255 255 255;
   --foreground: 10 10 10; */
@@ -365,7 +366,8 @@
   --auxxai-highlight-pink: #faf1f5;
   --auxxai-highlight-gray: #f1f1ef;
 }
-.dark {
+.dark,
+[data-kb-mode='dark'] {
   --background: #23272e; /* oklch(0.145 0 0); */
   --foreground: oklch(0.985 0 0);
   /* --card: oklch(0.145 0 0); */
