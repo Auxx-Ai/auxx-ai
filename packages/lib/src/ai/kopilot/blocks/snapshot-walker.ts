@@ -1,12 +1,15 @@
 // packages/lib/src/ai/kopilot/blocks/snapshot-walker.ts
 
-import type {
-  DraftSnapshot,
-  EntitySnapshot,
-  TaskSnapshot,
-  ThreadSnapshot,
-  TurnSnapshots,
+import {
+  createEmptyTurnSnapshots,
+  type DraftSnapshot,
+  type EntitySnapshot,
+  type TaskSnapshot,
+  type ThreadSnapshot,
+  type TurnSnapshots,
 } from '../../agent-framework/types'
+
+export { createEmptyTurnSnapshots }
 
 /**
  * Generic snapshot walker. Recurses into every tool result and harvests
@@ -31,10 +34,6 @@ import type {
 
 const WALKER_MAX_DEPTH = 3
 const CONTAINER_KEYS = ['items', 'threads', 'thread', 'tasks', 'drafts', 'results'] as const
-
-export function createEmptyTurnSnapshots(): TurnSnapshots {
-  return { records: {}, threads: {}, tasks: {}, drafts: {}, docs: {} }
-}
 
 export function runSnapshotWalker(output: unknown, target: TurnSnapshots): void {
   walk(output, target, 0)

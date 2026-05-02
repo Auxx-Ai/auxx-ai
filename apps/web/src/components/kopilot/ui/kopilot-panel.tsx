@@ -4,6 +4,8 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
+import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { Expand, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback } from 'react'
@@ -26,6 +28,8 @@ export function KopilotPanel({ page }: KopilotPanelProps) {
     startNewSession()
   }, [startNewSession])
 
+  useHotkey('Shift+N', () => handleNewSession())
+
   const handleExpand = useCallback(() => {
     const path = activeSessionId ? `/app/kopilot/${activeSessionId}` : '/app/kopilot/new'
     setPanelOpen(false)
@@ -38,8 +42,12 @@ export function KopilotPanel({ page }: KopilotPanelProps) {
         title={<KopilotSessionPicker />}
         actions={
           <div className='flex items-center gap-0.5'>
-            <Button variant='ghost' size='icon' className='size-7' onClick={handleNewSession}>
+            <Button variant='ghost' size='sm' onClick={handleNewSession}>
               <Plus className='size-3.5' />
+              <KbdGroup variant='ghost'>
+                <Kbd>⇧</Kbd>
+                <Kbd>N</Kbd>
+              </KbdGroup>
             </Button>
             <Button variant='ghost' size='icon' className='size-7' onClick={handleExpand}>
               <Expand className='size-3.5' />
