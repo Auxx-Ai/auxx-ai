@@ -24,12 +24,16 @@ import {
 } from 'lucide-react'
 import { useKbPublicUrl } from '~/components/kb/hooks/use-kb-public-url'
 import { api } from '~/trpc/react'
+import { useArticleContent } from '../../hooks/use-article-content'
 import { type Device, type Theme, usePreview } from './preview-context'
+import { PreviewVersionPicker } from './preview-version-picker'
 
 interface KBPreviewTopBarProps {
   kbId: string
   /** Slug path of the article currently being edited; used to deep-link the new tab. */
   activeSlugPath?: string[]
+  /** Resolved article id (from the editor's slug or override) — needed by the version picker. */
+  articleId?: string | null
 }
 
 /**
@@ -37,18 +41,28 @@ interface KBPreviewTopBarProps {
  * toggles on the right. Publish lifecycle controls live in the editor header
  * (`KBPublishCluster`).
  */
-export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) {
-  const { effectiveMode, defaultMode, override, isMobile, knowledgeBase, setOverride, setDevice } =
-    usePreview()
+export function KBPreviewTopBar({ kbId, activeSlugPath, articleId }: KBPreviewTopBarProps) {
+  const {
+    effectiveMode,
+    defaultMode,
+    override,
+    isMobile,
+    knowledgeBase,
+    previewMode,
+    setOverride,
+    setDevice,
+    setPreviewMode,
+  } = usePreview()
 
   const { data: kb } = api.kb.byId.useQuery({ id: kbId })
 
-  const previewHref = getKbPreviewHref(kbId, activeSlugPath)
+  const previewHref = getKbPreviewHref(kbId, activeSlugPath, previewMode)
   const slugSegment =
     activeSlugPath && activeSlugPath.length > 0
       ? `/${activeSlugPath.map(encodeURIComponent).join('/')}`
       : ''
   const publicUrl = useKbPublicUrl(kb?.slug)
+  const { hasPublishedVersion } = useArticleContent(articleId ?? null, kbId)
 
   const isPublished = kb?.publishStatus === 'PUBLISHED'
   const isUnlisted = kb?.publishStatus === 'UNLISTED'
@@ -70,44 +84,58 @@ export function KBPreviewTopBar({ kbId, activeSlugPath }: KBPreviewTopBarProps) 
 
   return (
     <div className='flex items-center justify-between gap-2 border-b bg-background px-3 py-1'>
-      {isLive && liveHref ? (
-        <DropdownMenu>
-          <ButtonGroup>
-            <Button variant='outline' size='xs' className='border-r-0' asChild>
-              <a
-                href={previewHref}
-                target='_blank'
-                rel='noopener'
-                aria-label='Open preview in new tab'>
-                <Eye /> Preview
-              </a>
-            </Button>
-            <ButtonGroupSeparator />
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant='outline'
-                size='xs'
-                className='px-1.5'
-                aria-label='More preview options'>
-                <ChevronDown />
+      <div className='flex items-center gap-2'>
+        {isLive && liveHref ? (
+          <DropdownMenu>
+            <ButtonGroup>
+              <Button variant='outline' size='xs' className='border-r-0' asChild>
+                <a
+                  href={previewHref}
+                  target='_blank'
+                  rel='noopener'
+                  aria-label='Open preview in new tab'>
+                  <Eye /> Preview
+                </a>
               </Button>
-            </DropdownMenuTrigger>
-          </ButtonGroup>
-          <DropdownMenuContent align='start'>
-            <DropdownMenuItem asChild>
-              <a href={liveHref} target='_blank' rel='noopener'>
-                <ExternalLink /> Open live site
-              </a>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : (
-        <Button variant='outline' size='xs' asChild>
-          <a href={previewHref} target='_blank' rel='noopener' aria-label='Open preview in new tab'>
-            <Eye /> Preview
-          </a>
-        </Button>
-      )}
+              <ButtonGroupSeparator />
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant='outline'
+                  size='xs'
+                  className='px-1.5'
+                  aria-label='More preview options'>
+                  <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+            </ButtonGroup>
+            <DropdownMenuContent align='start'>
+              <DropdownMenuItem asChild>
+                <a href={liveHref} target='_blank' rel='noopener'>
+                  <ExternalLink /> Open live site
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button variant='outline' size='xs' asChild>
+            <a
+              href={previewHref}
+              target='_blank'
+              rel='noopener'
+              aria-label='Open preview in new tab'>
+              <Eye /> Preview
+            </a>
+          </Button>
+        )}
+        {articleId ? (
+          <PreviewVersionPicker
+            articleId={articleId}
+            mode={previewMode}
+            hasPublishedVersion={hasPublishedVersion}
+            onModeChange={setPreviewMode}
+          />
+        ) : null}
+      </div>
 
       <div className='flex items-center gap-2'>
         {showsHiddenModeHint && (

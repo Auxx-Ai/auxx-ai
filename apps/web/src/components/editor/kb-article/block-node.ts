@@ -17,6 +17,7 @@ export type BlockType =
   | 'codeBlock'
   | 'callout'
   | 'embed'
+  | 'cards'
 
 const LIST_TYPES: BlockType[] = ['bulletListItem', 'numberedListItem', 'todoListItem']
 
@@ -115,6 +116,23 @@ export const Block = Node.create({
         renderHTML: (attrs) =>
           attrs.blockType === 'embed' && attrs.embedAspect
             ? { 'data-embed-aspect': attrs.embedAspect }
+            : {},
+      },
+      cards: {
+        default: null,
+        parseHTML: (el) => {
+          const raw = el.getAttribute('data-cards')
+          if (!raw) return null
+          try {
+            const parsed = JSON.parse(raw)
+            return Array.isArray(parsed) ? parsed : null
+          } catch {
+            return null
+          }
+        },
+        renderHTML: (attrs) =>
+          attrs.blockType === 'cards' && Array.isArray(attrs.cards)
+            ? { 'data-cards': JSON.stringify(attrs.cards) }
             : {},
       },
     }

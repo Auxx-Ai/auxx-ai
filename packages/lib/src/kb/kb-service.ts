@@ -53,6 +53,14 @@ export interface ArticleEditorView extends ArticleListItem {
   publishedTitle: string | null
   publishedContent: string | null
   publishedContentJson: unknown
+  // Populated only when getArticleById is called with a versionNumber.
+  selectedVersionNumber: number | null
+  selectedTitle: string | null
+  selectedDescription: string | null
+  selectedExcerpt: string | null
+  selectedEmoji: string | null
+  selectedContent: string | null
+  selectedContentJson: unknown
 }
 
 // ─── KB / Article input shapes ───────────────────────────────────────────
@@ -427,9 +435,15 @@ export class KBService {
 
   /**
    * Editor view: returns the article with its draft revision content + a hint
-   * of the published revision content for "discard draft" previews.
+   * of the published revision content for "discard draft" previews. Pass
+   * `versionNumber` to additionally include the content of an immutable
+   * historical revision in the `selected*` fields.
    */
-  async getArticleById(id: string, knowledgeBaseId?: string): Promise<ArticleEditorView> {
+  async getArticleById(
+    id: string,
+    knowledgeBaseId?: string,
+    versionNumber?: number
+  ): Promise<ArticleEditorView> {
     try {
       const article = await this.db.query.Article.findFirst({
         where: and(
@@ -440,7 +454,21 @@ export class KBService {
         with: { publishedRevision: true, draftRevision: true },
       })
       if (!article) throw this.createNotFoundError(`Article with ID '${id}' not found`)
-      return this.flattenForEditor(article)
+      let selected: ArticleRevision | null = null
+      if (versionNumber !== undefined) {
+        const revision = await this.db.query.ArticleRevision.findFirst({
+          where: and(
+            eq(schema.ArticleRevision.articleId, id),
+            eq(schema.ArticleRevision.organizationId, this.organizationId),
+            eq(schema.ArticleRevision.versionNumber, versionNumber)
+          ),
+        })
+        if (!revision) {
+          throw this.createNotFoundError(`Version ${versionNumber} not found for article '${id}'`)
+        }
+        selected = revision
+      }
+      return this.flattenForEditor(article, selected)
     } catch (error) {
       return this.handleError(error, 'Error fetching article', { articleId: id })
     }
@@ -1402,7 +1430,7 @@ export class KBService {
     }
   }
 
-  private flattenForEditor(a: any): ArticleEditorView {
+  private flattenForEditor(a: any, selected: ArticleRevision | null = null): ArticleEditorView {
     const draft = a.draftRevision
     const pub = a.publishedRevision
     if (!draft) {
@@ -1435,6 +1463,13 @@ export class KBService {
       publishedTitle: pub?.title ?? null,
       publishedContent: pub?.content ?? null,
       publishedContentJson: pub?.contentJson ?? null,
+      selectedVersionNumber: selected?.versionNumber ?? null,
+      selectedTitle: selected?.title ?? null,
+      selectedDescription: selected?.description ?? null,
+      selectedExcerpt: selected?.excerpt ?? null,
+      selectedEmoji: selected?.emoji ?? null,
+      selectedContent: selected?.content ?? null,
+      selectedContentJson: selected?.contentJson ?? null,
     }
   }
 

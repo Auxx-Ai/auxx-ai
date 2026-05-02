@@ -36,7 +36,7 @@ export function KBPreview({ knowledgeBase, activeSlugPath }: KBPreviewProps) {
 }
 
 function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath?: string[] }) {
-  const { isMobile, effectiveMode, knowledgeBase } = usePreview()
+  const { isMobile, effectiveMode, knowledgeBase, previewMode, setPreviewMode } = usePreview()
   const articles = useArticleList(kbId)
 
   // Article from the editor's slug path; resets the override when the editor switches.
@@ -50,13 +50,24 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
     ? articles.find((a) => a.id === overrideId)
     : (editorArticle ?? articles[0])
   const articleId = activeArticle?.id ?? null
-  const { draftContentJson, draftDescription } = useArticleContent(articleId, kbId)
+
+  // Reset the picker to draft whenever the active article changes — covers both
+  // editor URL changes and sidebar-click overrides. Otherwise stale "Live" state
+  // would leak onto a sibling article that may not even be published.
+  useEffect(() => {
+    setPreviewMode('draft')
+  }, [articleId, setPreviewMode])
+  const { previewContentJson, previewDescription, previewTitle, previewEmoji } = useArticleContent(
+    articleId,
+    kbId,
+    previewMode
+  )
 
   const publicUrl = useKbPublicUrl(knowledgeBase?.slug)
 
   if (!knowledgeBase) return null
 
-  const docJson = (draftContentJson ?? null) as DocJSON | null
+  const docJson = (previewContentJson ?? null) as DocJSON | null
   const headings = docJson ? extractKBHeadings(docJson) : []
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
@@ -90,10 +101,19 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
               <div className='min-w-0 flex-1 @kb-lg:order-1'>
                 <KBArticleRenderer
                   doc={docJson}
-                  title={activeArticle?.title ?? articles.find((a) => a.id === articleId)?.title}
-                  emoji={activeArticle?.emoji ?? articles.find((a) => a.id === articleId)?.emoji}
-                  description={draftDescription ?? activeArticle?.description}
+                  title={
+                    previewTitle ??
+                    activeArticle?.title ??
+                    articles.find((a) => a.id === articleId)?.title
+                  }
+                  emoji={
+                    previewEmoji ??
+                    activeArticle?.emoji ??
+                    articles.find((a) => a.id === articleId)?.emoji
+                  }
+                  description={previewDescription ?? activeArticle?.description}
                   parent={parent}
+                  resolveAuxxHref={(id) => `/preview/kb/${kbId}/r/${id}`}
                 />
               </div>
             </div>
@@ -110,7 +130,7 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
-      <KBPreviewTopBar kbId={kbId} activeSlugPath={activeSlugPath} />
+      <KBPreviewTopBar kbId={kbId} activeSlugPath={activeSlugPath} articleId={articleId} />
       <div className='flex min-h-0 flex-1 justify-center bg-muted p-4'>
         {isMobile ? (
           <MobilePreviewFrame>{layout}</MobilePreviewFrame>

@@ -14,6 +14,7 @@ export type {
   BlockJSON,
   BlockType,
   CalloutVariant,
+  CardData,
   DocJSON,
   EmbedAspect,
   EmbedProvider,
@@ -21,4 +22,5 @@ export type {
   InlineJSON,
   InlineMarkType,
   MarkJSON,
+  ResolveAuxxHref,
 } from './types'

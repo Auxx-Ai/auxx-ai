@@ -3,6 +3,7 @@
 
 import { mergeDraftOverLive } from '@auxx/lib/kb/client'
 import React from 'react'
+import type { PreviewMode } from '../../hooks/use-article-content'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 
 export type Theme = 'light' | 'dark'
@@ -18,8 +19,11 @@ interface PreviewContextValue {
   /** Mode the preview is currently rendering: `override ?? defaultMode`. */
   effectiveMode: Theme
   isMobile: boolean
+  /** Which slice of the article body the in-editor preview pane renders. */
+  previewMode: PreviewMode
   setOverride: (t: Theme | null) => void
   setDevice: (d: Device) => void
+  setPreviewMode: (m: PreviewMode) => void
 }
 
 const PreviewContext = React.createContext<PreviewContextValue | undefined>(undefined)
@@ -32,6 +36,7 @@ interface PreviewProviderProps {
 export function PreviewProvider({ children, knowledgeBase }: PreviewProviderProps) {
   const [device, setDevice] = React.useState<Device>('desktop')
   const [override, setOverride] = React.useState<Theme | null>(null)
+  const [previewMode, setPreviewMode] = React.useState<PreviewMode>('draft')
   const [isLoading, setIsLoading] = React.useState(!knowledgeBase)
 
   React.useEffect(() => {
@@ -68,10 +73,12 @@ export function PreviewProvider({ children, knowledgeBase }: PreviewProviderProp
       override,
       effectiveMode,
       isMobile: device === 'mobile',
+      previewMode,
       setOverride,
       setDevice,
+      setPreviewMode,
     }),
-    [merged, isLoading, defaultMode, override, effectiveMode, device]
+    [merged, isLoading, defaultMode, override, effectiveMode, device, previewMode]
   )
 
   return <PreviewContext.Provider value={value}>{children}</PreviewContext.Provider>

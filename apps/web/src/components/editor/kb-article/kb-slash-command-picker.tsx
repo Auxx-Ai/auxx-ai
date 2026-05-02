@@ -13,6 +13,7 @@ import {
   useCommandNavigation,
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { generateId } from '@auxx/utils'
 import type { Editor } from '@tiptap/react'
 import { ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -25,6 +26,9 @@ interface KBSlashCommandPickerProps {
   query: string
   onExecute: (command: (editor: Editor, range: Range) => void) => void
   onClose: () => void
+  /** Open the article-link dialog. The picker deletes the slash range first
+   * and passes the resulting cursor position to the host. */
+  onLinkArticle?: (editor: Editor, insertPos: number) => void
 }
 
 interface BlockCommandSpec {
@@ -71,6 +75,13 @@ const BASE_COMMANDS: CommandItemDef[] = [
     keywords: ['variable', 'token', 'dynamic', 'merge', 'field'],
     iconId: 'braces',
     drillDown: true,
+  },
+  {
+    id: 'article-link',
+    title: 'Link to article',
+    description: 'Insert a link to another KB article',
+    keywords: ['link', 'article', 'reference', 'href', 'url'],
+    iconId: 'link',
   },
   {
     id: 'text',
@@ -238,6 +249,31 @@ const BASE_COMMANDS: CommandItemDef[] = [
     iconId: 'video',
     spec: { blockType: 'embed' },
   },
+  {
+    id: 'cards',
+    title: 'Card grid',
+    description: 'Linked navigation cards',
+    keywords: ['cards', 'card', 'grid', 'links', 'nav'],
+    iconId: 'grid',
+    custom: (editor, range) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .updateAttributes('block', {
+          blockType: 'cards',
+          level: null,
+          checked: false,
+          cards: [
+            { id: generateId(), title: 'Card 1' },
+            { id: generateId(), title: 'Card 2' },
+          ],
+        })
+        .splitBlock()
+        .updateAttributes('block', { blockType: 'text', level: null, checked: false })
+        .run()
+    },
+  },
 ]
 
 interface SlashCommandNavItem {
@@ -289,6 +325,7 @@ function KBSlashCommandPickerContent({
   query,
   onExecute,
   onClose,
+  onLinkArticle,
   searchQuery,
   setSearchQuery,
   onEnterPlaceholderMode,
@@ -351,13 +388,16 @@ function KBSlashCommandPickerContent({
 
   const filteredCommands = useMemo(() => {
     if (isInSnippets) return []
-    return BASE_COMMANDS.filter(
+    const base = onLinkArticle
+      ? BASE_COMMANDS
+      : BASE_COMMANDS.filter((c) => c.id !== 'article-link')
+    return base.filter(
       (item) =>
         item.title.toLowerCase().includes(q) ||
         item.description.toLowerCase().includes(q) ||
         item.keywords.some((kw) => kw.includes(q))
     )
-  }, [isInSnippets, q])
+  }, [isInSnippets, q, onLinkArticle])
 
   const runBlockSpec = useCallback(
     (spec: BlockCommandSpec) => {
@@ -383,6 +423,13 @@ function KBSlashCommandPickerContent({
       }
       if (itemId === 'placeholder') {
         onEnterPlaceholderMode()
+        return
+      }
+      if (itemId === 'article-link' && onLinkArticle) {
+        onExecute((editor, range) => {
+          editor.chain().focus().deleteRange(range).run()
+          onLinkArticle(editor, range.from)
+        })
         return
       }
 

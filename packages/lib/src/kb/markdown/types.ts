@@ -17,11 +17,20 @@ export type BlockType =
   | 'codeBlock'
   | 'callout'
   | 'embed'
+  | 'cards'
 
 export type ImageAlign = 'left' | 'center' | 'right'
 export type CalloutVariant = 'info' | 'warn' | 'error' | 'tip' | 'success'
 export type EmbedProvider = 'youtube' | 'loom' | 'vimeo'
 export type EmbedAspect = '16:9' | '4:3' | '1:1'
+
+export interface CardData {
+  id: string
+  title: string
+  description?: string
+  href?: string
+  iconId?: string
+}
 
 export interface BlockAttrs {
   blockType: BlockType
@@ -36,6 +45,7 @@ export interface BlockAttrs {
   embedUrl?: string
   embedProvider?: EmbedProvider
   embedAspect?: EmbedAspect
+  cards?: CardData[]
 }
 
 export type InlineMarkType =

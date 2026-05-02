@@ -174,12 +174,34 @@ export function getArticleSlugPaths<T extends ArticleSlugFields>(
 }
 
 /**
+ * Which slice of the article the preview route should render. Mirrors
+ * the `PreviewMode` union from `apps/web` but kept inline here so the UI
+ * package doesn't take a dependency on a hook in the web app.
+ */
+export type PreviewModeArg = 'draft' | 'live' | { versionNumber: number } | undefined
+
+function previewModeToToken(mode: PreviewModeArg): string | null {
+  if (!mode || mode === 'draft') return null
+  if (mode === 'live') return 'live'
+  return String(mode.versionNumber)
+}
+
+/**
  * URL for the in-app fullscreen preview route
  * (`/preview/kb/{kbId}/{...articleSlug}`). Pass the slug path either as an
- * array of segments or as a slash-joined string.
+ * array of segments or as a slash-joined string. Pass `mode` to deep-link
+ * to a specific revision (live or historical) via the `?v=` query param;
+ * sidebar links between articles deliberately omit the mode so navigation
+ * resets to draft.
  */
-export function getKbPreviewHref(kbId: string, slugPath: string[] | string = []): string {
+export function getKbPreviewHref(
+  kbId: string,
+  slugPath: string[] | string = [],
+  mode?: PreviewModeArg
+): string {
   const segments = typeof slugPath === 'string' ? (slugPath ? slugPath.split('/') : []) : slugPath
   const segment = segments.length > 0 ? `/${segments.map(encodeURIComponent).join('/')}` : ''
-  return `/preview/kb/${kbId}${segment}`
+  const token = previewModeToToken(mode)
+  const query = token ? `?v=${token}` : ''
+  return `/preview/kb/${kbId}${segment}${query}`
 }

@@ -3,6 +3,7 @@
 // Parses markdown (Auxx MD dialect — GFM + remark-directive) into the KB
 // editor's BlockJSON shape. See plans/kb/markdown-support.md for the spec.
 
+import { generateId } from '@auxx/utils'
 import remarkDirective from 'remark-directive'
 import remarkGfm from 'remark-gfm'
 import remarkParse from 'remark-parse'
@@ -12,6 +13,7 @@ import type {
   BlockJSON,
   BlockType,
   CalloutVariant,
+  CardData,
   DocJSON,
   EmbedAspect,
   EmbedProvider,
@@ -182,6 +184,11 @@ function walkBlock(node: MdastNode, ctx: ParseCtx, level: number): void {
           }
         }
         pushBlock(ctx, 'callout', inline, { calloutVariant: variant })
+        return
+      }
+      if (node.name === 'cards') {
+        const cards = parseCardsContainer(node)
+        if (cards.length > 0) pushBlock(ctx, 'cards', [], { cards })
         return
       }
       // Unknown container — flatten its children.
@@ -535,6 +542,42 @@ function parseImageTrailer(body: string): Partial<BlockAttrs> {
 }
 
 // ─── directive helpers ───────────────────────────────────────────────
+
+function parseCardsContainer(container: MdastNode): CardData[] {
+  const out: CardData[] = []
+  // Each child can come through as a leafDirective (single-line `::card{...}`)
+  // or — if remark-directive wrapped the line into a paragraph — a paragraph
+  // whose only child is a textDirective. Walk both.
+  const walk = (nodes: MdastNode[] | undefined) => {
+    if (!nodes) return
+    for (const child of nodes) {
+      if (
+        (child.type === 'leafDirective' || child.type === 'containerDirective') &&
+        child.name === 'card'
+      ) {
+        out.push(buildCardFromDirective(child))
+        continue
+      }
+      if (child.type === 'paragraph' && Array.isArray(child.children)) {
+        walk(child.children)
+      }
+    }
+  }
+  walk(container.children)
+  return out
+}
+
+function buildCardFromDirective(node: MdastNode): CardData {
+  const attrs = node.attributes ?? {}
+  return {
+    id: generateId(),
+    title: typeof attrs.title === 'string' ? attrs.title : '',
+    href: typeof attrs.href === 'string' && attrs.href ? attrs.href : undefined,
+    iconId: typeof attrs.icon === 'string' && attrs.icon ? attrs.icon : undefined,
+    description:
+      typeof attrs.description === 'string' && attrs.description ? attrs.description : undefined,
+  }
+}
 
 function pickCalloutVariant(name: string | undefined): CalloutVariant | null {
   if (!name) return null

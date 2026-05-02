@@ -226,9 +226,19 @@ export const knowledgeBaseRouter = createTRPCRouter({
     }),
 
   getArticleById: protectedProcedure
-    .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
+    .input(
+      z.object({
+        id: z.string(),
+        knowledgeBaseId: z.string().optional(),
+        versionNumber: z.number().int().positive().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
-      return await getKBService(ctx).getArticleById(input.id, input.knowledgeBaseId)
+      return await getKBService(ctx).getArticleById(
+        input.id,
+        input.knowledgeBaseId,
+        input.versionNumber
+      )
     }),
 
   getArticleBySlug: protectedProcedure
