@@ -38,7 +38,7 @@ interface KopilotMessageListProps {
   onEditMessage?: (messageId: string) => void
   onRetryMessage?: (messageId: string) => void
   onFeedback?: (messageId: string, isPositive: boolean) => void
-  onSuggestionClick?: (text: string) => void
+  onSuggestionClick?: (text: string, autoSubmit: boolean) => void
   /** Class applied to inner content for centering/width constraints */
   contentClassName?: string
 }

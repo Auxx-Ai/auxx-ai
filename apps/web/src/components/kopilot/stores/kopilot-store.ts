@@ -4,6 +4,7 @@ import { generateId } from '@auxx/utils/generateId'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ContextSlice } from '../context/types'
+import type { SuggestionSlice } from '../suggestions/types'
 import { summarizeToolResult } from '../ui/blocks/summarize-tool-result'
 
 /**
@@ -180,6 +181,15 @@ interface KopilotState {
   clearContextSlice: (id: string) => void
 
   /**
+   * Page-suggestions — distributed mount-time registration. Each
+   * `<KopilotSuggestion>` writes one slice keyed by its `useId()`. Consumers
+   * read the merged, priority-sorted view via `useKopilotSuggestions`.
+   */
+  suggestionSlices: Record<string, SuggestionSlice>
+  setSuggestionSlice: (id: string, slice: SuggestionSlice) => void
+  clearSuggestionSlice: (id: string) => void
+
+  /**
    * Per-turn chip dismissals. Keyed as `field:value` (e.g. `activeThreadId:abc`).
    * Cleared after each submit so the chip reappears next turn.
    */
@@ -296,6 +306,18 @@ export const useKopilotStore = create<KopilotState>()(
           const next = { ...s.contextSlices }
           delete next[id]
           return { contextSlices: next }
+        }),
+
+      // Page suggestions — distributed slices
+      suggestionSlices: {},
+      setSuggestionSlice: (id, slice) =>
+        set((s) => ({ suggestionSlices: { ...s.suggestionSlices, [id]: slice } })),
+      clearSuggestionSlice: (id) =>
+        set((s) => {
+          if (!(id in s.suggestionSlices)) return s
+          const next = { ...s.suggestionSlices }
+          delete next[id]
+          return { suggestionSlices: next }
         }),
 
       // Per-turn chip dismissals

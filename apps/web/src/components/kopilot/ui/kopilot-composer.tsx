@@ -45,6 +45,12 @@ interface KopilotComposerProps {
 
 export interface KopilotComposerHandle {
   focus: () => void
+  /**
+   * Replace editor content with `text` (wrapped in a paragraph) and focus the
+   * end. Used by suggestion clicks where `autoSubmit` is false — the user
+   * edits before sending.
+   */
+  populate: (text: string) => void
 }
 
 function isEmptyContent(html: string): boolean {
@@ -194,6 +200,12 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
         if (editor) {
           editor.commands.focus('end')
         }
+      },
+      populate: (text: string) => {
+        if (!editor) return
+        const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        editor.commands.setContent(`<p>${escaped}</p>`)
+        editor.commands.focus('end')
       },
     }),
     [editor]

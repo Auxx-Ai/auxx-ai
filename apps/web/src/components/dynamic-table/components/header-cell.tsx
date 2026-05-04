@@ -11,6 +11,7 @@ import {
   buildFieldValueKey,
   type FieldId,
   type FieldReference,
+  parseResourceFieldId,
   type ResourceFieldId,
 } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
@@ -41,8 +42,12 @@ import {
   RefreshCw,
   Settings2,
   Sparkles,
+  Trash2,
+  Wand2,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
+import { CustomFieldDialog } from '~/components/custom-fields/ui/custom-field-dialog'
 import { Tooltip } from '~/components/global/tooltip'
 import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
@@ -162,6 +167,7 @@ function HeaderCellOptionsDropdown<TData>({
   aiFieldRef,
   table,
   entityDefinitionId,
+  editableField,
 }: {
   column: Header<TData, unknown>['column']
   columnDef: ExtendedColumnDef<TData>
@@ -187,11 +193,38 @@ function HeaderCellOptionsDropdown<TData>({
   aiFieldRef: FieldReference | null
   table: Table<TData>
   entityDefinitionId: string | undefined
+  editableField: ResourceFieldId | null
 }) {
   const [showLabelDialog, setShowLabelDialog] = useState(false)
   const [showFormattingDialog, setShowFormattingDialog] = useState(false)
+  const [showEditFieldDialog, setShowEditFieldDialog] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const runAiBulkGenerate = useRunAiBulkGenerate()
+
+  // For path columns the editable field belongs to a different entity than
+  // the table's. Derive the owning entityDefinitionId from the field id itself
+  // so the destroy mutation invalidates the right scope.
+  const editableFieldEntityDefinitionId = useMemo(
+    () => (editableField ? parseResourceFieldId(editableField).entityDefinitionId : undefined),
+    [editableField]
+  )
+  const { destroy: destroyField } = useCustomFieldMutations({
+    entityDefinitionId: editableFieldEntityDefinitionId,
+  })
+
+  const handleDeleteField = useCallback(async () => {
+    if (!editableField) return
+    const ok = await confirm({
+      title: `Delete "${headerContent}"?`,
+      description:
+        'This permanently removes the field and its values from every record. This action cannot be undone.',
+      confirmText: 'Delete field',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!ok) return
+    destroyField.mutate({ resourceFieldId: editableField })
+  }, [editableField, confirm, headerContent, destroyField])
 
   const handleFillMissing = useCallback(() => {
     if (!aiMenuEnabled || !aiField || !aiFieldRef || !entityDefinitionId) return
@@ -377,6 +410,23 @@ function HeaderCellOptionsDropdown<TData>({
             Format column
           </DropdownMenuItem>
         )}
+
+        {editableField && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setShowEditFieldDialog(true)}>
+              <Wand2 />
+              Edit field
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={handleDeleteField}
+              variant='destructive'
+              disabled={destroyField.isPending}>
+              <Trash2 />
+              Delete field
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
 
       <EditColumnLabelDialog
@@ -398,6 +448,14 @@ function HeaderCellOptionsDropdown<TData>({
           currentFormatting={columnFormatting[column.id]}
           defaultFormatting={columnDef.defaultFormatting ?? terminalDefaultFormatting}
           onSave={(formatting) => setColumnFormatting(column.id, formatting)}
+        />
+      )}
+
+      {editableField && (
+        <CustomFieldDialog
+          open={showEditFieldDialog}
+          onOpenChange={setShowEditFieldDialog}
+          resourceFieldId={editableField}
         />
       )}
 
@@ -489,6 +547,21 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   const aiFieldRef: FieldReference | null =
     aiMenuEnabled && !isPathColumn ? (decoded.resourceFieldId as ResourceFieldId) : null
 
+  // ─── EDITABLE CUSTOM FIELD GATE ────────────────────────────────────────────
+  // Show "Edit field" / "Delete field" only when the column maps to a non-system
+  // custom field. For path columns, target the terminal field (which lives on
+  // a different entity definition — the dialog auto-derives that from the
+  // resourceFieldId itself).
+  const editableField = useMemo<ResourceFieldId | null>(() => {
+    if (isPathColumn) {
+      const terminal = pathFields[pathFields.length - 1]
+      if (!terminal || terminal.isSystem) return null
+      return terminal.resourceFieldId
+    }
+    if (!directField || directField.isSystem) return null
+    return directField.resourceFieldId
+  }, [isPathColumn, pathFields, directField])
+
   // ─── ACTIONS (use centralized action hooks) ────────────────────────────────
   const setFilters = useSetFilters(tableId)
   const setColumnLabel = useSetColumnLabel(tableId)
@@ -566,6 +639,7 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
             aiFieldRef={aiFieldRef}
             table={table}
             entityDefinitionId={entityDefinitionId}
+            editableField={editableField}
           />
         </div>
       )}

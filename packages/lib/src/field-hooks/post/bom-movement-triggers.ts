@@ -6,6 +6,7 @@ import type { TypedFieldValueInput } from '@auxx/types'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { nextKeyAfter } from '@auxx/utils/fractional-indexing'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
@@ -164,7 +165,9 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
       })
     }
 
-    // Convert each typed value to a FieldValue insert row
+    // Convert each typed value to a FieldValue insert row.
+    // These are single-value fields (one row per (entityId, fieldId)),
+    // so the sortKey is purely positional — always the canonical first key.
     for (const { fieldId, value } of typedValues) {
       fieldValueRows.push(
         buildFieldValueRow({
@@ -173,6 +176,7 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
           entityDefinitionId: stockMovementDefId,
           fieldId,
           value,
+          sortKey: nextKeyAfter(null),
         })
       )
     }
@@ -484,7 +488,7 @@ async function batchRecalculateQoH(
     const status = deriveStockStatus(qoh, reorderPoint)
     const recordId = toRecordId(partDefId, partId) as RecordId
 
-    // QoH field value row
+    // QoH field value row (single-value field; positional sortKey).
     insertRows.push(
       buildFieldValueRow({
         organizationId,
@@ -492,6 +496,7 @@ async function batchRecalculateQoH(
         entityDefinitionId: partDefId,
         fieldId: qohField.id,
         value: { type: 'number', value: qoh },
+        sortKey: nextKeyAfter(null),
       })
     )
 
@@ -504,6 +509,7 @@ async function batchRecalculateQoH(
           entityDefinitionId: partDefId,
           fieldId: statusField.id,
           value: { type: 'option', optionId: status },
+          sortKey: nextKeyAfter(null),
         })
       )
     }

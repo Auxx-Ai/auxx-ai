@@ -29,6 +29,7 @@ import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_MAP } from '../../resources/reg
 import type { TableId } from '../../resources/registry/field-registry'
 import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
+import { resolveOlderThanCutoff, resolveRelativeDateRange } from './relative-date-range'
 
 const logger = createScopedLogger('system-condition-builder')
 
@@ -276,6 +277,25 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
 
       case 'not exists': {
         return this.combineColumnPredicates(columns, (col) => isNull(col), 'and')
+      }
+
+      // ===== RELATIVE DATE =====
+      case 'today':
+      case 'yesterday':
+      case 'this_week':
+      case 'this_month':
+      case 'within_days': {
+        const range = resolveRelativeDateRange(operator, rawValue)
+        if (!range) return undefined
+        return this.combineColumnPredicates(columns, (col) =>
+          and(gte(col, range.start), lt(col, range.end))
+        )
+      }
+
+      case 'older_than_days': {
+        const cutoff = resolveOlderThanCutoff(rawValue)
+        if (!cutoff) return undefined
+        return this.combineColumnPredicates(columns, (col) => lt(col, cutoff), 'and')
       }
 
       default: {

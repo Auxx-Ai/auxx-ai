@@ -14,6 +14,7 @@ import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { KopilotContext } from '~/components/kopilot/context'
+import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
 import { toRecordId, useRecord } from '~/components/resources'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
@@ -109,6 +110,14 @@ export function ContactDrawer({
   return (
     <>
       <KopilotContext activeContactId={contactId} activeContactLabel={contactLabel} />
+      <KopilotSuggestion
+        text='Recent tickets from this contact'
+        icon='history'
+        priority={10}
+        autoSubmit
+      />
+      <KopilotSuggestion text='Summarize this contact' icon='sparkle' autoSubmit />
+      <KopilotSuggestion text='Draft a follow-up email' icon='reply' />
       <BaseEntityDrawer
         recordId={recordId}
         open={open}

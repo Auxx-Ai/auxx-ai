@@ -1,7 +1,9 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/find-threads.ts
 
+import { parseRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
 import type { Condition, ConditionGroup } from '../../../../../conditions'
+import { TagService } from '../../../../../tags'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { FindThreadsDigest, takeSample } from '../../../digests'
@@ -172,17 +174,43 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
 
       const threadMetas = await service.getThreadMetaBatch(rawIds, agentDeps.userId)
 
-      const threads = threadMetas.map((t) => ({
-        id: t.id,
-        subject: t.subject,
-        status: t.status,
-        assigneeId: t.assigneeId,
-        lastMessageAt:
-          t.lastMessageAt instanceof Date ? t.lastMessageAt.toISOString() : t.lastMessageAt,
-        messageCount: t.messageCount,
-        isUnread: t.isUnread,
-        tagIds: t.tagIds,
-      }))
+      // Resolve tag names so the agent doesn't have to call list_tags after.
+      // tagIds on ThreadMeta are RecordIds ("entityDefId:instanceId") — parse to
+      // raw instance IDs since update_thread expects those.
+      const tagInfo = new Map<
+        string,
+        { id: string; name: string; color: string; emoji: string | null }
+      >()
+      if (threadMetas.some((t) => t.tagIds.length > 0)) {
+        const tagService = new TagService(agentDeps.organizationId, agentDeps.userId, db)
+        const allTags = await tagService.getAllTags()
+        for (const tag of allTags) {
+          tagInfo.set(tag.id, {
+            id: tag.id,
+            name: tag.title,
+            color: tag.tag_color,
+            emoji: tag.tag_emoji,
+          })
+        }
+      }
+
+      const threads = threadMetas.map((t) => {
+        const instanceIds = t.tagIds.map((rid) => parseRecordId(rid).entityInstanceId)
+        return {
+          id: t.id,
+          subject: t.subject,
+          status: t.status,
+          assigneeId: t.assigneeId,
+          lastMessageAt:
+            t.lastMessageAt instanceof Date ? t.lastMessageAt.toISOString() : t.lastMessageAt,
+          messageCount: t.messageCount,
+          isUnread: t.isUnread,
+          tagIds: instanceIds,
+          tags: instanceIds.map(
+            (id) => tagInfo.get(id) ?? { id, name: id, color: 'gray', emoji: null }
+          ),
+        }
+      })
 
       return {
         success: true,

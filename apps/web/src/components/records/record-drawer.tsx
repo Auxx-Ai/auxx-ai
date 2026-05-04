@@ -35,6 +35,7 @@ import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggl
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { KopilotContext } from '~/components/kopilot/context'
+import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { MergeDialog } from '~/components/merge'
 import { useRecord, useResource } from '~/components/resources'
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
@@ -244,6 +245,8 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   return (
     <>
       <KopilotContext activeRecordId={recordId} activeRecordLabel={displayName ?? undefined} />
+      <KopilotSuggestion text='Summarize this record' icon='sparkle' priority={10} autoSubmit />
+      <KopilotSuggestion text='Show related records' icon='list' autoSubmit />
       <BaseEntityDrawer
         recordId={recordId}
         open={open}

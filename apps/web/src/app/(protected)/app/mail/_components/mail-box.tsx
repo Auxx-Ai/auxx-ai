@@ -42,6 +42,7 @@ import {
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { EmptyState } from '~/components/global/empty-state'
 import { KopilotContext } from '~/components/kopilot/context'
+import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import {
   MailFilterProvider,
   type SortDirection,
@@ -495,7 +496,14 @@ function MailboxInner({
 
   return (
     <MailFilterProvider value={mailFilterContextValue}>
-      {kopilotEnabled && <KopilotContext page='mail' />}
+      {kopilotEnabled && (
+        <>
+          <KopilotContext page='mail' />
+          <KopilotSuggestion text='What tickets came in today?' icon='mail' autoSubmit />
+          <KopilotSuggestion text='Show high-priority unresolved tickets' icon='list' autoSubmit />
+          <KopilotSuggestion text='Summarize my open tickets' icon='sparkle' autoSubmit />
+        </>
+      )}
       <MainPage>
         <MainPageHeader
           action={

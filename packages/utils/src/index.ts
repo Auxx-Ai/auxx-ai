@@ -94,6 +94,9 @@ export {
   generateKeyBetween,
   generateNKeysBetween,
   getSmartSortPositions,
+  isValidOrderKey,
+  nextKeyAfter,
+  nKeysAfter,
   type SmartSortItem,
   type SmartSortResult,
 } from './fractional-indexing'

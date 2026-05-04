@@ -6,6 +6,7 @@ import type { JSONContent } from '@tiptap/core'
 import { useCallback, useEffect, useRef } from 'react'
 import { useDebounceCallback } from 'usehooks-ts'
 import { KBArticleEditor } from '~/components/editor/kb-article'
+import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
@@ -60,6 +61,9 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
+      <KopilotSuggestion text='Outline this article' icon='pencil' priority={10} />
+      <KopilotSuggestion text='Suggest related articles' icon='list' autoSubmit />
+      <KopilotSuggestion text='Improve this article' icon='sparkle' />
       <ArticleEditorHeader article={article} knowledgeBaseId={knowledgeBaseId} />
       <ScrollArea className='flex-1'>
         <div className='flex min-h-min flex-1 flex-col'>
