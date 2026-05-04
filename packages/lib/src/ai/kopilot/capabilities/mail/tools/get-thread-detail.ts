@@ -1,6 +1,8 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/get-thread-detail.ts
 
+import { parseRecordId } from '@auxx/types/resource'
 import { MessageQueryService } from '../../../../../messages'
+import { TagService } from '../../../../../tags'
 import { ThreadQueryService } from '../../../../../threads'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -87,6 +89,22 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
         participants: m.participants,
       }))
 
+      // tagIds on ThreadMeta are RecordIds ("entityDefId:instanceId") — parse to
+      // raw instance IDs since update_thread expects those, and resolve names.
+      const tagInstanceIds = thread.tagIds.map((rid) => parseRecordId(rid).entityInstanceId)
+      let tags: Array<{ id: string; name: string; color: string; emoji: string | null }> = []
+      if (tagInstanceIds.length > 0) {
+        const tagService = new TagService(agentDeps.organizationId, agentDeps.userId, db)
+        const allTags = await tagService.getAllTags()
+        const byId = new Map(allTags.map((t) => [t.id, t]))
+        tags = tagInstanceIds.map((id) => {
+          const tag = byId.get(id)
+          return tag
+            ? { id: tag.id, name: tag.title, color: tag.tag_color, emoji: tag.tag_emoji }
+            : { id, name: id, color: 'gray', emoji: null }
+        })
+      }
+
       return {
         success: true,
         output: {
@@ -101,7 +119,8 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
                 : thread.lastMessageAt,
             messageCount: thread.messageCount,
             isUnread: thread.isUnread,
-            tagIds: thread.tagIds,
+            tagIds: tagInstanceIds,
+            tags,
             integrationId: thread.integrationId,
           },
           messages,

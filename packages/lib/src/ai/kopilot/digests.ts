@@ -124,6 +124,12 @@ export type ListMembersDigest = z.infer<typeof ListMembersDigest>
 export const ListGroupsDigest = ListMembersDigest
 export type ListGroupsDigest = z.infer<typeof ListGroupsDigest>
 
+export const ListTagsDigest = z.object({
+  count: z.number(),
+  names: z.array(z.string()).max(DIGEST_SAMPLE_MAX),
+})
+export type ListTagsDigest = z.infer<typeof ListTagsDigest>
+
 export const ListFieldChangesDigest = z.object({
   count: z.number(),
   sample: z

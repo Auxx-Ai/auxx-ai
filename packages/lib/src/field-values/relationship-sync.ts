@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import type { RelationshipType } from '@auxx/types/custom-field'
-import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
+import { generateKeyBetween, nextKeyAfter } from '@auxx/utils/fractional-indexing'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 
 // ============================================================================
@@ -509,7 +509,8 @@ async function batchAddToInverse(
 
     const insertValues = toInsert.map(({ targetId, sourceId }) => {
       const prevKey = nextKeyForTarget.get(targetId) ?? keyMap.get(targetId) ?? null
-      const newKey = generateKeyBetween(prevKey, null)
+      // `nextKeyAfter` tolerates a corrupt MAX from the DB by degrading to 'a0'.
+      const newKey = nextKeyAfter(prevKey)
       nextKeyForTarget.set(targetId, newKey)
 
       return {

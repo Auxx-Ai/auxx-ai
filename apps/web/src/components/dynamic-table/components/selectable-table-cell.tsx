@@ -74,6 +74,10 @@ function SelectableTableCellInner<TData>({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!cellSelectionConfig?.enabled || isSystemColumn) return
+      // While inline-editing this cell, let the input own pointer events:
+      // preventDefault here would block caret placement, mouse selection,
+      // and focus on the textarea/input.
+      if (isEditing) return
       // Ignore non-primary buttons (right-click, middle, etc.)
       if (e.button !== 0) return
       // Ignore events that bubbled here from a React portal (e.g. an open
@@ -104,6 +108,7 @@ function SelectableTableCellInner<TData>({
     [
       cellSelectionConfig?.enabled,
       isSystemColumn,
+      isEditing,
       resolveEndpoint,
       drag,
       setActiveCell,
@@ -168,7 +173,10 @@ function SelectableTableCellInner<TData>({
       ref={cellRef}
       data-col={sanitizeColumnId(columnId)}
       className={cn(
-        'group/cell flex items-center h-full relative outline-none select-none',
+        'group/cell flex items-center h-full relative outline-none',
+        // Suppress text selection on the cell chrome, but allow it inside the
+        // input while inline-editing.
+        !isEditing && 'select-none',
         // .cell-active drives focus ring + content expansion (ExpandableCell, PrimaryCell).
         // .cell-selected kept as alias so existing CSS selectors keep matching the active cell.
         isActive && 'cell-active cell-selected',

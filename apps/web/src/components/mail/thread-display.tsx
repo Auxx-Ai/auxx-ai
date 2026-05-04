@@ -8,6 +8,7 @@ import { Mail, Plus, Waypoints } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect } from 'react'
 import { KopilotContext } from '~/components/kopilot/context'
+import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { useThread, useThreadReadStatus } from '~/components/threads/hooks'
 import { useActiveThreadId, useHasMultipleSelected } from '~/components/threads/store'
 import type { ChannelProvider } from '~/components/threads/store/thread-store'
@@ -82,6 +83,16 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
   return (
     <div className='flex h-full flex-col flex-1'>
       {thread && <KopilotContext activeThreadId={thread.id} activeThreadLabel={thread.subject} />}
+      {thread && (
+        <>
+          <KopilotSuggestion text='Summarize this thread' icon='sparkle' priority={10} autoSubmit />
+          <KopilotSuggestion text='Draft a reply' icon='reply' priority={5} />
+          <KopilotSuggestion text='Find similar tickets' icon='search' autoSubmit />
+          {thread.ticketId && (
+            <KopilotSuggestion text='Show ticket history' icon='history' autoSubmit />
+          )}
+        </>
+      )}
       <BulkActionToolbar />
       {thread && viewMode !== 'edit' ? (
         isChatThread(thread.integrationProvider) ? (

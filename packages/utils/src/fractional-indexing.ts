@@ -244,6 +244,58 @@ export function generateKeyBetween(
 }
 
 /**
+ * Returns true if `key` is a syntactically valid order key.
+ *
+ * Use this to guard inputs that come from a data store where legacy or
+ * corrupt keys may exist. Internally calls the strict `validateOrderKey`
+ * and converts a thrown error into `false`.
+ */
+export function isValidOrderKey(key: string, digits: string = BASE_62_DIGITS): boolean {
+  if (typeof key !== 'string' || key.length === 0) return false
+  try {
+    validateOrderKey(key, digits)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Generate the next order key after `prevKey`.
+ *
+ * If `prevKey` is null, undefined, or not a valid order key, returns the
+ * canonical first key (`'a0'`). Use this when reading the current MAX
+ * from a column that may contain legacy or corrupt values — the strict
+ * `generateKeyBetween` throws on bad input, which can poison every
+ * subsequent write to that scope.
+ */
+export function nextKeyAfter(
+  prevKey: string | null | undefined,
+  digits: string = BASE_62_DIGITS
+): string {
+  if (prevKey == null || !isValidOrderKey(prevKey, digits)) {
+    return generateKeyBetween(null, null, digits)
+  }
+  return generateKeyBetween(prevKey, null, digits)
+}
+
+/**
+ * Generate `n` strictly increasing order keys after `prevKey`.
+ *
+ * Like `nextKeyAfter` but for batch inserts. Tolerates a corrupt or
+ * missing `prevKey` by starting from the beginning.
+ */
+export function nKeysAfter(
+  prevKey: string | null | undefined,
+  n: number,
+  digits: string = BASE_62_DIGITS
+): string[] {
+  if (n <= 0) return []
+  const start = prevKey != null && isValidOrderKey(prevKey, digits) ? prevKey : null
+  return generateNKeysBetween(start, null, n, digits)
+}
+
+/**
  * Generate n order keys between two keys
  * @param a - Lower bound order key (null for start)
  * @param b - Upper bound order key (null for end)

@@ -3,7 +3,9 @@
 'use client'
 
 import type { ActorId } from '@auxx/types/actor'
+import type { AbsoluteDate, RelativeDate } from '@auxx/types/task'
 import { cn } from '@auxx/ui/lib/utils'
+import { formatAbsoluteDate, formatRelativeDate } from '@auxx/utils'
 import { Calendar, Flag, ListTodo, User } from 'lucide-react'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { ItemsListView } from '~/components/ui/items-list-view'
@@ -16,10 +18,22 @@ const PRIORITY_STYLES = {
   low: 'bg-muted text-muted-foreground',
 } as const
 
+function formatDeadline(input: unknown): string | undefined {
+  if (input == null) return undefined
+  if (typeof input === 'string') return input
+  if (typeof input !== 'object') return undefined
+  const obj = input as Partial<AbsoluteDate> & RelativeDate
+  if (obj.type === 'static' && obj.value) {
+    const d = obj.value instanceof Date ? obj.value : new Date(obj.value)
+    return Number.isNaN(d.getTime()) ? undefined : formatAbsoluteDate(d)
+  }
+  return formatRelativeDate(obj as RelativeDate) ?? undefined
+}
+
 export function TaskCreateApprovalCard({ args, status, onApprove, onReject }: ApprovalCardProps) {
   const title = args.title as string
   const description = args.description as string | undefined
-  const deadline = args.deadline as string | undefined
+  const deadline = formatDeadline(args.deadline)
   const priority = args.priority as 'low' | 'medium' | 'high' | undefined
   const assigneeIds = args.assigneeIds as string[] | undefined
   const linkedRecordIds = args.linkedRecordIds as string[] | undefined

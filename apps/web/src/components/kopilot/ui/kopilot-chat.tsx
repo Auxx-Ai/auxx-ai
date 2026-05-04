@@ -108,7 +108,11 @@ export function KopilotChat({
   }, [])
 
   const handleSuggestionClick = useCallback(
-    (text: string) => {
+    (text: string, autoSubmit: boolean) => {
+      if (!autoSubmit) {
+        composerRef.current?.populate(text)
+        return
+      }
       addMessage({
         id: generateId(),
         role: 'user',

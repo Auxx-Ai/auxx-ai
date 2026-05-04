@@ -14,6 +14,7 @@ import { getFieldOutputKey, type ResourceField } from '../../resources/registry/
 import { type FieldOptionItem, getFieldOptions } from '../../resources/registry/option-helpers'
 import { BaseType } from '../core/types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
+import { resolveOlderThanCutoff, resolveRelativeDateRange } from './relative-date-range'
 
 const logger = createScopedLogger('entity-condition-builder')
 
@@ -316,6 +317,20 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           return sql`${column} IS NULL`
         case 'not empty':
           return sql`${column} IS NOT NULL`
+        case 'today':
+        case 'yesterday':
+        case 'this_week':
+        case 'this_month':
+        case 'within_days': {
+          const range = resolveRelativeDateRange(operator, rawValue)
+          if (!range) return undefined
+          return sql`${column} >= ${range.start.toISOString()} AND ${column} < ${range.end.toISOString()}`
+        }
+        case 'older_than_days': {
+          const cutoff = resolveOlderThanCutoff(rawValue)
+          if (!cutoff) return undefined
+          return sql`${column} < ${cutoff.toISOString()}`
+        }
         default:
           logger.warn(`Operator '${operator}' not supported for date system fields`)
           return undefined
@@ -669,6 +684,20 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           return rawValue === null || rawValue === undefined
             ? sql`${dateCol} IS NOT NULL`
             : sql`${dateCol}::date != ${String(rawValue)}::date`
+        case 'today':
+        case 'yesterday':
+        case 'this_week':
+        case 'this_month':
+        case 'within_days': {
+          const range = resolveRelativeDateRange(operator, rawValue)
+          if (!range) return undefined
+          return sql`${dateCol} >= ${range.start.toISOString()} AND ${dateCol} < ${range.end.toISOString()}`
+        }
+        case 'older_than_days': {
+          const cutoff = resolveOlderThanCutoff(rawValue)
+          if (!cutoff) return undefined
+          return sql`${dateCol} < ${cutoff.toISOString()}`
+        }
       }
     }
 
@@ -1022,6 +1051,20 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           return sql`${dateCol} < ${String(rawValue)}`
         case 'after':
           return sql`${dateCol} > ${String(rawValue)}`
+        case 'today':
+        case 'yesterday':
+        case 'this_week':
+        case 'this_month':
+        case 'within_days': {
+          const range = resolveRelativeDateRange(operator, rawValue)
+          if (!range) return undefined
+          return sql`${dateCol} >= ${range.start.toISOString()} AND ${dateCol} < ${range.end.toISOString()}`
+        }
+        case 'older_than_days': {
+          const cutoff = resolveOlderThanCutoff(rawValue)
+          if (!cutoff) return undefined
+          return sql`${dateCol} < ${cutoff.toISOString()}`
+        }
       }
     }
 

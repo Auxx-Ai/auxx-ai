@@ -133,7 +133,11 @@ export function KBSwitcherDropdownContent() {
       {canCreateKB && (
         <>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setShowCreateDialog(true)}>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault()
+              setShowCreateDialog(true)
+            }}>
             <Plus />
             Add Knowledge Base
           </DropdownMenuItem>

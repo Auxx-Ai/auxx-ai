@@ -21,7 +21,12 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { isSystemAttribute } from '@auxx/types/system-attribute'
 import { generateId } from '@auxx/utils'
-import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
+import {
+  generateKeyBetween,
+  isValidOrderKey,
+  nextKeyAfter,
+  nKeysAfter,
+} from '@auxx/utils/fractional-indexing'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { getCachedFieldMap, getCachedResource } from '../cache'
 import {
@@ -412,15 +417,15 @@ export async function setValueWithType(
   // the input (stage-2 AI commit), merge the `aiStatus='result'` + metadata
   // marker onto each insert row. Absent = manual write → marker stays null,
   // naturally clearing any prior AI marker via this DELETE+INSERT cycle.
+  const sortKeys = nKeysAfter(null, values.length)
   const insertRows = values.map((v, index) => {
-    const sortKey = generateKeyBetween(index === 0 ? null : `a${index - 1}`, null)
     const baseRow = buildFieldValueRow({
       organizationId: ctx.organizationId,
       entityId: entityInstanceId,
       entityDefinitionId,
       fieldId,
       value: v,
-      sortKey,
+      sortKey: sortKeys[index]!,
     })
     return params.aiGeneration ? applyAiMarker(baseRow, params.aiGeneration) : baseRow
   })
@@ -482,22 +487,31 @@ export async function addValue(
     .orderBy(asc(schema.FieldValue.sortKey))
 
   // Calculate sort key based on position
+  // existing[].sortKey may be a legacy/corrupt value; `nextKeyAfter`
+  // degrades to 'a0' rather than throwing. For 'start'/'between' positions
+  // we still need a strict generateKeyBetween call — if the surrounding key
+  // is corrupt, fall back to appending at the end.
   let sortKey: string
   if (existing.length === 0) {
-    sortKey = generateKeyBetween(null, null)
+    sortKey = nextKeyAfter(null)
   } else if (position === 'start') {
-    sortKey = generateKeyBetween(null, existing[0]!.sortKey)
+    const firstKey = existing[0]!.sortKey
+    sortKey = isValidOrderKey(firstKey) ? generateKeyBetween(null, firstKey) : nextKeyAfter(null)
   } else if (position === 'end') {
-    sortKey = generateKeyBetween(existing[existing.length - 1]!.sortKey, null)
+    sortKey = nextKeyAfter(existing[existing.length - 1]!.sortKey)
   } else {
     // Insert after specific value
     const afterIndex = existing.findIndex((e) => e.sortKey === position.after)
     if (afterIndex === -1) {
-      sortKey = generateKeyBetween(existing[existing.length - 1]!.sortKey, null)
+      sortKey = nextKeyAfter(existing[existing.length - 1]!.sortKey)
     } else {
       const afterKey = existing[afterIndex]!.sortKey
       const beforeKey = existing[afterIndex + 1]?.sortKey ?? null
-      sortKey = generateKeyBetween(afterKey, beforeKey)
+      if (isValidOrderKey(afterKey) && (beforeKey == null || isValidOrderKey(beforeKey))) {
+        sortKey = generateKeyBetween(afterKey, beforeKey)
+      } else {
+        sortKey = nextKeyAfter(existing[existing.length - 1]!.sortKey)
+      }
     }
   }
 
@@ -649,12 +663,13 @@ export async function addRelationValues(
     )
     .orderBy(asc(schema.FieldValue.sortKey))
 
-  // Generate sort keys and insert new values
+  // Generate sort keys and insert new values. `nextKeyAfter` tolerates a
+  // corrupt prevKey from the DB (degrades to 'a0') rather than throwing.
   const { entityDefinitionId } = parseRecordId(recordId)
-  let prevKey = existing.length > 0 ? existing[existing.length - 1]!.sortKey : null
+  let prevKey: string | null = existing.length > 0 ? existing[existing.length - 1]!.sortKey : null
 
   const insertRows = newIds.map((relatedId) => {
-    const sortKey = generateKeyBetween(prevKey, null)
+    const sortKey = nextKeyAfter(prevKey)
     prevKey = sortKey
     return {
       organizationId: ctx.organizationId,
@@ -855,7 +870,8 @@ export async function addRelationValuesBulk(
 
   const insertRows = toInsert.map(({ entityId, relatedEntityId }) => {
     const prevKey = nextKeyByEntity.get(entityId) ?? null
-    const sortKey = generateKeyBetween(prevKey, null)
+    // `nextKeyAfter` tolerates a corrupt MAX from the DB by degrading to 'a0'.
+    const sortKey = nextKeyAfter(prevKey)
     nextKeyByEntity.set(entityId, sortKey)
     return {
       organizationId: ctx.organizationId,
@@ -1255,9 +1271,11 @@ export async function addValues(
     }
 
     // Generate sortKeys appended after the current max.
-    let prevKey = existingRows.length > 0 ? existingRows[existingRows.length - 1]!.sortKey : null
+    // `nextKeyAfter` tolerates a corrupt last-row sortKey by degrading to 'a0'.
+    let prevKey: string | null =
+      existingRows.length > 0 ? existingRows[existingRows.length - 1]!.sortKey : null
     const insertRows = survivors.map((v) => {
-      const sortKey = generateKeyBetween(prevKey, null)
+      const sortKey = nextKeyAfter(prevKey)
       prevKey = sortKey
       return buildFieldValueRow({
         organizationId: ctx.organizationId,
@@ -1478,7 +1496,9 @@ export async function addValuesBulk(
         if (k !== null) seen.add(k)
       }
 
-      let prevKey = existing.length > 0 ? existing[existing.length - 1]!.sortKey : null
+      // `nextKeyAfter` tolerates a corrupt last-row sortKey from the DB.
+      let prevKey: string | null =
+        existing.length > 0 ? existing[existing.length - 1]!.sortKey : null
       const localSeen = new Set<string>()
       const insertedTyped: TypedFieldValueInput[] = []
       for (let i = 0; i < typedInputs.length; i++) {
@@ -1488,7 +1508,7 @@ export async function addValuesBulk(
           continue
         }
         localSeen.add(key)
-        const sortKey = generateKeyBetween(prevKey, null)
+        const sortKey = nextKeyAfter(prevKey)
         prevKey = sortKey
         insertRows.push(
           buildFieldValueRow({
@@ -2640,11 +2660,12 @@ async function setMultiValue(
   if (values.length === 0) return []
 
   // Build insert rows with sortKeys - pass recordId
+  const sortKeys = nKeysAfter(null, values.length)
   const insertInputs = values.map((v, index) => ({
     recordId,
     fieldId,
     organizationId: ctx.organizationId,
-    sortKey: generateKeyBetween(index === 0 ? null : `a${index - 1}`, null),
+    sortKey: sortKeys[index]!,
     ...buildInsertData(fieldType, v),
   }))
 
@@ -2781,9 +2802,9 @@ export function buildFieldValueRow(params: {
   entityDefinitionId: string
   fieldId: string
   value: TypedFieldValueInput
-  sortKey?: string
+  sortKey: string
 }): typeof schema.FieldValue.$inferInsert {
-  const { organizationId, entityId, entityDefinitionId, fieldId, value, sortKey = 'a' } = params
+  const { organizationId, entityId, entityDefinitionId, fieldId, value, sortKey } = params
 
   const base = {
     organizationId,

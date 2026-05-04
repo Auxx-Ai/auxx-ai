@@ -3,7 +3,7 @@
 // fire onCacheEvent after successful DB write so the user cache stays warm.
 
 import { type Database, database as ddb, schema } from '@auxx/database'
-import { generateKeyBetween, getSmartSortPositions } from '@auxx/utils'
+import { generateKeyBetween, getSmartSortPositions, nextKeyAfter } from '@auxx/utils'
 import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { onCacheEvent } from '../cache/invalidate'
@@ -54,7 +54,7 @@ async function nextSortOrderForParent(
     .sort()
 
   const last = siblings[siblings.length - 1] ?? null
-  return generateKeyBetween(last, null)
+  return nextKeyAfter(last)
 }
 
 async function countNodes(db: Database, memberId: string): Promise<number> {
