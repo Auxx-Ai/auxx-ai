@@ -7,13 +7,12 @@ import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import {
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
 } from '@auxx/ui/components/dropdown-menu'
-import { Book, Plus } from 'lucide-react'
+import { Book, Check, Plus, Trash2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useActiveKnowledgeBaseId } from '../../hooks/use-knowledge-base'
 import { useKnowledgeBaseMutations } from '../../hooks/use-knowledge-base-mutations'
@@ -46,7 +45,8 @@ export function KBSwitcherDropdownContent() {
 
   const { knowledgeBases, isLoading } = useKnowledgeBases()
   const activeKBId = useActiveKnowledgeBaseId()
-  const { createKnowledgeBase, isCreating } = useKnowledgeBaseMutations()
+  const { createKnowledgeBase, isCreating, deleteKnowledgeBase } = useKnowledgeBaseMutations()
+  const [confirm, ConfirmDialog] = useConfirm()
 
   const { getLimit } = useFeatureFlags()
   const kbLimit = getLimit(FeatureKey.knowledgeBases)
@@ -79,6 +79,22 @@ export function KBSwitcherDropdownContent() {
     }
   }
 
+  const handleDelete = async (id: string, name: string) => {
+    const ok = await confirm({
+      title: 'Delete knowledge base?',
+      description: `"${name}" and all of its docs will be permanently deleted. This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!ok) return
+    const success = await deleteKnowledgeBase(id)
+    if (success && id === activeKBId) {
+      const next = knowledgeBases.find((k) => k.id !== id)
+      router.push(next ? `/app/kb/${next.id}/editor` : '/app/kb')
+    }
+  }
+
   return (
     <>
       <KnowledgeBaseDialog
@@ -88,6 +104,7 @@ export function KBSwitcherDropdownContent() {
         isSubmitting={isCreating}
         mode='create'
       />
+      <ConfirmDialog />
 
       <DropdownMenuLabel className='p-0 font-normal'>
         <div className='flex items-center gap-2 px-1 py-1.5 text-left text-sm'>
@@ -111,25 +128,49 @@ export function KBSwitcherDropdownContent() {
         </div>
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
-      <DropdownMenuRadioGroup value={activeKBId ?? ''} onValueChange={handleClickKnowledgeBase}>
-        {isLoading ? (
-          <DropdownMenuItem disabled>Loading...</DropdownMenuItem>
-        ) : knowledgeBases.length > 0 ? (
-          knowledgeBases.map((kb) => {
-            const merged = mergeDraftOverLive(kb as Record<string, unknown>) as typeof kb
-            return (
-              <DropdownMenuRadioItem value={kb.id} key={kb.id} className='gap-2 p-2'>
-                <div className='flex size-6 items-center justify-center rounded-sm border'>
-                  <Book className='size-4 shrink-0' />
+      {isLoading ? (
+        <DropdownMenuItem disabled>Loading...</DropdownMenuItem>
+      ) : knowledgeBases.length > 0 ? (
+        knowledgeBases.map((kb) => {
+          const merged = mergeDraftOverLive(kb as Record<string, unknown>) as typeof kb
+          const isActive = kb.id === activeKBId
+          return (
+            <DropdownMenuItem
+              key={kb.id}
+              onSelect={() => handleClickKnowledgeBase(kb.id)}
+              className='group/kb-item h-7 cursor-pointer'>
+              <div className='flex items-center justify-between w-full'>
+                <div className='flex items-center gap-2 min-w-0'>
+                  <div className='flex size-5 shrink-0 items-center justify-center rounded-sm border'>
+                    <Book className='size-3 shrink-0' />
+                  </div>
+                  <span className='truncate'>{merged.name}</span>
                 </div>
-                {merged.name}
-              </DropdownMenuRadioItem>
-            )
-          })
-        ) : (
-          <DropdownMenuItem disabled>No knowledge bases found</DropdownMenuItem>
-        )}
-      </DropdownMenuRadioGroup>
+                <div className='flex items-center gap-1 shrink-0'>
+                  <button
+                    type='button'
+                    aria-label={`Delete ${merged.name}`}
+                    className='hidden group-hover/kb-item:flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-bad-100 hover:text-bad-500'
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleDelete(kb.id, merged.name ?? 'this knowledge base')
+                    }}>
+                    <Trash2 className='size-3' />
+                  </button>
+                  {isActive && (
+                    <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
+                      <Check className='size-2.5! text-white' strokeWidth={4} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </DropdownMenuItem>
+          )
+        })
+      ) : (
+        <DropdownMenuItem disabled>No knowledge bases found</DropdownMenuItem>
+      )}
       {canCreateKB && (
         <>
           <DropdownMenuSeparator />

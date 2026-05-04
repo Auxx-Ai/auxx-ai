@@ -106,6 +106,11 @@ export function KopilotMessageList({
   const [inflateLast, setInflateLast] = useState(() => messages.length <= 1)
   const [pinTick, setPinTick] = useState(0)
   const pinBehaviorRef = useRef<ScrollBehavior>('smooth')
+  // True while a smooth pin scroll is in flight — used to suppress the
+  // streaming follow-effect's instant `scrollTop =` assignment, which would
+  // otherwise interrupt the smooth animation when stream chunks arrive.
+  const pinningRef = useRef(false)
+  const pinReleaseTimeoutRef = useRef<number | null>(null)
   // Sentinel placed after the last meaningful child of the last turn group.
   // Used to compute "at bottom" relative to the actual content end, not the
   // bottom of the inflated empty space.
@@ -198,6 +203,9 @@ export function KopilotMessageList({
   // biome-ignore lint/correctness/useExhaustiveDependencies: trigger-only deps
   useEffect(() => {
     if (!viewportEl) return
+    // Skip while a smooth pin scroll is animating — assigning scrollTop here
+    // would interrupt the animation mid-flight on every stream chunk.
+    if (pinningRef.current) return
     if (isAtBottom.current) {
       viewportEl.scrollTop = viewportEl.scrollHeight
     }
@@ -227,6 +235,16 @@ export function KopilotMessageList({
 
   const pinNewestTurn = useCallback((behavior: ScrollBehavior = 'smooth') => {
     pinBehaviorRef.current = behavior
+    pinningRef.current = true
+    if (pinReleaseTimeoutRef.current !== null) {
+      window.clearTimeout(pinReleaseTimeoutRef.current)
+    }
+    // Smooth scrolls typically settle well under 800ms; release the guard
+    // afterwards so subsequent stream chunks can resume bottom-following.
+    pinReleaseTimeoutRef.current = window.setTimeout(() => {
+      pinningRef.current = false
+      pinReleaseTimeoutRef.current = null
+    }, 800)
     setInflateLast(true)
     setPinTick((t) => t + 1)
   }, [])
@@ -263,6 +281,14 @@ export function KopilotMessageList({
     pinNewestTurn,
     scrollToBottom,
   ])
+
+  useEffect(() => {
+    return () => {
+      if (pinReleaseTimeoutRef.current !== null) {
+        window.clearTimeout(pinReleaseTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const handleApproval = useCallback(
     (
