@@ -240,7 +240,7 @@
 }
 
 .blockContainer--heading1:first-child {
-  margin-top: 0;
+  /* margin-top: 0; */
 }
 
 .blockContent--heading1 {
@@ -257,7 +257,7 @@
 }
 
 .blockContainer--heading2:first-child {
-  margin-top: 0;
+  /* margin-top: 0; */
 }
 
 .blockContent--heading2 {
@@ -274,7 +274,7 @@
 }
 
 .blockContainer--heading3:first-child {
-  margin-top: 0;
+  /* margin-top: 0; */
 }
 
 .blockContent--heading3 {

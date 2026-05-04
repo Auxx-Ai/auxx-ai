@@ -19,6 +19,7 @@
     "./components/kb/search/build-index": "./src/components/kb/search/build-search-index.ts",
     "./components/kb/theme": "./src/components/kb/theme/index.ts",
     "./components/kb/utils": "./src/components/kb/utils/index.ts",
+    "./components/menu-styles": "./src/components/menu-styles.ts",
     "./components/*": "./src/components/*.tsx",
     "./components/icons/*": "./src/components/icons/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
