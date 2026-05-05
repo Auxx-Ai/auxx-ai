@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.1.144](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.143...auxx-v0.1.144) (2026-05-05)
+
+
+### Features
+
+* **kb:** admin preview tab clicks + logo empty-string fix ([#536](https://github.com/Auxx-Ai/auxx-ai/issues/536)) ([490eded](https://github.com/Auxx-Ai/auxx-ai/commit/490eded34c36bb422d637dfff866c423fa549f09))
+* **kb:** article kinds + tab strip ([#528](https://github.com/Auxx-Ai/auxx-ai/issues/528)) ([5d50764](https://github.com/Auxx-Ai/auxx-ai/commit/5d5076403484c00f1d889def0b113b4f160d6d8e))
+* **kb:** cards block + auxx:// internal link scheme + preview version picker ([#541](https://github.com/Auxx-Ai/auxx-ai/issues/541)) ([e6dd68b](https://github.com/Auxx-Ai/auxx-ai/commit/e6dd68b9ee6bc041b18464e0f485d5f4457909a1))
+* **kb:** cookie mode persistence + sidebar header cleanup + editor polish ([#542](https://github.com/Auxx-Ai/auxx-ai/issues/542)) ([cd57189](https://github.com/Auxx-Ai/auxx-ai/commit/cd571893da047f3569b17f46e9f018d906f514da))
+* **kb:** draft settings layer with autosave + publish/discard ([#525](https://github.com/Auxx-Ai/auxx-ai/issues/525)) ([6a709a0](https://github.com/Auxx-Ai/auxx-ai/commit/6a709a0c9bfe557f83687513defd4272269ecc2f))
+* **kb:** editor chrome refactor + unified publish cluster ([#526](https://github.com/Auxx-Ai/auxx-ai/issues/526)) ([c0dc639](https://github.com/Auxx-Ai/auxx-ai/commit/c0dc639c6cd521d0508487d5b5bc0410128204b6))
+* **kb:** fractional sort order + tab DnD + ancestor publish cascade ([#529](https://github.com/Auxx-Ai/auxx-ai/issues/529)) ([266a5a4](https://github.com/Auxx-Ai/auxx-ai/commit/266a5a49c231c2245ecb8e95b92402be3d6fd157))
+* **kb:** internal visibility + custom-domain verification + auth flow ([#522](https://github.com/Auxx-Ai/auxx-ai/issues/522)) ([c34f755](https://github.com/Auxx-Ai/auxx-ai/commit/c34f7558b11a19bfe1461b1ea070c5a3f17a1e47))
+* **kb:** link article kind for external URL sidebar entries ([#538](https://github.com/Auxx-Ai/auxx-ai/issues/538)) ([7c48f40](https://github.com/Auxx-Ai/auxx-ai/commit/7c48f40a4fd655509946a4eabd874ad8a40abff6))
+* **kb:** link context menu + kb-switcher delete + kopilot scroll fix ([#544](https://github.com/Auxx-Ai/auxx-ai/issues/544)) ([5edc80d](https://github.com/Auxx-Ai/auxx-ai/commit/5edc80d609182476cf995ef26bb81b493788c0e7))
+* **kb:** managed dataset sync + drop legacy embeddings stack ([#527](https://github.com/Auxx-Ai/auxx-ai/issues/527)) ([0db70b0](https://github.com/Auxx-Ai/auxx-ai/commit/0db70b06edac19f6b6d401be17303f7b113a6699))
+* **kb:** markdown import/export, preview device frames, mobile TOC drawer ([#523](https://github.com/Auxx-Ai/auxx-ai/issues/523)) ([62738f3](https://github.com/Auxx-Ai/auxx-ai/commit/62738f3107cbc31bfef59ac230e92e727af921ab))
+* **kb:** optional tabs + headers in URLs + container delete promotes children ([#530](https://github.com/Auxx-Ai/auxx-ai/issues/530)) ([73d1b86](https://github.com/Auxx-Ai/auxx-ai/commit/73d1b86234285880ff42532219cb809244b89a9b))
+* **kb:** plain-markdown article URLs at /&lt;slug&gt;.md + copy menu ([#535](https://github.com/Auxx-Ai/auxx-ai/issues/535)) ([fa3a33c](https://github.com/Auxx-Ai/auxx-ai/commit/fa3a33c48d5b91d615edd33c338fb3d0bdb44306))
+* **kb:** preview mode override + shared banner ([#533](https://github.com/Auxx-Ai/auxx-ai/issues/533)) ([f89b421](https://github.com/Auxx-Ai/auxx-ai/commit/f89b421f9a5f9bb47667e04d42047f1c685c9d5a))
+* **kb:** publishing workflow + article versioning (phase 1) ([#521](https://github.com/Auxx-Ai/auxx-ai/issues/521)) ([82f852a](https://github.com/Auxx-Ai/auxx-ai/commit/82f852a1833f263cb24b60983b01e4fa9d2d05de))
+* **kb:** table of contents, article pager, mobile sidebar, search dialog + layout refactor ([#519](https://github.com/Auxx-Ai/auxx-ai/issues/519)) ([1037e8c](https://github.com/Auxx-Ai/auxx-ai/commit/1037e8c07e486a410e79c98fd7c69d4a31f6d0eb))
+* **kb:** tabs + accordion container blocks with markdown roundtrip ([#545](https://github.com/Auxx-Ai/auxx-ai/issues/545)) ([18a5619](https://github.com/Auxx-Ai/auxx-ai/commit/18a5619cf58d2e0195783fe2f4f2e7e778a730a4))
+* **kopilot:** distributed page context + implicit-termination agent loop ([#537](https://github.com/Auxx-Ai/auxx-ai/issues/537)) ([e0801a0](https://github.com/Auxx-Ai/auxx-ai/commit/e0801a0e5a180352296cf4341391714a78b87f70))
+* **kopilot:** list_drafts tool + auxx:draft-list block ([#539](https://github.com/Auxx-Ai/auxx-ai/issues/539)) ([b3e1b97](https://github.com/Auxx-Ai/auxx-ai/commit/b3e1b978f8c98d012454d5526ad612641531ea8f))
+* **kopilot:** page shell + tool-input validation + agent-fw cleanup ([#534](https://github.com/Auxx-Ai/auxx-ai/issues/534)) ([2164389](https://github.com/Auxx-Ai/auxx-ai/commit/21643891a9d54609f97f2b1811eb9a9e02d9f312))
+* **kopilot:** page suggestions + list_tags + relative-date filters ([#543](https://github.com/Auxx-Ai/auxx-ai/issues/543)) ([0194b76](https://github.com/Auxx-Ai/auxx-ai/commit/0194b767b1a4d4ef6377b38d5a0dd32392813160))
+* **kopilot:** shift+n new-session hotkey + extract createEmptyTurnSnapshots ([#540](https://github.com/Auxx-Ai/auxx-ai/issues/540)) ([5c60353](https://github.com/Auxx-Ai/auxx-ai/commit/5c6035365d68bf38a03d2b9aa589c4732524d59b))
+* **kopilot:** tool digests + inline auxx:// link snapshots ([#532](https://github.com/Auxx-Ai/auxx-ai/issues/532)) ([b360760](https://github.com/Auxx-Ai/auxx-ai/commit/b360760cfab1a1971a92fe20e593d44af7d247ae))
+* **kopilot:** unify reply tools across email + messaging channels ([#531](https://github.com/Auxx-Ai/auxx-ai/issues/531)) ([99ca2fc](https://github.com/Auxx-Ai/auxx-ai/commit/99ca2fc48ed4c035913c4bbf93e7451dc7292651))
+
+
+### Bug Fixes
+
+* **kb:** persist editor sidebar across article navigation ([#524](https://github.com/Auxx-Ai/auxx-ai/issues/524)) ([45a313b](https://github.com/Auxx-Ai/auxx-ai/commit/45a313b99aea41e55bddef3379eec0070d38bfcf))
+
 ## [0.1.143](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.142...auxx-v0.1.143) (2026-04-29)
 
 
