@@ -74,32 +74,11 @@
 }
 
 /* ============================================
-   Tables — kept top-level alongside `block`.
-   Tables don't render a gutter; styled minimally.
+   Tables — all tables in this editor render via `TableNodeView`
+   (see `extensions/table/table.ts`), which owns table chrome via
+   `container-node-view.module.css` (`.editorTable` etc.). Only
+   the PM-driven cell-selection overlay lives here.
    ============================================ */
-
-.editorContent :global(.ProseMirror) :global(table) {
-  border-collapse: collapse;
-  margin: 1.5rem 0;
-  table-layout: fixed;
-  width: 100%;
-}
-
-.editorContent :global(.ProseMirror) :global(table) :global(td),
-.editorContent :global(.ProseMirror) :global(table) :global(th) {
-  border: 1px solid var(--color-border);
-  box-sizing: border-box;
-  min-width: 1em;
-  padding: 6px 8px;
-  position: relative;
-  vertical-align: top;
-}
-
-.editorContent :global(.ProseMirror) :global(table) :global(th) {
-  background-color: var(--color-muted);
-  font-weight: 600;
-  text-align: left;
-}
 
 .editorContent :global(.ProseMirror) :global(table) :global(.selectedCell)::after {
   background: color-mix(in oklab, var(--color-primary) 15%, transparent);
@@ -108,16 +87,6 @@
   pointer-events: none;
   position: absolute;
   z-index: 2;
-}
-
-.editorContent :global(.ProseMirror) :global(table) :global(.column-resize-handle) {
-  background-color: var(--color-primary);
-  bottom: -2px;
-  pointer-events: none;
-  position: absolute;
-  right: -2px;
-  top: 0;
-  width: 4px;
 }
 
 .editorContent :global(.ProseMirror.resize-cursor) {

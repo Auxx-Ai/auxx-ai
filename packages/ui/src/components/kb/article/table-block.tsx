@@ -48,20 +48,22 @@ export function TableBlock({ node, resolveAuxxHref }: TableBlockProps): ReactNod
   const bodyRows = firstRowIsHeader ? restRows : node.content
 
   return (
-    <div className={styles.tableScrollWrap}>
-      <table className={styles.publicTable}>
-        {firstRowIsHeader ? (
-          <thead>
-            <tr>{firstRow.content.map((cell, i) => renderCell(cell, 'col', i))}</tr>
-          </thead>
-        ) : null}
-        <tbody>
-          {bodyRows.map((row, ri) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: row order is stable per render
-            <tr key={ri}>{row.content.map((cell, i) => renderCell(cell, 'row', i))}</tr>
-          ))}
-        </tbody>
-      </table>
+    <div className={styles.tableFrame}>
+      <div className={styles.tableScrollWrap}>
+        <table className={styles.publicTable}>
+          {firstRowIsHeader ? (
+            <thead>
+              <tr>{firstRow.content.map((cell, i) => renderCell(cell, 'col', i))}</tr>
+            </thead>
+          ) : null}
+          <tbody>
+            {bodyRows.map((row, ri) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: row order is stable per render
+              <tr key={ri}>{row.content.map((cell, i) => renderCell(cell, 'row', i))}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

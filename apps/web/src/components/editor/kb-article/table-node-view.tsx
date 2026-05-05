@@ -379,7 +379,12 @@ export function TableNodeView({ node, editor, getPos }: NodeViewProps) {
                           cloneTable.style.background = 'var(--color-background, white)'
                           cloneTable.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'
                           cloneTable.style.opacity = '0.95'
-                          cloneTable.style.borderCollapse = 'collapse'
+                          // Editor table now uses `border-collapse: separate` so
+                          // body cells can carry corner border-radius. Match it
+                          // here so the dragged row shows full grid lines (cells
+                          // own their right + bottom borders via the CSS module).
+                          cloneTable.style.borderCollapse = 'separate'
+                          cloneTable.style.borderSpacing = '0'
                           const cloneTbody = document.createElement('tbody')
                           cloneTbody.appendChild(tr.cloneNode(true))
                           cloneTable.appendChild(cloneTbody)
@@ -397,10 +402,12 @@ export function TableNodeView({ node, editor, getPos }: NodeViewProps) {
               })}
             </div>
 
-            {/* RIGHT: per-row delete (Trash). */}
+            {/* RIGHT: per-row delete (Trash). Hidden on the header row —
+                same rule as the left drag handle (i === 0 && hasHeaderRow). */}
             <div className={styles.rowDeleteGutter} contentEditable={false}>
-              {rowRects.map((rect, i) =>
-                rowCount > 1 ? (
+              {rowRects.map((rect, i) => {
+                if (i === 0 && hasHeaderRow) return null
+                return rowCount > 1 ? (
                   <RowDeleteButton
                     key={`row-delete-${i}`}
                     index={i}
@@ -409,7 +416,7 @@ export function TableNodeView({ node, editor, getPos }: NodeViewProps) {
                     onDelete={() => handleRemoveRow(i)}
                   />
                 ) : null
-              )}
+              })}
             </div>
 
             {/* TOP: per-column drag handle. Lives OUTSIDE `.tableScroll`
@@ -650,7 +657,7 @@ function RowDeleteButton({ index, rect, isHovered, onDelete }: RowDeleteButtonPr
           e.stopPropagation()
           onDelete()
         }}>
-        <Trash2 size={12} />
+        <Trash2 size={14} />
       </button>
     </div>
   )
@@ -728,7 +735,7 @@ function ColumnDeleteButton({ index, rect, isHovered, onDelete }: ColumnDeleteBu
           e.stopPropagation()
           onDelete()
         }}>
-        <Trash2 size={12} />
+        <Trash2 size={14} />
       </button>
     </div>
   )

@@ -614,44 +614,78 @@
 
 /* ============================================
    Table block (public renderer)
+   Outer subtly-tinted frame holds an optional transparent <thead>
+   strip + a <tbody> whose cells fake a nested rounded card via
+   per-side borders and corner radii on the first/last body row.
+   Mirrors `.tabsContainer` / `.tabsBody`.
    ============================================ */
+
+.tableFrame {
+  margin: 1.25rem 0;
+  border: 1px solid var(--kb-border);
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--kb-fg) 3%, transparent);
+  padding: 0.125rem;
+}
 
 .tableScrollWrap {
   width: 100%;
   overflow-x: auto;
-  margin: 1.25rem 0;
-  border: 1px solid var(--kb-border);
-  border-radius: var(--kb-radius);
 }
 
 .publicTable {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
   font-size: 0.9375rem;
+  background: transparent;
 }
 
-.publicTable th,
+/* Header — transparent strip in the outer frame, mirrors tab buttons. */
+.publicTable thead th {
+  background: transparent;
+  border: none;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--kb-fg);
+  opacity: 0.85;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Body cells — every cell owns its right + bottom borders. First-column
+   cells add the left border; the first body row adds the top border.
+   Each grid line is drawn exactly once with no doubling. */
 .publicTable td {
-  border-bottom: 1px solid var(--kb-border);
+  background: var(--kb-bg, #fff);
   border-right: 1px solid var(--kb-border);
-  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--kb-border);
+  padding: 0.5rem 0.625rem;
   vertical-align: top;
   text-align: left;
 }
 
-.publicTable th:last-child,
-.publicTable td:last-child {
-  border-right: none;
+.publicTable td:first-child {
+  border-left: 1px solid var(--kb-border);
 }
 
-.publicTable tr:last-child td {
-  border-bottom: none;
+.publicTable tbody tr:first-child td {
+  border-top: 1px solid var(--kb-border);
 }
 
-.publicTable th {
-  background: color-mix(in srgb, var(--kb-fg) 4%, transparent);
-  font-weight: 600;
-  font-size: 0.875rem;
+/* Corner radii — the four body corners draw the faked card. */
+.publicTable tbody tr:first-child td:first-child {
+  border-top-left-radius: 0.5rem;
+}
+.publicTable tbody tr:first-child td:last-child {
+  border-top-right-radius: 0.5rem;
+}
+.publicTable tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 0.5rem;
+}
+.publicTable tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 0.5rem;
 }
 
 .publicTable th p,
@@ -667,5 +701,8 @@
 @media print {
   .tableScrollWrap {
     overflow-x: visible;
+  }
+  .tableFrame {
+    background: transparent;
   }
 }
