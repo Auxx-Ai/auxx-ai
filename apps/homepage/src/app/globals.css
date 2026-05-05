@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import './platform/ai/_mocks/mock.css';
 
 @source "../../../../packages/ui/src/components/random-gradient.tsx";
 
@@ -104,6 +105,7 @@
   --animate-scale-out: scale-out 0.2s ease-in;
   --animate-fade-in: fade-in 0.2s ease-out;
   --animate-fade-out: fade-out 0.2s ease-in;
+  --animate-dot-blink: dot-blink 1.4s infinite both;
 
   @keyframes accordion-down {
     from {
@@ -262,6 +264,17 @@
     }
     to {
       opacity: 0;
+    }
+  }
+
+  @keyframes dot-blink {
+    0%,
+    80%,
+    100% {
+      opacity: 0;
+    }
+    40% {
+      opacity: 1;
     }
   }
 }

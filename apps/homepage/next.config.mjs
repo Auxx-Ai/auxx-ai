@@ -22,6 +22,15 @@ const nextConfig = {
       { protocol: 'http', hostname: 'localhost' },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/platform/knowledge-base',
+        destination: '/platform/data-model#knowledge-base',
+        permanent: true,
+      },
+    ]
+  },
   async headers() {
     return [
       {
