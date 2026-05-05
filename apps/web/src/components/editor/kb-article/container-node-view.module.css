@@ -440,7 +440,11 @@
   flex-direction: column;
   align-items: stretch;
   background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
-  padding: 0.125rem 0.125rem 1rem 0.125rem;
+  /* Tight uniform padding (matches `.tabsContainerContent`). The per-column
+     delete strip at `.colDeleteStrip { bottom: -1.25rem }` overflows the
+     bottom of the frame on purpose so the trash button sits clear of the
+     body card edge instead of pushing the frame taller. */
+  padding: 0.125rem;
   gap: 0;
 }
 
@@ -478,12 +482,15 @@
   color: var(--color-foreground);
 }
 
+/* Body card is now an invisible positioning container. The visual card
+   is faked by the body cells' per-side borders + corner radii, so the
+   transparent header `<th>` cells appear to sit in the outer frame
+   without any wrapper-level chrome cutting across them. */
 .tableBodyCard {
   position: relative;
   width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  background: var(--color-background);
+  background: transparent;
+  border: none;
 }
 
 /* Horizontal scroll for tables wider than the article column. Explicit
@@ -500,24 +507,77 @@
 }
 
 .editorTable {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
-  margin:0!important;
+  margin: 0 !important;
+  background: transparent;
 }
 
-.editorTable th,
+/* Header cells — transparent labels in the outer frame, no borders.
+   PM produces `<tbody><tr><th></th></tr><tr><td></td></tr></tbody>`
+   with no `<thead>`, so we target `th` directly. */
+.editorTable th {
+  background: transparent;
+  border: none;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  opacity: 0.85;
+  text-align: left;
+  vertical-align: top;
+  min-width: 4rem;
+  position: relative;
+}
+
+/* Body cells own the right + bottom borders; first-column cells add
+   the left border. The first body row adds the top border (selectors
+   below). Each grid line is drawn exactly once. */
 .editorTable td {
-  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   padding: 0.5rem 0.625rem;
   vertical-align: top;
   min-width: 4rem;
   position: relative;
 }
 
-.editorTable th {
-  background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
-  font-weight: 600;
-  text-align: left;
+.editorTable td:first-child {
+  border-left: 1px solid var(--color-border);
+}
+
+/* "First body row" = the first `<tr>` whose cells are `<td>`. PM doesn't
+   emit `<thead>` — header rows live in `<tbody>` with `<th>` cells —
+   so we need TWO selectors:
+     1. `tr:first-child:has(> td)` — header-off case: row 0 is body.
+     2. `tr:has(> th) + tr` — header-on case: the row right after the
+        header `<tr>`. Header rows can only live at index 0 in our
+        schema, so this is unambiguously the first body row.
+   `:first-of-type` does NOT work here: it resolves to the first `<tr>`
+   sibling regardless of cell type, then ANDs with `:has(> td)` — which
+   fails when the first row is a header. */
+.editorTable tr:first-child:has(> td) td,
+.editorTable tr:has(> th) + tr td {
+  border-top: 1px solid var(--color-border);
+}
+.editorTable tr:first-child:has(> td) td:first-child,
+.editorTable tr:has(> th) + tr td:first-child {
+  border-top-left-radius: 0.5rem;
+}
+.editorTable tr:first-child:has(> td) td:last-child,
+.editorTable tr:has(> th) + tr td:last-child {
+  border-top-right-radius: 0.5rem;
+}
+
+/* Last row's bottom corners. Header rows can only be the first row in
+   our schema, so `tr:last-child` is always a body row. */
+.editorTable tr:last-child td:first-child {
+  border-bottom-left-radius: 0.5rem;
+}
+.editorTable tr:last-child td:last-child {
+  border-bottom-right-radius: 0.5rem;
 }
 
 /* Block content inside cells: ReactNodeViewRenderer wraps every `block` node
@@ -610,8 +670,8 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  right: -1.5rem;
-  width: 1.25rem;
+  right: -1.75rem;
+  width: 1.5rem;
   pointer-events: none;
 }
 
@@ -623,20 +683,27 @@
   pointer-events: auto;
 }
 
+/* Mirrors the `destructive-hover` Button variant: subtle resting chrome
+   that turns destructive on direct hover. Border-1px-transparent at rest
+   would cause layout shift on hover, so the resting border lives at
+   `--color-primary-150` and just shifts color on hover. */
 .rowDeleteButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.125rem;
-  height: 1.125rem;
-  border: none;
-  background: transparent;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid var(--color-primary-150);
+  background: var(--color-primary-100);
   color: var(--color-muted-foreground);
   cursor: pointer;
   padding: 0;
-  border-radius: 4px;
+  border-radius: 0.375rem;
+  box-sizing: border-box;
+  box-shadow: none;
   opacity: 0;
-  transition: opacity 0.15s, color 0.12s, background 0.12s;
+  transition: opacity 0.15s, color 0.12s, background 0.12s, border-color 0.12s,
+    box-shadow 0.12s;
 }
 
 .rowDeleteRow:hover .rowDeleteButton,
@@ -645,8 +712,10 @@
 }
 
 .rowDeleteButton:hover {
-  color: var(--color-foreground);
-  background: var(--color-muted);
+  color: var(--color-destructive);
+  background: color-mix(in srgb, var(--color-destructive) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-destructive) 20%, transparent);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 /* ============================================
@@ -697,9 +766,9 @@
 
 .colDeleteStrip {
   position: absolute;
-  bottom: -1.25rem;
+  bottom: -1.5rem;
   left: 0;
-  height: 1.25rem;
+  height: 1.5rem;
   pointer-events: none;
   z-index: 2;
 }
@@ -712,20 +781,24 @@
   pointer-events: auto;
 }
 
+/* Mirrors `destructive-hover` Button variant — see `.rowDeleteButton`. */
 .colDeleteButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.125rem;
-  height: 1.125rem;
-  border: none;
-  background: transparent;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid var(--color-primary-150);
+  background: var(--color-primary-100);
   color: var(--color-muted-foreground);
   cursor: pointer;
   padding: 0;
-  border-radius: 4px;
+  border-radius: 0.375rem;
+  box-sizing: border-box;
+  box-shadow: none;
   opacity: 0;
-  transition: opacity 0.15s, color 0.12s, background 0.12s;
+  transition: opacity 0.15s, color 0.12s, background 0.12s, border-color 0.12s,
+    box-shadow 0.12s;
 }
 
 .colDeleteCol:hover .colDeleteButton,
@@ -734,8 +807,10 @@
 }
 
 .colDeleteButton:hover {
-  color: var(--color-foreground);
-  background: var(--color-muted);
+  color: var(--color-destructive);
+  background: color-mix(in srgb, var(--color-destructive) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-destructive) 20%, transparent);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 /* ============================================
