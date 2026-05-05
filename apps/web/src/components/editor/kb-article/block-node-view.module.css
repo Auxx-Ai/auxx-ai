@@ -15,6 +15,12 @@
   outline-offset: 2px;
 }
 
+.blockWrapper[data-tabs],
+.blockWrapper[data-accordion],
+.blockWrapper[data-table] {
+  margin-bottom: 1rem;
+}
+
 .blockContainer {
   display: flex;
   flex-direction: row;
@@ -53,14 +59,17 @@
   background-color: transparent;
 }
 
-/* Inner blocks rendered inside a tabs/accordion panel suppress their own
-   gutter — the container's outer gutter handles drag for the whole block,
-   and hiding the inner one lets panel content fill the available width. */
-[data-panel] .lineGutter {
+/* Inner blocks rendered inside a tabs/accordion panel — or a table cell —
+   suppress their own gutter. The container's outer gutter handles drag for
+   the whole block, and hiding the inner one lets the inner content fill the
+   available width. */
+[data-panel] .lineGutter,
+[data-table-cell] .lineGutter {
   display: none;
 }
 
-[data-panel] .blockContainer {
+[data-panel] .blockContainer,
+[data-table-cell] .blockContainer {
   margin-left: 0;
 }
 
@@ -496,6 +505,13 @@
 /* Hide placeholder while dragging blocks. */
 :global(body.is-block-dragging) .placeholder {
   display: none;
+}
+
+/* Inside a table cell: shorter ghost text, slightly smaller font so it fits
+   the compact cell layout. */
+[data-table-cell] .placeholder {
+  font-size: 0.75rem;
+  opacity: 0.4;
 }
 
 /* ============================================

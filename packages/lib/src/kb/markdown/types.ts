@@ -97,7 +97,28 @@ export interface AccordionJSON {
   content: PanelJSON[]
 }
 
-export type ContainerBlockJSON = TabsJSON | AccordionJSON
+export interface TableCellJSON {
+  type: 'tableCell' | 'tableHeader'
+  attrs?: {
+    colspan?: number
+    rowspan?: number
+    colwidth?: number[] | null
+  }
+  content: BlockJSON[]
+}
+
+export interface TableRowJSON {
+  type: 'tableRow'
+  content: TableCellJSON[]
+}
+
+export interface TableJSON {
+  type: 'table'
+  attrs?: Record<string, never>
+  content: TableRowJSON[]
+}
+
+export type ContainerBlockJSON = TabsJSON | AccordionJSON | TableJSON
 
 export type ArticleNodeJSON = BlockJSON | ContainerBlockJSON
 

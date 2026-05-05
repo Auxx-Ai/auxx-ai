@@ -35,6 +35,15 @@ export function extractPlainText(doc: DocJSON | null | undefined): string {
           if (text) parts.push(text)
         }
       }
+    } else if (node.type === 'table') {
+      for (const row of node.content) {
+        for (const cell of row.content) {
+          for (const block of cell.content) {
+            const text = walkInlineToText(block.content)
+            if (text) parts.push(text)
+          }
+        }
+      }
     }
   }
   return parts.join(' ').replace(/\s+/g, ' ').trim()

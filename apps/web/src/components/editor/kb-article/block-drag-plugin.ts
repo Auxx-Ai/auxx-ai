@@ -8,12 +8,11 @@ import type { EditorView } from '@tiptap/pm/view'
 const PLUGIN_KEY = new PluginKey('blockDrag')
 
 /**
- * Top-level draggable nodes. Containers (`tabs`, `accordion`) and `block`
- * sit directly under the doc; the article-level drag handle grabs the
- * outermost match. New container/format nodes (e.g. `table`) join with
- * one entry.
+ * Top-level draggable nodes. Containers (`tabs`, `accordion`, `table`) and
+ * `block` sit directly under the doc; the article-level drag handle grabs
+ * the outermost match.
  */
-const DRAGGABLE_NODE_TYPES = new Set<string>(['block', 'tabs', 'accordion'])
+const DRAGGABLE_NODE_TYPES = new Set<string>(['block', 'tabs', 'accordion', 'table'])
 
 interface DraggingState {
   sourcePos: number
@@ -31,8 +30,8 @@ function getBlockEl(target: EventTarget | null): HTMLElement | null {
   // through this plugin.
   if (gutter.getAttribute('data-block-drag-handle') === 'panel') return null
   // Match either a flat block or a container element. Containers render
-  // their own outer wrapper with `data-tabs` / `data-accordion`.
-  return gutter.closest<HTMLElement>('[data-block], [data-tabs], [data-accordion]')
+  // their own outer wrapper with `data-tabs` / `data-accordion` / `data-table`.
+  return gutter.closest<HTMLElement>('[data-block], [data-tabs], [data-accordion], [data-table]')
 }
 
 function blockPos(view: EditorView, blockEl: HTMLElement): number | null {

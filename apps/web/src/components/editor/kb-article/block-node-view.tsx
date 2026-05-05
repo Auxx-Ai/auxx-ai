@@ -129,6 +129,25 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
     blockType === 'todoListItem'
   const indentLevel = isListType ? (level ?? 1) : 0
 
+  // Detect if this block sits inside a table cell — placeholder text is
+  // shortened ("Press '/'") and styled smaller via the `[data-table-cell]`
+  // CSS rule. Walk PM ancestors via getPos.
+  let isInsideTableCell = false
+  if (typeof pos === 'number') {
+    try {
+      const $pos = editor.state.doc.resolve(pos)
+      for (let depth = $pos.depth; depth >= 0; depth--) {
+        const name = $pos.node(depth).type.name
+        if (name === 'tableCell' || name === 'tableHeader') {
+          isInsideTableCell = true
+          break
+        }
+      }
+    } catch {
+      /* no-op */
+    }
+  }
+
   let lineNumber: number | null = null
   let numberedIndex = 1
   if (typeof pos === 'number') {
@@ -171,8 +190,11 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
     !isCallout &&
     !isCards &&
     (isFocused || isFirstBlock)
-  const placeholderText =
-    blockType === 'heading' ? `Heading ${level ?? 1}` : "Press '/' for commands"
+  const placeholderText = isInsideTableCell
+    ? "Press '/'"
+    : blockType === 'heading'
+      ? `Heading ${level ?? 1}`
+      : "Press '/' for commands"
 
   const submitEmbed = (raw: string) => {
     const trimmed = raw.trim()

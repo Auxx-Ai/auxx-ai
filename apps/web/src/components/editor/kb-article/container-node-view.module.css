@@ -422,3 +422,470 @@
 .panelContent {
   display: block;
 }
+
+/* ============================================
+   Table
+   ============================================ */
+
+/* `.blockContentWrapper` (composed on the same element) sets
+   `align-items: flex-start`, which collapses children to content width in a
+   column flex. Override to stretch + width 100% so the table fills the
+   article column. Same fix as `.tabsContainerContent` /
+   `.accordionContainerContent`. */
+.tableContainerContent {
+  width: 100%;
+  flex: 1 1 0%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+  padding: 0.125rem 0.125rem 1rem 0.125rem;
+  gap: 0;
+}
+
+.tableToolbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.125rem;
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+
+.tableToolbarToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px dashed transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+  margin-left: auto;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.tableToolbarToggle:hover {
+  border-color: var(--color-border);
+  color: var(--color-foreground);
+}
+
+.tableToolbarToggle[aria-pressed='true'] {
+  color: var(--color-foreground);
+}
+
+.tableBodyCard {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-background);
+}
+
+/* Horizontal scroll for tables wider than the article column. Explicit
+   `overflow-y: hidden` is required: per CSS spec, setting one axis to
+   `auto` coerces the other from `visible` to `auto`, which would surface
+   a vertical scrollbar driven by anything peeking past the wrapper's
+   bottom. All chrome (column strips, insert lines, indicators) lives
+   OUTSIDE this wrapper as siblings, anchored to `.tableBodyCard`. */
+.tableScroll {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.editorTable {
+  border-collapse: collapse;
+  width: 100%;
+  margin:0!important;
+}
+
+.editorTable th,
+.editorTable td {
+  border: 1px solid var(--color-border);
+  padding: 0.5rem 0.625rem;
+  vertical-align: top;
+  min-width: 4rem;
+  position: relative;
+}
+
+.editorTable th {
+  background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+  font-weight: 600;
+  text-align: left;
+}
+
+/* Block content inside cells: ReactNodeViewRenderer wraps every `block` node
+   in `<div class="react-renderer node-block">`. CSS rules targeting cells'
+   inner `.lineGutter` would miss without making the wrapper block-level. */
+.editorTable td :global(.react-renderer.node-block),
+.editorTable th :global(.react-renderer.node-block) {
+  display: block;
+  width: 100%;
+}
+
+/* Suppress PM's drop / gap cursors during a row/column drag — same as the
+   panel-drag rule in this file. */
+:global(body.is-table-dragging .ProseMirror-dropcursor),
+:global(body.is-table-dragging .ProseMirror-gapcursor),
+:global(body.is-table-dragging .prosemirror-dropcursor-block),
+:global(body.is-table-dragging .prosemirror-dropcursor-inline) {
+  display: none !important;
+}
+
+:global(body.is-table-dragging [class*='dropcursor']),
+:global(body.is-table-dragging [class*='gapcursor']) {
+  display: none !important;
+}
+
+/* During a row/column drag, suppress pointer-events on the insert lines
+   and chrome so the cursor can't land on them and shadow the table's own
+   dragover target detection. The drag-state listeners read clientX/Y
+   against the actual TR/cell rects, so pointer hit-testing on the chrome
+   isn't needed during the drag itself. Same idea for the article-level
+   block drag. */
+:global(body.is-table-dragging) .rowInsertLine,
+:global(body.is-table-dragging) .colInsertLine,
+:global(body.is-block-dragging) .rowInsertLine,
+:global(body.is-block-dragging) .colInsertLine {
+  pointer-events: none;
+}
+
+/* ============================================
+   Row drag gutter (LEFT of body card)
+   ============================================ */
+
+.rowGutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1.5rem;
+  width: 1.25rem;
+  pointer-events: none;
+}
+
+.rowHandleRow {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.rowHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  color: var(--color-muted-foreground);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+
+/* Reveal only the hovered row's handle, not all of them at once. The
+   `[data-hovered]` rule fires when the user hovers anywhere in the row
+   (state-driven from the body card's mousemove listener); the `:hover`
+   rule covers direct gutter hover. */
+.rowHandleRow:hover .rowHandle,
+.rowHandleRow[data-hovered='true'] .rowHandle {
+  opacity: 1;
+}
+
+.rowHandle:active {
+  cursor: grabbing;
+}
+
+/* ============================================
+   Row delete gutter (RIGHT of body card)
+   ============================================ */
+
+.rowDeleteGutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -1.5rem;
+  width: 1.25rem;
+  pointer-events: none;
+}
+
+.rowDeleteRow {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.rowDeleteButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.12s, background 0.12s;
+}
+
+.rowDeleteRow:hover .rowDeleteButton,
+.rowDeleteRow[data-hovered='true'] .rowDeleteButton {
+  opacity: 1;
+}
+
+.rowDeleteButton:hover {
+  color: var(--color-foreground);
+  background: var(--color-muted);
+}
+
+/* ============================================
+   Column drag strip (TOP of table, INSIDE scroll wrapper)
+   ============================================ */
+
+.columnStrip {
+  position: absolute;
+  top: -1.25rem;
+  left: 0;
+  height: 1.25rem;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.colHandleCol {
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.colHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  color: var(--color-muted-foreground);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.colHandleCol:hover .colHandle,
+.colHandleCol[data-hovered='true'] .colHandle {
+  opacity: 1;
+}
+
+.colHandle:active {
+  cursor: grabbing;
+}
+
+/* ============================================
+   Column delete strip (BOTTOM of table, INSIDE scroll wrapper)
+   ============================================ */
+
+.colDeleteStrip {
+  position: absolute;
+  bottom: -1.25rem;
+  left: 0;
+  height: 1.25rem;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.colDeleteCol {
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.colDeleteButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.12s, background 0.12s;
+}
+
+.colDeleteCol:hover .colDeleteButton,
+.colDeleteCol[data-hovered='true'] .colDeleteButton {
+  opacity: 1;
+}
+
+.colDeleteButton:hover {
+  color: var(--color-foreground);
+  background: var(--color-muted);
+}
+
+/* ============================================
+   Insert lines — between rows / between columns
+   Mirrors `article-insert-line.tsx` from the KB sidebar: a thin hit-area
+   straddling the boundary, hidden by default; on hover a 2px blue bar
+   spans the table width/height with a circular `+` button at the start.
+   ============================================ */
+
+/* Rows sit ABOVE columns in z-order so at every row/column intersection
+   the row's hit-area + `+` button win pointer events. Without this, the
+   column line (full table height) covers row boundaries and steals
+   clicks when you try to press the row `+`. */
+.rowInsertLines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.colInsertLines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* 4px buffer above + below the boundary = 8px hit-area. */
+.rowInsertLine {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 8px;
+  transform: translateY(-4px);
+  pointer-events: auto;
+}
+
+.colInsertLine {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 8px;
+  transform: translateX(-4px);
+  pointer-events: auto;
+}
+
+/* The 2px blue bar — hidden by default, revealed on hover of the line
+   wrapper. Centered within the 8px hit-area. */
+.rowInsertLineBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--color-primary, #2563eb);
+  opacity: 0;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+
+.colInsertLineBar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--color-primary, #2563eb);
+  opacity: 0;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+
+/* Bar is hidden by default; revealed ONLY when the `+` button is hovered.
+   Hovering the surrounding buffer reveals the button itself but keeps the
+   bar inert — so users see the cell's existing gray border at rest, with
+   the thick blue insert line only appearing when they target the explicit
+   `+` affordance. The button is rendered before the bar in the DOM, so
+   `~` (subsequent sibling) reaches it. */
+.insertLineButton:hover ~ .rowInsertLineBar,
+.insertLineButton:hover ~ .colInsertLineBar {
+  opacity: 1;
+}
+
+/* The circular `+` — same visual cue as `article-insert-line.tsx`. Row
+   button at the leftmost end of the bar; column button at the topmost end.
+   Hidden by default; revealed on line hover. */
+.insertLineButton {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  z-index: 1;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+
+.rowInsertLine .insertLineButton {
+  top: 50%;
+  left: -9px;
+  transform: translateY(-50%);
+}
+
+.colInsertLine .insertLineButton {
+  left: 50%;
+  top: -9px;
+  transform: translateX(-50%);
+}
+
+.rowInsertLine:hover .insertLineButton,
+.colInsertLine:hover .insertLineButton {
+  opacity: 1;
+}
+
+.insertLineButton:hover {
+  background: var(--color-primary, #2563eb);
+  color: white;
+}
+
+/* ============================================
+   Drop indicators (row + column drag-reorder)
+   ============================================ */
+
+.columnDropIndicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-primary, #2563eb);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.rowDropIndicator {
+  position: absolute;
+  left: 0;
+  height: 2px;
+  background: var(--color-primary, #2563eb);
+  z-index: 3;
+  pointer-events: none;
+  transform: translateY(-1px);
+}

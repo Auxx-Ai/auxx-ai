@@ -27,5 +27,8 @@ export type {
   MarkJSON,
   PanelJSON,
   ResolveAuxxHref,
+  TableCellJSON,
+  TableJSON,
+  TableRowJSON,
   TabsJSON,
 } from './types'

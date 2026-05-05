@@ -315,6 +315,27 @@ const BASE_COMMANDS: CommandItemDef[] = [
         .run()
     },
   },
+  {
+    id: 'table',
+    title: 'Table',
+    description: 'Grid of cells with optional header row',
+    keywords: ['table', 'grid', 'spreadsheet', 'rows', 'columns'],
+    iconId: 'table',
+    custom: (editor, range) => {
+      // Use `insertContent` (not `insertTable`) so PM can REPLACE the
+      // wrapping `block` with the table — same path as tabs/accordion.
+      // `Block.defining: true` means `replaceSelectionWith` (used by the
+      // built-in `insertTable` command) tries to fit the table INSIDE the
+      // block, fails, and substitutes a default block. `insertContent`
+      // takes a different path that lifts out of the wrapping block.
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent(makeEmptyTableJSON(3, 3, true))
+        .run()
+    },
+  },
 ]
 
 function makeEmptyPanelJSON(label: string) {
@@ -325,12 +346,39 @@ function makeEmptyPanelJSON(label: string) {
   }
 }
 
-const PANEL_RESTRICTED_COMMAND_IDS = new Set(['tabs', 'accordion'])
+function makeEmptyTableJSON(rows: number, cols: number, withHeaderRow: boolean) {
+  const emptyBlock = { type: 'block' as const, attrs: { blockType: 'text' as const }, content: [] }
+  const makeCell = (header: boolean) => ({
+    type: header ? ('tableHeader' as const) : ('tableCell' as const),
+    content: [emptyBlock],
+  })
+  const makeRow = (header: boolean) => ({
+    type: 'tableRow' as const,
+    content: Array.from({ length: cols }, () => makeCell(header)),
+  })
+  const allRows = []
+  for (let r = 0; r < rows; r++) {
+    allRows.push(makeRow(withHeaderRow && r === 0))
+  }
+  return { type: 'table' as const, content: allRows }
+}
+
+const PANEL_RESTRICTED_COMMAND_IDS = new Set(['tabs', 'accordion', 'table'])
+const CELL_RESTRICTED_COMMAND_IDS = new Set(['tabs', 'accordion', 'table', 'cards'])
 
 function selectionIsInsidePanel(editor: Editor): boolean {
   const { $from } = editor.state.selection
   for (let depth = $from.depth; depth >= 0; depth--) {
     if ($from.node(depth).type.name === 'panel') return true
+  }
+  return false
+}
+
+function selectionIsInsideTableCell(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth >= 0; depth--) {
+    const name = $from.node(depth).type.name
+    if (name === 'tableCell' || name === 'tableHeader') return true
   }
   return false
 }
@@ -449,11 +497,17 @@ function KBSlashCommandPickerContent({
   const filteredCommands = useMemo(() => {
     if (isInSnippets) return []
     let base = onLinkArticle ? BASE_COMMANDS : BASE_COMMANDS.filter((c) => c.id !== 'article-link')
-    // Q1b: containers (tabs/accordion) cannot be nested inside a panel.
+    // Q1b: containers (tabs/accordion/table) cannot be nested inside a panel.
     // ProseMirror's schema enforces this structurally; filtering here
     // just keeps the menu clean.
     if (editor && selectionIsInsidePanel(editor)) {
       base = base.filter((c) => !PANEL_RESTRICTED_COMMAND_IDS.has(c.id))
+    }
+    // Cells reject containers structurally (containerBlock is not in the
+    // `block` group that cells accept) and cards are visually awkward in a
+    // table cell — hide both from the slash menu inside cells.
+    if (editor && selectionIsInsideTableCell(editor)) {
+      base = base.filter((c) => !CELL_RESTRICTED_COMMAND_IDS.has(c.id))
     }
     return base.filter(
       (item) =>
