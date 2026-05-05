@@ -29,6 +29,9 @@ interface KBSlashCommandPickerProps {
   /** Open the article-link dialog. The picker deletes the slash range first
    * and passes the resulting cursor position to the host. */
   onLinkArticle?: (editor: Editor, insertPos: number) => void
+  /** Live editor instance — used to filter container blocks (`tabs`,
+   * `accordion`) out of the menu when the cursor is inside a panel. */
+  editor?: Editor | null
 }
 
 interface BlockCommandSpec {
@@ -274,7 +277,63 @@ const BASE_COMMANDS: CommandItemDef[] = [
         .run()
     },
   },
+  {
+    id: 'tabs',
+    title: 'Tabs',
+    description: 'Tabbed content with multiple panels',
+    keywords: ['tabs', 'tab', 'switcher', 'panels'],
+    iconId: 'columns',
+    custom: (editor, range) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: 'tabs',
+          attrs: { activeTab: null },
+          content: [makeEmptyPanelJSON('Tab 1'), makeEmptyPanelJSON('Tab 2')],
+        })
+        .run()
+    },
+  },
+  {
+    id: 'accordion',
+    title: 'Accordion',
+    description: 'Collapsible Q&A or FAQ items',
+    keywords: ['accordion', 'faq', 'collapse', 'toggle', 'questions'],
+    iconId: 'chevrons-up-down',
+    custom: (editor, range) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: 'accordion',
+          attrs: { allowMultiple: true },
+          content: [makeEmptyPanelJSON('Question 1'), makeEmptyPanelJSON('Question 2')],
+        })
+        .run()
+    },
+  },
 ]
+
+function makeEmptyPanelJSON(label: string) {
+  return {
+    type: 'panel' as const,
+    attrs: { id: generateId(), label },
+    content: [{ type: 'block' as const, attrs: { blockType: 'text' as const }, content: [] }],
+  }
+}
+
+const PANEL_RESTRICTED_COMMAND_IDS = new Set(['tabs', 'accordion'])
+
+function selectionIsInsidePanel(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth >= 0; depth--) {
+    if ($from.node(depth).type.name === 'panel') return true
+  }
+  return false
+}
 
 interface SlashCommandNavItem {
   id: string
@@ -326,6 +385,7 @@ function KBSlashCommandPickerContent({
   onExecute,
   onClose,
   onLinkArticle,
+  editor,
   searchQuery,
   setSearchQuery,
   onEnterPlaceholderMode,
@@ -388,16 +448,20 @@ function KBSlashCommandPickerContent({
 
   const filteredCommands = useMemo(() => {
     if (isInSnippets) return []
-    const base = onLinkArticle
-      ? BASE_COMMANDS
-      : BASE_COMMANDS.filter((c) => c.id !== 'article-link')
+    let base = onLinkArticle ? BASE_COMMANDS : BASE_COMMANDS.filter((c) => c.id !== 'article-link')
+    // Q1b: containers (tabs/accordion) cannot be nested inside a panel.
+    // ProseMirror's schema enforces this structurally; filtering here
+    // just keeps the menu clean.
+    if (editor && selectionIsInsidePanel(editor)) {
+      base = base.filter((c) => !PANEL_RESTRICTED_COMMAND_IDS.has(c.id))
+    }
     return base.filter(
       (item) =>
         item.title.toLowerCase().includes(q) ||
         item.description.toLowerCase().includes(q) ||
         item.keywords.some((kw) => kw.includes(q))
     )
-  }, [isInSnippets, q, onLinkArticle])
+  }, [isInSnippets, q, onLinkArticle, editor])
 
   const runBlockSpec = useCallback(
     (spec: BlockCommandSpec) => {

@@ -7,6 +7,14 @@ import type { EditorView } from '@tiptap/pm/view'
 
 const PLUGIN_KEY = new PluginKey('blockDrag')
 
+/**
+ * Top-level draggable nodes. Containers (`tabs`, `accordion`) and `block`
+ * sit directly under the doc; the article-level drag handle grabs the
+ * outermost match. New container/format nodes (e.g. `table`) join with
+ * one entry.
+ */
+const DRAGGABLE_NODE_TYPES = new Set<string>(['block', 'tabs', 'accordion'])
+
 interface DraggingState {
   sourcePos: number
   nodeSize: number
@@ -17,18 +25,31 @@ function getBlockEl(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof HTMLElement)) return null
   const gutter = target.closest<HTMLElement>('[data-block-drag-handle]')
   if (!gutter) return null
-  return gutter.closest<HTMLElement>('[data-block]')
+  // Article-level drag handles live on `[data-block]`. In-container
+  // (panel) drag handles use a different attribute and are handled by
+  // their own dnd-kit instance — bail out so we don't grab the panel
+  // through this plugin.
+  if (gutter.getAttribute('data-block-drag-handle') === 'panel') return null
+  // Match either a flat block or a container element. Containers render
+  // their own outer wrapper with `data-tabs` / `data-accordion`.
+  return gutter.closest<HTMLElement>('[data-block], [data-tabs], [data-accordion]')
 }
 
 function blockPos(view: EditorView, blockEl: HTMLElement): number | null {
   const pos = view.posAtDOM(blockEl, 0)
   if (pos == null || pos < 0) return null
   const $pos = view.state.doc.resolve(pos)
+  // Walk up to the OUTERMOST draggable so clicking the gutter next to a
+  // tabs/accordion container grabs the whole container, not the active
+  // panel's first paragraph.
+  let outermost: { pos: number } | null = null
   for (let depth = $pos.depth; depth >= 0; depth--) {
     const node = $pos.node(depth)
-    if (node.type.name === 'block') return $pos.before(depth)
+    if (DRAGGABLE_NODE_TYPES.has(node.type.name)) {
+      outermost = { pos: $pos.before(depth) }
+    }
   }
-  return null
+  return outermost ? outermost.pos : null
 }
 
 export function blockDragPlugin() {
@@ -73,16 +94,33 @@ export function blockDragPlugin() {
         event.dataTransfer.clearData()
         event.dataTransfer.setData('text/plain', node.textContent ?? '')
         event.dataTransfer.effectAllowed = 'move'
-        // Anchor the drag image at the cursor's actual offset within the block
-        // — passing (0, 0) puts the cursor at the top-left, which visibly
-        // yanks tall blocks (cards grids) down when the grip is grabbed
-        // mid-height.
-        const rect = blockEl.getBoundingClientRect()
-        event.dataTransfer.setDragImage(
-          blockEl,
-          event.clientX - rect.left,
-          event.clientY - rect.top
-        )
+
+        // Use a cloned offscreen copy as the drag image. The browser
+        // snapshots the element passed to setDragImage *before* the drop
+        // begins, but using the live wrapper directly causes two problems
+        // for wide containers (tabs/accordion):
+        //   1. Anchoring the cursor at its grab offset within a 700px+ wide
+        //      element makes the preview extend far to one side.
+        //   2. The browser sometimes captures a stale layout if the
+        //      wrapper has just been re-rendered.
+        // A narrower offscreen clone removed on the next tick avoids both.
+        const clone = blockEl.cloneNode(true) as HTMLElement
+        clone.style.position = 'absolute'
+        clone.style.top = '-10000px'
+        clone.style.left = '-10000px'
+        clone.style.width = `${Math.min(blockEl.offsetWidth, 480)}px`
+        clone.style.maxWidth = '480px'
+        clone.style.maxHeight = '160px'
+        clone.style.overflow = 'hidden'
+        clone.style.opacity = '0.92'
+        clone.style.background = 'var(--color-background, white)'
+        clone.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'
+        clone.style.borderRadius = '6px'
+        clone.style.pointerEvents = 'none'
+        document.body.appendChild(clone)
+        event.dataTransfer.setDragImage(clone, 16, 16)
+        // Defer removal until after the browser snapshots.
+        setTimeout(() => clone.remove(), 0)
 
         document.body.classList.add('is-block-dragging')
         // Block PM's own dragstart so it doesn't also seed view.dragging,

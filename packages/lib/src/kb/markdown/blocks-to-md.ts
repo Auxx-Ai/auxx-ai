@@ -5,6 +5,8 @@
 
 import { escapeLinkUrl, escapeMarkdownText, inlineToMd } from './inline'
 import type {
+  AccordionJSON,
+  ArticleNodeJSON,
   BlockAttrs,
   BlockJSON,
   CalloutVariant,
@@ -14,6 +16,8 @@ import type {
   EmbedProvider,
   ImageAlign,
   InlineJSON,
+  PanelJSON,
+  TabsJSON,
 } from './types'
 import { CALLOUT_VARIANTS } from './types'
 
@@ -27,30 +31,7 @@ export function blocksToMd(doc: DocJSON | null | undefined, opts: BlocksToMdOpti
   const placeholders = opts.placeholders ?? 'literal'
   const ctx = { placeholders }
 
-  const blocks = doc.content
-  const lines: string[] = []
-  let inListRun = false
-
-  for (let i = 0; i < blocks.length; i++) {
-    const block = blocks[i]
-    if (!block || block.type !== 'block') continue
-    const next = blocks[i + 1]
-
-    const renderedLines = renderBlock(block, ctx)
-    if (renderedLines.length === 0) continue
-
-    if (lines.length > 0) lines.push('') // blank line between blocks
-
-    for (const line of renderedLines) lines.push(line)
-
-    inListRun = isListItem(block)
-    // List runs don't get inter-item blank lines in CommonMark, but tighter
-    // rendering is fine here since GFM normalizes anyway.
-    if (inListRun && next && isListItem(next) && sameListType(block, next)) {
-      // Drop the blank we just queued — pop and re-emit without separator.
-      // Easier: emit as-is, GFM tolerates it.
-    }
-  }
+  const lines = renderNodes(doc.content, ctx)
 
   return `${lines
     .join('\n')
@@ -58,13 +39,29 @@ export function blocksToMd(doc: DocJSON | null | undefined, opts: BlocksToMdOpti
     .trimEnd()}\n`
 }
 
-function isListItem(block: BlockJSON): boolean {
-  const t = block.attrs?.blockType
-  return t === 'bulletListItem' || t === 'numberedListItem' || t === 'todoListItem'
+function renderNodes(nodes: ArticleNodeJSON[], ctx: RenderCtx): string[] {
+  const lines: string[] = []
+  for (const node of nodes) {
+    if (!node) continue
+    const renderedLines = renderArticleNode(node, ctx)
+    if (renderedLines.length === 0) continue
+    if (lines.length > 0) lines.push('')
+    for (const line of renderedLines) lines.push(line)
+  }
+  return lines
 }
 
-function sameListType(a: BlockJSON, b: BlockJSON): boolean {
-  return a.attrs?.blockType === b.attrs?.blockType
+function renderArticleNode(node: ArticleNodeJSON, ctx: RenderCtx): string[] {
+  switch (node.type) {
+    case 'tabs':
+      return renderTabs(node, ctx)
+    case 'accordion':
+      return renderAccordion(node, ctx)
+    case 'block':
+      return renderBlock(node, ctx)
+    default:
+      return []
+  }
 }
 
 interface RenderCtx {
@@ -109,6 +106,43 @@ function renderBlock(block: BlockJSON, ctx: RenderCtx): string[] {
     default:
       return inline.length > 0 ? [inline] : []
   }
+}
+
+function renderTabs(node: TabsJSON, ctx: RenderCtx): string[] {
+  if (!Array.isArray(node.content) || node.content.length === 0) return []
+  // remark-directive nests containers by COLON COUNT — outer must have
+  // strictly more colons than inner. Use 4 outside / 3 inside so panel
+  // bodies can themselves contain `:::callout` blocks unchanged.
+  const out: string[] = ['::::tabs']
+  for (const panel of node.content) {
+    out.push(...renderPanel(panel, 'tab', ctx))
+  }
+  out.push('::::')
+  return out
+}
+
+function renderAccordion(node: AccordionJSON, ctx: RenderCtx): string[] {
+  if (!Array.isArray(node.content) || node.content.length === 0) return []
+  const headerParts: string[] = []
+  if (node.attrs?.allowMultiple === false) headerParts.push('multiple=false')
+  const header =
+    headerParts.length > 0 ? `::::accordion{${headerParts.join(' ')}}` : '::::accordion'
+  const out: string[] = [header]
+  for (const panel of node.content) {
+    out.push(...renderPanel(panel, 'item', ctx))
+  }
+  out.push('::::')
+  return out
+}
+
+function renderPanel(panel: PanelJSON, leafName: 'tab' | 'item', ctx: RenderCtx): string[] {
+  const attrParts: string[] = [`label="${escapeAttrValue(panel.attrs.label ?? '')}"`]
+  if (panel.attrs.iconId) attrParts.push(`icon="${escapeAttrValue(panel.attrs.iconId)}"`)
+  const out: string[] = [`:::${leafName}{${attrParts.join(' ')}}`]
+  const bodyLines = renderNodes(panel.content ?? [], ctx)
+  for (const line of bodyLines) out.push(line)
+  out.push(':::')
+  return out
 }
 
 function renderCards(cards: CardData[] | undefined): string[] {

@@ -172,6 +172,7 @@ export function KBArticleEditor({
             onExecute={slashCommand.executeCommand}
             onClose={slashCommand.closePicker}
             onLinkArticle={handleLinkArticle}
+            editor={editor}
           />
         </InlinePickerPopover>
         <ArticleLinkPopover

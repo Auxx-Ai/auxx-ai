@@ -9,6 +9,8 @@ import remarkGfm from 'remark-gfm'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
 import type {
+  AccordionJSON,
+  ArticleNodeJSON,
   BlockAttrs,
   BlockJSON,
   BlockType,
@@ -20,6 +22,8 @@ import type {
   ImageAlign,
   InlineJSON,
   MarkJSON,
+  PanelJSON,
+  TabsJSON,
 } from './types'
 import { CALLOUT_VARIANTS, EMBED_ASPECTS, EMBED_PROVIDERS, IMAGE_ALIGNS } from './types'
 
@@ -34,16 +38,39 @@ export function mdToBlocks(markdown: string): DocJSON {
   if (!cleaned.trim()) return emptyDoc()
 
   const tree = parser.parse(cleaned) as MdastRoot
-  const ctx: ParseCtx = { blocks: [] }
+  const ctx: ParseCtx = { nodes: [] }
+  // Buffer for consecutive `<details>` HTML siblings so we can merge them
+  // into a single accordion block (Q6d).
+  let detailsBuffer: PanelJSON[] | null = null
+  const flushDetails = () => {
+    if (!detailsBuffer || detailsBuffer.length === 0) return
+    const accordion: AccordionJSON = {
+      type: 'accordion',
+      attrs: { allowMultiple: true },
+      content: detailsBuffer,
+    }
+    ctx.nodes.push(accordion)
+    detailsBuffer = null
+  }
   for (const child of tree.children ?? []) {
+    if (child.type === 'html' && typeof child.value === 'string') {
+      const panel = tryParseDetailsHtml(child.value)
+      if (panel) {
+        if (!detailsBuffer) detailsBuffer = []
+        detailsBuffer.push(panel)
+        continue
+      }
+    }
+    flushDetails()
     walkBlock(child, ctx, 1)
   }
-  if (ctx.blocks.length === 0) return emptyDoc()
-  return { type: 'doc', content: ctx.blocks }
+  flushDetails()
+  if (ctx.nodes.length === 0) return emptyDoc()
+  return { type: 'doc', content: ctx.nodes }
 }
 
 interface ParseCtx {
-  blocks: BlockJSON[]
+  nodes: ArticleNodeJSON[]
 }
 
 function emptyDoc(): DocJSON {
@@ -189,6 +216,16 @@ function walkBlock(node: MdastNode, ctx: ParseCtx, level: number): void {
       if (node.name === 'cards') {
         const cards = parseCardsContainer(node)
         if (cards.length > 0) pushBlock(ctx, 'cards', [], { cards })
+        return
+      }
+      if (node.name === 'tabs') {
+        const tabs = parseTabsContainer(node)
+        if (tabs) ctx.nodes.push(tabs)
+        return
+      }
+      if (node.name === 'accordion') {
+        const accordion = parseAccordionContainer(node)
+        if (accordion) ctx.nodes.push(accordion)
         return
       }
       // Unknown container — flatten its children.
@@ -630,7 +667,7 @@ function pushBlock(
   attrs: Partial<BlockAttrs>
 ): void {
   const merged: BlockAttrs = { blockType, ...attrs }
-  ctx.blocks.push({ type: 'block', attrs: merged, content })
+  ctx.nodes.push({ type: 'block', attrs: merged, content })
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -646,4 +683,88 @@ function stripQuotes(value: string): string {
     return value.slice(1, -1)
   }
   return value
+}
+
+// ─── tabs / accordion containers ─────────────────────────────────────
+
+function parseTabsContainer(node: MdastNode): TabsJSON | null {
+  const panels = parsePanelChildren(node, 'tab')
+  if (panels.length === 0) return null
+  return { type: 'tabs', attrs: { activeTab: null }, content: panels }
+}
+
+function parseAccordionContainer(node: MdastNode): AccordionJSON | null {
+  const panels = parsePanelChildren(node, 'item')
+  if (panels.length === 0) return null
+  const attrs = node.attributes ?? {}
+  const allowMultiple =
+    typeof attrs.multiple === 'string' ? attrs.multiple.toLowerCase() !== 'false' : true
+  return { type: 'accordion', attrs: { allowMultiple }, content: panels }
+}
+
+function parsePanelChildren(container: MdastNode, leafName: 'tab' | 'item'): PanelJSON[] {
+  const out: PanelJSON[] = []
+  for (const child of container.children ?? []) {
+    if (
+      (child.type === 'containerDirective' || child.type === 'leafDirective') &&
+      child.name === leafName
+    ) {
+      out.push(buildPanelFromDirective(child))
+    }
+  }
+  return out
+}
+
+function buildPanelFromDirective(node: MdastNode): PanelJSON {
+  const attrs = node.attributes ?? {}
+  const label = typeof attrs.label === 'string' ? attrs.label : ''
+  const iconId = typeof attrs.icon === 'string' && attrs.icon ? attrs.icon : undefined
+  // Re-walk the panel body using a fresh ctx; only flat blocks are valid
+  // here (Q1c — containers can't nest in panels). Any container nodes
+  // emitted by walkBlock would violate the schema; we drop them.
+  const subCtx: ParseCtx = { nodes: [] }
+  for (const child of node.children ?? []) {
+    walkBlock(child, subCtx, 1)
+  }
+  const content: BlockJSON[] = subCtx.nodes.filter((n): n is BlockJSON => n.type === 'block')
+  if (content.length === 0) {
+    content.push({ type: 'block', attrs: { blockType: 'text' }, content: [] })
+  }
+  return {
+    type: 'panel',
+    attrs: { id: generateId(), label, iconId },
+    content,
+  }
+}
+
+// ─── <details> import alias (Q6d) ────────────────────────────────────
+
+const DETAILS_OPEN_RE = /<details(?:\s[^>]*)?>/i
+const DETAILS_CLOSE_RE = /<\/details>/i
+const SUMMARY_RE = /<summary(?:\s[^>]*)?>([\s\S]*?)<\/summary>/i
+
+function tryParseDetailsHtml(raw: string): PanelJSON | null {
+  const value = (raw ?? '').trim()
+  if (!DETAILS_OPEN_RE.test(value)) return null
+  if (!DETAILS_CLOSE_RE.test(value)) return null
+  // Strip outer <details>...</details>.
+  const inner = value.replace(DETAILS_OPEN_RE, '').replace(DETAILS_CLOSE_RE, '').trim()
+  const summaryMatch = inner.match(SUMMARY_RE)
+  const label = summaryMatch ? summaryMatch[1].replace(/<[^>]+>/g, '').trim() : 'Details'
+  const body = inner.replace(SUMMARY_RE, '').trim()
+  // Re-parse the body as markdown so embedded markdown lists / paragraphs
+  // produce real blocks.
+  let panelContent: BlockJSON[] = []
+  if (body) {
+    const sub = mdToBlocks(body)
+    panelContent = sub.content.filter((n): n is BlockJSON => n.type === 'block')
+  }
+  if (panelContent.length === 0) {
+    panelContent = [{ type: 'block', attrs: { blockType: 'text' }, content: [] }]
+  }
+  return {
+    type: 'panel',
+    attrs: { id: generateId(), label },
+    content: panelContent,
+  }
 }

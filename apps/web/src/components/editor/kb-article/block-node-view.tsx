@@ -378,28 +378,31 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
               )}
               <NodeViewContent className={`${styles.blockContent} ${styles.blockContentHidden}`} />
             </>
+          ) : isCodeBlock ? (
+            <>
+              <div className={styles.codeBlockHeader} contentEditable={false}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type='button' className={styles.codeLanguagePicker}>
+                      {CODE_LANGUAGES.find((l) => l.id === codeLanguage)?.label ?? 'Plain text'}{' '}
+                      <ChevronDown size={12} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align='end'>
+                    {CODE_LANGUAGES.map((lang) => (
+                      <DropdownMenuItem
+                        key={lang.id}
+                        onSelect={() => updateAttributes({ codeLanguage: lang.id })}>
+                        {lang.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <NodeViewContent className={contentClasses} />
+            </>
           ) : (
             <NodeViewContent className={contentClasses} />
-          )}
-
-          {isCodeBlock && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button type='button' className={styles.codeLanguagePicker} contentEditable={false}>
-                  {CODE_LANGUAGES.find((l) => l.id === codeLanguage)?.label ?? 'Plain text'}{' '}
-                  <ChevronDown size={12} />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                {CODE_LANGUAGES.map((lang) => (
-                  <DropdownMenuItem
-                    key={lang.id}
-                    onSelect={() => updateAttributes({ codeLanguage: lang.id })}>
-                    {lang.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
           )}
 
           {isCallout && (

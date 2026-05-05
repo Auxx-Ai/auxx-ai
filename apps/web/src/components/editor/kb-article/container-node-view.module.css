@@ -1,0 +1,424 @@
+/* apps/web/src/components/editor/kb-article/container-node-view.module.css
+   Editor-time chrome for `tabs` / `accordion` containers and their
+   shared `panel` child. The outer wrapper reuses
+   `block-node-view.module.css` (.blockWrapper / .blockContainer /
+   .lineGutter / .blockContentWrapper) so containers align with the
+   rest of the article. This file styles only the inner chrome. */
+
+/* Inner content area — composed with .blockContentWrapper on the SAME
+   element, so we must override its `align-items: flex-start` (which would
+   otherwise shrink column children to content width). */
+.containerContent {
+  width: 100%;
+  flex: 1 1 0%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-background);
+  overflow: visible;
+}
+
+/* ============================================
+   Tabs
+   ============================================ */
+
+/* Tabs-specific outer frame: subtle tint + 2px padding so the body nests
+   inside as a separate rounded card, matching the public renderer.
+   `.blockContentWrapper` (composed on the same element) sets `gap: 0.25rem`
+   between children — collapse it so the tab strip sits flush above the body. */
+.tabsContainerContent {
+  background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+  padding: 0.125rem;
+  gap: 0;
+}
+
+.tabsHeader {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.125rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  background: transparent;
+}
+
+.tabButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0.25rem 0;
+  padding: 0.125rem 0.375rem;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  border-radius: 0.5rem;
+  transition: color 0.12s, background 0.12s, opacity 0.12s;
+}
+
+.tabButton:hover {
+  background: color-mix(in srgb, var(--color-foreground) 7%, transparent);
+  color: var(--color-foreground);
+}
+
+.tabButton[data-active='true'] {
+  color: var(--color-foreground);
+}
+
+.tabButton[data-active='true']::after {
+  content: '';
+  position: absolute;
+  left: 0.375rem;
+  right: 0.375rem;
+  bottom: -0.25rem;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--color-primary);
+}
+
+.tabButton[data-dragging='true'] {
+  opacity: 0.5;
+}
+
+.tabButtonLabel {
+  pointer-events: none;
+  min-width: 1ch;
+}
+
+.tabButtonClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  opacity: 0.5;
+  border-radius: 999px;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+
+.tabButtonClose:hover {
+  opacity: 1;
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+.addTabButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px dashed transparent;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 0.375rem;
+  margin-left: auto;
+}
+
+.addTabButton:hover {
+  border-color: var(--color-border);
+  color: var(--color-foreground);
+}
+
+.tabsBody {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-background);
+  padding: 0.5rem 0.75rem;
+}
+
+/* Each panel inside the tabs body is wrapped by ReactNodeViewRenderer in
+   a `.react-renderer.node-panel` div — make those block-level + full
+   width so the active panel body fills the tab container. */
+.tabsBody :global(.react-renderer.node-panel) {
+  display: block;
+  width: 100%;
+}
+
+/* ============================================
+   Accordion
+   ============================================ */
+
+/* Mirrors `.tabsContainerContent` — subtle outer frame + 2px padding so
+   the items render as a nested rounded card. `.blockContentWrapper`
+   (composed on the same element) sets `gap: 0.25rem`; collapse it so the
+   toolbar sits flush above the body. */
+.accordionContainerContent {
+  background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+  padding: 0.125rem;
+  gap: 0;
+}
+
+.accordionToolbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.125rem;
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+  background: transparent;
+}
+
+.accordionToolbarToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px dashed transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+  margin-left: auto;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.accordionToolbarToggle:hover {
+  border-color: var(--color-border);
+  color: var(--color-foreground);
+}
+
+.accordionToolbarToggle[aria-pressed='true'] {
+  color: var(--color-foreground);
+}
+
+.accordionContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.accordionItem {
+  width: 100%;
+  position: relative;
+}
+
+/* Suppress ProseMirror's drop / gap cursors while a panel drag is in
+   progress — otherwise the user sees both PM's black insertion line
+   AND our blue panel-edge indicator at the same time. */
+:global(body.is-panel-dragging .ProseMirror-dropcursor),
+:global(body.is-panel-dragging .ProseMirror-gapcursor),
+:global(body.is-panel-dragging .prosemirror-dropcursor-block),
+:global(body.is-panel-dragging .prosemirror-dropcursor-inline) {
+  display: none !important;
+}
+
+/* Belt & suspenders for any other drop/gap cursor class names. */
+:global(body.is-panel-dragging [class*='dropcursor']),
+:global(body.is-panel-dragging [class*='gapcursor']) {
+  display: none !important;
+}
+
+.accordionItem[data-drop-edge='top']::before,
+.accordionItem[data-drop-edge='bottom']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-primary, #2563eb);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.accordionItem[data-drop-edge='top']::before {
+  top: -1px;
+}
+
+.accordionItem[data-drop-edge='bottom']::after {
+  bottom: -1px;
+}
+
+/* ReactNodeViewRenderer wraps each panel in a `<div class="react-renderer
+   node-panel">` so OUR `.accordionItem` divs are NOT direct siblings of
+   each other. Style the wrapper directly to guarantee block-level + full
+   width, and add separators between consecutive panel wrappers. */
+.accordionContainer :global(.react-renderer.node-panel) {
+  display: block;
+  width: 100%;
+}
+
+.accordionContainer
+  :global(.react-renderer.node-panel)
+  + :global(.react-renderer.node-panel) {
+  border-top: 1px solid var(--color-border);
+}
+
+.accordionHeader {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.accordionHeader:hover {
+  background: var(--color-muted);
+}
+
+/* Per-item drag handle — positioned in the gutter to the LEFT of the
+   accordion's bordered box so it doesn't take horizontal space inside
+   the header. Absolute positioning keeps it visually attached to its
+   item row at the height of the header. */
+.accordionDragHandle {
+  position: absolute;
+  left: -1.5rem;
+  top: 0.625rem;
+  width: 1rem;
+  height: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted-foreground);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+
+.accordionItem:hover .accordionDragHandle {
+  opacity: 0.7;
+}
+
+.accordionDragHandle:active {
+  cursor: grabbing;
+}
+
+.accordionChevron {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--color-muted-foreground);
+  transition: transform 0.15s;
+}
+
+.accordionItem[data-expanded='false'] .accordionChevron {
+  transform: rotate(-90deg);
+}
+
+.accordionLabel {
+  flex: 1 1 auto;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-foreground);
+  outline: none;
+  min-width: 1ch;
+  border-radius: 2px;
+}
+
+.accordionLabel:focus {
+  background: var(--color-muted);
+}
+
+.accordionItemClose {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.accordionItem:hover .accordionItemClose {
+  display: inline-flex;
+}
+
+.accordionItemClose:hover {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+.accordionBody {
+  width: 100%;
+  /* Left padding aligns body content under the title text in the header
+     (header padding-left 0.75rem + drag handle 1rem + gap 0.5rem +
+     chevron 1.125rem + gap 0.5rem ≈ 3.875rem). */
+  padding: 0rem 0.75rem 0 2rem;
+}
+
+.accordionItem[data-expanded='false'] .accordionBody {
+  display: none;
+}
+
+/* Outer card that wraps the accordion items + Add button — mirrors
+   `.tabsBody` so accordion and tabs share the same nested-card look. */
+.accordionBodyCard {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-background);
+  /* overflow: hidden; */
+}
+
+/* Bottom strip — sits in the subtle frame area below the body card. The
+   "Add item" button is full-width and centered to match the original
+   visual weight, while the surrounding strip stays in the outer frame
+   (not inside the white nested card). */
+.accordionFooter {
+  width: 100%;
+  display: flex;
+  background: transparent;
+}
+
+.addAccordionItemButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px dashed transparent;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.addAccordionItemButton:hover {
+  border-color: var(--color-border);
+  color: var(--color-foreground);
+}
+
+/* ============================================
+   Panel — body container rendered by PanelNodeView
+   ============================================ */
+
+.panelBody {
+  display: block;
+}
+
+.panelContent {
+  display: block;
+}
