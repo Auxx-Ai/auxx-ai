@@ -1,0 +1,101 @@
+/*
+ * apps/homepage/src/app/platform/ai/_mocks/mock.css
+ *
+ * Tokens for the homepage AI mocks (`MockAppSidebar`, `MockKopilotWindow`,
+ * `MockKopilotPrompt`). These mirror the real app's sidebar + chat tokens
+ * (see `packages/ui/src/styles/global.css` and `apps/web/src/app/globals.css`)
+ * so the marketing mocks visually match the live product in both light and
+ * dark themes.
+ *
+ * The homepage uses `[data-theme='dark']` (not `.dark`) for theme switching,
+ * matching the rest of `apps/homepage/src/app/globals.css`.
+ */
+
+@layer base {
+  :root {
+    /* Sidebar — light. Mirrors `--sidebar` in packages/ui/src/styles/global.css. */
+    --mock-sidebar: oklch(0.985 0 0);
+    --mock-sidebar-foreground: oklch(0.145 0 0);
+    --mock-sidebar-muted: color-mix(in oklab, var(--color-zinc-500) 80%, transparent);
+    --mock-sidebar-accent: oklch(0.97 0 0);
+    --mock-sidebar-accent-foreground: oklch(0.205 0 0);
+    --mock-sidebar-border: oklch(0.922 0 0);
+
+    /* Chat surface — light. Slight off-white card. */
+    --mock-window: var(--color-white);
+    --mock-window-foreground: oklch(0.145 0 0);
+    --mock-window-muted-foreground: var(--color-zinc-500);
+    --mock-window-border: var(--color-zinc-200);
+    --mock-card: var(--color-white);
+
+    /* User bubble + composer (matches `bg-primary-150` on the real composer). */
+    --mock-bubble: var(--color-zinc-100);
+    --mock-composer: var(--color-zinc-50);
+    --mock-composer-border: var(--color-zinc-200);
+
+    /* MainPage outer + nested PanelFrame borders. Mirrors the real
+       packages/ui/src/components/main-page.tsx + panel-frame.tsx in light. */
+    --mock-page-bg: var(--color-neutral-100);
+    --mock-panel-bg: color-mix(in oklab, var(--color-zinc-100) 50%, transparent);
+    --mock-panel-border-1: color-mix(in oklab, var(--color-white) 60%, transparent);
+    --mock-panel-border-2: color-mix(in oklab, var(--color-black) 10%, transparent);
+    --mock-panel-border-3: color-mix(in oklab, var(--color-white) 50%, transparent);
+    --mock-panel-border-4: color-mix(in oklab, var(--color-zinc-950) 20%, transparent);
+  }
+
+  [data-theme='dark'] {
+    /* Mirrors `--sidebar: #1e2227` from `packages/ui/src/styles/global.css:488`. */
+    --mock-sidebar: #1e2227;
+    --mock-sidebar-foreground: #abb2bf;
+    --mock-sidebar-muted: color-mix(in oklab, #abb2bf 70%, transparent);
+    --mock-sidebar-accent: #2c313a;
+    --mock-sidebar-accent-foreground: #d7dae0;
+    --mock-sidebar-border: #3e4452;
+
+    /* Mirrors the chat surface bg in dark mode. */
+    --mock-window: #23272e;
+    --mock-window-foreground: oklch(0.985 0 0);
+    --mock-window-muted-foreground: oklch(0.7155 0 0);
+    --mock-window-border: color-mix(in oklab, var(--color-white) 8%, transparent);
+    --mock-card: #1e2227;
+
+    --mock-bubble: #2c313a;
+    --mock-composer: #1e2227;
+    --mock-composer-border: color-mix(in oklab, var(--color-white) 10%, transparent);
+
+    /* Mirrors the dark-mode `border-[#323842]`, `border-[#23272e]`,
+       `border-neutral-900/...`, `border-white/...` stack on PanelFrame. */
+    --mock-page-bg: #23272e;
+    --mock-panel-bg: color-mix(in oklab, #1e2227 80%, transparent);
+    --mock-panel-border-1: #323842;
+    --mock-panel-border-2: color-mix(in oklab, var(--color-neutral-900) 80%, transparent);
+    --mock-panel-border-3: #23272e;
+    --mock-panel-border-4: color-mix(in oklab, var(--color-neutral-900) 70%, transparent);
+  }
+}
+
+@theme inline {
+  --color-mock-sidebar: var(--mock-sidebar);
+  --color-mock-sidebar-foreground: var(--mock-sidebar-foreground);
+  --color-mock-sidebar-muted: var(--mock-sidebar-muted);
+  --color-mock-sidebar-accent: var(--mock-sidebar-accent);
+  --color-mock-sidebar-accent-foreground: var(--mock-sidebar-accent-foreground);
+  --color-mock-sidebar-border: var(--mock-sidebar-border);
+
+  --color-mock-window: var(--mock-window);
+  --color-mock-window-foreground: var(--mock-window-foreground);
+  --color-mock-window-muted: var(--mock-window-muted-foreground);
+  --color-mock-window-border: var(--mock-window-border);
+  --color-mock-card: var(--mock-card);
+
+  --color-mock-bubble: var(--mock-bubble);
+  --color-mock-composer: var(--mock-composer);
+  --color-mock-composer-border: var(--mock-composer-border);
+
+  --color-mock-page-bg: var(--mock-page-bg);
+  --color-mock-panel-bg: var(--mock-panel-bg);
+  --color-mock-panel-border-1: var(--mock-panel-border-1);
+  --color-mock-panel-border-2: var(--mock-panel-border-2);
+  --color-mock-panel-border-3: var(--mock-panel-border-3);
+  --color-mock-panel-border-4: var(--mock-panel-border-4);
+}

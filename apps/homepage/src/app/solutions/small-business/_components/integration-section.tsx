@@ -110,8 +110,8 @@ export default function IntegrationSection() {
                   <div className='row-span-2 grid grid-rows-subgrid gap-8'>
                     <div className='px-8 pt-8'>
                       <div className='flex items-center gap-3 mb-4'>
-                        <div className='w-8 h-8 rounded-full bg-green-100 flex items-center justify-center'>
-                          <CheckCircle className='w-4 h-4 text-green-600' />
+                        <div className='w-8 h-8 rounded-full bg-green-900/50 flex items-center justify-center'>
+                          <CheckCircle className='w-4 h-4 text-green-500/80' />
                         </div>
                         <span className='text-sm font-medium text-green-700'>
                           Installation Complete
