@@ -24,7 +24,10 @@ import { Tabs } from './tabs-node'
 const Doc = Node.create({
   name: 'doc',
   topNode: true,
-  content: '(block | containerBlock)+',
+  // PM resolves a bare `block` token to the NODE named `block` (which we have),
+  // not the group. So we have to list `table` explicitly even though it's in
+  // `group: 'block'` — node-name resolution takes precedence over group.
+  content: '(block | containerBlock | table)+',
 })
 
 const FocusClasses = Extension.create({
@@ -102,7 +105,10 @@ export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEdi
         Accordion,
         MarkdownInputRules,
         MarkdownPaste,
-        Table.configure({ resizable: true }),
+        // Column resizing is disabled in the KB editor — the React NodeView
+        // (TableNodeView) owns the table chrome and column resize is a
+        // follow-up. Reorder + add/remove are handled via table-helpers.ts.
+        Table,
         TableRow,
         TableHeader,
         TableCell,

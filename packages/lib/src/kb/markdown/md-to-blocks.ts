@@ -23,6 +23,9 @@ import type {
   InlineJSON,
   MarkJSON,
   PanelJSON,
+  TableCellJSON,
+  TableJSON,
+  TableRowJSON,
   TabsJSON,
 } from './types'
 import { CALLOUT_VARIANTS, EMBED_ASPECTS, EMBED_PROVIDERS, IMAGE_ALIGNS } from './types'
@@ -58,6 +61,12 @@ export function mdToBlocks(markdown: string): DocJSON {
       if (panel) {
         if (!detailsBuffer) detailsBuffer = []
         detailsBuffer.push(panel)
+        continue
+      }
+      const table = tryParseTableHtml(child.value)
+      if (table) {
+        flushDetails()
+        ctx.nodes.push(table)
         continue
       }
     }
@@ -295,35 +304,30 @@ function walkList(node: MdastNode, ctx: ParseCtx, level: number): void {
 }
 
 function walkTable(node: MdastNode, ctx: ParseCtx): void {
-  // Tables are deferred from the renderer (Tier 1 plan). Capture the
-  // markdown source as a fenced plaintext block so authors don't lose
-  // content silently.
-  const lines = renderTableAsMd(node)
-  if (lines.length === 0) return
-  pushBlock(ctx, 'codeBlock', [{ type: 'text', text: lines.join('\n') }], {
-    codeLanguage: 'plaintext',
-  })
-}
-
-function renderTableAsMd(table: MdastNode): string[] {
-  const rows = (table.children ?? []).filter((c) => c.type === 'tableRow')
-  if (rows.length === 0) return []
-  const renderedRows = rows.map((row) =>
-    (row.children ?? [])
-      .filter((c) => c.type === 'tableCell')
-      .map((cell) => textOnly(cell.children).trim() || ' ')
-  )
-  if (renderedRows.length === 0) return []
-  const widths = renderedRows[0].map((_, i) =>
-    Math.max(...renderedRows.map((r) => (r[i]?.length ?? 0) || 1))
-  )
-  const out: string[] = []
-  out.push('| ' + renderedRows[0].map((c, i) => c.padEnd(widths[i])).join(' | ') + ' |')
-  out.push('| ' + widths.map((w) => '-'.repeat(Math.max(3, w))).join(' | ') + ' |')
-  for (let i = 1; i < renderedRows.length; i++) {
-    out.push('| ' + renderedRows[i].map((c, j) => c.padEnd(widths[j])).join(' | ') + ' |')
+  // remark-gfm tables: children are tableRow; each row's children are
+  // tableCell. The first row is conventionally the header — we emit it as
+  // tableHeader cells, body rows as tableCell. The serializer round-trips
+  // this shape via GFM's native table syntax.
+  const mdastRows = (node.children ?? []).filter((c) => c.type === 'tableRow')
+  if (mdastRows.length === 0) return
+  const rows: TableRowJSON[] = []
+  for (let i = 0; i < mdastRows.length; i++) {
+    const isHeader = i === 0
+    const cellsInline = (mdastRows[i].children ?? []).filter((c) => c.type === 'tableCell')
+    const cells: TableCellJSON[] = []
+    for (const cell of cellsInline) {
+      const inline = inlineFrom(cell.children)
+      cells.push({
+        type: isHeader ? 'tableHeader' : 'tableCell',
+        content: [{ type: 'block', attrs: { blockType: 'text' }, content: inline }],
+      })
+    }
+    if (cells.length === 0) continue
+    rows.push({ type: 'tableRow', content: cells })
   }
-  return out
+  if (rows.length === 0) return
+  const table: TableJSON = { type: 'table', content: rows }
+  ctx.nodes.push(table)
 }
 
 // ─── inline walker ───────────────────────────────────────────────────
@@ -742,6 +746,86 @@ function buildPanelFromDirective(node: MdastNode): PanelJSON {
 const DETAILS_OPEN_RE = /<details(?:\s[^>]*)?>/i
 const DETAILS_CLOSE_RE = /<\/details>/i
 const SUMMARY_RE = /<summary(?:\s[^>]*)?>([\s\S]*?)<\/summary>/i
+
+// HTML table import — paired with the HTML-fallback emitter in `blocks-to-md.ts`
+// (`renderHtmlTable`). Best-effort regex extractor: pulls out <thead> / <tbody>
+// rows + <th> / <td> cells, recursively re-parses each cell's inner HTML/markdown
+// via `mdToBlocks`.
+const TABLE_OPEN_RE = /^\s*<table(?:\s[^>]*)?>/i
+const TABLE_CLOSE_RE = /<\/table>\s*$/i
+const ROW_RE = /<tr(?:\s[^>]*)?>([\s\S]*?)<\/tr>/gi
+const CELL_RE = /<(th|td)(?:\s([^>]*))?>([\s\S]*?)<\/\1>/gi
+const ATTR_RE = /(\w+)\s*=\s*"([^"]*)"/g
+
+function tryParseTableHtml(raw: string): TableJSON | null {
+  const value = (raw ?? '').trim()
+  if (!TABLE_OPEN_RE.test(value)) return null
+  if (!TABLE_CLOSE_RE.test(value)) return null
+
+  const rows: TableRowJSON[] = []
+  const headInnerMatch = value.match(/<thead(?:\s[^>]*)?>([\s\S]*?)<\/thead>/i)
+  const bodyInnerMatch = value.match(/<tbody(?:\s[^>]*)?>([\s\S]*?)<\/tbody>/i)
+  const inThead = headInnerMatch ? headInnerMatch[1] : ''
+  const inTbody = bodyInnerMatch
+    ? bodyInnerMatch[1]
+    : // No explicit thead/tbody — strip the outer <table> tags and treat the
+      // remainder as body rows.
+      value.replace(TABLE_OPEN_RE, '').replace(TABLE_CLOSE_RE, '')
+
+  for (const headRowMatch of inThead.matchAll(ROW_RE)) {
+    const row = parseTableRowHtml(headRowMatch[1], 'tableHeader')
+    if (row) rows.push(row)
+  }
+  for (const bodyRowMatch of inTbody.matchAll(ROW_RE)) {
+    const row = parseTableRowHtml(bodyRowMatch[1], 'tableCell')
+    if (row) rows.push(row)
+  }
+  if (rows.length === 0) return null
+  return { type: 'table', content: rows }
+}
+
+function parseTableRowHtml(
+  rowInnerHtml: string,
+  defaultCellType: 'tableCell' | 'tableHeader'
+): TableRowJSON | null {
+  const cells: TableCellJSON[] = []
+  for (const cellMatch of rowInnerHtml.matchAll(CELL_RE)) {
+    const tagLower = cellMatch[1].toLowerCase()
+    const attrsRaw = cellMatch[2] ?? ''
+    const inner = cellMatch[3] ?? ''
+    const cellType: 'tableCell' | 'tableHeader' =
+      tagLower === 'th' ? 'tableHeader' : tagLower === 'td' ? 'tableCell' : defaultCellType
+
+    const attrs: TableCellJSON['attrs'] = {}
+    for (const attrMatch of attrsRaw.matchAll(ATTR_RE)) {
+      const name = attrMatch[1].toLowerCase()
+      const valueStr = attrMatch[2]
+      if (name === 'colspan') {
+        const n = Number.parseInt(valueStr, 10)
+        if (n > 1) attrs.colspan = n
+      } else if (name === 'rowspan') {
+        const n = Number.parseInt(valueStr, 10)
+        if (n > 1) attrs.rowspan = n
+      }
+    }
+
+    // Re-parse the cell's inner HTML/markdown as block content.
+    const trimmed = inner.trim()
+    let cellContent: BlockJSON[] = []
+    if (trimmed) {
+      const sub = mdToBlocks(trimmed)
+      cellContent = sub.content.filter((n): n is BlockJSON => n.type === 'block')
+    }
+    if (cellContent.length === 0) {
+      cellContent = [{ type: 'block', attrs: { blockType: 'text' }, content: [] }]
+    }
+    const cell: TableCellJSON = { type: cellType, content: cellContent }
+    if (Object.keys(attrs).length > 0) cell.attrs = attrs
+    cells.push(cell)
+  }
+  if (cells.length === 0) return null
+  return { type: 'tableRow', content: cells }
+}
 
 function tryParseDetailsHtml(raw: string): PanelJSON | null {
   const value = (raw ?? '').trim()

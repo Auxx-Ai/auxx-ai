@@ -13,7 +13,6 @@ import {
   addRowAfter,
   addRowBefore,
   CellSelection,
-  columnResizing,
   deleteColumn,
   deleteRow,
   deleteTable,
@@ -27,8 +26,9 @@ import {
   toggleHeaderCell,
 } from '@tiptap/pm/tables'
 import type { EditorView, NodeView } from '@tiptap/pm/view'
+import { ReactNodeViewRenderer } from '@tiptap/react'
 
-import { TableView } from './table-view'
+import { TableNodeView } from '../../kb-article/table-node-view'
 import { createColGroup } from './utilities/createColGroup'
 import { createTable } from './utilities/createTable'
 import { deleteTableWhenAllCellsSelected } from './utilities/deleteTableWhenAllCellsSelected'
@@ -257,14 +257,25 @@ export const Table = Node.create<TableOptions>({
   addOptions() {
     return {
       HTMLAttributes: {},
+      // Column resizing is disabled because it depends on the imperative
+      // TableView (kept around for legacy editors). The KB editor renders
+      // tables via a React NodeView (TableNodeView) — see addNodeView below.
       resizable: false,
       handleWidth: 5,
       cellMinWidth: 25,
-      // TODO: fix
-      View: TableView,
+      View: null,
       lastColumnResizable: true,
       allowTableNodeSelection: false,
     }
+  },
+
+  addNodeView() {
+    // `contentDOMElementTag: 'tbody'` makes the content DOM element a real
+    // `<tbody>` (vs the default `<div>`), so when we attach it inside a
+    // `<table>` rendered by the React node view we get valid HTML
+    // (`<table><tbody><tr>…</tr></tbody></table>`) instead of a div nested
+    // inside a tbody.
+    return ReactNodeViewRenderer(TableNodeView, { contentDOMElementTag: 'tbody' })
   },
 
   content: 'tableRow+',
@@ -441,20 +452,7 @@ export const Table = Node.create<TableOptions>({
   },
 
   addProseMirrorPlugins() {
-    const isResizable = this.options.resizable && this.editor.isEditable
-
     return [
-      ...(isResizable
-        ? [
-            columnResizing({
-              handleWidth: this.options.handleWidth,
-              cellMinWidth: this.options.cellMinWidth,
-              defaultCellMinWidth: this.options.cellMinWidth,
-              View: this.options.View,
-              lastColumnResizable: this.options.lastColumnResizable,
-            }),
-          ]
-        : []),
       tableEditing({
         allowTableNodeSelection: this.options.allowTableNodeSelection,
       }),

@@ -81,7 +81,29 @@ export interface AccordionJSON {
   content: PanelJSON[]
 }
 
-export type ContainerBlockJSON = TabsJSON | AccordionJSON
+export interface TableCellJSON {
+  type: 'tableCell' | 'tableHeader'
+  attrs?: {
+    colspan?: number
+    rowspan?: number
+    colwidth?: number[] | null
+  }
+  /** Cells hold full block content (text, code, lists, etc. — never containers). */
+  content: BlockJSON[]
+}
+
+export interface TableRowJSON {
+  type: 'tableRow'
+  content: TableCellJSON[]
+}
+
+export interface TableJSON {
+  type: 'table'
+  attrs?: Record<string, never>
+  content: TableRowJSON[]
+}
+
+export type ContainerBlockJSON = TabsJSON | AccordionJSON | TableJSON
 
 /**
  * Top-level node in a KB article: either a flat `block` or a container

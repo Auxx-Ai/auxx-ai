@@ -8,6 +8,7 @@ import { BlockRenderer } from './block-renderer'
 import { extractKBHeadings, type KBHeading } from './extract-headings'
 import styles from './kb-article-renderer.module.css'
 import { KBTableOfContentsDrawer } from './kb-toc-drawer'
+import { TableBlock } from './table-block'
 import { TabsBlock } from './tabs-block'
 import type {
   AccordionJSON,
@@ -16,6 +17,7 @@ import type {
   DocJSON,
   PanelJSON,
   ResolveAuxxHref,
+  TableJSON,
   TabsJSON,
 } from './types'
 
@@ -106,6 +108,15 @@ export function KBArticleRenderer({
           case 'accordion':
             return (
               <ServerAccordionBlock
+                // biome-ignore lint/suspicious/noArrayIndexKey: block order is stable per render
+                key={idx}
+                node={node}
+                resolveAuxxHref={resolveAuxxHref}
+              />
+            )
+          case 'table':
+            return (
+              <TableBlock
                 // biome-ignore lint/suspicious/noArrayIndexKey: block order is stable per render
                 key={idx}
                 node={node}

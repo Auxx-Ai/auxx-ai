@@ -17,6 +17,8 @@ import type {
   ImageAlign,
   InlineJSON,
   PanelJSON,
+  TableCellJSON,
+  TableJSON,
   TabsJSON,
 } from './types'
 import { CALLOUT_VARIANTS } from './types'
@@ -57,6 +59,8 @@ function renderArticleNode(node: ArticleNodeJSON, ctx: RenderCtx): string[] {
       return renderTabs(node, ctx)
     case 'accordion':
       return renderAccordion(node, ctx)
+    case 'table':
+      return renderTable(node, ctx)
     case 'block':
       return renderBlock(node, ctx)
     default:
@@ -142,6 +146,114 @@ function renderPanel(panel: PanelJSON, leafName: 'tab' | 'item', ctx: RenderCtx)
   const bodyLines = renderNodes(panel.content ?? [], ctx)
   for (const line of bodyLines) out.push(line)
   out.push(':::')
+  return out
+}
+
+function renderTable(node: TableJSON, ctx: RenderCtx): string[] {
+  if (!Array.isArray(node.content) || node.content.length === 0) return []
+  if (hasMergedCells(node)) return renderHtmlTable(node, ctx)
+  return renderGfmTable(node, ctx)
+}
+
+function hasMergedCells(node: TableJSON): boolean {
+  for (const row of node.content) {
+    for (const cell of row.content ?? []) {
+      if ((cell.attrs?.colspan ?? 1) > 1) return true
+      if ((cell.attrs?.rowspan ?? 1) > 1) return true
+    }
+  }
+  return false
+}
+
+function renderGfmTable(node: TableJSON, ctx: RenderCtx): string[] {
+  const rows = node.content
+  if (rows.length === 0) return []
+  const firstRowIsHeader = rows[0].content.every((c) => c.type === 'tableHeader')
+
+  const renderCellInline = (cell: TableCellJSON): string => {
+    if (!cell.content || cell.content.length === 0) return ' '
+    // For typical cells (single text block) emit inline. For richer cells
+    // (multiple blocks, code, lists), join text content with `<br>` and accept
+    // the lossy round-trip — full rich-cell HTML fallback is a follow-up.
+    const parts: string[] = []
+    for (const block of cell.content) {
+      if (block.type !== 'block') continue
+      const t = block.attrs?.blockType
+      if (t === 'text' || t === 'heading' || t === 'quote') {
+        const md = inlineToMd(block.content, ctx).trim()
+        if (md) parts.push(md)
+      } else {
+        const md = inlineToMd(block.content, ctx).trim()
+        if (md) parts.push(md)
+      }
+    }
+    // `inlineToMd` already escapes `|` via escapeMarkdownText, so cell text
+    // is already pipe-safe for GFM table syntax.
+    const md = parts.join('<br>')
+    return md || ' '
+  }
+
+  const out: string[] = []
+  let bodyStart = 0
+  if (firstRowIsHeader) {
+    out.push(`| ${rows[0].content.map(renderCellInline).join(' | ')} |`)
+    out.push(`| ${rows[0].content.map(() => '---').join(' | ')} |`)
+    bodyStart = 1
+  } else {
+    // GFM requires a header row; emit a blank header so re-import keeps the
+    // structure. Re-import will produce a header-row of empty header cells.
+    const colCount = rows[0].content.length
+    out.push(`| ${Array(colCount).fill(' ').join(' | ')} |`)
+    out.push(`| ${Array(colCount).fill('---').join(' | ')} |`)
+  }
+  for (let i = bodyStart; i < rows.length; i++) {
+    out.push(`| ${rows[i].content.map(renderCellInline).join(' | ')} |`)
+  }
+  return out
+}
+
+function renderHtmlTable(node: TableJSON, ctx: RenderCtx): string[] {
+  const rows = node.content
+  if (rows.length === 0) return []
+  const firstRowIsHeader = rows[0].content.every((c) => c.type === 'tableHeader')
+
+  const renderCellHtml = (cell: TableCellJSON): string[] => {
+    const tag = cell.type === 'tableHeader' ? 'th' : 'td'
+    const attrs: string[] = []
+    if (cell.attrs?.colspan && cell.attrs.colspan > 1) {
+      attrs.push(`colspan="${cell.attrs.colspan}"`)
+    }
+    if (cell.attrs?.rowspan && cell.attrs.rowspan > 1) {
+      attrs.push(`rowspan="${cell.attrs.rowspan}"`)
+    }
+    const open = attrs.length > 0 ? `<${tag} ${attrs.join(' ')}>` : `<${tag}>`
+    const inner = renderNodes(cell.content ?? [], ctx)
+    // Blank lines around the inner markdown so remark-parse re-tokenizes the
+    // cell content as block-level on round-trip.
+    return [open, '', ...inner, '', `</${tag}>`]
+  }
+
+  const renderRowHtml = (row: { content: TableCellJSON[] }): string[] => {
+    const out: string[] = ['<tr>']
+    for (const cell of row.content) out.push(...renderCellHtml(cell))
+    out.push('</tr>')
+    return out
+  }
+
+  const out: string[] = ['<table>']
+  if (firstRowIsHeader) {
+    out.push('<thead>')
+    out.push(...renderRowHtml(rows[0]))
+    out.push('</thead>')
+    out.push('<tbody>')
+    for (let i = 1; i < rows.length; i++) out.push(...renderRowHtml(rows[i]))
+    out.push('</tbody>')
+  } else {
+    out.push('<tbody>')
+    for (const row of rows) out.push(...renderRowHtml(row))
+    out.push('</tbody>')
+  }
+  out.push('</table>')
   return out
 }
 

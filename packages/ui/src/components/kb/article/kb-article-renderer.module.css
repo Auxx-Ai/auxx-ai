@@ -611,3 +611,61 @@
     display: none;
   }
 }
+
+/* ============================================
+   Table block (public renderer)
+   ============================================ */
+
+.tableScrollWrap {
+  width: 100%;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-radius);
+}
+
+.publicTable {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9375rem;
+}
+
+.publicTable th,
+.publicTable td {
+  border-bottom: 1px solid var(--kb-border);
+  border-right: 1px solid var(--kb-border);
+  padding: 0.625rem 0.875rem;
+  vertical-align: top;
+  text-align: left;
+}
+
+.publicTable th:last-child,
+.publicTable td:last-child {
+  border-right: none;
+}
+
+.publicTable tr:last-child td {
+  border-bottom: none;
+}
+
+.publicTable th {
+  background: color-mix(in srgb, var(--kb-fg) 4%, transparent);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.publicTable th p,
+.publicTable td p {
+  margin: 0;
+}
+
+.publicTable th p + p,
+.publicTable td p + p {
+  margin-top: 0.25em;
+}
+
+@media print {
+  .tableScrollWrap {
+    overflow-x: visible;
+  }
+}

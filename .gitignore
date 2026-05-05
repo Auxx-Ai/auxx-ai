@@ -10,6 +10,7 @@ coverage
 *.log
 .pnpm-store
 .sst
+.tmp
 .aws.md
 repomix-output.txt
 repomix.config.json
