@@ -10,11 +10,14 @@ export { KBArticlePager } from './kb-article-pager'
 export { KBArticleRenderer } from './kb-article-renderer'
 export { KBTableOfContents } from './kb-toc'
 export type {
+  AccordionJSON,
+  ArticleNodeJSON,
   BlockAttrs,
   BlockJSON,
   BlockType,
   CalloutVariant,
   CardData,
+  ContainerBlockJSON,
   DocJSON,
   EmbedAspect,
   EmbedProvider,
@@ -22,5 +25,7 @@ export type {
   InlineJSON,
   InlineMarkType,
   MarkJSON,
+  PanelJSON,
   ResolveAuxxHref,
+  TabsJSON,
 } from './types'

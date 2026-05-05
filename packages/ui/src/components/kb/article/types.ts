@@ -53,6 +53,43 @@ export interface BlockJSON {
   content?: InlineJSON[]
 }
 
+export interface PanelJSON {
+  type: 'panel'
+  attrs: {
+    /** Stable id for drag-reorder + React keys (`@auxx/utils` `generateId`). */
+    id: string
+    label: string
+    iconId?: string
+  }
+  content: BlockJSON[]
+}
+
+export interface TabsJSON {
+  type: 'tabs'
+  attrs: {
+    /** Editor-only state; not persisted to markdown. First panel is active when omitted. */
+    activeTab?: string | null
+  }
+  content: PanelJSON[]
+}
+
+export interface AccordionJSON {
+  type: 'accordion'
+  attrs: {
+    allowMultiple: boolean
+  }
+  content: PanelJSON[]
+}
+
+export type ContainerBlockJSON = TabsJSON | AccordionJSON
+
+/**
+ * Top-level node in a KB article: either a flat `block` or a container
+ * (`tabs`/`accordion`). Future container/format additions (table, steps)
+ * extend this union without reshaping renderer/markdown/walker dispatch.
+ */
+export type ArticleNodeJSON = BlockJSON | ContainerBlockJSON
+
 export type InlineMarkType =
   | 'bold'
   | 'italic'
@@ -76,7 +113,7 @@ export interface InlineJSON {
 
 export interface DocJSON {
   type: 'doc'
-  content: BlockJSON[]
+  content: ArticleNodeJSON[]
 }
 
 /**

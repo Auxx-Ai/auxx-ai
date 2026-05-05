@@ -19,6 +19,7 @@ export function extractKBHeadings(doc: DocJSON | null | undefined): KBHeading[] 
   const out: KBHeading[] = []
   const seen = new Map<string, number>()
   doc.content.forEach((node, idx) => {
+    if (node.type !== 'block') return
     if (node.attrs?.blockType !== 'heading') return
     const level = node.attrs?.level ?? 1
     if (level !== 1 && level !== 2) return

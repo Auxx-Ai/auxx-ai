@@ -13,15 +13,18 @@ import StarterKit from '@tiptap/starter-kit'
 import { useEffect, useMemo, useRef } from 'react'
 import { Table, TableCell, TableHeader, TableRow } from '../extensions/table'
 import { createPlaceholderNode, PlaceholderBadge, useSlashCommand } from '../inline-picker'
+import { Accordion } from './accordion-node'
 import { Block } from './block-node'
 import { MarkdownInputRules } from './markdown-input-rules'
 import { MarkdownPaste } from './markdown-paste'
 import { migrateLegacyContent } from './migrate-legacy-content'
+import { Panel } from './panel-node'
+import { Tabs } from './tabs-node'
 
 const Doc = Node.create({
   name: 'doc',
   topNode: true,
-  content: 'block+',
+  content: '(block | containerBlock)+',
 })
 
 const FocusClasses = Extension.create({
@@ -94,6 +97,9 @@ export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEdi
           // Marks stay enabled (bold, italic, strike, code).
         }),
         Block,
+        Panel,
+        Tabs,
+        Accordion,
         MarkdownInputRules,
         MarkdownPaste,
         Table.configure({ resizable: true }),

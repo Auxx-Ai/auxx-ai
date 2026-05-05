@@ -454,3 +454,160 @@
   line-height: 1.5;
   opacity: 0.85;
 }
+
+/* ============================================
+   Tabs block (public renderer)
+   ============================================ */
+
+.tabsContainer {
+  margin: 1.25rem 0;
+  border: 1px solid var(--kb-border);
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--kb-fg) 3%, transparent);
+  padding: 0.125rem;
+}
+
+.tabsHeader {
+  display: flex;
+  flex-direction: row;
+  gap: 0.25rem;
+  padding: 0.125rem 0.625rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tabButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0.25rem 0;
+  padding: 0.125rem 0.375rem;
+  border: none;
+  background: transparent;
+  color: var(--kb-fg);
+  opacity: 0.6;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 0.5rem;
+  font-family: inherit;
+  transition: color 120ms ease, opacity 120ms ease, background 120ms ease;
+}
+
+.tabButton:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--kb-fg) 7%, transparent);
+}
+
+.tabButton[aria-selected='true'] {
+  opacity: 1;
+}
+
+.tabButton[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 0.375rem;
+  right: 0.375rem;
+  bottom: -0.25rem;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--kb-primary);
+}
+
+.tabsBody {
+  border: 1px solid var(--kb-border);
+  border-radius: 0.5rem;
+  background: var(--kb-bg, #fff);
+  overflow: hidden;
+}
+
+.tabPanel {
+  padding: 0.875rem 1rem;
+}
+
+.tabPanel[hidden] {
+  display: none;
+}
+
+/* ============================================
+   Accordion block (public renderer)
+   ============================================ */
+
+.accordionContainer {
+  margin: 1.25rem 0;
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-radius);
+  overflow: hidden;
+}
+
+.accordionItem + .accordionItem {
+  border-top: 1px solid var(--kb-border);
+}
+
+.accordionHeader {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--kb-fg);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.accordionHeader:hover {
+  background: color-mix(in srgb, var(--kb-fg) 4%, transparent);
+}
+
+.accordionChevron {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--kb-fg);
+  opacity: 0.7;
+  transition: transform 150ms ease;
+}
+
+.accordionChevron[data-open='false'] {
+  transform: rotate(-90deg);
+}
+
+.accordionLabel {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.accordionPanel {
+  padding: 0.25rem 1rem 0.875rem 2.625rem;
+}
+
+.accordionPanel[hidden] {
+  display: none;
+}
+
+@media print {
+  /* Tabs: show every panel stacked, hide the strip. */
+  .tabsHeader {
+    display: none;
+  }
+  .tabPanel[hidden] {
+    display: block !important;
+  }
+  /* Accordion: expand every item. */
+  .accordionPanel[hidden] {
+    display: block !important;
+  }
+  .accordionChevron {
+    display: none;
+  }
+}

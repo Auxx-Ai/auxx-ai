@@ -3,11 +3,21 @@
 import { EntityIcon } from '@auxx/ui/components/icons'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { AccordionBlock } from './accordion-block'
 import { BlockRenderer } from './block-renderer'
 import { extractKBHeadings, type KBHeading } from './extract-headings'
 import styles from './kb-article-renderer.module.css'
 import { KBTableOfContentsDrawer } from './kb-toc-drawer'
-import type { DocJSON, ResolveAuxxHref } from './types'
+import { TabsBlock } from './tabs-block'
+import type {
+  AccordionJSON,
+  ArticleNodeJSON,
+  BlockJSON,
+  DocJSON,
+  PanelJSON,
+  ResolveAuxxHref,
+  TabsJSON,
+} from './types'
 
 interface KBArticleRendererProps {
   doc: DocJSON | null | undefined
@@ -82,26 +92,106 @@ export function KBArticleRenderer({
           </div>
         </header>
       ) : null}
-      {doc?.content?.map((node, idx) => (
-        <BlockRenderer
-          // biome-ignore lint/suspicious/noArrayIndexKey: block order is stable per render
-          key={idx}
-          node={node}
-          idx={idx}
-          doc={doc}
-          headingIds={headingIds}
-          resolveAuxxHref={resolveAuxxHref}
-        />
-      ))}
+      {doc?.content?.map((node, idx) => {
+        switch (node.type) {
+          case 'tabs':
+            return (
+              <ServerTabsBlock
+                // biome-ignore lint/suspicious/noArrayIndexKey: block order is stable per render
+                key={idx}
+                node={node}
+                resolveAuxxHref={resolveAuxxHref}
+              />
+            )
+          case 'accordion':
+            return (
+              <ServerAccordionBlock
+                // biome-ignore lint/suspicious/noArrayIndexKey: block order is stable per render
+                key={idx}
+                node={node}
+                resolveAuxxHref={resolveAuxxHref}
+              />
+            )
+          case 'block':
+            return (
+              <BlockRenderer
+                // biome-ignore lint/suspicious/noArrayIndexKey: block order is stable per render
+                key={idx}
+                node={node}
+                idx={idx}
+                doc={doc}
+                headingIds={headingIds}
+                resolveAuxxHref={resolveAuxxHref}
+              />
+            )
+          default:
+            return null
+        }
+      })}
     </article>
   )
 }
 
+function renderPanelBody(
+  panel: PanelJSON,
+  resolveAuxxHref: ResolveAuxxHref | undefined
+): ReactNode {
+  // Panel bodies are flat block content; reuse BlockRenderer with a synthetic
+  // sub-doc so heading-id maps stay scoped. We intentionally don't pass a
+  // headingIds map — TOC headings are top-level only.
+  const subDoc: DocJSON = { type: 'doc', content: panel.content }
+  return panel.content.map((block: BlockJSON, i) => (
+    <BlockRenderer
+      // biome-ignore lint/suspicious/noArrayIndexKey: panel content order is stable per render
+      key={i}
+      node={block}
+      idx={i}
+      doc={subDoc}
+      resolveAuxxHref={resolveAuxxHref}
+    />
+  ))
+}
+
+function ServerTabsBlock({
+  node,
+  resolveAuxxHref,
+}: {
+  node: TabsJSON
+  resolveAuxxHref?: ResolveAuxxHref
+}) {
+  if (!Array.isArray(node.content) || node.content.length === 0) return null
+  const panels = node.content.map((panel) => ({
+    id: panel.attrs.id,
+    label: panel.attrs.label,
+    iconId: panel.attrs.iconId,
+    body: renderPanelBody(panel, resolveAuxxHref),
+  }))
+  return <TabsBlock panels={panels} />
+}
+
+function ServerAccordionBlock({
+  node,
+  resolveAuxxHref,
+}: {
+  node: AccordionJSON
+  resolveAuxxHref?: ResolveAuxxHref
+}) {
+  if (!Array.isArray(node.content) || node.content.length === 0) return null
+  const items = node.content.map((panel) => ({
+    id: panel.attrs.id,
+    label: panel.attrs.label,
+    body: renderPanelBody(panel, resolveAuxxHref),
+  }))
+  return <AccordionBlock items={items} allowMultiple={node.attrs.allowMultiple !== false} />
+}
+
 function buildHeadingIdMap(doc: DocJSON, headings: KBHeading[]): Record<number, string> {
   // extractKBHeadings preserves order; rebuild a map keyed by block index.
+  // Container nodes (tabs/accordion) don't contribute headings to the TOC.
   const map: Record<number, string> = {}
   let cursor = 0
   doc.content.forEach((node, idx) => {
+    if (node.type !== 'block') return
     if (node.attrs?.blockType !== 'heading') return
     const level = node.attrs?.level ?? 1
     if (level !== 1 && level !== 2) return

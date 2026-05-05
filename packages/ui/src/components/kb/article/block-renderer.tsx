@@ -205,12 +205,13 @@ function fallbackAnchorId(node: BlockJSON, idx: number): string {
 
 function computeNumber(doc: DocJSON, idx: number): number {
   const target = doc.content[idx]
-  if (!target) return 1
+  if (!target || target.type !== 'block') return 1
   const targetLevel = target.attrs?.level ?? 1
   let count = 1
   for (let i = idx - 1; i >= 0; i--) {
     const sibling = doc.content[i]
     if (!sibling) break
+    if (sibling.type !== 'block') break
     if (sibling.attrs?.blockType !== 'numberedListItem') break
     if ((sibling.attrs?.level ?? 1) !== targetLevel) break
     count++

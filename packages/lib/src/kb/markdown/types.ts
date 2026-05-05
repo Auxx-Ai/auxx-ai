@@ -75,9 +75,35 @@ export interface BlockJSON {
   content?: InlineJSON[]
 }
 
+export interface PanelJSON {
+  type: 'panel'
+  attrs: {
+    id: string
+    label: string
+    iconId?: string
+  }
+  content: BlockJSON[]
+}
+
+export interface TabsJSON {
+  type: 'tabs'
+  attrs: { activeTab?: string | null }
+  content: PanelJSON[]
+}
+
+export interface AccordionJSON {
+  type: 'accordion'
+  attrs: { allowMultiple: boolean }
+  content: PanelJSON[]
+}
+
+export type ContainerBlockJSON = TabsJSON | AccordionJSON
+
+export type ArticleNodeJSON = BlockJSON | ContainerBlockJSON
+
 export interface DocJSON {
   type: 'doc'
-  content: BlockJSON[]
+  content: ArticleNodeJSON[]
 }
 
 export const CALLOUT_VARIANTS: ReadonlySet<CalloutVariant> = new Set([
