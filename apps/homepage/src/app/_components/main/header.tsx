@@ -1,19 +1,20 @@
 'use client'
 import {
   BookOpen,
-  Bot,
   Cloud,
   Code,
+  Database,
   GitBranch,
   Headset,
   HelpCircle,
+  Library,
   Menu,
   MessagesSquare,
   Newspaper,
   Plug,
-  Rocket,
   Shield,
   ShoppingBag,
+  Sparkles,
   Users,
   X,
 } from 'lucide-react'
@@ -46,6 +47,11 @@ interface FeatureLink {
   icon: React.ReactElement
 }
 
+interface PlatformGroup {
+  name: string
+  links: FeatureLink[]
+}
+
 interface MobileLink {
   groupName?: string
   links?: FeatureLink[]
@@ -53,26 +59,90 @@ interface MobileLink {
   href?: string
 }
 
-const features: FeatureLink[] = [
+const platformGroups: PlatformGroup[] = [
   {
-    href: '/platform/messaging',
-    name: 'Messaging',
-    description: 'Unified customer communication hub',
-    icon: <MessagesSquare className='stroke-foreground fill-blue-500/15' />,
+    name: 'AI CRM',
+    links: [
+      {
+        href: '/platform/crm',
+        name: 'CRM',
+        description: 'Contacts, companies, and full customer history',
+        icon: <Users className='stroke-foreground fill-green-500/15' />,
+      },
+      {
+        href: '/platform/ai/kopilot',
+        name: 'Kopilot',
+        description: 'Workspace copilot grounded in your data',
+        icon: <Sparkles className='stroke-foreground fill-amber-500/15' />,
+      },
+      {
+        href: '/platform/data-model#knowledge-base',
+        name: 'Knowledge base',
+        description: 'Self-serve articles and AI grounding',
+        icon: <Library className='stroke-foreground fill-yellow-500/15' />,
+      },
+      {
+        href: '/platform/data-model#datasets',
+        name: 'Datasets',
+        description: 'Upload PDFs, docs, and pages for AI to use',
+        icon: <Database className='stroke-foreground fill-cyan-500/15' />,
+      },
+    ],
   },
   {
-    href: '/platform/crm',
-    name: 'CRM',
-    description: 'Complete customer relationship management',
-    icon: <Users className='stroke-foreground fill-green-500/15' />,
+    name: 'Automation',
+    links: [
+      {
+        href: '/platform/workflow',
+        name: 'Workflow',
+        description: 'Automate and streamline processes',
+        icon: <GitBranch className='stroke-foreground fill-purple-500/15' />,
+      },
+      {
+        href: '/platform/integration',
+        name: 'Integration',
+        description: 'Connect all your business tools',
+        icon: <Plug className='stroke-foreground fill-orange-500/15' />,
+      },
+    ],
   },
   {
-    href: '/platform/workflow',
-    name: 'Workflow',
-    description: 'Automate and streamline processes',
-    icon: <GitBranch className='stroke-foreground fill-purple-500/15' />,
+    name: 'Operations',
+    links: [
+      {
+        href: '/platform/ticketing',
+        name: 'Ticketing',
+        description: 'Route, prioritize, and resolve at volume',
+        icon: <Cloud className='stroke-foreground fill-teal-500/15' />,
+      },
+      {
+        href: '/platform/manufacturing',
+        name: 'Manufacturing',
+        description: 'Parts, vendors, and production data',
+        icon: <Shield className='stroke-foreground fill-blue-500/15' />,
+      },
+    ],
+  },
+  {
+    name: 'Communication',
+    links: [
+      {
+        href: '/platform/messaging',
+        name: 'Messaging',
+        description: 'Shared inbox with AI-suggested replies',
+        icon: <MessagesSquare className='stroke-foreground fill-blue-500/15' />,
+      },
+      // {
+      //   href: '/platform/live-chat',
+      //   name: 'Live chat',
+      //   description: 'Real-time chat for your site',
+      //   icon: <Rocket className='stroke-foreground fill-orange-500/15' />,
+      // },
+    ],
   },
 ]
+
+const platformLinks: FeatureLink[] = platformGroups.flatMap((group) => group.links)
 
 const useCases: FeatureLink[] = [
   {
@@ -115,39 +185,6 @@ const getResourceLinks = (docsUrl: string): FeatureLink[] => [
     name: 'Blog',
     href: '/blog',
     icon: <Newspaper className='stroke-foreground fill-rose-500/15' />,
-  },
-]
-
-const moreFeatures: FeatureLink[] = [
-  {
-    href: '/platform/integration',
-    name: 'Integration',
-    description: 'Connect all your business tools',
-    icon: <Plug className='stroke-foreground fill-orange-500/15' />,
-  },
-  // {
-  //   href: '/platform/knowledge-base',
-  //   name: 'Knowledge base',
-  //   description: 'Automate your workflow',
-  //   icon: <Bot className='stroke-foreground fill-yellow-500/15' />,
-  // },
-  // {
-  //   href: '/platform/live-chat',
-  //   name: 'Live chat',
-  //   description: 'Scale your application',
-  //   icon: <Rocket className='stroke-foreground fill-orange-500/15' />,
-  // },
-  {
-    href: '/platform/ticketing',
-    name: 'Ticketing',
-    description: 'Keep your data backed up',
-    icon: <Cloud className='stroke-foreground fill-teal-500/15' />,
-  },
-  {
-    href: '/platform/manufacturing',
-    name: 'Manufacturing',
-    description: 'Keep your data safe and secure',
-    icon: <Shield className='stroke-foreground fill-blue-500/15' />,
   },
 ]
 
@@ -272,7 +309,7 @@ const MobileMenu = ({
   const mobileLinks: MobileLink[] = [
     {
       groupName: 'Platform',
-      links: [...features, ...moreFeatures],
+      links: platformLinks,
     },
     {
       groupName: 'Solutions',
@@ -357,59 +394,59 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
             <Link href='/platform/messaging'>Platform</Link>
           </NavigationMenuTrigger>
           <NavigationMenuContent className='origin-top pb-1.5 pl-1 pr-1.5 pt-1 backdrop-blur'>
-            <div className='min-w-2xl grid w-full grid-cols-3 gap-1'>
+            <div className='min-w-3xl grid w-full grid-cols-[2fr_1fr] gap-1'>
               <div className='bg-card row-span-2 grid grid-rows-subgrid gap-1 rounded-xl border p-1 pt-3'>
-                <span className='text-muted-foreground ml-2 text-xs'>Features</span>
-                <ul>
-                  {features.map((feature, index) => (
-                    <ListItem
-                      key={index}
-                      href={feature.href}
-                      title={feature.name}
-                      description={feature.description}>
-                      {feature.icon}
-                    </ListItem>
-                  ))}
+                <ul className='space-y-1'>
+                  {platformGroups
+                    .filter((group) => group.links.length > 0)
+                    .map((group) => (
+                      <li key={group.name}>
+                        <span className='text-muted-foreground ml-2 text-xs uppercase tracking-wide'>
+                          {group.name}
+                        </span>
+                        <ul className='mt-1 grid grid-cols-2 gap-x-2'>
+                          {group.links.map((feature, index) => (
+                            <ListItem
+                              key={index}
+                              href={feature.href}
+                              title={feature.name}
+                              description={feature.description}>
+                              {feature.icon}
+                            </ListItem>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
                 </ul>
               </div>
-              <div className='bg-card col-span-1 row-span-2 grid grid-rows-subgrid gap-1 rounded-xl border p-1 pt-3'>
-                <span className='text-muted-foreground ml-2 text-xs'>More Features</span>
-                <ul className='grid grid-cols-1'>
-                  {moreFeatures.map((feature, index) => (
-                    <ListItem
-                      key={index}
-                      href={feature.href}
-                      title={feature.name}
-                      description={feature.description}>
-                      {feature.icon}
-                    </ListItem>
-                  ))}
-                </ul>
-              </div>
-              <div className='row-span-2 grid grid-rows-subgrid'>
-                <div className='bg-linear-to-b inset-ring-foreground/10 inset-ring-1 relative row-span-2 grid overflow-hidden rounded-xl bg-emerald-100 dark:bg-emerald-500/10 from-white dark:from-background via-white/50 dark:via-background/50 to-sky-100 dark:to-sky-500/10 p-1 transition-colors duration-200 hover:bg-emerald-50 dark:hover:bg-emerald-500/15'>
-                  <div className='aspect-3/2 absolute inset-0 px-6 pt-2'>
-                    <div className='mask-b-from-35% before:bg-background before:ring-foreground/10 after:ring-foreground/5 after:bg-background/75 before:z-1 group relative -mx-4 h-4/5 px-4 pt-6 before:absolute before:inset-x-6 before:bottom-0 before:top-4 before:rounded-t-xl before:border before:border-transparent before:ring-1 after:absolute after:inset-x-9 after:bottom-0 after:top-2 after:rounded-t-xl after:border after:border-transparent after:ring-1'>
-                      <div className='bg-card ring-foreground/10 relative z-10 h-full overflow-hidden rounded-t-xl border border-transparent shadow-xl shadow-black/25 ring-1'>
-                        <img
-                          src='/images/platform/messaging/mail-view-dark.png'
-                          alt='AI-powered support'
-                          className='size-full scale-150 object-cover object-top-left'
-                        />
+              <div className='flex flex-col gap-1'>
+                {[0, 1].map((i) => (
+                  <div
+                    key={i}
+                    className='bg-linear-to-b inset-ring-foreground/10 inset-ring-1 relative grid flex-1 overflow-hidden rounded-xl bg-emerald-100 dark:bg-emerald-500/10 from-white dark:from-background via-white/50 dark:via-background/50 to-sky-100 dark:to-sky-500/10 p-1 transition-colors duration-200 hover:bg-emerald-50 dark:hover:bg-emerald-500/15'>
+                    <div className='aspect-3/2 absolute inset-0 px-6 pt-2'>
+                      <div className='mask-b-from-35% before:bg-background before:ring-foreground/10 after:ring-foreground/5 after:bg-background/75 before:z-1 group relative -mx-4 h-4/5 px-4 pt-6 before:absolute before:inset-x-6 before:bottom-0 before:top-4 before:rounded-t-xl before:border before:border-transparent before:ring-1 after:absolute after:inset-x-9 after:bottom-0 after:top-2 after:rounded-t-xl after:border after:border-transparent after:ring-1'>
+                        <div className='bg-card ring-foreground/10 relative z-10 h-full overflow-hidden rounded-t-xl border border-transparent shadow-xl shadow-black/25 ring-1'>
+                          <img
+                            src='/images/platform/messaging/mail-view-dark.png'
+                            alt='AI-powered support'
+                            className='size-full scale-150 object-cover object-top-left'
+                          />
+                        </div>
                       </div>
                     </div>
+                    <div className='space-y-0.5 self-end p-3'>
+                      <NavigationMenuLink
+                        asChild
+                        className='text-foreground p-0 text-sm font-medium before:absolute before:inset-0 hover:bg-transparent focus:bg-transparent'>
+                        <Link href='/platform/messaging'>AI-Powered Support</Link>
+                      </NavigationMenuLink>
+                      <p className='text-foreground/60 line-clamp-1 text-xs'>
+                        Resolve customer tickets instantly with AI that understands your business.
+                      </p>
+                    </div>
                   </div>
-                  <div className='space-y-0.5 self-end p-3'>
-                    <NavigationMenuLink
-                      asChild
-                      className='text-foreground p-0 text-sm font-medium before:absolute before:inset-0 hover:bg-transparent focus:bg-transparent'>
-                      <Link href='/platform/messaging'>AI-Powered Support</Link>
-                    </NavigationMenuLink>
-                    <p className='text-foreground/60 line-clamp-1 text-xs'>
-                      Resolve customer tickets instantly with AI that understands your business.
-                    </p>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </NavigationMenuContent>
