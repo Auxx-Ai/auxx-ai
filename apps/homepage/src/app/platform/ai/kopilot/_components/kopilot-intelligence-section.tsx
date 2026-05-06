@@ -3,7 +3,6 @@
 import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
 import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import { Check, FileText, Lock, ShieldCheck } from 'lucide-react'
-import { MockAppSidebar, MockBrowserChrome, MockKopilotWindow, MockMainPage } from '../../_mocks'
 
 const sources = [
   { source: 'Ticket #4521', detail: 'Refund requested · 2d ago' },
@@ -14,51 +13,17 @@ const sources = [
 
 const suggestions = [
   { entity: 'Drew Houston', field: 'Update role', value: 'Head of IT' },
-  { entity: 'Greenleaf', field: 'Funding raised', value: '$100M – $250M' },
+  { entity: 'Ridgeline', field: 'Funding raised', value: '$100M – $250M' },
   { entity: 'Order #4521', field: 'Update next step', value: 'Send tracking number' },
-]
-
-const intelligenceTurns = [
-  { kind: 'user' as const, text: 'Summarize my open tickets' },
-  {
-    kind: 'tool' as const,
-    title: 'Tickets',
-    count: 8,
-    headerLabel: '3 steps completed',
-    items: [
-      { code: 'RF', title: 'Request for information', subtitle: 'TKT-0003' },
-      { code: 'GI', title: 'General inquiry about services', subtitle: 'TKT-0001' },
-      { code: 'CI', title: 'Can I change my shipping address?', subtitle: 'TKT-0006' },
-      { code: 'RP', title: 'Replace phone for Carolin Klooth', subtitle: 'TKT-0008' },
-      { code: 'CI', title: 'Can I change my shipping address?', subtitle: 'TKT-0007' },
-    ],
-  },
 ]
 
 export default function KopilotIntelligenceSection() {
   return (
     <section className='relative bg-background border-b border-foreground/10'>
-      <div className='mx-auto max-w-6xl px-6 pt-24 pb-12'>
+      <div className='mx-auto max-w-6xl px-6 pt-24'>
         <h2 className='mx-auto max-w-3xl text-balance text-center text-4xl font-semibold md:text-5xl'>
           Intelligence built for how you work and what you do.
         </h2>
-
-        <div className='mt-16'>
-          <MockBrowserChrome variant='compact'>
-            <div className='grid grid-cols-[220px_1fr] min-h-[560px]'>
-              <MockAppSidebar activeKey='kopilot' />
-              <MockMainPage>
-                <MockKopilotWindow
-                  breadcrumb={{ trail: ['Chats'], title: 'Open Support Tickets Summary' }}
-                  turns={intelligenceTurns}
-                  composerPlaceholder='Ask Kopilot...'
-                  modelLabel='GPT-5.4 Nano'
-                  status='idle'
-                />
-              </MockMainPage>
-            </div>
-          </MockBrowserChrome>
-        </div>
       </div>
 
       <div className='relative z-10 mx-auto max-w-6xl '>

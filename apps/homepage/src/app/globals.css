@@ -106,6 +106,7 @@
   --animate-fade-in: fade-in 0.2s ease-out;
   --animate-fade-out: fade-out 0.2s ease-in;
   --animate-dot-blink: dot-blink 1.4s infinite both;
+  --animate-sparkle-float: sparkle-float 2s ease-in-out infinite;
 
   @keyframes accordion-down {
     from {
@@ -275,6 +276,16 @@
     }
     40% {
       opacity: 1;
+    }
+  }
+
+  @keyframes sparkle-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-2px);
     }
   }
 }
