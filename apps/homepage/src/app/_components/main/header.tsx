@@ -219,7 +219,7 @@ export default function Header() {
       data-state={isMobileMenuOpen ? 'active' : 'inactive'}
       {...(isScrolled && { 'data-scrolled': true })}
       className='[--color-popover:color-mix(in_oklch,var(--color-muted)_25%,var(--color-background))]'>
-      <div className='h-18 fixed absolute left-0 right-[10px] z-50 '>
+      <div className='h-18 fixed absolute left-0 right-[10px] z-50 pointer-events-none'>
         <div
           aria-hidden='true'
           className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
@@ -387,7 +387,10 @@ const MobileMenu = ({
 const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
   const resourceLinks = getResourceLinks(docsUrl)
   return (
-    <NavigationMenu className='**:data-[slot=navigation-menu-viewport]:bg-[color-mix(in_oklch,var(--color-muted)_25%,var(--color-background))] **:data-[slot=navigation-menu-viewport]:shadow-lg **:data-[slot=navigation-menu-viewport]:rounded-2xl **:data-[slot=navigation-menu-viewport]:top-4 [--color-muted:color-mix(in_oklch,var(--color-foreground)_5%,transparent)]  max-lg:hidden'>
+    <NavigationMenu
+      delayDuration={150}
+      skipDelayDuration={500}
+      className='**:data-[slot=navigation-menu-viewport]:bg-[color-mix(in_oklch,var(--color-muted)_25%,var(--color-background))] **:data-[slot=navigation-menu-viewport]:shadow-lg **:data-[slot=navigation-menu-viewport]:rounded-2xl **:data-[slot=navigation-menu-viewport]:top-4 [--color-muted:color-mix(in_oklch,var(--color-foreground)_5%,transparent)]  max-lg:hidden'>
       <NavigationMenuList className=''>
         <NavigationMenuItem value='product'>
           <NavigationMenuTrigger>
@@ -420,33 +423,23 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
                 </ul>
               </div>
               <div className='flex flex-col gap-1'>
-                {[0, 1].map((i) => (
-                  <div
-                    key={i}
-                    className='bg-linear-to-b inset-ring-foreground/10 inset-ring-1 relative grid flex-1 overflow-hidden rounded-xl bg-emerald-100 dark:bg-emerald-500/10 from-white dark:from-background via-white/50 dark:via-background/50 to-sky-100 dark:to-sky-500/10 p-1 transition-colors duration-200 hover:bg-emerald-50 dark:hover:bg-emerald-500/15'>
-                    <div className='aspect-3/2 absolute inset-0 px-6 pt-2'>
-                      <div className='mask-b-from-35% before:bg-background before:ring-foreground/10 after:ring-foreground/5 after:bg-background/75 before:z-1 group relative -mx-4 h-4/5 px-4 pt-6 before:absolute before:inset-x-6 before:bottom-0 before:top-4 before:rounded-t-xl before:border before:border-transparent before:ring-1 after:absolute after:inset-x-9 after:bottom-0 after:top-2 after:rounded-t-xl after:border after:border-transparent after:ring-1'>
-                        <div className='bg-card ring-foreground/10 relative z-10 h-full overflow-hidden rounded-t-xl border border-transparent shadow-xl shadow-black/25 ring-1'>
-                          <img
-                            src='/images/platform/messaging/mail-view-dark.png'
-                            alt='AI-powered support'
-                            className='size-full scale-150 object-cover object-top-left'
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className='space-y-0.5 self-end p-3'>
-                      <NavigationMenuLink
-                        asChild
-                        className='text-foreground p-0 text-sm font-medium before:absolute before:inset-0 hover:bg-transparent focus:bg-transparent'>
-                        <Link href='/platform/messaging'>AI-Powered Support</Link>
-                      </NavigationMenuLink>
-                      <p className='text-foreground/60 line-clamp-1 text-xs'>
-                        Resolve customer tickets instantly with AI that understands your business.
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                <PlatformFeatureCard
+                  href='/platform/messaging'
+                  title='AI-Powered Support'
+                  description='Resolve customer tickets instantly with AI that understands your business.'
+                  imageSrc='/images/platform/messaging/mail-view-dark.png'
+                  imageAlt='AI-powered support'
+                  tone='emerald'
+                />
+                <PlatformFeatureCard
+                  href='/platform/ai/kopilot'
+                  title='Workspace Kopilot'
+                  description='Search, update, and create across your data with AI.'
+                  imageSrc='/images/platform/messaging/mail-view-dark.png'
+                  imageAlt='Workspace Kopilot'
+                  tone='purple'
+                  noBottomPad
+                />
               </div>
             </div>
           </NavigationMenuContent>
@@ -597,6 +590,62 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
 //     </NavigationMenu>
 //   )
 // }
+
+function PlatformFeatureCard({
+  href,
+  title,
+  description,
+  imageSrc,
+  imageAlt,
+  tone,
+  noBottomPad,
+}: {
+  href: string
+  title: string
+  description: string
+  imageSrc: string
+  imageAlt: string
+  tone: 'emerald' | 'purple'
+  noBottomPad?: boolean
+}) {
+  const toneClasses =
+    tone === 'emerald'
+      ? 'bg-emerald-100 dark:bg-emerald-500/10 to-sky-100 dark:to-sky-500/10 hover:bg-emerald-50 dark:hover:bg-emerald-500/15'
+      : 'bg-purple-100 dark:bg-purple-500/10 to-fuchsia-100 dark:to-fuchsia-500/10 hover:bg-purple-50 dark:hover:bg-purple-500/15'
+
+  return (
+    <div
+      className={cn(
+        'bg-linear-to-b inset-ring-foreground/10 inset-ring-1 from-white dark:from-background via-white/50 dark:via-background/50 relative grid flex-1 overflow-hidden rounded-xl transition-colors duration-200',
+        toneClasses,
+        noBottomPad ? 'px-1 pt-1' : 'p-1'
+      )}>
+      <div className='aspect-3/2 absolute inset-0 px-6 pt-2'>
+        <div
+          className={cn(
+            'mask-b-from-35% before:bg-background before:ring-foreground/10 after:ring-foreground/5 after:bg-background/75 before:z-1 group relative -mx-4 px-4 pt-6 before:absolute before:inset-x-6 before:bottom-0 before:top-4 before:rounded-t-xl before:border before:border-transparent before:ring-1 after:absolute after:inset-x-9 after:bottom-0 after:top-2 after:rounded-t-xl after:border after:border-transparent after:ring-1',
+            noBottomPad ? 'h-full' : 'h-4/5'
+          )}>
+          <div className='bg-card ring-foreground/10 relative z-10 h-full overflow-hidden rounded-t-xl border border-transparent shadow-xl shadow-black/25 ring-1'>
+            <img
+              src={imageSrc}
+              alt={imageAlt}
+              className='size-full scale-150 object-cover object-top-left'
+            />
+          </div>
+        </div>
+      </div>
+      <div className='space-y-0.5 self-end p-3'>
+        <NavigationMenuLink
+          asChild
+          className='text-foreground p-0 text-sm font-medium before:absolute before:inset-0 hover:bg-transparent focus:bg-transparent'>
+          <Link href={href}>{title}</Link>
+        </NavigationMenuLink>
+        <p className='text-foreground/60 line-clamp-1 text-xs'>{description}</p>
+      </div>
+    </div>
+  )
+}
 
 function ListItem({
   title,

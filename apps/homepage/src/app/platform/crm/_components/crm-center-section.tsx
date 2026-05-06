@@ -1,7 +1,6 @@
 // apps/homepage/src/app/platform/crm/_components/crm-center-section.tsx
-import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
-import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import Image from 'next/image'
+import { ShaderGradientBg } from '~/app/_components/shader-gradient-bg'
 
 /**
  * CrmCenterSection component displays the CRM custom fields interface
@@ -10,7 +9,7 @@ import Image from 'next/image'
 export default function CrmCenterSection() {
   return (
     <section className='relative overflow-hidden bg-background border-foreground/10 border-b'>
-      <RandomGradient colors={[...GRADIENT_PALETTES.ocean]} mode='mesh' animated />
+      <ShaderGradientBg preset='hero' palette='ocean' uniforms={{ timeSpeed: 0.7 }} />
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3 bg-background/20'>
         <div className='border-x bg-background/20'>
           <div className='bg-muted/25 py-16 md:py-24'>

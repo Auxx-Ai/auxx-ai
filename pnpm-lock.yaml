@@ -681,6 +681,9 @@ importers:
       next-themes:
         specifier: ^0.4.4
         version: 0.4.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      ogl:
+        specifier: 'catalog:'
+        version: 1.0.11
       posthog-js:
         specifier: 'catalog:'
         version: 1.369.0

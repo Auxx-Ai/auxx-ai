@@ -62,13 +62,18 @@ function NavigationMenuTrigger({
   return (
     <NavigationMenuPrimitive.Trigger
       data-slot='navigation-menu-trigger'
-      className={cn(navigationMenuTriggerStyle(), 'group', className)}
+      className={cn(navigationMenuTriggerStyle(), 'group relative', className)}
       {...props}>
       {children}{' '}
       <ChevronDownIcon
         className='relative top-[1px] ml-1.5 size-3 opacity-75 transition duration-300 group-data-[state=open]:translate-y-px'
         aria-hidden='true'
         strokeWidth={2.5}
+      />
+      <span
+        aria-hidden='true'
+        data-slot='navigation-menu-trigger-bridge'
+        className='pointer-events-auto absolute inset-x-0 top-full h-4'
       />
     </NavigationMenuPrimitive.Trigger>
   )
@@ -100,12 +105,12 @@ function NavigationMenuViewport({
     <div
       data-slot='navigation-menu-viewport-parent'
       className={cn(
-        'px-(--viewport-outer-px) fixed inset-x-0 top-12 isolate z-50 mx-auto flex justify-center max-w-6xl in-data-scrolled:max-w-4xl transition-[max-width] duration-500 ease-in-out'
+        'pointer-events-none px-(--viewport-outer-px) fixed inset-x-0 top-12 isolate z-50 mx-auto flex justify-center max-w-6xl in-data-scrolled:max-w-4xl transition-[max-width] duration-500 ease-in-out'
       )}>
       <NavigationMenuPrimitive.Viewport
         data-slot='navigation-menu-viewport'
         className={cn(
-          'bg-popover text-popover-foreground h-(--radix-navigation-menu-viewport-height) ring-foreground/10 rounded-(--radius) md:w-(--radix-navigation-menu-viewport-width) relative mt-1.5 w-full origin-top overflow-hidden border border-transparent p-0.5 shadow-xl shadow-black/10 ring-1 transition-[width,height] duration-200',
+          'pointer-events-auto bg-popover text-popover-foreground h-(--radix-navigation-menu-viewport-height) ring-foreground/10 rounded-(--radius) md:w-(--radix-navigation-menu-viewport-width) relative mt-1.5 w-full origin-top overflow-hidden border border-transparent p-0.5 shadow-xl shadow-black/10 ring-1 transition-[width,height] duration-200',
           'data-[state=closed]:animate-scale-out data-[state=open]:animate-scale-in',
           className
         )}

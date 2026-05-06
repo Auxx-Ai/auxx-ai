@@ -2,6 +2,8 @@
 
 import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
 import { RandomGradient } from '@auxx/ui/components/random-gradient'
+import { SectionBottomFade } from '~/app/_components/main/section-bottom-fade'
+import { SectionTopFade } from '~/app/_components/main/section-top-fade'
 import { AutoplayVideo } from '~/components/autoplay-video'
 import { videoUrl } from '~/lib/cdn'
 
@@ -11,8 +13,10 @@ import { videoUrl } from '~/lib/cdn'
  */
 export default function TicketCenterSection() {
   return (
-    <section className='relative overflow-hidden bg-background border-foreground/10 border-b'>
+    <section className='relative overflow-hidden bg-background '>
       <RandomGradient colors={[...GRADIENT_PALETTES.ocean]} mode='mesh' animated />
+      <SectionTopFade fromColor='var(--color-muted)' />
+      <SectionBottomFade toColor='color-mix(in oklab, var(--color-muted), var(--color-background))' />
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3 bg-background/20'>
         <div className='border-x bg-background/20'>
           <div className='bg-muted/25 py-16 md:py-24'>

@@ -9,7 +9,7 @@ import { KOPILOT_HERO_SCRIPT } from './kopilot-hero-script'
 
 export default function KopilotHero() {
   return (
-    <section className='relative overflow-hidden border-b bg-background'>
+    <section className='relative overflow-hidden border-b bg-muted/50'>
       <div
         aria-hidden
         className='pointer-events-none absolute inset-x-0 top-0 -z-10 h-[600px] bg-[radial-gradient(ellipse_at_top,_var(--color-primary)/10,_transparent_60%)]'
@@ -21,14 +21,23 @@ export default function KopilotHero() {
         </div>
 
         <h1 className='mt-6 text-balance text-5xl font-semibold tracking-tight md:text-7xl'>
-          Ask Kopilot.
+          <span className='bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text italic text-transparent'>
+            Ask
+          </span>{' '}
+          Kopilot.
         </h1>
-        <p className='mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground'>
-          Search, update, and create with AI.
-        </p>
-        <p className='mx-auto mt-2 max-w-xl text-balance text-sm text-muted-foreground/75'>
-          Engineered for support. Unified by design. Powered by your data.
-        </p>
+        <div className='relative'>
+          <div
+            aria-hidden='true'
+            className='pointer-events-none absolute inset-x-0 -top-8 mx-auto h-40 max-w-2xl rounded-full bg-gradient-to-b from-blue-500/10 via-purple-500/10 to-pink-500/10 blur-3xl'
+          />
+          <p className='relative mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground'>
+            Search, update, and create with AI.
+          </p>
+          <p className='relative mx-auto mt-2 max-w-xl text-balance text-sm text-muted-foreground/75'>
+            Engineered for support. Unified by design. Powered by your data.
+          </p>
+        </div>
 
         <div className='mt-8 flex flex-wrap items-center justify-center gap-3'>
           <Button asChild size='sm'>

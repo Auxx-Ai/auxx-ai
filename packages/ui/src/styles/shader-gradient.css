@@ -1,0 +1,29 @@
+/* packages/ui/src/styles/shader-gradient.css
+ * Styles for <ShaderGradient />. Ships with the component.
+ *
+ * The wrapper renders during SSR with a CSS linear-gradient as background,
+ * which is also the no-WebGL / reduced-motion fallback. The canvas is mounted
+ * client-side and fades in over 250ms once it has its first frame.
+ */
+
+.shader-gradient {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.shader-gradient__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+  transition: opacity 250ms ease-out;
+  pointer-events: none;
+}
+
+.shader-gradient__canvas--ready {
+  opacity: 1;
+}

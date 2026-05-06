@@ -1,13 +1,14 @@
-import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
-import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import type * as React from 'react'
+import { SectionTopFade } from '~/app/_components/main/section-top-fade'
+import { ShaderGradientBg } from '~/app/_components/shader-gradient-bg'
 import { ChatWidget, Facebook, Gmail, Instagram, OpenPhone, Outlook } from '~/components/logos'
 import { Card } from '~/components/ui/card'
 
 export default function ProviderIntegrationsSection() {
   return (
     <section className='relative overflow-hidden border-foreground/10 border-b'>
-      <RandomGradient colors={[...GRADIENT_PALETTES.ocean]} mode='mesh' />
+      <ShaderGradientBg preset='hero' palette='ocean' uniforms={{ timeSpeed: 0.7 }} />
+      <SectionTopFade fromColor='var(--color-muted)' />
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
         <div className='border-x'>
           <div className='bg-muted/50 py-24'>
