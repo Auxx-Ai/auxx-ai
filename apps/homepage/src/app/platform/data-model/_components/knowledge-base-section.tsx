@@ -1,39 +1,15 @@
 // apps/homepage/src/app/platform/data-model/_components/knowledge-base-section.tsx
 
 import { CalendarClock, FileText, Link2, Rows3, SquareDashedKanban, Table } from 'lucide-react'
-import Image from 'next/image'
+import { KbSurfacesCarousel } from './kb-surfaces-carousel'
 
-const richBlocks = [
-  {
-    name: 'Tables',
-    description: 'Structured data with sortable rows and headers.',
-    icon: Table,
-  },
-  {
-    name: 'Tabs & accordion',
-    description: 'Group related content without scrolling.',
-    icon: Rows3,
-  },
-  {
-    name: 'Cards',
-    description: 'Visual layouts for grouped articles or topics.',
-    icon: SquareDashedKanban,
-  },
-  {
-    name: 'Internal links',
-    description: 'auxx:// references resolve to the right article.',
-    icon: Link2,
-  },
-  {
-    name: 'Version history',
-    description: 'Preview any earlier draft and restore in one click.',
-    icon: CalendarClock,
-  },
-  {
-    name: 'Markdown round-trip',
-    description: 'Import or export — your KB stays portable.',
-    icon: FileText,
-  },
+const editorBlocks = [
+  { name: 'Tables', icon: Table },
+  { name: 'Tabs & accordion', icon: Rows3 },
+  { name: 'Cards', icon: SquareDashedKanban },
+  { name: 'Internal links', icon: Link2 },
+  { name: 'Version history', icon: CalendarClock },
+  { name: 'Markdown round-trip', icon: FileText },
 ]
 
 export default function KnowledgeBaseSection() {
@@ -59,16 +35,6 @@ export default function KnowledgeBaseSection() {
                 Write articles your way. Publish them everywhere.
               </h2>
 
-              <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
-                <Image
-                  src='/images/platform/knowledge-base/kb-editor.png'
-                  width={2652}
-                  height={1938}
-                  alt='Knowledge base editor with rich block content'
-                  className='h-full w-full object-cover'
-                />
-              </div>
-
               <div className='grid gap-6 md:grid-cols-2 md:gap-12'>
                 <p className='text-muted-foreground'>
                   Build a fully{' '}
@@ -86,20 +52,26 @@ export default function KnowledgeBaseSection() {
                   hallucinated answers.
                 </p>
               </div>
+            </div>
 
-              <ul className='grid gap-3 sm:grid-cols-2 md:grid-cols-3'>
-                {richBlocks.map((block) => (
-                  <li
-                    key={block.name}
-                    className='border-foreground/5 bg-background flex gap-3 rounded-lg border p-4'>
-                    <block.icon className='text-foreground/70 mt-0.5 size-4 shrink-0' />
-                    <div>
-                      <div className='text-foreground text-sm font-medium'>{block.name}</div>
-                      <p className='text-muted-foreground mt-0.5 text-xs'>{block.description}</p>
-                    </div>
-                  </li>
+            <div className='mt-12 md:mt-16'>
+              <KbSurfacesCarousel />
+            </div>
+
+            <div className='mx-auto mt-10 max-w-4xl px-6 md:mt-12'>
+              <div className='border-foreground/5 flex flex-wrap items-center gap-2 border-t pt-6'>
+                <span className='text-muted-foreground mr-1 text-xs uppercase tracking-wide'>
+                  Editor supports
+                </span>
+                {editorBlocks.map((b) => (
+                  <span
+                    key={b.name}
+                    className='border-foreground/10 text-foreground/80 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs'>
+                    <b.icon className='size-3.5' />
+                    {b.name}
+                  </span>
                 ))}
-              </ul>
+              </div>
             </div>
           </div>
         </div>
