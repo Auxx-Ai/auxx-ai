@@ -62,8 +62,8 @@ export default function KnowledgeBaseSection() {
               <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
                 <Image
                   src='/images/platform/knowledge-base/kb-editor.png'
-                  width={3070}
-                  height={1994}
+                  width={2652}
+                  height={1938}
                   alt='Knowledge base editor with rich block content'
                   className='h-full w-full object-cover'
                 />

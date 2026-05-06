@@ -20,6 +20,8 @@ export const GRADIENT_PALETTES = {
   twilight: ['#2d3f5e', '#7a95b8', '#f29070', '#f5b5b0'],
   openai: ['#5135FF', '#FF5828', '#F69CFF', '#FFA50F'],
   orchid: ['#FE69B7', '#BC0A6F', '#E6E6FA', '#6495ED'],
+  midnight: ['#020617', '#0f0c2e', '#2d0d4d', '#082f44'],
+  obsidian: ['#0a0a0a', '#171717', '#262626', '#363636'],
 } as const satisfies Record<string, readonly string[]>
 
 export type GradientPaletteName = keyof typeof GRADIENT_PALETTES
@@ -43,6 +45,8 @@ export const GRADIENT_PALETTE_MODES: Record<GradientPaletteName, GradientPalette
   twilight: 'dark',
   openai: 'dark',
   orchid: 'light',
+  midnight: 'dark',
+  obsidian: 'dark',
 }
 
 /**
