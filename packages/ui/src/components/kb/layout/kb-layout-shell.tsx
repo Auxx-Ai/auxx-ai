@@ -148,6 +148,7 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
         setMobileOpen,
         searchOpen,
         setSearchOpen,
+        mainScroll,
       }}>
       <KBHeader
         kbId={kbId}
@@ -201,7 +202,7 @@ export function KBLayoutShell<T extends KBSidebarArticle>({
         />
         <main
           className={cn(
-            'flex min-w-0 flex-1 flex-col px-4 py-8 @kb-md:px-8',
+            'flex min-w-0 flex-1 flex-col px-4 pt-4 md:pt-8 pb-8 @kb-md:px-8',
             mainScroll && 'min-h-0 overflow-y-auto'
           )}>
           {children}

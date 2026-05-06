@@ -21,7 +21,7 @@ import type {
   TabsJSON,
 } from './types'
 
-interface KBArticleRendererProps {
+export interface KBArticleRendererProps {
   doc: DocJSON | null | undefined
   /** Optional title rendered as <h1>; the doc's heading levels start at <h2>. */
   title?: string
@@ -37,6 +37,13 @@ interface KBArticleRendererProps {
    * (`@auxx/lib/kb/markdown`) lives outside the UI package's dep tier.
    */
   copyMenu?: ReactNode
+  /**
+   * Slot for the desktop "show TOC" toggle button. Rendered to the right of
+   * the mobile drawer trigger. Apps using `KBArticleWithToc` pass a
+   * visibility-managed button here so the layout stays stable when the
+   * rail is collapsed.
+   */
+  tocToggle?: ReactNode
   /** Override how `auxx://kb/article/{id}` link/card hrefs are emitted.
    * Defaults to `/r/{id}` — public KB hosts a redirect handler at that
    * path. Preview/embed contexts override to nest under their URL prefix. */
@@ -51,6 +58,7 @@ export function KBArticleRenderer({
   updatedAt,
   parent,
   copyMenu,
+  tocToggle,
   resolveAuxxHref,
 }: KBArticleRendererProps) {
   const headings = doc ? extractKBHeadings(doc) : []
@@ -77,7 +85,7 @@ export function KBArticleRenderer({
             ) : null}
             {title ? (
               <h1 className={styles.h1}>
-                <span className='inline-flex flex-row items-center gap-3'>
+                <span className='inline-flex flex-row items-center'>
                   {emoji ? <EntityIcon iconId={emoji} variant='bare' size='xl' /> : null}
                   <span>{title}</span>
                 </span>
@@ -89,8 +97,9 @@ export function KBArticleRenderer({
             ) : null}
           </div>
           <div className='flex items-center gap-2'>
-            <KBTableOfContentsDrawer headings={headings} className='@kb-lg:hidden' />
             {copyMenu}
+            <KBTableOfContentsDrawer headings={headings} className='@kb-lg:hidden' />
+            {tocToggle}
           </div>
         </header>
       ) : null}
@@ -205,7 +214,7 @@ function buildHeadingIdMap(doc: DocJSON, headings: KBHeading[]): Record<number, 
     if (node.type !== 'block') return
     if (node.attrs?.blockType !== 'heading') return
     const level = node.attrs?.level ?? 1
-    if (level !== 1 && level !== 2) return
+    if (level !== 1 && level !== 2 && level !== 3) return
     const heading = headings[cursor]
     if (heading) map[idx] = heading.id
     cursor++

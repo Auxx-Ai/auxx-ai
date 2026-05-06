@@ -158,7 +158,7 @@ function LandingBody({
           />
         </div>
       </div>
-      <div className='mt-auto w-full max-w-3xl px-6'>
+      <div className='mt-auto w-full max-w-3xl ps-6'>
         <KBArticlePager articles={articles} prev={undefined} next={undefined} basePath={basePath} />
       </div>
     </div>
