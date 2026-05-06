@@ -288,6 +288,43 @@
       transform: translateY(-2px);
     }
   }
+
+  @keyframes breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.06);
+    }
+  }
+
+  @keyframes scroll-code {
+    0% {
+      transform: translateY(0);
+    }
+    100% {
+      transform: translateY(-50%);
+    }
+  }
+
+  @keyframes spin-slow {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes visor-wipe {
+    0% {
+      mask-position: 200% 0;
+    }
+    100% {
+      mask-position: -250% 0;
+    }
+  }
 }
 
 @layer base {
