@@ -1,7 +1,8 @@
-// apps/web/src/app/(website)/platform/messaging/_components/messaging-hero.tsx
+// apps/homepage/src/app/platform/messaging/_components/messaging-hero.tsx
 'use client'
 import { MessagesSquare } from 'lucide-react'
 import { motion } from 'motion/react'
+import { ShaderGradientBg } from '~/app/_components/shader-gradient-bg'
 import { ImageIllustration } from './image-illustration'
 
 const AnimatedGroup = ({ children, variants }: { children: React.ReactNode; variants: any }) => {
@@ -20,8 +21,9 @@ export default function MessagingHero() {
           initial={{ opacity: 0, y: -72, filter: 'blur(12px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 2, ease: 'easeInOut' }}
-          className='absolute inset-0 bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-transparent'
-        />
+          className='absolute inset-0'>
+          <ShaderGradientBg preset='hero' palette='midnight' uniforms={{ timeSpeed: 0.7 }} />
+        </motion.div>
 
         <div className='perspective-dramatic pb-20 pt-24 md:pt-32 lg:py-44'>
           <div className='relative z-10 mx-auto max-w-5xl px-6 text-center'>
