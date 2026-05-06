@@ -292,10 +292,16 @@ export class OverageDetectionService {
       }
 
       case FeatureKey.datasetsLimit: {
+        // Exclude managed datasets (e.g. KB-synced private datasets) — they don't count toward plan limits.
         const [result] = await this.db
           .select({ value: count() })
           .from(schema.Dataset)
-          .where(eq(schema.Dataset.organizationId, organizationId))
+          .where(
+            and(
+              eq(schema.Dataset.organizationId, organizationId),
+              eq(schema.Dataset.isManaged, false)
+            )
+          )
         return result?.value ?? 0
       }
 

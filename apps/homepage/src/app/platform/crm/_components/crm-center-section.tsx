@@ -1,6 +1,8 @@
 // apps/homepage/src/app/platform/crm/_components/crm-center-section.tsx
-import Image from 'next/image'
+import { SectionTopFade } from '~/app/_components/main/section-top-fade'
 import { ShaderGradientBg } from '~/app/_components/shader-gradient-bg'
+import { AutoplayVideo } from '~/components/autoplay-video'
+import { videoUrl } from '~/lib/cdn'
 
 /**
  * CrmCenterSection component displays the CRM custom fields interface
@@ -10,6 +12,7 @@ export default function CrmCenterSection() {
   return (
     <section className='relative overflow-hidden bg-background border-foreground/10 border-b'>
       <ShaderGradientBg preset='hero' palette='ocean' uniforms={{ timeSpeed: 0.7 }} />
+      <SectionTopFade fromColor='color-mix(in oklab, var(--color-muted) 30%, var(--color-background))' />
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3 bg-background/20'>
         <div className='border-x bg-background/20'>
           <div className='bg-muted/25 py-16 md:py-24'>
@@ -19,12 +22,12 @@ export default function CrmCenterSection() {
                 <strong className='text-foreground font-semibold'>flexible custom fields</strong>
               </h2>
               <div className='bg-background ring-foreground/5 overflow-hidden rounded-xl border border-transparent shadow ring-1'>
-                <Image
-                  src='/images/platform/crm/crm-custom-fields.png'
-                  width={2362}
-                  height={1998}
-                  alt='CRM custom fields interface showing field configuration'
+                <AutoplayVideo
+                  autoPlay
+                  loop
+                  muted
                   className='h-full w-full object-cover'
+                  src={videoUrl('crm-magic-fields.mp4')}
                 />
               </div>
               <div className='grid gap-6 md:grid-cols-2 md:gap-12'>

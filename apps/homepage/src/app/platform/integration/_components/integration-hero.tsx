@@ -7,7 +7,7 @@ import { IntegrationsIllustration } from './integrations-illustration'
 
 export default function IntegrationHero() {
   return (
-    <section className='bg-muted border-b'>
+    <section className='bg-muted '>
       <div className='pt-32 pb-24 md:pt-40 lg:pt-48'>
         <div className='mx-auto max-w-5xl px-6'>
           <IntegrationsIllustration />

@@ -281,7 +281,7 @@ export default function HowItWorksSection() {
   ]
 
   return (
-    <section className='relative border-foreground/10 border-b bg-muted/30'>
+    <section className='relative border-foreground/10 bg-muted/30'>
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
         <div className='border-x'>
           <div

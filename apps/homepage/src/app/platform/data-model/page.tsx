@@ -8,6 +8,7 @@ import { FinalCtaSection } from '../_components/final-cta-section'
 import DataModelWallHero from './_components/data-model-wall-hero'
 import DatasetsSection from './_components/datasets-section'
 import HowAiUsesBothSection from './_components/how-ai-uses-both-section'
+import KbEditorSection from './_components/kb-editor-section'
 import KnowledgeBaseSection from './_components/knowledge-base-section'
 
 export const metadata: Metadata = {
@@ -27,8 +28,9 @@ export default function DataModelPage() {
       />
       <Header />
       <main>
-        <DataModelWallHero />
+        <DataModelWallHero bottomFadeColor='var(--color-background)' />
         <KnowledgeBaseSection />
+        <KbEditorSection />
         <DatasetsSection />
         <HowAiUsesBothSection />
         <FinalCtaSection />

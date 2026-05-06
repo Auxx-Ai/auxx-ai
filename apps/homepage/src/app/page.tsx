@@ -11,7 +11,7 @@ import StatsSection from './_components/sections/stats-section'
 import TestimonialsSection from './_components/sections/testimonials-section'
 import WorkflowAnimationSection from './_components/sections/workflow-animation/workflow-animation-section'
 import CrmHero from './platform/crm/_components/crm-hero'
-import TicketingFeature from './platform/ticketing/_components/ticketing-feature'
+import DataModelWallHero from './platform/data-model/_components/data-model-wall-hero'
 import WorkflowContent from './platform/workflow/_components/workflow-content'
 
 export const metadata: Metadata = {
@@ -66,7 +66,7 @@ export default function MainPage() {
       <WorkflowAnimationSection />
       <WorkflowContent />
 
-      <TicketingFeature />
+      <DataModelWallHero as='h2' />
       <CrmHero as='h2' />
       {/* <ProblemSolutionSection /> */}
       <StatsSection />

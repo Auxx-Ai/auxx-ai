@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '~/lib/utils'
 import { ENTITY_COLOR_CLASS, type EntityColor } from '../../_mocks'
+import { MarqueeRow } from './marquee-row'
 
 interface Prompt {
   name: string
@@ -115,17 +116,17 @@ export default function KopilotPromptLibrary() {
       </div>
 
       <div className='relative pt-3 pb-24 [--marquee:60s] [mask-image:linear-gradient(to_right,transparent,black_8rem,black_calc(100%-8rem),transparent)]'>
-        <ul className='flex w-max gap-3 animate-[marquee_var(--marquee)_linear_infinite] hover:[animation-play-state:paused]'>
+        <MarqueeRow className='flex w-max gap-3 animate-[marquee_var(--marquee)_linear_infinite]'>
           {row.map((prompt, i) => (
             <PromptCard key={i} prompt={prompt} />
           ))}
-        </ul>
+        </MarqueeRow>
 
-        <ul className='mt-3 flex w-max gap-3 animate-[marquee-reverse_var(--marquee)_linear_infinite] hover:[animation-play-state:paused]'>
+        <MarqueeRow className='mt-3 flex w-max gap-3 animate-[marquee-reverse_var(--marquee)_linear_infinite]'>
           {row.map((prompt, i) => (
             <PromptCard key={i} prompt={prompt} />
           ))}
-        </ul>
+        </MarqueeRow>
       </div>
 
       <style>{`

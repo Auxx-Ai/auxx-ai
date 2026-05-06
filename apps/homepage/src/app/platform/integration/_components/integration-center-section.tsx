@@ -2,6 +2,7 @@
 
 import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
 import { RandomGradient } from '@auxx/ui/components/random-gradient'
+import { SectionTopFade } from '~/app/_components/main/section-top-fade'
 import { AutoplayVideo } from '~/components/autoplay-video'
 import { videoUrl } from '~/lib/cdn'
 
@@ -13,9 +14,10 @@ export default function IntegrationCenterSection() {
   return (
     <section className='relative overflow-hidden bg-background border-foreground/10 border-b'>
       <RandomGradient colors={[...GRADIENT_PALETTES.ocean]} mode='mesh' animated />
+      <SectionTopFade fromColor='var(--color-muted)' />
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3 bg-background/20'>
         <div className='border-x bg-background/20'>
-          <div className='bg-muted/25 py-16 md:py-24'>
+          <div className='bg-muted/25 pt-32 pb-16 md:pt-40 md:pb-24'>
             <div className='mx-auto max-w-5xl px-6'>
               <div className='aspect-3/2  mx-auto max-w-3xl'>
                 <AutoplayVideo

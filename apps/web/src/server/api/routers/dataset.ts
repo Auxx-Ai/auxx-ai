@@ -91,6 +91,7 @@ export const datasetRouter = createTRPCRouter({
     }
 
     // Feature gate: check datasets access + limit
+    // Exclude managed datasets (e.g. KB-synced private datasets) — they don't count toward plan limits.
     await new FeaturePermissionService(ctx.db).requireAccessAndLimit(
       organizationId,
       FeatureKey.datasets,
@@ -99,7 +100,12 @@ export const datasetRouter = createTRPCRouter({
         const [{ value }] = await ctx.db
           .select({ value: count() })
           .from(schema.Dataset)
-          .where(eq(schema.Dataset.organizationId, organizationId))
+          .where(
+            and(
+              eq(schema.Dataset.organizationId, organizationId),
+              eq(schema.Dataset.isManaged, false)
+            )
+          )
         return value
       }
     )
@@ -314,24 +320,30 @@ export const datasetRouter = createTRPCRouter({
     if (!organizationId) {
       throw new Error('No organization found')
     }
-    // Get overall counts and stats from the database
+    // Get overall counts and stats from the database.
+    // Managed datasets (KB-synced private datasets) are hidden from /app/datasets and
+    // excluded here so the totals match what the user actually sees and can manage.
+    const userDatasetFilter = and(
+      eq(schema.Dataset.organizationId, organizationId),
+      eq(schema.Dataset.isManaged, false)
+    )
     const [{ totalCount }] = await ctx.db
       .select({ totalCount: count() })
       .from(schema.Dataset)
-      .where(eq(schema.Dataset.organizationId, organizationId))
+      .where(userDatasetFilter)
     const statusCounts = await ctx.db
       .select({ status: schema.Dataset.status, cnt: count() })
       .from(schema.Dataset)
-      .where(eq(schema.Dataset.organizationId, organizationId))
+      .where(userDatasetFilter)
       .groupBy(schema.Dataset.status)
     const [{ docSum }] = await ctx.db
       .select({ docSum: sum(schema.Dataset.documentCount).mapWith(Number) })
       .from(schema.Dataset)
-      .where(eq(schema.Dataset.organizationId, organizationId))
+      .where(userDatasetFilter)
     const [{ sizeSum }] = await ctx.db
       .select({ sizeSum: sum(schema.Dataset.totalSize).mapWith(Number) })
       .from(schema.Dataset)
-      .where(eq(schema.Dataset.organizationId, organizationId))
+      .where(userDatasetFilter)
     // Transform status counts into a more usable format
     const byStatus = statusCounts.reduce(
       (acc, item) => {

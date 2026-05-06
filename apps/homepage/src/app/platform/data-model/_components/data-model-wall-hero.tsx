@@ -3,14 +3,30 @@
 import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
 import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import Link from 'next/link'
+import { SectionBottomFade } from '~/app/_components/main/section-bottom-fade'
 import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'
+import { cn } from '~/lib/utils'
 import { DataModelWall } from './data-model-wall'
 
-export default function DataModelWallHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
+interface DataModelWallHeroProps {
+  as?: 'h1' | 'h2'
+  /**
+   * When set, renders a `SectionBottomFade` that blends the gradient
+   * into the next section's color. Use `'var(--color-background)'` when
+   * the section directly below has `bg-background`.
+   */
+  bottomFadeColor?: string
+}
+
+export default function DataModelWallHero({
+  as: Heading = 'h1',
+  bottomFadeColor,
+}: DataModelWallHeroProps) {
   return (
-    <section className='relative overflow-hidden border-b'>
+    <section className={cn('relative overflow-hidden', !bottomFadeColor && 'border-b')}>
       <RandomGradient colors={[...GRADIENT_PALETTES.dawn]} mode='mesh' animated blur={10} />
+      {bottomFadeColor && <SectionBottomFade toColor={bottomFadeColor} />}
       <section className='bg-background/40 relative z-10'>
         <div className='relative px-6 pb-20 pt-24 md:pt-36 lg:pt-40'>
           <div className='mx-auto max-w-3xl text-center'>
