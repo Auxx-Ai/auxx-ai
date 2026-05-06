@@ -63,8 +63,10 @@ interface SidebarGroup {
   items: SidebarItem[]
 }
 
+export type EntityColor = NonNullable<SidebarItem['entityColor']>
+
 /** Inverse color tokens copied from `packages/ui/src/components/icons.tsx` (ICON_COLORS[*].inverseColor). */
-const ENTITY_COLOR_CLASS: Record<NonNullable<SidebarItem['entityColor']>, string> = {
+export const ENTITY_COLOR_CLASS: Record<EntityColor, string> = {
   gray: 'bg-zinc-600 text-zinc-100 dark:bg-zinc-500',
   orange: 'bg-orange-600 text-orange-100 dark:bg-orange-500',
   green: 'bg-green-500 text-green-100 dark:bg-green-500',
@@ -157,7 +159,7 @@ function NavUserMock() {
         <span className='flex size-6 shrink-0 items-center justify-center rounded-full bg-foreground text-[11px] font-medium text-background ring-1 ring-foreground/20'>
           M
         </span>
-        <span className='flex-1 truncate text-sm text-mock-sidebar-foreground'>Marki Mark</span>
+        <span className='flex-1 truncate text-sm text-mock-sidebar-foreground'>Mark Klooth</span>
         <ChevronDown className='size-3.5 text-mock-sidebar-muted' />
       </div>
       <span className='flex size-8 shrink-0 items-center justify-center rounded-2xl text-mock-sidebar-muted'>

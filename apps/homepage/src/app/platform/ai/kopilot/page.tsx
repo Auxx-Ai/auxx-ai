@@ -35,7 +35,7 @@ export default function KopilotPage() {
         <KopilotContextSection />
         <KopilotIntelligenceSection />
         <KopilotPromptLibrary />
-        <KopilotTestimonial />
+        {/* <KopilotTestimonial /> */}
         <KopilotFinalCta />
       </main>
       <FooterSection />

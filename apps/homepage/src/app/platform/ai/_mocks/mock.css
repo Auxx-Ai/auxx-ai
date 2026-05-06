@@ -2,7 +2,7 @@
  * apps/homepage/src/app/platform/ai/_mocks/mock.css
  *
  * Tokens for the homepage AI mocks (`MockAppSidebar`, `MockKopilotWindow`,
- * `MockKopilotPrompt`). These mirror the real app's sidebar + chat tokens
+ * `MockKopilotPromptStory`). These mirror the real app's sidebar + chat tokens
  * (see `packages/ui/src/styles/global.css` and `apps/web/src/app/globals.css`)
  * so the marketing mocks visually match the live product in both light and
  * dark themes.
@@ -28,10 +28,13 @@
     --mock-window-border: var(--color-zinc-200);
     --mock-card: var(--color-white);
 
-    /* User bubble + composer (matches `bg-primary-150` on the real composer). */
+    /* User bubble + composer (matches `bg-primary-150` on the real composer:
+       primary-150 = zinc-150 ≈ rgb(236 236 238) in light). */
     --mock-bubble: var(--color-zinc-100);
-    --mock-composer: var(--color-zinc-50);
+    --mock-composer: rgb(236 236 238);
     --mock-composer-border: var(--color-zinc-200);
+    /* Matches `border-info` (= blue-500) when the real composer is focused. */
+    --mock-composer-focus: rgb(59 130 246);
 
     /* MainPage outer + nested PanelFrame borders. Mirrors the real
        packages/ui/src/components/main-page.tsx + panel-frame.tsx in light. */
@@ -60,8 +63,10 @@
     --mock-card: #1e2227;
 
     --mock-bubble: #2c313a;
-    --mock-composer: #1e2227;
+    /* primary-150 in dark = rgb(32 36 43). */
+    --mock-composer: rgb(32 36 43);
     --mock-composer-border: color-mix(in oklab, var(--color-white) 10%, transparent);
+    --mock-composer-focus: rgb(59 130 246);
 
     /* Mirrors the dark-mode `border-[#323842]`, `border-[#23272e]`,
        `border-neutral-900/...`, `border-white/...` stack on PanelFrame. */
@@ -91,6 +96,7 @@
   --color-mock-bubble: var(--mock-bubble);
   --color-mock-composer: var(--mock-composer);
   --color-mock-composer-border: var(--mock-composer-border);
+  --color-mock-composer-focus: var(--mock-composer-focus);
 
   --color-mock-page-bg: var(--mock-page-bg);
   --color-mock-panel-bg: var(--mock-panel-bg);

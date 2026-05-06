@@ -19,7 +19,7 @@ export function MockMainPage({ className, children }: MockMainPageProps) {
   return (
     <div
       className={cn(
-        'flex h-full flex-1 flex-col overflow-hidden bg-mock-page-bg p-3 pt-3',
+        'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-mock-page-bg p-3 pt-3',
         className
       )}>
       <MockPanelFrame flex>{children}</MockPanelFrame>
