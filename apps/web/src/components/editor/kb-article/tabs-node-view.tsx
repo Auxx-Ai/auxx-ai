@@ -1,6 +1,7 @@
 // apps/web/src/components/editor/kb-article/tabs-node-view.tsx
 'use client'
 
+import { generateId } from '@auxx/utils'
 import {
   closestCenter,
   DndContext,
@@ -21,7 +22,7 @@ import { CSS } from '@dnd-kit/utilities'
 import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { Plus, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import blockStyles from './block-node-view.module.css'
 import {
   addPanel,
@@ -45,9 +46,14 @@ export function TabsNodeView({ node, editor, getPos }: NodeViewProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: panelIdsKey encodes the relevant change
   const panelIds = useMemo(() => panels.map((p) => p.id), [panelIdsKey])
 
+  // Stable scope id used by an inline <style> rule below. Hides non-active
+  // panels declaratively — an earlier `useEffect` that mutated `display` via
+  // `querySelectorAll` raced PM mounting child panels (the effect fired
+  // before the panel DOMs existed), leaving every panel visible.
+  const tabsUid = useMemo(() => generateId(), [])
+
   const [activeId, setActiveId] = useState<string>(() => panels[0]?.id ?? '')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const bodyRef = useRef<HTMLDivElement>(null)
 
   // Fall back to first panel if active was deleted.
   useEffect(() => {
@@ -56,18 +62,6 @@ export function TabsNodeView({ node, editor, getPos }: NodeViewProps) {
       setActiveId(panels[0].id)
     }
   }, [panels, activeId])
-
-  // Toggle panel body visibility. Runs only when active changes or the panel
-  // SET changes — not on every keystroke inside the body.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: panelIdsKey covers the panel-set change
-  useEffect(() => {
-    const body = bodyRef.current
-    if (!body) return
-    const items = body.querySelectorAll<HTMLElement>('[data-panel][data-panel-id]')
-    items.forEach((el) => {
-      el.style.display = el.getAttribute('data-panel-id') === activeId ? '' : 'none'
-    })
-  }, [activeId, panelIdsKey])
 
   const containerPos = typeof getPos === 'function' ? getPos() : null
 
@@ -136,6 +130,12 @@ export function TabsNodeView({ node, editor, getPos }: NodeViewProps) {
 
   return (
     <NodeViewWrapper as='div' className={blockStyles.blockWrapper} data-tabs=''>
+      {/* Scoped CSS rule: hide every panel wrapper inside this tabs body whose
+          id doesn't match the active tab. nanoid-based ids are URL-safe so no
+          escaping is needed. */}
+      <style>
+        {`[data-tabs-id="${tabsUid}"] [data-panel-id]:not([data-panel-id="${activeId}"]){display:none}`}
+      </style>
       <div className={blockStyles.blockContainer}>
         <div
           className={blockStyles.lineGutter}
@@ -179,7 +179,7 @@ export function TabsNodeView({ node, editor, getPos }: NodeViewProps) {
             </button>
           </div>
 
-          <div ref={bodyRef} className={styles.tabsBody}>
+          <div data-tabs-id={tabsUid} className={styles.tabsBody}>
             <NodeViewContent />
           </div>
         </div>

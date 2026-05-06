@@ -65,6 +65,16 @@ export const Panel = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(PanelNodeView)
+    // Mirror `id` onto the outer `.react-renderer.node-panel` wrapper so a
+    // scoped CSS rule on the parent tabs container can hide the wrapper of
+    // non-active panels declaratively (see `tabs-node-view.tsx`). Without
+    // this, only the inner NodeViewWrapper carries `data-panel-id` and the
+    // outer wrapper still claims box space when its content is hidden.
+    return ReactNodeViewRenderer(PanelNodeView, {
+      attrs: ({ node }) => {
+        const id = (node.attrs as { id?: string }).id
+        return id ? { 'data-panel-id': id } : {}
+      },
+    })
   },
 })

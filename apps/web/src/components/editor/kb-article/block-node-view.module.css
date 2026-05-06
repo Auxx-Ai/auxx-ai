@@ -470,6 +470,27 @@
   word-break: break-word;
 }
 
+/* Positioning anchor for the placeholder so it lands at the top-left of
+   the code body, not at the top of the outer code-block card (which would
+   put it under the language-picker header). */
+.codeBlockBody {
+  position: relative;
+  width: 100%;
+}
+
+/* Placeholder styled to match the code body so it reads as ghost code
+   rather than ghost prose. Offsets match `.blockContent--codeBlock` padding.
+   Two-class selector (`.placeholder.placeholderInCode`) bumps specificity
+   above the base `.placeholder { top: 0; left: ... }` rule, which is
+   declared later in this file and would otherwise win the tie. */
+.placeholder.placeholderInCode {
+  top: 0.8rem;
+  left: 1.1rem;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
 /* ============================================
    Placeholder — rendered as sibling span by BlockNodeView
    when the block is empty AND (first in doc OR currently focused).
