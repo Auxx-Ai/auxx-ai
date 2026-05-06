@@ -1,8 +1,8 @@
 // apps/web/src/components/editor/kb-article/panel-node.ts
 
 import { mergeAttributes, Node } from '@tiptap/core'
-import { TextSelection } from '@tiptap/pm/state'
 import { ReactNodeViewRenderer } from '@tiptap/react'
+import { selectAncestorContent } from '../keymap-helpers'
 import { PanelNodeView } from './panel-node-view'
 
 export const Panel = Node.create({
@@ -17,22 +17,7 @@ export const Panel = Node.create({
       // Mod-A inside a panel selects only the panel's body (Cmd+A would
       // otherwise select the entire doc, including sibling tabs and the
       // surrounding article content).
-      'Mod-a': ({ editor }) => {
-        const { $from } = editor.state.selection
-        for (let depth = $from.depth; depth >= 0; depth--) {
-          const node = $from.node(depth)
-          if (node.type.name !== 'panel') continue
-          const panelStart = $from.before(depth) + 1
-          const panelEnd = panelStart + node.content.size
-          editor.view.dispatch(
-            editor.state.tr.setSelection(
-              TextSelection.create(editor.state.doc, panelStart, panelEnd)
-            )
-          )
-          return true
-        }
-        return false
-      },
+      'Mod-a': ({ editor }) => selectAncestorContent(editor, (n) => n.type.name === 'panel'),
     }
   },
 

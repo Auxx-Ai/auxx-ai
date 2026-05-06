@@ -303,12 +303,6 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
 
           {blockType === 'quote' && <div className={styles.quoteBar} contentEditable={false} />}
 
-          {isCallout && (
-            <span className={styles.calloutIcon} contentEditable={false}>
-              <CalloutIcon variant={calloutVariantValue} size={16} />
-            </span>
-          )}
-
           {isDivider ? (
             <>
               <div
@@ -436,32 +430,36 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
                 )}
               </div>
             </>
+          ) : isCallout ? (
+            <div className={styles.calloutBody}>
+              <span className={styles.calloutIcon} contentEditable={false}>
+                <CalloutIcon variant={calloutVariantValue} size={16} />
+              </span>
+              <NodeViewContent className={contentClasses} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type='button'
+                    className={styles.calloutVariantPicker}
+                    contentEditable={false}
+                    aria-label='Change callout variant'>
+                    <CalloutIcon variant={calloutVariantValue} size={14} />
+                    <ChevronDown size={12} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  {CALLOUT_VARIANTS.map((variant) => (
+                    <DropdownMenuItem
+                      key={variant}
+                      onSelect={() => updateAttributes({ calloutVariant: variant })}>
+                      <CalloutIcon variant={variant} size={14} /> {CALLOUT_LABELS[variant]}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           ) : (
             <NodeViewContent className={contentClasses} />
-          )}
-
-          {isCallout && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type='button'
-                  className={styles.calloutVariantPicker}
-                  contentEditable={false}
-                  aria-label='Change callout variant'>
-                  <CalloutIcon variant={calloutVariantValue} size={14} />
-                  <ChevronDown size={12} />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                {CALLOUT_VARIANTS.map((variant) => (
-                  <DropdownMenuItem
-                    key={variant}
-                    onSelect={() => updateAttributes({ calloutVariant: variant })}>
-                    <CalloutIcon variant={variant} size={14} /> {CALLOUT_LABELS[variant]}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
           )}
 
           {isImage && (
