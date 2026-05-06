@@ -10,7 +10,6 @@ const trustBadges = [
   '5-minute setup',
   'Cancel anytime',
   'Free migration support',
-  '30-day money-back guarantee',
 ]
 
 // Renders the closing call-to-action for the features page.

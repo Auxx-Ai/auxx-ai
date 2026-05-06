@@ -5,7 +5,7 @@ import { TicketingHeroIllustration } from './ticketing-hero-illustration'
 
 export default function TicketingHero() {
   return (
-    <section className='border-b'>
+    <section className=''>
       <div className='bg-muted py-20'>
         <div className='mx-auto max-w-5xl px-6'>
           <div className='grid items-center gap-12 md:grid-cols-2'>

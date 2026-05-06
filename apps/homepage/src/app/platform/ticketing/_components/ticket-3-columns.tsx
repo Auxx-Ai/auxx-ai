@@ -1,6 +1,7 @@
 import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
 import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import Image from 'next/image'
+import { SectionTopFade } from '~/app/_components/main/section-top-fade'
 
 /**
  * Ticket3Columns component showcases three key ticketing features:
@@ -10,6 +11,7 @@ export default function Ticket3Columns() {
   return (
     <section className='relative overflow-hidden bg-background border-foreground/10 border-b'>
       <RandomGradient colors={[...GRADIENT_PALETTES.candy]} mode='mesh' animated />
+      <SectionTopFade fromColor='color-mix(in oklab, var(--color-muted), var(--color-background))' />
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3 bg-background/20'>
         <div className='border-x bg-background/20'>
           <div className='bg-muted/20 @container py-16 md:py-24'>

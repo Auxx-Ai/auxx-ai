@@ -1,8 +1,7 @@
 // apps/homepage/src/app/platform/crm/_components/crm-hero.tsx
 
-import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
-import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import Link from 'next/link'
+import { ShaderGradientBg } from '~/app/_components/shader-gradient-bg'
 import { AutoplayVideo } from '~/components/autoplay-video'
 import { Button } from '~/components/ui/button'
 import { videoUrl } from '~/lib/cdn'
@@ -11,7 +10,7 @@ import { config } from '~/lib/config'
 export default function CrmHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
   return (
     <section className='overflow-hidden relative border-b'>
-      <RandomGradient colors={[...GRADIENT_PALETTES.dawn]} mode='mesh' animated blur={10} />
+      <ShaderGradientBg preset='hero' palette='dawn' uniforms={{ timeSpeed: 0.7 }} />
       <section className='bg-background/40 relative z-10'>
         <div
           aria-hidden

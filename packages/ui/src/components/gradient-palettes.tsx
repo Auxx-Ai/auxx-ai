@@ -44,3 +44,17 @@ export const GRADIENT_PALETTE_MODES: Record<GradientPaletteName, GradientPalette
   openai: 'dark',
   orchid: 'light',
 }
+
+/**
+ * Three-color tuple for the WebGL `<ShaderGradient />`. The shader takes
+ * exactly three colors; the palette's index 0 is treated as a background and
+ * skipped (matching how `<RandomGradient />` already uses the array).
+ */
+export function paletteToShaderColors(name: GradientPaletteName): [string, string, string] {
+  const palette = GRADIENT_PALETTES[name]
+  return [
+    palette[1] ?? palette[0]!,
+    palette[2] ?? palette[1] ?? palette[0]!,
+    palette[3] ?? palette[2] ?? palette[1] ?? palette[0]!,
+  ]
+}

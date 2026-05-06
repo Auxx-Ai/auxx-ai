@@ -4,7 +4,7 @@ import { TicketStatsIllustration } from './ticket-stats-illustration'
 
 export default function TicketingFeature() {
   return (
-    <section className='relative border-foreground/10 border-b'>
+    <section className='relative'>
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
         <div className='border-x'>
           <div className='bg-muted/50 py-24'>
