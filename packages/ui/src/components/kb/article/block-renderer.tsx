@@ -93,10 +93,12 @@ export function BlockRenderer({ node, idx, doc, headingIds, resolveAuxxHref }: B
       const variant: CalloutVariant = node.attrs?.calloutVariant ?? 'info'
       return (
         <aside role='note' data-variant={variant} className={styles.callout}>
-          <span className={styles.calloutIcon} aria-hidden='true'>
-            <CalloutIcon variant={variant} />
-          </span>
-          <div className={styles.calloutBody}>{inline}</div>
+          <div className={styles.calloutInner}>
+            <span className={styles.calloutIcon} aria-hidden='true'>
+              <CalloutIcon variant={variant} />
+            </span>
+            <div className={styles.calloutBody}>{inline}</div>
+          </div>
         </aside>
       )
     }

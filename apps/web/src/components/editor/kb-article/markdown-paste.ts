@@ -75,24 +75,20 @@ export const MarkdownPaste = Extension.create({
               }
             }
 
-            // Code block: force-insert text/plain verbatim. PM's default
-            // paste reads text/html (e.g. `<pre><code>…</code></pre>` from
-            // an IDE / website), parses it via the schema, and lifts out of
-            // the codeBlock when the resulting slice doesn't fit `inline*`
-            // — which deletes the codeBlock and leaves plain text behind.
-            if (blockType === 'codeBlock') {
+            // Plaintext-only blocks (codeBlock, heading, callout, list item,
+            // quote): force-insert text/plain verbatim. PM's default paste
+            // reads text/html (e.g. `<pre><code>…</code></pre>` from an IDE,
+            // or `<p>…</p>` from a webpage), parses it via the schema, and
+            // lifts out of the wrapping block when the resulting slice
+            // doesn't fit `inline*` — which deletes the block and leaves
+            // plain text behind. Force-plaintext keeps the caret inside.
+            if (blockType && PLAINTEXT_BLOCK_TYPES.has(blockType)) {
               event.preventDefault()
               view.dispatch(view.state.tr.insertText(text))
               return true
             }
 
             if (!looksLikeMarkdown(text)) return false
-
-            // Other plaintext-only blocks (heading, callout, list item,
-            // quote): opt out of markdown auto-format so the caret stays
-            // inside the current block. PM's default paste handles plain
-            // text fine here and preserves any inline marks from the HTML.
-            if (blockType && PLAINTEXT_BLOCK_TYPES.has(blockType)) return false
 
             event.preventDefault()
             void importAndInsert(editor, text)

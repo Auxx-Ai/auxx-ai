@@ -276,16 +276,29 @@
    Callout
    ============================================ */
 
+/* Outer frame — thin border all around + darker variant tint, matching
+   the editor's `.blockContentWrapper--callout`. Inner card carries the
+   lighter tint. Both bgs are mixed with `--kb-bg` (opaque) so the inner
+   doesn't composite on top of the outer and appear darker. */
 .callout {
-  display: flex;
-  gap: 0.75em;
-  align-items: flex-start;
   margin: 1em 0;
-  padding: 0.875em 1em;
-  border-radius: var(--kb-radius);
-  border-left: 3px solid var(--callout-accent, var(--kb-primary));
-  background: var(--callout-bg, var(--kb-tint));
+  padding: 0.125rem;
+  border-radius: 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--callout-accent, var(--kb-primary)) 40%, transparent);
+  background: color-mix(in srgb, var(--callout-accent, var(--kb-primary)) 18%, var(--kb-bg));
+}
+
+.calloutInner {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--kb-border);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--callout-accent, var(--kb-primary)) 7%, var(--kb-bg));
   color: var(--kb-fg);
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .callout[data-variant='info'] {
@@ -538,7 +551,7 @@
 }
 
 .tabPanel {
-  padding: 0.875rem 1rem;
+  padding: 0.5rem 0.75rem;
 }
 
 .tabPanel[hidden] {

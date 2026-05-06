@@ -1,8 +1,9 @@
 // apps/web/src/components/editor/kb-article/block-node.ts
 
-import { mergeAttributes, Node } from '@tiptap/core'
-import { TextSelection } from '@tiptap/pm/state'
+import { type Editor, mergeAttributes, Node } from '@tiptap/core'
+import type { ResolvedPos } from '@tiptap/pm/model'
 import { ReactNodeViewRenderer } from '@tiptap/react'
+import { selectAncestorContent } from '../keymap-helpers'
 import { blockDragPlugin } from './block-drag-plugin'
 import { BlockNodeView } from './block-node-view'
 
@@ -21,6 +22,33 @@ export type BlockType =
   | 'cards'
 
 const LIST_TYPES: BlockType[] = ['bulletListItem', 'numberedListItem', 'todoListItem']
+
+const findBlockDepth = ($from: ResolvedPos): number => {
+  for (let depth = $from.depth; depth >= 0; depth--) {
+    if ($from.node(depth).type.name === 'block') return depth
+  }
+  return -1
+}
+
+// Step out the bottom of the `block` at `depth`: focus the next block,
+// or append a new empty text block first if this is the last in doc.
+const escapeBlockDownward = (editor: Editor, depth: number): boolean => {
+  const { $from } = editor.state.selection
+  const node = $from.node(depth)
+  const blockEnd = $from.before(depth) + node.nodeSize
+  const isLastInDoc = blockEnd >= editor.state.doc.content.size
+  if (isLastInDoc) {
+    return editor
+      .chain()
+      .insertContentAt(blockEnd, { type: 'block' })
+      .focus(blockEnd + 1)
+      .run()
+  }
+  return editor
+    .chain()
+    .focus(blockEnd + 1)
+    .run()
+}
 
 export const Block = Node.create({
   name: 'block',
@@ -160,26 +188,16 @@ export const Block = Node.create({
       typeof type === 'string' && LIST_TYPES.includes(type as BlockType)
 
     return {
-      // Mod-A inside a code block selects only the code's content (mirrors
-      // the same shortcut on `panel`). Default Mod-A would select the whole
-      // doc, which is rarely what you want when you're typing code.
-      'Mod-a': ({ editor }) => {
-        const { $from } = editor.state.selection
-        for (let depth = $from.depth; depth >= 0; depth--) {
-          const node = $from.node(depth)
-          if (node.type.name !== 'block') continue
-          if (node.attrs.blockType !== 'codeBlock') return false
-          const blockStart = $from.before(depth) + 1
-          const blockEnd = blockStart + node.content.size
-          editor.view.dispatch(
-            editor.state.tr.setSelection(
-              TextSelection.create(editor.state.doc, blockStart, blockEnd)
-            )
-          )
-          return true
-        }
-        return false
-      },
+      // Mod-A inside a code block or callout selects only that block's
+      // content. Default Mod-A would select the whole doc, which is rarely
+      // what you want when you're typing inside a contained block.
+      'Mod-a': ({ editor }) =>
+        selectAncestorContent(
+          editor,
+          (n) =>
+            n.type.name === 'block' &&
+            (n.attrs.blockType === 'codeBlock' || n.attrs.blockType === 'callout')
+        ),
       Tab: ({ editor }) => {
         const { $from } = editor.state.selection
         for (let depth = $from.depth; depth >= 0; depth--) {
@@ -271,50 +289,36 @@ export const Block = Node.create({
       },
       'Mod-Enter': ({ editor }) => {
         const { $from } = editor.state.selection
-        for (let depth = $from.depth; depth >= 0; depth--) {
-          const node = $from.node(depth)
-          if (node.type.name !== 'block') continue
-          if (node.attrs.blockType !== 'codeBlock') return false
-          const blockEnd = $from.before(depth) + node.nodeSize
-          return editor
-            .chain()
-            .insertContentAt(blockEnd, { type: 'block' })
-            .focus(blockEnd + 1)
-            .run()
-        }
-        return false
+        const depth = findBlockDepth($from)
+        if (depth < 0) return false
+        if ($from.node(depth).attrs.blockType !== 'codeBlock') return false
+        return escapeBlockDownward(editor, depth)
       },
-      // Inside a code block, code lines are inline text separated by literal
-      // `\n`, so PM's default ArrowDown can't escape the inline range and the
-      // caret gets stuck on the last line. If there are no more newlines
-      // after the cursor (i.e. we're already on the visual last line), step
-      // out to the next block — creating one if this is the last block in
-      // the doc. Returning `false` otherwise lets default Down move down a
-      // visual line within the code body.
+      // codeBlock holds multi-line code as a single inline range with literal
+      // `\n`s, so PM's default Down can't escape it. Other block types only
+      // escape at end of doc to avoid inserting stray blocks mid-doc.
       ArrowDown: ({ editor }) => {
         const { $from, empty } = editor.state.selection
         if (!empty) return false
-        for (let depth = $from.depth; depth >= 0; depth--) {
-          const node = $from.node(depth)
-          if (node.type.name !== 'block') continue
-          if (node.attrs.blockType !== 'codeBlock') return false
+
+        const depth = findBlockDepth($from)
+        if (depth < 0) return false
+
+        const node = $from.node(depth)
+
+        if (node.attrs.blockType === 'codeBlock') {
           const remaining = node.textContent.slice($from.parentOffset)
           if (remaining.includes('\n')) return false
-          const blockEnd = $from.before(depth) + node.nodeSize
-          const doc = editor.state.doc
-          if (blockEnd >= doc.content.size) {
-            return editor
-              .chain()
-              .insertContentAt(blockEnd, { type: 'block' })
-              .focus(blockEnd + 1)
-              .run()
-          }
-          return editor
-            .chain()
-            .focus(blockEnd + 1)
-            .run()
+          return escapeBlockDownward(editor, depth)
         }
-        return false
+
+        const blockEnd = $from.before(depth) + node.nodeSize
+        const isLastInDoc = blockEnd >= editor.state.doc.content.size
+        if (!isLastInDoc) return false
+        const isEmpty = node.content.size === 0
+        const atTextEnd = $from.parentOffset === node.content.size
+        if (!isEmpty && !atTextEnd) return false
+        return escapeBlockDownward(editor, depth)
       },
     }
   },

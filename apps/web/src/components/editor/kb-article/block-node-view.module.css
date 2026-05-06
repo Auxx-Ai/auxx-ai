@@ -568,14 +568,40 @@
   margin-bottom: 0.5rem;
 }
 
+/* Outer frame — thin border all around + darker variant tint, matching
+   tabs/accordion/codeBlock. Inner card carries the lighter tint. Both
+   bgs are mixed with `--color-background` (opaque) so the inner doesn't
+   composite on top of the outer's transparent tint and appear darker. */
 .blockContentWrapper--callout {
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  background: color-mix(
+    in srgb,
+    var(--callout-accent, var(--color-primary)) 18%,
+    var(--color-background)
+  );
+  border: 1px solid color-mix(in srgb, var(--callout-accent, var(--color-primary)) 40%, transparent);
+  border-radius: 0.625rem;
+  padding: 0.125rem;
+  gap: 0;
+}
+
+.calloutBody {
+  position: relative;
+  display: flex;
+  flex-direction: row;
   align-items: flex-start;
+  gap: 0.625rem;
+  background: color-mix(
+    in srgb,
+    var(--callout-accent, var(--color-primary)) 7%,
+    var(--color-background)
+  );
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
-  border-left: 3px solid var(--callout-accent, var(--color-primary));
-  background: var(--callout-bg, var(--color-muted));
   padding: 0.625rem 0.875rem;
   padding-right: 2.5rem;
-  gap: 0.625rem;
 }
 
 .callout--info .blockContentWrapper--callout {
