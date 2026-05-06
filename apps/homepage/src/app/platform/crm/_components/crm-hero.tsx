@@ -1,16 +1,28 @@
 // apps/homepage/src/app/platform/crm/_components/crm-hero.tsx
 
 import Link from 'next/link'
+import { SectionBottomFade } from '~/app/_components/main/section-bottom-fade'
 import { ShaderGradientBg } from '~/app/_components/shader-gradient-bg'
 import { AutoplayVideo } from '~/components/autoplay-video'
 import { Button } from '~/components/ui/button'
 import { videoUrl } from '~/lib/cdn'
 import { config } from '~/lib/config'
+import { cn } from '~/lib/utils'
 
-export default function CrmHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
+interface CrmHeroProps {
+  as?: 'h1' | 'h2'
+  /**
+   * When set, renders a `SectionBottomFade` that blends the gradient
+   * into the next section's color. Drops the hard `border-b` when active.
+   */
+  bottomFadeColor?: string
+}
+
+export default function CrmHero({ as: Heading = 'h1', bottomFadeColor }: CrmHeroProps) {
   return (
-    <section className='overflow-hidden relative border-b'>
+    <section className={cn('overflow-hidden relative', !bottomFadeColor && 'border-b')}>
       <ShaderGradientBg preset='hero' palette='dawn' uniforms={{ timeSpeed: 0.7 }} />
+      {bottomFadeColor && <SectionBottomFade toColor={bottomFadeColor} />}
       <section className='bg-background/40 relative z-10'>
         <div
           aria-hidden
@@ -20,7 +32,7 @@ export default function CrmHero({ as: Heading = 'h1' }: { as?: 'h1' | 'h2' }) {
           <div className='h-full max-sm:hidden' />
           <div className='h-full border-l border-dashed max-sm:hidden' />
         </div>
-        <div className='mb:pb-24 relative pb-16 pt-24 md:pt-36 lg:pt-40'>
+        <div className='relative pb-32 pt-24 md:pb-40 md:pt-36 lg:pt-40'>
           <div className='mx-auto w-full px-6 lg:max-w-5xl'>
             <div className='grid items-center max-lg:gap-12 lg:grid-cols-2 '>
               <div className='sm:h-[550px]'>

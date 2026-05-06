@@ -26,7 +26,7 @@ export default function CrmPage() {
       />
       <Header />
       <main className=''>
-        <CrmHero />
+        <CrmHero bottomFadeColor='color-mix(in oklab, var(--color-muted) 30%, var(--color-background))' />
         <HowItWorksSection />
         <CrmCenterSection />
 

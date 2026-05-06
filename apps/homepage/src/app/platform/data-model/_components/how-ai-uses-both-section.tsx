@@ -1,6 +1,7 @@
 // apps/homepage/src/app/platform/data-model/_components/how-ai-uses-both-section.tsx
 
 import { Bot, MessageSquareReply, Search } from 'lucide-react'
+import Image from 'next/image'
 
 const consumers = [
   {
@@ -23,8 +24,19 @@ const consumers = [
 export default function HowAiUsesBothSection() {
   return (
     <section className='relative bg-background border-foreground/10 border-b'>
-      <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
-        <div className='border-x'>
+      <div className='relative mx-auto max-w-6xl border-x px-3'>
+        <div
+          aria-hidden
+          className='pointer-events-none absolute inset-y-0 right-3 flex items-center mask-[radial-gradient(ellipse_50%_50%_at_50%_50%,#000_70%,transparent_100%)]'>
+          <Image
+            src='/images/platform/knowledge-base/ai-woman-watercolor.png'
+            alt=''
+            width={665}
+            height={1024}
+            className='h-auto w-[180px] md:w-[240px] lg:w-[280px] xl:w-[320px] 2xl:w-[360px] opacity-90'
+          />
+        </div>
+        <div className='relative z-10 border-x'>
           <div className='py-16 md:py-24'>
             <div className='mx-auto max-w-4xl space-y-10 px-6'>
               <div className='space-y-4'>

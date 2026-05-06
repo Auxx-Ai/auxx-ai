@@ -2,6 +2,7 @@
 
 import { GRADIENT_PALETTES } from '@auxx/ui/components/gradient-palettes'
 import { RandomGradient } from '@auxx/ui/components/random-gradient'
+import { SectionTopFade } from '~/app/_components/main/section-top-fade'
 import { AutoplayVideo } from '~/components/autoplay-video'
 import { videoUrl } from '~/lib/cdn'
 
@@ -11,11 +12,12 @@ import { videoUrl } from '~/lib/cdn'
  */
 export default function WorkflowContent() {
   return (
-    <section className='relative overflow-hidden border-foreground/10 border-b'>
+    <section className='relative overflow-hidden border-foreground/10 '>
       <RandomGradient colors={[...GRADIENT_PALETTES.aurora]} mode='mesh' animated />
+      <SectionTopFade fromColor='var(--color-background)' />
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3 bg-background/40'>
         <div className='border-x'>
-          <div className='bg-background/40 py-16 md:py-24'>
+          <div className='bg-background/40 pt-32 pb-16 md:pt-40 md:pb-24'>
             <div className='mx-auto max-w-4xl space-y-12 px-6'>
               <h2 className='text-muted-foreground text-balance text-4xl font-semibold md:w-2/3'>
                 Intelligent routing for{' '}

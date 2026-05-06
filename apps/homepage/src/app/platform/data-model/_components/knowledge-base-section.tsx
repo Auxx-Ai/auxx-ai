@@ -16,7 +16,7 @@ export default function KnowledgeBaseSection() {
   return (
     <section
       id='knowledge-base'
-      className='relative bg-background border-foreground/10 border-b scroll-mt-24'>
+      className='relative bg-background border-foreground/10 scroll-mt-24'>
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
         <div className='border-x'>
           <div className='py-16 md:py-24'>
@@ -56,22 +56,6 @@ export default function KnowledgeBaseSection() {
 
             <div className='mt-12 md:mt-16'>
               <KbSurfacesCarousel />
-            </div>
-
-            <div className='mx-auto mt-10 max-w-4xl px-6 md:mt-12'>
-              <div className='border-foreground/5 flex flex-wrap items-center gap-2 border-t pt-6'>
-                <span className='text-muted-foreground mr-1 text-xs uppercase tracking-wide'>
-                  Editor supports
-                </span>
-                {editorBlocks.map((b) => (
-                  <span
-                    key={b.name}
-                    className='border-foreground/10 text-foreground/80 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs'>
-                    <b.icon className='size-3.5' />
-                    {b.name}
-                  </span>
-                ))}
-              </div>
             </div>
           </div>
         </div>

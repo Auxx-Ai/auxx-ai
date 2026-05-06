@@ -76,13 +76,13 @@ const platformGroups: PlatformGroup[] = [
         icon: <Sparkles className='stroke-foreground fill-amber-500/15' />,
       },
       {
-        href: '/platform/data-model#knowledge-base',
+        href: '/platform/data-model',
         name: 'Knowledge base',
         description: 'Self-serve articles and AI grounding',
         icon: <Library className='stroke-foreground fill-yellow-500/15' />,
       },
       {
-        href: '/platform/data-model#datasets',
+        href: '/platform/data-model',
         name: 'Datasets',
         description: 'Upload PDFs, docs, and pages for AI to use',
         icon: <Database className='stroke-foreground fill-cyan-500/15' />,

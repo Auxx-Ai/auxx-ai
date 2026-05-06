@@ -4,7 +4,7 @@ import { WorkflowCanvas } from './workflow-canvas'
 
 export default function WorkflowAnimationSection() {
   return (
-    <section className='border-foreground/10 relative border-b'>
+    <section className='border-foreground/10 relative '>
       <div className='relative z-10 mx-auto max-w-6xl border-x px-3'>
         <div className='border-x'>
           <div
