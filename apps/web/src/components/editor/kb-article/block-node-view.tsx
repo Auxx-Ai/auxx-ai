@@ -421,7 +421,20 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              <NodeViewContent className={contentClasses} />
+              {/* Anchor: gives the placeholder a positioning context that
+                  starts where the code body starts, not at the top of the
+                  outer card (which would put it under the language picker). */}
+              <div className={styles.codeBlockBody}>
+                <NodeViewContent className={contentClasses} />
+                {showPlaceholder && (
+                  <span
+                    className={`${styles.placeholder} ${styles.placeholderInCode}`}
+                    contentEditable={false}
+                    aria-hidden='true'>
+                    {placeholderText}
+                  </span>
+                )}
+              </div>
             </>
           ) : (
             <NodeViewContent className={contentClasses} />
@@ -461,7 +474,7 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
             />
           )}
 
-          {showPlaceholder && (
+          {showPlaceholder && !isCodeBlock && (
             <span className={styles.placeholder} contentEditable={false} aria-hidden='true'>
               {placeholderText}
             </span>

@@ -14,6 +14,7 @@ import {
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { generateId } from '@auxx/utils'
+import { TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -328,11 +329,31 @@ const BASE_COMMANDS: CommandItemDef[] = [
       // built-in `insertTable` command) tries to fit the table INSIDE the
       // block, fails, and substitutes a default block. `insertContent`
       // takes a different path that lifts out of the wrapping block.
+      // After insertion PM leaves the cursor at the end of the inserted
+      // content (last cell). Walk the doc forward from `range.from` to
+      // find the first cell and place the cursor inside its empty block.
       editor
         .chain()
         .focus()
         .deleteRange(range)
         .insertContent(makeEmptyTableJSON(3, 3, true))
+        .command(({ tr, dispatch }) => {
+          let target: number | null = null
+          tr.doc.nodesBetween(range.from, tr.doc.content.size, (node, pos) => {
+            if (target !== null) return false
+            if (node.type.name === 'tableHeader' || node.type.name === 'tableCell') {
+              // pos = before the cell's open token; +2 lands inside the
+              // empty block that lives inside the cell.
+              target = pos + 2
+              return false
+            }
+            return true
+          })
+          if (target !== null && dispatch) {
+            dispatch(tr.setSelection(TextSelection.near(tr.doc.resolve(target))))
+          }
+          return true
+        })
         .run()
     },
   },

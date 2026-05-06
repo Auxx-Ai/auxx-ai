@@ -3,6 +3,21 @@
 import { type Editor, Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 
+// Blocks whose shape forbids "lift out and insert N new blocks" semantics.
+// Pasting markdown inside one of these falls through to PM's plain-text
+// paste so the caret stays inside the existing block. `text` (the default
+// flowing paragraph) is intentionally absent — that's the one place full
+// markdown auto-format makes sense.
+const PLAINTEXT_BLOCK_TYPES = new Set([
+  'codeBlock',
+  'heading',
+  'callout',
+  'quote',
+  'bulletListItem',
+  'orderedListItem',
+  'todoListItem',
+])
+
 const MARKDOWN_HEURISTIC = [
   /^#{1,6}\s/m,
   /^\s*[-*]\s/m,
@@ -13,6 +28,12 @@ const MARKDOWN_HEURISTIC = [
   /\*\*[^*\n]+\*\*/,
   /\[[^\]\n]+\]\([^\s)]+\)/,
   /^:::\w+/m,
+  // GFM pipe table — strict separator row (`|---|---|`, `|:--|--:|`, …).
+  // High-confidence signal that a real table was pasted.
+  /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/m,
+  // Loose fallback: any line that opens and closes with `|`. Catches
+  // tables that paste without trailing pipes, single-row matrices, etc.
+  /^\|.*\|\s*$/m,
 ]
 
 function looksLikeMarkdown(text: string): boolean {
@@ -40,17 +61,38 @@ export const MarkdownPaste = Extension.create({
             if (!cd) return false
 
             const text = cd.getData('text/plain')
-            if (!text || !looksLikeMarkdown(text)) return false
+            if (!text) return false
 
-            // Don't transform when pasting into a code block — code paste
-            // should stay verbatim.
+            // Find the closest enclosing `block` ancestor so we can route on
+            // its `blockType` (codeBlock vs heading vs callout vs other).
             const $from = view.state.selection.$from
+            let blockType: string | null = null
             for (let depth = $from.depth; depth >= 0; depth--) {
               const node = $from.node(depth)
-              if (node.type.name === 'block' && node.attrs.blockType === 'codeBlock') {
-                return false
+              if (node.type.name === 'block') {
+                blockType = (node.attrs.blockType as string | undefined) ?? null
+                break
               }
             }
+
+            // Code block: force-insert text/plain verbatim. PM's default
+            // paste reads text/html (e.g. `<pre><code>…</code></pre>` from
+            // an IDE / website), parses it via the schema, and lifts out of
+            // the codeBlock when the resulting slice doesn't fit `inline*`
+            // — which deletes the codeBlock and leaves plain text behind.
+            if (blockType === 'codeBlock') {
+              event.preventDefault()
+              view.dispatch(view.state.tr.insertText(text))
+              return true
+            }
+
+            if (!looksLikeMarkdown(text)) return false
+
+            // Other plaintext-only blocks (heading, callout, list item,
+            // quote): opt out of markdown auto-format so the caret stays
+            // inside the current block. PM's default paste handles plain
+            // text fine here and preserves any inline marks from the HTML.
+            if (blockType && PLAINTEXT_BLOCK_TYPES.has(blockType)) return false
 
             event.preventDefault()
             void importAndInsert(editor, text)
