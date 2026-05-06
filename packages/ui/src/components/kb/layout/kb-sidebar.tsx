@@ -57,7 +57,8 @@ export function KBSidebar<T extends KBSidebarArticle>({
   onTabSelect,
   onModeChange,
 }: KBSidebarProps<T>) {
-  const { kbId, collapsed, setCollapsed, mobileOpen, setMobileOpen } = useKBLayoutContext()
+  const { kbId, collapsed, setCollapsed, mobileOpen, setMobileOpen, mainScroll } =
+    useKBLayoutContext()
 
   const [openIds, setOpenIds] = useState<Record<string, boolean>>({})
   const [animateTree, setAnimateTree] = useState(false)
@@ -158,11 +159,15 @@ export function KBSidebar<T extends KBSidebarArticle>({
         ) : null}
       </div>
 
-      {/* Mobile in-place drawer (constrained to KB layout root, not document.body) */}
+      {/* Mobile drawer. Pins to the viewport on the public KB (`fixed`) and
+          stays scoped to the layout root inside admin previews where the
+          layout is contained (`absolute`). Without this split the drawer
+          stretches the full document height on the public site. */}
       <div
         aria-hidden={!mobileOpen}
         className={cn(
-          'absolute inset-0 z-40 transition-opacity duration-200 @kb-md:hidden',
+          'inset-0 z-40 transition-opacity duration-200 @kb-md:hidden',
+          mainScroll ? 'absolute' : 'fixed',
           mobileOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         )}>
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is decorative; Escape handler covers keyboard close */}
@@ -173,7 +178,7 @@ export function KBSidebar<T extends KBSidebarArticle>({
         />
         <aside
           className={cn(
-            'absolute top-3 bottom-3 left-3 flex w-[min(18rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-[var(--kb-radius)] border border-[var(--kb-border)] bg-[var(--kb-sidebar-bg)] shadow-2xl transition-transform duration-200 ease-out',
+            'absolute top-3 bottom-3 left-3 flex w-[min(18rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-[var(--kb-radius)] border border-[var(--kb-border)] bg-[var(--kb-content-bg)] shadow-2xl transition-transform duration-200 ease-out',
             mobileOpen ? 'translate-x-0' : '-translate-x-[calc(100%+1rem)]'
           )}>
           <KBSidebarMobileHeader

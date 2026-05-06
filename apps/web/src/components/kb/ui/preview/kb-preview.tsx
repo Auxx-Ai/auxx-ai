@@ -3,13 +3,11 @@
 
 import {
   type DocJSON,
-  extractKBHeadings,
   getArticleNeighbours,
   getArticleParentLink,
   KBArticlePager,
-  KBArticleRenderer,
+  KBArticleWithToc,
   KBLayout,
-  KBTableOfContents,
 } from '@auxx/ui/components/kb'
 import { useEffect, useState } from 'react'
 import { useArticleContent } from '../../hooks/use-article-content'
@@ -69,7 +67,6 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   if (!knowledgeBase) return null
 
   const docJson = (previewContentJson ?? null) as DocJSON | null
-  const headings = docJson ? extractKBHeadings(docJson) : []
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
     : { prev: undefined, next: undefined }
@@ -96,30 +93,23 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
         onModeChange={setOverride}>
         {articleId ? (
           <div className='flex min-w-0 flex-1 flex-col'>
-            <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
-              <aside className='hidden @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:block @kb-lg:max-h-[calc(100dvh-5rem)] @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:overflow-y-auto @kb-lg:px-4 @kb-lg:pt-8'>
-                <KBTableOfContents headings={headings} />
-              </aside>
-              <div className='min-w-0 flex-1 @kb-lg:order-1'>
-                <KBArticleRenderer
-                  doc={docJson}
-                  title={
-                    previewTitle ??
-                    activeArticle?.title ??
-                    articles.find((a) => a.id === articleId)?.title
-                  }
-                  emoji={
-                    previewEmoji ??
-                    activeArticle?.emoji ??
-                    articles.find((a) => a.id === articleId)?.emoji
-                  }
-                  description={previewDescription ?? activeArticle?.description}
-                  parent={parent}
-                  resolveAuxxHref={(id) => `/preview/kb/${kbId}/r/${id}`}
-                />
-              </div>
-            </div>
-            <div className='mt-auto w-full max-w-3xl px-6'>
+            <KBArticleWithToc
+              doc={docJson}
+              title={
+                previewTitle ??
+                activeArticle?.title ??
+                articles.find((a) => a.id === articleId)?.title
+              }
+              emoji={
+                previewEmoji ??
+                activeArticle?.emoji ??
+                articles.find((a) => a.id === articleId)?.emoji
+              }
+              description={previewDescription ?? activeArticle?.description}
+              parent={parent}
+              resolveAuxxHref={(id) => `/preview/kb/${kbId}/r/${id}`}
+            />
+            <div className='mt-auto w-full max-w-3xl ps-6'>
               <KBArticlePager articles={articles} prev={prev} next={next} basePath='#preview' />
             </div>
           </div>

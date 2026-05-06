@@ -433,6 +433,7 @@
    article column. Same fix as `.tabsContainerContent` /
    `.accordionContainerContent`. */
 .tableContainerContent {
+  position: relative;
   width: 100%;
   flex: 1 1 0%;
   min-width: 0;
@@ -448,38 +449,54 @@
   gap: 0;
 }
 
+/* Floats over the top-right of the table — partially overlaps the header
+   row. Reveals on container hover so the chrome stays out of the way at
+   rest. z-index sits above `.editorTable` cells but below the column
+   drag strip + delete buttons. */
 .tableToolbar {
-  width: 100%;
-  display: flex;
+  position: absolute;
+  top: 0.125rem;
+  right: 0.125rem;
+  z-index: 2;
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.125rem;
-  font-size: 0.75rem;
-  color: var(--color-muted-foreground);
+  pointer-events: auto;
 }
 
 .tableToolbarToggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--color-primary-150);
   border-radius: 0.375rem;
-  border: 1px dashed transparent;
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.75rem;
+  background: var(--color-primary-100);
   color: var(--color-muted-foreground);
-  margin-left: auto;
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  box-sizing: border-box;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.12s, background 0.12s, border-color 0.12s,
+    box-shadow 0.12s;
+}
+
+.tableContainerContent:hover .tableToolbarToggle,
+.tableToolbarToggle:focus-visible,
+.tableToolbarToggle[aria-pressed='true'] {
+  opacity: 1;
 }
 
 .tableToolbarToggle:hover {
-  border-color: var(--color-border);
   color: var(--color-foreground);
+  border-color: var(--color-border);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 .tableToolbarToggle[aria-pressed='true'] {
   color: var(--color-foreground);
+  border-color: var(--color-border);
+  background: var(--color-background);
 }
 
 /* Body card is now an invisible positioning container. The visual card

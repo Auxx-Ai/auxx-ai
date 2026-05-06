@@ -5,16 +5,14 @@ import { Banner } from '@auxx/ui/components/banner'
 import { Button } from '@auxx/ui/components/button'
 import {
   type DocJSON,
-  extractKBHeadings,
   findArticleBySlugPath,
   findFirstNavigableUnder,
   getArticleNeighbours,
   getArticleParentLink,
   getFullSlugPath,
   KBArticlePager,
-  KBArticleRenderer,
+  KBArticleWithToc,
   KBLayout,
-  KBTableOfContents,
 } from '@auxx/ui/components/kb'
 import { ExternalLink, Eye, Undo2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -126,7 +124,6 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
 
   const basePath = `/preview/kb/${knowledgeBaseId}`
   const docJson = (previewContentJson ?? null) as DocJSON | null
-  const headings = docJson ? extractKBHeadings(docJson) : []
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
     : { prev: undefined, next: undefined }
@@ -244,29 +241,22 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
         activeArticleId={activeArticle?.id}>
         {articleId ? (
           <div className='flex min-w-0 flex-1 flex-col'>
-            <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
-              <aside className='hidden @kb-lg:sticky @kb-lg:top-[calc(var(--kb-top-offset,0px)+5rem)] @kb-lg:order-2 @kb-lg:block @kb-lg:max-h-[calc(100dvh-var(--kb-top-offset,0px)-5rem)] @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:overflow-y-auto @kb-lg:px-4 @kb-lg:pt-8'>
-                <KBTableOfContents headings={headings} />
-              </aside>
-              <div className='min-w-0 flex-1 @kb-lg:order-1'>
-                <KBArticleRenderer
+            <KBArticleWithToc
+              doc={docJson}
+              title={previewTitle ?? activeArticle?.title}
+              emoji={previewEmoji ?? activeArticle?.emoji}
+              description={previewDescription ?? activeArticle?.description}
+              parent={parent}
+              resolveAuxxHref={(id) => `/preview/kb/${knowledgeBaseId}/r/${id}`}
+              copyMenu={
+                <ArticleMarkdownCopy
                   doc={docJson}
                   title={previewTitle ?? activeArticle?.title}
-                  emoji={previewEmoji ?? activeArticle?.emoji}
-                  description={previewDescription ?? activeArticle?.description}
-                  parent={parent}
-                  resolveAuxxHref={(id) => `/preview/kb/${knowledgeBaseId}/r/${id}`}
-                  copyMenu={
-                    <ArticleMarkdownCopy
-                      doc={docJson}
-                      title={previewTitle ?? activeArticle?.title}
-                      markdownHref={markdownHref}
-                    />
-                  }
+                  markdownHref={markdownHref}
                 />
-              </div>
-            </div>
-            <div className='mt-auto w-full max-w-3xl px-6'>
+              }
+            />
+            <div className='mt-auto w-full max-w-3xl ps-6'>
               <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
             </div>
           </div>

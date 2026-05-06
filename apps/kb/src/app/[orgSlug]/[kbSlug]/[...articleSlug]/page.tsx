@@ -3,15 +3,13 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { isOrgMember } from '@auxx/lib/cache'
 import {
-  extractKBHeadings,
   findArticleBySlugPath,
   findFirstNavigableUnder,
   getArticleNeighbours,
   getArticleParentLink,
   getFullSlugPath,
   KBArticlePager,
-  KBArticleRenderer,
-  KBTableOfContents,
+  KBArticleWithToc,
 } from '@auxx/ui/components/kb'
 import type { Metadata } from 'next'
 import { cacheLife, cacheTag } from 'next/cache'
@@ -182,7 +180,6 @@ function ArticleBodyContent({
     redirect(`${basePath}/${getFullSlugPath(first, articles)}`)
   }
 
-  const headings = extractKBHeadings(article.contentJson)
   const { prev, next } = getArticleNeighbours(articles, article.id)
   const parent = getArticleParentLink(article, articles, basePath)
   const fullSlug = getFullSlugPath(article, articles)
@@ -190,28 +187,21 @@ function ArticleBodyContent({
 
   return (
     <div className='flex min-w-0 flex-1 flex-col'>
-      <div className='flex flex-col gap-6 @kb-lg:flex-row @kb-lg:items-start'>
-        <aside className='hidden @kb-lg:sticky @kb-lg:top-20 @kb-lg:order-2 @kb-lg:block @kb-lg:max-h-[calc(100dvh-5rem)] @kb-lg:w-64 @kb-lg:max-w-none @kb-lg:flex-none @kb-lg:overflow-y-auto @kb-lg:px-4 @kb-lg:pt-8'>
-          <KBTableOfContents headings={headings} />
-        </aside>
-        <div className='min-w-0 flex-1 @kb-lg:order-1'>
-          <KBArticleRenderer
+      <KBArticleWithToc
+        doc={article.contentJson}
+        title={article.title}
+        emoji={article.emoji}
+        description={article.description}
+        updatedAt={article.updatedAt}
+        parent={parent}
+        copyMenu={
+          <ArticleMarkdownCopy
             doc={article.contentJson}
             title={article.title}
-            emoji={article.emoji}
-            description={article.description}
-            updatedAt={article.updatedAt}
-            parent={parent}
-            copyMenu={
-              <ArticleMarkdownCopy
-                doc={article.contentJson}
-                title={article.title}
-                markdownHref={markdownHref}
-              />
-            }
+            markdownHref={markdownHref}
           />
-        </div>
-      </div>
+        }
+      />
       <div className='mt-auto w-full max-w-3xl px-6'>
         <KBArticlePager articles={articles} prev={prev} next={next} basePath={basePath} />
       </div>

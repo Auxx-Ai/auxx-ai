@@ -11,6 +11,10 @@ export interface KBLayoutContextValue {
   setMobileOpen: (value: boolean) => void
   searchOpen: boolean
   setSearchOpen: (value: boolean) => void
+  /** When true, `<main>` owns the scroll instead of the document. Used to
+   * decide whether the mobile drawer should pin to the viewport (`fixed`)
+   * or stay scoped to the layout root (`absolute` — preview frames). */
+  mainScroll: boolean
 }
 
 const KBLayoutContext = createContext<KBLayoutContextValue | null>(null)

@@ -44,7 +44,7 @@ export function KBTableOfContentsDrawer({ headings, className }: KBTableOfConten
     <span ref={anchorRef} className='contents'>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
-          <Button variant='outline' size='icon' aria-label='On this page' className={className}>
+          <Button variant='outline' size='icon-xs' aria-label='On this page' className={className}>
             <List />
           </Button>
         </SheetTrigger>

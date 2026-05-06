@@ -3,8 +3,9 @@
 
 import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewWrapper, useReactNodeView } from '@tiptap/react'
-import { GripHorizontal, GripVertical, Trash2 } from 'lucide-react'
+import { GripHorizontal, GripVertical, PanelTop, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import blockStyles from './block-node-view.module.css'
 import styles from './container-node-view.module.css'
 import {
@@ -322,13 +323,18 @@ export function TableNodeView({ node, editor, getPos }: NodeViewProps) {
         <div
           className={`${blockStyles.blockContentWrapper} ${styles.containerContent} ${styles.tableContainerContent}`}>
           <div className={styles.tableToolbar} contentEditable={false}>
-            <button
-              type='button'
-              className={styles.tableToolbarToggle}
-              aria-pressed={hasHeaderRow}
-              onClick={handleToggleHeader}>
-              {hasHeaderRow ? 'Header row' : 'No header'}
-            </button>
+            <Tooltip
+              content={hasHeaderRow ? 'Style first row as body' : 'Style first row as header'}
+              side='top'>
+              <button
+                type='button'
+                className={styles.tableToolbarToggle}
+                aria-pressed={hasHeaderRow}
+                aria-label={hasHeaderRow ? 'Style first row as body' : 'Style first row as header'}
+                onClick={handleToggleHeader}>
+                <PanelTop size={14} aria-hidden='true' />
+              </button>
+            </Tooltip>
           </div>
 
           <div className={styles.tableBodyCard} ref={wrapperRef}>
