@@ -28,6 +28,8 @@ interface SidebarItemProps {
   isActive?: boolean
   isInbox?: boolean
   editItems?: ReactNode
+  /** Inline action button rendered in place of the 3-dot dropdown. Mutually exclusive with editItems/onToggleEditMode. */
+  action?: ReactNode
   onToggleEditMode?: () => void
   /** When true, renders the name as an editable input. Click-through to navigation is suppressed. */
   isEditing?: boolean
@@ -52,6 +54,7 @@ export function SidebarItem({
   className = '',
   isActive,
   editItems,
+  action,
   isInbox = false,
   onToggleEditMode,
   isEditing = false,
@@ -133,6 +136,15 @@ export function SidebarItem({
                 {count}
               </div>
             </>
+          )}
+          {action && !hasDropdownContent && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+              }}>
+              {action}
+            </div>
           )}
           {hasDropdownContent && (
             <div
