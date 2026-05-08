@@ -6,6 +6,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { Loader2 } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
+import { LAYOUT_TAB_ENABLED } from '../../constant'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
 import { useKnowledgeBaseStore } from '../../store/knowledge-base-store'
 import { GeneralTab } from '../settings/general/general-tab'
@@ -58,7 +59,7 @@ export function KBTabPanel({ knowledgeBaseId, knowledgeBase }: KBTabPanelProps) 
         {activePanel === 'general' && (
           <GeneralTab knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
         )}
-        {activePanel === 'layout' && (
+        {LAYOUT_TAB_ENABLED && activePanel === 'layout' && (
           <LayoutTab knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
         )}
         {activePanel === 'articles' && <KBArticlesPanel knowledgeBaseId={knowledgeBaseId} />}

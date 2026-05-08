@@ -18,6 +18,8 @@ import { KBPreviewTopBar } from './kb-preview-topbar'
 import { mapKBForPreview } from './map-kb-for-preview'
 import { PreviewProvider, usePreview } from './preview-context'
 import { DesktopPreviewFrame, MobilePreviewFrame } from './preview-frames'
+import { useKBPreviewHint } from './preview-hint-context'
+import { PreviewHintOverlay } from './preview-hint-overlay'
 
 interface KBPreviewProps {
   knowledgeBase: KnowledgeBase
@@ -36,6 +38,7 @@ export function KBPreview({ knowledgeBase, activeSlugPath }: KBPreviewProps) {
 function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath?: string[] }) {
   const { isMobile, effectiveMode, knowledgeBase, previewMode, setPreviewMode, setOverride } =
     usePreview()
+  const hint = useKBPreviewHint()
   const articles = useArticleList(kbId)
 
   // Article from the editor's slug path; resets the override when the editor switches.
@@ -123,12 +126,16 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
       <KBPreviewTopBar kbId={kbId} activeSlugPath={activeSlugPath} articleId={articleId} />
-      <div className='flex min-h-0 flex-1 justify-center bg-muted p-4'>
+      <div
+        className='relative flex min-h-0 flex-1 justify-center bg-muted p-4'
+        onPointerEnter={hint.onPointerEnter}
+        onPointerLeave={hint.onPointerLeave}>
         {isMobile ? (
           <MobilePreviewFrame>{layout}</MobilePreviewFrame>
         ) : (
           <DesktopPreviewFrame url={browserUrl}>{layout}</DesktopPreviewFrame>
         )}
+        <PreviewHintOverlay />
       </div>
     </div>
   )

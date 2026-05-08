@@ -31,6 +31,11 @@ const CORNER_OPTIONS = [
   { label: 'Straight', value: 'straight' },
 ]
 
+const SEARCHBAR_OPTIONS = [
+  { label: 'Center', value: 'center' },
+  { label: 'Corner', value: 'corner' },
+]
+
 const sidebarStyles = [
   {
     value: 'default' as const,
@@ -56,6 +61,7 @@ const stylingSchema = z.object({
   fontFamily: z.string().nullish(),
   cornerStyle: z.enum(['rounded', 'straight']).default('rounded'),
   sidebarListStyle: z.enum(['default', 'pill', 'line']).default('default'),
+  searchbarPosition: z.enum(['center', 'corner']).default('center'),
 })
 
 type StylingFormValues = z.infer<typeof stylingSchema>
@@ -69,6 +75,8 @@ function buildDefaults(kb: KnowledgeBase): StylingFormValues {
     cornerStyle: (lower(merged.cornerStyle) as StylingFormValues['cornerStyle']) || 'rounded',
     sidebarListStyle:
       (lower(merged.sidebarListStyle) as StylingFormValues['sidebarListStyle']) || 'default',
+    searchbarPosition:
+      (merged.searchbarPosition as StylingFormValues['searchbarPosition']) || 'center',
   }
 }
 
@@ -135,6 +143,27 @@ export function StylingSection({ knowledgeBaseId, knowledgeBase }: StylingSectio
                   fieldOptions={{ options: CORNER_OPTIONS }}
                   value={field.value}
                   onChange={(v) => field.onChange((v as string[])[0] ?? 'rounded')}
+                  placeholder='Pick…'
+                  triggerProps={{ className: 'w-full' }}
+                />
+              </VarEditorFieldRow>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='searchbarPosition'
+            render={({ field, fieldState }) => (
+              <VarEditorFieldRow
+                title='Search bar'
+                description="Pick the style of the search bar. On small screens it's displayed as an icon button."
+                type={BaseType.ENUM}
+                showIcon
+                validationError={fieldState.error?.message}>
+                <FieldInputAdapter
+                  fieldType={FieldType.SINGLE_SELECT}
+                  fieldOptions={{ options: SEARCHBAR_OPTIONS }}
+                  value={field.value}
+                  onChange={(v) => field.onChange((v as string[])[0] ?? 'center')}
                   placeholder='Pick…'
                   triggerProps={{ className: 'w-full' }}
                 />
