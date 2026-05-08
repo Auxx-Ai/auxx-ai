@@ -60,7 +60,6 @@ export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySect
   const onSubmit = async (data: IdentityFormValues) => {
     await updateKnowledgeBase(knowledgeBaseId, {
       slug: data.slug,
-      customDomain: data.customDomain ?? null,
       visibility: data.visibility,
     })
   }
@@ -76,7 +75,7 @@ export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySect
   }, [knowledgeBaseId])
 
   return (
-    <Section title='Identity' description='URL, custom domain, and access for this knowledge base.'>
+    <Section title='Identity' description='URL and access for this knowledge base.'>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <VarEditorField orientation='vertical' className='p-0'>
@@ -96,27 +95,6 @@ export function IdentitySection({ knowledgeBaseId, knowledgeBase }: IdentitySect
                     value={field.value}
                     onChange={(v) => field.onChange(v ?? '')}
                     placeholder='my-knowledge-base'
-                    disabled={isUpdating}
-                  />
-                </VarEditorFieldRow>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='customDomain'
-              render={({ field, fieldState }) => (
-                <VarEditorFieldRow
-                  title='Custom domain'
-                  description='Set a custom domain for your knowledge base.'
-                  type={BaseType.STRING}
-                  showIcon
-                  validationError={fieldState.error?.message}>
-                  <FieldInputAdapter
-                    fieldType={FieldType.TEXT}
-                    value={field.value ?? ''}
-                    onChange={(v) => field.onChange(v ?? '')}
-                    placeholder='docs.example.com'
                     disabled={isUpdating}
                   />
                 </VarEditorFieldRow>

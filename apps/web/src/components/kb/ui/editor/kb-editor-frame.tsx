@@ -7,6 +7,8 @@ import type React from 'react'
 import { useMemo } from 'react'
 import { LoadingSpinner } from '~/components/global/loading-content'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
+import { ArticlesTabArrow } from '../preview/articles-tab-arrow'
+import { KBPreviewHintProvider } from '../preview/preview-hint-context'
 import { KBEditorHeader } from './kb-editor-header'
 import { KBTabPanel } from './kb-tab-panel'
 
@@ -45,9 +47,12 @@ export function KBEditorFrame({ knowledgeBaseId, children }: KBEditorFrameProps)
   }
 
   return (
-    <MainPage>
-      <KBEditorHeader knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
-      <MainPageContent leftPanels={leftPanels}>{children}</MainPageContent>
-    </MainPage>
+    <KBPreviewHintProvider>
+      <MainPage>
+        <KBEditorHeader knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
+        <MainPageContent leftPanels={leftPanels}>{children}</MainPageContent>
+        <ArticlesTabArrow />
+      </MainPage>
+    </KBPreviewHintProvider>
   )
 }

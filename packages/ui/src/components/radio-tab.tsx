@@ -94,6 +94,8 @@ export interface RadioTabItemProps extends VariantProps<typeof radioTabItemVaria
   disabled?: boolean
   /** Optional tooltip text to display on hover */
   tooltip?: string
+  /** Pass-through data-* attributes (e.g. for anchor lookups). */
+  [dataAttr: `data-${string}`]: string | undefined
 }
 
 /**

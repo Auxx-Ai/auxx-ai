@@ -12,8 +12,10 @@ import {
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Book, Cog, Layout } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
+import { LAYOUT_TAB_ENABLED } from '../../constant'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
+import { useKBPreviewHint } from '../preview/preview-hint-context'
 import { KBSwitcherDropdownContent } from '../sidebar/kb-switcher'
 import { KBPublishCluster } from './kb-publish-cluster'
 
@@ -45,6 +47,13 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
     'panel',
     parseAsStringLiteral(PANEL_VALUES).withDefault('general')
   )
+  const { lockSession } = useKBPreviewHint()
+
+  // Once the user has reached the Articles panel they've found the answer the
+  // hint was pointing at — never show it again this session.
+  useEffect(() => {
+    if (panel === 'articles') lockSession()
+  }, [panel, lockSession])
 
   const merged = useMemo(
     () => mergeDraftOverLive(knowledgeBase as Record<string, unknown>) as KnowledgeBase,
@@ -83,11 +92,13 @@ export function KBEditorHeader({ knowledgeBaseId, knowledgeBase }: KBEditorHeade
           <Cog />
           <span className='hidden sm:inline'>General</span>
         </RadioTabItem>
-        <RadioTabItem value='layout' tooltip='Layout'>
-          <Layout />
-          <span className='hidden sm:inline'>Layout</span>
-        </RadioTabItem>
-        <RadioTabItem value='articles' tooltip='Articles'>
+        {LAYOUT_TAB_ENABLED && (
+          <RadioTabItem value='layout' tooltip='Layout'>
+            <Layout />
+            <span className='hidden sm:inline'>Layout</span>
+          </RadioTabItem>
+        )}
+        <RadioTabItem value='articles' tooltip='Articles' data-kb-articles-tab=''>
           <Book />
           <span className='hidden sm:inline'>Articles</span>
         </RadioTabItem>
