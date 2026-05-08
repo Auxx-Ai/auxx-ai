@@ -125,13 +125,23 @@ export function useUnsavedChangesGuard({
 
   /**
    * Handle click outside - prevent close and show confirmation if dirty
-   * Ignores clicks on toast notifications
+   * Ignores clicks on toast notifications and clicks inside nested dialogs/popovers
+   * (e.g. a confirm dialog opened from a button inside the guarded dialog).
    */
   const handleInteractOutside = useCallback(
     (event: Event) => {
-      // Ignore clicks on toast notifications
-      if (event.target instanceof HTMLElement && event.target.closest('[data-toast-container]')) {
-        return
+      if (event.target instanceof HTMLElement) {
+        // Ignore clicks on toast notifications
+        if (event.target.closest('[data-toast-container]')) return
+        // Ignore clicks that landed inside another dialog/popover/menu — the
+        // topmost layer should own the interaction, not the dialog underneath.
+        if (
+          event.target.closest(
+            '[role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper], [cmdk-root]'
+          )
+        ) {
+          return
+        }
       }
       if (isDirty) {
         event.preventDefault()
