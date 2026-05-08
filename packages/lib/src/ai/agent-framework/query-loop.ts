@@ -475,6 +475,28 @@ export async function* agentQueryLoop(
       }
     }
 
+    // Transform pass — rewrite the LLM-visible payload after state mining,
+    // mutating `r.output` in place so the message-build below stays untouched.
+    // Lets a domain expand a sentinel/delta into the canonical shape the model
+    // should see (e.g. plan_update_step's `_planPatch` → `{ plan: <canonical> }`).
+    if (config.domainConfig.transformToolResult) {
+      for (const r of toolResults.results) {
+        if (!r.success) continue
+        const transformed = config.domainConfig.transformToolResult(
+          r.toolName,
+          { success: r.success, output: r.output, error: r.error },
+          currentState
+        )
+        if (transformed) {
+          r.output = transformed.output
+          if (!transformed.success) {
+            r.success = false
+            r.error = transformed.error
+          }
+        }
+      }
+    }
+
     const toolResultMessages = toolResults.results.map((r) => ({
       role: 'tool' as const,
       content: JSON.stringify(

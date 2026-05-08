@@ -7,6 +7,7 @@ import type { JobContext } from '../../jobs/types'
 import {
   createCapabilityRegistry,
   createEntityCapabilities,
+  createKopilotCapabilities,
   createKopilotDomainConfig,
   createMailCapabilities,
   createToolDepsFactory,
@@ -82,6 +83,10 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     domainConfig,
     callModel,
     signal,
+    // Kopilot domain: long-running plans routinely chain >5 approvals
+    // (one per ticket reply, etc.) and need iteration headroom for plan
+    // step churn. Other domains stay on framework defaults.
+    ...(domain === 'kopilot' ? { maxTotalIterations: 100, maxApprovalsPerTurn: 50 } : {}),
   }
 
   const engine = new AgentEngine(engineConfig, {
@@ -213,6 +218,7 @@ async function buildDomainConfig(
       const registry = createCapabilityRegistry()
       registry.register(createEntityCapabilities(getToolDeps))
       registry.register(createMailCapabilities(getToolDeps))
+      registry.register(createKopilotCapabilities(getToolDeps))
 
       // Resolve model: explicit override → system default → hardcoded fallback
       let defaultModel: string | undefined
@@ -236,6 +242,9 @@ async function buildDomainConfig(
         page: params.page,
         defaultModel,
         defaultProvider,
+        // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need
+        // headroom past the framework's small-loop default.
+        maxIterations: 30,
       })
     }
     default:

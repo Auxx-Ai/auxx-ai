@@ -19,6 +19,7 @@ export const REFERENCE_BLOCK_TYPES = [
   'thread-list',
   'task-list',
   'draft-list',
+  'plan-steps',
   'table',
 ] as const
 export type ReferenceBlockType = (typeof REFERENCE_BLOCK_TYPES)[number]
