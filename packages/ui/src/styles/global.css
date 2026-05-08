@@ -95,6 +95,15 @@
   }
 }
 
+@keyframes text-shimmer-smooth {
+  0% {
+    background-position: -250% center;
+  }
+  100% {
+    background-position: 250% center;
+  }
+}
+
 @keyframes dot-blink {
   0%, 80%, 100% {
     opacity: 0;
@@ -660,6 +669,7 @@
   --animate-scale-in: scale-in 120ms ease-out;
   --animate-scale-out: scale-out 120ms ease-in;
   --animate-text-shimmer: text-shimmer var(--duration, 2.5s) ease-in-out infinite;
+  --animate-text-shimmer-smooth: text-shimmer-smooth var(--duration, 2.5s) linear infinite;
   --animate-dot-blink: dot-blink 1.4s infinite both;
 
   --shadow-left: -2px 4px 16px 0 rgba(0, 0, 0, 0.12), 0 2px 4px 0 rgba(0, 0, 0, 0.04);

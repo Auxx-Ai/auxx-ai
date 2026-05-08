@@ -64,16 +64,23 @@ function Button({
   asChild = false,
   loading = false,
   loadingText = 'Loading...',
+  type,
   children,
   ...props
 }: ButtonProps) {
   // Choose the component type based on asChild prop
   const Comp = asChild ? SlotPrimitive.Slot : 'button'
 
+  // Default plain <button> to type="button" so a stray Button inside a <form>
+  // doesn't trigger implicit form submission. Slotted children (asChild) keep
+  // their own element semantics — don't force a button type onto a non-button.
+  const resolvedType = !asChild ? (type ?? 'button') : type
+
   return (
     <Comp
       data-slot={`button-${variant ?? 'default'}`}
       data-size={size}
+      type={resolvedType}
       className={cn(buttonVariants({ variant, size, className }))}
       disabled={loading || props.disabled}
       aria-busy={loading}

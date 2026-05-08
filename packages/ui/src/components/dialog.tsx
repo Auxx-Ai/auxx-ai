@@ -111,34 +111,61 @@ function DialogContent({
   const portalContainerRef = React.useRef<HTMLDivElement>(null)
   const contentRef = React.useRef<HTMLDivElement>(null)
 
-  // Handle Meta+Enter keyboard shortcut - DOM-based approach
-  // This queries the DOM directly for the submit button, avoiding context timing issues
+  // Handle Enter keyboard behavior inside the dialog:
+  // - Cmd/Ctrl+Enter clicks the submit button (works from any focusable element).
+  // - Plain Enter in a single-line <input> would otherwise trigger native form
+  //   submission. We suppress that so Cmd/Ctrl+Enter is the only way to submit.
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux)
-      if (!((e.metaKey || e.ctrlKey) && e.key === 'Enter')) return
+      if (e.key !== 'Enter') return
 
       const content = contentRef.current
       if (!content) return
-
-      // Only handle if the event target is inside this dialog
-      // This prevents handling events from other dialogs
       if (!content.contains(e.target as Node)) return
 
-      // Find submit button - supports both form buttons and standalone buttons
-      // Priority: [data-dialog-submit] > button[type="submit"]
-      const submitButton = content.querySelector<HTMLButtonElement>(
-        '[data-dialog-submit]:not(:disabled), button[type="submit"]:not(:disabled)'
-      )
+      const hasModifier = e.metaKey || e.ctrlKey
 
-      if (submitButton) {
-        e.preventDefault()
-        e.stopImmediatePropagation() // Prevent other dialog listeners
-        submitButton.click()
+      if (hasModifier) {
+        const submitButton = content.querySelector<HTMLButtonElement>(
+          '[data-dialog-submit]:not(:disabled), button[type="submit"]:not(:disabled)'
+        )
+        if (submitButton) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          submitButton.click()
+        }
+        return
       }
+
+      // Plain Enter — block native implicit form submission when focused in a
+      // single-line input. Leave textareas, contenteditable, buttons, links,
+      // and selects alone so they keep their normal Enter behavior.
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      const tag = target.tagName
+      if (tag !== 'INPUT') return
+      const inputType = (target as HTMLInputElement).type
+      // Don't block Enter on inputs where Enter has meaningful native behavior
+      // (submit/reset/button/checkbox/radio/file).
+      const blockableTypes = [
+        'text',
+        'email',
+        'password',
+        'search',
+        'tel',
+        'url',
+        'number',
+        'date',
+        'datetime-local',
+        'month',
+        'time',
+        'week',
+      ]
+      if (!blockableTypes.includes(inputType)) return
+
+      e.preventDefault()
     }
 
-    // Use capture phase so it works even when focused in inputs
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [])

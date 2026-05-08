@@ -3,62 +3,54 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { motion } from 'motion/react'
 import React, { useMemo } from 'react'
 
 export type TextShimmerProps = {
   children: string
   as?: React.ElementType
   className?: string
+  /** Duration of one full sweep, in seconds. Defaults to 4. */
   duration?: number
+  /** Pixels per character; controls the width of the highlight band. */
   spread?: number
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: motion.create returns a dynamic component type
-const motionCreateCache = new Map<React.ElementType, any>()
-
-function getMotionComponent(el: React.ElementType) {
-  if (!motionCreateCache.has(el)) {
-    motionCreateCache.set(el, motion.create(el as keyof React.JSX.IntrinsicElements))
-  }
-  return motionCreateCache.get(el)!
-}
-
+/**
+ * CSS-only text shimmer. Pure keyframe animation (`text-shimmer-smooth`
+ * defined in global.css) — no framer-motion, so it renders reliably in
+ * memoized list rows. Sweeps right-to-left at constant speed; override
+ * `duration` per instance.
+ *
+ * For the legacy framer-motion implementation see `TextShimmerMotion` in
+ * `./text-shimmer-motion`.
+ */
 function TextShimmerComponent({
   children,
   as: Component = 'p',
   className,
-  duration = 2,
+  duration = 4,
   spread = 2,
 }: TextShimmerProps) {
-  const MotionComponent = getMotionComponent(Component)
-
   const dynamicSpread = useMemo(() => children.length * spread, [children, spread])
 
   return (
-    <MotionComponent
+    <Component
       className={cn(
-        'bg-size-[250%_100%,auto] relative inline-block bg-clip-text',
+        'animate-text-shimmer-smooth [animation-direction:reverse] bg-size-[250%_100%,auto] relative inline-block bg-clip-text',
         'text-transparent [--base-color:#a1a1aa] [--base-gradient-color:#000]',
         '[--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--base-gradient-color),#0000_calc(50%+var(--spread)))] [background-repeat:no-repeat,padding-box]',
         'dark:[--base-color:#71717a] dark:[--base-gradient-color:#ffffff] dark:[--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--base-gradient-color),#0000_calc(50%+var(--spread)))]',
         className
       )}
-      initial={{ backgroundPosition: '100% center' }}
-      animate={{ backgroundPosition: '0% center' }}
-      transition={{
-        repeat: Number.POSITIVE_INFINITY,
-        duration,
-        ease: 'linear',
-      }}
       style={
         {
           '--spread': `${dynamicSpread}px`,
+          '--duration': `${duration}s`,
           backgroundImage: 'var(--bg), linear-gradient(var(--base-color), var(--base-color))',
         } as React.CSSProperties
       }>
       {children}
-    </MotionComponent>
+    </Component>
   )
 }
 
