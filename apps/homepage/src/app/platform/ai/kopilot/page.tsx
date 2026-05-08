@@ -4,6 +4,7 @@ import { config } from '~/lib/config'
 import FooterSection from '../../../_components/main/footer-section'
 import Header from '../../../_components/main/header'
 import { BreadcrumbJsonLd } from '../../../_components/seo/breadcrumb-json-ld'
+import KopilotAgentsCta from './_components/kopilot-agents-cta'
 import KopilotContextSection from './_components/kopilot-context-section'
 import KopilotFinalCta from './_components/kopilot-final-cta'
 import KopilotHero from './_components/kopilot-hero'
@@ -35,6 +36,7 @@ export default function KopilotPage() {
         <KopilotContextSection />
         <KopilotIntelligenceSection />
         <KopilotPromptLibrary />
+        <KopilotAgentsCta />
         {/* <KopilotTestimonial /> */}
         <KopilotFinalCta />
       </main>
