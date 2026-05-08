@@ -23,6 +23,28 @@ export class RealtimeService {
     return this.provider.publish(`presence-org-${organizationId}`, event, data, options)
   }
 
+  /**
+   * Publish to `presence-org-{organizationId}-inbox-{inboxId | 'none'}`.
+   * Mail events publish per-inbox so users only receive events for inboxes they
+   * can read. Unassigned threads (`inboxId = null`) ride on the `none` slug,
+   * which every org member subscribes to as the org-triage default.
+   */
+  async sendToInbox(
+    organizationId: string,
+    inboxId: string | null,
+    event: string,
+    data: unknown,
+    options?: { excludeSocketId?: string }
+  ): Promise<boolean> {
+    const slug = inboxId ?? 'none'
+    return this.provider.publish(
+      `presence-org-${organizationId}-inbox-${slug}`,
+      event,
+      data,
+      options
+    )
+  }
+
   /** Publish to `private-user-{userId}` */
   async sendToUser(
     userId: string,

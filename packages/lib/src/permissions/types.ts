@@ -41,6 +41,7 @@ export enum FeatureKey {
   unverifiedApps = 'unverifiedApps',
   kopilot = 'kopilot',
   realtimeSync = 'realtimeSync',
+  realtimeMail = 'realtimeMail',
   callRecordings = 'callRecordings',
   todayInbox = 'todayInbox',
 
@@ -127,6 +128,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
   },
   { key: FeatureKey.kopilot, type: 'boolean', label: 'Kopilot', group: 'AI' },
   { key: FeatureKey.realtimeSync, type: 'boolean', label: 'Real-Time Sync', group: 'Core' },
+  {
+    key: FeatureKey.realtimeMail,
+    type: 'boolean',
+    label: 'Real-Time Mail',
+    description: 'Per-inbox realtime patches for thread/message/participant changes.',
+    group: 'Core',
+  },
   {
     key: FeatureKey.callRecordings,
     type: 'boolean',

@@ -7,6 +7,7 @@ import { FavoritesProvider } from '~/components/favorites/providers/favorites-pr
 import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
 import { ResourceProvider } from '~/components/resources'
 import { useResourceSync } from '~/components/resources/hooks/use-resource-sync'
+import { useMailSync } from '~/components/threads/realtime'
 import { useRealtimeLifecycle } from '~/realtime/use-realtime-lifecycle'
 
 interface AuxxAppProvidersProps {
@@ -29,6 +30,7 @@ interface AuxxAppProvidersProps {
 export function AuxxAppProviders({ children }: AuxxAppProvidersProps) {
   useRealtimeLifecycle()
   useResourceSync()
+  useMailSync()
 
   return (
     <ResourceProvider>

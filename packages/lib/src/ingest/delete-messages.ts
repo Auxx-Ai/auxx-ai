@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import { getRealtimeService, publishMessageDeleted, publishThreadDeleted } from '../realtime'
 import type { IngestContext } from './context'
 import { updateThreadMetadataEfficient } from './threads/update-metadata'
 
@@ -33,6 +34,18 @@ export async function deleteMessagesByExternalIds(
   const messageIds = messages.map((m) => m.id)
   const affectedThreadIds = [...new Set(messages.map((m) => m.threadId).filter(Boolean))]
 
+  // Capture inboxIds before delete so we can route realtime events.
+  const threadInboxRows = affectedThreadIds.length
+    ? await ctx.db
+        .select({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+        .from(schema.Thread)
+        .where(inArray(schema.Thread.id, affectedThreadIds as string[]))
+    : []
+  const inboxIdByThread = new Map<string, string | null>()
+  for (const row of threadInboxRows) {
+    inboxIdByThread.set(row.id, row.inboxId ?? null)
+  }
+
   await ctx.db.delete(schema.Message).where(inArray(schema.Message.id, messageIds))
 
   ctx.logger.info('Deleted messages by external IDs', {
@@ -40,6 +53,36 @@ export async function deleteMessagesByExternalIds(
     deletedCount: messageIds.length,
     affectedThreads: affectedThreadIds.length,
   })
+
+  const realtime = getRealtimeService()
+
+  // Publish message:deleted for each removed message (skipped during initial sync).
+  if (!ctx.isInitialSync) {
+    for (const msg of messages) {
+      if (!msg.threadId) continue
+      await publishMessageDeleted(
+        realtime,
+        ctx.organizationId,
+        {
+          messageId: msg.id,
+          threadId: msg.threadId,
+          inboxId: inboxIdByThread.get(msg.threadId) ?? null,
+        },
+        { excludeSocketId: ctx.socketId }
+      )
+    }
+  } else {
+    for (const msg of messages) {
+      if (!msg.threadId) continue
+      ctx.batchedEvents.push({
+        inboxId: inboxIdByThread.get(msg.threadId) ?? null,
+        event: {
+          event: 'message:deleted',
+          data: { messageId: msg.id, threadId: msg.threadId },
+        },
+      })
+    }
+  }
 
   for (const threadId of affectedThreadIds) {
     if (!threadId) continue
@@ -52,6 +95,21 @@ export async function deleteMessagesByExternalIds(
     if (remaining.count === 0) {
       await ctx.db.delete(schema.Thread).where(eq(schema.Thread.id, threadId))
       ctx.logger.debug('Deleted empty thread after message removal', { threadId })
+
+      const inboxId = inboxIdByThread.get(threadId) ?? null
+      if (ctx.isInitialSync) {
+        ctx.batchedEvents.push({
+          inboxId,
+          event: { event: 'thread:deleted', data: { threadId } },
+        })
+      } else {
+        await publishThreadDeleted(
+          realtime,
+          ctx.organizationId,
+          { threadId, inboxId },
+          { excludeSocketId: ctx.socketId }
+        )
+      }
     } else {
       await updateThreadMetadataEfficient(ctx, threadId)
     }

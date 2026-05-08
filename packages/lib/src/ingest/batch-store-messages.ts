@@ -1,6 +1,7 @@
 // packages/lib/src/ingest/batch-store-messages.ts
 
 import { v4 as uuidv4 } from 'uuid'
+import { flushMailBatch, getRealtimeService } from '../realtime'
 import { type IngestContext, resetBatchCaches } from './context'
 import { storeMessage } from './store-message'
 import type { MessageData } from './types'
@@ -82,6 +83,17 @@ export async function batchStoreMessages(
   if (isInitialSync) {
     await ctx.selectiveCache.completeBatch(organizationId, actualBatchId, successCount)
     ctx.isInitialSync = false
+  }
+
+  // Flush any mail realtime events buffered during the batch (initial-sync
+  // path appends instead of publishing per message). flushMailBatch chunks
+  // into 50-event `mail:batch` frames per inbox channel.
+  if (ctx.batchedEvents.length > 0) {
+    const buffered = ctx.batchedEvents
+    ctx.batchedEvents = []
+    await flushMailBatch(getRealtimeService(), organizationId, buffered, {
+      excludeSocketId: ctx.socketId,
+    })
   }
 
   ctx.logger.info(`Batch store completed: ${successCount} of ${messages.length} messages stored.`, {

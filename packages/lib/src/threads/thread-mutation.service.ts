@@ -7,6 +7,8 @@ import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/t
 import { and, eq, exists, ilike, inArray, notExists, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { FieldValueService } from '../field-values'
+import { getRealtimeService, publishThreadDeleted, publishThreadUpdated } from '../realtime'
+import type { ThreadMeta } from '../realtime/events'
 
 const logger = createScopedLogger('thread-mutation-service')
 
@@ -48,9 +50,17 @@ export class ThreadMutationService {
 
   private db: Database
 
-  constructor(organizationId: string, db: Database) {
+  /**
+   * Originating socket id for self-echo suppression on realtime publishes.
+   * tRPC routers populate from `x-realtime-socket-id`; workers / workflow
+   * nodes leave this undefined and accept the echo.
+   */
+  private readonly socketId?: string
+
+  constructor(organizationId: string, db: Database, socketId?: string) {
     this.organizationId = organizationId
     this.db = db
+    this.socketId = socketId
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -126,16 +136,58 @@ export class ThreadMutationService {
         }
       }
 
+      // Capture pre-update inboxId so we can fan out the realtime event onto
+      // both the old and new inbox channels when inboxId changes.
+      const [previous] = await this.db
+        .select({ inboxId: schema.Thread.inboxId })
+        .from(schema.Thread)
+        .where(
+          and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
+        )
+        .limit(1)
+
       const result = await this.db
         .update(schema.Thread)
         .set(dbUpdates)
         .where(
           and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
         )
-        .returning({ id: schema.Thread.id })
+        .returning({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
 
       if (result.length === 0) {
         throw new Error(`Thread ${threadId} not found`)
+      }
+
+      // Build a partial patch for the realtime event from the dbUpdates we
+      // actually wrote. Mirrors the entity layer's "publish only what changed"
+      // pattern in maybeUpdateDisplayValue.
+      const patch: Partial<ThreadMeta> = {}
+      if ('status' in dbUpdates) patch.status = dbUpdates.status
+      if ('subject' in dbUpdates) patch.subject = dbUpdates.subject
+      if ('assigneeId' in dbUpdates) patch.assigneeId = dbUpdates.assigneeId
+      if ('inboxId' in dbUpdates) {
+        patch.inboxId = dbUpdates.inboxId ? toRecordId('inbox', dbUpdates.inboxId) : null
+      }
+      if ('primaryEntityInstanceId' in dbUpdates) {
+        patch.ticketId = dbUpdates.primaryEntityInstanceId
+          ? toRecordId(
+              dbUpdates.primaryEntityDefinitionId ?? 'ticket',
+              dbUpdates.primaryEntityInstanceId
+            )
+          : null
+      }
+      if (Object.keys(patch).length > 0) {
+        await publishThreadUpdated(
+          getRealtimeService(),
+          this.organizationId,
+          {
+            threadId,
+            inboxId: result[0].inboxId ?? null,
+            previousInboxId: previous?.inboxId ?? null,
+            patch,
+          },
+          { excludeSocketId: this.socketId }
+        )
       }
 
       return {
@@ -215,6 +267,19 @@ export class ThreadMutationService {
         return { count: threadIds.length }
       }
 
+      // Capture pre-update inboxIds so we can fan out per-thread updates
+      // onto both old and new channels (only matters when inboxId changes).
+      const previousRows = await this.db
+        .select({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+        .from(schema.Thread)
+        .where(
+          and(
+            inArray(schema.Thread.id, threadIds),
+            eq(schema.Thread.organizationId, this.organizationId)
+          )
+        )
+      const prevInboxIdById = new Map(previousRows.map((r) => [r.id, r.inboxId ?? null]))
+
       const result = await this.db
         .update(schema.Thread)
         .set(dbUpdates)
@@ -224,7 +289,40 @@ export class ThreadMutationService {
             eq(schema.Thread.organizationId, this.organizationId)
           )
         )
-        .returning({ id: schema.Thread.id })
+        .returning({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+
+      const patch: Partial<ThreadMeta> = {}
+      if ('status' in dbUpdates) patch.status = dbUpdates.status
+      if ('assigneeId' in dbUpdates) patch.assigneeId = dbUpdates.assigneeId
+      if ('inboxId' in dbUpdates) {
+        patch.inboxId = dbUpdates.inboxId ? toRecordId('inbox', dbUpdates.inboxId) : null
+      }
+      if ('primaryEntityInstanceId' in dbUpdates) {
+        patch.ticketId = dbUpdates.primaryEntityInstanceId
+          ? toRecordId(
+              dbUpdates.primaryEntityDefinitionId ?? 'ticket',
+              dbUpdates.primaryEntityInstanceId
+            )
+          : null
+      }
+      if (Object.keys(patch).length > 0) {
+        const realtime = getRealtimeService()
+        await Promise.allSettled(
+          result.map((row) =>
+            publishThreadUpdated(
+              realtime,
+              this.organizationId,
+              {
+                threadId: row.id,
+                inboxId: row.inboxId ?? null,
+                previousInboxId: prevInboxIdById.get(row.id) ?? null,
+                patch,
+              },
+              { excludeSocketId: this.socketId }
+            )
+          )
+        )
+      }
 
       return { count: result.length }
     } catch (error: unknown) {
@@ -524,12 +622,19 @@ export class ThreadMutationService {
         .where(
           and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
         )
-        .returning({ id: schema.Thread.id })
+        .returning({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
 
       if (result.length === 0) {
         logger.error('Thread not found for permanent deletion.', { threadId })
         throw new Error(`Thread ${threadId} not found for deletion.`)
       }
+
+      await publishThreadDeleted(
+        getRealtimeService(),
+        this.organizationId,
+        { threadId, inboxId: result[0].inboxId ?? null },
+        { excludeSocketId: this.socketId }
+      )
 
       logger.info('Thread permanently deleted', { threadId })
       return { success: true }
@@ -565,12 +670,24 @@ export class ThreadMutationService {
             eq(schema.Thread.organizationId, this.organizationId)
           )
         )
-        .returning({ id: schema.Thread.id })
+        .returning({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
 
       logger.info('Threads permanently deleted in bulk', {
         requestedCount: threadIds.length,
         deletedCount: result.length,
       })
+
+      const realtime = getRealtimeService()
+      await Promise.allSettled(
+        result.map((row) =>
+          publishThreadDeleted(
+            realtime,
+            this.organizationId,
+            { threadId: row.id, inboxId: row.inboxId ?? null },
+            { excludeSocketId: this.socketId }
+          )
+        )
+      )
 
       return { count: result.length }
     } catch (error: unknown) {

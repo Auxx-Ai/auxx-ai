@@ -12,6 +12,7 @@ import { MediaAssetService } from '../files/core/media-asset-service'
 import { ParticipantService } from '../participants/participant-service'
 import type { AttachmentFile } from '../providers/message-provider-interface'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
+import { getRealtimeService, publishMessageCreated } from '../realtime'
 import { createUsageGuard } from '../usage/create-usage-guard'
 import { MessageComposerService } from './message-composer.service'
 import { MessageReconcilerService } from './message-reconciler.service'
@@ -41,10 +42,14 @@ export class MessageSenderService {
   private participantService: ParticipantService
   private mediaAssetService: MediaAssetService
   private fileService: FileService
+  /** Originating socket id for self-echo suppression on realtime publishes. */
+  private readonly socketId?: string
+
   constructor(
     private organizationId: string,
     private providerRegistry?: ProviderRegistryService,
-    private db?: Database
+    private db?: Database,
+    socketId?: string
   ) {
     this.threadManager = new ThreadManagerService(organizationId, db)
     this.composer = new MessageComposerService(organizationId, db)
@@ -52,6 +57,7 @@ export class MessageSenderService {
     this.participantService = new ParticipantService(organizationId, db)
     this.mediaAssetService = new MediaAssetService(organizationId, undefined, db)
     this.fileService = new FileService(organizationId, undefined, db)
+    this.socketId = socketId
   }
   /**
    * Check if a thread ID is a placeholder
@@ -162,6 +168,33 @@ export class MessageSenderService {
         providerResponse: sendResult,
         threadContext: threadContext,
       })
+
+      // Realtime: publish `message:created` for the freshly sent message so
+      // open tabs see the outbound row land without waiting for the post-send
+      // sync re-import. The post-send sync emits `message:updated` later for
+      // provider-authoritative columns — accepted duplicate.
+      try {
+        const [threadRow] = await (this.db ?? db)
+          .select({ inboxId: schema.Thread.inboxId })
+          .from(schema.Thread)
+          .where(eq(schema.Thread.id, threadContext.id))
+          .limit(1)
+        await publishMessageCreated(
+          getRealtimeService(),
+          this.organizationId,
+          {
+            messageId: composed.id,
+            threadId: threadContext.id,
+            inboxId: threadRow?.inboxId ?? null,
+          },
+          { excludeSocketId: this.socketId }
+        )
+      } catch (err) {
+        logger.debug('Failed to publish message:created for outbound send (non-critical)', {
+          err: err instanceof Error ? err.message : err,
+        })
+      }
+
       // Step 8: Update thread metadata
       await this.threadManager.updateThreadMetadata(threadContext.id)
       await this.threadManager.updateThreadParticipants(threadContext.id)

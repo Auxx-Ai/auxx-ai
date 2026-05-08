@@ -19,6 +19,16 @@ export interface RealtimeAdapter {
   // Channel management
   subscribeToOrg(organizationId: string): void
 
+  /**
+   * Subscribe to a per-inbox channel. `inboxSlug` is the raw inbox UUID, or
+   * the literal string `'none'` for the unassigned-triage channel. Idempotent
+   * — multiple subscriptions to the same slug return the same channel.
+   */
+  subscribeToInbox(organizationId: string, inboxSlug: string): void
+
+  /** Unsubscribe from a per-inbox channel. */
+  unsubscribeFromInbox(organizationId: string, inboxSlug: string): void
+
   // State reads (non-reactive, for imperative access)
   getSocketId(): string | undefined
   isConnected(): boolean
@@ -32,4 +42,14 @@ export interface RealtimeAdapter {
   subscribeToOrgChannel(callback: () => void): () => void
   getOrgChannelSnapshot(): ChannelSubscription | null
   getServerOrgChannelSnapshot(): ChannelSubscription | null
+
+  // useSyncExternalStore-compatible subscriptions for inbox channels.
+  // Listeners are notified whenever any inbox channel is added or removed.
+  // The map snapshot is stable until membership changes (referentially equal).
+  subscribeToInboxChannels(callback: () => void): () => void
+  getInboxChannelSnapshot(inboxSlug: string): ChannelSubscription | null
+  getServerInboxChannelSnapshot(inboxSlug: string): ChannelSubscription | null
+  /** Stable map snapshot — same reference until membership changes. */
+  getInboxChannelMapSnapshot(): ReadonlyMap<string, ChannelSubscription>
+  getServerInboxChannelMapSnapshot(): ReadonlyMap<string, ChannelSubscription>
 }

@@ -3,8 +3,10 @@
 import { schema } from '@auxx/database'
 import { ParticipantRole as ParticipantRoleEnum, ThreadStatus } from '@auxx/database/enums'
 import type { ParticipantEntity as Participant, ParticipantRole } from '@auxx/database/types'
+import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
 import { touchActivityForThreadLinks } from '../entity-instances/activity'
+import { getRealtimeService, publishMessageCreated, publishThreadCreated } from '../realtime'
 import type { IngestContext } from './context'
 import { shouldIgnoreMessage } from './filtering/should-ignore'
 import { storeIgnoredMessage } from './filtering/store-ignored'
@@ -283,6 +285,7 @@ export async function storeMessage(
       })
       .returning({
         id: schema.Thread.id,
+        inboxId: schema.Thread.inboxId,
         messageCount: schema.Thread.messageCount,
         firstMessageAt: schema.Thread.firstMessageAt,
         lastMessageAt: schema.Thread.lastMessageAt,
@@ -397,6 +400,55 @@ export async function storeMessage(
     // Advance lastActivityAt for any entity linked to this thread (primary +
     // active secondaries). Best-effort; helper logs and swallows on failure.
     await touchActivityForThreadLinks(thread.id, messageData.organizationId, messageData.sentAt)
+
+    // Realtime publish — message:created (and thread:created on a brand-new
+    // thread). During initial / polling sync, append to ctx.batchedEvents so
+    // the batch orchestrator can flush a small number of `mail:batch` frames
+    // at the end instead of one publish per message.
+    const inboxIdForChannel = thread.inboxId ?? null
+    const inboxRecordId = inboxIdForChannel ? toRecordId('inbox', inboxIdForChannel) : null
+    if (ctx.isInitialSync) {
+      if (isNewThread) {
+        ctx.batchedEvents.push({
+          inboxId: inboxIdForChannel,
+          event: {
+            event: 'thread:created',
+            data: { threadId: thread.id, inboxId: inboxRecordId },
+          },
+        })
+      }
+      ctx.batchedEvents.push({
+        inboxId: inboxIdForChannel,
+        event: {
+          event: 'message:created',
+          data: { messageId: messageRecord.id, threadId: thread.id },
+        },
+      })
+    } else {
+      const realtime = getRealtimeService()
+      if (isNewThread) {
+        await publishThreadCreated(
+          realtime,
+          messageData.organizationId,
+          {
+            threadId: thread.id,
+            inboxId: inboxIdForChannel,
+            inboxRecordId,
+          },
+          { excludeSocketId: ctx.socketId }
+        )
+      }
+      await publishMessageCreated(
+        realtime,
+        messageData.organizationId,
+        {
+          messageId: messageRecord.id,
+          threadId: thread.id,
+          inboxId: inboxIdForChannel,
+        },
+        { excludeSocketId: ctx.socketId }
+      )
+    }
 
     ctx.logger.info('Message stored successfully (Revised Schema v2)', {
       messageId: messageRecord.id,

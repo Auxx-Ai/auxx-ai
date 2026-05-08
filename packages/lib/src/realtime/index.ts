@@ -18,6 +18,14 @@ export type {
   AiValueMetadata,
   FieldValuesUpdatedEvent,
   FieldValueUpdateEntry,
+  MailBatchEvent,
+  MailSyncEvent,
+  MessageCreatedEvent,
+  MessageDeletedEvent,
+  MessageMeta,
+  MessageUpdatedEvent,
+  ParticipantMeta,
+  ParticipantUpdatedEvent,
   RecordArchivedEvent,
   RecordCreatedEvent,
   RecordDeletedEvent,
@@ -25,7 +33,21 @@ export type {
   RecordUpdatedEvent,
   ResourceSyncEvent,
   StoredFieldValue,
+  ThreadCreatedEvent,
+  ThreadDeletedEvent,
+  ThreadMeta,
+  ThreadUpdatedEvent,
 } from './events'
-export { publishFieldValueUpdates } from './publish-helpers'
+export {
+  flushMailBatch,
+  publishFieldValueUpdates,
+  publishMessageCreated,
+  publishMessageDeleted,
+  publishMessageUpdated,
+  publishParticipantUpdated,
+  publishThreadCreated,
+  publishThreadDeleted,
+  publishThreadUpdated,
+} from './publish-helpers'
 export { RealtimeService } from './realtime-service'
 export type { RealtimeProvider } from './types'

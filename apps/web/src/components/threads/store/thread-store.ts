@@ -174,6 +174,11 @@ interface ThreadStoreState {
   // Thread CRUD
   setThreads: (threads: ThreadMeta[]) => void
   updateThread: (id: string, updates: Partial<ThreadMeta>) => void
+  /**
+   * Apply a realtime patch. Skips keys present in `pendingMutations` so an
+   * in-flight optimistic write isn't clobbered by an out-of-order echo.
+   */
+  setThreadPatch: (id: string, patch: Partial<ThreadMeta>) => void
   removeThread: (id: string) => void
 
   // Optimistic updates (version-tracked for concurrent mutation safety)
@@ -287,6 +292,26 @@ export const useThreadStore = create<ThreadStoreState>()(
           if (existing) {
             state.threads.set(id, { ...existing, ...updates })
           }
+        }),
+
+      setThreadPatch: (id, patch) =>
+        set((state) => {
+          const existing = state.threads.get(id)
+          if (!existing) return
+          const pending = state.pendingMutations.get(id)
+          let effective: Partial<ThreadMeta> = patch
+          if (pending && pending.size > 0) {
+            const skip = new Set<string>()
+            for (const m of pending.values()) {
+              for (const k of Object.keys(m.changes)) skip.add(k)
+            }
+            effective = {}
+            for (const [k, v] of Object.entries(patch)) {
+              if (!skip.has(k)) (effective as Record<string, unknown>)[k] = v
+            }
+          }
+          if (Object.keys(effective).length === 0) return
+          state.threads.set(id, { ...existing, ...effective })
         }),
 
       removeThread: (id) =>

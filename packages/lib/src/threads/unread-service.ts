@@ -1,10 +1,14 @@
 // packages/lib/src/threads/unread-service.ts
-import { database as db, schema } from '@auxx/database'
+import { type Database, database as db, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+
+type DbOrTx = Database | Transaction
+
 import { resolveConditionContext } from '../conditions/resolve-context'
 import type { ConditionGroup } from '../conditions/types'
 import { buildConditionGroupsQuery } from '../mail-query/condition-query-builder'
+import { getRealtimeService, publishThreadUpdated } from '../realtime'
 import type { FullCountsResponse, UserUnreadCounts } from './types'
 
 const logger = createScopedLogger('unread-service')
@@ -12,10 +16,13 @@ const logger = createScopedLogger('unread-service')
 export class UnreadService {
   private organizationId: string
   private userId: string
+  /** Originating socket id for self-echo suppression on realtime publishes. */
+  private socketId?: string
 
-  constructor(organizationId: string, userId: string, _db?: any) {
+  constructor(organizationId: string, userId: string, _db?: any, socketId?: string) {
     this.organizationId = organizationId
     this.userId = userId
+    this.socketId = socketId
     // _db parameter is kept for compatibility but not used - we use the imported db directly
   }
 
@@ -27,10 +34,15 @@ export class UnreadService {
   /**
    * Calculates the unread count for a specific user and inbox.
    * This is the core logic based on last message date vs last read date.
+   *
+   * @param tx Optional active tx — when called from inside `db.transaction()`,
+   *   pass it through so reads share the same connection instead of grabbing
+   *   another from the pool (which would deadlock under fan-out).
    */
-  async calculateUnreadCountForUserInbox(inboxId: string): Promise<number> {
+  async calculateUnreadCountForUserInbox(inboxId: string, tx?: DbOrTx): Promise<number> {
+    const dbOrTx = tx ?? db
     // Count threads without read status entries for the user
-    const threadsWithoutReadStatus = await db
+    const threadsWithoutReadStatus = await dbOrTx
       .select({ threadId: schema.Thread.id })
       .from(schema.Thread)
       .leftJoin(
@@ -50,7 +62,7 @@ export class UnreadService {
       )
 
     // Count threads with explicit unread status
-    const threadsWithUnreadStatus = await db
+    const threadsWithUnreadStatus = await dbOrTx
       .select({ threadId: schema.Thread.id })
       .from(schema.Thread)
       .innerJoin(schema.ThreadReadStatus, eq(schema.ThreadReadStatus.threadId, schema.Thread.id))
@@ -82,10 +94,13 @@ export class UnreadService {
 
   /**
    * Updates the aggregated unread count in the database and Redis cache.
+   *
+   * @param tx Optional active tx — see {@link calculateUnreadCountForUserInbox}.
    */
-  async updateUserInboxUnreadCount(inboxId: string, userId?: string): Promise<any> {
+  async updateUserInboxUnreadCount(inboxId: string, userId?: string, tx?: DbOrTx): Promise<any> {
     if (!userId) userId = this.userId // Use the class userId if not provided
-    const calculatedCount = await this.calculateUnreadCountForUserInbox(inboxId)
+    const dbOrTx = tx ?? db
+    const calculatedCount = await this.calculateUnreadCountForUserInbox(inboxId, tx)
     const _redisKey = this.getRedisCountKey(inboxId, userId)
 
     logger.info(
@@ -93,7 +108,7 @@ export class UnreadService {
     )
 
     // Check if record exists
-    const [existingRecord] = await db
+    const [existingRecord] = await dbOrTx
       .select()
       .from(schema.UserInboxUnreadCount)
       .where(
@@ -110,7 +125,7 @@ export class UnreadService {
 
     if (existingRecord) {
       // Update existing record
-      await db
+      await dbOrTx
         .update(schema.UserInboxUnreadCount)
         .set({
           unreadCount: calculatedCount,
@@ -127,7 +142,7 @@ export class UnreadService {
       updatedRecord = { ...existingRecord, unreadCount: calculatedCount, updatedAt: now }
     } else {
       // Create new record
-      const [newRecord] = await db
+      const [newRecord] = await dbOrTx
         .insert(schema.UserInboxUnreadCount)
         .values({
           organizationId: this.organizationId,
@@ -228,12 +243,32 @@ export class UnreadService {
 
       // Update counts for all affected inboxes
       await Promise.all(
-        affectedInboxIds.map((inboxId) => this.updateUserInboxUnreadCount(inboxId, targetUserId))
+        affectedInboxIds.map((inboxId) =>
+          this.updateUserInboxUnreadCount(inboxId, targetUserId, tx)
+        )
       )
     })
 
     logger.info(
       `Set ${threads.length} thread(s) to ${isRead ? 'read' : 'unread'} for user ${targetUserId}`
+    )
+
+    // Publish per-thread `thread:updated` with `{ isUnread, userId }`. The FE
+    // filters by userId so only the affected user's tabs apply the patch.
+    const realtime = getRealtimeService()
+    await Promise.allSettled(
+      threads.map((thread) =>
+        publishThreadUpdated(
+          realtime,
+          this.organizationId,
+          {
+            threadId: thread.id,
+            inboxId: thread.inboxId ?? null,
+            patch: { isUnread: !isRead, userId: targetUserId },
+          },
+          { excludeSocketId: this.socketId }
+        )
+      )
     )
   }
 
@@ -418,15 +453,34 @@ export class UnreadService {
             )
           )
 
-        // Update aggregate counts for all affected users in this inbox
-        const updateCountPromises = userIds.map(
-          (userId) => this.updateUserInboxUnreadCount(inboxId, userId) // Assumes this runs within the tx context if called directly
-          // Or call a tx-aware version
+        // Update aggregate counts for all affected users in this inbox.
+        // Pass `tx` so the inner SELECTs/UPDATEs share this connection instead
+        // of grabbing fresh ones (which deadlocks under bulk fan-out).
+        const updateCountPromises = userIds.map((userId) =>
+          this.updateUserInboxUnreadCount(inboxId, userId, tx)
         )
         await Promise.all(updateCountPromises)
       })
       logger.info(
         `Marked thread ${threadId} as unread for ${userIds.length} users due to new message`
+      )
+
+      // Per-user `thread:updated { isUnread: true, userId }` so each affected
+      // user's open tabs flip the unread badge without a refetch.
+      const realtime = getRealtimeService()
+      await Promise.allSettled(
+        userIds.map((userId) =>
+          publishThreadUpdated(
+            realtime,
+            this.organizationId,
+            {
+              threadId,
+              inboxId,
+              patch: { isUnread: true, userId },
+            },
+            { excludeSocketId: this.socketId }
+          )
+        )
       )
     }
   }

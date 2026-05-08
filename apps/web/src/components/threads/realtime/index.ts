@@ -13,4 +13,5 @@ export type {
   UserTypingEvent,
   VisitorUpdatedEvent,
 } from './types'
+export { useMailSync } from './use-mail-sync'
 export { useThreadRealtime } from './use-thread-realtime'

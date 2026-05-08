@@ -10,7 +10,9 @@ import type {
   ParticipantEntity as Participant,
   ParticipantRole,
 } from '@auxx/database/types'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
+import { getRealtimeService, publishParticipantUpdated } from '../../realtime'
+import type { ParticipantMeta } from '../../realtime/events'
 import { findOrCreateContactForParticipant } from '../contacts/find-or-create'
 import type { IngestContext } from '../context'
 import { extractRegistrableDomain, getOwnDomains, normalizeDomain } from '../domain/classifier'
@@ -77,6 +79,28 @@ export async function findOrCreateParticipantRecord(
 
     const isInternal = await classifyIsInternal(ctx, normalizedIdentifier, identifierType)
 
+    // Capture pre-upsert state so we can detect column changes for
+    // participant:updated emission. Cheap point-lookup on the unique index.
+    const [previous] = await ctx.db
+      .select({
+        id: schema.Participant.id,
+        name: schema.Participant.name,
+        displayName: schema.Participant.displayName,
+        avatarUrl: schema.Participant.avatarUrl,
+        hasReceivedMessage: schema.Participant.hasReceivedMessage,
+        lastSentMessageAt: schema.Participant.lastSentMessageAt,
+        isInternal: schema.Participant.isInternal,
+      })
+      .from(schema.Participant)
+      .where(
+        and(
+          eq(schema.Participant.organizationId, ctx.organizationId),
+          eq(schema.Participant.identifier, normalizedIdentifier),
+          eq(schema.Participant.identifierType, identifierType)
+        )
+      )
+      .limit(1)
+
     const participantData = await ctx.db
       .insert(schema.Participant)
       .values({
@@ -115,6 +139,39 @@ export async function findOrCreateParticipantRecord(
       .returning()
 
     const participant = participantData[0]
+
+    // Emit `participant:updated` only when this was an UPDATE (previous row
+    // existed) AND at least one tracked column actually changed. New rows
+    // don't get a `participant:created` event in v1 — the FE looks them up
+    // on demand via `requestParticipant` when a message references them.
+    if (previous) {
+      const patch: Partial<ParticipantMeta> = {}
+      if (participant.name !== previous.name) patch.name = participant.name
+      if (participant.displayName !== previous.displayName) {
+        patch.displayName = participant.displayName
+      }
+      if (participant.avatarUrl !== previous.avatarUrl) patch.avatarUrl = participant.avatarUrl
+      if (participant.hasReceivedMessage !== previous.hasReceivedMessage) {
+        patch.hasReceivedMessage = participant.hasReceivedMessage
+      }
+      const prevSent = previous.lastSentMessageAt?.getTime() ?? null
+      const nextSent = participant.lastSentMessageAt?.getTime() ?? null
+      if (prevSent !== nextSent) {
+        patch.lastSentMessageAt = participant.lastSentMessageAt
+          ? participant.lastSentMessageAt.toISOString()
+          : null
+      }
+      if (participant.isInternal !== previous.isInternal) patch.isInternal = participant.isInternal
+
+      if (Object.keys(patch).length > 0) {
+        await publishParticipantUpdated(
+          getRealtimeService(),
+          ctx.organizationId,
+          { participantId: participant.id, patch },
+          { excludeSocketId: ctx.socketId }
+        )
+      }
+    }
 
     if (!participant.entityInstanceId) {
       const entityInstanceId = await findOrCreateContactForParticipant(
