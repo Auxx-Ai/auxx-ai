@@ -1,8 +1,9 @@
 // apps/web/src/components/favorites/ui/favorite-item-row.tsx
 'use client'
 
-import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
-import { Star } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { BookmarkX } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { SidebarItem } from '~/components/global/sidebar/sidebar-item'
 import { api } from '~/trpc/react'
@@ -37,11 +38,22 @@ export function FavoriteItemRow({
     removeMutation.mutate({ favoriteId })
   }
 
-  const editItems = (
-    <DropdownMenuItem onClick={handleRemove}>
-      <Star />
-      Remove from favorites
-    </DropdownMenuItem>
+  const action = (
+    <Button
+      variant='ghost'
+      size='icon'
+      aria-label='Remove from favorites'
+      onClick={(e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        handleRemove()
+      }}
+      className={cn(
+        'size-6 shrink-0 rounded-md opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100',
+        'hover:bg-primary-200/50 hover:text-foreground/50 focus-visible:ring-primary/10'
+      )}>
+      <BookmarkX className='size-3.5' />
+    </Button>
   )
 
   return (
@@ -52,7 +64,7 @@ export function FavoriteItemRow({
       icon={icon}
       isSubmenu
       isActive={isActive}
-      editItems={editItems}
+      action={action}
       className={subtitle ? '' : ''}
     />
   )

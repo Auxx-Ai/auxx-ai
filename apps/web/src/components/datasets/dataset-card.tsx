@@ -3,9 +3,9 @@
 'use client'
 
 import type { DatasetWithRelations } from '@auxx/lib/datasets'
+import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,18 +13,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { formatBytes, formatRelativeTime } from '@auxx/utils'
-import {
-  Archive,
-  Calendar,
-  Database,
-  FileText,
-  MoreVertical,
-  Search,
-  Settings,
-  Trash,
-} from 'lucide-react'
+import { LastUpdated } from '@auxx/ui/components/last-updated'
+import { formatBytes } from '@auxx/utils'
+import { Archive, Database, MoreVertical, Search, Settings, Trash } from 'lucide-react'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
+import { Tooltip } from '~/components/global/tooltip'
 import { useDatasetActions } from './hooks/use-dataset-actions'
 
 interface DatasetCardProps {
@@ -33,9 +26,13 @@ interface DatasetCardProps {
   onActionComplete?: () => void
 }
 
-/**
- * Card component for displaying dataset information in grid view
- */
+const STATUS_DOT: Record<string, { color: string; label: string }> = {
+  ACTIVE: { color: 'bg-good-500', label: 'Active' },
+  PROCESSING: { color: 'bg-warning-500', label: 'Processing' },
+  ERROR: { color: 'bg-destructive', label: 'Error' },
+  ARCHIVED: { color: 'bg-muted-foreground/40', label: 'Archived' },
+}
+
 export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardProps) {
   const { handleBrowse, handleSettings, handleDelete, handleArchive, ConfirmDialog } =
     useDatasetActions({
@@ -44,55 +41,79 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
       onSuccess: onActionComplete,
     })
 
-  /**
-   * Get badge color based on dataset status
-   */
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'ACTIVE':
-        return 'bg-green-100 text-green-800'
-      case 'PROCESSING':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'ERROR':
-        return 'bg-red-100 text-red-800'
-      case 'ARCHIVED':
-        return 'bg-gray-100 text-gray-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
+  const status = STATUS_DOT[dataset.status] ?? STATUS_DOT.ARCHIVED
+  const creatorName = dataset.createdBy.name ?? dataset.createdBy.email ?? '?'
+  const creatorInitial = creatorName.charAt(0).toUpperCase()
+
+  const stop = (e: React.MouseEvent) => e.stopPropagation()
+  const wrap = (fn: () => void | Promise<void>) => (e: React.MouseEvent) => {
+    e.stopPropagation()
+    void fn()
   }
 
   return (
     <>
-      <Card className='group cursor-pointer transition-shadow hover:shadow-md' onClick={onClick}>
-        <CardHeader>
-          <div className='flex items-start justify-between'>
-            <div className='relative'>
-              <div className={`p-2 rounded-lg bg-good-50 text-good-500`}>
-                <Database className='size-4' />
-              </div>
-              <div className='absolute -top-1 -right-1'>
-                <div className='flex items-center gap-2'>
-                  <div className={`size-2.5 rounded-full bg-good-500 flex-shrink-0`} />
-                </div>
-              </div>
+      <ConfirmDialog />
+      <div
+        className='rounded-2xl bg-background dark:bg-primary-50 hover:bg-primary-50/50 hover:outline-5 dark:hover:outline-primary-50/50 hover:outline-primary-100 flex flex-col p-3 gap-2 border cursor-pointer group/dataset-card relative'
+        onClick={onClick}>
+        <div className='flex flex-row items-start gap-2 w-full'>
+          <div className='relative shrink-0'>
+            <div className='size-8 rounded-xl border flex items-center justify-center overflow-hidden'>
+              <Database className='size-4' />
             </div>
+            <Tooltip content={status.label}>
+              <div
+                className={`absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2 border-primary-50 ${status.color}`}
+              />
+            </Tooltip>
+          </div>
+
+          <div className='flex flex-col flex-1 min-w-0'>
+            <div className='flex flex-row justify-between items-start gap-1'>
+              <p className='text-sm font-semibold line-clamp-2 group-hover/dataset-card:text-info'>
+                {dataset.name}
+              </p>
+            </div>
+            <LastUpdated
+              timestamp={dataset.updatedAt}
+              prefix=''
+              includeSeconds={true}
+              className='text-xs text-muted-foreground'
+            />
+          </div>
+        </div>
+
+        <div className='flex items-center justify-between mt-auto gap-2'>
+          <Badge variant='pill' size='sm' className='shrink-0 mt-0.5'>
+            {dataset.documentCount} docs
+            <span className='mx-1 text-muted-foreground/60'>|</span>
+            {formatBytes(Number(dataset.totalSize))}
+          </Badge>
+          <div className='flex items-center gap-1'>
+            <Tooltip content={`Created by ${creatorName}`}>
+              <Avatar className='size-5'>
+                <AvatarFallback className='text-[10px] font-medium'>
+                  {creatorInitial}
+                </AvatarFallback>
+              </Avatar>
+            </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
+                  className='opacity-0 group-hover/dataset-card:opacity-100 duration-300 data-[state=open]:opacity-100! data-[state=open]:bg-muted! transition-opacity rounded-lg'
                   variant='ghost'
-                  size='icon-sm'
-                  className='opacity-0 group-hover:opacity-100'
-                  onClick={(e) => e.stopPropagation()}>
+                  size='icon-xs'
+                  onClick={stop}>
                   <MoreVertical />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align='end' onClick={(e) => e.stopPropagation()}>
-                <DropdownMenuItem onClick={handleBrowse}>
+              <DropdownMenuContent align='end' onClick={stop}>
+                <DropdownMenuItem onClick={wrap(handleBrowse)}>
                   <Search />
                   Browse
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleSettings}>
+                <DropdownMenuItem onClick={wrap(handleSettings)}>
                   <Settings />
                   Settings
                 </DropdownMenuItem>
@@ -101,55 +122,19 @@ export function DatasetCard({ dataset, onClick, onActionComplete }: DatasetCardP
                   targetIds={{ datasetId: dataset.id }}
                 />
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleArchive}>
+                <DropdownMenuItem onClick={wrap(handleArchive)}>
                   <Archive />
                   Archive
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDelete} variant='destructive'>
+                <DropdownMenuItem onClick={wrap(handleDelete)} variant='destructive'>
                   <Trash />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-
-          <CardTitle className='text-sm truncate'>
-            <div className='flex justify-between items-center'>
-              <span className=''>{dataset.name}</span>
-              <Badge className={getStatusColor(dataset.status)} size='xs'>
-                {dataset.status.toLowerCase()}
-              </Badge>
-            </div>
-          </CardTitle>
-        </CardHeader>
-
-        <CardContent onClick={onClick}>
-          {/* Status */}
-          <div className='flex items-center gap-2 mb-3'></div>
-
-          {/* Stats */}
-          <div className='grid grid-cols-2 gap-4 text-sm'>
-            <div className='flex items-center gap-2'>
-              <FileText className='h-4 w-4 text-muted-foreground' />
-              <span className='text-muted-foreground'>{dataset.documentCount} docs</span>
-            </div>
-            <div className='flex items-center gap-2'>
-              <Calendar className='h-4 w-4 text-muted-foreground' />
-              <span className='text-muted-foreground'>{formatRelativeTime(dataset.updatedAt)}</span>
-            </div>
-          </div>
-
-          {/* Size and Created By */}
-          <div className='mt-3 pt-3 border-t text-xs text-muted-foreground'>
-            <div className='flex justify-between items-center'>
-              <span>Size: {formatBytes(Number(dataset.totalSize))}</span>
-              <span>by {dataset.createdBy.name}</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <ConfirmDialog />
+        </div>
+      </div>
     </>
   )
 }
