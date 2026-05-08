@@ -107,6 +107,8 @@ export function createUpstashClient(): RedisClient {
       logger.info('Force disconnecting Upstash Redis client')
       // No-op for REST client
     },
+    // Upstash is stateless HTTP — there is no persistent connection to die.
+    isAlive: () => true,
 
     // Publish operation (using lists as message queues)
     publish: async (channel: string, message: string) => {

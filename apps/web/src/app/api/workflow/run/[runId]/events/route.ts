@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { safeJsonStringify } from '@auxx/lib/workflow-engine'
 import { createScopedLogger } from '@auxx/logger'
-import { getRedisClient } from '@auxx/redis'
+import { createDedicatedClient } from '@auxx/redis'
 import { and, asc, eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import type { NextRequest } from 'next/server'
@@ -78,7 +78,7 @@ export async function GET(
       }, 15000)
 
       // Create dedicated Redis subscriber
-      let subscriber: Awaited<ReturnType<typeof getRedisClient>> | null = null
+      let subscriber: Awaited<ReturnType<typeof createDedicatedClient>> | null = null
       const channel = `workflow:run:${runId}`
 
       // Track cleanup
@@ -109,8 +109,10 @@ export async function GET(
       }
 
       try {
-        // Get Redis subscriber client
-        subscriber = await getRedisClient(true)
+        // Per-request dedicated client — never use the shared main singleton here,
+        // because cleanup calls .quit() and would close the connection used by every
+        // other Redis-backed feature (cache, reporters, etc).
+        subscriber = await createDedicatedClient()
 
         // Send initial connection event (normalize status to lowercase to match event schema)
         send('connected', {

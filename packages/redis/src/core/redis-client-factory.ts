@@ -82,9 +82,16 @@ export class RedisClientFactory {
   ): Promise<RedisClient> {
     const cacheKey = `${provider ?? 'auto'}-${instanceId}`
 
-    // Return existing instance if available (no ping — verified on creation)
-    if (RedisClientFactory.instances.has(cacheKey)) {
-      return RedisClientFactory.instances.get(cacheKey)!
+    // Return existing instance if it's still alive. A previous caller may have
+    // closed the connection (e.g. an SSE route calling .quit() on the shared
+    // singleton); without this check we'd hand back a dead client forever.
+    const cached = RedisClientFactory.instances.get(cacheKey)
+    if (cached) {
+      if (cached.isAlive()) {
+        return cached
+      }
+      logger.warn(`Cached Redis client ${cacheKey} is no longer alive; recreating`)
+      RedisClientFactory.instances.delete(cacheKey)
     }
 
     const detectedProvider = provider ?? getRedisProvider()
@@ -97,16 +104,24 @@ export class RedisClientFactory {
 
     let client: RedisClient
 
+    // Eviction callback — when the underlying socket ends, drop the cached
+    // reference so the next caller creates a fresh client.
+    const evict = () => {
+      if (RedisClientFactory.instances.get(cacheKey) === client) {
+        RedisClientFactory.instances.delete(cacheKey)
+      }
+    }
+
     // Create client based on provider
     switch (detectedProvider) {
       case 'upstash':
         client = createUpstashClient()
         break
       case 'aws':
-        client = createIORedisClient('aws')
+        client = createIORedisClient('aws', evict)
         break
       case 'hosted':
-        client = createIORedisClient('hosted')
+        client = createIORedisClient('hosted', evict)
         break
       default:
         throw new Error(`Unsupported Redis provider: ${detectedProvider}`)

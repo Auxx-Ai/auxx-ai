@@ -2,7 +2,7 @@
 
 import { SessionManager } from '@auxx/lib/files/server'
 import { createScopedLogger } from '@auxx/logger'
-import { getSubscriptionClient } from '@auxx/redis'
+import { createDedicatedClient } from '@auxx/redis'
 import type { NextRequest } from 'next/server'
 
 const logger = createScopedLogger('upload-sse')
@@ -42,7 +42,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       // Set up Redis subscriber for session updates
       const setupSubscription = async () => {
         try {
-          const subscriber = await getSubscriptionClient(false)
+          // Per-request dedicated client — cleanup .quit() must not affect any
+          // shared singleton.
+          const subscriber = await createDedicatedClient()
           if (!subscriber) {
             logger.warn('Redis not available for SSE', { sessionId })
             return
