@@ -1,6 +1,6 @@
 // packages/lib/src/field-values/field-value-mutations.ts
 
-import { schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -1203,6 +1203,13 @@ export async function addValues(
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   return await ctx.db.transaction(async (tx) => {
+    // Rebuild the context around `tx` so any helper called inside this
+    // transaction reads/writes through the same connection. Without this,
+    // helpers like getValue / maybeUpdateDisplayValue would do `ctx.db.<op>`
+    // against the pool, grab a fresh connection, and deadlock under
+    // bulk fan-out (idle-in-transaction timeout cascade).
+    const txCtx: FieldValueContext = { ...ctx, db: tx as unknown as Database }
+
     // Serialize concurrent add-with-dedup on the same (entity, field).
     // Other non-conflicting writes elsewhere are unaffected.
     await acquireFieldValueLock(tx, entityInstanceId, fieldId)
@@ -1228,7 +1235,7 @@ export async function addValues(
     }
 
     if (typedInputs.length === 0) {
-      const fullValues = await getValue(ctx, { recordId, fieldId })
+      const fullValues = await getValue(txCtx, { recordId, fieldId })
       if (fullValues === null) return []
       return Array.isArray(fullValues) ? fullValues : [fullValues]
     }
@@ -1296,7 +1303,9 @@ export async function addValues(
     const allTyped = allRows.map((r) => rowToTypedValue(r, fieldType))
 
     // Update display value (safe no-op when the field isn't a display source).
-    await maybeUpdateDisplayValue(ctx, recordId, field, survivors)
+    // Pass txCtx so the inner update + searchText + cascade writes go through
+    // the active tx, not the pool.
+    await maybeUpdateDisplayValue(txCtx, recordId, field, survivors)
 
     // Publish the full post-state. Array-return fields publish arrays;
     // scalar-multi (TEXT/etc. with options.multi) are array-return too.

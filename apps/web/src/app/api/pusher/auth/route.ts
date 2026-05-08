@@ -1,9 +1,11 @@
 // ~/app/api/pusher/auth/route.ts
 
 import { database, schema } from '@auxx/database'
+import { InboxService } from '@auxx/lib/inboxes'
 import { findMemberByUser } from '@auxx/lib/members'
 import { getRealtimeService } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
+import { toRecordId } from '@auxx/types/resource'
 import { eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -96,9 +98,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Optional: Verify organization membership for presence-org channels
+    // Optional: Verify organization membership for presence-org channels.
+    // Per-inbox channels (`presence-org-{org}-inbox-{inboxId|none}`) require
+    // an additional access check below.
     if (channel_name.startsWith('presence-org-')) {
-      const orgId = channel_name.replace('presence-org-', '')
+      // Match `presence-org-{orgId}` and optionally `-inbox-{slug}`
+      const orgChannelMatch = channel_name.match(
+        /^presence-org-([^-]+(?:-[^-]+)*?)(?:-inbox-([^-]+))?$/
+      )
+      // Fallback: split on `-inbox-` boundary which is unambiguous.
+      const inboxSplit = channel_name.split('-inbox-')
+      const orgId = inboxSplit[0].replace('presence-org-', '')
+      const inboxSlug = inboxSplit[1] ?? null
+      void orgChannelMatch
 
       try {
         const membership = await findMemberByUser(orgId, session.user.id)
@@ -107,10 +119,30 @@ export async function POST(req: NextRequest) {
           logger.warn('User not part of organization', { userId: session.user.id, orgId })
           return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
+
+        // Per-inbox channel: verify inbox access.
+        // - `none` (triage / unassigned) is allowed for any org member.
+        // - Otherwise check the user's view permission on that inbox.
+        if (inboxSlug && inboxSlug !== 'none') {
+          const inboxService = new InboxService(database, orgId, session.user.id)
+          const allowed = await inboxService.hasUserAccess(
+            toRecordId('inbox', inboxSlug),
+            session.user.id
+          )
+          if (!allowed && process.env.NODE_ENV !== 'development') {
+            logger.warn('User has no access to requested inbox channel', {
+              userId: session.user.id,
+              orgId,
+              inboxId: inboxSlug,
+            })
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+          }
+        }
       } catch (error) {
-        logger.error('Error verifying organization membership', {
+        logger.error('Error verifying organization / inbox membership', {
           userId: session.user.id,
           orgId,
+          inboxSlug,
           error,
         })
         // We'll continue with auth in development mode

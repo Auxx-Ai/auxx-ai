@@ -973,11 +973,14 @@ export class CommentService {
       const attachmentService = new AttachmentService(this.organizationId, this.userId, tx)
       for (const attachment of fileAttachments) {
         if (attachment.type === 'asset') {
-          // Handle MediaAsset - convert temp to permanent first
+          // Handle MediaAsset - convert temp to permanent first.
+          // Pass `tx` so the read+update inside convertTempToPermanent share
+          // this tx's connection instead of reaching into the pool.
           await this.mediaAssetService.convertTempToPermanent(
             attachment.id,
             'EMAIL_ATTACHMENT',
-            this.organizationId
+            this.organizationId,
+            tx
           )
           // Use AttachmentService create method
           await attachmentService.create({

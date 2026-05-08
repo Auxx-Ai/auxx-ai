@@ -5,6 +5,7 @@ import { createScopedLogger, type Logger } from '@auxx/logger'
 import { SelectiveModeCache } from '../cache/selective-mode-cache'
 import { MessageReconcilerService } from '../messages/message-reconciler.service'
 import { ThreadManagerService } from '../messages/thread-manager.service'
+import type { MailSyncEvent } from '../realtime/events'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { SystemUserService } from '../users/system-user-service'
 import type { IntegrationSettings } from './types'
@@ -45,6 +46,20 @@ export interface IngestContext {
    */
   ownEmails: Set<string>
 
+  /**
+   * Originating socket id for self-echo suppression on realtime publishes.
+   * tRPC routers populate from the `x-realtime-socket-id` header; webhooks /
+   * workers / workflow nodes leave it undefined and accept the echo.
+   */
+  socketId?: string
+
+  /**
+   * Buffer for mail realtime events accumulated during initial / polling sync.
+   * Per-message publishes append here when `isInitialSync` is true; the
+   * batch orchestrator flushes them in chunks at the end of the batch.
+   */
+  batchedEvents: Array<{ inboxId: string | null; event: MailSyncEvent }>
+
   readonly companyIdByDomain: Map<string, string | null>
   readonly ownDomainsByOrg: Map<string, Set<string>>
   readonly providerByIntegrationId: Map<string, string>
@@ -56,6 +71,7 @@ export interface CreateIngestContextOptions {
   integrationSettings?: IntegrationSettings
   ownEmails?: Iterable<string>
   selectiveCache?: SelectiveModeCache
+  socketId?: string
 }
 
 /**
@@ -82,6 +98,8 @@ export async function createIngestContext(
     integrationSettings: opts.integrationSettings,
     isInitialSync: opts.isInitialSync ?? false,
     ownEmails: normalizeOwnEmails(opts.ownEmails),
+    socketId: opts.socketId,
+    batchedEvents: [],
     companyIdByDomain: new Map(),
     ownDomainsByOrg: new Map(),
     providerByIntegrationId: new Map(),

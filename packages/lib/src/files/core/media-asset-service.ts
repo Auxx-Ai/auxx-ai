@@ -504,14 +504,20 @@ export class MediaAssetService
   }
 
   /**
-   * Convert temporary upload to permanent attachment
+   * Convert temporary upload to permanent attachment.
+   *
+   * @param tx Optional active tx — when called from inside a transaction
+   *   (e.g. comment creation), pass it through so the read+update share the
+   *   tx connection instead of grabbing fresh ones from the pool.
    */
   async convertTempToPermanent(
     mediaAssetId: string,
     newKind: AssetKind,
-    organizationId: string
+    organizationId: string,
+    tx?: DatabaseClient
   ): Promise<void> {
-    const mediaAsset = await this.db.query.MediaAsset.findFirst({
+    const dbOrTx = tx ?? this.db
+    const mediaAsset = await dbOrTx.query.MediaAsset.findFirst({
       where: and(
         eq(schema.MediaAsset.id, mediaAssetId),
         eq(schema.MediaAsset.organizationId, organizationId)
@@ -523,7 +529,7 @@ export class MediaAssetService
     }
 
     // Convert temp upload to permanent attachment
-    await this.db
+    await dbOrTx
       .update(schema.MediaAsset)
       .set({
         kind: newKind,

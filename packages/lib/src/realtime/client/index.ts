@@ -5,7 +5,19 @@ export type {
   AiValueMetadata,
   FieldValuesUpdatedEvent,
   FieldValueUpdateEntry,
+  MailBatchEvent,
+  MailSyncEvent,
+  MessageCreatedEvent,
+  MessageDeletedEvent,
+  MessageMeta,
+  MessageUpdatedEvent,
+  ParticipantMeta,
+  ParticipantUpdatedEvent,
   ResourceSyncEvent,
+  ThreadCreatedEvent,
+  ThreadDeletedEvent,
+  ThreadMeta,
+  ThreadUpdatedEvent,
 } from '../events'
 export { getPusherClient } from '../pusher-client'
 export { PusherRealtimeAdapter } from './adapters/pusher'

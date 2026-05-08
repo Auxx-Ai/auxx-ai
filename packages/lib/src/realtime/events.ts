@@ -119,3 +119,143 @@ export interface RecordArchivedEvent {
     entityDefinitionId: string
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Mail sync events (thread / message / participant)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Partial-by-design thread metadata for mail realtime patches.
+ * Missing keys mean "don't touch", `null` means "clear".
+ */
+export interface ThreadMeta {
+  id: string
+  inboxId?: RecordId | null
+  status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED'
+  subject?: string
+  assigneeId?: string | null
+  ticketId?: RecordId | null
+  isUnread?: boolean
+  /** Per-user unread fanout: when present, FE filters to current user before applying */
+  userId?: string
+  messageCount?: number
+  participantCount?: number
+  firstMessageAt?: string | null
+  lastMessageAt?: string | null
+  latestMessageId?: string | null
+  updatedAt?: string
+}
+
+/**
+ * Partial-by-design message metadata for mail realtime patches.
+ */
+export interface MessageMeta {
+  id: string
+  threadId: string
+  subject?: string | null
+  snippet?: string | null
+  sentAt?: string | null
+  receivedAt?: string | null
+  isInbound?: boolean
+  hasAttachments?: boolean
+  fromId?: string | null
+  sendStatus?: 'PENDING' | 'SENT' | 'FAILED' | null
+  providerError?: string | null
+  attempts?: number
+  updatedAt?: string
+}
+
+/**
+ * Partial-by-design participant metadata for mail realtime patches.
+ */
+export interface ParticipantMeta {
+  id: string
+  displayName?: string
+  name?: string | null
+  avatarUrl?: string | null
+  hasReceivedMessage?: boolean
+  lastSentMessageAt?: string | null
+  isInternal?: boolean
+}
+
+/** A new thread was created. Payload carries threadId + inboxId for routing. */
+export interface ThreadCreatedEvent {
+  event: 'thread:created'
+  data: {
+    threadId: string
+    inboxId: RecordId | null
+  }
+}
+
+/** Thread metadata changed. Carries inline partial patch. */
+export interface ThreadUpdatedEvent {
+  event: 'thread:updated'
+  data: {
+    threadId: string
+    patch: Partial<ThreadMeta>
+  }
+}
+
+/** Thread was hard-deleted. */
+export interface ThreadDeletedEvent {
+  event: 'thread:deleted'
+  data: {
+    threadId: string
+  }
+}
+
+/** A new message was created on a thread. */
+export interface MessageCreatedEvent {
+  event: 'message:created'
+  data: {
+    messageId: string
+    threadId: string
+  }
+}
+
+/** Message metadata changed. */
+export interface MessageUpdatedEvent {
+  event: 'message:updated'
+  data: {
+    messageId: string
+    threadId: string
+    patch: Partial<MessageMeta>
+  }
+}
+
+/** Message was deleted. */
+export interface MessageDeletedEvent {
+  event: 'message:deleted'
+  data: {
+    messageId: string
+    threadId: string
+  }
+}
+
+/** Participant metadata changed (org channel). */
+export interface ParticipantUpdatedEvent {
+  event: 'participant:updated'
+  data: {
+    participantId: string
+    patch: Partial<ParticipantMeta>
+  }
+}
+
+/** Initial-sync / polling-sync flush — bundles many events into a single frame. */
+export interface MailBatchEvent {
+  event: 'mail:batch'
+  data: {
+    events: MailSyncEvent[]
+  }
+}
+
+/** Union of all mail sync events. */
+export type MailSyncEvent =
+  | ThreadCreatedEvent
+  | ThreadUpdatedEvent
+  | ThreadDeletedEvent
+  | MessageCreatedEvent
+  | MessageUpdatedEvent
+  | MessageDeletedEvent
+  | ParticipantUpdatedEvent
+  | MailBatchEvent

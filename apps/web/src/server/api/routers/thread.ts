@@ -78,6 +78,7 @@ const getServiceDependencies = (
   messageSender: MessageSenderService
   organizationId: string
   userId: string
+  socketId: string | undefined
 } => {
   const userId = ctx.session.user.id as string
   const organizationId = getUserOrganizationId(ctx.session)
@@ -85,18 +86,21 @@ const getServiceDependencies = (
     logger.error('Organization ID not found for user', { userId })
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User organization context not found.' })
   }
+  // Realtime self-echo suppression — see plans/realtime/mail/plan.md §2.4.
+  const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
   // Instantiate new modular services
   const providerRegistry = new ProviderRegistryService(organizationId)
-  const messageSender = new MessageSenderService(organizationId, providerRegistry, ctx.db)
+  const messageSender = new MessageSenderService(organizationId, providerRegistry, ctx.db, socketId)
   // New specialized services
   const threadQuery = new ThreadQueryService(organizationId, ctx.db)
-  const threadMutation = new ThreadMutationService(organizationId, ctx.db)
+  const threadMutation = new ThreadMutationService(organizationId, ctx.db, socketId)
   return {
     threadQuery,
     threadMutation,
     messageSender,
     organizationId,
     userId,
+    socketId,
   }
 }
 /**
@@ -782,7 +786,8 @@ export const threadRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { userId, organizationId } = ctx.session
-      const unreadService = new UnreadService(organizationId, userId)
+      const socketId = ctx.headers?.get?.('x-realtime-socket-id') ?? undefined
+      const unreadService = new UnreadService(organizationId, userId, undefined, socketId)
       await unreadService.setReadStatus(input.threadId, input.isRead)
     }),
   /**

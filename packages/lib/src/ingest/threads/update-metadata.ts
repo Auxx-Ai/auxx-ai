@@ -1,12 +1,19 @@
 // packages/lib/src/ingest/threads/update-metadata.ts
 
-import { sql } from 'drizzle-orm'
+import { schema } from '@auxx/database'
+import { eq, sql } from 'drizzle-orm'
+import { getRealtimeService, publishThreadUpdated } from '../../realtime'
 import type { IngestContext } from '../context'
 
 /**
  * Single-query recompute of Thread.messageCount / firstMessageAt / lastMessageAt
  * / latestMessageId / participantCount for a thread. Non-critical — errors are
  * logged and swallowed so ingest can continue.
+ *
+ * After the recompute, re-reads the affected columns and publishes a
+ * `thread:updated` patch on the inbox channel so other tabs see the metadata
+ * change without waiting for a refetch. During initial sync the patch is
+ * appended to `ctx.batchedEvents` instead of being sent immediately.
  */
 export async function updateThreadMetadataEfficient(
   ctx: IngestContext,
@@ -53,6 +60,51 @@ export async function updateThreadMetadataEfficient(
       WHERE t.id = ${threadId}
     `)
     ctx.logger.debug('Efficiently updated thread metadata', { threadId })
+
+    const [row] = await ctx.db
+      .select({
+        inboxId: schema.Thread.inboxId,
+        messageCount: schema.Thread.messageCount,
+        participantCount: schema.Thread.participantCount,
+        firstMessageAt: schema.Thread.firstMessageAt,
+        lastMessageAt: schema.Thread.lastMessageAt,
+        latestMessageId: schema.Thread.latestMessageId,
+      })
+      .from(schema.Thread)
+      .where(eq(schema.Thread.id, threadId))
+      .limit(1)
+
+    if (!row) return
+
+    const patch = {
+      messageCount: row.messageCount ?? undefined,
+      participantCount: row.participantCount ?? undefined,
+      firstMessageAt: row.firstMessageAt ? row.firstMessageAt.toISOString() : null,
+      lastMessageAt: row.lastMessageAt ? row.lastMessageAt.toISOString() : null,
+      latestMessageId: row.latestMessageId ?? null,
+    }
+
+    if (ctx.isInitialSync) {
+      ctx.batchedEvents.push({
+        inboxId: row.inboxId ?? null,
+        event: {
+          event: 'thread:updated',
+          data: { threadId, patch: { id: threadId, ...patch } },
+        },
+      })
+      return
+    }
+
+    await publishThreadUpdated(
+      getRealtimeService(),
+      ctx.organizationId,
+      {
+        threadId,
+        inboxId: row.inboxId ?? null,
+        patch,
+      },
+      { excludeSocketId: ctx.socketId }
+    )
   } catch (error) {
     ctx.logger.error('Failed to update thread metadata efficiently', { threadId, error })
   }
