@@ -197,8 +197,19 @@ export async function triggerManualResourceWorkflowBulk(params: {
           organizationId,
         })
 
-        // Execute workflow asynchronously with reporter for node execution persistence
-        const reporter = new RedisWorkflowExecutionReporter(workflowRun.id)
+        // Execute workflow asynchronously with reporter for node execution persistence.
+        // Reporter setup must not block the bulk trigger — if Redis is unavailable, the
+        // run still exists in Postgres and shows up in the runs list; clients just lose
+        // live node-by-node UI updates for this run.
+        let reporter: RedisWorkflowExecutionReporter | undefined
+        try {
+          reporter = new RedisWorkflowExecutionReporter(workflowRun.id)
+        } catch (error) {
+          logger.warn('Failed to construct Redis reporter; running without live events', {
+            workflowRunId: workflowRun.id,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
         executionService.executeWorkflowAsync(workflowRun, reporter).catch((error) => {
           logger.error('Async workflow execution failed', {
             workflowRunId: workflowRun.id,

@@ -126,6 +126,13 @@ export async function getRedisClient(required = true): Promise<RedisClient | und
   }
 
   try {
+    // Drop a dead reference so we recreate. The factory does the same internally,
+    // but our module-scope variable would otherwise pin the old (closed) client.
+    if (redisClient && !redisClient.isAlive()) {
+      logger.warn('Cached main Redis client is no longer alive; recreating')
+      redisClient = null
+    }
+
     if (!redisClient) {
       // Use the new factory to create the client
       redisClient = await RedisClientFactory.createClient(undefined, 'main')
@@ -152,6 +159,10 @@ export async function getRedisClient(required = true): Promise<RedisClient | und
  */
 export async function getPublishingClient(required = true): Promise<RedisClient | null> {
   try {
+    if (publishingClient && !publishingClient.isAlive()) {
+      logger.warn('Cached publishing Redis client is no longer alive; recreating')
+      publishingClient = null
+    }
     if (!publishingClient) {
       // Use the new factory to create the publishing client
       publishingClient = await RedisClientFactory.createClient(undefined, 'publishing')
@@ -179,6 +190,10 @@ export async function getPublishingClient(required = true): Promise<RedisClient 
  */
 export async function getSubscriptionClient(required = true): Promise<RedisClient | null> {
   try {
+    if (subscriptionClient && !subscriptionClient.isAlive()) {
+      logger.warn('Cached subscription Redis client is no longer alive; recreating')
+      subscriptionClient = null
+    }
     if (!subscriptionClient) {
       // Use the new factory to create the subscription client
       subscriptionClient = await RedisClientFactory.createClient(undefined, 'subscription')

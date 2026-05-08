@@ -7,8 +7,13 @@ import { logger, type RedisClient } from '../types'
 /**
  * Enhanced IORedis provider that supports all Redis operations
  * Used for AWS ElastiCache and hosted Redis instances
+ *
+ * @param provider - 'aws' or 'hosted'
+ * @param onDead - optional callback invoked when the underlying ioredis client
+ *   transitions to a terminal state ('end'). Used by the factory to evict the
+ *   instance from its cache so the next caller gets a fresh connection.
  */
-export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
+export function createIORedisClient(provider: 'aws' | 'hosted', onDead?: () => void): RedisClient {
   let client: Redis
 
   if (provider === 'aws') {
@@ -105,6 +110,20 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
     logger.info(`${provider} Redis client connected`)
   })
 
+  // 'end' is terminal — ioredis will not auto-reconnect after this. We surface
+  // it so the factory can drop the instance from its cache, otherwise every
+  // subsequent caller hits "Connection is closed." until process restart.
+  client.on('end', () => {
+    logger.warn(`${provider} Redis client ended; will be evicted from cache`)
+    if (onDead) {
+      try {
+        onDead()
+      } catch (err) {
+        logger.error('onDead callback threw', { error: (err as Error).message })
+      }
+    }
+  })
+
   // Create enhanced client wrapper
   const enhancedClient: RedisClient = {
     // Standard Redis operations
@@ -143,6 +162,7 @@ export function createIORedisClient(provider: 'aws' | 'hosted'): RedisClient {
       await client.connect()
     },
     disconnect: () => client.disconnect(),
+    isAlive: () => client.status !== 'end' && client.status !== 'close',
 
     // Event handling
     on: (event: string, listener: (...args: any[]) => void) => client.on(event, listener),

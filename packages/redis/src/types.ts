@@ -53,6 +53,11 @@ export interface RedisClient {
   connect(): Promise<void>
   disconnect(): void
 
+  // True when the underlying client is in a usable state (not 'end' / 'close').
+  // Lets callers and the factory detect dead singletons and recreate them
+  // instead of forever returning a closed connection.
+  isAlive(): boolean
+
   // Event handling
   on(event: string, listener: (...args: any[]) => void): void
   removeListener(event: string, listener: (...args: any[]) => void): void
