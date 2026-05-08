@@ -1,11 +1,15 @@
 // apps/web/src/components/mail/compact-draft-item.tsx
 'use client'
 
+import { toRecordId } from '@auxx/types/resource'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { Clock } from 'lucide-react'
 import { memo, useMemo } from 'react'
+import { AiGeneratingIndicatorCss } from '~/components/fields/ai-overlay/ai-generating-indicator-css'
+import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { useThreadStore } from '~/components/threads/store'
+import { useIsRecordProcessing } from '~/components/workflow/use-is-record-processing'
 import { useCompose } from '~/hooks/use-compose'
 import type { DraftMessageType } from './email-editor/types'
 import { getIntegrationIcon } from './mail-status-config'
@@ -18,6 +22,7 @@ export const CompactDraftItem = memo(function CompactDraftItem({ draftId }: Comp
   const { openDraft } = useCompose()
   const draft = useThreadStore((s) => s.standaloneDrafts.get(draftId))
   const isDraftLoading = useThreadStore((s) => s.isDraftLoading(draftId))
+  const isProcessing = useIsRecordProcessing(toRecordId('draft', draftId))
 
   const formattedDate = useMemo(() => {
     if (draft?.scheduledAt) {
@@ -70,14 +75,27 @@ export const CompactDraftItem = memo(function CompactDraftItem({ draftId }: Comp
 
       {/* Integration icon */}
       <div className='flex w-5 shrink-0 items-center justify-center ms-0.5'>
-        <div className='rounded-full border p-0.5 text-blue-500'>
-          {getIntegrationIcon(draft.integrationProvider)}
-        </div>
+        {isProcessing ? (
+          <SparkleIcon variant='generating' className='shrink-0' />
+        ) : (
+          <div className='rounded-full border p-0.5 text-blue-500'>
+            {getIntegrationIcon(draft.integrationProvider)}
+          </div>
+        )}
       </div>
 
       {/* Recipient */}
       <div className='w-[140px] shrink-0 truncate text-xs font-semibold text-foreground ms-2'>
-        {draft.recipientSummary || '(no recipients)'}
+        {isProcessing ? (
+          <>
+            <AiGeneratingIndicatorCss className='group-hover:hidden' />
+            <span className='hidden truncate group-hover:inline-flex'>
+              {draft.recipientSummary || '(no recipients)'}
+            </span>
+          </>
+        ) : (
+          draft.recipientSummary || '(no recipients)'
+        )}
       </div>
 
       {/* Subject + Snippet */}

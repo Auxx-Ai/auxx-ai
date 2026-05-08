@@ -27,6 +27,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
 import { useSession } from '~/auth/auth-client'
+import { AiGeneratingIndicatorCss } from '~/components/fields/ai-overlay/ai-generating-indicator-css'
+import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 // NEW: Import from new hooks
 import {
@@ -42,6 +44,7 @@ import {
   useThreadSelectionStore,
 } from '~/components/threads/store'
 import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
+import { useIsRecordProcessing } from '~/components/workflow/use-is-record-processing'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
 import { api } from '~/trpc/react'
 import { useMailFilter } from './mail-filter-context'
@@ -222,6 +225,7 @@ export const MailThreadItem = memo(function MailThreadItem({
   )
   const isActive = useIsThreadActive(threadId)
   const isHighlighted = isActive || isMultiSelected
+  const isProcessing = useIsRecordProcessing(toRecordId('thread', threadId))
 
   // --- Drag and Drop Setup ---
   const { attributes, listeners, setNodeRef } = useDraggable({
@@ -355,7 +359,7 @@ export const MailThreadItem = memo(function MailThreadItem({
                 />
               ))}
 
-            <div className='absolute top-3 left-1'>
+            <div className={cn('absolute left-1', isProcessing ? 'top-1' : 'top-3')}>
               {viewMode === 'edit' ? (
                 <div
                   onClick={(e) => {
@@ -369,6 +373,8 @@ export const MailThreadItem = memo(function MailThreadItem({
                   }}>
                   <Checkbox checked={isMultiSelected} />
                 </div>
+              ) : isProcessing ? (
+                <SparkleIcon variant='generating' className='shrink-0' />
               ) : (
                 <div className='flex-none rounded-full border p-0.5 text-blue-500 group-aria-selected:bg-background group-aria-selected:border-info/90'>
                   {getIntegrationIcon(thread.integrationProvider)}
@@ -380,9 +386,18 @@ export const MailThreadItem = memo(function MailThreadItem({
             <div className='flex w-full flex-col gap-1'>
               <div className='flex items-center'>
                 <div className='flex items-center ms-0.5 gap-0.5 overflow-hidden'>
-                  <div className='flex-1 truncate font-semibold group-aria-selected:text-white'>
-                    {senderName}
-                  </div>
+                  {isProcessing ? (
+                    <>
+                      <AiGeneratingIndicatorCss className='group-hover:hidden' />
+                      <div className='hidden flex-1 truncate font-semibold group-hover:block group-aria-selected:text-white'>
+                        {senderName}
+                      </div>
+                    </>
+                  ) : (
+                    <div className='flex-1 truncate font-semibold group-aria-selected:text-white'>
+                      {senderName}
+                    </div>
+                  )}
                 </div>
                 <div className='ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground group-aria-selected:text-background/50'>
                   {formattedDate}

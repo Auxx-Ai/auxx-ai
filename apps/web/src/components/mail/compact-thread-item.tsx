@@ -2,6 +2,7 @@
 'use client'
 
 import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditions/client'
+import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -13,7 +14,9 @@ import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { useSession } from '~/auth/auth-client'
+import { AiGeneratingIndicatorCss } from '~/components/fields/ai-overlay/ai-generating-indicator-css'
 import { Tooltip } from '~/components/global/tooltip'
+import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 import {
   useMessage,
@@ -24,6 +27,7 @@ import {
 } from '~/components/threads/hooks'
 import { useSelectionAnchorId, useThreadSelectionStore } from '~/components/threads/store'
 import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
+import { useIsRecordProcessing } from '~/components/workflow/use-is-record-processing'
 import { useMailFilter } from './mail-filter-context'
 import { getIntegrationIcon } from './mail-status-config'
 import { ProcessingMenu } from './mail-thread-item'
@@ -90,6 +94,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   )
 
   const isFocused = useThreadSelectionStore((s) => s.focusedThreadId === threadId)
+  const isProcessing = useIsRecordProcessing(toRecordId('thread', threadId))
 
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
@@ -162,7 +167,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
         <motion.div
           key={threadId}
           initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-          animate={{ opacity: 1, height: 'auto', overflow: 'clip' }}
+          animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
           exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
           transition={{ duration: 0.15, ease: 'easeOut' }}
           onMouseEnter={() => {
@@ -216,9 +221,13 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
             {/* Integration icon */}
             <div className='flex w-5 shrink-0 items-center justify-center ms-0.5'>
-              <div className='rounded-full border p-0.5 text-blue-500'>
-                {getIntegrationIcon(thread.integrationProvider)}
-              </div>
+              {isProcessing ? (
+                <SparkleIcon variant='generating' className='shrink-0' />
+              ) : (
+                <div className='rounded-full border p-0.5 text-blue-500'>
+                  {getIntegrationIcon(thread.integrationProvider)}
+                </div>
+              )}
             </div>
 
             {/* Sender - fixed width */}
@@ -227,7 +236,16 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                 'w-[140px] shrink-0 truncate text-xs ms-2',
                 isUnread ? 'text-foreground' : 'text-foreground/80'
               )}>
-              {senderName ?? <Skeleton className='h-3 w-24' />}
+              {isProcessing ? (
+                <>
+                  <AiGeneratingIndicatorCss className='group-hover:hidden' />
+                  <span className='hidden truncate group-hover:inline-flex'>
+                    {senderName ?? <Skeleton className='h-3 w-24' />}
+                  </span>
+                </>
+              ) : (
+                (senderName ?? <Skeleton className='h-3 w-24' />)
+              )}
             </div>
 
             {/* Tags */}
