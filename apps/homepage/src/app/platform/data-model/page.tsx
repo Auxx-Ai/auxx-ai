@@ -8,6 +8,7 @@ import { FinalCtaSection } from '../_components/final-cta-section'
 import DataModelWallHero from './_components/data-model-wall-hero'
 import DatasetsSection from './_components/datasets-section'
 import HowAiUsesBothSection from './_components/how-ai-uses-both-section'
+import IngestionFlowSection from './_components/ingestion-flow-section'
 import KbEditorSection from './_components/kb-editor-section'
 import KnowledgeBaseSection from './_components/knowledge-base-section'
 
@@ -32,6 +33,7 @@ export default function DataModelPage() {
         <KnowledgeBaseSection />
         <KbEditorSection />
         <DatasetsSection />
+        <IngestionFlowSection />
         <HowAiUsesBothSection />
         <FinalCtaSection />
       </main>

@@ -7,7 +7,9 @@ const grainSvg =
 
 function SerpMock() {
   return (
-    <div className='ring-foreground/10 bg-background/95 absolute inset-0 overflow-hidden rounded-2xl shadow-xl ring-1 backdrop-blur'>
+    <div
+      data-theme='dark'
+      className='border-foreground/10 bg-background/85 absolute inset-0 overflow-hidden rounded-2xl border shadow-2xl shadow-black/75 ring-1 ring-black backdrop-blur-lg'>
       <div className='border-foreground/10 flex items-center gap-2 border-b px-3 py-2'>
         <div className='flex gap-1'>
           <span className='size-2 rounded-full bg-rose-300' />

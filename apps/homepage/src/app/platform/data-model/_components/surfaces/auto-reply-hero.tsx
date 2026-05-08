@@ -43,7 +43,9 @@ export function AutoReplyHero() {
       </div>
 
       <div className='absolute inset-x-5 bottom-5 transition-transform duration-500 ease-out group-hover/card:-translate-y-1 group-hover/card:scale-[1.02]'>
-        <div className='ring-foreground/10 bg-background overflow-hidden rounded-2xl shadow-xl ring-1 transition-shadow duration-500 group-hover/card:shadow-2xl'>
+        <div
+          data-theme='dark'
+          className='border-foreground/10 bg-background/85 overflow-hidden rounded-2xl border shadow-2xl shadow-black/75 ring-1 ring-black backdrop-blur-lg'>
           <div className='border-foreground/10 flex items-center justify-between gap-2 border-b px-3 py-2'>
             <div className='flex items-center gap-1.5'>
               <span className='grid size-4 place-items-center rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'>
