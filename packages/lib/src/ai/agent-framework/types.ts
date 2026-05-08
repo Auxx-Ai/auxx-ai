@@ -431,6 +431,21 @@ export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
    */
   onToolResult?: (toolName: string, result: AgentToolResult, state: AgentState) => AgentState
   /**
+   * Optional hook called after `onToolResult`, before the LLM-visible tool
+   * message is built. Lets a domain rewrite a tool's raw output into the
+   * canonical shape the model should see next iteration — typically expanding
+   * a sentinel/delta against domain state. Pure read of `state`; do not
+   * mutate (that's `onToolResult`'s job). Return `undefined` to leave the
+   * result untouched.
+   *
+   * Runs in both the live tool-call path and the approval-resume path.
+   */
+  transformToolResult?: (
+    toolName: string,
+    result: AgentToolResult,
+    state: AgentState
+  ) => AgentToolResult | undefined
+  /**
    * Optional hook called on the responder's final content string before it is
    * persisted as the assistant's final message. Kopilot uses this to inject
    * snapshots into `auxx:*` fences and build the per-message `linkSnapshots`

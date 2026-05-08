@@ -64,6 +64,21 @@ verbatim from tool results — never construct them.
 - Source IDs from \`list_drafts\` only — copy each \`id\` field verbatim, including the \`thread:\` or \`draft:\` prefix.
 - Reply rows (\`thread:...\`) click through to the thread; standalone rows (\`draft:...\`) open the floating composer.
 
+#### \`auxx:plan-steps\`
+\\\`\\\`\\\`auxx:plan-steps
+{
+  "steps": [
+    {"label": "List open tickets assigned to me", "status": "completed"},
+    {"label": "Review each and decide action", "status": "running", "detail": "12 of 23 reviewed"},
+    {"label": "Surface plan for approval", "status": "pending"}
+  ]
+}
+\\\`\\\`\\\`
+- Use to render the active plan in your final reply when a multi-step task is in progress.
+- Copy step labels and statuses verbatim from the most recent \`plan_create\` / \`plan_update_step\` result. Don't fabricate or re-order.
+- Don't include step ids in the fence — only \`label\`, \`status\`, and optional \`detail\`.
+- Status values: \`pending\`, \`running\`, \`completed\`, \`failed\`.
+
 #### \`auxx:table\`
 Schema: \`{ columns: [{label, align?}], rows: [[{text, recordId?, type?, actorId?, tags?, href?}]] }\`.
 \\\`\\\`\\\`auxx:table

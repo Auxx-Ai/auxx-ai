@@ -6,6 +6,7 @@ export {
   createCapabilityRegistry,
   createEntityCapabilities,
   createKnowledgeCapabilities,
+  createKopilotCapabilities,
   createMailCapabilities,
   createTaskCapabilities,
   createToolDepsFactory,
@@ -13,4 +14,10 @@ export {
 export type { KopilotDomainConfigOptions } from './domain-config'
 export { createKopilotDomainConfig } from './domain-config'
 export { generateSessionTitle } from './session-title'
-export type { KopilotDomainState, SessionContext } from './types'
+export type {
+  KopilotDomainState,
+  PlanState,
+  PlanStep,
+  PlanStepStatus,
+  SessionContext,
+} from './types'

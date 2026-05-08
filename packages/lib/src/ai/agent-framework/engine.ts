@@ -481,16 +481,27 @@ export class AgentEngine {
           status: result.success ? 'completed' : 'error',
           digest,
         })
-        const toolResultContent = JSON.stringify(
-          result.success
-            ? result.output
-            : { error: result.error ?? 'Unknown error', output: result.output }
-        )
         // Give the domain a chance to mine the post-approval result for snapshots.
         let postHookState = this.state
         if (result.success && config.domainConfig.onToolResult) {
           postHookState = config.domainConfig.onToolResult(pending.toolName, result, this.state)
         }
+        // Transform pass — rewrite the LLM-visible payload after state mining,
+        // before the tool message is built. Same contract as the live loop.
+        let llmFacingResult = result
+        if (result.success && config.domainConfig.transformToolResult) {
+          const transformed = config.domainConfig.transformToolResult(
+            pending.toolName,
+            result,
+            postHookState
+          )
+          if (transformed) llmFacingResult = transformed
+        }
+        const toolResultContent = JSON.stringify(
+          llmFacingResult.success
+            ? llmFacingResult.output
+            : { error: llmFacingResult.error ?? 'Unknown error', output: llmFacingResult.output }
+        )
         this.state = {
           ...postHookState,
           waitingForApproval: false,
@@ -505,7 +516,9 @@ export class AgentEngine {
               toolCallId: pending.toolCallId,
               timestamp: Date.now(),
               metadata: { agent: pending.agentName, approved: true },
-              toolStatus: (result.success ? 'completed' : 'error') as 'completed' | 'error',
+              toolStatus: (llmFacingResult.success ? 'completed' : 'error') as
+                | 'completed'
+                | 'error',
               ...(digest !== undefined ? { digest } : {}),
               ...(opts.inputAmendment ? { inputAmendment: opts.inputAmendment } : {}),
             },
