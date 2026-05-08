@@ -8,7 +8,9 @@ export function PortalHero() {
     <>
       <RippleCanvas color='rgb(251, 146, 60)' />
       <div className='absolute inset-x-6 bottom-0 top-32 origin-bottom rotate-[-2deg] transition-transform duration-500 ease-out group-hover/card:translate-x-[-12px] group-hover/card:-rotate-1'>
-        <div className='ring-foreground/10 bg-background absolute inset-x-0 top-0 h-[calc(100%+24px)] overflow-hidden rounded-2xl shadow-xl ring-1'>
+        <div
+          data-theme='dark'
+          className='border-foreground/10 bg-background/85 absolute inset-x-0 top-0 h-[calc(100%+24px)] overflow-hidden rounded-2xl border shadow-2xl shadow-black/75 ring-1 ring-black backdrop-blur-lg'>
           <div className='border-foreground/10 flex items-center gap-2 border-b px-3 py-2'>
             <div className='flex gap-1'>
               <span className='size-2 rounded-full bg-rose-300' />

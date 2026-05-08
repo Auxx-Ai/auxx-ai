@@ -8,7 +8,9 @@ export function WidgetHero() {
     <>
       <PixelCanvas color='rgba(56, 189, 248, 0.7)' />
       <div className='absolute inset-x-4 bottom-0 top-28'>
-        <div className='ring-foreground/10 bg-background absolute inset-0 overflow-hidden rounded-2xl shadow-xl ring-1'>
+        <div
+          data-theme='dark'
+          className='border-foreground/10 bg-background/85 absolute inset-0 overflow-hidden rounded-2xl border shadow-2xl shadow-black/75 ring-1 ring-black backdrop-blur-lg'>
           <div className='border-foreground/10 flex items-center gap-2 border-b px-3 py-1.5'>
             <div className='flex gap-1'>
               <span className='size-1.5 rounded-full bg-rose-300' />
