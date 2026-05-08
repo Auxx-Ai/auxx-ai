@@ -14,6 +14,7 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { FileText, Filter, Sliders, Trash2 } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { FormProvider, useForm } from 'react-hook-form'
 import * as z from 'zod'
@@ -40,6 +41,23 @@ const mailViewFormSchema = z.object({
 
 export type MailViewFormValues = z.infer<typeof mailViewFormSchema>
 
+const createDefaultGroup = (): ConditionGroup => ({
+  id: 'default',
+  conditions: [],
+  logicalOperator: 'AND',
+})
+
+const getCreateDefaults = (): MailViewFormValues => ({
+  name: '',
+  description: '',
+  isDefault: false,
+  isPinned: false,
+  isShared: false,
+  sortField: 'lastMessageAt',
+  sortDirection: 'desc',
+  filterGroups: [createDefaultGroup()],
+})
+
 interface MailViewDialogProps {
   isOpen: boolean
   onClose: () => void
@@ -49,20 +67,13 @@ interface MailViewDialogProps {
 export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'filters' | 'options'>('details')
   const [confirm, DeleteConfirmDialog] = useConfirm()
+  const router = useRouter()
+  const pathname = usePathname()
 
   // Setup form
   const methods = useForm<MailViewFormValues>({
     resolver: standardSchemaResolver(mailViewFormSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-      isDefault: false,
-      isPinned: false,
-      isShared: false,
-      sortField: 'lastMessageAt',
-      sortDirection: 'desc',
-      filterGroups: [] as ConditionGroup[],
-    },
+    defaultValues: getCreateDefaults(),
   })
 
   // Guard against accidental close with unsaved changes
@@ -128,6 +139,12 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
 
   const deleteMailView = api.mailView.delete.useMutation({
     onSuccess: () => {
+      // Clear dirty state so the unsaved-changes guard doesn't fire on close
+      methods.reset(methods.getValues())
+      // If the user is currently viewing the deleted view, send them back to inbox.
+      if (mailViewId && pathname?.startsWith(`/app/mail/views/${mailViewId}`)) {
+        router.push('/app/mail')
+      }
       onClose()
       utils.mailView.getUserMailViews.invalidate()
       utils.mailView.getAllAccessibleMailViews.invalidate()
@@ -142,6 +159,7 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
   // Load mail view data when editing
   useEffect(() => {
     if (mailView) {
+      const savedGroups = (mailView.filters as ConditionGroup[]) || []
       methods.reset({
         name: mailView.name,
         description: mailView.description || '',
@@ -151,10 +169,19 @@ export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogPr
         sortField: mailView.sortField || 'lastMessageAt',
         sortDirection: (mailView.sortDirection as 'asc' | 'desc') || 'desc',
         // Database stores filterGroups in 'filters' column (backwards compatible)
-        filterGroups: (mailView.filters as ConditionGroup[]) || [],
+        filterGroups: savedGroups.length > 0 ? savedGroups : [createDefaultGroup()],
       })
     }
   }, [mailView, methods])
+
+  // Reset form to fresh defaults whenever the dialog opens in create mode.
+  // Without this, the previously-submitted values stick around when the
+  // user reopens the "New View" dialog after creating one.
+  useEffect(() => {
+    if (!isOpen || mailViewId) return
+    methods.reset(getCreateDefaults())
+    setActiveTab('details')
+  }, [isOpen, mailViewId, methods])
 
   /** Handles the delete action with confirmation */
   const handleDelete = async () => {

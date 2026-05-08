@@ -24,7 +24,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { TableProperties, Trash2 } from 'lucide-react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { useDndState } from '~/app/context/dnd-state-context'
 import { CollapsibleSidebarSection } from '~/components/global/sidebar/collapsible-sidebar-section'
@@ -73,9 +73,15 @@ const DroppableViewSidebarItem = ({
   const [confirm, ConfirmDialog] = useConfirm()
   const isDraggingThread = activeDndItem?.data.current?.type === 'thread'
   const utils = api.useUtils()
+  const router = useRouter()
+  const pathname = usePathname()
 
   const deleteMailView = api.mailView.delete.useMutation({
     onSuccess: () => {
+      // If the user is currently viewing the deleted view, send them back to inbox.
+      if (pathname?.startsWith(`/app/mail/views/${view.id}`)) {
+        router.push('/app/mail')
+      }
       utils.mailView.getUserMailViews.invalidate()
       utils.mailView.getAllAccessibleMailViews.invalidate()
     },
@@ -108,7 +114,6 @@ const DroppableViewSidebarItem = ({
   })
 
   const itemHref = `/app/mail/views/${view.id}/unassigned`
-  const pathname = usePathname()
   const isActive = pathname?.startsWith(`/app/mail/views/${view.id}`)
 
   const editItems = (
