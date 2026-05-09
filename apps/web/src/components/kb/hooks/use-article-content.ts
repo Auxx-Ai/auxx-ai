@@ -21,10 +21,14 @@ interface UseArticleContentResult {
   draftDescription: string | null
   draftExcerpt: string | null
   draftEmoji: string | null
+  draftCoverImage: string | null
+  /** MediaAsset id linked to the draft cover (FK), or null. */
+  draftCoverImageId: string | null
   /** Last published version (null if never published). */
   publishedTitle: string | null
   publishedContent: string | null
   publishedContentJson: JSONContent | null
+  publishedCoverImage: string | null
   hasPublishedVersion: boolean
   hasUnpublishedChanges: boolean
   /** What the preview should render for the resolved mode. */
@@ -34,6 +38,7 @@ interface UseArticleContentResult {
   previewEmoji: string | null
   previewContent: string | null
   previewContentJson: JSONContent | null
+  previewCoverImage: string | null
   /** Resolved version number when mode is `'live'` or historical; null otherwise. */
   previewVersionNumber: number | null
   /** True when mode === 'live' but the article has no published revision. */
@@ -83,10 +88,13 @@ export function useArticleContent(
   const draftDescription = data?.description ?? null
   const draftExcerpt = data?.excerpt ?? null
   const draftEmoji = data?.emoji ?? null
+  const draftCoverImage = data?.coverImage ?? null
+  const draftCoverImageId = data?.coverImageId ?? null
   const publishedTitle = data?.publishedTitle ?? null
   const publishedContent = data?.publishedContent ?? null
   const publishedContentJson =
     (data?.publishedContentJson as JSONContent | null | undefined) ?? null
+  const publishedCoverImage = data?.publishedCoverImage ?? null
   const hasPublishedVersion = !!data?.hasPublishedVersion
 
   let previewTitle: string | null = draftTitle
@@ -95,6 +103,7 @@ export function useArticleContent(
   let previewEmoji: string | null = draftEmoji
   let previewContent: string | null = draftContent
   let previewContentJson: JSONContent | null = draftContentJson
+  let previewCoverImage: string | null = draftCoverImage
   let previewVersionNumber: number | null = null
   let fellBackToDraft = false
 
@@ -107,6 +116,7 @@ export function useArticleContent(
       // changes between versions; metadata diffs are rare.
       previewContent = publishedContent
       previewContentJson = publishedContentJson
+      previewCoverImage = publishedCoverImage
       // versionNumber for the live revision isn't returned by the base query
       // either; the picker pulls it from getArticleVersions when needed.
     } else {
@@ -122,6 +132,7 @@ export function useArticleContent(
       previewContent = v.selectedContent ?? draftContent
       previewContentJson =
         (v.selectedContentJson as JSONContent | null | undefined) ?? draftContentJson
+      previewCoverImage = v.selectedCoverImage ?? draftCoverImage
       previewVersionNumber = v.selectedVersionNumber ?? requestedVersion ?? null
     }
   }
@@ -133,9 +144,12 @@ export function useArticleContent(
     draftDescription,
     draftExcerpt,
     draftEmoji,
+    draftCoverImage,
+    draftCoverImageId,
     publishedTitle,
     publishedContent,
     publishedContentJson,
+    publishedCoverImage,
     hasPublishedVersion,
     hasUnpublishedChanges: !!data?.hasUnpublishedChanges,
     previewTitle,
@@ -144,6 +158,7 @@ export function useArticleContent(
     previewEmoji,
     previewContent,
     previewContentJson,
+    previewCoverImage,
     previewVersionNumber,
     fellBackToDraft,
     isLoading: baseQuery.isLoading || (isHistorical && versionQuery.isLoading),

@@ -128,6 +128,7 @@ export const TagsInput = createNodeInput<TagsInputProps>(
             selectedTags={value}
             onChange={handleChange}
             allowMultiple={allowMultiple}
+            scope='thread'
           />
         </Popover>
 

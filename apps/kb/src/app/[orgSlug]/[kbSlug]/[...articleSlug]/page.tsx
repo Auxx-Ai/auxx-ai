@@ -66,7 +66,16 @@ async function getCachedMetadata(
     // Bare string -- the parent layout's "%s | KB Name" template fills in the suffix.
     title: article.title,
     description: article.description ?? undefined,
-    openGraph: { title: article.title, description: article.description ?? undefined },
+    openGraph: {
+      title: article.title,
+      description: article.description ?? undefined,
+      images: article.coverImage
+        ? [{ url: article.coverImage, width: 1200, height: 630 }]
+        : undefined,
+    },
+    twitter: article.coverImage
+      ? { card: 'summary_large_image', images: [article.coverImage] }
+      : undefined,
     robots: kb?.publishStatus === 'UNLISTED' ? { index: false, follow: false } : undefined,
   }
 }
@@ -192,6 +201,7 @@ function ArticleBodyContent({
         title={article.title}
         emoji={article.emoji}
         description={article.description}
+        coverImage={article.coverImage}
         updatedAt={article.updatedAt}
         parent={parent}
         copyMenu={

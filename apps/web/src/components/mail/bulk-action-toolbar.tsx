@@ -304,6 +304,7 @@ export default function BulkActionToolbar() {
             indeterminateTags: partiallySelectedTagIds,
             allowMultiple: true,
             align: 'end',
+            scope: 'thread',
           },
         },
       },

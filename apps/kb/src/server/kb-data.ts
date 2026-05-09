@@ -24,6 +24,7 @@ export interface PublicArticleListItem {
 export interface PublicArticleFull extends PublicArticleListItem {
   content: string
   contentJson: DocJSON | null
+  coverImage: string | null
   publishedAt: Date | null
   updatedAt: Date
 }
@@ -204,6 +205,7 @@ export async function loadKBPayloadWithContent(
       pubExcerpt: pub.excerpt,
       pubContent: pub.content,
       pubContentJson: pub.contentJson,
+      pubCoverImage: pub.coverImage,
     })
     .from(Article)
     .innerJoin(pub, eq(pub.id, Article.publishedRevisionId))
@@ -223,6 +225,7 @@ export async function loadKBPayloadWithContent(
     excerpt: r.pubExcerpt,
     content: r.pubContent,
     contentJson: (r.pubContentJson as DocJSON | null) ?? null,
+    coverImage: r.pubCoverImage,
     publishedAt: r.article.publishedAt,
     updatedAt: r.article.updatedAt,
   }))

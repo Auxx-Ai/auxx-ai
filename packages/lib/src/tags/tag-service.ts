@@ -11,6 +11,9 @@ import { parseRecordId, type RecordId, toRecordId } from '../resources/resource-
 
 const logger = createScopedLogger('tag-service')
 
+/** Resource-type scope a tag is meant for. Filters the picker pool. */
+export type TagScopeValue = 'thread' | 'article'
+
 /** Tag data returned from the service */
 export interface TagData {
   recordId: RecordId
@@ -22,6 +25,8 @@ export interface TagData {
   parentId: string | null
   parentRecordId: RecordId | null
   isSystemTag: boolean
+  isPublic: boolean
+  scope: TagScopeValue
   createdAt: Date
   updatedAt: Date
 }
@@ -111,6 +116,13 @@ export class TagService {
     const recordId = await this.buildRecordId(item.id)
     const { parentId, parentRecordId } = this.parseParentRecordId(item.fieldValues.tag_parent)
 
+    // SINGLE_SELECT fields are returned as arrays for uniform handling with MULTI_SELECT.
+    const scopeRaw = item.fieldValues.tag_scope
+    const scopeStr = Array.isArray(scopeRaw)
+      ? (scopeRaw[0] as string | undefined)
+      : (scopeRaw as string | undefined)
+    const scope: TagScopeValue = scopeStr === 'article' ? 'article' : 'thread'
+
     return {
       recordId,
       id: item.id,
@@ -121,6 +133,8 @@ export class TagService {
       parentId,
       parentRecordId,
       isSystemTag: (item.fieldValues.is_system_tag as boolean) ?? false,
+      isPublic: (item.fieldValues.tag_is_public as boolean) ?? false,
+      scope,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }
@@ -128,16 +142,20 @@ export class TagService {
 
   /**
    * Get all tags for an organization
+   * @param options.scope - Optional resource-type scope filter ('thread' | 'article')
    * @returns Promise resolving to array of tags sorted by title
    */
-  async getAllTags(): Promise<TagData[]> {
+  async getAllTags(options?: { scope?: TagScopeValue }): Promise<TagData[]> {
     try {
       const result = await listAll(
         { db: this.db, organizationId: this.organizationId, userId: this.userId },
         { entityDefinitionId: 'tag' }
       )
 
-      return Promise.all(result.items.map((item) => this.transformToTagData(item)))
+      const tags = await Promise.all(result.items.map((item) => this.transformToTagData(item)))
+
+      if (!options?.scope) return tags
+      return tags.filter((tag) => tag.scope === options.scope)
     } catch (error) {
       logger.error('Error fetching tags', { error })
       throw error
@@ -146,9 +164,10 @@ export class TagService {
 
   /**
    * Get tag hierarchy with parent-child relationships
+   * @param options.scope - Optional resource-type scope filter ('thread' | 'article')
    * @returns Promise resolving to array of root tags with nested children
    */
-  async getTagHierarchy(): Promise<TagWithChildren[]> {
+  async getTagHierarchy(options?: { scope?: TagScopeValue }): Promise<TagWithChildren[]> {
     try {
       const result = await listAll(
         { db: this.db, organizationId: this.organizationId, userId: this.userId },
@@ -163,11 +182,15 @@ export class TagService {
         }))
       )
 
+      const filteredTags = options?.scope
+        ? flatTags.filter((tag) => tag.scope === options.scope)
+        : flatTags
+
       // Build hierarchy
-      const tagMap = new Map(flatTags.map((t) => [t.id, t]))
+      const tagMap = new Map(filteredTags.map((t) => [t.id, t]))
       const rootTags: TagWithChildren[] = []
 
-      for (const tag of flatTags) {
+      for (const tag of filteredTags) {
         if (tag.parentId && tagMap.has(tag.parentId)) {
           tagMap.get(tag.parentId)!.children.push(tag)
         } else {
@@ -186,14 +209,16 @@ export class TagService {
    * Search tags by query string
    * @param query - Search query (case-insensitive)
    * @param limit - Maximum results to return
+   * @param options.scope - Optional resource-type scope filter ('thread' | 'article')
    * @returns Promise resolving to matching tags
    */
   async searchTags(
     query: string,
-    limit: number = 10
+    limit: number = 10,
+    options?: { scope?: TagScopeValue }
   ): Promise<{ recordId: RecordId; id: string; name: string }[]> {
     try {
-      const allTags = await this.getAllTags()
+      const allTags = await this.getAllTags(options)
       const lowerQuery = query.toLowerCase()
 
       return allTags

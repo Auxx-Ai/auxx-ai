@@ -59,11 +59,8 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   useEffect(() => {
     setPreviewMode('draft')
   }, [articleId, setPreviewMode])
-  const { previewContentJson, previewDescription, previewTitle, previewEmoji } = useArticleContent(
-    articleId,
-    kbId,
-    previewMode
-  )
+  const { previewContentJson, previewDescription, previewTitle, previewEmoji, previewCoverImage } =
+    useArticleContent(articleId, kbId, previewMode)
 
   const publicUrl = useKbPublicUrl(knowledgeBase?.slug)
 
@@ -109,6 +106,7 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
                 articles.find((a) => a.id === articleId)?.emoji
               }
               description={previewDescription ?? activeArticle?.description}
+              coverImage={previewCoverImage ?? activeArticle?.coverImage}
               parent={parent}
               resolveAuxxHref={(id) => `/preview/kb/${kbId}/r/${id}`}
             />

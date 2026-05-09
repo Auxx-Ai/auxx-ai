@@ -284,6 +284,7 @@ export function ThreadHeader() {
                 onChange={handleTagChange}
                 allowMultiple={true}
                 tagEntityDefinitionId={tagEntityDefId}
+                scope='thread'
               />
             )}
             <ManualTriggerButton recordId={toRecordId('thread', thread.id)}>

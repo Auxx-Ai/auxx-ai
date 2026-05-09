@@ -139,7 +139,13 @@ export {
 } from './relationship-field'
 // Relationship query helpers (for TagsOnThread migration)
 export {
+  articleDoesNotHaveTags,
+  articleHasAnyTags,
+  articleHasNoTags,
+  articleHasTags,
+  batchGetArticleTagIds,
   batchGetThreadTagIds,
+  getArticleTagIds,
   getThreadsWithTag,
   getThreadTagIds,
   threadDoesNotHaveTags,

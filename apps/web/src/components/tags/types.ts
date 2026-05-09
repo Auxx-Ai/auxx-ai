@@ -3,6 +3,9 @@
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { FieldInfo, RecordMeta } from '~/components/resources'
 
+/** Resource-type scope a tag is meant for. Filters the picker pool. */
+export type TagScopeValue = 'thread' | 'article'
+
 /**
  * Tag record with field values from the entity system
  * Note: Keys match systemAttribute names (e.g., tag_parent, is_system_tag)
@@ -15,6 +18,8 @@ export interface TagRecord extends RecordMeta {
     tag_color?: string
     tag_parent?: RecordId[]
     is_system_tag?: boolean
+    /** SINGLE_SELECT comes back as an array per the resource read pipeline. */
+    tag_scope?: string | string[]
   }
 }
 
@@ -30,6 +35,7 @@ export interface TagNode {
   tag_color: string
   parentId: string | null
   isSystemTag: boolean
+  scope: TagScopeValue
   children: TagNode[]
 }
 

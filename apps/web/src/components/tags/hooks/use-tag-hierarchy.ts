@@ -3,7 +3,16 @@
 import { toRecordId } from '@auxx/lib/resources/client'
 import { useMemo } from 'react'
 import { useAllRecords } from '~/components/resources/hooks/use-all-records'
-import type { TagNode, TagRecord, UseTagHierarchyResult } from '../types'
+import type { TagNode, TagRecord, TagScopeValue, UseTagHierarchyResult } from '../types'
+
+/** Options for filtering / shaping the returned hierarchy. */
+interface UseTagHierarchyOptions {
+  /**
+   * Optional resource-type scope filter. When provided, only tags with this
+   * scope are returned. Tags without a scope value default to 'thread'.
+   */
+  scope?: TagScopeValue
+}
 
 /**
  * Hook to fetch all tags and build hierarchical tree structure.
@@ -11,22 +20,16 @@ import type { TagNode, TagRecord, UseTagHierarchyResult } from '../types'
  *
  * @example
  * ```tsx
- * import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
- *
- * const { hierarchy, flatTags, tagMap, isLoading } = useTagHierarchy()
- *
- * // Render tree view
- * {hierarchy.map(tag => <TagTreeNode key={tag.id} tag={tag} />)}
- *
- * // Quick lookup
- * const tag = tagMap.get(tagId)
+ * const { hierarchy, flatTags, tagMap, isLoading } = useTagHierarchy({ scope: 'article' })
  * ```
  */
-export function useTagHierarchy(): UseTagHierarchyResult {
+export function useTagHierarchy(options?: UseTagHierarchyOptions): UseTagHierarchyResult {
   const { records, entityDefinitionId, fields, isLoading, error, refresh } =
     useAllRecords<TagRecord>({
       entityDefinitionId: 'tag',
     })
+
+  const scope = options?.scope
 
   // Build hierarchy from flat records
   const { hierarchy, flatTags, tagMap } = useMemo(() => {
@@ -41,6 +44,11 @@ export function useTagHierarchy(): UseTagHierarchyResult {
       const parentId =
         parentRecordIds.length > 0 ? (parentRecordIds[0].split(':')[1] ?? null) : null
 
+      // SINGLE_SELECT values come back as an array; treat undefined as 'thread'.
+      const scopeRaw = record.fieldValues.tag_scope
+      const scopeStr = Array.isArray(scopeRaw) ? scopeRaw[0] : scopeRaw
+      const tagScope: TagScopeValue = scopeStr === 'article' ? 'article' : 'thread'
+
       return {
         id: record.id,
         recordId: toRecordId(entityDefinitionId, record.id),
@@ -50,22 +58,25 @@ export function useTagHierarchy(): UseTagHierarchyResult {
         tag_color: record.fieldValues.tag_color ?? 'gray',
         parentId,
         isSystemTag: record.fieldValues.is_system_tag ?? false,
+        scope: tagScope,
         children: [],
       }
     })
 
-    // Build lookup map
-    const nodeMap = new Map<string, TagNode>(nodes.map((n) => [n.id, n]))
+    const filteredNodes = scope ? nodes.filter((n) => n.scope === scope) : nodes
+
+    // Build lookup map (scoped — parents that are filtered out are dropped)
+    const nodeMap = new Map<string, TagNode>(filteredNodes.map((n) => [n.id, n]))
 
     // Build tree structure
     const rootNodes: TagNode[] = []
 
-    for (const node of nodes) {
+    for (const node of filteredNodes) {
       if (node.parentId && nodeMap.has(node.parentId)) {
         // Add to parent's children
         nodeMap.get(node.parentId)!.children.push(node)
       } else {
-        // Root level tag
+        // Root level tag (parent missing from this scope or genuinely root)
         rootNodes.push(node)
       }
     }
@@ -81,10 +92,10 @@ export function useTagHierarchy(): UseTagHierarchyResult {
 
     return {
       hierarchy: rootNodes,
-      flatTags: nodes,
+      flatTags: filteredNodes,
       tagMap: nodeMap,
     }
-  }, [records, entityDefinitionId])
+  }, [records, entityDefinitionId, scope])
 
   return {
     hierarchy,

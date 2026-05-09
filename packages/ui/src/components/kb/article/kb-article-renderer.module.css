@@ -53,6 +53,15 @@
   margin: 0.5em 0;
 }
 
+.cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1200 / 630;
+  object-fit: cover;
+  border-radius: var(--kb-radius);
+  margin-bottom: 1.5rem;
+}
+
 .header {
   display: flex;
   align-items: flex-start;

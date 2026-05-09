@@ -3,6 +3,7 @@
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
 import type { ArticleKind, ArticleStatus } from '@auxx/database/types'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -25,13 +26,17 @@ export interface ArticleMeta {
   articleKind: ArticleKind
   sortOrder: string
   isPublished: boolean
+  aiEnabled: boolean
   status: ArticleStatus
   description: string | null
   excerpt: string | null
+  coverImage: string | null
   hasUnpublishedChanges: boolean
   publishedAt: Date | null
   publishedRevisionId: string | null
   draftRevisionId: string | null
+  /** Tag RecordIds applied to this article. Empty array if untagged. */
+  tagIds: RecordId[]
 }
 
 /** A tree-shaped article node (built lazily from the flat list). */
@@ -238,8 +243,20 @@ export const useArticleStore = create<ArticleStoreState>()(
 
       confirmUpdate: (id, server) => {
         set((state) => {
+          if (server) {
+            state.articles.set(id, server)
+          } else {
+            // No server snapshot — promote the optimistic delta to truth so the
+            // UI keeps showing the confirmed values until a refetch lands. Without
+            // this, dropping pendingUpdates exposes the stale server entry and the
+            // UI flickers back to the pre-mutation state.
+            const pending = state.pendingUpdates[id]
+            const existing = state.articles.get(id)
+            if (pending && existing) {
+              state.articles.set(id, { ...existing, ...pending.optimistic })
+            }
+          }
           delete state.pendingUpdates[id]
-          if (server) state.articles.set(id, server)
         })
       },
 

@@ -69,6 +69,20 @@ export class KBSyncService {
       return
     }
 
+    // Self-heal: if a stale enqueue arrives after the AI toggle flipped off,
+    // converge to a disabled Document just like the unpublish path.
+    if (!article.aiEnabled) {
+      logger.info('syncArticle: aiEnabled is false, ensuring document disabled', { articleId })
+      const doc = await this.findArticleDocumentByArticleId(articleId)
+      if (doc?.enabled) {
+        await this.db
+          .update(schema.Document)
+          .set({ enabled: false, updatedAt: new Date() })
+          .where(eq(schema.Document.id, doc.id))
+      }
+      return
+    }
+
     const revision = article.publishedRevision ?? article.draftRevision
     if (!revision) {
       logger.warn('syncArticle: article has no revision', { articleId })

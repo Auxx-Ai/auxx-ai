@@ -221,6 +221,59 @@ export const TagOperation = {
 } as const
 
 /**
+ * Tag Scope Enum
+ * Virtual enum for resource-type scoping of tags (filters the picker pool).
+ * Stored as a SINGLE_SELECT on the tag entity.
+ */
+export const TagScope = {
+  THREAD: 'thread',
+  ARTICLE: 'article',
+
+  values: [
+    { value: 'thread', label: 'Thread', color: 'blue' },
+    { value: 'article', label: 'Article', color: 'purple' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Article Status Enum
+ * Source: packages/database/src/db/schema/_shared.ts (articleStatus)
+ * Database enum: articleStatus
+ */
+export const ArticleStatus = {
+  DRAFT: 'DRAFT',
+  PUBLISHED: 'PUBLISHED',
+  ARCHIVED: 'ARCHIVED',
+
+  values: [
+    { value: 'DRAFT', label: 'Draft', color: 'gray' },
+    { value: 'PUBLISHED', label: 'Published', color: 'green' },
+    { value: 'ARCHIVED', label: 'Archived', color: 'amber' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Article Kind Enum
+ * Source: packages/database/src/db/schema/_shared.ts (articleKind)
+ * Database enum: articleKind
+ */
+export const ArticleKind = {
+  page: 'page',
+  category: 'category',
+  header: 'header',
+  tab: 'tab',
+  link: 'link',
+
+  values: [
+    { value: 'page', label: 'Page', color: 'blue' },
+    { value: 'category', label: 'Category', color: 'purple' },
+    { value: 'header', label: 'Section Header', color: 'gray' },
+    { value: 'tab', label: 'Tab', color: 'cyan' },
+    { value: 'link', label: 'Link', color: 'amber' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
  * Dataset Status Enum
  * Source: packages/database/src/db/schema/_shared.ts:91
  * Database enum: datasetStatus
