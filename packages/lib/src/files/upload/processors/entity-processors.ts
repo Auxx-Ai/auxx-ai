@@ -311,7 +311,9 @@ export class ArticleProcessor extends BaseAttachmentProcessor {
   ]
   protected readonly assetKind: AssetKind = 'INLINE_IMAGE'
   /**
-   * Override processConfig for article-specific validation and policies
+   * Override processConfig for article-specific validation and policies.
+   * Cover uploads are forced PUBLIC so the resulting CDN URL is durable
+   * (OG image crawlers cache for hours/days; presigned URLs would 403).
    */
   async processConfig(init: UploadInitConfig): Promise<ProcessorConfigResult> {
     const base = await super.processConfig(init)
@@ -321,6 +323,17 @@ export class ArticleProcessor extends BaseAttachmentProcessor {
       throw new Error(
         `File size exceeds maximum allowed for article attachments (${this.maxFileSize / 1024 / 1024}MB)`
       )
+    }
+    if (init.metadata?.role === 'COVER') {
+      const { getBucketForVisibility } = await import('../util')
+      return {
+        config: Object.freeze({
+          ...base.config,
+          visibility: 'PUBLIC',
+          bucket: getBucketForVisibility('PUBLIC'),
+        }),
+        warnings,
+      }
     }
     return {
       config: base.config,
@@ -352,6 +365,10 @@ export class ArticleProcessor extends BaseAttachmentProcessor {
     if (session.metadata?.role === 'COVER') return 'THUMBNAIL'
     if (session.metadata?.role === 'THUMBNAIL') return 'THUMBNAIL'
     return this.assetKind
+  }
+  protected isAssetPrivate(session: PresignedUploadSession): boolean {
+    if (session.metadata?.role === 'COVER') return false
+    return super.isAssetPrivate(session)
   }
 }
 // ============= Workflow Run Processor =============

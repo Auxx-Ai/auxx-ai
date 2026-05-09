@@ -84,6 +84,7 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
     previewDescription,
     previewTitle,
     previewEmoji,
+    previewCoverImage,
     hasPublishedVersion,
     fellBackToDraft,
   } = useArticleContent(articleId, knowledgeBaseId, mode)
@@ -246,6 +247,7 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
               title={previewTitle ?? activeArticle?.title}
               emoji={previewEmoji ?? activeArticle?.emoji}
               description={previewDescription ?? activeArticle?.description}
+              coverImage={previewCoverImage ?? activeArticle?.coverImage}
               parent={parent}
               resolveAuxxHref={(id) => `/preview/kb/${knowledgeBaseId}/r/${id}`}
               copyMenu={

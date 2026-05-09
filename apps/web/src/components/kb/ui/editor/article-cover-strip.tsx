@@ -44,52 +44,20 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
     autoStart: true,
     fileExtensions: ['.png', '.jpg', '.jpeg', '.webp'],
     sessionMetadata: {
-      role: 'ARTICLE_COVER',
+      role: 'COVER',
       knowledgeBaseId,
       articleId: article.id,
       title: `article-cover-${article.id}`,
     },
-    onChange: (files) => {
-      console.log('[cover] onChange', files)
-    },
-    onExistingFilesAdded: (files) => {
-      console.log('[cover] onExistingFilesAdded', files)
-      const f = files?.[0]
-      console.log('[cover] existing file:', {
-        url: f?.url,
-        serverFileId: f?.serverFileId,
-        id: f?.id,
-      })
-      if (!f?.url) return
-      void updateArticleCover(article.id, {
-        coverImage: f.url,
-        coverImageId: f.serverFileId ?? f.id ?? null,
-      })
-    },
     onUploadComplete: (files) => {
-      console.log('[cover] onUploadComplete', files)
       const f = files?.[0]
-      console.log('[cover] uploaded file:', {
-        url: f?.url,
-        serverFileId: f?.serverFileId,
-        id: f?.id,
-      })
-      if (!f?.url) {
-        console.warn('[cover] upload completed but no url on file')
-        return
-      }
-      console.log('[cover] persisting cover', {
-        articleId: article.id,
-        coverImage: f.url,
-        coverImageId: f.serverFileId ?? null,
-      })
+      if (!f?.url) return
       void updateArticleCover(article.id, {
         coverImage: f.url,
         coverImageId: f.serverFileId ?? null,
       })
     },
     onError: (error) => {
-      console.error('[cover] onError', error)
       toastError({ title: 'Failed to upload cover', description: error })
     },
   })
@@ -150,7 +118,7 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
     return (
       <>
         <div className='page-block-openapi:ml-0 mx-auto flex w-full max-w-(--block-wrapper-max-width) flex-wrap items-center gap-2 pt-4'>
-          <FileSelectPicker fileSelect={fileSelect}>
+          <FileSelectPicker fileSelect={fileSelect} hideBrowseExisting>
             <Button
               type='button'
               variant='ghost'
@@ -174,7 +142,7 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
       <div className='page-block-openapi:ml-0 group relative mx-auto w-full max-w-(--block-wrapper-max-width) pt-4'>
         <img src={coverImage} alt='' className='aspect-[1200/630] w-full rounded-md object-cover' />
         <div className='absolute right-2 bottom-2 flex flex-wrap items-center gap-1.5 rounded-md bg-background/80 p-1 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100'>
-          <FileSelectPicker fileSelect={fileSelect}>
+          <FileSelectPicker fileSelect={fileSelect} hideBrowseExisting>
             <Button type='button' variant='ghost' size='sm'>
               Replace
             </Button>

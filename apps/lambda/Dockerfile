@@ -1,6 +1,6 @@
 # Build @auxx/sdk artifacts for runtime import-map resolution
 FROM node:22-slim AS sdk-builder
-RUN npm install -g corepack@0.31.0 && corepack enable
+RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
 WORKDIR /app
 COPY package.json ./package.json
 COPY pnpm-lock.yaml ./pnpm-lock.yaml

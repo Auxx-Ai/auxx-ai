@@ -71,40 +71,42 @@ export function KBArticleRenderer({
       {coverImage ? <img src={coverImage} alt='' className={styles.cover} /> : null}
       {parent || title || description || updatedAt ? (
         <header className={styles.header}>
-          <div className={styles.headerMain}>
-            {parent?.href ? (
-              <Link href={parent.href} prefetch={false} className={styles.parentLink}>
-                {parent.emoji ? (
-                  <EntityIcon iconId={parent.emoji} variant='bare' size='xs' />
-                ) : null}
-                {parent.title}
-              </Link>
-            ) : parent ? (
-              <span className={styles.parentText}>
-                {parent.emoji ? (
-                  <EntityIcon iconId={parent.emoji} variant='bare' size='xs' />
-                ) : null}
-                {parent.title}
-              </span>
-            ) : null}
-            {title ? (
-              <h1 className={styles.h1}>
-                <span className='inline-flex flex-row items-center'>
-                  {emoji ? <EntityIcon iconId={emoji} variant='bare' size='xl' /> : null}
-                  <span>{title}</span>
+          <div className={styles.headerTopRow}>
+            <div className={styles.headerParent}>
+              {parent?.href ? (
+                <Link href={parent.href} prefetch={false} className={styles.parentLink}>
+                  {parent.emoji ? (
+                    <EntityIcon iconId={parent.emoji} variant='bare' size='xs' />
+                  ) : null}
+                  {parent.title}
+                </Link>
+              ) : parent ? (
+                <span className={styles.parentText}>
+                  {parent.emoji ? (
+                    <EntityIcon iconId={parent.emoji} variant='bare' size='xs' />
+                  ) : null}
+                  {parent.title}
                 </span>
-              </h1>
-            ) : null}
-            {description ? <p className={styles.headerDescription}>{description}</p> : null}
-            {updatedAt ? (
-              <p className={styles.headerUpdatedAt}>Last updated {formatRelative(updatedAt)}</p>
-            ) : null}
+              ) : null}
+            </div>
+            <div className={styles.headerActions}>
+              {copyMenu}
+              <KBTableOfContentsDrawer headings={headings} className='@kb-lg:hidden' />
+              {tocToggle}
+            </div>
           </div>
-          <div className='flex items-center gap-2'>
-            {copyMenu}
-            <KBTableOfContentsDrawer headings={headings} className='@kb-lg:hidden' />
-            {tocToggle}
-          </div>
+          {title ? (
+            <h1 className={styles.h1}>
+              <span className='inline-flex flex-row items-center'>
+                {emoji ? <EntityIcon iconId={emoji} variant='bare' size='xl' /> : null}
+                <span>{title}</span>
+              </span>
+            </h1>
+          ) : null}
+          {description ? <p className={styles.headerDescription}>{description}</p> : null}
+          {updatedAt ? (
+            <p className={styles.headerUpdatedAt}>Last updated {formatRelative(updatedAt)}</p>
+          ) : null}
         </header>
       ) : null}
       {doc?.content?.map((node, idx) => {

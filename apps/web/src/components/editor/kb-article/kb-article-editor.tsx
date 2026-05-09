@@ -6,7 +6,7 @@ import { getMarkRange } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { EditorContent } from '@tiptap/react'
 import type { CSSProperties } from 'react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { InlinePickerPopover } from '../inline-picker'
 import {
   type ArticleLinkEditMode,
@@ -24,6 +24,8 @@ interface KBArticleEditorProps {
   onChange: (content: { json: JSONContent; html: string }) => void
   /** Knowledge base id — scopes the article-link picker to a single KB by default. */
   knowledgeBaseId?: string
+  /** Fired once when the underlying Tiptap editor instance is ready. */
+  onReady?: (editor: Editor) => void
 }
 
 interface LinkPopoverState {
@@ -43,6 +45,7 @@ export function KBArticleEditor({
   initialContent,
   onChange,
   knowledgeBaseId,
+  onReady,
 }: KBArticleEditorProps) {
   const { editor, gutterCharWidth, slashCommand } = useKBArticleEditor({
     initialContent,
@@ -50,6 +53,12 @@ export function KBArticleEditor({
   })
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
   const [linkMenu, setLinkMenu] = useState<LinkMenuState | null>(null)
+
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) {
+      onReady?.(editor)
+    }
+  }, [editor, onReady])
 
   // Clicks on chrome around the contenteditable (padding, empty area below
   // the last block) should still focus the editor at end — matches the

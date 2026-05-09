@@ -64,19 +64,37 @@
 
 .header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.25em;
   margin: 1.5em 0 0;
   padding-bottom: 2.5em;
 }
 
-.headerMain {
+/* The header already owns its spacing — collapse the first content block's
+   top margin so a leading heading doesn't add to it. */
+.header + * {
+  margin-top: 0;
+}
+
+.headerTopRow {
   display: flex;
-  flex-direction: column;
-  gap: 0.25em;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 1.75rem;
+  margin-bottom: 0.25em;
+}
+
+.headerParent {
   min-width: 0;
   flex: 1;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .headerDescription {
