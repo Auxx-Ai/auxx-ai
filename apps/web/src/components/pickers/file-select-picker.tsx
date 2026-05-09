@@ -55,6 +55,9 @@ export interface FileSelectPickerProps {
   side?: 'top' | 'right' | 'bottom' | 'left'
   sideOffset?: number
 
+  // Hide "Browse Existing" — restrict picker to fresh uploads only
+  hideBrowseExisting?: boolean
+
   // Display
   children: React.ReactNode
 }
@@ -141,6 +144,7 @@ function FileSelectPickerContent({
   align = 'start',
   side,
   sideOffset,
+  hideBrowseExisting,
   children,
 }: FileSelectPickerContentProps) {
   return (
@@ -176,17 +180,19 @@ function FileSelectPickerContent({
             Choose Files
           </Button>
 
-          <FileSelectPickerButton
-            open={fileSelect.pickerOpen}
-            onOpenChange={(open) => (open ? fileSelect.openPicker() : fileSelect.closePicker())}
-            onFilesSelected={(files) => fileSelect.addExistingFiles(files)}
-            allowMultiple={allowMultiple}
-            variant='outline'
-            size='sm'
-            className='flex-1'>
-            <Files />
-            Browse Existing
-          </FileSelectPickerButton>
+          {!hideBrowseExisting && (
+            <FileSelectPickerButton
+              open={fileSelect.pickerOpen}
+              onOpenChange={(open) => (open ? fileSelect.openPicker() : fileSelect.closePicker())}
+              onFilesSelected={(files) => fileSelect.addExistingFiles(files)}
+              allowMultiple={allowMultiple}
+              variant='outline'
+              size='sm'
+              className='flex-1'>
+              <Files />
+              Browse Existing
+            </FileSelectPickerButton>
+          )}
         </div>
 
         <Command>

@@ -1,11 +1,17 @@
 import { cn } from '@auxx/ui/lib/utils' // Assuming this utility exists for class names
 import type React from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { sanitizeSimple } from '~/lib/sanitize'
+
+export type EditableTextSaveReason = 'enter' | 'blur'
+
+export interface EditableTextHandle {
+  enterEdit: () => void
+}
 
 interface EditableTextProps {
   initialText: string
-  onSave?: (text: string) => void
+  onSave?: (text: string, meta: { reason: EditableTextSaveReason }) => void
   className?: string
   placeholder?: string
   /** The CSS color class for the placeholder text (e.g., 'text-gray-500') */
@@ -14,15 +20,18 @@ interface EditableTextProps {
   containerClassName?: string
 }
 
-export const EditableText = ({
-  initialText,
-  onSave,
-  className = '',
-  placeholder = 'Click to edit...',
-  placeholderColor = 'text-gray-500', // Default placeholder color
-  maxWidth = '100%',
-  containerClassName = '',
-}: EditableTextProps) => {
+export const EditableText = forwardRef<EditableTextHandle, EditableTextProps>(function EditableText(
+  {
+    initialText,
+    onSave,
+    className = '',
+    placeholder = 'Click to edit...',
+    placeholderColor = 'text-gray-500', // Default placeholder color
+    maxWidth = '100%',
+    containerClassName = '',
+  },
+  ref
+) {
   const [isEditing, setIsEditing] = useState(false)
   const [text, setText] = useState(initialText)
   const editableRef = useRef<HTMLDivElement>(null)
@@ -74,14 +83,23 @@ export const EditableText = ({
     // the editing view will only render the 'text' state.
   }
 
+  useImperativeHandle(ref, () => ({
+    enterEdit: () => {
+      if (textRef.current) {
+        setMinWidth(textRef.current.offsetWidth)
+      }
+      setIsEditing(true)
+    },
+  }))
+
   const handleBlur = () => {
-    finishEditing()
+    finishEditing('blur')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault() // Prevent adding a new line
-      finishEditing()
+      finishEditing('enter')
     } else if (e.key === 'Escape') {
       // Revert to the original text before editing started
       // If editing started from placeholder, original was ''
@@ -91,15 +109,14 @@ export const EditableText = ({
     }
   }
 
-  const finishEditing = () => {
+  const finishEditing = (reason: EditableTextSaveReason) => {
     if (editableRef.current) {
       // Use innerText which represents rendered text, trim whitespace
       const newText = editableRef.current.innerText.trim()
       setText(newText) // Update state with the potentially empty or new text
       setIsEditing(false)
-      // Only call onSave if the text actually changed from the initial prop value
-      if (onSave && newText !== initialText) {
-        onSave(newText)
+      if (onSave) {
+        onSave(newText, { reason })
       }
       // If text is now empty, the placeholder will show again in the display view
     } else {
@@ -120,7 +137,7 @@ export const EditableText = ({
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           className={cn(
-            'whitespace-pre-wrap break-words rounded border border-blue-400 px-2 py-1 focus:outline-hidden focus:ring-2 focus:ring-blue-500',
+            'whitespace-pre-wrap break-words rounded-2xl border border-blue-400 px-2 py-1 focus:outline-hidden focus:ring-2 focus:ring-blue-500',
             className // Apply user-provided class names here too
           )}
           style={{
@@ -139,7 +156,7 @@ export const EditableText = ({
           ref={textRef}
           onClick={handleClick}
           className={cn(
-            `cursor-pointer whitespace-pre-wrap break-words rounded border border-transparent px-2 py-1 hover:border-gray-300 hover:dark:border-primary-300`,
+            `cursor-pointer whitespace-pre-wrap break-words rounded-2xl border border-transparent px-2 py-1 hover:border-gray-300 hover:dark:border-primary-300`,
             className, // Apply user-provided class names
             // Apply placeholderColor class only when placeholder is shown
             showPlaceholder && placeholderColor
@@ -153,4 +170,4 @@ export const EditableText = ({
       )}
     </div>
   )
-}
+})

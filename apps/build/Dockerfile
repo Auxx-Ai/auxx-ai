@@ -6,12 +6,12 @@ FROM node:22.22-bookworm-slim AS slim
 
 FROM slim AS base
 
-RUN npm install -g corepack@0.31.0 && corepack enable
+RUN corepack enable && corepack prepare pnpm@10.17.0 --activate
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
-RUN pnpm install -g turbo
+RUN pnpm add -g turbo@2.5.2
 
 FROM base AS pruner
 

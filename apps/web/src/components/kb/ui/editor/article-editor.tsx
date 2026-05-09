@@ -3,6 +3,7 @@
 
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import type { JSONContent } from '@tiptap/core'
+import type { Editor } from '@tiptap/react'
 import { useCallback, useEffect, useRef } from 'react'
 import { useDebounceCallback } from 'usehooks-ts'
 import { KBArticleEditor } from '~/components/editor/kb-article'
@@ -32,6 +33,15 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
   const { updateArticleDraft, updateArticleContent } = useArticleMutations(knowledgeBaseId)
 
   const lastSavedHash = useRef<string | null>(null)
+  const bodyEditorRef = useRef<Editor | null>(null)
+
+  const focusBodyEditor = useCallback(() => {
+    bodyEditorRef.current?.commands.focus('start')
+  }, [])
+
+  const handleBodyEditorReady = useCallback((editor: Editor) => {
+    bodyEditorRef.current = editor
+  }, [])
 
   // Seed the saved hash on first content load so we don't immediately re-save.
   useEffect(() => {
@@ -73,6 +83,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                 article={article}
                 knowledgeBaseId={knowledgeBaseId}
                 onUpdateMetadata={handleMetadataUpdate}
+                onAdvanceToContent={focusBodyEditor}
               />
               <div className='relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch'>
                 {!isContentLoading && (
@@ -80,6 +91,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                     initialContent={draftContentJson ?? emptyContent}
                     onChange={debouncedPersist}
                     knowledgeBaseId={knowledgeBaseId}
+                    onReady={handleBodyEditorReady}
                   />
                 )}
               </div>

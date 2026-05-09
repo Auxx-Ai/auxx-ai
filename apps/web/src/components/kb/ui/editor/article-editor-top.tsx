@@ -4,8 +4,8 @@
 import { IconPicker } from '@auxx/ui/components/icon-picker'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Smile } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { EditableText } from '~/components/editor/editable-text'
+import { useEffect, useRef, useState } from 'react'
+import { EditableText, type EditableTextHandle } from '~/components/editor/editable-text'
 import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
@@ -15,13 +15,16 @@ interface ArticleEditorTopProps {
   article: ArticleMeta
   knowledgeBaseId: string
   onUpdateMetadata?: (changes: { title?: string; description?: string }) => void
+  onAdvanceToContent?: () => void
 }
 
 export function ArticleEditorTop({
   article,
   knowledgeBaseId,
   onUpdateMetadata,
+  onAdvanceToContent,
 }: ArticleEditorTopProps) {
+  const descriptionRef = useRef<EditableTextHandle>(null)
   const { updateArticleDraft } = useArticleMutations(knowledgeBaseId)
   // article.emoji on the store mirrors the *published* revision for published
   // articles. The editor edits the draft, so source the icon from the draft
@@ -72,14 +75,17 @@ export function ArticleEditorTop({
                   </div>
                   <div className='relative flex h-full w-full items-center overflow-hidden text-2xl font-semibold lg:text-4xl'>
                     <EditableText
-                      className='leading-snug focus:ring-0'
+                      className='leading-snug focus:ring-0 py-0'
                       containerClassName='w-full'
                       initialText={article.title}
                       placeholderColor='text-muted-foreground'
                       placeholder='Title goes here'
-                      onSave={(newTitle) => {
+                      onSave={(newTitle, { reason }) => {
                         if (onUpdateMetadata && newTitle !== article.title) {
                           onUpdateMetadata({ title: newTitle })
+                        }
+                        if (reason === 'enter') {
+                          descriptionRef.current?.enterEdit()
                         }
                       }}
                     />
@@ -90,13 +96,17 @@ export function ArticleEditorTop({
                 <div className='flex flex-1 items-center justify-start'>
                   <div className='mt-2 max-h-[2.5rem] flex-1 overflow-y-scroll text-muted-foreground'>
                     <EditableText
+                      ref={descriptionRef}
                       placeholder='Add a description...'
                       placeholderColor='text-muted-foreground'
                       className='leading-snug focus:ring-0'
                       initialText={article.description || ''}
-                      onSave={(newDescription) => {
+                      onSave={(newDescription, { reason }) => {
                         if (onUpdateMetadata && newDescription !== article.description) {
                           onUpdateMetadata({ description: newDescription })
+                        }
+                        if (reason === 'enter') {
+                          onAdvanceToContent?.()
                         }
                       }}
                     />
