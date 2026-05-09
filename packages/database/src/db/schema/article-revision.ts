@@ -16,6 +16,7 @@ import {
 } from './_shared'
 
 import { Article } from './article'
+import { MediaAsset } from './media-asset'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -41,6 +42,8 @@ export const ArticleRevision = pgTable(
     emoji: text(),
     content: text().notNull(),
     contentJson: jsonb(),
+    coverImage: text(),
+    coverImageId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),
     editorId: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',

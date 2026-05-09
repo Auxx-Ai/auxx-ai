@@ -265,6 +265,196 @@ export async function getThreadsWithTag(
   return results.map((r) => r.threadId).filter((id): id is string => id !== null)
 }
 
+// ─── Article tag helpers ───────────────────────────────────────────────────
+// Mirror of the thread helpers above. Articles use the same tag entity and
+// FieldValue-backed relationship pattern, just with `systemAttribute='article_tags'`.
+
+/**
+ * Build subquery to check if an article has any tags.
+ */
+export function articleHasAnyTags(
+  _db: Database,
+  articleIdExpr: SQL | typeof schema.Article.id,
+  organizationId: string
+): SQL {
+  return sql`EXISTS (
+    SELECT 1
+    FROM ${schema.FieldValue} fv
+    INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
+    WHERE cf."systemAttribute" = 'article_tags'
+      AND cf."organizationId" = ${organizationId}
+      AND fv."entityId" = ${articleIdExpr}
+      AND fv."relatedEntityId" IS NOT NULL
+  )`
+}
+
+/**
+ * Build subquery to check if an article does NOT have any tags.
+ */
+export function articleHasNoTags(
+  _db: Database,
+  articleIdExpr: SQL | typeof schema.Article.id,
+  organizationId: string
+): SQL {
+  return sql`NOT EXISTS (
+    SELECT 1
+    FROM ${schema.FieldValue} fv
+    INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
+    WHERE cf."systemAttribute" = 'article_tags'
+      AND cf."organizationId" = ${organizationId}
+      AND fv."entityId" = ${articleIdExpr}
+      AND fv."relatedEntityId" IS NOT NULL
+  )`
+}
+
+/**
+ * Build subquery to check if an article has specific tag(s).
+ */
+export function articleHasTags(
+  _db: Database,
+  articleIdExpr: SQL | typeof schema.Article.id,
+  tagIds: string[],
+  organizationId: string
+): SQL {
+  if (tagIds.length === 0) {
+    return sql`FALSE`
+  }
+
+  if (tagIds.length === 1) {
+    return sql`EXISTS (
+      SELECT 1
+      FROM ${schema.FieldValue} fv
+      INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
+      WHERE cf."systemAttribute" = 'article_tags'
+        AND cf."organizationId" = ${organizationId}
+        AND fv."entityId" = ${articleIdExpr}
+        AND fv."relatedEntityId" = ${tagIds[0]}
+    )`
+  }
+
+  return sql`EXISTS (
+    SELECT 1
+    FROM ${schema.FieldValue} fv
+    INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
+    WHERE cf."systemAttribute" = 'article_tags'
+      AND cf."organizationId" = ${organizationId}
+      AND fv."entityId" = ${articleIdExpr}
+      AND fv."relatedEntityId" IN (${sql.join(
+        tagIds.map((id) => sql`${id}`),
+        sql`, `
+      )})
+  )`
+}
+
+/**
+ * Build subquery to check if an article does NOT have specific tag(s).
+ */
+export function articleDoesNotHaveTags(
+  _db: Database,
+  articleIdExpr: SQL | typeof schema.Article.id,
+  tagIds: string[],
+  organizationId: string
+): SQL {
+  if (tagIds.length === 0) {
+    return sql`TRUE`
+  }
+
+  if (tagIds.length === 1) {
+    return sql`NOT EXISTS (
+      SELECT 1
+      FROM ${schema.FieldValue} fv
+      INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
+      WHERE cf."systemAttribute" = 'article_tags'
+        AND cf."organizationId" = ${organizationId}
+        AND fv."entityId" = ${articleIdExpr}
+        AND fv."relatedEntityId" = ${tagIds[0]}
+    )`
+  }
+
+  return sql`NOT EXISTS (
+    SELECT 1
+    FROM ${schema.FieldValue} fv
+    INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf.id
+    WHERE cf."systemAttribute" = 'article_tags'
+      AND cf."organizationId" = ${organizationId}
+      AND fv."entityId" = ${articleIdExpr}
+      AND fv."relatedEntityId" IN (${sql.join(
+        tagIds.map((id) => sql`${id}`),
+        sql`, `
+      )})
+  )`
+}
+
+/**
+ * Get all tag IDs for an article.
+ */
+export async function getArticleTagIds(
+  db: Database,
+  articleId: string,
+  organizationId: string
+): Promise<string[]> {
+  const results = await db
+    .select({ tagId: schema.FieldValue.relatedEntityId })
+    .from(schema.FieldValue)
+    .innerJoin(schema.CustomField, eq(schema.FieldValue.fieldId, schema.CustomField.id))
+    .where(
+      and(
+        eq(schema.CustomField.systemAttribute, 'article_tags'),
+        eq(schema.CustomField.organizationId, organizationId),
+        eq(schema.FieldValue.entityId, articleId),
+        isNotNull(schema.FieldValue.relatedEntityId)
+      )
+    )
+
+  return results.map((r) => r.tagId).filter((id): id is string => id !== null)
+}
+
+/**
+ * Batch get tag RecordIds for multiple articles.
+ * Returns a Map of articleId -> array of RecordIds (entityDefinitionId:instanceId format).
+ */
+export async function batchGetArticleTagIds(
+  db: Database,
+  articleIds: string[],
+  organizationId: string
+): Promise<Map<string, string[]>> {
+  if (articleIds.length === 0) {
+    return new Map()
+  }
+
+  const tagEntityDefId = await requireCachedEntityDefId(organizationId, 'tag')
+
+  const allFields = await getAllCachedCustomFields(organizationId)
+  const articleTagsField = allFields.find((f) => f.systemAttribute === 'article_tags')
+  if (!articleTagsField) {
+    return new Map()
+  }
+
+  const results = await db
+    .select({
+      articleId: schema.FieldValue.entityId,
+      tagId: schema.FieldValue.relatedEntityId,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.fieldId, articleTagsField.id),
+        inArray(schema.FieldValue.entityId, articleIds),
+        isNotNull(schema.FieldValue.relatedEntityId)
+      )
+    )
+
+  const map = new Map<string, string[]>()
+  for (const { articleId, tagId } of results) {
+    if (!articleId || !tagId) continue
+    const recordId = toRecordId(tagEntityDefId, tagId)
+    const existing = map.get(articleId) || []
+    existing.push(recordId)
+    map.set(articleId, existing)
+  }
+  return map
+}
+
 /**
  * Build a subquery to filter threads that have a tag matching a search term.
  * Used for "has:tag-name" search syntax.

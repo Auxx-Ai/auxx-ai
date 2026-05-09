@@ -5,6 +5,7 @@ import { ArticleKind } from '@auxx/database/enums'
 import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import type React from 'react'
 import { useEffect } from 'react'
+import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
 import { api } from '~/trpc/react'
 import { type ArticleMeta, getArticleStoreState } from '../store/article-store'
 import { getKnowledgeBaseStoreState, type KnowledgeBase } from '../store/knowledge-base-store'
@@ -26,13 +27,16 @@ function normalize(server: any): ArticleMeta {
     articleKind: (server.articleKind ?? ArticleKind.page) as ArticleKindType,
     sortOrder: server.sortOrder ?? 'a0',
     isPublished: !!server.isPublished,
+    aiEnabled: server.aiEnabled ?? true,
     status: server.status,
     description: server.description ?? null,
     excerpt: server.excerpt ?? null,
+    coverImage: server.coverImage ?? null,
     hasUnpublishedChanges: !!server.hasUnpublishedChanges,
     publishedAt: server.publishedAt ? new Date(server.publishedAt) : null,
     publishedRevisionId: server.publishedRevisionId ?? null,
     draftRevisionId: server.draftRevisionId ?? null,
+    tagIds: (server.tagIds ?? []) as ArticleMeta['tagIds'],
   }
 }
 
@@ -53,6 +57,10 @@ export function KnowledgeBaseProvider({ knowledgeBaseId, children }: KnowledgeBa
   useEffect(() => {
     getKnowledgeBaseStoreState().setActiveKnowledgeBaseId(knowledgeBaseId)
   }, [knowledgeBaseId])
+
+  // Pre-populate the tag record store for article-scoped tags so TagBadge
+  // chips render synchronously when the editor mounts. Side-effect only.
+  useTagHierarchy({ scope: 'article' })
 
   // Hydrate articles for the active KB.
   // We intentionally do NOT clearKb on unmount: KBEditorPage suspends on

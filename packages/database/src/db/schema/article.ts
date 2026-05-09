@@ -63,6 +63,7 @@ export const Article = pgTable(
       onDelete: 'set null',
     }),
     hasUnpublishedChanges: boolean().default(false).notNull(),
+    aiEnabled: boolean().default(true).notNull(),
   },
   (table) => [
     index('Article_articleKind_idx').using('btree', table.articleKind.asc().nullsLast()),

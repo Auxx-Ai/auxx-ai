@@ -114,6 +114,7 @@ export const ModelTypeValues = [
   'stock_movement',
   'company',
   'meeting',
+  'article',
 ] as const
 
 /**
@@ -143,6 +144,7 @@ export const ModelTypes = {
   STOCK_MOVEMENT: 'stock_movement',
   COMPANY: 'company',
   MEETING: 'meeting',
+  ARTICLE: 'article',
 } as const
 
 /**
@@ -271,6 +273,14 @@ export const ModelTypeMeta: Record<
     color: 'blue',
     apiSlug: 'meetings',
     dbTable: 'EntityInstance',
+  },
+  article: {
+    label: 'Article',
+    plural: 'Articles',
+    icon: 'book-open',
+    color: 'cyan',
+    apiSlug: 'articles',
+    dbTable: 'Article',
   },
 }
 

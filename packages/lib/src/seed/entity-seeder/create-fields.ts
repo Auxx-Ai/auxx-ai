@@ -4,6 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { FieldOptions } from '../../custom-fields'
 import type { ResourceField } from '../../resources/registry/field-types'
+import { ARTICLE_FIELDS } from '../../resources/registry/resources/article-fields'
 import { COMPANY_FIELDS } from '../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
@@ -38,6 +39,7 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   stock_movement: STOCK_MOVEMENT_FIELDS,
   company: COMPANY_FIELDS,
   meeting: MEETING_FIELDS,
+  article: ARTICLE_FIELDS,
 }
 
 /**

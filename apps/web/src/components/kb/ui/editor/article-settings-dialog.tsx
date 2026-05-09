@@ -21,10 +21,12 @@ import {
   InputGroupText,
 } from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { Label } from '@auxx/ui/components/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { Switch } from '@auxx/ui/components/switch'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { generateId, normalizeUrl } from '@auxx/utils'
-import { ChevronsUpDown } from 'lucide-react'
+import { ChevronsUpDown, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { useArticleList } from '../../hooks/use-article-list'
@@ -57,12 +59,15 @@ export function ArticleSettingsDialog({
   knowledgeBaseId,
 }: ArticleSettingsDialogProps) {
   const isLink = article.articleKind === 'link'
+  const isContainer = article.articleKind === 'tab' || article.articleKind === 'header'
+  const showAiToggle = !isLink && !isContainer
   const [emoji, setEmoji] = useState<string | null>(article.emoji ?? null)
   const [title, setTitle] = useState(article.title)
   // For link kind, slug holds a URL — but the empty-URL placeholder
   // (`link-<id>`) is server-bookkeeping, not user-facing. Show it as empty
   // in the field; saving an empty value just skips the slug write.
   const [slug, setSlug] = useState(isLink && article.slug.startsWith('link-') ? '' : article.slug)
+  const [aiEnabled, setAiEnabled] = useState(article.aiEnabled ?? true)
   const [isSaving, setIsSaving] = useState(false)
   const [isMoveOpen, setIsMoveOpen] = useState(false)
   const articles = useArticleList(knowledgeBaseId)
@@ -82,13 +87,15 @@ export function ArticleSettingsDialog({
 
   const { renameArticle } = useArticleMutations(knowledgeBaseId)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seed form state only on open transitions and article switches — not on every store update, otherwise mid-save store refreshes overwrite in-flight edits (e.g. AI toggle flicker).
   useEffect(() => {
     if (open) {
       setEmoji(article.emoji ?? null)
       setTitle(article.title)
       setSlug(isLink && article.slug.startsWith('link-') ? '' : article.slug)
+      setAiEnabled(article.aiEnabled ?? true)
     }
-  }, [open, article, isLink])
+  }, [open, article.id])
 
   const isValid = title.trim().length > 0
 
@@ -133,6 +140,7 @@ export function ArticleSettingsDialog({
         title: title.trim(),
         emoji,
         slug: slugForSave,
+        aiEnabled: showAiToggle ? aiEnabled : undefined,
       })
       onOpenChange(false)
     } catch {
@@ -249,6 +257,32 @@ export function ArticleSettingsDialog({
                 </Field>
               )}
             </section>
+
+            {showAiToggle && (
+              <section>
+                <div
+                  className='flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5'
+                  onClick={() => setAiEnabled((v) => !v)}>
+                  <div className='space-y-0.5'>
+                    <Label className='flex cursor-pointer items-center gap-1.5 text-sm font-medium'>
+                      <Sparkles className='size-3.5 text-muted-foreground' />
+                      Use for AI
+                    </Label>
+                    <p className='text-xs text-muted-foreground'>
+                      Include this article's content in AI replies and search.
+                    </p>
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <Switch
+                      size='sm'
+                      checked={aiEnabled}
+                      onCheckedChange={setAiEnabled}
+                      disabled={isSaving}
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
           </div>
 
           <DialogFooter className='mt-6'>

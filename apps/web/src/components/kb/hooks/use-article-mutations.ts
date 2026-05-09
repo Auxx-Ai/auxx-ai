@@ -22,13 +22,16 @@ function normalizeServerArticle(server: any): ArticleMeta {
     articleKind: (server.articleKind ?? ArticleKind.page) as ArticleKindType,
     sortOrder: server.sortOrder ?? 'a0',
     isPublished: !!server.isPublished,
+    aiEnabled: server.aiEnabled ?? true,
     status: (server.status ?? ArticleStatus.DRAFT) as ArticleMeta['status'],
     description: server.description ?? null,
     excerpt: server.excerpt ?? null,
+    coverImage: server.coverImage ?? null,
     hasUnpublishedChanges: !!server.hasUnpublishedChanges,
     publishedAt: server.publishedAt ? new Date(server.publishedAt) : null,
     publishedRevisionId: server.publishedRevisionId ?? null,
     draftRevisionId: server.draftRevisionId ?? null,
+    tagIds: (server.tagIds ?? []) as ArticleMeta['tagIds'],
   }
 }
 
@@ -58,10 +61,15 @@ export interface UseArticleMutationsResult {
       emoji?: string | null
     }
   ) => Promise<void>
-  /** Update structural fields (slug, parentId). */
+  /** Update the cover image URL + linked MediaAsset id on the draft revision. */
+  updateArticleCover: (
+    id: string,
+    data: { coverImage: string | null; coverImageId: string | null }
+  ) => Promise<void>
+  /** Update structural fields (slug, parentId, aiEnabled). */
   updateArticleStructure: (
     id: string,
-    fields: { slug?: string; parentId?: string | null }
+    fields: { slug?: string; parentId?: string | null; aiEnabled?: boolean }
   ) => Promise<void>
   /** Save heavy content to the draft revision (no optimistic store update). */
   updateArticleContent: (
@@ -76,10 +84,10 @@ export interface UseArticleMutationsResult {
   discardArticleDraft: (id: string) => Promise<void>
   restoreArticleVersion: (versionId: string) => Promise<void>
   duplicateArticle: (article: ArticleMeta) => Promise<ArticleMeta | undefined>
-  /** Convenience: rename via the draft (title/emoji) + structure (slug). */
+  /** Convenience: rename via the draft (title/emoji) + structure (slug, aiEnabled). */
   renameArticle: (
     id: string,
-    fields: { title?: string; emoji?: string | null; slug?: string }
+    fields: { title?: string; emoji?: string | null; slug?: string; aiEnabled?: boolean }
   ) => Promise<void>
   isCreating: boolean
 }
@@ -113,13 +121,16 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         articleKind: input.articleKind ?? ArticleKind.page,
         sortOrder: 'zz',
         isPublished: false,
+        aiEnabled: true,
         status: ArticleStatus.DRAFT,
         description: input.description ?? null,
         excerpt: input.excerpt ?? null,
+        coverImage: null,
         hasUnpublishedChanges: false,
         publishedAt: null,
         publishedRevisionId: null,
         draftRevisionId: null,
+        tagIds: [],
       }
       store.addOptimisticArticle(tempId, optimisticArticle)
       try {
@@ -176,6 +187,27 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         if (showInSidebar) store.rollbackUpdate(id)
         toastError({
           title: "Couldn't update article",
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+      }
+    },
+    [knowledgeBaseId, updateDraftMutation, utils.kb.getArticleById]
+  )
+
+  const updateArticleCover = useCallback<UseArticleMutationsResult['updateArticleCover']>(
+    async (id, data) => {
+      const store = getArticleStoreState()
+      // coverImage lives on ArticleMeta — flip it optimistically. coverImageId
+      // is editor-view only; it round-trips via the getArticleById invalidate.
+      store.setArticleOptimistic(id, { coverImage: data.coverImage })
+      try {
+        const server = await updateDraftMutation.mutateAsync({ id, data, knowledgeBaseId })
+        store.confirmUpdate(id, normalizeServerArticle(server))
+        utils.kb.getArticleById.invalidate({ id, knowledgeBaseId })
+      } catch (error) {
+        store.rollbackUpdate(id)
+        toastError({
+          title: 'Failed to update cover',
           description: error instanceof Error ? error.message : 'Unknown error occurred',
         })
       }
@@ -420,8 +452,11 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
       if (Object.keys(draftFields).length > 0) {
         await updateArticleDraft(id, draftFields)
       }
-      if (fields.slug !== undefined) {
-        await updateArticleStructure(id, { slug: fields.slug })
+      const structureFields: { slug?: string; aiEnabled?: boolean } = {}
+      if (fields.slug !== undefined) structureFields.slug = fields.slug
+      if (fields.aiEnabled !== undefined) structureFields.aiEnabled = fields.aiEnabled
+      if (Object.keys(structureFields).length > 0) {
+        await updateArticleStructure(id, structureFields)
       }
     },
     [updateArticleDraft, updateArticleStructure]
@@ -430,6 +465,7 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
   return {
     createArticle,
     updateArticleDraft,
+    updateArticleCover,
     updateArticleStructure,
     updateArticleContent,
     deleteArticle,

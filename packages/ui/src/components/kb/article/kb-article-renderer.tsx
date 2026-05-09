@@ -28,6 +28,8 @@ export interface KBArticleRendererProps {
   /** Icon id (from ICON_DATA) rendered inline left of the title. */
   emoji?: string | null
   description?: string | null
+  /** Optional 16:9 hero rendered above the header. */
+  coverImage?: string | null
   updatedAt?: Date | string | null
   /** Parent category/section rendered as a small link above the title. Omit when the article has no parent. */
   parent?: { title: string; emoji?: string | null; href?: string | null }
@@ -55,6 +57,7 @@ export function KBArticleRenderer({
   title,
   emoji,
   description,
+  coverImage,
   updatedAt,
   parent,
   copyMenu,
@@ -65,6 +68,7 @@ export function KBArticleRenderer({
   const headingIds = doc ? buildHeadingIdMap(doc, headings) : {}
   return (
     <article className={styles.article}>
+      {coverImage ? <img src={coverImage} alt='' className={styles.cover} /> : null}
       {parent || title || description || updatedAt ? (
         <header className={styles.header}>
           <div className={styles.headerMain}>

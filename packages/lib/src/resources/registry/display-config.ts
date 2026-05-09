@@ -199,4 +199,13 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, SystemResourceDisplayConfi
     defaultSortDirection: 'desc',
     orgScopingStrategy: 'direct',
   },
+
+  article: {
+    identifierField: 'id',
+    primaryDisplayFieldId: 'title',
+    searchFields: ['slug'],
+    defaultSortField: 'updatedAt',
+    defaultSortDirection: 'desc',
+    orgScopingStrategy: 'direct',
+  },
 }

@@ -119,6 +119,15 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'blue',
     isVisible: false, // Accessed via dedicated Meetings page, not entity sidebar
   },
+  {
+    entityType: 'article',
+    apiSlug: 'articles',
+    singular: 'Article',
+    plural: 'Articles',
+    icon: 'book-open',
+    color: 'cyan',
+    isVisible: false, // Backed by Article table; managed via the KB editor, not entity sidebar
+  },
 ]
 
 /**
@@ -176,6 +185,10 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   meeting: {
     primaryDisplayField: 'title',
     secondaryDisplayField: 'dateTime',
+  },
+  article: {
+    primaryDisplayField: 'title',
+    secondaryDisplayField: undefined,
   },
 }
 

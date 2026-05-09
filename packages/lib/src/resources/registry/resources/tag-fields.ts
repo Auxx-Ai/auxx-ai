@@ -3,6 +3,7 @@
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
+import { TagScope } from '../enum-values'
 
 import type { ResourceField } from '../field-types'
 
@@ -222,6 +223,80 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
+  },
+
+  // Inverse: articles with this tag
+  tag_articles: {
+    id: toFieldId('tag_articles'),
+    key: 'tag_articles',
+    label: 'Articles',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'tag_articles',
+    systemSortOrder: 'a11',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'article:tags' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+  },
+
+  // Resource-type scope (filters the picker pool — thread tags vs article tags)
+  tag_scope: {
+    id: toFieldId('tag_scope'),
+    key: 'tag_scope',
+    label: 'Scope',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'tag_scope',
+    systemSortOrder: 'a13',
+    showInPanel: false,
+    nullable: false,
+    defaultValue: 'thread',
+    options: { options: TagScope.values },
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      // Scope is decided at create time; re-scoping a tag would silently break
+      // inverse links. If we ever need to move tags, do it via an explicit admin op.
+      updatable: false,
+      configurable: false,
+    },
+    description: 'Which resource type this tag is meant for. Filters the picker pool.',
+  },
+
+  // Public-vs-private flag for future KB visibility
+  is_public: {
+    id: toFieldId('is_public'),
+    key: 'is_public',
+    label: 'Public',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'tag_is_public',
+    systemSortOrder: 'a12',
+    showInPanel: false,
+    nullable: false,
+    defaultValue: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'When true, the tag is exposed on the public KB. Internal by default.',
   },
 
   createdAt: {

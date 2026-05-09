@@ -68,6 +68,8 @@ const articleDraftFieldsSchema = z.object({
   emoji: z.string().nullish(),
   content: z.string().optional(),
   contentJson: z.any().nullish(),
+  coverImage: z.string().nullish(),
+  coverImageId: z.string().nullish(),
 })
 
 // Slug regex mirrors `toSlug` output — kebab, lowercase, no leading/trailing
@@ -78,6 +80,7 @@ const articleStructureFieldsSchema = z.object({
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be kebab-case lowercase (a-z, 0-9, -)')
     .optional(),
   parentId: z.string().nullish(),
+  aiEnabled: z.boolean().optional(),
 })
 
 const articleKindSchema = z.enum(['page', 'category', 'header', 'tab', 'link'])
@@ -90,6 +93,8 @@ const articleCreateSchema = z.object({
   contentJson: z.any().nullish(),
   excerpt: z.string().nullish(),
   emoji: z.string().nullish(),
+  coverImage: z.string().nullish(),
+  coverImageId: z.string().nullish(),
   articleKind: articleKindSchema.optional(),
   parentId: z.string().nullish(),
   adjacentTo: z.string().optional(),

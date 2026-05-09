@@ -6,7 +6,7 @@ import { Input } from '@auxx/ui/components/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronLeft, Search, X } from 'lucide-react'
+import { Ban, ChevronLeft, Search, X } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyEmojiSkinTone,
@@ -18,6 +18,7 @@ import {
   SKIN_TONES,
   type SkinTone,
 } from './emojis'
+import { DEFAULT_COLOR, getIconColor, ICON_COLORS, type IconColor } from './icons'
 
 /** localStorage key for skin tone preference */
 const SKIN_TONE_STORAGE_KEY = 'emoji-picker-skin-tone'
@@ -135,13 +136,18 @@ const EmojiButton = React.memo<{
   item: EmojiItem
   skinTone: SkinTone
   onSelect: (emoji: string) => void
-}>(({ item, skinTone, onSelect }) => {
+  /** When true, uses the parent group's CSS custom properties for backgrounds */
+  useColorBg?: boolean
+}>(({ item, skinTone, onSelect, useColorBg }) => {
   // Apply skin tone modifier if the emoji supports it
   const displayEmoji = item.supportsSkinTone ? applyEmojiSkinTone(item.emoji, skinTone) : item.emoji
 
   return (
     <button
-      className='flex size-8 cursor-pointer items-center justify-center rounded-md text-lg hover:bg-primary-100'
+      className={cn(
+        'flex size-8 cursor-pointer items-center justify-center rounded-md text-lg',
+        useColorBg ? 'bg-[var(--icon-bg)] hover:bg-[var(--icon-bg-hover)]' : 'hover:bg-primary-100'
+      )}
       onClick={() => onSelect(displayEmoji)}
       title={item.label}>
       {displayEmoji}
@@ -151,6 +157,45 @@ const EmojiButton = React.memo<{
 
 EmojiButton.displayName = 'EmojiButton'
 
+/** Memoized color swatch button (mirrors icon-picker) */
+const ColorButton = React.memo<{
+  color: IconColor
+  isActive: boolean
+  onClick: () => void
+}>(({ color, isActive, onClick }) => (
+  <button
+    type='button'
+    className={cn(
+      'size-5 rounded-full transition-all',
+      color.swatch,
+      isActive && 'ring-2 ring-offset-2 ring-info'
+    )}
+    onClick={onClick}
+    title={color.label}
+  />
+))
+
+ColorButton.displayName = 'ColorButton'
+
+/** "No color" / clear swatch button */
+const ClearColorButton = React.memo<{
+  isActive: boolean
+  onClick: () => void
+}>(({ isActive, onClick }) => (
+  <button
+    type='button'
+    className={cn(
+      'size-5 rounded-full border border-dashed border-muted-foreground/50 flex items-center justify-center text-muted-foreground transition-all',
+      isActive && 'ring-2 ring-offset-2 ring-info'
+    )}
+    onClick={onClick}
+    title='No color'>
+    <Ban className='size-3' />
+  </button>
+))
+
+ClearColorButton.displayName = 'ClearColorButton'
+
 /** Memoized section component */
 const EmojiSection = React.memo<{
   group: EmojiGroup
@@ -158,7 +203,8 @@ const EmojiSection = React.memo<{
   skinTone: SkinTone
   onEmojiSelect: (emoji: string) => void
   onSectionRef: (element: HTMLElement | null, sectionId: string) => void
-}>(({ group, emojis, skinTone, onEmojiSelect, onSectionRef }) => {
+  useColorBg?: boolean
+}>(({ group, emojis, skinTone, onEmojiSelect, onSectionRef, useColorBg }) => {
   const sectionRef = useCallback(
     (element: HTMLElement | null) => {
       onSectionRef(element, group.id)
@@ -175,7 +221,13 @@ const EmojiSection = React.memo<{
       </div>
       <div className='grid grid-cols-10 gap-0.5'>
         {emojis.map((item) => (
-          <EmojiButton key={item.id} item={item} skinTone={skinTone} onSelect={onEmojiSelect} />
+          <EmojiButton
+            key={item.id}
+            item={item}
+            skinTone={skinTone}
+            onSelect={onEmojiSelect}
+            useColorBg={useColorBg}
+          />
         ))}
       </div>
     </div>
@@ -264,6 +316,25 @@ export interface EmojiPickerProps {
   children?: React.ReactNode
   /** Set to false when used inside a Dialog to fix scroll issues */
   modal?: boolean
+  /**
+   * Hide the color swatch row. The default color is still applied internally
+   * for grid background classes. Default: true (callers opt in to colors).
+   */
+  hideColors?: boolean
+  /** Currently selected color id (e.g. 'gray', 'blue'). Controlled mode. */
+  color?: string
+  /** Called when the color swatch changes. Only fires when hideColors is false. */
+  onColorChange?: (color: string) => void
+  /**
+   * When true, the color row includes a "no color" swatch that clears the
+   * current color (sets it to ''). Default: false.
+   */
+  allowClearColor?: boolean
+  /**
+   * When true, selecting a color closes the picker. Default: false — color
+   * selection updates state without closing so users can also pick an emoji.
+   */
+  closeOnColorSelect?: boolean
 }
 
 /** Emoji picker component */
@@ -277,17 +348,47 @@ export function EmojiPicker({
   open,
   children,
   modal = true,
+  hideColors = true,
+  color,
+  onColorChange,
+  allowClearColor = false,
+  closeOnColorSelect = false,
 }: EmojiPickerProps) {
   // Use internal state if open is not provided (uncontrolled mode)
   const [internalOpen, setInternalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [skinTone, setSkinTone] = useState<SkinTone>(getSavedSkinTone)
   const [showSkinTones, setShowSkinTones] = useState(false)
+  const [internalColor, setInternalColor] = useState<string>(color ?? DEFAULT_COLOR)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // Sync internal color state when color prop changes externally
+  useEffect(() => {
+    if (color) {
+      setInternalColor(color)
+    }
+  }, [color])
+
+  const selectedColorObj = getIconColor(internalColor)
 
   // Determine if component is in controlled or uncontrolled mode
   const isControlled = open !== undefined && onOpenChange !== undefined
   const isOpen = isControlled ? open : internalOpen
+
+  const handleColorSelect = useCallback(
+    (colorId: string) => {
+      setInternalColor(colorId)
+      onColorChange?.(colorId)
+      if (closeOnColorSelect) {
+        if (isControlled && onOpenChange) {
+          onOpenChange(false)
+        } else {
+          setInternalOpen(false)
+        }
+      }
+    },
+    [onColorChange, closeOnColorSelect, isControlled, onOpenChange]
+  )
 
   const { activeSection, registerSection, scrollToSection } = useScrollBasedActiveSection(
     scrollContainerRef,
@@ -417,9 +518,28 @@ export function EmojiPicker({
           </div>
         </div>
 
+        {/* Color selector bar (mirrors icon-picker) */}
+        {hideColors ? null : (
+          <div className='border-b p-2'>
+            <div className='flex justify-start gap-2'>
+              {allowClearColor && (
+                <ClearColorButton isActive={!internalColor} onClick={() => handleColorSelect('')} />
+              )}
+              {ICON_COLORS.map((c) => (
+                <ColorButton
+                  key={c.id}
+                  color={c}
+                  isActive={internalColor === c.id}
+                  onClick={() => handleColorSelect(c.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Emoji content */}
         <div
-          className='h-64 overflow-y-auto'
+          className={cn('h-64 overflow-y-auto', !hideColors && selectedColorObj.groupClasses)}
           ref={scrollContainerRef}
           onWheel={(e) => e.stopPropagation()}>
           {/* Show search results if search is active */}
@@ -437,6 +557,7 @@ export function EmojiPicker({
                         item={item}
                         skinTone={skinTone}
                         onSelect={handleEmojiSelect}
+                        useColorBg={!hideColors}
                       />
                     ))}
                   </div>
@@ -459,6 +580,7 @@ export function EmojiPicker({
                   skinTone={skinTone}
                   onEmojiSelect={handleEmojiSelect}
                   onSectionRef={registerSection}
+                  useColorBg={!hideColors}
                 />
               ))}
             </div>

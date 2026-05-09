@@ -286,6 +286,7 @@ export const ThreadList = memo(function ThreadList({
           allowMultiple
           align='end'
           side='bottom'
+          scope='thread'
         />
       )}
       {assignPickerOpen && assignPickerThreadId && (

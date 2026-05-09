@@ -20,6 +20,8 @@ import { migration014BackfillSystemTags } from './migrations/014-backfill-system
 import { migration015BackfillFieldUpdatedEventData } from './migrations/015-backfill-field-updated-event-data'
 import { migration016StripLegacyContactIdFromFieldUpdated } from './migrations/016-strip-legacy-contact-id-from-field-updated'
 import { migration017ContactJobTitle } from './migrations/017-contact-job-title'
+import { migration018ArticleTags } from './migrations/018-article-tags'
+import { migration019TagScope } from './migrations/019-tag-scope'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -45,6 +47,8 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration015BackfillFieldUpdatedEventData,
   migration016StripLegacyContactIdFromFieldUpdated,
   migration017ContactJobTitle,
+  migration018ArticleTags,
+  migration019TagScope,
 ]
 
 // ─── Public API ──────────────────────────────────────────────────────

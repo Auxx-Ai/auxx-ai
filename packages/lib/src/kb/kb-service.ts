@@ -6,10 +6,12 @@ import type {
   ArticleStatus as ArticleStatusType,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import type { RecordId } from '@auxx/types/resource'
 import { generateId, generateKeyBetween } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { DatasetService } from '../datasets/services/dataset-service'
+import { batchGetArticleTagIds } from '../field-values/relationship-queries'
 import type { KBDraftSettings } from './draft-settings'
 import { enrichDocWithHighlighting } from './highlight-code'
 import { enqueueKBSync } from './kb-sync-queue'
@@ -33,6 +35,7 @@ export interface ArticleListItem {
   sortOrder: string
   articleKind: ArticleKindType
   isPublished: boolean
+  aiEnabled: boolean
   status: ArticleStatusType
   hasUnpublishedChanges: boolean
   publishedAt: Date | null
@@ -43,16 +46,21 @@ export interface ArticleListItem {
   emoji: string | null
   description: string | null
   excerpt: string | null
+  coverImage: string | null
+  /** Tag RecordIds (`entityDefinitionId:tagId`) attached to this article. */
+  tagIds: RecordId[]
 }
 
 export interface ArticleEditorView extends ArticleListItem {
   // Always the draft fields, plus the heavy content
   content: string
   contentJson: unknown
+  coverImageId: string | null
   hasPublishedVersion: boolean
   publishedTitle: string | null
   publishedContent: string | null
   publishedContentJson: unknown
+  publishedCoverImage: string | null
   // Populated only when getArticleById is called with a versionNumber.
   selectedVersionNumber: number | null
   selectedTitle: string | null
@@ -61,6 +69,8 @@ export interface ArticleEditorView extends ArticleListItem {
   selectedEmoji: string | null
   selectedContent: string | null
   selectedContentJson: unknown
+  selectedCoverImage: string | null
+  selectedCoverImageId: string | null
 }
 
 // ─── KB / Article input shapes ───────────────────────────────────────────
@@ -126,6 +136,8 @@ export interface ArticleCreateInput {
   contentJson?: unknown
   excerpt?: string | null
   emoji?: string | null
+  coverImage?: string | null
+  coverImageId?: string | null
   articleKind?: ArticleKindType
   parentId?: string | null
 }
@@ -137,11 +149,14 @@ export interface ArticleDraftFields {
   emoji?: string | null
   content?: string
   contentJson?: unknown
+  coverImage?: string | null
+  coverImageId?: string | null
 }
 
 export interface ArticleStructureFields {
   slug?: string
   parentId?: string | null
+  aiEnabled?: boolean
 }
 
 export interface MoveArticleInput {
@@ -427,7 +442,12 @@ export class KBService {
         orderBy: [asc(schema.Article.parentId), asc(schema.Article.sortOrder)],
         with: { publishedRevision: true, draftRevision: true },
       })
-      return articles.map((a) => this.flattenForList(a))
+      const tagIdMap = await batchGetArticleTagIds(
+        this.db,
+        articles.map((a) => a.id),
+        this.organizationId
+      )
+      return articles.map((a) => this.flattenForList(a, (tagIdMap.get(a.id) ?? []) as RecordId[]))
     } catch (error) {
       return this.handleError(error, 'Error fetching knowledge base articles', { knowledgeBaseId })
     }
@@ -468,7 +488,8 @@ export class KBService {
         }
         selected = revision
       }
-      return this.flattenForEditor(article, selected)
+      const tagIds = await this.loadArticleTagRecordIds(id)
+      return this.flattenForEditor(article, selected, tagIds)
     } catch (error) {
       return this.handleError(error, 'Error fetching article', { articleId: id })
     }
@@ -485,7 +506,8 @@ export class KBService {
         with: { publishedRevision: true, draftRevision: true },
       })
       if (!article) throw this.createNotFoundError(`Article with slug '${slug}' not found`)
-      return this.flattenForEditor(article)
+      const tagIds = await this.loadArticleTagRecordIds(article.id)
+      return this.flattenForEditor(article, null, tagIds)
     } catch (error) {
       return this.handleError(error, 'Error fetching article by slug', { slug, knowledgeBaseId })
     }
@@ -636,6 +658,8 @@ export class KBService {
             emoji: articleInput.emoji ?? null,
             content: articleInput.content ?? '',
             contentJson: articleInput.contentJson ?? null,
+            coverImage: articleInput.coverImage ?? null,
+            coverImageId: articleInput.coverImageId ?? null,
             editorId: authorId,
           })
           .returning()
@@ -708,6 +732,8 @@ export class KBService {
           : fields.contentJson
         draftUpdate.contentJson = enriched as ArticleRevision['contentJson']
       }
+      if (fields.coverImage !== undefined) draftUpdate.coverImage = fields.coverImage
+      if (fields.coverImageId !== undefined) draftUpdate.coverImageId = fields.coverImageId
 
       const updated = await this.db.transaction(async (tx) => {
         await tx
@@ -727,8 +753,10 @@ export class KBService {
         where: eq(schema.Article.id, id),
         with: { publishedRevision: true, draftRevision: true },
       })
+      const tagIds = await this.loadArticleTagRecordIds(id)
       return this.flattenForList(
-        reloaded ?? { ...updated, publishedRevision: null, draftRevision: null }
+        reloaded ?? { ...updated, publishedRevision: null, draftRevision: null },
+        tagIds
       )
     } catch (error) {
       return this.handleError(error, 'Error updating article draft', { articleId: id })
@@ -764,6 +792,9 @@ export class KBService {
       const updateData: Record<string, unknown> = { updatedAt: new Date() }
       if (fields.slug !== undefined) updateData.slug = fields.slug
       if (fields.parentId !== undefined) updateData.parentId = fields.parentId
+      const aiEnabledChanged =
+        fields.aiEnabled !== undefined && fields.aiEnabled !== article.aiEnabled
+      if (fields.aiEnabled !== undefined) updateData.aiEnabled = fields.aiEnabled
       // For link kind, the slug *is* the URL — surface a URL change as an
       // unpublished diff so the publish UI prompts the user to re-publish.
       if (
@@ -790,7 +821,18 @@ export class KBService {
       if (slugChanged || parentChanged) {
         this.enqueueSubtreeMetadataSync(id, article.knowledgeBaseId, article.isPublished)
       }
-      return this.flattenForList(reloaded)
+      // AI toggle is the second indexing gate alongside isPublished. Drafts are
+      // never indexed, so unpublished rows just persist the flag silently.
+      if (aiEnabledChanged && article.isPublished) {
+        void enqueueKBSync({
+          type: fields.aiEnabled ? 'sync' : 'unpublish',
+          articleId: id,
+          kbId: article.knowledgeBaseId,
+          organizationId: this.organizationId,
+        })
+      }
+      const tagIds = await this.loadArticleTagRecordIds(id)
+      return this.flattenForList(reloaded, tagIds)
     } catch (error) {
       return this.handleError(error, 'Error updating article structure', { articleId: id })
     }
@@ -805,8 +847,8 @@ export class KBService {
   ): Promise<ArticleListItem[]> {
     try {
       await this.verifyKnowledgeBaseExists(knowledgeBaseId)
-      return await this.db.transaction(async (tx) => {
-        const results: ArticleListItem[] = []
+      const reloadedArticles = await this.db.transaction(async (tx) => {
+        const out: Array<NonNullable<Awaited<ReturnType<typeof tx.query.Article.findFirst>>>> = []
         for (const { id, updates } of articles) {
           const existing = await tx.query.Article.findFirst({
             where: and(
@@ -831,7 +873,7 @@ export class KBService {
             with: { publishedRevision: true, draftRevision: true },
           })
           if (reloaded) {
-            results.push(this.flattenForList(reloaded))
+            out.push(reloaded)
             const slugChanged = cleaned.slug !== undefined && cleaned.slug !== existing.slug
             const parentChanged =
               cleaned.parentId !== undefined && cleaned.parentId !== existing.parentId
@@ -840,8 +882,16 @@ export class KBService {
             }
           }
         }
-        return results
+        return out
       })
+      const tagIdMap = await batchGetArticleTagIds(
+        this.db,
+        reloadedArticles.map((a) => a.id),
+        this.organizationId
+      )
+      return reloadedArticles.map((a) =>
+        this.flattenForList(a, (tagIdMap.get(a.id) ?? []) as RecordId[])
+      )
     } catch (error) {
       return this.handleError(error, 'Error updating articles batch', {
         knowledgeBaseId,
@@ -987,12 +1037,14 @@ export class KBService {
         where: eq(schema.Article.id, id),
         with: { publishedRevision: true, draftRevision: true },
       })
+      const tagIds = await this.loadArticleTagRecordIds(id)
       const flat = this.flattenForList(
         reloaded ?? {
           ...result.article,
           publishedRevision: null,
           draftRevision: null,
-        }
+        },
+        tagIds
       )
       void enqueueKBSync({
         type: 'sync',
@@ -1102,6 +1154,8 @@ export class KBService {
           emoji: draft.emoji,
           content: draft.content,
           contentJson: draft.contentJson,
+          coverImage: draft.coverImage,
+          coverImageId: draft.coverImageId,
           editorId,
         })
         .returning()
@@ -1222,6 +1276,8 @@ export class KBService {
             emoji: pub.emoji,
             content: pub.content,
             contentJson: pub.contentJson,
+            coverImage: pub.coverImage,
+            coverImageId: pub.coverImageId,
             updatedAt: new Date(),
           })
           .where(eq(schema.ArticleRevision.id, article.draftRevisionId!))
@@ -1274,6 +1330,8 @@ export class KBService {
             emoji: version.emoji,
             content: version.content,
             contentJson: version.contentJson,
+            coverImage: version.coverImage,
+            coverImageId: version.coverImageId,
             editorId,
             updatedAt: new Date(),
           })
@@ -1407,7 +1465,7 @@ export class KBService {
 
   // ─── Internal helpers ───────────────────────────────────────────────
 
-  private flattenForList(a: any): ArticleListItem {
+  private flattenForList(a: any, tagIds: RecordId[] = []): ArticleListItem {
     const display = a.publishedRevision ?? a.draftRevision ?? {}
     return {
       id: a.id,
@@ -1418,6 +1476,7 @@ export class KBService {
       sortOrder: a.sortOrder,
       articleKind: a.articleKind,
       isPublished: a.isPublished,
+      aiEnabled: a.aiEnabled ?? true,
       status: a.status,
       hasUnpublishedChanges: a.hasUnpublishedChanges,
       publishedAt: a.publishedAt,
@@ -1427,10 +1486,16 @@ export class KBService {
       emoji: display.emoji ?? null,
       description: display.description ?? null,
       excerpt: display.excerpt ?? null,
+      coverImage: display.coverImage ?? null,
+      tagIds,
     }
   }
 
-  private flattenForEditor(a: any, selected: ArticleRevision | null = null): ArticleEditorView {
+  private flattenForEditor(
+    a: any,
+    selected: ArticleRevision | null = null,
+    tagIds: RecordId[] = []
+  ): ArticleEditorView {
     const draft = a.draftRevision
     const pub = a.publishedRevision
     if (!draft) {
@@ -1448,6 +1513,7 @@ export class KBService {
       sortOrder: a.sortOrder,
       articleKind: a.articleKind,
       isPublished: a.isPublished,
+      aiEnabled: a.aiEnabled ?? true,
       status: a.status,
       hasUnpublishedChanges: a.hasUnpublishedChanges,
       publishedAt: a.publishedAt,
@@ -1457,12 +1523,16 @@ export class KBService {
       emoji: draft.emoji ?? null,
       description: draft.description ?? null,
       excerpt: draft.excerpt ?? null,
+      coverImage: draft.coverImage ?? null,
+      coverImageId: draft.coverImageId ?? null,
+      tagIds,
       content: draft.content ?? '',
       contentJson: draft.contentJson ?? null,
       hasPublishedVersion: !!pub,
       publishedTitle: pub?.title ?? null,
       publishedContent: pub?.content ?? null,
       publishedContentJson: pub?.contentJson ?? null,
+      publishedCoverImage: pub?.coverImage ?? null,
       selectedVersionNumber: selected?.versionNumber ?? null,
       selectedTitle: selected?.title ?? null,
       selectedDescription: selected?.description ?? null,
@@ -1470,6 +1540,8 @@ export class KBService {
       selectedEmoji: selected?.emoji ?? null,
       selectedContent: selected?.content ?? null,
       selectedContentJson: selected?.contentJson ?? null,
+      selectedCoverImage: selected?.coverImage ?? null,
+      selectedCoverImageId: selected?.coverImageId ?? null,
     }
   }
 
@@ -1479,7 +1551,18 @@ export class KBService {
       with: { publishedRevision: true, draftRevision: true },
     })
     if (!reloaded) throw this.createNotFoundError(`Article with ID '${id}' not found`)
-    return this.flattenForList(reloaded)
+    const tagIds = await this.loadArticleTagRecordIds(id)
+    return this.flattenForList(reloaded, tagIds)
+  }
+
+  /**
+   * Load article tag RecordIds (`tag:tagId`) for hydrating article reads.
+   * Returns `[]` if the org doesn't yet have the tag entity definition seeded
+   * (migration 018 hasn't run for this org).
+   */
+  private async loadArticleTagRecordIds(articleId: string): Promise<RecordId[]> {
+    const map = await batchGetArticleTagIds(this.db, [articleId], this.organizationId)
+    return (map.get(articleId) ?? []) as RecordId[]
   }
 
   private async findNextPageNumber(knowledgeBaseId: string): Promise<number> {

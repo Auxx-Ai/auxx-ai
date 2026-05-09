@@ -71,6 +71,19 @@ export const SYSTEM_ATTRIBUTES = [
   'tag_parent',
   'tag_children',
   'tag_threads',
+  'tag_articles',
+  'tag_is_public',
+  'tag_scope',
+
+  // ─── Article fields ─────────────────────────────────────────────
+  'article_title',
+  'article_status',
+  'article_kind',
+  'article_kb',
+  'article_parent',
+  'article_published_at',
+  'article_views_count',
+  'article_tags',
 
   // ─── Part fields ────────────────────────────────────────────────
   'part_title',
