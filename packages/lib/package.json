@@ -70,6 +70,12 @@
       "import": "./dist/ai/kopilot/capabilities/index.mjs",
       "default": "./src/ai/kopilot/capabilities/index.ts"
     },
+    "./ai/kopilot/capabilities/kb/tools/write-helpers": {
+      "types": "./src/ai/kopilot/capabilities/kb/tools/write-helpers.ts",
+      "source": "./src/ai/kopilot/capabilities/kb/tools/write-helpers.ts",
+      "import": "./dist/ai/kopilot/capabilities/kb/tools/write-helpers.mjs",
+      "default": "./src/ai/kopilot/capabilities/kb/tools/write-helpers.ts"
+    },
     "./ai/providers/types": {
       "types": "./src/ai/providers/types.ts",
       "source": "./src/ai/providers/types.ts",

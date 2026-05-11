@@ -18,6 +18,10 @@ export interface SessionContext extends Record<string, unknown> {
   activeTranscriptSelection?: { callRecordingId: string; startMs: number; endMs: number }
   /** Active filter payload the user has applied to the current page */
   activeFilters?: Record<string, unknown>
+  /** Active knowledge base the user is editing in, if any (KB editor surfaces) */
+  activeKnowledgeBaseId?: string
+  /** Active KB article the user has open, if any */
+  activeArticleId?: string
 }
 
 /** Status of a single plan step — drives the icon and color in the auxx:plan-steps fence renderer. */

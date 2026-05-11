@@ -2,8 +2,9 @@
 
 export { articleToMarkdown } from './article-to-markdown'
 export { type BlocksToMdOptions, blocksToMd } from './blocks-to-md'
-export { computeContentHash } from './hash'
+export { computeArticleJsonHash, computeContentHash } from './hash'
 export { type FrontmatterFields, mdToBlocks, parseFrontmatter } from './md-to-blocks'
+export { stampBlockIds } from './stamp-ids'
 export type {
   BlockAttrs,
   BlockJSON,

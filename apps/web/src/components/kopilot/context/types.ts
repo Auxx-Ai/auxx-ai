@@ -14,9 +14,11 @@ export interface SessionContext extends Record<string, unknown> {
   activeCallRecordingId?: string
   activeTranscriptSelection?: { callRecordingId: string; startMs: number; endMs: number }
   activeFilters?: Record<string, unknown>
+  activeKnowledgeBaseId?: string
+  activeArticleId?: string
 }
 
-export type ContextChipIcon = 'mail' | 'user' | 'building' | 'mic' | 'file' | 'filter'
+export type ContextChipIcon = 'mail' | 'user' | 'building' | 'mic' | 'file' | 'filter' | 'book'
 
 /** A single visible chip rendered in the composer chip strip. */
 export interface ContextChip {

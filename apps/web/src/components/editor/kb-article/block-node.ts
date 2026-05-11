@@ -5,6 +5,7 @@ import type { ResolvedPos } from '@tiptap/pm/model'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { selectAncestorContent } from '../keymap-helpers'
 import { blockDragPlugin } from './block-drag-plugin'
+import { blockIdPlugin } from './block-id-plugin'
 import { BlockNodeView } from './block-node-view'
 
 export type BlockType =
@@ -59,7 +60,11 @@ export const Block = Node.create({
 
   addAttributes() {
     return {
-      id: { default: null },
+      id: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-id') || null,
+        renderHTML: (attrs) => (attrs.id ? { 'data-id': attrs.id } : {}),
+      },
       blockType: {
         default: 'text',
         parseHTML: (el) => el.getAttribute('data-block-type') || 'text',
@@ -180,7 +185,7 @@ export const Block = Node.create({
   },
 
   addProseMirrorPlugins() {
-    return [blockDragPlugin()]
+    return [blockDragPlugin(), blockIdPlugin()]
   },
 
   addKeyboardShortcuts() {

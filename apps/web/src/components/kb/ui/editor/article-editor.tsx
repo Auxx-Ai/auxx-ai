@@ -7,9 +7,11 @@ import type { Editor } from '@tiptap/react'
 import { useCallback, useEffect, useRef } from 'react'
 import { useDebounceCallback } from 'usehooks-ts'
 import { KBArticleEditor } from '~/components/editor/kb-article'
+import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
+import { useKbArticleChannel } from '../../hooks/use-kb-article-channel'
 import type { ArticleMeta } from '../../store/article-store'
 import { ArticleEditorFooter } from './article-editor-footer'
 import { ArticleEditorHeader } from './article-editor-header'
@@ -31,6 +33,12 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
     knowledgeBaseId
   )
   const { updateArticleDraft, updateArticleContent } = useArticleMutations(knowledgeBaseId)
+  // Cross-tab sync + Kopilot lock signal. Manual edits in another tab
+  // emit `kb-article-resync` which invalidates the article-content query
+  // and the editor's existing sync effect picks up the new doc. The
+  // `locked` flag flips while Kopilot holds a write turn so the editor
+  // goes read-only.
+  const { locked } = useKbArticleChannel({ articleId: article.id, knowledgeBaseId })
 
   const lastSavedHash = useRef<string | null>(null)
   const bodyEditorRef = useRef<Editor | null>(null)
@@ -71,6 +79,10 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
+      <KopilotContext
+        activeArticleId={article.id}
+        activeArticleLabel={article.title ?? undefined}
+      />
       <KopilotSuggestion text='Outline this article' icon='pencil' priority={10} />
       <KopilotSuggestion text='Suggest related articles' icon='list' autoSubmit />
       <KopilotSuggestion text='Improve this article' icon='sparkle' />
@@ -92,7 +104,13 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                     onChange={debouncedPersist}
                     knowledgeBaseId={knowledgeBaseId}
                     onReady={handleBodyEditorReady}
+                    readOnly={locked}
                   />
+                )}
+                {locked && (
+                  <div className='pointer-events-none absolute top-2 right-2 rounded-md bg-amber-500/10 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-300'>
+                    Kopilot is editing — your changes are paused
+                  </div>
                 )}
               </div>
               <ArticleEditorFooter article={article} knowledgeBaseId={knowledgeBaseId} />

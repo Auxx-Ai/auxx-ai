@@ -6,6 +6,7 @@ import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import type React from 'react'
 import { useMemo } from 'react'
 import { LoadingSpinner } from '~/components/global/loading-content'
+import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
 import { ArticlesTabArrow } from '../preview/articles-tab-arrow'
 import { KBPreviewHintProvider } from '../preview/preview-hint-context'
@@ -48,6 +49,11 @@ export function KBEditorFrame({ knowledgeBaseId, children }: KBEditorFrameProps)
 
   return (
     <KBPreviewHintProvider>
+      <KopilotContext
+        page='kb'
+        activeKnowledgeBaseId={knowledgeBaseId}
+        activeKnowledgeBaseLabel={knowledgeBase.name ?? undefined}
+      />
       <MainPage>
         <KBEditorHeader knowledgeBaseId={knowledgeBaseId} knowledgeBase={knowledgeBase} />
         <MainPageContent leftPanels={leftPanels}>{children}</MainPageContent>

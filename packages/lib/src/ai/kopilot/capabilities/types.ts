@@ -2,10 +2,17 @@
 
 import type { Database } from '@auxx/database'
 import type { AgentDeps, AgentToolDefinition } from '../../agent-framework/types'
+import type { SessionContext } from '../types'
 
 /** Dependencies injected into tool execution (superset of AgentDeps) */
 export interface ToolDeps extends AgentDeps {
   db: Database
+  /**
+   * UI session context from the current request. Tools that need
+   * "active record" information (active article, thread, etc.) read it
+   * from here. Rebuilt fresh per request from the SSE route body.
+   */
+  sessionContext: SessionContext
 }
 
 /** Factory function that provides ToolDeps at execution time */

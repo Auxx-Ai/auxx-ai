@@ -2,7 +2,7 @@
 
 'use client'
 
-import { Building2, FileText, Filter, Inbox, Mail, Mic, User, X } from 'lucide-react'
+import { Book, Building2, FileText, Filter, Inbox, Mail, Mic, User, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { useKopilotContextChips } from '../stores/select-context'
@@ -15,6 +15,7 @@ const ICONS: Record<ContextChipIcon, typeof Mail> = {
   mic: Mic,
   file: FileText,
   filter: Filter,
+  book: Book,
 }
 
 const SPRING = { type: 'spring', stiffness: 220, damping: 26 } as const

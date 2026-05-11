@@ -32,6 +32,12 @@ interface KopilotContextProps {
 
   activeFilters?: Record<string, unknown>
   activeFiltersLabel?: string
+
+  activeKnowledgeBaseId?: string
+  activeKnowledgeBaseLabel?: string
+
+  activeArticleId?: string
+  activeArticleLabel?: string
 }
 
 interface FieldDef {
@@ -71,6 +77,10 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeTranscriptSelectionLabel,
     activeFilters,
     activeFiltersLabel,
+    activeKnowledgeBaseId,
+    activeKnowledgeBaseLabel,
+    activeArticleId,
+    activeArticleLabel,
   } = props
 
   useEffect(() => {
@@ -97,6 +107,18 @@ export function KopilotContext(props: KopilotContextProps): null {
         value: activeCallRecordingId,
         label: activeCallRecordingLabel,
         icon: 'mic',
+      },
+      {
+        field: 'activeKnowledgeBaseId',
+        value: activeKnowledgeBaseId,
+        label: activeKnowledgeBaseLabel,
+        icon: 'book',
+      },
+      {
+        field: 'activeArticleId',
+        value: activeArticleId,
+        label: activeArticleLabel,
+        icon: 'file',
       },
     ]
 
@@ -161,6 +183,10 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeTranscriptSelectionLabel,
     activeFilters,
     activeFiltersLabel,
+    activeKnowledgeBaseId,
+    activeKnowledgeBaseLabel,
+    activeArticleId,
+    activeArticleLabel,
     setSlice,
     clearSlice,
   ])

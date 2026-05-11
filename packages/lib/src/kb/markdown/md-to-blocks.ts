@@ -85,7 +85,7 @@ interface ParseCtx {
 function emptyDoc(): DocJSON {
   return {
     type: 'doc',
-    content: [{ type: 'block', attrs: { blockType: 'text' }, content: [] }],
+    content: [{ type: 'block', attrs: { id: generateId(), blockType: 'text' }, content: [] }],
   }
 }
 
@@ -319,7 +319,9 @@ function walkTable(node: MdastNode, ctx: ParseCtx): void {
       const inline = inlineFrom(cell.children)
       cells.push({
         type: isHeader ? 'tableHeader' : 'tableCell',
-        content: [{ type: 'block', attrs: { blockType: 'text' }, content: inline }],
+        content: [
+          { type: 'block', attrs: { id: generateId(), blockType: 'text' }, content: inline },
+        ],
       })
     }
     if (cells.length === 0) continue
@@ -670,7 +672,7 @@ function pushBlock(
   content: InlineJSON[],
   attrs: Partial<BlockAttrs>
 ): void {
-  const merged: BlockAttrs = { blockType, ...attrs }
+  const merged: BlockAttrs = { id: generateId(), blockType, ...attrs }
   ctx.nodes.push({ type: 'block', attrs: merged, content })
 }
 
@@ -732,7 +734,7 @@ function buildPanelFromDirective(node: MdastNode): PanelJSON {
   }
   const content: BlockJSON[] = subCtx.nodes.filter((n): n is BlockJSON => n.type === 'block')
   if (content.length === 0) {
-    content.push({ type: 'block', attrs: { blockType: 'text' }, content: [] })
+    content.push({ type: 'block', attrs: { id: generateId(), blockType: 'text' }, content: [] })
   }
   return {
     type: 'panel',
@@ -817,7 +819,7 @@ function parseTableRowHtml(
       cellContent = sub.content.filter((n): n is BlockJSON => n.type === 'block')
     }
     if (cellContent.length === 0) {
-      cellContent = [{ type: 'block', attrs: { blockType: 'text' }, content: [] }]
+      cellContent = [{ type: 'block', attrs: { id: generateId(), blockType: 'text' }, content: [] }]
     }
     const cell: TableCellJSON = { type: cellType, content: cellContent }
     if (Object.keys(attrs).length > 0) cell.attrs = attrs
@@ -844,7 +846,7 @@ function tryParseDetailsHtml(raw: string): PanelJSON | null {
     panelContent = sub.content.filter((n): n is BlockJSON => n.type === 'block')
   }
   if (panelContent.length === 0) {
-    panelContent = [{ type: 'block', attrs: { blockType: 'text' }, content: [] }]
+    panelContent = [{ type: 'block', attrs: { id: generateId(), blockType: 'text' }, content: [] }]
   }
   return {
     type: 'panel',

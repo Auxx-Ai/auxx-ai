@@ -201,9 +201,11 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
     [effectiveTabId, activeArticle, articles, setPending]
   )
 
-  // When a pending insert targets a closed category, expand it so the inline
-  // create-row is visible. Also drop pending if the user switches tabs and
-  // the target parent no longer lives under the active tab.
+  // When a pending insert targets a closed parent, expand it so the inline
+  // create-row is visible. Applies to any container the open-state map
+  // governs — categories *and* leaf pages targeted via "Add sub-item".
+  // Headers don't need it (HeaderGroupHighlight renders the pending row
+  // inline when the section has no children) and tabs are always open.
   useEffect(() => {
     if (!pending) return
     const { parentId } = pending
@@ -213,7 +215,7 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
       clearPending()
       return
     }
-    if (parent.articleKind === 'category') {
+    if (parent.articleKind !== 'header' && parent.articleKind !== 'tab') {
       setArticleOpenStates((prev) => (prev[parentId] ? prev : { ...prev, [parentId]: true }))
     }
   }, [pending, articles, clearPending])
