@@ -33,6 +33,7 @@ export interface CardData {
 }
 
 export interface BlockAttrs {
+  id?: string | null
   blockType: BlockType
   level?: number | null
   checked?: boolean

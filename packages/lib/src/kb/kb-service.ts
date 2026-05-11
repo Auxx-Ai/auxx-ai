@@ -15,6 +15,11 @@ import { batchGetArticleTagIds } from '../field-values/relationship-queries'
 import type { KBDraftSettings } from './draft-settings'
 import { enrichDocWithHighlighting } from './highlight-code'
 import { enqueueKBSync } from './kb-sync-queue'
+import { clearKopilotSnapshot } from './kopilot-snapshot'
+import { computeArticleJsonHash } from './markdown/hash'
+import { stampBlockIds } from './markdown/stamp-ids'
+import type { ArticleNodeJSON } from './markdown/types'
+import { publishKbArticleEvent } from './realtime'
 
 // Local model types inferred from Drizzle schema
 type KnowledgeBase = typeof schema.KnowledgeBase.$inferSelect
@@ -626,6 +631,10 @@ export class KBService {
         )
       }
 
+      const seededContentJson = Array.isArray(articleInput.contentJson)
+        ? stampBlockIds(articleInput.contentJson as ArticleNodeJSON[]).content
+        : (articleInput.contentJson ?? null)
+
       const result = await this.db.transaction(async (tx) => {
         // 1. Insert Article with NULL revision pointers (FKs are nullable)
         const [newArticle] = await tx
@@ -657,7 +666,7 @@ export class KBService {
             excerpt: articleInput.excerpt ?? null,
             emoji: articleInput.emoji ?? null,
             content: articleInput.content ?? '',
-            contentJson: articleInput.contentJson ?? null,
+            contentJson: seededContentJson,
             coverImage: articleInput.coverImage ?? null,
             coverImageId: articleInput.coverImageId ?? null,
             editorId: authorId,
@@ -686,12 +695,21 @@ export class KBService {
   /**
    * Update the draft revision row in place. Marks the article as having
    * unpublished changes. Does not write any structural fields.
+   *
+   * `options.bypassSnapshotClear` — used by Kopilot's own writes so they
+   * don't wipe the pre-turn snapshot they just captured. Default false:
+   * any other write path (manual save, restore, etc.) clears the
+   * snapshot so a stale Undo button greys out.
+   *
+   * `options.suppressResyncEvent` — Kopilot writes publish a finer
+   * `kb-article-patch` event of their own; suppress the broad resync.
    */
   async updateArticleDraft(
     id: string,
     fields: ArticleDraftFields,
     editorId: string,
-    knowledgeBaseId?: string
+    knowledgeBaseId?: string,
+    options: { bypassSnapshotClear?: boolean; suppressResyncEvent?: boolean } = {}
   ): Promise<ArticleListItem> {
     try {
       const article = await this.db.query.Article.findFirst({
@@ -725,11 +743,14 @@ export class KBService {
       if (fields.emoji !== undefined) draftUpdate.emoji = fields.emoji
       if (fields.content !== undefined) draftUpdate.content = fields.content
       if (fields.contentJson !== undefined) {
-        const enriched = fields.contentJson
-          ? await enrichDocWithHighlighting(
-              fields.contentJson as Parameters<typeof enrichDocWithHighlighting>[0]
-            )
+        const stamped = Array.isArray(fields.contentJson)
+          ? stampBlockIds(fields.contentJson as ArticleNodeJSON[]).content
           : fields.contentJson
+        const enriched = stamped
+          ? await enrichDocWithHighlighting(
+              stamped as Parameters<typeof enrichDocWithHighlighting>[0]
+            )
+          : stamped
         draftUpdate.contentJson = enriched as ArticleRevision['contentJson']
       }
       if (fields.coverImage !== undefined) draftUpdate.coverImage = fields.coverImage
@@ -748,12 +769,40 @@ export class KBService {
         return next
       })
 
+      // Manual edit invalidates any pending Kopilot pre-turn snapshot —
+      // the user has accepted/diverged from whatever state the agent
+      // was reasoning against, so its Undo affordance no longer makes
+      // sense. Skipped for Kopilot's own writes (the agent captured the
+      // snapshot before its first op and we want to keep it).
+      if (!options.bypassSnapshotClear) {
+        void clearKopilotSnapshot(id)
+      }
+
       // Reload with revisions to flatten
       const reloaded = await this.db.query.Article.findFirst({
         where: eq(schema.Article.id, id),
         with: { publishedRevision: true, draftRevision: true },
       })
       const tagIds = await this.loadArticleTagRecordIds(id)
+
+      // Realtime push: any subscribed editor swaps to the fresh doc on
+      // receipt. Manual saves use `resync` (full doc) rather than
+      // `patch` because we don't track the per-edit shape on this path.
+      // Kopilot writes publish their own kb-article-patch and suppress
+      // this broader resync.
+      if (fields.contentJson !== undefined && !options.suppressResyncEvent) {
+        const draftJson = (reloaded?.draftRevision?.contentJson ?? null) as ArticleNodeJSON[] | null
+        if (draftJson) {
+          void publishKbArticleEvent(id, {
+            type: 'kb-article-resync',
+            articleId: id,
+            contentJson: draftJson,
+            contentHash: computeArticleJsonHash(draftJson),
+            cause: { kind: 'manual' },
+          })
+        }
+      }
+
       return this.flattenForList(
         reloaded ?? { ...updated, publishedRevision: null, draftRevision: null },
         tagIds
@@ -1052,6 +1101,7 @@ export class KBService {
         kbId: flat.knowledgeBaseId,
         organizationId: this.organizationId,
       })
+      void clearKopilotSnapshot(id)
       for (const ancestorId of ancestorIds) {
         void enqueueKBSync({
           type: 'sync',
@@ -1059,6 +1109,7 @@ export class KBService {
           kbId: flat.knowledgeBaseId,
           organizationId: this.organizationId,
         })
+        void clearKopilotSnapshot(ancestorId)
       }
       return { article: flat, version: result.version }
     } catch (error) {
@@ -1286,6 +1337,7 @@ export class KBService {
           .set({ hasUnpublishedChanges: false, updatedAt: new Date() })
           .where(eq(schema.Article.id, id))
       })
+      void clearKopilotSnapshot(id)
       return await this.reloadFlat(id)
     } catch (error) {
       return this.handleError(error, 'Error discarding article draft', { articleId: id })
@@ -1341,6 +1393,7 @@ export class KBService {
           .set({ hasUnpublishedChanges: true, updatedAt: new Date() })
           .where(eq(schema.Article.id, article.id))
       })
+      void clearKopilotSnapshot(article.id)
       return await this.reloadFlat(article.id)
     } catch (error) {
       return this.handleError(error, 'Error restoring article version', { versionId })

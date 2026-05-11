@@ -395,6 +395,29 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return await getKBService(ctx).restoreArticleVersion(input.versionId, ctx.session.user.id)
     }),
 
+  /**
+   * Revert an article to its pre-Kopilot-turn snapshot. Backs the per-
+   * turn Undo button on assistant messages. The optional `turnId`
+   * pin scopes the revert to a specific turn — if a newer turn has
+   * superseded it, this returns "turn_mismatch" and no-ops.
+   */
+  revertKopilotTurn: protectedProcedure
+    .input(z.object({ articleId: z.string(), turnId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      const { revertKopilotKbTurn } = await import(
+        '@auxx/lib/ai/kopilot/capabilities/kb/tools/write-helpers'
+      )
+      const result = await revertKopilotKbTurn({
+        db: ctx.db,
+        organizationId,
+        userId: ctx.session.user.id,
+        articleId: input.articleId,
+        expectedTurnId: input.turnId,
+      })
+      return result
+    }),
+
   moveArticle: protectedProcedure
     .input(
       z.object({

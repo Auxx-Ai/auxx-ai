@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/create-deps.ts
 
 import { database } from '@auxx/database'
+import type { SessionContext } from '../types'
 import type { GetToolDeps, ToolDeps } from './types'
 
 /**
@@ -12,6 +13,8 @@ export function createToolDepsFactory(params: {
   userId: string
   sessionId: string
   signal?: AbortSignal
+  /** UI session context from the current request body. Read by tools that need active-record ids. */
+  sessionContext?: SessionContext
 }): GetToolDeps {
   return (): ToolDeps => ({
     db: database,
@@ -19,5 +22,6 @@ export function createToolDepsFactory(params: {
     userId: params.userId,
     sessionId: params.sessionId,
     signal: params.signal,
+    sessionContext: params.sessionContext ?? {},
   })
 }

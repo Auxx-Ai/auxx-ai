@@ -26,6 +26,8 @@ interface KBArticleEditorProps {
   knowledgeBaseId?: string
   /** Fired once when the underlying Tiptap editor instance is ready. */
   onReady?: (editor: Editor) => void
+  /** When true, switches the editor to read-only — used while Kopilot is in a write turn. */
+  readOnly?: boolean
 }
 
 interface LinkPopoverState {
@@ -46,6 +48,7 @@ export function KBArticleEditor({
   onChange,
   knowledgeBaseId,
   onReady,
+  readOnly,
 }: KBArticleEditorProps) {
   const { editor, gutterCharWidth, slashCommand } = useKBArticleEditor({
     initialContent,
@@ -59,6 +62,11 @@ export function KBArticleEditor({
       onReady?.(editor)
     }
   }, [editor, onReady])
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.setEditable(!readOnly)
+  }, [editor, readOnly])
 
   // Clicks on chrome around the contenteditable (padding, empty area below
   // the last block) should still focus the editor at end — matches the

@@ -5,11 +5,13 @@ export {
   createActorCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
+  createKbCapabilities,
   createKnowledgeCapabilities,
   createKopilotCapabilities,
   createMailCapabilities,
   createTaskCapabilities,
   createToolDepsFactory,
+  KB_PAGE,
 } from './capabilities'
 export type { KopilotDomainConfigOptions } from './domain-config'
 export { createKopilotDomainConfig } from './domain-config'
