@@ -151,6 +151,7 @@ export class SearchService {
         responseTime,
         hasMore: offset + limit < results.length,
         nextOffset: offset + limit < results.length ? offset + limit : undefined,
+        metrics: performanceMetrics,
       }
 
       logger.info('Search completed', {
