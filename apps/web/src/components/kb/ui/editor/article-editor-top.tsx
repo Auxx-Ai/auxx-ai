@@ -6,7 +6,6 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import { Smile } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { EditableText, type EditableTextHandle } from '~/components/editor/editable-text'
-import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
 import { ArticleCoverStrip } from './article-cover-strip'
@@ -26,18 +25,13 @@ export function ArticleEditorTop({
 }: ArticleEditorTopProps) {
   const descriptionRef = useRef<EditableTextHandle>(null)
   const { updateArticleDraft } = useArticleMutations(knowledgeBaseId)
-  // article.emoji on the store mirrors the *published* revision for published
-  // articles. The editor edits the draft, so source the icon from the draft
-  // revision via getArticleById instead — falls back to article.emoji while
-  // the query loads.
-  const { draftEmoji, draftCoverImage } = useArticleContent(article.id, knowledgeBaseId)
-  const effectiveEmoji = draftEmoji ?? article.emoji
-  const hasCover = !!draftCoverImage
+  const draftEmoji = article.draft.emoji
+  const hasCover = !!article.draft.coverImage
 
-  const [pickedEmoji, setPickedEmoji] = useState<string | null>(effectiveEmoji)
+  const [pickedEmoji, setPickedEmoji] = useState<string | null>(draftEmoji)
   useEffect(() => {
-    setPickedEmoji(effectiveEmoji)
-  }, [article.id, effectiveEmoji])
+    setPickedEmoji(draftEmoji)
+  }, [article.id, draftEmoji])
 
   const handleEmojiChange = (emoji: string) => {
     setPickedEmoji(emoji)

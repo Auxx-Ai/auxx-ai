@@ -7,34 +7,11 @@ import type { ArticleNodeJSON } from '@auxx/ui/components/kb'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
 import { useCallback } from 'react'
+import { getClientSessionId } from '~/components/editor/utils/client-session-id'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 import { type ArticleMeta, getArticleStoreState } from '../store/article-store'
-
-/** Normalize a server article (from tRPC) into ArticleMeta. */
-function normalizeServerArticle(server: any): ArticleMeta {
-  return {
-    id: server.id,
-    knowledgeBaseId: server.knowledgeBaseId,
-    title: server.title ?? '',
-    slug: server.slug ?? '',
-    emoji: server.emoji ?? null,
-    parentId: server.parentId ?? null,
-    articleKind: (server.articleKind ?? ArticleKind.page) as ArticleKindType,
-    sortOrder: server.sortOrder ?? 'a0',
-    isPublished: !!server.isPublished,
-    aiEnabled: server.aiEnabled ?? true,
-    status: (server.status ?? ArticleStatus.DRAFT) as ArticleMeta['status'],
-    description: server.description ?? null,
-    excerpt: server.excerpt ?? null,
-    coverImage: server.coverImage ?? null,
-    hasUnpublishedChanges: !!server.hasUnpublishedChanges,
-    publishedAt: server.publishedAt ? new Date(server.publishedAt) : null,
-    publishedRevisionId: server.publishedRevisionId ?? null,
-    draftRevisionId: server.draftRevisionId ?? null,
-    tagIds: (server.tagIds ?? []) as ArticleMeta['tagIds'],
-  }
-}
+import { normalizeServerArticle } from '../store/normalize-server-article'
 
 interface CreateArticleInput {
   parentId?: string | null
@@ -109,25 +86,35 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
     async (input = {}) => {
       const tempId = `temp_${generateId()}`
       const store = getArticleStoreState()
+      const optimisticDraft: ArticleMeta['draft'] = {
+        title: input.title ?? 'Untitled',
+        description: input.description ?? null,
+        excerpt: input.excerpt ?? null,
+        emoji: input.emoji ?? null,
+        coverImage: null,
+        coverImageId: null,
+      }
       const optimisticArticle: ArticleMeta = {
         id: tempId,
         knowledgeBaseId,
-        title: input.title ?? 'Untitled',
+        title: optimisticDraft.title,
         slug: input.slug ?? 'untitled',
-        emoji: input.emoji ?? null,
+        emoji: optimisticDraft.emoji,
         parentId: input.parentId ?? null,
         articleKind: input.articleKind ?? ArticleKind.page,
         sortOrder: 'zz',
         isPublished: false,
         aiEnabled: true,
         status: ArticleStatus.DRAFT,
-        description: input.description ?? null,
-        excerpt: input.excerpt ?? null,
+        description: optimisticDraft.description,
+        excerpt: optimisticDraft.excerpt,
         coverImage: null,
         hasUnpublishedChanges: false,
         publishedAt: null,
         publishedRevisionId: null,
         draftRevisionId: null,
+        draft: optimisticDraft,
+        published: null,
         tagIds: [],
       }
       store.addOptimisticArticle(tempId, optimisticArticle)
@@ -166,23 +153,27 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
   const updateArticleDraft = useCallback<UseArticleMutationsResult['updateArticleDraft']>(
     async (id, fields) => {
       const store = getArticleStoreState()
-      // Sidebar shows draft fields when the article isn't yet published.
-      // For published articles we leave the sidebar showing the live title.
-      const current = store.articles.get(id)
-      const showInSidebar = current && !current.isPublished
-      if (showInSidebar) store.setArticleOptimistic(id, fields)
+      // Sidebar always reflects the draft — patchDraft mirrors fields onto
+      // both the draft envelope and the top-level display copy so the
+      // sidebar entry updates immediately, published or not.
+      store.patchDraft(id, fields)
       try {
-        const server = await updateDraftMutation.mutateAsync({ id, data: fields, knowledgeBaseId })
-        const normalized = normalizeServerArticle(server)
-        if (showInSidebar) store.confirmUpdate(id, normalized)
-        else store.applyArticleMetadataFromServer(id, normalized)
-        // The article-list response carries the *published* revision's
-        // metadata for published articles, so the store can't see draft-only
-        // edits (title/emoji/description). The editor reads those from
-        // getArticleById — invalidate so a remount picks up fresh draft data.
-        utils.kb.getArticleById.invalidate({ id, knowledgeBaseId })
+        const server = await updateDraftMutation.mutateAsync({
+          id,
+          data: fields,
+          knowledgeBaseId,
+          originatorSessionId: getClientSessionId(),
+        })
+        store.confirmUpdate(id, normalizeServerArticle(server))
+        // Push the authoritative metadata directly into the editor query
+        // cache so a remount sees the new draft fields. Avoiding invalidate
+        // here means we don't trigger a refetch that would clobber the live
+        // editor's content with stale-by-a-roundtrip JSON.
+        utils.kb.getArticleById.setData({ id, knowledgeBaseId }, (prev) =>
+          prev ? { ...prev, ...server } : prev
+        )
       } catch (error) {
-        if (showInSidebar) store.rollbackUpdate(id)
+        store.rollbackUpdate(id)
         toastError({
           title: "Couldn't update article",
           description: error instanceof Error ? error.message : 'Unknown error occurred',
@@ -194,19 +185,25 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
 
   const updateArticleCover = useCallback<UseArticleMutationsResult['updateArticleCover']>(
     async (id, data) => {
-      // Drive the editor's <img> off the getArticleById query cache directly:
-      // clearing coverImage there avoids a published-revision fallback flicker
-      // while the server resolves the new draft URL. The article-store
-      // coverImage column is filled from the server response.
-      utils.kb.getArticleById.setData({ id, knowledgeBaseId }, (prev) =>
-        prev ? { ...prev, coverImage: null, coverImageId: data.coverImageId } : prev
-      )
+      const store = getArticleStoreState()
+      // Optimistically clear the draft cover so the slot collapses while the
+      // server resolves a freshly signed URL for the new asset id.
+      store.patchDraft(id, { coverImage: null, coverImageId: data.coverImageId })
       try {
-        const server = await updateDraftMutation.mutateAsync({ id, data, knowledgeBaseId })
-        getArticleStoreState().applyArticleMetadataFromServer(id, normalizeServerArticle(server))
-        utils.kb.getArticleById.invalidate({ id, knowledgeBaseId })
+        const server = await updateDraftMutation.mutateAsync({
+          id,
+          data,
+          knowledgeBaseId,
+          originatorSessionId: getClientSessionId(),
+        })
+        store.confirmUpdate(id, normalizeServerArticle(server))
+        // Splice the authoritative metadata back into the editor query so a
+        // remount sees the new cover URL without a refetch.
+        utils.kb.getArticleById.setData({ id, knowledgeBaseId }, (prev) =>
+          prev ? { ...prev, ...server } : prev
+        )
       } catch (error) {
-        utils.kb.getArticleById.invalidate({ id, knowledgeBaseId })
+        store.rollbackUpdate(id)
         toastError({
           title: 'Failed to update cover',
           description: error instanceof Error ? error.message : 'Unknown error occurred',
@@ -250,10 +247,17 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
           id,
           data,
           knowledgeBaseId,
+          originatorSessionId: getClientSessionId(),
         })
         // Reflect the server's authoritative metadata (e.g. hasUnpublishedChanges)
         // so the sidebar/status pills don't fight a concurrent publish.
         getArticleStoreState().applyArticleMetadataFromServer(id, normalizeServerArticle(server))
+        // Splice the metadata back into the editor query so a remount sees
+        // fresh fields without a refetch. Content fields stay as-is — the
+        // live editor is already authoritative for those.
+        utils.kb.getArticleById.setData({ id, knowledgeBaseId }, (prev) =>
+          prev ? { ...prev, ...server } : prev
+        )
       } catch (error) {
         toastError({
           title: 'Failed to save article',
@@ -261,7 +265,7 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         })
       }
     },
-    [knowledgeBaseId, updateDraftMutation]
+    [knowledgeBaseId, updateDraftMutation, utils.kb.getArticleById]
   )
 
   const deleteArticle = useCallback<UseArticleMutationsResult['deleteArticle']>(

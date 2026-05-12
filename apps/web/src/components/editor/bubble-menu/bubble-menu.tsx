@@ -85,7 +85,7 @@ export function EditorBubbleMenu({
               e.preventDefault()
             }}
             className={cn(
-              'flex w-auto flex-row items-center gap-0.5 rounded-2xl px-0 p-1',
+              'flex w-auto flex-row items-center rounded-2xl p-0.5',
               'border border-foreground/15 bg-popover shadow-md backdrop-blur',
               // Round whichever button ends up flush with the popover edges.
               // CSS :first-child / :last-child resolve against the actually-
@@ -119,7 +119,7 @@ export function BubbleSection({ children }: { children?: React.ReactNode }) {
   const hasContent = childArray.some((c) => c != null && c !== false)
   if (!hasContent) return null
   return (
-    <div className='flex items-center gap-0.5 border-r border-foreground/10 px-1 last:border-r-0 first:pl-0 last:pr-0'>
+    <div className='flex items-center gap-0.5 border-r border-foreground/10 px-0.5 last:border-r-0 first:pl-0 last:pr-0'>
       {children}
     </div>
   )

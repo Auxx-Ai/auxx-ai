@@ -4,14 +4,13 @@
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { ImagePlus, Tags } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFileSelect } from '~/components/file-select'
 import { FileSelectPicker } from '~/components/pickers/file-select-picker'
 import { useResource } from '~/components/resources/hooks'
 import { RecordTagChip } from '~/components/tags/ui/record-tag-chip'
 import { TagPicker } from '~/components/tags/ui/tag-picker'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import { useArticleTags } from '../../hooks/use-article-tags'
 import type { ArticleMeta } from '../../store/article-store'
@@ -25,20 +24,17 @@ const HIDDEN_KINDS = new Set(['link', 'tab', 'header'])
 
 export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStripProps) {
   const { updateArticleCover } = useArticleMutations(knowledgeBaseId)
-  const { draftCoverImage } = useArticleContent(article.id, knowledgeBaseId)
   const [confirm, ConfirmDialog] = useConfirm()
-
   const [tagsOpen, setTagsOpen] = useState(false)
   const tagsButtonRef = useRef<HTMLButtonElement>(null)
   const { selectedTags, handleTagChange } = useArticleTags(article.id)
   const { resource: tagResource } = useResource('tag')
   const tagEntityDefId = tagResource?.entityDefinitionId
 
-  // Server resolves a fresh URL on every read, keyed off coverImageId. The
-  // store's stringly-typed `article.coverImage` is no longer a valid fallback
-  // (it can hold an expired presigned URL), so we drive purely off the
-  // getArticleById-derived draftCoverImage.
-  const coverImage = draftCoverImage
+  // The store's `draft.coverImage` is the freshly resolved URL for the
+  // article's draft cover — read it synchronously so there's no async
+  // flash between the editor-row and cover-row states.
+  const coverImage = article.draft.coverImage
 
   const fileSelect = useFileSelect({
     entityType: 'ARTICLE',
@@ -62,7 +58,6 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
       toastError({ title: 'Failed to upload cover', description: error })
     },
   })
-
   if (HIDDEN_KINDS.has(article.articleKind)) return null
 
   const handleRemove = async () => {
@@ -141,7 +136,7 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
   return (
     <>
       <div className='page-block-openapi:ml-0 group relative mx-auto w-full max-w-(--block-wrapper-max-width) pt-4'>
-        <img src={coverImage} alt='' className='aspect-[1200/630] w-full rounded-md object-cover' />
+        <CoverImage src={coverImage} />
         <div className='absolute right-2 bottom-2 flex flex-wrap items-center gap-1.5 rounded-md bg-background/80 p-1 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100'>
           <FileSelectPicker fileSelect={fileSelect} hideBrowseExisting>
             <Button type='button' variant='ghost' size='sm'>
@@ -158,5 +153,22 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
       {tagPicker}
       <ConfirmDialog />
     </>
+  )
+}
+
+function CoverImage({ src }: { src: string }) {
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    setLoaded(false)
+  }, [src])
+  return (
+    <div className='relative aspect-[1200/630] w-full overflow-hidden rounded-md bg-muted'>
+      <img
+        src={src}
+        alt=''
+        onLoad={() => setLoaded(true)}
+        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+      />
+    </div>
   )
 }

@@ -24,7 +24,7 @@ export const BubbleToggleButton = forwardRef<HTMLButtonElement, BubbleToggleButt
           rest.onMouseDown?.(e)
         }}
         className={cn(
-          'inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 text-xs',
+          'inline-flex h-6 min-w-7 items-center justify-center gap-1 rounded-md px-1 text-xs',
           'text-foreground/70 transition-colors',
           'hover:bg-foreground/10 hover:text-foreground',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',

@@ -4,7 +4,7 @@
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import { useDebounceCallback } from 'usehooks-ts'
 import { KBArticleEditor } from '~/components/editor/kb-article'
 import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
@@ -30,14 +30,13 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
     knowledgeBaseId
   )
   const { updateArticleDraft, updateArticleContent } = useArticleMutations(knowledgeBaseId)
-  // Cross-tab sync + Kopilot lock signal. Manual edits in another tab
-  // emit `kb-article-resync` which invalidates the article-content query
-  // and the editor's existing sync effect picks up the new doc. The
-  // `locked` flag flips while Kopilot holds a write turn so the editor
-  // goes read-only.
+  // Cross-tab sync + Kopilot lock signal. Self-originated resyncs are
+  // dropped server-side by session id; cross-tab edits invalidate the
+  // article-content query and the editor's `useExternalContentSync` hook
+  // picks up the new doc. The `locked` flag flips while Kopilot holds a
+  // write turn so the editor goes read-only.
   const { locked } = useKbArticleChannel({ articleId: article.id, knowledgeBaseId })
 
-  const lastSavedHash = useRef<string | null>(null)
   const bodyEditorRef = useRef<Editor | null>(null)
 
   const focusBodyEditor = useCallback(() => {
@@ -48,19 +47,9 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
     bodyEditorRef.current = editor
   }, [])
 
-  // Seed the saved hash on first content load so we don't immediately re-save.
-  useEffect(() => {
-    if (lastSavedHash.current === null && draftContentJson != null) {
-      lastSavedHash.current = JSON.stringify(draftContentJson)
-    }
-  }, [draftContentJson])
-
   const persist = useCallback(
     async (payload: { json: JSONContent; html: string }) => {
       const body = (payload.json.content ?? []) as JSONContent[]
-      const hash = JSON.stringify(body)
-      if (hash === lastSavedHash.current) return
-      lastSavedHash.current = hash
       await updateArticleContent(article.id, {
         content: payload.html,
         contentJson: body,

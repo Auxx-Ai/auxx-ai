@@ -20,6 +20,7 @@ import { PreviewProvider, usePreview } from './preview-context'
 import { DesktopPreviewFrame, MobilePreviewFrame } from './preview-frames'
 import { useKBPreviewHint } from './preview-hint-context'
 import { PreviewHintOverlay } from './preview-hint-overlay'
+import { resolvePreviewMeta } from './resolve-preview-meta'
 
 interface KBPreviewProps {
   knowledgeBase: KnowledgeBase
@@ -59,12 +60,39 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
   useEffect(() => {
     setPreviewMode('draft')
   }, [articleId, setPreviewMode])
-  const { previewContentJson, previewDescription, previewTitle, previewEmoji, previewCoverImage } =
-    useArticleContent(articleId, kbId, previewMode)
+  const {
+    previewContentJson,
+    historicalTitle,
+    historicalDescription,
+    historicalEmoji,
+    historicalCoverImage,
+  } = useArticleContent(articleId, kbId, previewMode)
 
   const publicUrl = useKbPublicUrl(knowledgeBase?.slug)
 
   if (!knowledgeBase) return null
+
+  const isHistorical = typeof previewMode === 'object' && previewMode !== null
+  // Draft/live metadata is synchronous off the store envelopes; historical
+  // metadata comes from the version snapshot returned by useArticleContent.
+  const metaFromStore =
+    !isHistorical && activeArticle
+      ? resolvePreviewMeta(activeArticle, previewMode as 'draft' | 'live')
+      : null
+  const previewTitle = isHistorical
+    ? (historicalTitle ?? activeArticle?.title ?? null)
+    : (metaFromStore?.title ?? null)
+  const previewEmoji = isHistorical
+    ? (historicalEmoji ?? activeArticle?.emoji ?? null)
+    : (metaFromStore?.emoji ?? null)
+  const previewDescription = isHistorical
+    ? (historicalDescription ?? activeArticle?.description ?? null)
+    : (metaFromStore?.description ?? null)
+  // Historical mode shows no cover until the version snapshot lands —
+  // inheriting from the draft would misrepresent the version.
+  const previewCoverImage = isHistorical
+    ? historicalCoverImage
+    : (metaFromStore?.coverImage ?? null)
 
   const docJson: DocJSON | null = previewContentJson
     ? { type: 'doc', content: previewContentJson }
@@ -97,18 +125,10 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
           <div className='flex min-w-0 flex-1 flex-col'>
             <KBArticleWithToc
               doc={docJson}
-              title={
-                previewTitle ??
-                activeArticle?.title ??
-                articles.find((a) => a.id === articleId)?.title
-              }
-              emoji={
-                previewEmoji ??
-                activeArticle?.emoji ??
-                articles.find((a) => a.id === articleId)?.emoji
-              }
-              description={previewDescription ?? activeArticle?.description}
-              coverImage={previewCoverImage}
+              title={previewTitle ?? undefined}
+              emoji={previewEmoji ?? undefined}
+              description={previewDescription ?? undefined}
+              coverImage={previewCoverImage ?? undefined}
               parent={parent}
               resolveAuxxHref={(id) => `/preview/kb/${kbId}/r/${id}`}
             />

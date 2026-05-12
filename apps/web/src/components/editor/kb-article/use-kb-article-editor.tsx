@@ -13,9 +13,15 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Table, TableCell, TableHeader, TableRow } from '../extensions/table'
-import { createPlaceholderNode, PlaceholderBadge, useSlashCommand } from '../inline-picker'
+import {
+  createPlaceholderNode,
+  PlaceholderBadge,
+  stableStringify,
+  useExternalContentSync,
+  useSlashCommand,
+} from '../inline-picker'
 import { Accordion } from './accordion-node'
 import { Block } from './block-node'
 import { MarkdownInputRules } from './markdown-input-rules'
@@ -82,6 +88,10 @@ export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEdi
     onChangeRef.current = onChange
   }, [onChange])
 
+  const externalSyncRef = useRef<{ markLocalEdit: (key: string) => void }>({
+    markLocalEdit: () => {},
+  })
+
   const editor = useEditor(
     {
       immediatelyRender: false,
@@ -138,7 +148,9 @@ export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEdi
         // Defer one tick so Suggestion plugin's onStart can mark isOpenRef
         // before we propagate the change.
         setTimeout(() => {
-          if (!slashCommand.isOpenRef.current) onChangeRef.current({ json, html })
+          if (slashCommand.isOpenRef.current) return
+          externalSyncRef.current.markLocalEdit(stableStringify(json))
+          onChangeRef.current({ json, html })
         }, 0)
       },
     },
@@ -151,23 +163,38 @@ export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEdi
       editor ? Math.max(2, String(editor.state.doc.content.childCount).length) : 2,
   })
 
-  // Sync external content changes (e.g. autosave response landing while user is idle).
-  useEffect(() => {
-    if (!editor || editor.isDestroyed) return
-    const incomingContent = normalizedInitialContent
-    const current = JSON.stringify(editor.getJSON())
-    const incoming = JSON.stringify(incomingContent)
-    if (current === incoming) return
-    const { from, to } = editor.state.selection
-    editor.commands.setContent(incomingContent, false)
+  const applyContent = useCallback((instance: NonNullable<typeof editor>, content: JSONContent) => {
+    // Skip when the editor is already at the incoming doc — happens on
+    // mount because `useEditor` initialized it with the same content, and
+    // a redundant `setContent` here triggers TipTap's React node views to
+    // flushSync mid-commit ("flushSync was called from inside a lifecycle
+    // method" warning). Uses stableStringify so server-side JSONB key
+    // reordering doesn't make a same-content doc look different.
+    if (stableStringify(instance.getJSON()) === stableStringify(content)) return
+    const { from, to } = instance.state.selection
+    instance.commands.setContent(content, false)
     try {
-      editor.commands.setTextSelection({ from, to })
+      instance.commands.setTextSelection({ from, to })
     } catch {
-      editor.commands.focus('end')
+      instance.commands.focus('end')
     }
-  }, [normalizedInitialContent, editor])
+  }, [])
 
-  // Flush deferred onChange when slash picker closes.
+  const canonicalKey = useCallback((content: JSONContent) => stableStringify(content), [])
+
+  const syncHandle = useExternalContentSync<JSONContent>({
+    editor,
+    incoming: normalizedInitialContent,
+    isPickerOpen: slashCommand.suggestionState.isOpen,
+    applyContent,
+    canonicalKey,
+  })
+
+  // Wire the imperative handle into the editor's onUpdate closure.
+  externalSyncRef.current = syncHandle.current
+
+  // Flush deferred onChange when slash picker closes — the hook handles
+  // the *inbound* flush; this handles the *outbound* one.
   const prevOpen = useRef(false)
   useEffect(() => {
     if (prevOpen.current && !slashCommand.suggestionState.isOpen && editor) {

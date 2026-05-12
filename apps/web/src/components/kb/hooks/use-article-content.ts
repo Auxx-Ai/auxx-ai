@@ -17,46 +17,37 @@ interface UseArticleContentResult {
   /** Draft revision content (what the editor writes to). */
   draftContent: string | null
   draftContentJson: ArticleNodeJSON[] | null
-  draftTitle: string | null
-  draftDescription: string | null
-  draftExcerpt: string | null
-  draftEmoji: string | null
-  draftCoverImage: string | null
-  /** MediaAsset id linked to the draft cover (FK), or null. */
-  draftCoverImageId: string | null
-  /** Last published version (null if never published). */
-  publishedTitle: string | null
+  /** Stable hash of the draft contentJson — used by the editor to dedupe inbound syncs. */
+  draftContentHash: string | null
+  /** Last published version's content body (null if never published). */
   publishedContent: string | null
   publishedContentJson: ArticleNodeJSON[] | null
-  publishedCoverImage: string | null
-  hasPublishedVersion: boolean
-  /** Revision id of the currently-live version (matches an ArticleRevision.id). */
-  publishedRevisionId: string | null
-  hasUnpublishedChanges: boolean
   /** What the preview should render for the resolved mode. */
-  previewTitle: string | null
-  previewDescription: string | null
-  previewExcerpt: string | null
-  previewEmoji: string | null
   previewContent: string | null
   previewContentJson: ArticleNodeJSON[] | null
-  previewCoverImage: string | null
-  /** Resolved version number when mode is `'live'` or historical; null otherwise. */
+  /**
+   * Historical-mode-only metadata snapshot. Populated when `mode` is
+   * `{ versionNumber }` from the secondary version query.
+   */
+  historicalTitle: string | null
+  historicalDescription: string | null
+  historicalExcerpt: string | null
+  historicalEmoji: string | null
+  historicalCoverImage: string | null
+  /** Resolved version number when mode is historical; null otherwise. */
   previewVersionNumber: number | null
-  /** True when mode === 'live' but the article has no published revision. */
-  fellBackToDraft: boolean
   isLoading: boolean
 }
 
 /**
  * Fetch an article's heavy content (HTML + JSON) directly from the server.
- * Content is intentionally not stored in the article store — only metadata is.
+ * Lightweight metadata (title/emoji/cover/description) lives on the article
+ * store — read it from there, or compose it for the active preview mode with
+ * `resolvePreviewMeta(article, mode)`. This hook is purely about content
+ * slices and the historical-version snapshot.
  *
- * Returns the draft (what the editor mutates), the published revision (used
- * to power "discard draft" preview comparisons in the settings dialog), and
- * a resolved preview slice for the requested `mode`. Historical versions
- * are fetched as a separate cache cell keyed by `versionNumber` and treated
- * as immutable (`staleTime: Infinity`).
+ * Historical versions are fetched as a separate cache cell keyed by
+ * `versionNumber` and treated as immutable (`staleTime: Infinity`).
  */
 export function useArticleContent(
   id: string | null | undefined,
@@ -86,62 +77,39 @@ export function useArticleContent(
   const data = baseQuery.data
   const draftContent = data?.content ?? null
   const draftContentJson = (data?.contentJson as ArticleNodeJSON[] | null | undefined) ?? null
-  const draftTitle = data?.title ?? null
-  const draftDescription = data?.description ?? null
-  const draftExcerpt = data?.excerpt ?? null
-  const draftEmoji = data?.emoji ?? null
-  const draftCoverImage = data?.coverImage ?? null
-  const draftCoverImageId = data?.coverImageId ?? null
-  const publishedTitle = data?.publishedTitle ?? null
+  const draftContentHash = data?.draftContentHash ?? null
   const publishedContent = data?.publishedContent ?? null
   const publishedContentJson =
     (data?.publishedContentJson as ArticleNodeJSON[] | null | undefined) ?? null
-  const publishedCoverImage = data?.publishedCoverImage ?? null
   const hasPublishedVersion = !!data?.hasPublishedVersion
-  const publishedRevisionId = data?.publishedRevisionId ?? null
 
-  let previewTitle: string | null = draftTitle
-  let previewDescription: string | null = draftDescription
-  let previewExcerpt: string | null = draftExcerpt
-  let previewEmoji: string | null = draftEmoji
   let previewContent: string | null = draftContent
   let previewContentJson: ArticleNodeJSON[] | null = draftContentJson
-  // In historical mode the version query is separate from the base query, so
-  // it lags one render behind when the user switches versions. Defaulting to
-  // the draft cover here causes a flicker where the draft image flashes
-  // before the version's image takes over — start at null instead.
-  let previewCoverImage: string | null = isHistorical ? null : draftCoverImage
+  let historicalTitle: string | null = null
+  let historicalDescription: string | null = null
+  let historicalExcerpt: string | null = null
+  let historicalEmoji: string | null = null
+  let historicalCoverImage: string | null = null
   let previewVersionNumber: number | null = null
-  let fellBackToDraft = false
 
   if (mode === 'live') {
     if (hasPublishedVersion) {
-      previewTitle = publishedTitle
-      // The base query only returns published content + title — fall back to
-      // draft fields for description/excerpt/emoji since they're not in the
-      // editor view's published payload. Acceptable: the body is what
-      // changes between versions; metadata diffs are rare.
       previewContent = publishedContent
       previewContentJson = publishedContentJson
-      previewCoverImage = publishedCoverImage
-      // versionNumber for the live revision isn't returned by the base query
-      // either; the picker pulls it from getArticleVersions when needed.
-    } else {
-      fellBackToDraft = true
     }
   } else if (isHistorical) {
     const v = versionQuery.data
     if (v) {
-      previewTitle = v.selectedTitle ?? draftTitle
-      previewDescription = v.selectedDescription ?? draftDescription
-      previewExcerpt = v.selectedExcerpt ?? draftExcerpt
-      previewEmoji = v.selectedEmoji ?? draftEmoji
       previewContent = v.selectedContent ?? draftContent
       previewContentJson =
         (v.selectedContentJson as ArticleNodeJSON[] | null | undefined) ?? draftContentJson
+      historicalTitle = v.selectedTitle ?? null
+      historicalDescription = v.selectedDescription ?? null
+      historicalExcerpt = v.selectedExcerpt ?? null
+      historicalEmoji = v.selectedEmoji ?? null
       // No draft fallback for cover — if the historical snapshot has no cover,
       // show no cover. Inheriting from the draft would misrepresent the version.
-      previewCoverImage = v.selectedCoverImage ?? null
+      historicalCoverImage = v.selectedCoverImage ?? null
       previewVersionNumber = v.selectedVersionNumber ?? requestedVersion ?? null
     }
   }
@@ -149,28 +117,17 @@ export function useArticleContent(
   return {
     draftContent,
     draftContentJson,
-    draftTitle,
-    draftDescription,
-    draftExcerpt,
-    draftEmoji,
-    draftCoverImage,
-    draftCoverImageId,
-    publishedTitle,
+    draftContentHash,
     publishedContent,
     publishedContentJson,
-    publishedCoverImage,
-    hasPublishedVersion,
-    publishedRevisionId,
-    hasUnpublishedChanges: !!data?.hasUnpublishedChanges,
-    previewTitle,
-    previewDescription,
-    previewExcerpt,
-    previewEmoji,
     previewContent,
     previewContentJson,
-    previewCoverImage,
+    historicalTitle,
+    historicalDescription,
+    historicalExcerpt,
+    historicalEmoji,
+    historicalCoverImage,
     previewVersionNumber,
-    fellBackToDraft,
     isLoading: baseQuery.isLoading || (isHistorical && versionQuery.isLoading),
   }
 }

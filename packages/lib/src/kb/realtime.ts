@@ -37,6 +37,8 @@ export type KbArticleEvent =
       contentJson: ArticleNodeJSON[]
       contentHash: string
       cause: { kind: 'kopilot' | 'manual' | 'revert'; turnId?: string }
+      /** Tab that triggered the save — the originating tab drops the echo. */
+      originatorSessionId?: string
     }
   | {
       type: 'kb-article-lock'

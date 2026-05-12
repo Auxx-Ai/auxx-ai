@@ -27,6 +27,7 @@ import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
 import { ArticleMarkdownCopy } from './article-markdown-copy'
 import { mapKBForPreview } from './map-kb-for-preview'
 import { PreviewVersionPicker } from './preview-version-picker'
+import { resolvePreviewMeta } from './resolve-preview-meta'
 
 interface KBFullscreenPreviewProps {
   knowledgeBaseId: string
@@ -81,15 +82,35 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
   const articleId = activeArticle?.id ?? null
   const {
     previewContentJson,
-    previewDescription,
-    previewTitle,
-    previewEmoji,
-    previewCoverImage,
-    hasPublishedVersion,
-    publishedRevisionId,
-    hasUnpublishedChanges,
-    fellBackToDraft,
+    historicalTitle,
+    historicalDescription,
+    historicalEmoji,
+    historicalCoverImage,
   } = useArticleContent(articleId, knowledgeBaseId, mode)
+
+  const isHistorical = typeof mode === 'object' && mode !== null
+  // Draft/live metadata is synchronous off the store envelopes; historical
+  // metadata comes from the version snapshot returned by useArticleContent.
+  const draftLiveMeta =
+    !isHistorical && activeArticle
+      ? resolvePreviewMeta(activeArticle, mode as 'draft' | 'live')
+      : null
+  const hasPublishedVersion = !!activeArticle?.published
+  const publishedRevisionId = activeArticle?.publishedRevisionId ?? null
+  const hasUnpublishedChanges = !!activeArticle?.hasUnpublishedChanges
+  const fellBackToDraft = draftLiveMeta?.fellBackToDraft ?? false
+  const previewTitle = isHistorical
+    ? (historicalTitle ?? activeArticle?.title ?? null)
+    : (draftLiveMeta?.title ?? null)
+  const previewEmoji = isHistorical
+    ? (historicalEmoji ?? activeArticle?.emoji ?? null)
+    : (draftLiveMeta?.emoji ?? null)
+  const previewDescription = isHistorical
+    ? (historicalDescription ?? activeArticle?.description ?? null)
+    : (draftLiveMeta?.description ?? null)
+  const previewCoverImage = isHistorical
+    ? historicalCoverImage
+    : (draftLiveMeta?.coverImage ?? null)
 
   // Versions list — used to label the live banner with vN and to map a
   // historical versionNumber to a revision id for "Restore as draft".
@@ -244,16 +265,16 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
           <div className='flex min-w-0 flex-1 flex-col'>
             <KBArticleWithToc
               doc={docJson}
-              title={previewTitle ?? activeArticle?.title}
-              emoji={previewEmoji ?? activeArticle?.emoji}
-              description={previewDescription ?? activeArticle?.description}
-              coverImage={previewCoverImage}
+              title={previewTitle ?? undefined}
+              emoji={previewEmoji ?? undefined}
+              description={previewDescription ?? undefined}
+              coverImage={previewCoverImage ?? undefined}
               parent={parent}
               resolveAuxxHref={(id) => `/preview/kb/${knowledgeBaseId}/r/${id}`}
               copyMenu={
                 <ArticleMarkdownCopy
                   doc={docJson}
-                  title={previewTitle ?? activeArticle?.title}
+                  title={previewTitle ?? undefined}
                   markdownHref={markdownHref}
                 />
               }

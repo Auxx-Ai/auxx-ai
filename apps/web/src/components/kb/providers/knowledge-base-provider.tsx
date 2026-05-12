@@ -1,43 +1,17 @@
 // apps/web/src/components/kb/providers/knowledge-base-provider.tsx
 'use client'
 
-import { ArticleKind } from '@auxx/database/enums'
-import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import type React from 'react'
 import { useEffect } from 'react'
 import { useTagHierarchy } from '~/components/tags/hooks/use-tag-hierarchy'
 import { api } from '~/trpc/react'
-import { type ArticleMeta, getArticleStoreState } from '../store/article-store'
+import { getArticleStoreState } from '../store/article-store'
 import { getKnowledgeBaseStoreState, type KnowledgeBase } from '../store/knowledge-base-store'
+import { normalizeServerArticle } from '../store/normalize-server-article'
 
 interface KnowledgeBaseProviderProps {
   knowledgeBaseId: string
   children: React.ReactNode
-}
-
-/** Normalize a server article (from tRPC) into ArticleMeta. */
-function normalize(server: any): ArticleMeta {
-  return {
-    id: server.id,
-    knowledgeBaseId: server.knowledgeBaseId,
-    title: server.title ?? '',
-    slug: server.slug ?? '',
-    emoji: server.emoji ?? null,
-    parentId: server.parentId ?? null,
-    articleKind: (server.articleKind ?? ArticleKind.page) as ArticleKindType,
-    sortOrder: server.sortOrder ?? 'a0',
-    isPublished: !!server.isPublished,
-    aiEnabled: server.aiEnabled ?? true,
-    status: server.status,
-    description: server.description ?? null,
-    excerpt: server.excerpt ?? null,
-    coverImage: server.coverImage ?? null,
-    hasUnpublishedChanges: !!server.hasUnpublishedChanges,
-    publishedAt: server.publishedAt ? new Date(server.publishedAt) : null,
-    publishedRevisionId: server.publishedRevisionId ?? null,
-    draftRevisionId: server.draftRevisionId ?? null,
-    tagIds: (server.tagIds ?? []) as ArticleMeta['tagIds'],
-  }
 }
 
 /**
@@ -77,7 +51,7 @@ export function KnowledgeBaseProvider({ knowledgeBaseId, children }: KnowledgeBa
     if (articlesQuery.data) {
       getArticleStoreState().setArticles(
         knowledgeBaseId,
-        (articlesQuery.data as any[]).map(normalize)
+        (articlesQuery.data as any[]).map(normalizeServerArticle)
       )
     }
   }, [articlesQuery.data, knowledgeBaseId])
