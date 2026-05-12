@@ -7,6 +7,17 @@ import type { Editor } from '@tiptap/react'
 import { EditorContent } from '@tiptap/react'
 import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useState } from 'react'
+import {
+  AISlotPlaceholder,
+  AlignSection,
+  ColorPickerSection,
+  EditorBubbleMenu,
+  InlineMarksSection,
+  KBBlockSection,
+  LinkButton,
+  MoreMenuSection,
+  TurnIntoSection,
+} from '../bubble-menu'
 import { InlinePickerPopover } from '../inline-picker'
 import {
   type ArticleLinkEditMode,
@@ -118,6 +129,29 @@ export function KBArticleEditor({
     setLinkPopover({ rect })
   }, [])
 
+  const handleBubbleLinkRequest = useCallback(() => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    if (from === to) return
+    const selectedText = editor.state.doc.textBetween(from, to, ' ')
+    const linkType = editor.schema.marks.link
+    const existing = linkType ? editor.getAttributes('link') : null
+    const existingHref = typeof existing?.href === 'string' ? existing.href : ''
+    const start = editor.view.coordsAtPos(from)
+    const end = editor.view.coordsAtPos(to)
+    const rect = new DOMRect(
+      Math.min(start.left, end.left),
+      Math.min(start.top, end.top),
+      Math.max(1, Math.max(start.right, end.right) - Math.min(start.left, end.left)),
+      Math.max(1, Math.max(start.bottom, end.bottom) - Math.min(start.top, end.top))
+    )
+    setLinkPopover({
+      rect,
+      range: { from, to },
+      edit: { kind: 'edit', initialHref: existingHref, initialText: selectedText },
+    })
+  }, [editor])
+
   const handlePick = useCallback(
     (pick: ArticleLinkPick) => {
       if (!editor || !linkPopover) return
@@ -180,6 +214,19 @@ export function KBArticleEditor({
         <div className={styles.editorContainer}>
           <EditorContent editor={editor} className={styles.editorContent} />
         </div>
+        <EditorBubbleMenu
+          editor={editor}
+          renderBlockSection={({ editor }) => <KBBlockSection editor={editor} />}
+          renderAISlot={() => <AISlotPlaceholder />}
+          renderTurnInto={({ editor }) => <TurnIntoSection editor={editor} />}
+          renderInlineMarks={({ editor }) => <InlineMarksSection editor={editor} />}
+          renderColor={({ editor }) => <ColorPickerSection editor={editor} />}
+          renderAlign={({ editor }) => <AlignSection editor={editor} />}
+          renderLink={({ editor }) => (
+            <LinkButton editor={editor} onRequest={handleBubbleLinkRequest} />
+          )}
+          renderMore={({ editor }) => <MoreMenuSection editor={editor} />}
+        />
         <InlinePickerPopover
           state={slashCommand.suggestionState}
           onClose={slashCommand.closePicker}

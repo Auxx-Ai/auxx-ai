@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/editor/kb-editor-page-body.tsx
 'use client'
 
+import { ArticleKind } from '@auxx/database/enums'
 import { mergeDraftOverLive } from '@auxx/lib/kb/client'
 import { findArticleBySlugPath } from '@auxx/ui/components/kb/utils'
 import { useQueryState } from 'nuqs'
@@ -10,6 +11,7 @@ import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
 import { KBPreview } from '../preview/kb-preview'
 import { ArticleEditor } from './article-editor'
+import { ContainerArticlePlaceholder } from './container-article-placeholder'
 
 interface KBEditorPageBodyProps {
   knowledgeBaseId: string
@@ -60,6 +62,12 @@ function KBEditorBody({ knowledgeBaseId, slug, hasArticlesLoaded }: KBEditorBody
   if (!hasArticlesLoaded) return <LoadingSpinner />
 
   if (currentArticle) {
+    const kind = currentArticle.articleKind
+    if (kind === ArticleKind.tab || kind === ArticleKind.header || kind === ArticleKind.link) {
+      return (
+        <ContainerArticlePlaceholder article={currentArticle} knowledgeBaseId={knowledgeBaseId} />
+      )
+    }
     return <ArticleEditor article={currentArticle} knowledgeBaseId={knowledgeBaseId} />
   }
 

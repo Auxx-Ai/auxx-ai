@@ -62,7 +62,10 @@ export function KBPreviewTopBar({ kbId, activeSlugPath, articleId }: KBPreviewTo
       ? `/${activeSlugPath.map(encodeURIComponent).join('/')}`
       : ''
   const publicUrl = useKbPublicUrl(kb?.slug)
-  const { hasPublishedVersion } = useArticleContent(articleId ?? null, kbId)
+  const { hasPublishedVersion, publishedRevisionId, hasUnpublishedChanges } = useArticleContent(
+    articleId ?? null,
+    kbId
+  )
 
   const isPublished = kb?.publishStatus === 'PUBLISHED'
   const isUnlisted = kb?.publishStatus === 'UNLISTED'
@@ -132,6 +135,8 @@ export function KBPreviewTopBar({ kbId, activeSlugPath, articleId }: KBPreviewTo
             articleId={articleId}
             mode={previewMode}
             hasPublishedVersion={hasPublishedVersion}
+            publishedRevisionId={publishedRevisionId}
+            hasUnpublishedChanges={hasUnpublishedChanges}
             onModeChange={setPreviewMode}
           />
         ) : null}

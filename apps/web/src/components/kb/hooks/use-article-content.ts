@@ -30,6 +30,8 @@ interface UseArticleContentResult {
   publishedContentJson: ArticleNodeJSON[] | null
   publishedCoverImage: string | null
   hasPublishedVersion: boolean
+  /** Revision id of the currently-live version (matches an ArticleRevision.id). */
+  publishedRevisionId: string | null
   hasUnpublishedChanges: boolean
   /** What the preview should render for the resolved mode. */
   previewTitle: string | null
@@ -96,6 +98,7 @@ export function useArticleContent(
     (data?.publishedContentJson as ArticleNodeJSON[] | null | undefined) ?? null
   const publishedCoverImage = data?.publishedCoverImage ?? null
   const hasPublishedVersion = !!data?.hasPublishedVersion
+  const publishedRevisionId = data?.publishedRevisionId ?? null
 
   let previewTitle: string | null = draftTitle
   let previewDescription: string | null = draftDescription
@@ -157,6 +160,7 @@ export function useArticleContent(
     publishedContentJson,
     publishedCoverImage,
     hasPublishedVersion,
+    publishedRevisionId,
     hasUnpublishedChanges: !!data?.hasUnpublishedChanges,
     previewTitle,
     previewDescription,

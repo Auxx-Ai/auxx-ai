@@ -1,5 +1,50 @@
 /* apps/web/src/components/editor/kb-article/kb-article-editor.module.css */
 
+/* ============================================
+   KB inline color palette — referenced by the
+   bubble menu color picker via CSS variables,
+   so light/dark mode resolve at render time.
+   Text colors (foreground) and highlight colors
+   (background) live in :root so the inline
+   `style="color: var(--kb-text-red)"` marks
+   produced by Tiptap's Color extension resolve
+   everywhere the article renders.
+   ============================================ */
+
+:global(:root) {
+  --kb-text-default: inherit;
+  --kb-text-red: oklch(0.55 0.18 25);
+  --kb-text-orange: oklch(0.62 0.16 60);
+  --kb-text-yellow: oklch(0.7 0.13 90);
+  --kb-text-green: oklch(0.55 0.14 145);
+  --kb-text-teal: oklch(0.6 0.1 195);
+  --kb-text-blue: oklch(0.55 0.16 245);
+  --kb-text-purple: oklch(0.5 0.18 295);
+  --kb-text-pink: oklch(0.6 0.18 350);
+
+  --kb-bg-default: transparent;
+  --kb-bg-red: color-mix(in oklab, var(--kb-text-red) 18%, transparent);
+  --kb-bg-orange: color-mix(in oklab, var(--kb-text-orange) 22%, transparent);
+  --kb-bg-yellow: color-mix(in oklab, var(--kb-text-yellow) 28%, transparent);
+  --kb-bg-green: color-mix(in oklab, var(--kb-text-green) 18%, transparent);
+  --kb-bg-teal: color-mix(in oklab, var(--kb-text-teal) 22%, transparent);
+  --kb-bg-blue: color-mix(in oklab, var(--kb-text-blue) 18%, transparent);
+  --kb-bg-purple: color-mix(in oklab, var(--kb-text-purple) 18%, transparent);
+  --kb-bg-pink: color-mix(in oklab, var(--kb-text-pink) 22%, transparent);
+}
+
+:global(.dark) {
+  --kb-text-red: oklch(0.72 0.18 25);
+  --kb-text-orange: oklch(0.75 0.15 60);
+  --kb-text-yellow: oklch(0.85 0.13 90);
+  --kb-text-green: oklch(0.72 0.14 145);
+  --kb-text-teal: oklch(0.75 0.1 195);
+  --kb-text-blue: oklch(0.72 0.15 245);
+  --kb-text-purple: oklch(0.7 0.17 295);
+  --kb-text-pink: oklch(0.75 0.16 350);
+}
+
+
 .editorWrapper {
   position: relative;
   z-index: 1;

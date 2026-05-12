@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/preview/preview-version-picker.tsx
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -26,6 +27,16 @@ interface PreviewVersionPickerProps {
    * Lets parents keep layout stable while waiting for an article id.
    */
   disabled?: boolean
+  /**
+   * ArticleRevision id of the currently-published revision. Used to badge the
+   * matching row in the version history list. Null when never published.
+   */
+  publishedRevisionId?: string | null
+  /**
+   * When false and a published version exists, the Draft entry shows
+   * "Same as live" to signal that publishing would be a no-op.
+   */
+  hasUnpublishedChanges?: boolean
 }
 
 function modeLabel(mode: PreviewMode, activeVersionLabel: string | null): string {
@@ -65,6 +76,8 @@ export function PreviewVersionPicker({
   hasPublishedVersion,
   onModeChange,
   disabled,
+  publishedRevisionId = null,
+  hasUnpublishedChanges = true,
 }: PreviewVersionPickerProps) {
   const [open, setOpen] = useState(false)
   const versionsQuery = api.kb.getArticleVersions.useQuery(
@@ -94,7 +107,9 @@ export function PreviewVersionPicker({
         <DropdownMenuItem onSelect={() => onModeChange('draft')}>
           <Check className={mode === 'draft' ? 'opacity-100' : 'opacity-0'} />
           <span>Draft</span>
-          <span className='ml-auto text-xs text-muted-foreground'>in progress</span>
+          {hasPublishedVersion && !hasUnpublishedChanges ? (
+            <span className='ml-auto text-xs text-muted-foreground'>Same as live</span>
+          ) : null}
         </DropdownMenuItem>
         {hasPublishedVersion ? (
           <DropdownMenuItem onSelect={() => onModeChange('live')}>
@@ -129,6 +144,7 @@ export function PreviewVersionPicker({
         ) : (
           versions.map((v) => {
             const isActive = isHistorical(mode) && mode.versionNumber === v.versionNumber
+            const isLive = publishedRevisionId !== null && v.id === publishedRevisionId
             return (
               <DropdownMenuItem
                 key={v.id}
@@ -138,11 +154,16 @@ export function PreviewVersionPicker({
                   }
                 }}>
                 <Check className={isActive ? 'opacity-100' : 'opacity-0'} />
-                <div className='flex min-w-0 flex-1 flex-col'>
+                <div className='flex min-w-0 flex-1 items-center gap-1.5'>
                   <span className='truncate text-sm'>
                     v{v.versionNumber}
                     {v.label ? ` — ${v.label}` : ''}
                   </span>
+                  {isLive ? (
+                    <Badge variant='green' size='xs'>
+                      Live
+                    </Badge>
+                  ) : null}
                 </div>
                 <span className='ml-2 shrink-0 text-xs text-muted-foreground'>
                   {relativeTime(v.createdAt)}

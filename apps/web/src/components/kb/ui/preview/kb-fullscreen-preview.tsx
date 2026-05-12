@@ -86,6 +86,8 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
     previewEmoji,
     previewCoverImage,
     hasPublishedVersion,
+    publishedRevisionId,
+    hasUnpublishedChanges,
     fellBackToDraft,
   } = useArticleContent(articleId, knowledgeBaseId, mode)
 
@@ -156,6 +158,8 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
             articleId={articleId}
             mode={mode}
             hasPublishedVersion={hasPublishedVersion}
+            publishedRevisionId={publishedRevisionId}
+            hasUnpublishedChanges={hasUnpublishedChanges}
             onModeChange={handleModeChange}
           />
         ) : null}
@@ -187,6 +191,8 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
         articleId={articleId}
         mode={mode}
         hasPublishedVersion={hasPublishedVersion}
+        publishedRevisionId={publishedRevisionId}
+        hasUnpublishedChanges={hasUnpublishedChanges}
         onModeChange={handleModeChange}
       />
     ) : null
@@ -208,6 +214,8 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
             articleId={articleId}
             mode={mode}
             hasPublishedVersion={hasPublishedVersion}
+            publishedRevisionId={publishedRevisionId}
+            hasUnpublishedChanges={hasUnpublishedChanges}
             onModeChange={handleModeChange}
           />
         ) : null}

@@ -3,8 +3,11 @@
 
 import type { JSONContent } from '@tiptap/core'
 import { Extension, Node } from '@tiptap/core'
+import Color from '@tiptap/extension-color'
 import Highlight from '@tiptap/extension-highlight'
 import Link from '@tiptap/extension-link'
+import TextAlign from '@tiptap/extension-text-align'
+import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -111,6 +114,9 @@ export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEdi
         TableHeader,
         TableCell,
         Underline,
+        TextStyle,
+        Color,
+        TextAlign.configure({ types: ['block'] }),
         Highlight.configure({ multicolor: true }),
         Link.configure({ openOnClick: false, autolink: true, defaultProtocol: 'https' }),
         FocusClasses,
